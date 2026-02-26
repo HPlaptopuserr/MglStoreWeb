@@ -1,0 +1,83 @@
+mgl_storew/
+├── apps/
+│   ├── web/                          # mglstore.mn
+│   │   └── src/app/
+│   │       ├── (marketing)/          # Public pages
+│   │       │   ├── page.tsx          # Homepage
+│   │       │   ├── about/page.tsx
+│   │       │   └── contact/page.tsx
+│   │       ├── (shop)/               # E-commerce
+│   │       │   ├── products/
+│   │       │   │   ├── page.tsx      # Product listing
+│   │       │   │   └── [slug]/page.tsx # Product detail
+│   │       │   ├── cart/page.tsx
+│   │       │   └── checkout/page.tsx
+│   │       ├── (auth)/               # Auth pages
+│   │       │   ├── login/page.tsx
+│   │       │   └── register/page.tsx
+│   │       ├── account/              # User dashboard
+│   │       │   ├── orders/page.tsx
+│   │       │   └── profile/page.tsx
+│   │       ├── layout.tsx
+│   │       └── globals.css
+│   │
+│   ├── admin/                        # admin.mglstore.mn
+│   │   └── src/app/
+│   │       ├── (auth)/
+│   │       │   └── login/page.tsx
+│   │       ├── (dashboard)/          # Protected routes
+│   │       │   ├── layout.tsx        # Sidebar + auth guard
+│   │       │   ├── page.tsx          # Dashboard overview
+│   │       │   ├── orders/
+│   │       │   │   ├── page.tsx      # Order list
+│   │       │   │   └── [id]/page.tsx # Order detail
+│   │       │   ├── products/
+│   │       │   │   ├── page.tsx
+│   │       │   │   ├── new/page.tsx
+│   │       │   │   └── [id]/page.tsx
+│   │       │   ├── customers/page.tsx
+│   │       │   ├── analytics/page.tsx
+│   │       │   └── settings/page.tsx
+│   │       ├── layout.tsx
+│   │       └── globals.css
+│   │
+│   ├── api/                          # api.mglstore.mn
+│   │   └── src/
+│   │       ├── main.ts
+│   │       ├── modules/
+│   │       │   ├── auth/
+│   │       │   ├── products/
+│   │       │   ├── orders/
+│   │       │   └── users/
+│   │       └── common/
+│   │           ├── guards/
+│   │           └── middleware/
+│   │
+│   └── mobile/                       # Flutter app
+│
+└── packages/
+    ├── ui/src/
+    │   ├── components/
+    │   │   ├── Button/
+    │   │   ├── Input/
+    │   │   ├── Card/
+    │   │   └── Modal/
+    │   └── index.ts
+    │
+    ├── types/src/
+    │   ├── product.ts
+    │   ├── order.ts
+    │   ├── user.ts
+    │   └── index.ts
+    │
+    ├── database/
+    │   └── prisma/
+    │       ├── schema.prisma
+    │       └── migrations/
+    │
+    └── config/
+        ├── tsconfig/
+        │   ├── base.json
+        │   └── nextjs.json
+        └── eslint/
+            └── base.js
