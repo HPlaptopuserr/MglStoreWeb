@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MGL Store — Monorepo
 
-## Getting Started
+pnpm + Turborepo monorepo for MGL Store.
 
-First, run the development server:
+## Structure
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+apps/
+  web/      → mglstore.mn          (Next.js, port 3000)
+  admin/    → admin.mglstore.mn    (Next.js, port 3001)
+  api/      → api.mglstore.mn      (Node.js/NestJS)
+  mobile/   → iOS / Android        (Flutter)
+packages/
+  ui/       → Shared React components
+  types/    → Shared TypeScript interfaces
+  database/ → Prisma schema & migrations
+  config/   → Shared TSconfig, ESLint configs
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup (run once after cloning)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# 1. Install pnpm globally
+npm install -g pnpm
+# or via corepack (recommended, built into Node 16+):
+corepack enable
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# 2. Install all workspace dependencies
+pnpm install
+```
 
-## Learn More
+## Development
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# Run all apps at once
+npm run dev
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Run specific app only
+npm run dev:web       # http://localhost:3000
+npm run dev:admin     # http://localhost:3001
+npm run dev:api
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Build
 
-## Deploy on Vercel
+```bash
+# Build all (turbo caches unchanged packages)
+npm run build
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Build single app + its dependencies
+npm run build:web
+npm run build:admin
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Other commands
+
+```bash
+npm run lint          # Lint all packages
+npm run type-check    # TypeScript check all
+npm run format        # Prettier format
+npm run db:generate   # Prisma generate
+npm run db:migrate    # Prisma migrate dev
+npm run clean         # Remove all build outputs
+```
+
+## Requirements
+
+- Node.js >= 20
+- pnpm >= 9

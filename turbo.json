@@ -13,22 +13,69 @@
             "outputs": [
                 ".next/**",
                 "!.next/cache/**",
-                "dist/**"
+                "dist/**",
+                ".open-next/**"
             ]
         },
         "dev": {
             "cache": false,
             "persistent": true
         },
+        "start": {
+            "dependsOn": [
+                "build"
+            ],
+            "cache": false,
+            "persistent": true
+        },
         "lint": {
             "dependsOn": [
                 "^lint"
-            ]
+            ],
+            "inputs": [
+                "**/*.ts",
+                "**/*.tsx",
+                "**/*.js",
+                "**/*.mjs",
+                ".eslintrc*",
+                "eslint.config.*"
+            ],
+            "outputs": []
         },
         "type-check": {
             "dependsOn": [
                 "^type-check"
-            ]
+            ],
+            "inputs": [
+                "**/*.ts",
+                "**/*.tsx",
+                "tsconfig*.json"
+            ],
+            "outputs": []
+        },
+        "test": {
+            "dependsOn": [
+                "^build"
+            ],
+            "inputs": [
+                "**/*.ts",
+                "**/*.tsx",
+                "**/*.test.*",
+                "**/*.spec.*"
+            ],
+            "outputs": [
+                "coverage/**"
+            ],
+            "cache": true
+        },
+        "db:generate": {
+            "cache": false
+        },
+        "db:migrate": {
+            "cache": false
+        },
+        "clean": {
+            "cache": false
         }
     }
 }
