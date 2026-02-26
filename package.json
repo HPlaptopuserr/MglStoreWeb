@@ -18,9 +18,11 @@
     "dev:web": "turbo dev --filter=@mgl/web",
     "dev:admin": "turbo dev --filter=@mgl/admin",
     "dev:api": "turbo dev --filter=@mgl/api",
+    "dev:vendor": "turbo dev --filter=@mgl/vendor",
     "build:web": "turbo build --filter=@mgl/web...",
     "build:admin": "turbo build --filter=@mgl/admin...",
-    "build:api": "turbo build --filter=@mgl/api..."
+    "build:api": "turbo build --filter=@mgl/api...",
+    "build:vendor": "turbo build --filter=@mgl/vendor..."
   },
   "devDependencies": {
     "prettier": "^3.3.3",
