@@ -1,0 +1,19 @@
+{
+    "name": "@mgl/api",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "node -e \"console.log('[api] Dev server not yet configured — implement NestJS/Express here')\"",
+        "build": "tsc -p tsconfig.json",
+        "start": "node dist/main.js",
+        "lint": "eslint .",
+        "type-check": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@mgl/types": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/node": "^20",
+        "typescript": "^5"
+    }
+}
