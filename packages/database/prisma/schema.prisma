@@ -1,0 +1,358 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////
+
+enum Role {
+  ADMIN
+  SUPPLIER
+  COURIER
+  CUSTOMER
+  INDIVIDUAL
+}
+
+enum OrgType {
+  SUPPLIER
+  BUSINESS_CUSTOMER
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARED
+  SHIPPING
+  COMPLETED
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  WAITING
+  PICKING
+  DELIVERING
+  COMPLETED
+}
+
+enum ReturnStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  QPAY
+  BANK_TRANSFER
+}
+
+enum InventoryReason {
+  ORDER
+  RETURN
+  RESTOCK
+  MANUAL_ADJUST
+}
+
+//////////////////////////////////////////////////
+// USER
+//////////////////////////////////////////////////
+
+model User {
+  id             String        @id @default(uuid())
+  email          String        @unique
+  password       String
+  role           Role          @default(INDIVIDUAL)
+  isActive       Boolean       @default(true)
+  emailVerified  Boolean       @default(false)
+  lastLoginAt    DateTime?
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  profile        Profile?
+  orders         Order[]       @relation("CustomerOrders")
+  deliveries     Delivery[]    @relation("CourierDeliveries")
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  @@index([organizationId])
+  @@index([deletedAt])
+}
+
+model Profile {
+  userId      String  @id
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName    String
+  phoneNumber String?
+  avatarUrl   String?
+}
+
+//////////////////////////////////////////////////
+// ORGANIZATION
+//////////////////////////////////////////////////
+
+model Organization {
+  id         String    @id @default(uuid())
+  name       String
+  taxId      String    @unique
+  type       OrgType   @default(SUPPLIER)
+  isVerified Boolean   @default(false)
+
+  email      String?
+  phone      String?
+  logoUrl    String?
+  address    String?
+
+  users      User[]
+  products   Product[]
+  branches   Branch[]
+  orders     Order[]
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  @@index([type])
+  @@index([deletedAt])
+}
+
+model Branch {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name           String
+  address        String
+  lat            Float?
+  lng            Float?
+
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+}
+
+//////////////////////////////////////////////////
+// PRODUCT
+//////////////////////////////////////////////////
+
+model Product {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name           String
+  description    String?
+  sku            String?
+
+  price          Decimal      @db.Decimal(18,2)
+  costPrice      Decimal?     @db.Decimal(18,2)
+
+  stock          Int          @default(0) // derived cache
+  isActive       Boolean      @default(true)
+
+  categoryId     String?
+  category       Category?    @relation(fields: [categoryId], references: [id])
+
+  discounts      Discount[]
+  images         ProductImage[]
+  orderItems     OrderItem[]
+  inventoryLogs  InventoryLedger[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  @@unique([organizationId, sku])
+  @@index([organizationId, isActive])
+  @@index([categoryId])
+  @@index([deletedAt])
+}
+
+model ProductImage {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+
+  @@index([productId])
+}
+
+model Category {
+  id        String     @id @default(uuid())
+  name      String
+  slug      String     @unique
+
+  parentId  String?
+  parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryHierarchy")
+
+  products  Product[]
+  createdAt DateTime   @default(now())
+}
+
+model Discount {
+  id         String   @id @default(uuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  percent    Float
+  validUntil DateTime
+
+  @@index([productId])
+}
+
+//////////////////////////////////////////////////
+// INVENTORY LEDGER (Race-safe)
+//////////////////////////////////////////////////
+
+model InventoryLedger {
+  id        String          @id @default(uuid())
+  productId String
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  change    Int             // -2, +5
+  reason    InventoryReason
+  note      String?
+
+  createdAt DateTime        @default(now())
+
+  @@index([productId])
+  @@index([createdAt])
+}
+
+//////////////////////////////////////////////////
+// ORDER
+//////////////////////////////////////////////////
+
+model Order {
+  id              String         @id @default(uuid())
+  organizationId  String
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+
+  customerId      String
+  customer        User           @relation("CustomerOrders", fields: [customerId], references: [id])
+
+  status          OrderStatus    @default(PENDING)
+  paymentStatus   PaymentStatus  @default(PENDING)
+  paymentMethod   PaymentMethod?
+
+  shippingAddress String
+  phone           String
+  note            String?
+
+  subtotal        Decimal        @db.Decimal(18,2)
+  discountAmount  Decimal        @db.Decimal(18,2) @default(0)
+  deliveryFee     Decimal        @db.Decimal(18,2) @default(0)
+  total           Decimal        @db.Decimal(18,2)
+
+  items           OrderItem[]
+  history         OrderHistory[]
+  delivery        Delivery?
+  returnRequest   ReturnRequest?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([organizationId, status])
+  @@index([customerId])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+
+  quantity  Int
+  price     Decimal  @db.Decimal(18,2)
+  subtotal  Decimal  @db.Decimal(18,2)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderHistory {
+  id        String      @id @default(uuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  status    OrderStatus
+  timestamp DateTime    @default(now())
+
+  @@index([orderId])
+}
+
+//////////////////////////////////////////////////
+// DELIVERY
+//////////////////////////////////////////////////
+
+model Delivery {
+  id           String         @id @default(uuid())
+  orderId      String         @unique
+  order        Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  courierId    String?
+  courier      User?          @relation("CourierDeliveries", fields: [courierId], references: [id])
+
+  status       DeliveryStatus @default(WAITING)
+  trackingCode String?
+  deliveryFee  Decimal?       @db.Decimal(18,2)
+
+  pickupTime   DateTime?
+  deliveredAt  DateTime?
+  proofImage   String?
+
+  updatedAt    DateTime       @updatedAt
+
+  @@index([courierId])
+}
+
+//////////////////////////////////////////////////
+// GPS HISTORY (Batch-write friendly)
+//////////////////////////////////////////////////
+
+model CourierLocationHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  lat       Float
+  lng       Float
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+//////////////////////////////////////////////////
+// RETURNS
+//////////////////////////////////////////////////
+
+model ReturnRequest {
+  id         String       @id @default(uuid())
+  orderId    String       @unique
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  reason     String
+  status     ReturnStatus @default(PENDING)
+  resolvedAt DateTime?
+
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
