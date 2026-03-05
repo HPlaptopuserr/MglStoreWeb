@@ -4,9 +4,9 @@ import Link from "next/link";
 import React, { useState } from "react";
 import { ShoppingCart, User, Truck, ShoppingBag } from "lucide-react";
 import Image from "next/image";
-import { Logo } from "@/components/atoms/Logo";
-import { SearchBar } from "@/components/molecules/SearchBar";
-import { MegaMenu } from "@/components/molecules/MegaMenu";
+/* import { Logo } from "@/components/atoms/Logo"; */
+import { SearchBar } from "../components/SearchBar";
+import { MegaMenu } from "@/components/MegaMenu";
 
 export const Header = () => {
   const [isSwapped, setIsSwapped] = useState(false);

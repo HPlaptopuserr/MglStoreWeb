@@ -1,6 +1,6 @@
 import React from "react";
 import { ArrowRight } from "lucide-react";
-import { Button } from "@/components/atoms/Button";
+import { Button } from "@mgl/ui";
 
 export const PromoBanner = () => {
   return (

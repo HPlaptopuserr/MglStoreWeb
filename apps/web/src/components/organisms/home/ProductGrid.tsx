@@ -1,9 +1,26 @@
 import React from "react";
-import { ProductCard } from "@/components/molecules/cards/ProductCard";
-import { Button } from "@/components/atoms/Button";
+import { ProductCard } from "@mgl/ui";
+import { Button } from "@mgl/ui";
 import { ArrowRight } from "lucide-react";
 
-const products = [
+export interface Store {
+  name: string;
+  logo?: string;
+}
+
+export interface Product {
+  id: string;
+  title: string;
+  price: number;
+  originalPrice?: number;
+  image: string;
+  tag?: string;
+  rating: number;
+  reviews: number;
+  store: Store;
+}
+
+const baseProducts: Omit<Product, "id">[] = [
   {
     title: "Organic Bananas",
     price: 1.99,
@@ -89,6 +106,34 @@ const products = [
   },
 ];
 
+export const products: Product[] = Array.from({ length: 30 }, (_, index) => {
+  const base = baseProducts[index % baseProducts.length];
+
+  const seedWord = base.title
+    .split(" ")[0]
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+
+  return {
+    ...base,
+    id: `prod_v${index + 1}`,
+    title:
+      index < baseProducts.length ? base.title : `${base.title} v.${index + 1}`,
+    price: Number((base.price + index * 0.15).toFixed(2)),
+    originalPrice: base.originalPrice
+      ? Number((base.originalPrice + index * 0.15).toFixed(2))
+      : undefined,
+    image: `https://picsum.photos/seed/${seedWord}${index}/400/300`,
+    reviews: base.reviews + index * 13,
+    store: {
+      ...base.store,
+      logo: base.store.logo
+        ? `https://picsum.photos/seed/store_${seedWord}${index}/100/100`
+        : undefined,
+    },
+  };
+});
+
 export const ProductGrid = () => {
   return (
     <section className="py-8 bg-slate-50/50 rounded-2xl my-6">
@@ -112,10 +157,20 @@ export const ProductGrid = () => {
           </Button>
         </div>
 
-        {/* Scaled down cards by using more columns and less gap */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
           {products.map((product, idx) => (
-            <ProductCard key={idx} {...product} />
+            <ProductCard
+              key={idx}
+              image={product.image}
+              price={product.price}
+              name={product.title}
+              category={"—"}
+              originalPrice={product.originalPrice}
+              tag={product.tag}
+              rating={product.rating}
+              reviews={product.reviews}
+              storeName={product.store?.name}
+            />
           ))}
         </div>
 

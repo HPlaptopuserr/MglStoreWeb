@@ -3,8 +3,10 @@ import { PartnershipHero } from "../../../../components/organisms/partnership/Pa
 
 export default function PartnershipFormSection() {
   return (
-    <section className="w-full bg-[#FFB700] py-20 px-4 md:px-6 lg:px-8 font-sans overflow-hidden relative">
-      {/* Background Decor */}
+    <section
+      id="partnership-form"
+      className="w-full bg-[#FFB700] py-20 px-4 md:px-6 lg:px-8 font-sans overflow-hidden relative"
+    >
       <div className="absolute inset-0 opacity-5 pointer-events-none">
         <div className="absolute top-0 left-0 w-64 h-64 bg-white rounded-full blur-3xl transform -translate-x-1/2 -translate-y-1/2"></div>
       </div>

@@ -1,7 +1,7 @@
 "use client";
 import { motion, AnimatePresence } from "motion/react";
 import Image from "next/image";
-import { FAQIcon } from "../atoms/FAQIcon";
+import { FAQIcon } from "../../../../packages/ui/src/atoms/FAQIcon";
 
 interface FAQItemProps {
   id: number;

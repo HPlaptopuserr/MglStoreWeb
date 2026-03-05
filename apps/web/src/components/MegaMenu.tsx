@@ -15,9 +15,8 @@ import {
   Smile,
   Baby,
 } from "lucide-react";
-import { Button } from "@/components/atoms/Button";
+import { Button } from "@mgl/ui";
 
-// Mock Category Data based on previous design
 const MEGA_CATEGORIES = [
   {
     id: "fresh",
@@ -184,7 +183,7 @@ export const MegaMenu = () => {
             </div>
           </div>
 
-          <div className="hidden md:flex flex-col flex-none w-full md:w-[220px] lg:w-[280px] bg-slate-50 border-r border-slate-100 overflow-y-auto py-2 h-full">
+          <div className="hidden md:flex flex-col flex-none w-full md:w-55 lg:w-70 bg-slate-50 border-r border-slate-100 overflow-y-auto py-2 h-full">
             {MEGA_CATEGORIES.map((category) => {
               const Icon = category.icon;
               const isActive = activeCategory.id === category.id;

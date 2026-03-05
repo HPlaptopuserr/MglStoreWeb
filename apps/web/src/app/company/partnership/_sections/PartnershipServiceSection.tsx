@@ -1,6 +1,6 @@
 "use client";
 
-import { InfoCard } from "@/components/molecules/cards/InfoCard";
+import { PartnershipWorkInfoCard } from "@/components/PartnershipWorkInfoCard";
 import { partnershipServices } from "@/lib/mock-data";
 
 export default function PartnershipServiceSection() {
@@ -14,7 +14,7 @@ export default function PartnershipServiceSection() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {displayedCards.map((service) => (
-            <InfoCard key={service.title} {...service} />
+            <PartnershipWorkInfoCard key={service.title} {...service} />
           ))}
         </div>
       </div>

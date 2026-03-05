@@ -1,18 +1,17 @@
 {
-    "extends": "../../packages/config/tsconfig/base.json",
-    "compilerOptions": {
-        "outDir": "dist",
-        "rootDir": "src",
-        "declaration": true,
-        "declarationMap": true,
-        "sourceMap": true
-    },
-    "include": [
-        "src/**/*.ts",
-        "src/**/*.tsx"
-    ],
-    "exclude": [
-        "node_modules",
-        "dist"
-    ]
+  "extends": "../../packages/config/tsconfig/base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noEmit": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../src/components/PartnershipWorkInfoCard.tsx"
+  ],
+  "exclude": ["node_modules", "dist"]
 }

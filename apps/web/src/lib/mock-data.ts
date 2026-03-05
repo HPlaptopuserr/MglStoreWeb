@@ -8,61 +8,21 @@ import {
   Coffee,
   IceCream,
   Utensils,
+  LucideIcon,
+  Handshake,
+  Target,
+  Zap,
+  Users,
+  Globe,
+  ShieldCheck,
+  BarChart3,
+  Award,
+  Briefcase,
 } from "lucide-react";
-
-export const brands = [
-  "Organic Valley",
-  "Nature's Path",
-  "Annie's",
-  "Kashi",
-  "Bob's Red Mill",
-  "Stonyfield",
-  "Horizon",
-];
-
-export const categories = [
-  { icon: Apple, label: "Fruits", color: "bg-red-50 text-red-500" },
-  { icon: Carrot, label: "Vegetables", color: "bg-green-50 text-green-600" },
-  { icon: Beef, label: "Meat", color: "bg-rose-50 text-rose-600" },
-  { icon: Milk, label: "Dairy", color: "bg-blue-50 text-blue-500" },
-  { icon: Croissant, label: "Bakery", color: "bg-amber-50 text-amber-600" },
-  { icon: Fish, label: "Seafood", color: "bg-cyan-50 text-cyan-600" },
-  { icon: Coffee, label: "Beverages", color: "bg-stone-50 text-stone-600" },
-  { icon: IceCream, label: "Frozen", color: "bg-purple-50 text-purple-500" },
-  { icon: Utensils, label: "Prepared", color: "bg-orange-50 text-orange-500" },
-];
-
-export interface Product {
-  id: string;
-  title: string;
-  price: number;
-  originalPrice?: number;
-  image: string;
-  tag?: string;
-  category: string;
-  rating?: number;
-  reviews?: number;
-}
-
-export interface Company {
-  id: string;
-  name: string;
-  slug: string;
-  logo: string;
-  banner: string;
-  description: string;
-  distance: string;
-  deliveryTime: string;
-  minOrder?: number;
-  address: string;
-  openingHours: string;
-  isOpen: boolean;
-  categories: string[];
-  products: Product[];
-  rating: number;
-}
+import type { CompanyCard } from "@mgl/types";
 
 export interface InfoCardData {
+  icon: LucideIcon;
   title: string;
   description: string;
   image: string;
@@ -77,6 +37,41 @@ export interface PartnershipInfo {
   };
 }
 
+const baseBrands = [
+  "APU",
+  "MCS",
+  "Annie's",
+  "Kashi",
+  "Bob's Red Mill",
+  "Stonyfield",
+  "Horizon",
+];
+export const brands = Array.from({ length: 30 }, (_, i) =>
+  i < baseBrands.length
+    ? baseBrands[i]
+    : `${baseBrands[i % baseBrands.length]} ${i + 1}`,
+);
+
+const baseCategories = [
+  { icon: Apple, label: "Fruits", color: "bg-red-50 text-red-500" },
+  { icon: Carrot, label: "Vegetables", color: "bg-green-50 text-green-600" },
+  { icon: Beef, label: "Meat", color: "bg-rose-50 text-rose-600" },
+  { icon: Milk, label: "Dairy", color: "bg-blue-50 text-blue-500" },
+  { icon: Croissant, label: "Bakery", color: "bg-amber-50 text-amber-600" },
+  { icon: Fish, label: "Seafood", color: "bg-cyan-50 text-cyan-600" },
+  { icon: Coffee, label: "Beverages", color: "bg-stone-50 text-stone-600" },
+  { icon: IceCream, label: "Frozen", color: "bg-purple-50 text-purple-500" },
+  { icon: Utensils, label: "Prepared", color: "bg-orange-50 text-orange-500" },
+];
+
+export const categories = Array.from({ length: 30 }, (_, i) => ({
+  ...baseCategories[i % baseCategories.length],
+  label:
+    i < baseCategories.length
+      ? baseCategories[i].label
+      : `${baseCategories[i % baseCategories.length].label} ${i + 1}`,
+}));
+
 export const partnershipInfo: PartnershipInfo = {
   title: "Бизнес, хамтын ажиллагаа",
   description:
@@ -87,130 +82,103 @@ export const partnershipInfo: PartnershipInfo = {
   },
 };
 
-export const partnershipServices: InfoCardData[] = [
+const baseServices: InfoCardData[] = [
   {
     title: "Зах зээлийг тэл",
-    description:
-      "Улаанбаатар хотын иргэн бүртэй холбогдох, бүтээгдэхүүнээ олон мянган хүнд санал болгох боломжтой.",
+    description: "Улаанбаатар хотын иргэн бүртэй холбогдох...",
     image: "https://picsum.photos/seed/market/200/200",
+    icon: Handshake,
   },
   {
     title: "Шонпер карт",
-    description:
-      "Бид захиалгаа бүрийн төлбөрийг дор бүр нь хядар тул таны бизнесийн хөрвөх чадварыг сайжруулж, мөнгөн урсгалыг нэмэгдүүлнэ.",
+    description: "Мөнгөн урсгалыг нэмэгдүүлнэ.",
     image: "https://picsum.photos/seed/card/200/200",
+    icon: Target,
   },
   {
     title: "Маркетинг дэмжлэг",
-    description:
-      "Борлуулалтыг нэмэгдүүлэхийн тулд хамтарсан маркетинг, тусгай урамшуулал, зорилтот сурталчилгаа зэргийг ашиглах боломжтой. Манай баг таны бүтээгдэхүүнийг хэрэглэгчдэд илүү ойртуулна.",
+    description: "Хамтарсан маркетинг, тусгай урамшуулал.",
     image: "https://picsum.photos/seed/marketing/200/200",
+    icon: Zap,
   },
   {
-    title: "Найдвартай хүргэлтийн үйлчилгээ",
-    description:
-      "Бид хүргэлтийн бүүхий л үe шатaр хариуцаж, хэрэглэгчдэд хурдан, найдвартай үйлчилгээг үзүүлнэ. Ингэснээр та зөвхөн бизнесийнхээ өсөлтөд төвлөрч болно.",
+    title: "Хүргэлтийн үйлчилгээ",
+    description: "Хурдан, найдвартай үйлчилгээ.",
     image: "https://picsum.photos/seed/delivery/200/200",
+    icon: BarChart3,
   },
   {
-    title: "Борлуулалтын дүн шинжилгээ",
-    description:
-      "Зах зээлийг чих хангахад, борлуулалтын анализыг нарийвчилсан цагийн горимд хүлээн авч, бизнесийнхээ стратегийг оновчтой болгоно.",
+    title: "Дүн шинжилгээ",
+    description: "Борлуулалтын анализыг нарийвчилсан байдлаар харна.",
     image: "https://picsum.photos/seed/analytics/200/200",
+    icon: Globe,
   },
   {
-    title: "Захиалга удирдлагын платформ",
-    description:
-      "Ta хүссэн үедээ бүтээгдэхүүн нэмэх, хэсэлж хангах, захиалга удирдах боломжтой түүний FreshPack-тай хамт дижитал шилжилт хийнэ.",
+    title: "Удирдлагын платформ",
+    description: "Дижитал шилжилт хийнэ.",
     image: "https://picsum.photos/seed/platform/200/200",
+    icon: Users,
   },
   {
-    title: "Захиалга удирдлагын платйыбйыбформ",
-    description:
-      "Ta хүссэн үедээ бүтээгдэхүүн нэмэх, хэсэлж хангах, захиалга удирдах боломжтой түүний FreshPack-тай хамт дижитал шилжилт хийнэ.",
-    image: "https://picsum.photos/seed/platform/200/200",
+    title: "Аюулгүй байдал",
+    description: "Мэдээллийн аюулгүй байдлын стандарт.",
+    image: "https://picsum.photos/seed/security/200/200",
+    icon: ShieldCheck,
   },
   {
-    title: "Захиалга удирдлагын платфорёячячёям",
-    description:
-      "Ta хүссэн үедээ бүтээгдэхүүн нэмэх, хэсэлж хангах, захиалга удирдах боломжтой түүний FreshPack-тай хамт дижитал шилжилт хийнэ.",
-    image: "https://picsum.photos/seed/platform/200/200",
+    title: "Бизнес түншлэл",
+    description: "B2B харилцааг өргөжүүлэх.",
+    image: "https://picsum.photos/seed/business/200/200",
+    icon: Briefcase,
   },
   {
-    title: "Захиалга удирдлагын платфойыбыбрм",
-    description:
-      "Ta хүссэн үедээ бүтээгдэхүүн нэмэх, хэсэлж хангах, захиалга удирдах боломжтой түүний FreshPack-тай хамт дижитал шилжилт хийнэ.",
-    image: "https://picsum.photos/seed/platform/200/200",
+    title: "Урамшууллын систем",
+    description: "Хэрэглэгчийн үнэнч байдлыг нэмэгдүүлэх.",
+    image: "https://picsum.photos/seed/rewards/200/200",
+    icon: Award,
   },
 ];
 
-export const companies: Company[] = [
+export const partnershipServices: InfoCardData[] = Array.from(
+  { length: 30 },
+  (_, i) => {
+    const base = baseServices[i % baseServices.length];
+    return {
+      ...base,
+      title: i < baseServices.length ? base.title : `${base.title} ${i + 1}`,
+      image: `https://picsum.photos/seed/service-${i}/200/200`,
+    };
+  },
+);
+
+const baseCompanies: CompanyCard[] = [
   {
     id: "1",
     name: "Coca-Cola Official Store",
     slug: "coca-cola",
     logo: "https://picsum.photos/seed/coke-logo/100/100",
     banner: "https://picsum.photos/seed/coke-banner/1200/400",
-    description:
-      "The official store for Coca-Cola products. Refresh yourself with our wide range of beverages.",
+    description: "The official store for Coca-Cola products.",
     distance: "3.27 Km",
     deliveryTime: "10:00 - 18:00",
     address: "Zaisan Street, Orgil Shilttgeen, Pik Pak Warehouse",
     openingHours: "10:00 - 18:00",
     isOpen: true,
     rating: 4.8,
+    category: "Beverages",
     categories: ["Soft Drinks", "Water", "Juice", "Energy Drinks"],
-    products: [
-      {
-        id: "p1",
-        title: "Coca-Cola PET 300ml",
-        price: 16350,
-        image: "https://picsum.photos/seed/coke1/300/300",
-        category: "Soft Drinks",
-        tag: "Bundle",
-        rating: 4.8,
-        reviews: 320,
-      },
-      {
-        id: "p2",
-        title: "Fanta Orange PET 300ml",
-        price: 16350,
-        image: "https://picsum.photos/seed/fanta/300/300",
-        category: "Soft Drinks",
-        tag: "Bundle",
-        rating: 4.5,
-        reviews: 215,
-      },
-      {
-        id: "p3",
-        title: "MM Nectar Apple PET 1L",
-        price: 30660,
-        image: "https://picsum.photos/seed/juice1/300/300",
-        category: "Juice",
-        tag: "6 pack",
-        rating: 4.9,
-        reviews: 180,
-      },
-      {
-        id: "p4",
-        title: "Bonaqua Water 500ml",
-        price: 12000,
-        image: "https://picsum.photos/seed/water/300/300",
-        category: "Water",
-        tag: "12 pack",
-        rating: 4.7,
-        reviews: 450,
-      },
-      {
-        id: "p5",
-        title: "Sprite 2L",
-        price: 4500,
-        image: "https://picsum.photos/seed/sprite/300/300",
-        category: "Soft Drinks",
-        rating: 4.6,
-        reviews: 156,
-      },
-    ],
+    products: Array.from({ length: 30 }, (_, pi) => ({
+      id: `p1-${pi}`,
+      title: `Coca-Cola Variant ${pi + 1}`,
+      price: 16350 + pi * 100,
+      originalPrice: 18500 + pi * 100,
+      image: `https://picsum.photos/seed/coke${pi}/300/300`,
+      category: "Soft Drinks",
+      tag: pi % 3 === 0 ? "Bundle" : undefined,
+      rating: 4.8,
+      reviews: 320 + pi,
+      stock: 54 - pi,
+    })),
   },
   {
     id: "2",
@@ -226,46 +194,32 @@ export const companies: Company[] = [
     openingHours: "09:00 - 20:00",
     isOpen: false,
     rating: 4.9,
+    category: "Meat",
     categories: ["Beef", "Lamb", "Gift Sets", "Processed Meat"],
-    products: [
-      {
-        id: "pm1",
-        title: "Special Dinner Box",
-        price: 264000,
-        image: "https://picsum.photos/seed/meatbox/300/300",
-        category: "Gift Sets",
-        tag: "Premium",
-        rating: 5,
-        reviews: 84,
-      },
-      {
-        id: "pm2",
-        title: "Beef Thigh 10kg",
-        price: 325200,
-        image: "https://picsum.photos/seed/beef/300/300",
-        category: "Beef",
-        tag: "Bulk",
-        rating: 4.8,
-        reviews: 56,
-      },
-      {
-        id: "pm3",
-        title: "King's Set 6kg",
-        price: 197300,
-        image: "https://picsum.photos/seed/kingset/300/300",
-        category: "Gift Sets",
-        rating: 4.9,
-        reviews: 112,
-      },
-      {
-        id: "pm4",
-        title: "Short Ribs (5cm)",
-        price: 27500,
-        image: "https://picsum.photos/seed/ribs/300/300",
-        category: "Beef",
-        rating: 4.7,
-        reviews: 93,
-      },
-    ],
+    products: Array.from({ length: 30 }, (_, pi) => ({
+      id: `pm1-${pi}`,
+      title: `Special Dinner Box ${pi + 1}`,
+      price: 264000 + pi * 1000,
+      originalPrice: 289000 + pi * 1000,
+      image: `https://picsum.photos/seed/meatbox${pi}/300/300`,
+      category: "Gift Sets",
+      tag: "Premium",
+      rating: 5,
+      reviews: 84 + pi,
+      stock: 12 + pi,
+    })),
   },
 ];
+
+export const companies: CompanyCard[] = Array.from({ length: 30 }, (_, i) => {
+  const base = baseCompanies[i % baseCompanies.length];
+  return {
+    ...base,
+    id: `comp-${i + 1}`,
+    name: i < baseCompanies.length ? base.name : `${base.name} Branch ${i + 1}`,
+    slug: `${base.slug}-${i + 1}`,
+    logo: `https://picsum.photos/seed/logo-${i}/100/100`,
+    banner: `https://picsum.photos/seed/banner-${i}/1200/400`,
+    products: base.products.map((p) => ({ ...p, id: `${p.id}-c${i}` })),
+  };
+});

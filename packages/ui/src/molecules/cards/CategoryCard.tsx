@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "framer-motion";
 import { LucideIcon } from "lucide-react";
 
 interface CategoryCardProps {

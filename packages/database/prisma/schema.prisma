@@ -24,6 +24,12 @@ enum OrgType {
   BUSINESS_CUSTOMER
 }
 
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+}
+
 enum OrderStatus {
   PENDING
   CONFIRMED
@@ -38,6 +44,7 @@ enum DeliveryStatus {
   PICKING
   DELIVERING
   COMPLETED
+  CANCELLED
 }
 
 enum ReturnStatus {
@@ -51,6 +58,7 @@ enum PaymentStatus {
   PAID
   FAILED
   REFUNDED
+  CANCELLED
 }
 
 enum PaymentMethod {
@@ -67,28 +75,62 @@ enum InventoryReason {
   MANUAL_ADJUST
 }
 
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  PASSWORD_RESET_REQUEST
+  PASSWORD_RESET_SUCCESS
+  PASSWORD_CHANGED
+
+  ORDER_CREATED
+  ORDER_STATUS_CHANGED
+  PAYMENT_CREATED
+  PAYMENT_STATUS_CHANGED
+  DELIVERY_STATUS_CHANGED
+  RETURN_STATUS_CHANGED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
 //////////////////////////////////////////////////
 // USER
 //////////////////////////////////////////////////
 
 model User {
-  id             String        @id @default(uuid())
-  email          String        @unique
+  id             String   @id @default(uuid())
+
+  // Consider CITEXT for case-insensitive email (migration SQL)
+  email          String   @unique
   password       String
-  role           Role          @default(INDIVIDUAL)
-  isActive       Boolean       @default(true)
-  emailVerified  Boolean       @default(false)
+
+  // Optional: only for KYC (Courier/Vendor). Unique can conflict with soft delete reuse.
+  registerNumber String?  @unique
+
+  role           Role     @default(INDIVIDUAL)
+  isActive       Boolean  @default(true)
+  emailVerified  Boolean  @default(false)
   lastLoginAt    DateTime?
 
   organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   profile        Profile?
-  orders         Order[]       @relation("CustomerOrders")
-  deliveries     Delivery[]    @relation("CourierDeliveries")
 
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  // Customer orders
+  orders         Order[]  @relation("CustomerOrders")
+
+  // Courier deliveries
+  deliveries     Delivery[] @relation("CourierDeliveries")
+
+  addresses      Address[]
+  sessions       UserSession[]
+  auditLogs      AuditLog[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
   deletedAt      DateTime?
 
   @@index([organizationId])
@@ -96,11 +138,75 @@ model User {
 }
 
 model Profile {
-  userId      String  @id
-  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fullName    String
-  phoneNumber String?
-  avatarUrl   String?
+  userId         String  @id
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fullName       String
+  phoneNumber    String?
+  avatarUrl      String?
+
+  // Optional derived info if you ever store it (better than “always decoding RD”)
+  birthDate      DateTime?
+  gender         Gender?
+  birthPlaceCode String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model UserSession {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // store HASH of refresh token, not the raw token
+  refreshHash String   @unique
+  userAgent   String?
+  ip          String?
+  deviceId    String?
+
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // store HASH only (never raw)
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+
+  userId    String?
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action    AuditAction
+  ip        String?
+  userAgent String?
+  meta      Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 //////////////////////////////////////////////////
@@ -110,8 +216,11 @@ model Profile {
 model Organization {
   id         String    @id @default(uuid())
   name       String
+  slug       String    @unique
   taxId      String    @unique
+
   type       OrgType   @default(SUPPLIER)
+  status     OrgStatus @default(ACTIVE)
   isVerified Boolean   @default(false)
 
   email      String?
@@ -128,15 +237,15 @@ model Organization {
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
 
-  @@index([slug]) 
   @@index([type])
+  @@index([status])
   @@index([deletedAt])
 }
 
 model Branch {
   id             String       @id @default(uuid())
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   name           String
   address        String
@@ -144,8 +253,41 @@ model Branch {
   lng            Float?
 
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
 
   @@index([organizationId])
+  @@index([deletedAt])
+}
+
+//////////////////////////////////////////////////
+// ADDRESS
+//////////////////////////////////////////////////
+
+model Address {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  label       String?
+  fullAddress String
+  city        String?
+  district    String?
+  khoroo      String?
+  entrance    String?
+  apartment   String?
+
+  lat         Float?
+  lng         Float?
+
+  isDefault   Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([userId])
+  @@index([deletedAt])
 }
 
 //////////////////////////////////////////////////
@@ -155,7 +297,7 @@ model Branch {
 model Product {
   id             String       @id @default(uuid())
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   name           String
   description    String?
@@ -164,11 +306,12 @@ model Product {
   price          Decimal      @db.Decimal(18,2)
   costPrice      Decimal?     @db.Decimal(18,2)
 
-  stock          Int          @default(0) // derived cache
+  // cache field — must be maintained atomically in transactions
+  stock          Int          @default(0)
   isActive       Boolean      @default(true)
 
   categoryId     String?
-  category       Category?    @relation(fields: [categoryId], references: [id])
+  category       Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   discounts      Discount[]
   images         ProductImage[]
@@ -200,33 +343,40 @@ model Category {
   slug      String     @unique
 
   parentId  String?
-  parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children  Category[] @relation("CategoryHierarchy")
 
   products  Product[]
+
   createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([parentId])
 }
 
 model Discount {
   id         String   @id @default(uuid())
   productId  String
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Better: Int basisPoints (1500 = 15.00%), but keeping your original design
   percent    Float
   validUntil DateTime
 
   @@index([productId])
+  @@index([validUntil])
 }
 
 //////////////////////////////////////////////////
-// INVENTORY LEDGER (Race-safe)
+// INVENTORY LEDGER
 //////////////////////////////////////////////////
 
 model InventoryLedger {
   id        String          @id @default(uuid())
   productId String
-  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
 
-  change    Int             // -2, +5
+  change    Int
   reason    InventoryReason
   note      String?
 
@@ -237,50 +387,60 @@ model InventoryLedger {
 }
 
 //////////////////////////////////////////////////
-// ORDER
+// ORDER (NO HARD DELETE)
 //////////////////////////////////////////////////
 
 model Order {
   id              String         @id @default(uuid())
+
   organizationId  String
-  organization    Organization   @relation(fields: [organizationId], references: [id])
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   customerId      String
-  customer        User           @relation("CustomerOrders", fields: [customerId], references: [id])
+  customer        User           @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
 
   status          OrderStatus    @default(PENDING)
   paymentStatus   PaymentStatus  @default(PENDING)
   paymentMethod   PaymentMethod?
 
+  // Snapshot fields (keep for immutable audit)
   shippingAddress String
   phone           String
   note            String?
 
+  // Optional link to Address book for convenience (still keep snapshot above)
+  shippingAddressId String?
+  shippingAddressRef Address? @relation(fields: [shippingAddressId], references: [id], onDelete: SetNull)
+
   subtotal        Decimal        @db.Decimal(18,2)
   discountAmount  Decimal        @db.Decimal(18,2) @default(0)
-  deliveryFee     Decimal        @db.Decimal(18,2) @default(0)
+  deliveryFee     Decimal        @db.Decimal(18,2) @default(0) // source of truth
   total           Decimal        @db.Decimal(18,2)
 
   items           OrderItem[]
   history         OrderHistory[]
   delivery        Delivery?
   returnRequest   ReturnRequest?
+  payments        PaymentAttempt[]
 
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?      // enterprise safe: “never hard delete orders”
 
   @@index([organizationId, status])
   @@index([customerId])
   @@index([createdAt])
+  @@index([deletedAt])
+  @@index([shippingAddressId])
 }
 
 model OrderItem {
   id        String   @id @default(uuid())
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Restrict) 
   productId String
-  product   Product  @relation(fields: [productId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   quantity  Int
   price     Decimal  @db.Decimal(18,2)
@@ -291,14 +451,54 @@ model OrderItem {
 }
 
 model OrderHistory {
-  id        String      @id @default(uuid())
-  orderId   String
-  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id          String      @id @default(uuid())
 
-  status    OrderStatus
-  timestamp DateTime    @default(now())
+  orderId     String
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Restrict) 
+
+  status      OrderStatus
+  timestamp   DateTime    @default(now())
+
+  changedById String?
+  changedBy   User?       @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  note        String?
 
   @@index([orderId])
+  @@index([timestamp])
+  @@index([changedById])
+}
+
+//////////////////////////////////////////////////
+// PAYMENT (ATTEMPTS / TRAIL)
+//////////////////////////////////////////////////
+
+model PaymentAttempt {
+  id          String        @id @default(uuid())
+
+  orderId     String
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+
+  amount      Decimal       @db.Decimal(18,2)
+
+  providerRef String?
+  rawPayload  Json?
+
+  failureReason String?
+  paidAt      DateTime?
+  refundedAt  DateTime?
+  cancelledAt DateTime?
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([status])
+  @@index([method])
+  @@index([createdAt])
 }
 
 //////////////////////////////////////////////////
@@ -307,32 +507,41 @@ model OrderHistory {
 
 model Delivery {
   id           String         @id @default(uuid())
+
   orderId      String         @unique
-  order        Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order        Order          @relation(fields: [orderId], references: [id], onDelete: Restrict) 
 
   courierId    String?
-  courier      User?          @relation("CourierDeliveries", fields: [courierId], references: [id])
+  courier      User?          @relation("CourierDeliveries", fields: [courierId], references: [id], onDelete: SetNull)
 
   status       DeliveryStatus @default(WAITING)
   trackingCode String?
-  deliveryFee  Decimal?       @db.Decimal(18,2)
 
   pickupTime   DateTime?
   deliveredAt  DateTime?
   proofImage   String?
 
   updatedAt    DateTime       @updatedAt
+  cancelledAt  DateTime?
 
   @@index([courierId])
+  @@index([status])
 }
 
 //////////////////////////////////////////////////
-// GPS HISTORY (Batch-write friendly)
+// GPS HISTORY (telemetry)
 //////////////////////////////////////////////////
+
+// NOTE: For high-frequency tracking, move realtime state to Redis,
+// and long-term history to TimescaleDB/ClickHouse.
+// Keeping this model for MVP / low-frequency updates.
 
 model CourierLocationHistory {
   id        String   @id @default(uuid())
+
   userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict) 
+
   lat       Float
   lng       Float
   createdAt DateTime @default(now())
@@ -347,13 +556,19 @@ model CourierLocationHistory {
 
 model ReturnRequest {
   id         String       @id @default(uuid())
-  orderId    String       @unique
-  order      Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  orderId    String       @unique
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Restrict) 
   reason     String
   status     ReturnStatus @default(PENDING)
+
   resolvedAt DateTime?
+  resolvedById String?
+  resolvedBy   User?      @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
 
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
+
+  @@index([status])
+  @@index([resolvedById])
 }

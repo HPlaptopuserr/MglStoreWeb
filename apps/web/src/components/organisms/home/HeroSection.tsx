@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import { Sidebar } from "@/components/organisms/home/Sidebar";
-import { PromoBanner } from "@/components/molecules/PromoBanner";
+import { PromoBanner } from "../../PromoBanner";
 import { CategorySearch } from "./CategorySearch";
 
 export const HeroSection = () => {

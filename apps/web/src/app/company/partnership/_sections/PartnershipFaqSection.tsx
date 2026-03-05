@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
-import { FAQItem } from "../../../../components/molecules/FAQItem";
-import { FAQIllustration } from "../../../../components/organisms/partnership/PartnershipFAQ";
+import { FAQItem } from "../../../../components/FAQItem";
+import { FAQIllustration } from "../../../../components/PartnershipFAQ";
 
 const FAQ_DATA = [
   {

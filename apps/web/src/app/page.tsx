@@ -1,11 +1,10 @@
-import React from "react";
 import { companies } from "@/lib/mock-data";
 import { HeroSection } from "@/components/organisms/home/HeroSection";
 import { CategoryRail } from "@/components/organisms/home/CategoryRail";
 import { StoreRow } from "@/components/organisms/home/StoreRow";
 import { BrandTicker } from "@/components/organisms/home/BrandTicker";
 import { ProductGrid } from "@/components/organisms/home/ProductGrid";
-import { PartnerShipContact } from "@/components/organisms/partnership/PartnershipContact";
+import { PartnershipContact } from "@/components/organisms/partnership/PartnershipContact";
 
 export default function HomePage() {
   return (
@@ -39,8 +38,8 @@ export default function HomePage() {
           <ProductGrid />
         </div>
 
-        <div className="container mx-auto px-4 md:px-8 mt-12 mb-20">
-          <PartnerShipContact />
+        <div className="container mx-auto mt-12 mb-20">
+          <PartnershipContact />
         </div>
 
         <BrandTicker />

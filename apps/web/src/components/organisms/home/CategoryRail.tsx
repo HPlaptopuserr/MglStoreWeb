@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { CategoryCard } from "@/components/molecules/cards/CategoryCard";
+import { CategoryCard } from "@mgl/ui";
 import { categories } from "@/lib/mock-data";
 
 export const CategoryRail = () => {

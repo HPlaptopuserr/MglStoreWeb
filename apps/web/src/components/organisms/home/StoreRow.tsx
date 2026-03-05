@@ -10,12 +10,13 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { Button } from "@/components/atoms/Button";
-import { ProductCard } from "@/components/molecules/cards/ProductCard";
-import { Company } from "@/lib/mock-data";
+import { Button } from "@mgl/ui";
+import { ProductCard } from "@mgl/ui";
+import type { CompanyCard } from "@mgl/types";
+import { companies } from "@/lib/mock-data";
 
 interface StoreRowProps {
-  company: Company;
+  company: CompanyCard;
 }
 
 export const StoreRow = ({ company }: StoreRowProps) => {
@@ -128,13 +129,14 @@ export const StoreRow = ({ company }: StoreRowProps) => {
               className="min-w-[240px] md:min-w-[260px] snap-start"
             >
               <ProductCard
-                title={product.title}
+                image={product.image}
                 price={product.price}
                 originalPrice={product.originalPrice}
-                image={product.image}
-                tag={product.tag}
-                rating={product.rating}
-                reviews={product.reviews}
+                name={product.title}
+                category={product.category}
+                colorCount={product.colorCount ?? 0}
+                tags={product.tags ?? (product.tag ? [product.tag] : [])}
+                isPrime={product.isPrime ?? false}
               />
             </div>
           ))}

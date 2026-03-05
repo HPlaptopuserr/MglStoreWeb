@@ -1,83 +1,128 @@
 mgl_storew/
 ├── apps/
-│   ├── web/                          # mglstore.mn
-│   │   └── src/app/
-│   │       ├── (marketing)/          # Public pages
-│   │       │   ├── page.tsx          # Homepage
-│   │       │   ├── about/page.tsx
-│   │       │   └── contact/page.tsx
-│   │       ├── (shop)/               # E-commerce
-│   │       │   ├── products/
-│   │       │   │   ├── page.tsx      # Product listing
-│   │       │   │   └── [slug]/page.tsx # Product detail
-│   │       │   ├── cart/page.tsx
-│   │       │   └── checkout/page.tsx
-│   │       ├── (auth)/               # Auth pages
-│   │       │   ├── login/page.tsx
-│   │       │   └── register/page.tsx
-│   │       ├── account/              # User dashboard
-│   │       │   ├── orders/page.tsx
-│   │       │   └── profile/page.tsx
-│   │       ├── layout.tsx
-│   │       └── globals.css
+│   ├── web/                          # mglstore.mn (Public Frontend & E-commerce)
+│   │   ├── public/                   # Static assets (images, fonts)
+│   │   ├── src/
+│   │   │   ├── app/
+│   │   │   │   ├── (marketing)/      # Public marketing pages
+│   │   │   │   │   ├── about/page.tsx
+│   │   │   │   │   ├── contact/page.tsx
+│   │   │   │   │   ├── company/      # Partner/Company pages
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   ├── driver/       # Driver landing pages
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   ├── organizations/# B2B Marketing
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   └── page.tsx      # Main Homepage
+│   │   │   │   ├── (shop)/           # E-commerce core
+│   │   │   │   │   ├── products/
+│   │   │   │   │   │   ├── [slug]/page.tsx # Product detail
+│   │   │   │   │   │   └── page.tsx  # Product listing
+│   │   │   │   │   ├── cart/page.tsx
+│   │   │   │   │   └── checkout/page.tsx
+│   │   │   │   ├── (auth)/           # User Auth pages
+│   │   │   │   │   ├── login/page.tsx
+│   │   │   │   │   └── register/page.tsx
+│   │   │   │   ├── account/          # User Dashboard
+│   │   │   │   │   ├── orders/page.tsx
+│   │   │   │   │   └── profile/page.tsx
+│   │   │   │   ├── globals.css
+│   │   │   │   └── layout.tsx        # Root web layout
+│   │   │   ├── components/
+│   │   │   │   ├── organisms/        # Complex web-specific components (e.g., Header, Footer)
+│   │   │   │   ├── templates/        # Page layout templates
+│   │   │   │   └── ui/               # Web-specific local atoms/molecules
+│   │   │   ├── hooks/                # React hooks (e.g., useCart, useAuth)
+│   │   │   └── lib/                  # Web utilities & mock data
+│   │   └── package.json
 │   │
-│   ├── admin/                        # admin.mglstore.mn
-│   │   └── src/app/
-│   │       ├── (auth)/
-│   │       │   └── login/page.tsx
-│   │       ├── (dashboard)/          # Protected routes
-│   │       │   ├── layout.tsx        # Sidebar + auth guard
-│   │       │   ├── page.tsx          # Dashboard overview
-│   │       │   ├── orders/
-│   │       │   │   ├── page.tsx      # Order list
-│   │       │   │   └── [id]/page.tsx # Order detail
-│   │       │   ├── products/
-│   │       │   │   ├── page.tsx
-│   │       │   │   ├── new/page.tsx
-│   │       │   │   └── [id]/page.tsx
-│   │       │   ├── customers/page.tsx
-│   │       │   ├── analytics/page.tsx
-│   │       │   └── settings/page.tsx
-│   │       ├── layout.tsx
-│   │       └── globals.css
+│   ├── admin/                        # admin.mglstore.mn (Internal Admin Dashboard)
+│   │   ├── src/
+│   │   │   ├── app/
+│   │   │   │   ├── (auth)/           # Admin Auth
+│   │   │   │   │   └── login/page.tsx
+│   │   │   │   ├── (dashboard)/      # Protected Admin Routes
+│   │   │   │   │   ├── layout.tsx    # Sidebar + Auth Guard
+│   │   │   │   │   ├── page.tsx      # Admin overview
+│   │   │   │   │   ├── orders/
+│   │   │   │   │   ├── products/
+│   │   │   │   │   ├── users/
+│   │   │   │   │   ├── drivers/
+│   │   │   │   │   └── settings/
+│   │   │   │   └── layout.tsx        # Root admin layout
+│   │   │   ├── components/           # Admin Dashboard specific UI
+│   │   │   │   ├── atoms/
+│   │   │   │   ├── molecules/
+│   │   │   │   ├── organisms/        # Charts, DataTables, Sidebars
+│   │   │   │   └── templates/
+│   │   │   └── lib/                  # Admin utilities (e.g., API clients)
+│   │   └── package.json
 │   │
-│   ├── api/                          # api.mglstore.mn
-│   │   └── src/
-│   │       ├── main.ts
-│   │       ├── modules/
-│   │       │   ├── auth/
-│   │       │   ├── products/
-│   │       │   ├── orders/
-│   │       │   └── users/
-│   │       └── common/
-│   │           ├── guards/
-│   │           └── middleware/
+│   ├── vendor/                       # vendor.mglstore.mn (Seller/Partner Dashboard)
+│   │   ├── public/
+│   │   ├── src/
+│   │   │   ├── app/
+│   │   │   │   ├── (auth)/           # Vendor Auth
+│   │   │   │   │   ├── login/page.tsx
+│   │   │   │   │   └── register/page.tsx
+│   │   │   │   ├── (dashboard)/      # Protected Vendor Routes
+│   │   │   │   │   ├── layout.tsx    # Vendor Sidebar + Guard
+│   │   │   │   │   ├── page.tsx      # Shop performance overview
+│   │   │   │   │   ├── inventory/
+│   │   │   │   │   ├── orders/
+│   │   │   │   │   └── payouts/
+│   │   │   │   └── layout.tsx
+│   │   │   └── components/
+│   │   └── package.json
 │   │
-│   └── mobile/                       # Flutter app
+│   ├── api/                          # Backend NestJS / Express / TRPC Server
+│   │   ├── src/
+│   │   │   ├── auth/                 # Authentication logic, JWT
+│   │   │   ├── users/
+│   │   │   ├── products/
+│   │   │   ├── orders/
+│   │   │   ├── payments/
+│   │   │   └── main.ts               # Entry point
+│   │   └── package.json
+│   │
+│   └── mobile/                       # React Native / Expo Mobile App (Customer & Driver)
+│       ├── src/
+│       │   ├── screens/              # App Screens
+│       │   ├── components/           # Mobile Components
+│       │   ├── navigation/           # React Navigation configurations
+│       │   └── store/                # Zustand or Redux global state
+│       ├── App.tsx                   # Entry point
+│       └── package.json
 │
-└── packages/
-    ├── ui/src/
-    │   ├── components/
-    │   │   ├── Button/
-    │   │   ├── Input/
-    │   │   ├── Card/
-    │   │   └── Modal/
-    │   └── index.ts
+└── packages/                         # Shared Monorepo Packages
+    ├── config/                       # Centralized Configurations
+    │   ├── eslint-preset.js
+    │   ├── prettier-preset.js
+    │   └── tsconfig/
+    │       ├── base.json
+    │       ├── nextjs.json
+    │       └── react-library.json
     │
-    ├── types/src/
-    │   ├── product.ts
-    │   ├── order.ts
-    │   ├── user.ts
-    │   └── index.ts
+    ├── database/                     # Database Layer & ORM
+    │   ├── prisma/
+    │   │   ├── schema.prisma         # Central database schema
+    │   │   └── migrations/
+    │   ├── src/
+    │   │   └── index.ts              # Exported typed Prisma Client
+    │   └── package.json
     │
-    ├── database/
-    │   └── prisma/
-    │       ├── schema.prisma
-    │       └── migrations/
+    ├── types/                        # Global Shared TypeScript Types/Interfaces
+    │   ├── src/
+    │   │   ├── common.ts
+    │   │   ├── order.ts
+    │   │   ├── product.ts
+    │   │   └── user.ts
+    │   └── package.json
     │
-    └── config/
-        ├── tsconfig/
-        │   ├── base.json
-        │   └── nextjs.json
-        └── eslint/
-            └── base.js
+    └── ui/                           # Shared UI Component Library (@mgl/ui)
+        ├── src/
+        │   ├── atoms/                # Base primitives (Button, Text, Heading, Input, Badge)
+        │   ├── molecules/            # Compound elements (Cards, Dialogs, Selectors)
+        │   └── lib/                  # Shared UI utilities (cn, tailwind merge)
+        ├── tailwind.config.ts        # Shared Tailwind theme config
+        └── package.json

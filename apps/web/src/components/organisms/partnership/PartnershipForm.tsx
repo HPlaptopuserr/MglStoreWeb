@@ -7,12 +7,12 @@ import {
   Phone,
   ArrowRight,
 } from "lucide-react";
-import { Button } from "../../atoms/Button";
+import { Button } from "../../../../../../packages/ui/src/atoms/Button";
 
 export function PartnershipForm() {
   return (
     <div className="relative group">
-      <div className="absolute -inset-1 bg-white/30 rounded-[2rem] blur-sm transition duration-500 group-hover:bg-white/40"></div>
+      <div className="absolute -inset-1 bg-white/30 rounded-4xl blur-sm transition duration-500 group-hover:bg-white/40"></div>
       <div className="relative bg-white rounded-[1.75rem] p-8 md:p-10 shadow-2xl flex flex-col">
         <div className="flex items-center justify-between mb-8">
           <h3 className="text-2xl font-bold text-gray-900">Хамтран ажиллах</h3>
