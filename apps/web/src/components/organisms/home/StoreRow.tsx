@@ -13,7 +13,6 @@ import {
 import { Button } from "@mgl/ui";
 import { ProductCard } from "@mgl/ui";
 import type { CompanyCard } from "@mgl/types";
-import { companies } from "@/lib/mock-data";
 
 interface StoreRowProps {
   company: CompanyCard;
@@ -34,7 +33,6 @@ export const StoreRow = ({ company }: StoreRowProps) => {
 
   return (
     <div className="group bg-white rounded-4xl border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-500 overflow-hidden relative">
-      {/* Banner & Header Section */}
       <div className="relative h-32 w-full overflow-hidden">
         <div className="absolute inset-0 bg-slate-200 animate-pulse" />
         <Image
@@ -45,7 +43,6 @@ export const StoreRow = ({ company }: StoreRowProps) => {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-90" />
 
-        {/* Top Right Status */}
         <div className="absolute top-4 right-4 z-10">
           <span
             className={`px-3 py-1 rounded-full text-[10px] font-bold backdrop-blur-md border border-white/20 shadow-lg ${company.isOpen ? "bg-amber-500/90 text-white" : "bg-slate-900/90 text-slate-300"}`}
@@ -54,7 +51,6 @@ export const StoreRow = ({ company }: StoreRowProps) => {
           </span>
         </div>
 
-        {/* Content Overlay on Banner */}
         <div className="absolute bottom-0 left-0 right-0 p-4 px-6 flex items-end justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="relative h-16 w-16 rounded-xl border-2 border-white shadow-xl overflow-hidden bg-white shrink-0">
@@ -98,7 +94,6 @@ export const StoreRow = ({ company }: StoreRowProps) => {
       </div>
 
       <div className="relative p-6 bg-slate-50/30">
-        {/* Scroll Controls */}
         <div className="absolute top-1/2 -translate-y-1/2 left-2 z-10">
           <button
             onClick={() => scroll("left")}
@@ -118,7 +113,6 @@ export const StoreRow = ({ company }: StoreRowProps) => {
           </button>
         </div>
 
-        {/* Horizontal Product Rail */}
         <div
           ref={scrollContainerRef}
           className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 scrollbar-hide snap-x scroll-smooth"
@@ -140,7 +134,6 @@ export const StoreRow = ({ company }: StoreRowProps) => {
               />
             </div>
           ))}
-          {/* View More Card */}
           <Link
             href={`/organizations/${company.slug}`}
             className="min-w-[200px] snap-start flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-slate-200 bg-white text-slate-400 hover:border-amber-200 hover:text-amber-500 hover:bg-amber-50/30 transition-all cursor-pointer group/more h-full min-h-[300px]"
@@ -154,7 +147,6 @@ export const StoreRow = ({ company }: StoreRowProps) => {
           </Link>
         </div>
 
-        {/* Mobile Visit Button */}
         <div className="mt-6 md:hidden">
           <Link
             href={`/organizations/${company.slug}`}

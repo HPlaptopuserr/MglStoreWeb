@@ -5,26 +5,7 @@ import { WishlistButton } from "../../atoms/WishlistButton";
 import { Heart, Star, ShoppingCart } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-
-interface ProductCardProps {
-  image: string;
-  name: string;
-  price: number;
-
-  originalPrice?: number;
-  category?: string;
-  tag?: string;
-
-  rating?: number;
-  reviews?: number;
-  stock?: number;
-
-  storeName?: string;
-
-  colorCount?: number;
-  tags?: string[];
-  isPrime?: boolean;
-}
+import type { ProductCardProps } from "@mgl/types";
 
 export const ProductCard = ({
   image,
@@ -100,7 +81,6 @@ export const ProductCard = ({
             )}
           </div>
 
-          {/* Rating */}
           {typeof rating === "number" && (
             <div className="flex items-center gap-1 text-xs text-slate-700">
               <Star className="h-4 w-4" />

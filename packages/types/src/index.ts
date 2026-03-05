@@ -1,6 +1,7 @@
 export * from "./primitives";
 
 export * from "./ui/companyCard";
+export * from "./ui/productCard";
 
 export * from "./enums/role";
 export * from "./enums/orderStatus";

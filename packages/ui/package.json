@@ -20,7 +20,8 @@
     "clsx": "^2.1.1",
     "framer-motion": "^12.35.0",
     "next": "^14",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "@mgl/types": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=18",

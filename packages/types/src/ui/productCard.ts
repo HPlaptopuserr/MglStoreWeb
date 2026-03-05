@@ -1,16 +1,22 @@
-export interface ProductCard {
-    id: string;
+import type { ID } from "../primitives";
 
-    title: string;
+export interface ProductCardProps {
+    id?: ID;
     image: string;
-
+    name: string;
     price: number;
+
     originalPrice?: number;
+    category?: string;
+    tag?: string;
 
     rating?: number;
     reviews?: number;
+    stock?: number;
 
-    tag?: string;
+    storeName?: string;
 
+    colorCount?: number;
+    tags?: string[];
     isPrime?: boolean;
 }
