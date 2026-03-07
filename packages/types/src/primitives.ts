@@ -1,14 +1,11 @@
 export type ID = string;
-
 export type ISODateString = string;
-
 export type DecimalString = string;
-
-export interface Timestamps {
-    createdAt: ISODateString;
-    updatedAt: ISODateString;
-}
-
-export interface SoftDeletable {
-    deletedAt?: ISODateString | null;
-}
+export type URLString = string;
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: JsonValue }
+  | JsonValue[];

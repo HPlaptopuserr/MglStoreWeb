@@ -11,6 +11,11 @@ datasource db {
 // ENUMS
 //////////////////////////////////////////////////
 
+enum ProductRequestType {
+  CREATE
+  UPDATE
+}
+
 enum Role {
   ADMIN
   SUPPLIER
@@ -75,24 +80,6 @@ enum InventoryReason {
   MANUAL_ADJUST
 }
 
-enum AuditAction {
-  LOGIN
-  LOGOUT
-  PASSWORD_RESET_REQUEST
-  PASSWORD_RESET_SUCCESS
-  PASSWORD_CHANGED
-  ORDER_CREATED
-  ORDER_STATUS_CHANGED
-  PAYMENT_CREATED
-  PAYMENT_STATUS_CHANGED
-  DELIVERY_STATUS_CHANGED
-  RETURN_STATUS_CHANGED
-  REGISTRATION_REQUEST_CREATED
-  REGISTRATION_REQUEST_APPROVED
-  REGISTRATION_REQUEST_REJECTED
-  USER_CREATED_BY_ADMIN
-}
-
 enum Gender {
   MALE
   FEMALE
@@ -110,19 +97,55 @@ enum OnboardingSource {
   SELF_SERVICE
 }
 
+enum ProductApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  CANCELLED
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  PASSWORD_RESET_REQUEST
+  PASSWORD_RESET_SUCCESS
+  PASSWORD_CHANGED
+
+  ORDER_CREATED
+  ORDER_STATUS_CHANGED
+  PAYMENT_CREATED
+  PAYMENT_STATUS_CHANGED
+  DELIVERY_STATUS_CHANGED
+  RETURN_STATUS_CHANGED
+
+  REGISTRATION_REQUEST_CREATED
+  REGISTRATION_REQUEST_APPROVED
+  REGISTRATION_REQUEST_REJECTED
+  USER_CREATED_BY_ADMIN
+
+  PRODUCT_REQUEST_CREATED
+  PRODUCT_REQUEST_APPROVED
+  PRODUCT_REQUEST_REJECTED
+  PRODUCT_REQUEST_CHANGES_REQUESTED
+  PRODUCT_PUBLISHED
+}
+
 //////////////////////////////////////////////////
 // USER
 //////////////////////////////////////////////////
 
 model User {
-  id               String           @id @default(uuid())
-  email            String           @unique
-  password         String
-  registerNumber   String?          @unique
-  role             Role             @default(INDIVIDUAL)
-  isActive         Boolean          @default(true)
-  emailVerified    Boolean          @default(false)
-  lastLoginAt      DateTime?
+  id       String @id @default(uuid())
+  email    String @unique
+  password String
+
+  registerNumber String?   @unique
+  role           Role      @default(INDIVIDUAL)
+  isActive       Boolean   @default(true)
+  emailVerified  Boolean   @default(false)
+  lastLoginAt    DateTime?
+
   onboardingSource OnboardingSource @default(ADMIN)
 
   organizationId String?
@@ -145,9 +168,13 @@ model User {
   changedOrderHistories  OrderHistory[]       @relation("OrderHistoryChangedBy")
   resolvedReturnRequests ReturnRequest[]      @relation("ReturnRequestResolvedBy")
 
-  // onboarding / approval
+  // registration approval
   reviewedRegistrationRequests RegistrationRequest[] @relation("ReviewedRegistrationRequests")
   approvedFromRequest          RegistrationRequest?  @relation("ApprovedUserRegistrationRequest")
+
+  // product approval
+  submittedProductRequests ProductRequest[] @relation("SubmittedProductRequests")
+  reviewedProductRequests  ProductRequest[] @relation("ReviewedProductRequests")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -164,9 +191,10 @@ model Profile {
   userId String @id
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  fullName       String
-  phoneNumber    String?
-  avatarUrl      String?
+  fullName    String
+  phoneNumber String?
+  avatarUrl   String?
+
   birthDate      DateTime?
   gender         Gender?
   birthPlaceCode String?
@@ -195,7 +223,8 @@ model UserSession {
 }
 
 model PasswordResetToken {
-  id     String @id @default(uuid())
+  id String @id @default(uuid())
+
   userId String
   user   User   @relation("UserPasswordResetTokens", fields: [userId], references: [id], onDelete: Cascade)
 
@@ -210,7 +239,8 @@ model PasswordResetToken {
 }
 
 model AuditLog {
-  id     String  @id @default(uuid())
+  id String @id @default(uuid())
+
   userId String?
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -229,6 +259,8 @@ model AuditLog {
 //////////////////////////////////////////////////
 // REGISTRATION REQUEST
 //////////////////////////////////////////////////
+// Customer-д approval хэрэггүй.
+// Энэ хүснэгт нь supplier / business onboarding-д ашиглагдана.
 
 model RegistrationRequest {
   id String @id @default(uuid())
@@ -293,10 +325,11 @@ model Organization {
   logoUrl String?
   address String?
 
-  users    User[]
-  products Product[]
-  branches Branch[]
-  orders   Order[]
+  users           User[]
+  products        Product[]
+  productRequests ProductRequest[]
+  branches        Branch[]
+  orders          Order[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -359,6 +392,28 @@ model Address {
 }
 
 //////////////////////////////////////////////////
+// CATEGORY
+//////////////////////////////////////////////////
+
+model Category {
+  id   String @id @default(uuid())
+  name String
+  slug String @unique
+
+  parentId String?
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryHierarchy")
+
+  products        Product[]
+  productRequests ProductRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+}
+
+//////////////////////////////////////////////////
 // PRODUCT
 //////////////////////////////////////////////////
 
@@ -380,6 +435,8 @@ model Product {
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
+  productRequests ProductRequest[]
+
   discounts     Discount[]
   images        ProductImage[]
   orderItems    OrderItem[]
@@ -396,6 +453,72 @@ model Product {
   @@index([name])
 }
 
+//////////////////////////////////////////////////
+// PRODUCT REQUEST
+//////////////////////////////////////////////////
+// Supplier / байгууллагын барааны хүсэлтүүд admin review-оор орно.
+// Customer тал энэ flow-д оролцохгүй.
+
+model ProductRequest {
+  id   String             @id @default(uuid())
+  type ProductRequestType @default(CREATE)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  submittedById String
+  submittedBy   User   @relation("SubmittedProductRequests", fields: [submittedById], references: [id], onDelete: Restrict)
+
+  reviewedById String?
+  reviewedBy   User?   @relation("ReviewedProductRequests", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  status ProductApprovalStatus @default(PENDING)
+
+  name        String
+  description String?
+  sku         String?
+
+  price     Decimal  @db.Decimal(18, 2)
+  costPrice Decimal? @db.Decimal(18, 2)
+  stock     Int      @default(0)
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  rejectReason String?
+  reviewNote   String?
+
+  submittedAt DateTime  @default(now())
+  reviewedAt  DateTime?
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  images ProductRequestImage[]
+
+  @@index([organizationId])
+  @@index([submittedById])
+  @@index([reviewedById])
+  @@index([status])
+  @@index([productId])
+  @@index([categoryId])
+  @@index([createdAt])
+  @@index([organizationId, sku])
+}
+
+model ProductRequestImage {
+  id               String         @id @default(uuid())
+  productRequestId String
+  productRequest   ProductRequest @relation(fields: [productRequestId], references: [id], onDelete: Cascade)
+  url              String
+
+  @@index([productRequestId])
+}
+
 model ProductImage {
   id        String  @id @default(uuid())
   productId String
@@ -405,29 +528,12 @@ model ProductImage {
   @@index([productId])
 }
 
-model Category {
-  id   String @id @default(uuid())
-  name String
-  slug String @unique
-
-  parentId String?
-  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children Category[] @relation("CategoryHierarchy")
-
-  products Product[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([parentId])
-}
-
 model Discount {
   id        String  @id @default(uuid())
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  percent    Float
+  percent    Int
   validUntil DateTime
 
   @@index([productId])

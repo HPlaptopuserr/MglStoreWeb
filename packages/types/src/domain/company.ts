@@ -1,17 +1,8 @@
-import type { ID, ISODateString, SoftDeletable, Timestamps } from "../primitives";
+import type { BaseEntity, SoftDelete } from "../common";
+import type { ID, URLString } from "../primitives";
+import type { OrgStatus, OrgType } from "../enums";
 
-export enum OrgType {
-  SUPPLIER = "SUPPLIER",
-  BUSINESS_CUSTOMER = "BUSINESS_CUSTOMER",
-}
-
-export enum OrgStatus {
-  ACTIVE = "ACTIVE",
-  SUSPENDED = "SUSPENDED",
-  BLOCKED = "BLOCKED",
-}
-
-export interface Organization extends Timestamps, SoftDeletable {
+export interface Organization extends BaseEntity, SoftDelete {
   id: ID;
   name: string;
   slug: string;
@@ -23,16 +14,22 @@ export interface Organization extends Timestamps, SoftDeletable {
 
   email?: string | null;
   phone?: string | null;
-  logoUrl?: string | null;
+  logoUrl?: URLString | null;
   address?: string | null;
 }
 
-export interface Branch extends Timestamps, SoftDeletable {
+export interface Branch extends BaseEntity, SoftDelete {
   id: ID;
   organizationId: ID;
-
   name: string;
   address: string;
   lat?: number | null;
   lng?: number | null;
+}
+
+export interface Category extends BaseEntity {
+  id: ID;
+  name: string;
+  slug: string;
+  parentId?: ID | null;
 }

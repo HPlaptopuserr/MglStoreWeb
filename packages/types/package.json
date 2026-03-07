@@ -16,6 +16,7 @@
     "type-check": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5"
+    "typescript": "^5",
+    "@prisma/client": "^5.22.0"
   }
 }

@@ -1,39 +1,48 @@
-import type { DecimalString, ID } from "../primitives";
+import type { DecimalString, ID, URLString } from "../primitives";
+import type { ProductApprovalStatus, ProductRequestType } from "../enums";
 
 export interface CreateProductDto {
-    organizationId: ID;
-
-    name: string;
-    description?: string;
-    sku?: string;
-
-    price: DecimalString;
-    costPrice?: DecimalString;
-
-    stock?: number;
-    isActive?: boolean;
-
-    categoryId?: ID | null;
-
-    imageUrls?: string[];
+  organizationId: ID;
+  name: string;
+  description?: string;
+  sku?: string;
+  price: DecimalString;
+  costPrice?: DecimalString;
+  stock?: number;
+  categoryId?: ID;
+  isActive?: boolean;
+  imageUrls?: URLString[];
 }
 
 export interface UpdateProductDto {
-    name?: string;
-    description?: string | null;
-    sku?: string | null;
-
-    price?: DecimalString;
-    costPrice?: DecimalString | null;
-
-    isActive?: boolean;
-
-    categoryId?: ID | null;
+  name?: string;
+  description?: string | null;
+  sku?: string | null;
+  price?: DecimalString;
+  costPrice?: DecimalString | null;
+  stock?: number;
+  categoryId?: ID | null;
+  isActive?: boolean;
 }
 
-export interface AdjustStockDto {
-    productId: ID;
-    change: number;
-    reason: "ORDER" | "RETURN" | "RESTOCK" | "MANUAL_ADJUST";
-    note?: string;
+export interface CreateProductRequestDto {
+  type?: ProductRequestType;
+  organizationId: ID;
+  submittedById: ID;
+  productId?: ID;
+  name: string;
+  description?: string;
+  sku?: string;
+  price: DecimalString;
+  costPrice?: DecimalString;
+  stock?: number;
+  categoryId?: ID;
+  imageUrls?: URLString[];
+}
+
+export interface ReviewProductRequestDto {
+  reviewedById: ID;
+  status: ProductApprovalStatus;
+  rejectReason?: string;
+  reviewNote?: string;
 }

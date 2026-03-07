@@ -1,47 +1,24 @@
-// Common shared base types for MGL Store
+import type { ID, ISODateString } from "./primitives";
 
-/** Primary ID type */
-export type ID = string;
-
-/** ISO date string */
-export type Timestamp = string;
-
-/** Base entity fields */
 export interface BaseEntity {
-    id: ID;
-    createdAt?: Timestamp;
-    updatedAt?: Timestamp;
+  id: ID;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
-/** Soft delete support */
 export interface SoftDelete {
-    deletedAt?: Timestamp | null;
+  deletedAt?: ISODateString | null;
 }
 
-/** Pagination response */
-export interface Pagination {
-    page: number;
-    limit: number;
-    total: number;
+export interface PaginationQuery {
+  page?: number;
+  limit?: number;
 }
 
-/** API list response */
-export interface PaginatedResponse<T> {
-    data: T[];
-    pagination: Pagination;
-}
-
-/** Geo coordinates */
-export interface Coordinates {
-    lat: number;
-    lng: number;
-}
-
-/** Money representation (avoid float issues) */
-export type Money = number;
-
-/** Image asset */
-export interface Image {
-    url: string;
-    alt?: string;
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
