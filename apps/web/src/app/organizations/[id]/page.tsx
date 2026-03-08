@@ -24,7 +24,8 @@ export default async function CompanyPage({ params }: PageProps) {
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           <div className="hidden lg:block lg:col-span-1">
-            <div className="sticky top-24 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+            <div className="sticky top-36
+             bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
               <CompanySidebar categories={company.categories || []} />
             </div>
           </div>

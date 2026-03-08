@@ -135,6 +135,8 @@ export const products: Product[] = Array.from({ length: 30 }, (_, index) => {
 });
 
 export const ProductGrid = () => {
+  const visibleProducts = products.slice(0, 25); // 5 мөр
+
   return (
     <section className="py-8 bg-slate-50/50 rounded-2xl my-6">
       <div className="container mx-auto px-4">
@@ -147,20 +149,25 @@ export const ProductGrid = () => {
               Fresh picks from our local partners
             </p>
           </div>
+
           <Button
             variant="outline"
             size="sm"
             className="hidden md:flex text-sm h-9"
+            asChild
           >
-            View All Products
-            <ArrowRight className="ml-2 h-3 w-3" />
+            <a href="/products">
+              Цааш нь
+              <ArrowRight className="ml-2 h-3 w-3" />
+            </a>
           </Button>
         </div>
 
+        {/* GRID */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-          {products.map((product, idx) => (
+          {visibleProducts.map((product) => (
             <ProductCard
-              key={idx}
+              key={product.id}
               image={product.image}
               price={product.price}
               name={product.title}
@@ -174,9 +181,15 @@ export const ProductGrid = () => {
           ))}
         </div>
 
+        {/* MOBILE SEE MORE */}
         <div className="mt-6 flex justify-center md:hidden">
-          <Button variant="outline" size="sm" className="w-full h-9 text-sm">
-            View All Products
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full h-9 text-sm"
+            asChild
+          >
+            <a href="/products">Цааш нь</a>
           </Button>
         </div>
       </div>
