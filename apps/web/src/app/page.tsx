@@ -21,7 +21,6 @@ export default function HomePage() {
       <div className="container mx-auto px-4 md:px-8 mt-12 mb-20">
         <ProductGrid />
       </div>
-
       <div className="container mx-auto mt-12 mb-20">
         <PartnershipContact />
       </div>

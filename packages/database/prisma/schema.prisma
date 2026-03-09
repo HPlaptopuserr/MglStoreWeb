@@ -75,9 +75,14 @@ enum PaymentMethod {
 
 enum InventoryReason {
   ORDER
+  ORDER_CANCEL
   RETURN
   RESTOCK
   MANUAL_ADJUST
+  DAMAGE
+  TRANSFER_IN
+  TRANSFER_OUT
+  INITIAL_STOCK
 }
 
 enum Gender {
@@ -136,9 +141,9 @@ enum AuditAction {
 //////////////////////////////////////////////////
 
 model User {
-  id       String @id @default(uuid())
-  email    String @unique
-  password String
+  id           String @id @default(uuid())
+  email        String @unique
+  passwordHash String
 
   registerNumber String?   @unique
   role           Role      @default(INDIVIDUAL)
@@ -161,12 +166,14 @@ model User {
   courierLocationHistories CourierLocationHistory[] @relation("CourierLocationHistoryUser")
 
   // common
-  addresses              Address[]
-  sessions               UserSession[]
-  auditLogs              AuditLog[]
-  passwordResetTokens    PasswordResetToken[] @relation("UserPasswordResetTokens")
-  changedOrderHistories  OrderHistory[]       @relation("OrderHistoryChangedBy")
-  resolvedReturnRequests ReturnRequest[]      @relation("ReturnRequestResolvedBy")
+  addresses           Address[]
+  sessions            UserSession[]
+  auditLogs           AuditLog[]
+  inventoryLedgers    InventoryLedger[]    @relation("InventoryLedgerCreatedBy")
+  passwordResetTokens PasswordResetToken[] @relation("UserPasswordResetTokens")
+
+  changedOrderHistories  OrderHistory[]  @relation("OrderHistoryChangedBy")
+  resolvedReturnRequests ReturnRequest[] @relation("ReturnRequestResolvedBy")
 
   // registration approval
   reviewedRegistrationRequests RegistrationRequest[] @relation("ReviewedRegistrationRequests")
@@ -259,14 +266,12 @@ model AuditLog {
 //////////////////////////////////////////////////
 // REGISTRATION REQUEST
 //////////////////////////////////////////////////
-// Customer-д approval хэрэггүй.
-// Энэ хүснэгт нь supplier / business onboarding-д ашиглагдана.
 
 model RegistrationRequest {
   id String @id @default(uuid())
 
   email         String
-  password      String?
+  passwordHash  String?
   requestedRole Role
   source        OnboardingSource @default(SELF_SERVICE)
   status        ApprovalStatus   @default(PENDING)
@@ -456,8 +461,6 @@ model Product {
 //////////////////////////////////////////////////
 // PRODUCT REQUEST
 //////////////////////////////////////////////////
-// Supplier / байгууллагын барааны хүсэлтүүд admin review-оор орно.
-// Customer тал энэ flow-д оролцохгүй.
 
 model ProductRequest {
   id   String             @id @default(uuid())
@@ -533,10 +536,16 @@ model Discount {
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  validFrom  DateTime?
+  isActive   Boolean   @default(true)
   percent    Int
   validUntil DateTime
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([productId])
+  @@index([isActive])
   @@index([validUntil])
 }
 
@@ -553,9 +562,18 @@ model InventoryLedger {
   reason InventoryReason
   note   String?
 
+  referenceType String?
+  referenceId   String?
+
+  createdById String?
+  createdBy   User?   @relation("InventoryLedgerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
 
   @@index([productId])
+  @@index([reason])
+  @@index([referenceType, referenceId])
+  @@index([createdById])
   @@index([createdAt])
 }
 
@@ -564,7 +582,8 @@ model InventoryLedger {
 //////////////////////////////////////////////////
 
 model Order {
-  id String @id @default(uuid())
+  id          String @id @default(uuid())
+  orderNumber String @unique
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -604,6 +623,7 @@ model Order {
   @@index([deletedAt])
   @@index([shippingAddressId])
   @@index([paymentStatus])
+  @@index([orderNumber])
 }
 
 model OrderItem {
@@ -619,6 +639,9 @@ model OrderItem {
   price    Decimal @db.Decimal(18, 2)
   subtotal Decimal @db.Decimal(18, 2)
 
+  productName String
+  productSku  String?
+
   @@index([orderId])
   @@index([productId])
 }
@@ -629,8 +652,9 @@ model OrderHistory {
   orderId String
   order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
-  status    OrderStatus
-  timestamp DateTime    @default(now())
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  timestamp  DateTime     @default(now())
 
   changedById String?
   changedBy   User?   @relation("OrderHistoryChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
@@ -694,11 +718,13 @@ model Delivery {
   deliveredAt DateTime?
   proofImage  String?
 
+  createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   cancelledAt DateTime?
 
   @@index([courierId])
   @@index([status])
+  @@index([createdAt])
 }
 
 //////////////////////////////////////////////////
@@ -711,8 +737,9 @@ model CourierLocationHistory {
   userId String
   user   User   @relation("CourierLocationHistoryUser", fields: [userId], references: [id], onDelete: Restrict)
 
-  lat       Float
-  lng       Float
+  lat Float
+  lng Float
+
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -741,4 +768,5 @@ model ReturnRequest {
 
   @@index([status])
   @@index([resolvedById])
+  @@index([createdAt])
 }

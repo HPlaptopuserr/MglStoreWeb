@@ -6,7 +6,7 @@ import { categories } from "@/lib/mock-data";
 
 export const CategoryRail = () => {
   return (
-    <section className="py-8">
+    <section className="py-2">
       <div className="flex items-center justify-between mb-6 px-4">
         <h2 className="text-2xl font-bold text-slate-800">Ангилал</h2>
         <a

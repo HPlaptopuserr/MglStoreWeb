@@ -13,9 +13,9 @@ export const FeaturedStoreCard = ({ company }: FeaturedStoreCardProps) => {
   return (
     <Link
       href={`/organizations/${company.slug}`}
-      className="group relative min-w-[280px] sm:min-w-[320px] md:min-w-[360px] overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl snap-start"
+      className="group relative min-w-70 sm:min-w-[320px] md:min-w-90 overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl snap-start"
     >
-      <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
+      <div className="relative aspect-video overflow-hidden bg-slate-100">
         <Image
           src={company.banner}
           alt={company.name}
@@ -23,7 +23,7 @@ export const FeaturedStoreCard = ({ company }: FeaturedStoreCardProps) => {
           className="object-cover transition duration-500 group-hover:scale-105"
         />
 
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/75 via-slate-900/15 to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-t from-slate-900/75 via-slate-900/15 to-transparent" />
 
         <div className="absolute right-3 top-3">
           <span
