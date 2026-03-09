@@ -1,8 +1,11 @@
-import { PrismaClient, Role, OrgType } from "@prisma/client";
+import bcrypt from "bcryptjs";
+import { PrismaClient, Role, OrgType, OnboardingSource } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
 async function main() {
+  const passwordHash = await bcrypt.hash("admin123", 10);
+
   const org = await prisma.organization.upsert({
     where: { slug: "mgl-store" },
     update: {},
@@ -20,13 +23,18 @@ async function main() {
       role: Role.ADMIN,
       emailVerified: true,
       organizationId: org.id,
+      onboardingSource: OnboardingSource.ADMIN,
+      isActive: true,
+      passwordHash,
     },
     create: {
       email: "admin@mglstore.mn",
-      password: "admin123",
+      passwordHash,
       role: Role.ADMIN,
       emailVerified: true,
       organizationId: org.id,
+      onboardingSource: OnboardingSource.ADMIN,
+      isActive: true,
     },
   });
 
@@ -52,12 +60,12 @@ async function main() {
     skipDuplicates: true,
   });
 
-  console.log("Seed completed");
+  console.log("✅ Seed completed");
 }
 
 main()
   .catch((e) => {
-    console.error("Seed failed:", e);
+    console.error("❌ Seed failed:", e);
     process.exit(1);
   })
   .finally(async () => {

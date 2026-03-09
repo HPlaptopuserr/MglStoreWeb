@@ -31,7 +31,7 @@ mgl_storew/
 │   │   │   ├── components/
 │   │   │   │   ├── organisms/        # Complex web-specific components (e.g., Header, Footer)
 │   │   │   │   ├── templates/        # Page layout templates
-│   │   │   │   └── ui/               # Web-specific local atoms/molecules
+│   │   │   └── ui/               # Web-specific local atoms/molecules
 │   │   │   ├── hooks/                # React hooks (e.g., useCart, useAuth)
 │   │   │   └── lib/                  # Web utilities & mock data
 │   │   └── package.json

@@ -10,7 +10,12 @@ datasource db {
 //////////////////////////////////////////////////
 // ENUMS
 //////////////////////////////////////////////////
-
+enum OrganizationMemberRole {
+  OWNER
+  ADMIN
+  STAFF
+  VIEWER
+}
 enum ProductRequestType {
   CREATE
   UPDATE
@@ -152,7 +157,7 @@ model User {
   lastLoginAt    DateTime?
 
   onboardingSource OnboardingSource @default(ADMIN)
-
+  organizationMemberships OrganizationMember[]
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
@@ -281,6 +286,8 @@ model RegistrationRequest {
 
   organizationName    String?
   organizationType    OrgType?
+  businessCategory    String?
+  operatingYears      Int?
   registerNumber      String?
   taxId               String?
   organizationEmail   String?
@@ -331,6 +338,7 @@ model Organization {
   address String?
 
   users           User[]
+  members         OrganizationMember[]
   products        Product[]
   productRequests ProductRequest[]
   branches        Branch[]
@@ -343,6 +351,28 @@ model Organization {
   @@index([type])
   @@index([status])
   @@index([deletedAt])
+}
+
+model OrganizationMember {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  role     OrganizationMemberRole @default(STAFF)
+  isActive Boolean                @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([role])
+  @@index([isActive])
 }
 
 model Branch {
