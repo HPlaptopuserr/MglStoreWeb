@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { AdminSidebar, SidebarProps } from "../molecules/AdminSidebar";
 import { VendorSidebar } from "../molecules/VendorSidebar";
+import { VendorHeader } from "../molecules/VendorHeader";
 
 export interface DashboardLayoutProps extends Partial<SidebarProps> {
   children: ReactNode;
@@ -37,6 +38,7 @@ export function DashboardLayout({
       )}
 
       {isVendor && <VendorSidebar onSignOut={onSignOut} />}
+      {isVendor && <VendorHeader />}
 
       <div className="flex flex-1 flex-col bg-slate-50 min-h-screen">
         <main

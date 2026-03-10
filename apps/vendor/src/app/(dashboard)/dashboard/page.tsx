@@ -62,7 +62,7 @@ export default function Dashboard() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card className="relative col-span-1 overflow-hidden rounded-3xl border-none bg-[#FFAD02] shadow-xl shadow-orange-200/50 md:col-span-2">
-            <CardContent className="flex h-full min-h-[220px] flex-col justify-between p-8">
+            <CardContent className="flex h-full min-h-55 flex-col justify-between p-8">
               <div className="z-10 flex items-start justify-between">
                 <div className="rounded-2xl bg-black/10 p-3 backdrop-blur-sm">
                   <Truck className="h-8 w-8 text-black" />
@@ -86,7 +86,7 @@ export default function Dashboard() {
           </Card>
 
           <Card className="col-span-1 overflow-hidden rounded-3xl border-none bg-black shadow-xl shadow-slate-400/20">
-            <CardContent className="flex h-full min-h-[220px] flex-col justify-between p-8">
+            <CardContent className="flex h-full min-h-55 flex-col justify-between p-8">
               <div className="flex justify-between items-start">
                 <div className="rounded-2xl bg-white/10 p-3">
                   <CheckCircle2 className="h-6 w-6 text-[#FFAD02]" />
@@ -102,7 +102,7 @@ export default function Dashboard() {
           </Card>
 
           <Card className="col-span-1 overflow-hidden rounded-3xl border-none bg-white shadow-xl shadow-slate-200/50">
-            <CardContent className="flex h-full min-h-[220px] flex-col justify-between p-8">
+            <CardContent className="flex h-full min-h-55 flex-col justify-between p-8">
               <div className="flex justify-between items-start">
                 <div className="rounded-2xl bg-slate-100 p-3">
                   <Clock className="h-6 w-6 text-slate-900" />

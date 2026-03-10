@@ -66,6 +66,7 @@ export default function VendorDashboardLayout({
       userRole={userData.role}
       userInitials={userData.initials}
     >
+      
       {children}
     </DashboardLayout>
   );

@@ -24,7 +24,7 @@ export default function RootLayout({
         className="font-sans bg-gray-50 text-gray-900"
         suppressHydrationWarning
       >
-        {children}
+        <main className="min-h-screen">{children}</main>
       </body>
     </html>
   );

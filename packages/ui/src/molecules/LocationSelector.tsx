@@ -1,5 +1,5 @@
-import React from 'react';
-import { MapPin, ChevronDown } from 'lucide-react';
+import React from "react";
+import { MapPin, ChevronDown } from "lucide-react";
 
 export const LocationSelector = () => {
   return (
@@ -8,7 +8,9 @@ export const LocationSelector = () => {
         <MapPin size={18} />
       </div>
       <div className="flex flex-col leading-tight">
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Delivering to</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+          Delivering to
+        </span>
         <div className="flex items-center gap-1 text-sm font-semibold text-slate-700">
           <span>Downtown, Seattle</span>
           <ChevronDown size={14} className="text-slate-400" />
