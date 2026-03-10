@@ -1,23 +1,24 @@
 {
-    "extends": "../../packages/config/tsconfig/nextjs.json",
-    "compilerOptions": {
-        "plugins": [
-            {
-                "name": "next"
-            }
-        ],
-        "paths": {
-            "@/*": [
-                "./src/*"
-            ]
-        }
-    },
-    "include": [
-        "next-env.d.ts",
-        "**/*.ts",
-        "**/*.tsx"
+  "extends": "../../packages/config/tsconfig/nextjs.json",
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "next"
+      }
     ],
-    "exclude": [
-        "node_modules"
-    ]
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "../../packages/ui/src/molecules/AuthLayout.tsx",
+    "../../packages/ui/src/molecules/LoginForm.tsx",
+    "../../packages/ui/src/molecules/AlertMessage.tsx",
+    "../../packages/ui/src/atoms/FormField.tsx",
+    "../../packages/ui/src/molecules/AdminSidebar.tsx"
+  ],
+  "exclude": ["node_modules"]
 }

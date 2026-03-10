@@ -2,20 +2,31 @@
 
 import { useState } from "react";
 import { DashboardMetrics } from "../../../components/organisms/DashboardMetrics";
-import { RevenueChart, TimeRange } from "../../../components/organisms/RevenueChart";
+import {
+  RevenueChart,
+  TimeRange,
+} from "../../../components/organisms/RevenueChart";
 import { PieChart } from "../../../components/organisms/PieChart";
 
-import { MOCK_REVENUE_DATA, MOCK_DASHBOARD_METRICS, MOCK_PIE_CHART_DATA } from "../../../lib/mock-data";
+import {
+  MOCK_REVENUE_DATA,
+  MOCK_DASHBOARD_METRICS,
+  MOCK_PIE_CHART_DATA,
+} from "../../../lib/mock-data";
 
 export default function DashboardPage() {
   const [activeRange, setActiveRange] = useState<TimeRange>("7d");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-auto p-10">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Хяналтын самбар</h1>
-        <p className="text-slate-500 text-sm">Бодит цагийн гүйцэтгэлийн үзүүлэлтүүд болон оюутны үйл ажиллагаа.</p>
+        <h1 className="text-2xl font-bold text-slate-900 py-4">
+          Хяналтын самбар
+        </h1>
+        <p className="text-slate-500 text-bold text-md py-5">
+          Бодит цагийн гүйцэтгэлийн үзүүлэлтүүд болон оюутны үйл ажиллагаа.
+        </p>
       </div>
 
       <DashboardMetrics
@@ -32,7 +43,11 @@ export default function DashboardPage() {
           onRangeChange={setActiveRange}
         />
         <PieChart
-          title={<>Бүртгэгдсэн байгууллагын <br /> тоо</>}
+          title={
+            <>
+              Бүртгэгдсэн байгууллагын <br /> тоо
+            </>
+          }
           total={MOCK_PIE_CHART_DATA.total}
           label={MOCK_PIE_CHART_DATA.label}
           items={MOCK_PIE_CHART_DATA.items}

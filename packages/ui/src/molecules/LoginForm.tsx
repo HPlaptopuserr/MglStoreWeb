@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { ShieldCheck, LogIn, Eye, EyeOff } from "lucide-react";
-import { FormField } from "../molecules/FormField";
-import { AlertMessage } from "../molecules/AlertMessage";
+import { FormField } from "../atoms/FormField";
+import { AlertMessage } from "./AlertMessage";
 import { Button } from "../atoms/Button";
 
 export interface LoginFormProps {

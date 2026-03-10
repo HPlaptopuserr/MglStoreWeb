@@ -140,8 +140,12 @@ export default function RequestsPage() {
         },
       );
 
+      const data = await res.json().catch(() => null);
+
       if (!res.ok) {
-        throw new Error(`Зөвшөөрөх үйлдэл амжилтгүй. (${res.status})`);
+        throw new Error(
+          data?.message || `Зөвшөөрөх үйлдэл амжилтгүй. (${res.status})`,
+        );
       }
 
       await fetchRequests();
@@ -200,7 +204,7 @@ export default function RequestsPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <div className="relative min-w-[220px] flex-1 sm:flex-none">
+                <div className="relative min-w-55 flex-1 sm:flex-none">
                   <Search
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                     size={17}
@@ -251,7 +255,7 @@ export default function RequestsPage() {
 
           <div className="w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] border-collapse text-left">
+              <table className="w-full min-w-245 border-collapse text-left">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     <th className="px-4 py-3">Байгууллагын нэр</th>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { DashboardLayout } from "../../components/templates/DashboardLayout";
+import { DashboardLayout } from "@mgl/ui";
 
 export default function SharedDashboardLayout({
   children,
@@ -14,11 +14,13 @@ export default function SharedDashboardLayout({
 
   useEffect(() => {
     const token = localStorage.getItem("admin_token");
+
     if (!token) {
       router.replace("/login");
-    } else {
-      setIsReady(true);
+      return;
     }
+
+    setIsReady(true);
   }, [router]);
 
   const handleLogout = () => {
@@ -32,6 +34,7 @@ export default function SharedDashboardLayout({
 
   return (
     <DashboardLayout
+      variant="admin"
       onSignOut={handleLogout}
       userName="Admin User"
       userRole="ADMIN"

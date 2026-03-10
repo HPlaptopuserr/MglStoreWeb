@@ -16,6 +16,7 @@ enum OrganizationMemberRole {
   STAFF
   VIEWER
 }
+
 enum ProductRequestType {
   CREATE
   UPDATE
@@ -156,10 +157,10 @@ model User {
   emailVerified  Boolean   @default(false)
   lastLoginAt    DateTime?
 
-  onboardingSource OnboardingSource @default(ADMIN)
+  onboardingSource        OnboardingSource     @default(ADMIN)
   organizationMemberships OrganizationMember[]
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  organizationId          String?
+  organization            Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   profile Profile?
 
@@ -318,6 +319,27 @@ model RegistrationRequest {
   @@index([createdAt])
 }
 
+model OrganizationInvite {
+  id String @id @default(uuid())
+
+  email String
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  role OrganizationMemberRole @default(OWNER)
+
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([expiresAt])
+}
+
 //////////////////////////////////////////////////
 // ORGANIZATION
 //////////////////////////////////////////////////
@@ -343,6 +365,7 @@ model Organization {
   productRequests ProductRequest[]
   branches        Branch[]
   orders          Order[]
+  invites         OrganizationInvite[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
