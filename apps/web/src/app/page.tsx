@@ -1,5 +1,5 @@
 import { HeroSection } from "@/components/organisms/home/HeroSection";
-import { CategoryRail } from "@/components/organisms/home/CategoryRail";
+import Categories from "@/components/organisms/home/CategoryRail";
 import { BrandTicker } from "@/components/organisms/home/BrandTicker";
 import { ProductGrid } from "@/components/organisms/home/grid/ProductGrid";
 import { PartnershipContact } from "@/components/organisms/partnership/PartnershipContact";
@@ -14,7 +14,7 @@ export default function HomePage() {
             <HeroSection />
           </div>
         </div>
-        <CategoryRail />
+        <Categories />
         <FeaturedStoresSection />
       </div>
 

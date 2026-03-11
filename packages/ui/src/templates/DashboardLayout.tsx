@@ -38,9 +38,9 @@ export function DashboardLayout({
       )}
 
       {isVendor && <VendorSidebar onSignOut={onSignOut} />}
-      {isVendor && <VendorHeader />}
 
       <div className="flex flex-1 flex-col bg-slate-50 min-h-screen">
+        {isVendor && <VendorHeader />}
         <main
           className={`overflow-x-hidden ${
             isAdmin ? "px-10 pt-8 pb-10" : "px-6 pt-6 pb-10"

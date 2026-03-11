@@ -4,266 +4,345 @@ import {
   Menu,
   ChevronRight,
   ChevronDown,
-  Apple,
-  Beef,
-  Milk,
-  Croissant,
-  ShoppingBasket,
-  Candy,
-  Coffee,
-  Sparkles,
-  Smile,
+  User,
+  Users,
   Baby,
+  Home,
+  Monitor,
+  Smartphone,
+  Sparkles,
+  HeartPulse,
+  Gem,
+  Dumbbell,
+  ShoppingBasket,
+  Gamepad2,
+  Ticket,
+  BookOpen,
 } from "lucide-react";
-import { Button } from "@mgl/ui";
 
+// Assuming Button is not available since @mgl/ui wasn't found,
+// using a standard button with the given classes.
+const Button = ({ children, className, onClick, variant, size }: any) => {
+  return (
+    <button className={className} onClick={onClick}>
+      {children}
+    </button>
+  );
+};
+
+// Data structure updated to support multiple subgroups per category
 const MEGA_CATEGORIES = [
   {
-    id: "fresh",
-    name: "Fresh Produce",
-    icon: Apple,
-    subcategories: [
-      "Organic Fruits",
-      "Fresh Vegetables",
-      "Exotic Fruits",
-      "Herbs & Seasonings",
-      "Pre-cut Salads",
+    id: "women",
+    name: "Эмэгтэй",
+    icon: User,
+    subgroups: [
+      {
+        title: "Эмэгтэй хувцас",
+        items: [
+          "Гадуур хувцас",
+          "Футболка & Майк",
+          "Цамц",
+          "Хослол & Дан хүрэм",
+          "Даашинз",
+          "Юбка",
+          "Өмд & Шорт",
+          "Үргэлж хувцас & Сэт хувцас",
+          "Үндэсний хувцас",
+          "Дүрэмт хувцас",
+        ],
+      },
+      {
+        title: "Эмэгтэй гутал",
+        items: [
+          "Ботинка & Хагас түрийтэй гутал",
+          "Түрийтэй гутал & Бүтэн",
+          "Уулын & Цасны гутал",
+          "Пүүз & Кет",
+          "Өндөр өсгийт & Сандаль",
+          "Углааш & Шаахай",
+        ],
+      },
+      {
+        title: "Хувцасны аксесуар & Дотуур хувцас",
+        items: [
+          "Малгай & Ороолт бээлий",
+          "Дотуур хувцас & Даруулга",
+          "Унтлагын хувцас",
+          "Рейтуз & Трико",
+          "Оймс",
+          "Бүс & Мөрөвч",
+          "Нарны шил & Шил",
+          "Зангиа & Запонги",
+        ],
+      },
+      {
+        title: "Цүнх & Чемодан",
+        items: [
+          "Чемодан & Аяллын цүнх",
+          "Үүргэвч",
+          "Гар цүнх",
+          "Бичгийн & Компьютерын цүнх",
+          "Хэтэвч & Картын гэр",
+          "Түлхүүрийн оосор & Аксессуар",
+        ],
+      },
     ],
   },
   {
-    id: "meat",
-    name: "Meat & Seafood",
-    icon: Beef,
-    subcategories: [
-      "Premium Beef",
-      "Poultry",
-      "Pork",
-      "Fresh Fish",
-      "Shellfish",
-      "Plant-based Meat",
+    id: "men",
+    name: "Эрэгтэй",
+    icon: Users,
+    subgroups: [
+      {
+        title: "Эрэгтэй хувцас",
+        items: ["Гадуур хувцас", "Футболка & Майк", "Цамц", "Хослол & Пиджак"],
+      },
+      {
+        title: "Эрэгтэй гутал",
+        items: ["Кет & Пүүз", "Хагас түрийтэй", "Гоёлын гутал"],
+      },
     ],
   },
+  { id: "kids", name: "Хүүхдийн", icon: Baby, subgroups: [] },
+  { id: "home", name: "Гэрийн & Тавилга", icon: Home, subgroups: [] },
+  { id: "tech", name: "Технологи", icon: Monitor, subgroups: [] },
   {
-    id: "dairy",
-    name: "Dairy & Eggs",
-    icon: Milk,
-    subcategories: [
-      "Farm Eggs",
-      "Fresh Milk",
-      "Artisan Cheese",
-      "Yogurt & Kefir",
-      "Butter & Cream",
-    ],
+    id: "appliances",
+    name: "Цахилгаан хэрэгсэл",
+    icon: Smartphone,
+    subgroups: [],
   },
-  {
-    id: "bakery",
-    name: "Bakery & Bread",
-    icon: Croissant,
-    subcategories: [
-      "Sourdough",
-      "Tortillas & Wraps",
-      "Pastries",
-      "Gluten-Free",
-      "Bagels",
-    ],
-  },
-  {
-    id: "pantry",
-    name: "Pantry Staples",
-    icon: ShoppingBasket,
-    subcategories: [
-      "Pasta & Grains",
-      "Canned Goods",
-      "Oils & Vinegars",
-      "Spices",
-      "Baking Needs",
-    ],
-  },
-  {
-    id: "snacks",
-    name: "Snacks & Sweets",
-    icon: Candy,
-    subcategories: [
-      "Chips & Pretzels",
-      "Chocolate",
-      "Cookies",
-      "Nuts & Seeds",
-      "Healthy Snacks",
-    ],
-  },
-  {
-    id: "beverages",
-    name: "Beverages",
-    icon: Coffee,
-    subcategories: ["Coffee & Tea", "Juice", "Water", "Soda", "Energy Drinks"],
-  },
-  {
-    id: "household",
-    name: "Household",
-    icon: Sparkles,
-    subcategories: [
-      "Cleaning Supplies",
-      "Paper Goods",
-      "Laundry",
-      "Dishwashing",
-      "Trash Bags",
-    ],
-  },
+  { id: "beauty", name: "Гоо сайхан", icon: Sparkles, subgroups: [] },
   {
     id: "health",
-    name: "Health & Beauty",
-    icon: Smile,
-    subcategories: [
-      "Vitamins",
-      "Personal Care",
-      "Skin Care",
-      "Hair Care",
-      "First Aid",
-    ],
+    name: "Эрүүл мэнд & Эрүүл ахуй",
+    icon: HeartPulse,
+    subgroups: [],
   },
-  {
-    id: "baby",
-    name: "Baby & Kids",
-    icon: Baby,
-    subcategories: [
-      "Diapers",
-      "Baby Food",
-      "Formula",
-      "Bath & Skin Care",
-      "Kids Snacks",
-    ],
-  },
+  { id: "jewelry", name: "Гоёл чимэглэл", icon: Gem, subgroups: [] },
+  { id: "sports", name: "Спорт & Аялал", icon: Dumbbell, subgroups: [] },
+  { id: "food", name: "Хүнс", icon: ShoppingBasket, subgroups: [] },
+  { id: "toys", name: "Тоглоом & Хобби", icon: Gamepad2, subgroups: [] },
+  { id: "art", name: "Урлаг энтертайнмент", icon: Ticket, subgroups: [] },
+  { id: "books", name: "Ном & цомог, пянз", icon: BookOpen, subgroups: [] },
 ];
 
 export const MegaMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState(MEGA_CATEGORIES[0]);
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleMouseEnter = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setIsOpen(true);
+  };
+
+  const handleMouseLeave = () => {
+    timeoutRef.current = setTimeout(() => {
+      setIsOpen(false);
+    }, 150); // small delay to allow cursor to reach dropdown
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   return (
     <div
       className="relative h-full flex items-center"
-      onClick={() => setIsOpen((prev) => !prev)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <Button
         variant="ghost"
-        className="flex items-center gap-3 text-slate-800 hover:text-amber-600 font-bold bg-transparent hover:bg-slate-50 h-full px-4 rounded-xl"
-        onClick={(e) => {
-          // prevent the container click from immediately toggling twice
-          e.stopPropagation();
-          setIsOpen((prev) => !prev);
-        }}
+        className="flex items-center gap-2 text-sm font-bold text-gray-900 transition-colors h-full px-4 rounded-xl hover:bg-slate-50"
       >
-        <Menu size={20} className="text-slate-700" />
+        <Menu size={18} className="text-gray-900" />
         <span className="hidden xl:inline-block">Бүх ангилал</span>
-        <ChevronDown size={14} className="text-slate-400 ml-1" />
+        <ChevronDown size={14} className="text-gray-400 ml-1" />
       </Button>
 
       {isOpen && (
-        <div className="absolute top-12 left-[-25] right-0 md:left-0 w-[calc(100vw-16px)] md:w-200 lg:w-225 max-h-[85vh] md:max-h-138 bg-white rounded-2xl shadow-2xl border border-slate-100 mt-2 z-50 overflow-hidden flex flex-col md:flex-row animate-in fade-in slide-in-from-top-2 duration-200 mx-2 md:mx-0">
-          <div className="md:hidden flex-none w-full bg-linear-to-r from-slate-50 to-white border-b border-slate-100 overflow-x-auto scrollbar-hide">
-            <div className="flex gap-2 p-3 min-w-min">
+        <div className="absolute top-12 left-0 w-[1400px] h-[750px] bg-white rounded-r-2xl rounded-bl-2xl shadow-xl border border-slate-200 z-50 flex overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+          {/* Column 1: Categories sidebar */}
+          <div className="w-[360px] bg-white border-r border-slate-100 flex flex-col pt-2 pb-6">
+            <div className="flex-1 overflow-y-auto scrollbar-hide px-3 relative">
               {MEGA_CATEGORIES.map((category) => {
                 const Icon = category.icon;
                 const isActive = activeCategory.id === category.id;
                 return (
-                  <button
+                  <div
                     key={category.id}
-                    onClick={() => setActiveCategory(category)}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg whitespace-nowrap transition-all text-xs font-medium shrink-0 ${
+                    className={`flex items-center justify-between px-4 py-2 mt-1 rounded-lg cursor-pointer text-sm transition-colors ${
                       isActive
-                        ? "bg-amber-500 text-white shadow-md"
-                        : "bg-slate-100 text-slate-600 active:bg-slate-200"
+                        ? "bg-[#ff4d6d] text-white font-medium shadow-sm transition-none"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     }`}
+                    onMouseEnter={() => setActiveCategory(category)}
                   >
-                    <Icon size={14} />
-                    <span>{category.name}</span>
-                  </button>
+                    <div className="flex items-center gap-3">
+                      <Icon
+                        size={18}
+                        strokeWidth={isActive ? 2 : 1.5}
+                        className={isActive ? "text-white" : "text-slate-400"}
+                      />
+                      <span>{category.name}</span>
+                    </div>
+                    {isActive && (
+                      <ChevronRight
+                        size={16}
+                        className="text-white opacity-80"
+                      />
+                    )}
+                  </div>
                 );
               })}
+
+              {/* Promotional brands / small menu links */}
+              <div className="mt-8 mb-4 border-t border-slate-100 pt-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 rounded-lg cursor-pointer">
+                  <div className="flex items-center">
+                    <span className="text-indigo-600 font-bold tracking-tight">
+                      MGLSTORE
+                    </span>
+                    <span className="text-slate-900 font-bold ml-1">
+                      brands
+                    </span>
+                  </div>
+                  <ChevronRight size={14} className="text-slate-400" />
+                </div>
+                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 rounded-lg cursor-pointer">
+                  <div className="flex items-center">
+                    <span className="text-amber-500 font-bold tracking-tight">
+                      MGLSTORE
+                    </span>
+                    <span className="text-slate-900 font-bold ml-1">new</span>
+                  </div>
+                  <ChevronRight size={14} className="text-slate-400" />
+                </div>
+                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 rounded-lg cursor-pointer">
+                  <div className="flex items-center">
+                    <span className="text-indigo-600 font-bold tracking-tight">
+                      MGLSTORE
+                    </span>
+                    <span className="text-slate-900 font-bold ml-1">
+                      ticket
+                    </span>
+                  </div>
+                  <ChevronRight size={14} className="text-slate-400" />
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="hidden md:flex flex-col flex-none w-full md:w-55 lg:w-70 bg-slate-50 border-r border-slate-100 overflow-y-auto py-2 h-full">
-            {MEGA_CATEGORIES.map((category) => {
-              const Icon = category.icon;
-              const isActive = activeCategory.id === category.id;
-              return (
-                <div
-                  key={category.id}
-                  className={`flex items-center justify-between px-4 lg:px-5 py-3 cursor-pointer transition-colors text-sm ${
-                    isActive
-                      ? "bg-white text-amber-500 font-bold shadow-sm border-y border-r-0 border-slate-100 relative -mr-px z-10"
-                      : "text-slate-600 hover:text-amber-500 hover:bg-slate-100/50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 lg:gap-3">
-                    <Icon
-                      size={16}
-                      className={isActive ? "text-amber-500" : "text-slate-400"}
-                    />
-                    <span className="text-xs lg:text-sm">{category.name}</span>
+          {/* Column 2: Subcategories (Middle) */}
+          <div className="flex-1 bg-white p-6 overflow-y-auto">
+            <div className="flex justify-between items-center bg-slate-50 px-5 py-3 rounded-lg mb-6">
+              <h2 className="text-lg font-bold text-slate-800">
+                {activeCategory.name}
+              </h2>
+              <a
+                href="#"
+                className="text-sm font-medium text-[#ff4d6d] hover:underline transition-colors shrink-0"
+              >
+                Бүгдийг үзэх
+              </a>
+            </div>
+
+            {activeCategory.subgroups.length > 0 ? (
+              <div className="grid grid-cols-2 gap-x-12 gap-y-10 pl-2">
+                {activeCategory.subgroups.map((group, idx) => (
+                  <div key={idx} className="flex flex-col">
+                    <h3 className="text-[13px] uppercase tracking-wide font-bold text-slate-900 mb-4">
+                      {group.title}
+                    </h3>
+                    <ul className="space-y-3 mb-4">
+                      {group.items.map((item, i) => (
+                        <li key={i}>
+                          <a
+                            href="#"
+                            className="text-[13px] text-slate-500 hover:text-[#ff4d6d] transition-colors"
+                          >
+                            {item}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                    <a
+                      href="#"
+                      className="text-[13px] font-semibold text-[#ff4d6d] group flex items-center gap-1 mt-auto shrink-0 w-fit"
+                    >
+                      Бүгдийг үзэх{" "}
+                      <span className="transform group-hover:translate-x-1 transition-transform">
+                        →
+                      </span>
+                    </a>
                   </div>
-                  <ChevronRight
-                    size={14}
-                    className={`hidden lg:block ${isActive ? "text-amber-500" : "text-slate-300"}`}
-                  />
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            ) : (
+              <div className="h-40 flex items-center justify-center text-slate-400 text-sm">
+                Сонгосон ангилалд дэд ангилал олдсонгүй
+              </div>
+            )}
           </div>
 
-          <div className="flex-1 bg-white p-3 md:p-6 lg:p-8 overflow-y-auto">
-            <h2 className="text-base md:text-xl lg:text-2xl font-bold text-slate-800 mb-3 md:mb-6">
-              {activeCategory.name}
-            </h2>
+          {/* Column 3: Promo & Gallery */}
+          <div className="w-[400px] border-l border-slate-100 bg-white p-6 flex flex-col shrink-0">
+            {/* Promo Banner */}
+            <div className="relative h-[320px] bg-slate-100 rounded-xl overflow-hidden mb-8 group cursor-pointer group shrink-0">
+              <div
+                className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                style={{
+                  backgroundImage:
+                    'url("https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=800")',
+                }}
+              ></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="font-serif text-4xl font-extrabold tracking-[0.2em] text-white/[0.95] drop-shadow-lg scale-y-110">
+                  LIU•JO
+                </span>
+              </div>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 md:gap-y-6 gap-x-4 md:gap-x-8">
-              <div className="flex flex-col space-y-2 md:space-y-4">
-                <h3 className="text-xs md:text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">
-                  Popular Subcategories
-                </h3>
-                <ul className="space-y-1.5 md:space-y-3">
-                  {activeCategory.subcategories.map((sub, idx) => (
-                    <li key={idx}>
-                      <a
-                        href="#"
-                        className="text-xs md:text-sm text-slate-500 hover:text-amber-500 hover:underline line-clamp-1 md:line-clamp-none"
-                      >
-                        {sub}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-                <a
-                  href="#"
-                  className="text-xs md:text-sm font-semibold text-amber-500 pt-1 md:pt-2 flex items-center gap-1 group w-fit"
+            {/* Most Viewed Header */}
+            <div className="flex justify-between items-center mb-5 shrink-0">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                Хамгийн их үзсэн
+              </h3>
+              <div className="flex gap-3 text-[11px] font-bold">
+                <button className="text-[#ff4d6d]">1D</button>
+                <button className="text-slate-400 hover:text-slate-800 transition-colors">
+                  1W
+                </button>
+                <button className="text-slate-400 hover:text-slate-800 transition-colors">
+                  1M
+                </button>
+              </div>
+            </div>
+
+            {/* Dynamic Product Grid representing top rated/viewed */}
+            <div className="grid grid-cols-3 gap-2 flex-1 overflow-hidden min-h-0">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div
+                  key={i}
+                  className="bg-slate-50 border border-slate-100 rounded-lg overflow-hidden group cursor-pointer relative pb-[120%]"
                 >
-                  Shop all
-                  <ChevronRight
-                    size={12}
-                    className="group-hover:translate-x-0.5 transition-transform"
+                  <img
+                    src={`https://images.unsplash.com/photo-${1550000000000 + i * 140000}?auto=format&fit=crop&q=80&w=200`}
+                    alt="placeholder"
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&q=80&w=200";
+                    }}
                   />
-                </a>
-              </div>
-
-              <div className="hidden md:flex bg-amber-50 rounded-xl p-4 md:p-6 flex-col justify-between border border-amber-100">
-                <div>
-                  <span className="inline-block px-2 py-1 bg-white text-amber-500 text-[8px] md:text-[10px] font-bold uppercase tracking-wider rounded-md mb-2">
-                    Offer
-                  </span>
-                  <h3 className="text-sm md:text-lg font-bold text-slate-800 leading-tight">
-                    Up to 20% off
-                    <br />
-                    {activeCategory.name}
-                  </h3>
                 </div>
-                <Button
-                  size="sm"
-                  className="mt-3 md:mt-4 bg-amber-500 hover:bg-amber-600 text-white shadow-none w-fit text-xs md:text-sm py-1 md:py-2 px-3 md:px-4"
-                >
-                  Цааш үзэх
-                </Button>
-              </div>
+              ))}
             </div>
           </div>
         </div>

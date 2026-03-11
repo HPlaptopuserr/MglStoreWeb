@@ -1,6 +1,6 @@
 "use client";
 
-import { VendorHeader } from "@/components/VendorHeader";
+import VendorHeader from "./VendorHeader";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
