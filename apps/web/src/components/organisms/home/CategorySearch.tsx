@@ -31,17 +31,20 @@ export const CategorySearch = () => {
         {CATEGORY_LIST.map((cat, idx) => (
           <button
             key={cat.name}
-            className={`relative flex-shrink-0 w-28 h-9 rounded-full overflow-hidden shadow-sm focus:outline-none transition-all hover:opacity-100 cursor-pointer ${idx === 1
+            className={`relative flex-shrink-0 w-28 h-9 rounded-full overflow-hidden shadow-sm focus:outline-none transition-all hover:opacity-100 cursor-pointer ${
+              idx === 1
                 ? "opacity-100 ring-2 ring-orange-400 ring-offset-2"
                 : "opacity-60 grayscale hover:grayscale-0"
-              }`}
+            }`}
           >
             <img
               src={cat.img}
               alt={cat.name}
               className="w-full h-full object-cover"
             />
-            <div className={`absolute inset-0 flex items-center justify-center text-xs font-bold tracking-wide transition-colors ${idx === 1 ? 'bg-black/20 text-white' : 'bg-black/40 text-white hover:bg-black/20'}`}>
+            <div
+              className={`absolute inset-0 flex items-center justify-center text-xs font-bold tracking-wide transition-colors ${idx === 1 ? "bg-black/20 text-white" : "bg-black/40 text-white hover:bg-black/20"}`}
+            >
               {cat.name}
             </div>
           </button>

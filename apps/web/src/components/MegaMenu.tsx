@@ -150,6 +150,8 @@ export const MegaMenu = () => {
     };
   }, []);
 
+
+
   return (
     <div
       className="relative h-full flex items-center"
@@ -169,18 +171,20 @@ export const MegaMenu = () => {
         <div className="absolute top-12 left-0 w-[1400px] h-[750px] bg-white rounded-r-2xl rounded-bl-2xl shadow-xl border border-slate-200 z-50 flex overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
           {/* Column 1: Categories sidebar */}
           <div className="w-[360px] bg-white border-r border-slate-100 flex flex-col pt-2 pb-6">
-            <div className="flex-1 overflow-y-auto scrollbar-hide px-3 relative">
+            <div
+              className="flex-1 overflow-y-auto overscroll-contain scrollbar-hide px-3 relative"
+              data-lenis-prevent="true"
+            >
               {MEGA_CATEGORIES.map((category) => {
                 const Icon = category.icon;
                 const isActive = activeCategory.id === category.id;
                 return (
                   <div
                     key={category.id}
-                    className={`flex items-center justify-between px-4 py-2 mt-1 rounded-lg cursor-pointer text-sm transition-colors ${
-                      isActive
-                        ? "bg-[#ff4d6d] text-white font-medium shadow-sm transition-none"
-                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                    }`}
+                    className={`flex items-center justify-between px-4 py-2 mt-1 rounded-lg cursor-pointer text-sm transition-colors ${isActive
+                      ? "bg-[#ff4d6d] text-white font-medium shadow-sm transition-none"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      }`}
                     onMouseEnter={() => setActiveCategory(category)}
                   >
                     <div className="flex items-center gap-3">
@@ -238,8 +242,10 @@ export const MegaMenu = () => {
             </div>
           </div>
 
-          {/* Column 2: Subcategories (Middle) */}
-          <div className="flex-1 bg-white p-6 overflow-y-auto">
+          <div
+            className="flex-1 bg-white p-6 overflow-y-auto overscroll-contain"
+            data-lenis-prevent="true"
+          >
             <div className="flex justify-between items-center bg-slate-50 px-5 py-3 rounded-lg mb-6">
               <h2 className="text-lg font-bold text-slate-800">
                 {activeCategory.name}

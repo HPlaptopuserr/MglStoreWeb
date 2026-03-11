@@ -14,7 +14,9 @@ import {
   Package,
   Store,
   ShoppingCart,
+  X,
 } from "lucide-react";
+import Link from "next/link";
 
 type Partner = {
   id: string;
@@ -39,6 +41,19 @@ type Partner = {
 
 export default function PartnersPage() {
   const [partners, setPartners] = useState<Partner[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredPartners = partners.filter((partner) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      partner.name.toLowerCase().includes(query) ||
+      partner.slug.toLowerCase().includes(query) ||
+      partner.type.toLowerCase().includes(query) ||
+      partner.status.toLowerCase().includes(query) ||
+      (partner.email && partner.email.toLowerCase().includes(query)) ||
+      (partner.taxId && partner.taxId.toLowerCase().includes(query))
+    );
+  });
 
   const fetchPartners = async () => {
     const res = await fetch("http://localhost:4000/api/partners", {
@@ -55,32 +70,59 @@ export default function PartnersPage() {
   return (
     <div className="min-h-screen bg-[#f8f9fa] text-slate-800 font-sans">
       <div className="p-4 md:p-8 w-full">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Түншүүд</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Нийт түнш: {partners.length}
-            </p>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6 flex flex-col lg:flex-row items-center justify-between gap-6">
+          <div className="flex flex-col sm:flex-row items-center gap-6 md:gap-8 w-full lg:w-auto text-center sm:text-left">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0 border border-indigo-100">
+                <Building2 size={26} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-500 mb-1">Нийт байгууллага</p>
+                <h3 className="text-3xl font-bold text-slate-900 leading-tight">{partners.length}</h3>
+              </div>
+            </div>
+
+            <div className="w-full sm:w-px h-px sm:h-12 bg-slate-200"></div>
+
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Түншүүд</h1>
+              <p className="text-sm text-slate-500 mt-1">
+                Хайлтанд: {filteredPartners.length} {searchQuery && (
+                  <span className="text-slate-400"> (Олдсон)</span>
+                )}
+              </p>
+            </div>
           </div>
 
-          <div className="relative w-full max-w-xs">
+          <div className="relative w-full lg:w-auto lg:min-w-[400px] max-w-md group">
             <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-slate-600"
               size={18}
             />
             <input
               type="text"
-              placeholder="Түнш хайх..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Компанийн нэр, И-мэйл, РД-р хайх..."
+              className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm transition-all focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white placeholder:text-slate-400 font-medium placeholder:font-normal"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 rounded-full p-1 hover:bg-slate-100 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {partners.map((partner) => (
-            <div
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filteredPartners.map((partner) => (
+            <Link
+              href={`/partners/${partner.id}`}
               key={partner.id}
-              className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col"
+              className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col group hover:shadow-md hover:border-indigo-200 transition-all duration-200 cursor-pointer"
             >
               <div className="p-6 border-b border-slate-100">
                 <div className="flex justify-between items-start mb-4 gap-3">
@@ -176,7 +218,7 @@ export default function PartnersPage() {
                   </span>
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
