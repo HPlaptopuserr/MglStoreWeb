@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: mgl-web
+    rootDir: apps/web
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+
+  - type: web
+    name: mgl-admin
+    rootDir: apps/admin
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: mgl-vendor
+    rootDir: apps/vendor
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: mgl-api
+    rootDir: apps/api
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+
+databases:
+  - name: mglstore
+    databaseName: mglstore
+    user: mglstore
+    plan: standard
+    version: "15"

@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "projects": [
+    {
+      "name": "web",
+      "rootDirectory": "apps/web"
+    },
+    {
+      "name": "admin",
+      "rootDirectory": "apps/admin"
+    },
+    {
+      "name": "vendor",
+      "rootDirectory": "apps/vendor"
+    },
+    {
+      "name": "api",
+      "rootDirectory": "apps/api"
+    }
+  ],
+  "github": {
+    "enabled": true,
+    "autoAlias": true
+  }
+}
