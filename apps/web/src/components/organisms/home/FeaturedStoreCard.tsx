@@ -7,15 +7,15 @@ import type { CompanyCard } from "@mgl/types";
 
 interface FeaturedStoreCardProps {
   company: CompanyCard;
+  className?: string;
 }
 
-export const FeaturedStoreCard = ({ company }: FeaturedStoreCardProps) => {
+export const FeaturedStoreCard = ({ company, className }: FeaturedStoreCardProps) => {
   return (
     <Link
       href={`/organizations/${company.slug}`}
-      className="group flex flex-col min-w-[280px] sm:min-w-[320px] rounded-[24px] border border-slate-100 bg-white shadow-sm hover:shadow-xl hover:border-orange-200 transition-all duration-300 snap-start hover:-translate-y-1"
+      className={`group flex flex-col rounded-[24px] border border-slate-100 bg-white shadow-sm hover:shadow-xl hover:border-orange-200 transition-all duration-300 snap-start hover:-translate-y-1 ${className || "min-w-[280px] sm:min-w-[320px]"}`}
     >
-      {/* Banner & Logo Area (overflow-hidden removed so logo can stick out) */}
       <div className="relative h-[160px] w-full bg-slate-100 rounded-t-[24px] overflow-hidden">
         <Image
           src={company.banner}
@@ -25,7 +25,6 @@ export const FeaturedStoreCard = ({ company }: FeaturedStoreCardProps) => {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent" />
 
-        {/* Status Badge */}
         <div className="absolute top-4 right-4 z-20">
           <span
             className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-full shadow-sm text-white ${company.isOpen
@@ -38,10 +37,7 @@ export const FeaturedStoreCard = ({ company }: FeaturedStoreCardProps) => {
         </div>
       </div>
 
-      {/* Content Area */}
       <div className="flex flex-col flex-1 pb-6 px-6 bg-white relative z-10 rounded-b-[24px]">
-
-        {/* Logo overlapping banner and content. We place it here with negative top margin. */}
         <div className="h-[72px] w-[72px] rounded-2xl border-[4px] border-white bg-white shadow-sm overflow-hidden z-20 -mt-9 mb-3 shrink-0">
           <div className="relative w-full h-full rounded-[10px] overflow-hidden bg-slate-100">
             <Image
@@ -69,7 +65,6 @@ export const FeaturedStoreCard = ({ company }: FeaturedStoreCardProps) => {
           {company.category ?? "Дэлгүүр"}
         </p>
 
-        {/* Badges/Info Row */}
         <div className="flex flex-wrap items-center gap-3 mb-6">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#f8fafc] border border-slate-100 rounded-xl text-[13px] font-semibold text-[#475569]">
             <Clock size={13} className="text-[#94a3b8]" />
@@ -84,11 +79,14 @@ export const FeaturedStoreCard = ({ company }: FeaturedStoreCardProps) => {
 
         <div className="w-full h-px bg-slate-100 mt-auto mb-5" />
 
-        {/* Action Button */}
         <div className="flex items-center justify-between text-[15px] font-bold text-[#ea580c] group-hover:text-[#c2410c] transition-colors">
           <span>Дэлгүүр рүү орох</span>
           <div className="w-9 h-9 rounded-full bg-[#fff7ed] flex items-center justify-center transition-colors">
-            <ChevronRight size={18} strokeWidth={3} className="text-[#fb923c] group-hover:text-[#ea580c] transition-colors" />
+            <ChevronRight
+              size={18}
+              strokeWidth={3}
+              className="text-[#fb923c] group-hover:text-[#ea580c] transition-colors"
+            />
           </div>
         </div>
       </div>
