@@ -1,10 +1,10 @@
 services:
   - type: web
     name: mgl-web
-    rootDir: apps/web
+    rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
-    startCommand: pnpm start
+    buildCommand: pnpm install --frozen-lockfile && pnpm build && cd apps/web && pnpm build
+    startCommand: cd apps/web && pnpm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -13,30 +13,30 @@ services:
 
   - type: web
     name: mgl-admin
-    rootDir: apps/admin
+    rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
-    startCommand: pnpm start
+    buildCommand: pnpm install --frozen-lockfile && pnpm build && cd apps/admin && pnpm build
+    startCommand: cd apps/admin && pnpm start
     envVars:
       - key: NODE_ENV
         value: production
 
   - type: web
     name: mgl-vendor
-    rootDir: apps/vendor
+    rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
-    startCommand: pnpm start
+    buildCommand: pnpm install --frozen-lockfile && pnpm build && cd apps/vendor && pnpm build
+    startCommand: cd apps/vendor && pnpm start
     envVars:
       - key: NODE_ENV
         value: production
 
   - type: web
     name: mgl-api
-    rootDir: apps/api
+    rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm build
-    startCommand: pnpm start
+    buildCommand: pnpm install --frozen-lockfile && pnpm build && cd apps/api && pnpm build
+    startCommand: cd apps/api && pnpm start
     envVars:
       - key: NODE_ENV
         value: production
