@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { ShoppingBasket, Loader2 } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { ShoppingBasket, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface Category {
@@ -12,6 +12,17 @@ interface Category {
 export default function Categories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const scroll = (direction: "left" | "right") => {
+    if (scrollContainerRef.current) {
+      const scrollAmount = 400;
+      scrollContainerRef.current.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth"
+      });
+    }
+  };
 
   useEffect(() => {
     const loadCats = async () => {
@@ -44,15 +55,33 @@ export default function Categories() {
   return (
     <div className="py-24 bg-white border-y border-gray-100">
       <div className="mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="text-center mb-12"
-        >
-          <h2 className="text-3xl font-bold text-gray-900 mb-4 tracking-tight">Ангилалаар дэлгүүр хэсэх</h2>
-          <p className="text-lg text-gray-500">Манай түншийн сүлжээнээс яг хэрэгтэй зүйлээ олоорой</p>
-        </motion.div>
+        <div className="flex items-end justify-between mb-12">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-left"
+          >
+            <h2 className="text-3xl font-bold text-gray-900 mb-4 tracking-tight">Ангилалаар дэлгүүр хэсэх</h2>
+            <p className="text-lg text-gray-500">Манай түншийн сүлжээнээс яг хэрэгтэй зүйлээ олоорой</p>
+          </motion.div>
+
+          <div className="hidden md:flex items-center gap-2">
+            <button
+              onClick={() => scroll("left")}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              <ChevronLeft size={18} />
+            </button>
+
+            <button
+              onClick={() => scroll("right")}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
 
         {isLoading ? (
           <div className="flex justify-center items-center h-40">
@@ -63,7 +92,7 @@ export default function Categories() {
             Ангилал олдсонгүй
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 sm:gap-6">
+          <div ref={scrollContainerRef} className="flex overflow-x-auto pb-4 gap-4 sm:gap-6 snap-x snap-mandatory scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {categories.map((cat, index) => {
               const colorClass = bgColors[index % bgColors.length];
               return (
@@ -73,7 +102,7 @@ export default function Categories() {
                   whileInView={{ opacity: 1, scale: 1 }}
                   viewport={{ once: true }}
                   transition={{ delay: index * 0.05, duration: 0.4 }}
-                  className="flex flex-col items-center justify-center p-6 rounded-3xl bg-gray-50 hover:bg-white hover:shadow-xl hover:shadow-gray-200/50 hover:-translate-y-1 transition-all group border border-transparent hover:border-gray-100"
+                  className="shrink-0 w-32 sm:w-36 flex flex-col items-center justify-center p-6 rounded-3xl bg-gray-50 hover:bg-white hover:shadow-xl hover:shadow-gray-200/50 hover:-translate-y-1 transition-all group border border-transparent hover:border-gray-100 snap-center"
                 >
                   <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-colors duration-300 ${colorClass}`}>
                     {cat.icon ? (

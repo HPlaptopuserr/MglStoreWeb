@@ -134,8 +134,8 @@ export const SearchBar = () => {
       {/* 2. Expanded Search UI */}
       <div
         className={`fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-5xl z-[60] transition-all duration-500 ease-in-out ${isFocused
-            ? "translate-y-0 opacity-100 scale-100"
-            : "-translate-y-12 opacity-0 scale-95 pointer-events-none"
+          ? "translate-y-0 opacity-100 scale-100"
+          : "-translate-y-12 opacity-0 scale-95 pointer-events-none"
           }`}
       >
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-white">
@@ -279,7 +279,6 @@ export const SearchBar = () => {
                     </div>
                   </div>
 
-                  {/* Brands (Partners) */}
                   <div>
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[2px] mb-4">
                       Байгууллагууд
@@ -305,7 +304,6 @@ export const SearchBar = () => {
             </div>
           </div>
 
-          {/* Footer */}
           <div className="bg-slate-50 px-8 py-3 border-t border-slate-100 flex justify-between items-center">
             <div className="flex gap-4">
               <span className="text-[10px] text-slate-400 font-bold uppercase">ESC - Хаах</span>
