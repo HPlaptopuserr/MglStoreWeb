@@ -7,6 +7,7 @@ import Image from "next/image";
 import { SearchBar } from "../../SearchBar";
 import { MegaMenu } from "@/components/MegaMenu";
 import { PartnerMenu } from "@/components/organisms/home/PartnerMenu";
+import CategoryRail from "../home/CategoryRail";
 
 export const HEADER_HEIGHT = "128px";
 
@@ -87,31 +88,6 @@ export const Header = () => {
             <MegaMenu />
             <PartnerMenu />
 
-
-            <Link
-              href="#"
-              className="text-sm font-semibold text-gray-600 transition-colors hover:text-gray-900"
-            >
-              Groceries
-            </Link>
-            <Link
-              href="#"
-              className="text-sm font-semibold text-gray-600 transition-colors hover:text-gray-900"
-            >
-              Pharmacy
-            </Link>
-            <Link
-              href="#"
-              className="text-sm font-semibold text-gray-600 transition-colors hover:text-gray-900"
-            >
-              Electronics
-            </Link>
-            <Link
-              href="#"
-              className="text-sm font-semibold text-gray-600 transition-colors hover:text-gray-900"
-            >
-              Household
-            </Link>
           </div>
 
           <Link

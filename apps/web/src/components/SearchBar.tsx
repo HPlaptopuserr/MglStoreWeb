@@ -1,49 +1,13 @@
 "use client";
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { Search, ChevronDown, X, Clock, ArrowRight, Tag } from "lucide-react";
-import Image from "next/image";
+import { Search, ChevronDown, X, Clock, ArrowRight, Tag, Loader2 } from "lucide-react";
 
-// Төрөл тодорхойлох
 interface SearchOption {
   id: string;
   name: string;
 }
 
-const mockCategories: SearchOption[] = [
-  { id: "1", name: "Хүнс" },
-  { id: "2", name: "Цайны газар / Ресторан" },
-  { id: "3", name: "Зочид буудал" },
-  { id: "4", name: "Эмийн сан" },
-  { id: "5", name: "Аялал жуулчлал" },
-  { id: "6", name: "Барилга, Үл хөдлөх" },
-  { id: "7", name: "Барилгын дэлгүүр" },
-  { id: "8", name: "Электроник, Техник" },
-  { id: "9", name: "Гоо сайхан, Арчилгаа" },
-  { id: "10", name: "Хувцас, Загвар" },
-  { id: "11", name: "Спорт, Фитнесс" },
-  { id: "12", name: "Тоглоом, Хүүхдийн" },
-  { id: "13", name: "Ном, Боловсрол" },
-  { id: "14", name: "Авто, Тээвэр" },
-  { id: "15", name: "Банк, Санхүүгийн үйлчилгээ" },
-];
-
-const mockBrands: SearchOption[] = [
-  { id: "b1", name: "IWAKO" },
-  { id: "b2", name: "ЦАХИЛДАГ" },
-  { id: "b3", name: "FJALLRAVEN" },
-  { id: "b4", name: "АЗТАЙ САВАР ТББ" },
-  { id: "b5", name: "ENGUM PUZZLE" },
-  { id: "b6", name: "SES CREATIVE" },
-  { id: "b7", name: "Joan Miro" },
-  { id: "b8", name: "URUHAN" },
-  { id: "b9", name: "MGL Store" },
-  { id: "b10", name: "Nomad Tech" },
-  { id: "b11", name: "GerMed" },
-  { id: "b12", name: "Mongol Flavors" },
-  { id: "b13", name: "Steppe Coffee" },
-  { id: "b14", name: "Ulaanbaatar Motors" },
-  { id: "b15", name: "Khan Bank Shop" },
-];
+const API = "http://localhost:4000/api";
 
 const contextOptions = [
   "Бүгд",
@@ -62,45 +26,65 @@ export const SearchBar = () => {
   const [isFocused, setIsFocused] = useState(false);
   const [isContextOpen, setIsContextOpen] = useState(false);
 
+  // API data
+  const [apiCategories, setApiCategories] = useState<SearchOption[]>([]);
+  const [apiBrands, setApiBrands] = useState<SearchOption[]>([]);
+  const [rightLoading, setRightLoading] = useState(true);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch categories + partners once on mount
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [catRes, partRes] = await Promise.all([
+          fetch(`${API}/business-categories`),
+          fetch(`${API}/partners`),
+        ]);
+        if (catRes.ok) {
+          const cats = await catRes.json();
+          setApiCategories(
+            cats.map((c: any) => ({ id: c.id, name: `${c.icon ?? "🏷️"} ${c.name}` }))
+          );
+        }
+        if (partRes.ok) {
+          const parts = await partRes.json();
+          setApiBrands(parts.map((p: any) => ({ id: p.id, name: p.name })));
+        }
+      } catch (e) {
+        console.error("SearchBar fetch error", e);
+      } finally {
+        setRightLoading(false);
+      }
+    };
+    load();
+  }, []);
+
   const filteredCategories = useMemo(
-    () =>
-      mockCategories.filter((cat) =>
-        cat.name.toLowerCase().includes(searchQuery.toLowerCase()),
-      ),
-    [searchQuery],
+    () => apiCategories.filter((cat) => cat.name.toLowerCase().includes(searchQuery.toLowerCase())),
+    [searchQuery, apiCategories],
   );
 
   const filteredBrands = useMemo(
-    () =>
-      mockBrands.filter((brand) =>
-        brand.name.toLowerCase().includes(searchQuery.toLowerCase()),
-      ),
-    [searchQuery],
+    () => apiBrands.filter((brand) => brand.name.toLowerCase().includes(searchQuery.toLowerCase())),
+    [searchQuery, apiBrands],
   );
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         closeSearch();
       }
     };
-
     const handleEscKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeSearch();
     };
-
     if (isFocused) {
       document.addEventListener("mousedown", handleClickOutside);
       document.addEventListener("keydown", handleEscKey);
-      document.body.style.overflow = "hidden"; // Scroll-ыг царцаах
+      document.body.style.overflow = "hidden";
     }
-
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleEscKey);
@@ -131,32 +115,23 @@ export const SearchBar = () => {
         />
       )}
 
-      {/* 1. Жижиг (Normal) Search Bar */}
+      {/* 1. Normal Search Bar */}
       <div
-        className={`relative flex items-center w-full max-w-3xl mx-auto bg-white rounded-full border-2 border-orange-500 h-[48px] transition-all duration-300 ${isFocused
-            ? "opacity-0 invisible scale-95"
-            : "opacity-100 visible scale-100"
+        className={`relative flex items-center w-full max-w-3xl mx-auto bg-white rounded-full border-2 border-orange-500 h-[48px] transition-all duration-300 ${isFocused ? "opacity-0 invisible scale-95" : "opacity-100 visible scale-100"
           } cursor-text shadow-md overflow-hidden`}
         onClick={() => setIsFocused(true)}
       >
         <div className="flex items-center px-4 h-full border-r border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors group">
-          <span className="text-sm font-bold text-slate-700 mr-2">
-            {searchContext}
-          </span>
-          <ChevronDown
-            size={14}
-            className="text-slate-400 group-hover:text-orange-500"
-          />
+          <span className="text-sm font-bold text-slate-700 mr-2">{searchContext}</span>
+          <ChevronDown size={14} className="text-slate-400 group-hover:text-orange-500" />
         </div>
-        <div className="flex-1 px-4 text-slate-400 text-sm">
-          Хайх утгаа оруулна уу...
-        </div>
+        <div className="flex-1 px-4 text-slate-400 text-sm">Хайх утгаа оруулна уу...</div>
         <div className="h-full px-6 flex items-center justify-center text-black">
           <Search size={20} strokeWidth={3} />
         </div>
       </div>
 
-      {/* 2. Том (Expanded) Search UI */}
+      {/* 2. Expanded Search UI */}
       <div
         className={`fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-5xl z-[60] transition-all duration-500 ease-in-out ${isFocused
             ? "translate-y-0 opacity-100 scale-100"
@@ -172,27 +147,19 @@ export const SearchBar = () => {
                 onClick={() => setIsContextOpen(!isContextOpen)}
                 className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors text-slate-800"
               >
-                <span className="text-sm font-bold whitespace-nowrap">
-                  {searchContext}
-                </span>
+                <span className="text-sm font-bold whitespace-nowrap">{searchContext}</span>
                 <ChevronDown
                   size={16}
                   className={`transition-transform duration-300 ${isContextOpen ? "rotate-180" : ""}`}
                 />
               </button>
-
               {isContextOpen && (
                 <div className="absolute top-12 left-0 w-56 bg-white border border-slate-100 shadow-2xl rounded-2xl py-3 z-[70] animate-in fade-in zoom-in duration-200">
                   {contextOptions.map((opt) => (
                     <button
                       key={opt}
-                      onClick={() => {
-                        setSearchContext(opt);
-                        setIsContextOpen(false);
-                      }}
-                      className={`w-full px-5 py-2.5 text-left text-sm hover:bg-orange-50 hover:text-orange-600 transition-colors ${searchContext === opt
-                          ? "text-orange-600 font-bold bg-orange-50/50"
-                          : "text-slate-600"
+                      onClick={() => { setSearchContext(opt); setIsContextOpen(false); }}
+                      className={`w-full px-5 py-2.5 text-left text-sm hover:bg-orange-50 hover:text-orange-600 transition-colors ${searchContext === opt ? "text-orange-600 font-bold bg-orange-50/50" : "text-slate-600"
                         }`}
                     >
                       {opt}
@@ -244,27 +211,19 @@ export const SearchBar = () => {
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">
                     Хайлтын үр дүн
                   </h3>
-                  {filteredCategories.length === 0 &&
-                    filteredBrands.length === 0 ? (
+                  {filteredCategories.length === 0 && filteredBrands.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-48 text-slate-400">
-                      <Search
-                        size={48}
-                        strokeWidth={1}
-                        className="mb-4 opacity-20"
-                      />
+                      <Search size={48} strokeWidth={1} className="mb-4 opacity-20" />
                       <p>Илэрц олдсонгүй</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-2">
-                      {/* Илэрц олдсон үед харуулах жишээ хайлтууд */}
                       <div className="p-4 hover:bg-slate-50 rounded-2xl cursor-pointer flex items-center justify-between group transition-colors">
                         <div className="flex items-center gap-4">
                           <div className="p-3 bg-orange-50 text-orange-500 rounded-xl">
                             <Search size={20} />
                           </div>
-                          <span className="font-semibold text-slate-700">
-                            "{searchQuery}" хайх
-                          </span>
+                          <span className="font-semibold text-slate-700">"{searchQuery}" хайх</span>
                         </div>
                         <ArrowRight
                           size={18}
@@ -279,9 +238,7 @@ export const SearchBar = () => {
                   <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
                     <Clock size={32} className="text-slate-300" />
                   </div>
-                  <h4 className="text-slate-800 font-bold mb-2">
-                    Сүүлд үзсэн бараа байхгүй
-                  </h4>
+                  <h4 className="text-slate-800 font-bold mb-2">Сүүлд үзсэн бараа байхгүй</h4>
                   <p className="text-slate-400 text-sm max-w-[240px]">
                     Таны саяхан сонирхсон бүтээгдэхүүнүүд энд харагдах болно.
                   </p>
@@ -289,67 +246,70 @@ export const SearchBar = () => {
               )}
             </div>
 
-            {/* Right: Quick Links (Categories & Brands) */}
+            {/* Right: Categories & Brands from API */}
             <div
               className="w-full md:w-[320px] bg-slate-50/80 p-8 border-l border-slate-100 overflow-y-auto overscroll-contain"
               onWheel={(e) => e.stopPropagation()}
             >
-              {/* Categories */}
-              <div className="mb-10">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[2px] mb-4">
-                  Ангиллууд
-                </h4>
-                <div className="space-y-1">
-                  {filteredCategories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center group-hover:border-orange-200">
-                        <Tag
-                          size={14}
-                          className="text-slate-300 group-hover:text-orange-500"
-                        />
-                      </div>
-                      <span className="text-sm font-bold">{cat.name}</span>
-                    </button>
-                  ))}
+              {rightLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 size={28} className="animate-spin text-slate-300" />
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* Categories */}
+                  <div className="mb-8">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[2px] mb-4">
+                      Ангиллууд
+                    </h4>
+                    <div className="space-y-1">
+                      {filteredCategories.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">Ангилал олдсонгүй</p>
+                      ) : filteredCategories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center group-hover:border-orange-200">
+                            <Tag size={14} className="text-slate-300 group-hover:text-orange-500" />
+                          </div>
+                          <span className="text-sm font-bold text-left">{cat.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Brands */}
-              <div>
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[2px] mb-4">
-                  Байгууллагууд
-                </h4>
-                <div className="grid grid-cols-1 gap-1">
-                  {filteredBrands.map((brand) => (
-                    <button
-                      key={brand.id}
-                      className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center text-[10px] font-black group-hover:bg-orange-500">
-                        {brand.name.charAt(0)}
-                      </div>
-                      <span className="text-sm font-bold truncate">
-                        {brand.name}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  {/* Brands (Partners) */}
+                  <div>
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[2px] mb-4">
+                      Байгууллагууд
+                    </h4>
+                    <div className="grid grid-cols-1 gap-1">
+                      {filteredBrands.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic">Байгууллага олдсонгүй</p>
+                      ) : filteredBrands.map((brand) => (
+                        <button
+                          key={brand.id}
+                          className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center text-[10px] font-black group-hover:bg-orange-500 shrink-0">
+                            {brand.name.charAt(0)}
+                          </div>
+                          <span className="text-sm font-bold truncate">{brand.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Footer Info */}
+          {/* Footer */}
           <div className="bg-slate-50 px-8 py-3 border-t border-slate-100 flex justify-between items-center">
             <div className="flex gap-4">
-              <span className="text-[10px] text-slate-400 font-bold uppercase">
-                ESC - Хаах
-              </span>
-              <span className="text-[10px] text-slate-400 font-bold uppercase">
-                ENTER - Хайх
-              </span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase">ESC - Хаах</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase">ENTER - Хайх</span>
             </div>
             <div className="text-[10px] text-orange-500 font-black flex items-center gap-1 cursor-pointer hover:underline">
               БҮХ БРЭНДҮҮД <ArrowRight size={10} strokeWidth={3} />

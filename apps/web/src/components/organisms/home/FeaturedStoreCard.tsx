@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Clock, Star } from "lucide-react";
+import { Clock, Star, MapPin, ChevronRight, ShoppingBag } from "lucide-react";
 import type { CompanyCard } from "@mgl/types";
 
 interface FeaturedStoreCardProps {
@@ -13,65 +13,82 @@ export const FeaturedStoreCard = ({ company }: FeaturedStoreCardProps) => {
   return (
     <Link
       href={`/organizations/${company.slug}`}
-      className="group relative min-w-70 sm:min-w-[320px] md:min-w-90 overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl snap-start"
+      className="group flex flex-col min-w-[280px] sm:min-w-[320px] rounded-[24px] border border-slate-100 bg-white shadow-sm hover:shadow-xl hover:border-orange-200 transition-all duration-300 snap-start hover:-translate-y-1"
     >
-      <div className="relative aspect-video overflow-hidden bg-slate-100">
+      {/* Banner & Logo Area (overflow-hidden removed so logo can stick out) */}
+      <div className="relative h-[160px] w-full bg-slate-100 rounded-t-[24px] overflow-hidden">
         <Image
           src={company.banner}
           alt={company.name}
           fill
-          className="object-cover transition duration-500 group-hover:scale-105"
+          className="object-cover transition-transform duration-700 group-hover:scale-105"
         />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent" />
 
-        <div className="absolute inset-0 bg-linear-to-t from-slate-900/75 via-slate-900/15 to-transparent" />
-
-        <div className="absolute right-3 top-3">
+        {/* Status Badge */}
+        <div className="absolute top-4 right-4 z-20">
           <span
-            className={`rounded-full px-3 py-1 text-[11px] font-bold shadow-sm ${
-              company.isOpen
-                ? "bg-emerald-500 text-white"
-                : "bg-slate-800 text-slate-100"
-            }`}
+            className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-full shadow-sm text-white ${company.isOpen
+                ? "bg-[#0bb783]"
+                : "bg-slate-800/80 backdrop-blur-md"
+              }`}
           >
-            {company.isOpen ? "Open" : "Closed"}
+            {company.isOpen ? "Нээлттэй" : "Хаалттай"}
           </span>
         </div>
+      </div>
 
-        <div className="absolute bottom-4 left-4 right-4">
-          <div className="flex items-end gap-3">
-            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl border-2 border-white bg-white shadow-md">
-              <Image
-                src={company.logo}
-                alt={company.name}
-                fill
-                className="object-cover"
-              />
-            </div>
+      {/* Content Area */}
+      <div className="flex flex-col flex-1 pb-6 px-6 bg-white relative z-10 rounded-b-[24px]">
 
-            <div className="min-w-0 flex-1">
-              <h3 className="truncate text-lg font-bold text-white">
-                {company.name}
-              </h3>
-              <p className="truncate text-sm text-white/85">
-                {company.category ?? "Marketplace store"}
-              </p>
-            </div>
+        {/* Logo overlapping banner and content. We place it here with negative top margin. */}
+        <div className="h-[72px] w-[72px] rounded-2xl border-[4px] border-white bg-white shadow-sm overflow-hidden z-20 -mt-9 mb-3 shrink-0">
+          <div className="relative w-full h-full rounded-[10px] overflow-hidden bg-slate-100">
+            <Image
+              src={company.logo}
+              alt={company.name}
+              fill
+              className="object-cover"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-between items-start mb-1">
+          <h3 className="font-extrabold text-xl text-[#0f172a] line-clamp-1 group-hover:text-orange-600 transition-colors">
+            {company.name}
+          </h3>
+          <div className="flex items-center gap-1.5 bg-[#fff8f0] px-2.5 py-1 rounded-xl shrink-0 mt-0.5">
+            <Star size={13} className="fill-[#fb923c] text-[#fb923c]" />
+            <span className="text-[13px] font-bold text-[#b45309]">
+              {company.rating ? Number(company.rating).toFixed(1) : "5.0"}
+            </span>
+          </div>
+        </div>
+
+        <p className="text-[13px] font-medium text-[#64748b] mb-5 line-clamp-1 capitalize">
+          {company.category ?? "Дэлгүүр"}
+        </p>
+
+        {/* Badges/Info Row */}
+        <div className="flex flex-wrap items-center gap-3 mb-6">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#f8fafc] border border-slate-100 rounded-xl text-[13px] font-semibold text-[#475569]">
+            <Clock size={13} className="text-[#94a3b8]" />
+            <span>{company.deliveryTime ?? "N/A"}</span>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm">
-              <Star size={12} className="fill-amber-400 text-amber-400" />
-              <span>{company.rating ?? 0}</span>
-            </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#f8fafc] border border-slate-100 rounded-xl text-[13px] font-semibold text-[#475569]">
+            <ShoppingBag size={13} className="text-[#94a3b8]" />
+            <span>{company.products?.length ?? 0} бараа</span>
+          </div>
+        </div>
 
-            <div className="inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm">
-              <Clock size={12} className="text-amber-500" />
-              <span>{company.deliveryTime ?? "N/A"}</span>
-            </div>
+        <div className="w-full h-px bg-slate-100 mt-auto mb-5" />
 
-            <div className="inline-flex items-center rounded-full bg-white/95 px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm">
-              {company.products?.length ?? 0} бүтээгдэхүүн
-            </div>
+        {/* Action Button */}
+        <div className="flex items-center justify-between text-[15px] font-bold text-[#ea580c] group-hover:text-[#c2410c] transition-colors">
+          <span>Дэлгүүр рүү орох</span>
+          <div className="w-9 h-9 rounded-full bg-[#fff7ed] flex items-center justify-center transition-colors">
+            <ChevronRight size={18} strokeWidth={3} className="text-[#fb923c] group-hover:text-[#ea580c] transition-colors" />
           </div>
         </div>
       </div>

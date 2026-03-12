@@ -30,6 +30,12 @@ router.get("/partners/grouped", async (req, res) => {
       },
     });
 
+    const activeCategories = await prisma.businessCategory.findMany({
+      where: { isActive: true },
+    });
+
+    const categoryMap = new Map(activeCategories.map(c => [c.slug, c.name]));
+
     const grouped: Record<
       string,
       {
@@ -40,15 +46,15 @@ router.get("/partners/grouped", async (req, res) => {
     > = {};
 
     for (const partner of partners) {
-      const cat = partner.businessCategory || "other";
-      if (!grouped[cat]) {
-        grouped[cat] = {
-          category: cat,
-          label: categoryLabels[cat] || cat,
+      const catSlug = partner.businessCategory || "other";
+      if (!grouped[catSlug]) {
+        grouped[catSlug] = {
+          category: catSlug,
+          label: categoryMap.get(catSlug) || catSlug,
           partners: [],
         };
       }
-      grouped[cat].partners.push({
+      grouped[catSlug].partners.push({
         id: partner.id,
         name: partner.name,
         slug: partner.slug,

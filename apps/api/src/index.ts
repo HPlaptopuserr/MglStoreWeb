@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
 import partnerRequestRoutes from "./routes/partner-request.routes";
 import partnerRoutes from "./routes/partners.routes";
+import businessCategoriesRoutes from "./routes/business-categories.routes";
 
 dotenv.config();
 
@@ -24,10 +25,12 @@ app.use(
     credentials: true,
   }),
 );
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
-app.use(express.json());
 app.use("/api", partnerRequestRoutes);
 app.use("/api", partnerRoutes);
+app.use("/api", businessCategoriesRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");

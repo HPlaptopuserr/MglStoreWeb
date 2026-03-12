@@ -141,7 +141,7 @@ export const MegaMenu = () => {
   const handleMouseLeave = () => {
     timeoutRef.current = setTimeout(() => {
       setIsOpen(false);
-    }, 150); // small delay to allow cursor to reach dropdown
+    }, 150);
   };
 
   React.useEffect(() => {
@@ -169,7 +169,6 @@ export const MegaMenu = () => {
 
       {isOpen && (
         <div className="absolute top-12 left-0 w-[1400px] h-[750px] bg-white rounded-r-2xl rounded-bl-2xl shadow-xl border border-slate-200 z-50 flex overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-          {/* Column 1: Categories sidebar */}
           <div className="w-[360px] bg-white border-r border-slate-100 flex flex-col pt-2 pb-6">
             <div
               className="flex-1 overflow-y-auto overscroll-contain scrollbar-hide px-3 relative"
@@ -182,7 +181,7 @@ export const MegaMenu = () => {
                   <div
                     key={category.id}
                     className={`flex items-center justify-between px-4 py-2 mt-1 rounded-lg cursor-pointer text-sm transition-colors ${isActive
-                      ? "bg-[#ff4d6d] text-white font-medium shadow-sm transition-none"
+                      ? "bg-[#ffad02] text-white font-medium shadow-sm transition-none"
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                       }`}
                     onMouseEnter={() => setActiveCategory(category)}
@@ -252,7 +251,7 @@ export const MegaMenu = () => {
               </h2>
               <a
                 href="#"
-                className="text-sm font-medium text-[#ff4d6d] hover:underline transition-colors shrink-0"
+                className="text-sm font-medium text-[#ffad02] hover:underline transition-colors shrink-0"
               >
                 Бүгдийг үзэх
               </a>
@@ -270,7 +269,7 @@ export const MegaMenu = () => {
                         <li key={i}>
                           <a
                             href="#"
-                            className="text-[13px] text-slate-500 hover:text-[#ff4d6d] transition-colors"
+                            className="text-[13px] text-slate-500 hover:text-[#ffad02] transition-colors"
                           >
                             {item}
                           </a>
@@ -279,7 +278,7 @@ export const MegaMenu = () => {
                     </ul>
                     <a
                       href="#"
-                      className="text-[13px] font-semibold text-[#ff4d6d] group flex items-center gap-1 mt-auto shrink-0 w-fit"
+                      className="text-[13px] font-semibold text-[#ffad02] group flex items-center gap-1 mt-auto shrink-0 w-fit"
                     >
                       Бүгдийг үзэх{" "}
                       <span className="transform group-hover:translate-x-1 transition-transform">
@@ -321,7 +320,7 @@ export const MegaMenu = () => {
                 Хамгийн их үзсэн
               </h3>
               <div className="flex gap-3 text-[11px] font-bold">
-                <button className="text-[#ff4d6d]">1D</button>
+                <button className="text-[#ffad02]">1D</button>
                 <button className="text-slate-400 hover:text-slate-800 transition-colors">
                   1W
                 </button>

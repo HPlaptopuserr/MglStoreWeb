@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
+  Tag,
 } from "lucide-react";
 
 export interface NavItem {
@@ -58,6 +59,12 @@ export function AdminSidebar({
       label: "Түншүүд",
       icon: Users,
       href: "/partners",
+    },
+    {
+      id: "categories",
+      label: "Бизнесийн ангиллал",
+      icon: Tag,
+      href: "/categories",
     },
     {
       id: "sections",
