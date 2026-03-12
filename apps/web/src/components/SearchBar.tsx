@@ -15,8 +15,16 @@ const mockCategories: SearchOption[] = [
   { id: "3", name: "Зочид буудал" },
   { id: "4", name: "Эмийн сан" },
   { id: "5", name: "Аялал жуулчлал" },
-  { id: "6", name: "Барлига, Үл хөдлөх" },
+  { id: "6", name: "Барилга, Үл хөдлөх" },
   { id: "7", name: "Барилгын дэлгүүр" },
+  { id: "8", name: "Электроник, Техник" },
+  { id: "9", name: "Гоо сайхан, Арчилгаа" },
+  { id: "10", name: "Хувцас, Загвар" },
+  { id: "11", name: "Спорт, Фитнесс" },
+  { id: "12", name: "Тоглоом, Хүүхдийн" },
+  { id: "13", name: "Ном, Боловсрол" },
+  { id: "14", name: "Авто, Тээвэр" },
+  { id: "15", name: "Банк, Санхүүгийн үйлчилгээ" },
 ];
 
 const mockBrands: SearchOption[] = [
@@ -28,6 +36,13 @@ const mockBrands: SearchOption[] = [
   { id: "b6", name: "SES CREATIVE" },
   { id: "b7", name: "Joan Miro" },
   { id: "b8", name: "URUHAN" },
+  { id: "b9", name: "MGL Store" },
+  { id: "b10", name: "Nomad Tech" },
+  { id: "b11", name: "GerMed" },
+  { id: "b12", name: "Mongol Flavors" },
+  { id: "b13", name: "Steppe Coffee" },
+  { id: "b14", name: "Ulaanbaatar Motors" },
+  { id: "b15", name: "Khan Bank Shop" },
 ];
 
 const contextOptions = [
@@ -118,11 +133,10 @@ export const SearchBar = () => {
 
       {/* 1. Жижиг (Normal) Search Bar */}
       <div
-        className={`relative flex items-center w-full max-w-3xl mx-auto bg-white rounded-full border-2 border-orange-500 h-[48px] transition-all duration-300 ${
-          isFocused
+        className={`relative flex items-center w-full max-w-3xl mx-auto bg-white rounded-full border-2 border-orange-500 h-[48px] transition-all duration-300 ${isFocused
             ? "opacity-0 invisible scale-95"
             : "opacity-100 visible scale-100"
-        } cursor-text shadow-md overflow-hidden`}
+          } cursor-text shadow-md overflow-hidden`}
         onClick={() => setIsFocused(true)}
       >
         <div className="flex items-center px-4 h-full border-r border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors group">
@@ -144,11 +158,10 @@ export const SearchBar = () => {
 
       {/* 2. Том (Expanded) Search UI */}
       <div
-        className={`fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-5xl z-[60] transition-all duration-500 ease-in-out ${
-          isFocused
+        className={`fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-5xl z-[60] transition-all duration-500 ease-in-out ${isFocused
             ? "translate-y-0 opacity-100 scale-100"
             : "-translate-y-12 opacity-0 scale-95 pointer-events-none"
-        }`}
+          }`}
       >
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-white">
           {/* Search Input Area */}
@@ -177,11 +190,10 @@ export const SearchBar = () => {
                         setSearchContext(opt);
                         setIsContextOpen(false);
                       }}
-                      className={`w-full px-5 py-2.5 text-left text-sm hover:bg-orange-50 hover:text-orange-600 transition-colors ${
-                        searchContext === opt
+                      className={`w-full px-5 py-2.5 text-left text-sm hover:bg-orange-50 hover:text-orange-600 transition-colors ${searchContext === opt
                           ? "text-orange-600 font-bold bg-orange-50/50"
                           : "text-slate-600"
-                      }`}
+                        }`}
                     >
                       {opt}
                     </button>
@@ -223,14 +235,17 @@ export const SearchBar = () => {
           {/* Results Area */}
           <div className="flex flex-col md:flex-row h-[500px] bg-white">
             {/* Left: Search Suggestions / Recent */}
-            <div className="flex-1 p-8 overflow-y-auto">
+            <div
+              className="flex-1 p-8 overflow-y-auto overscroll-contain"
+              onWheel={(e) => e.stopPropagation()}
+            >
               {searchQuery ? (
                 <div>
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">
                     Хайлтын үр дүн
                   </h3>
                   {filteredCategories.length === 0 &&
-                  filteredBrands.length === 0 ? (
+                    filteredBrands.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-48 text-slate-400">
                       <Search
                         size={48}
@@ -275,14 +290,17 @@ export const SearchBar = () => {
             </div>
 
             {/* Right: Quick Links (Categories & Brands) */}
-            <div className="w-full md:w-[320px] bg-slate-50/80 p-8 border-l border-slate-100 overflow-y-auto">
+            <div
+              className="w-full md:w-[320px] bg-slate-50/80 p-8 border-l border-slate-100 overflow-y-auto overscroll-contain"
+              onWheel={(e) => e.stopPropagation()}
+            >
               {/* Categories */}
               <div className="mb-10">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[2px] mb-4">
                   Ангиллууд
                 </h4>
                 <div className="space-y-1">
-                  {filteredCategories.slice(0, 5).map((cat) => (
+                  {filteredCategories.map((cat) => (
                     <button
                       key={cat.id}
                       className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
@@ -305,7 +323,7 @@ export const SearchBar = () => {
                   Байгууллагууд
                 </h4>
                 <div className="grid grid-cols-1 gap-1">
-                  {filteredBrands.slice(0, 6).map((brand) => (
+                  {filteredBrands.map((brand) => (
                     <button
                       key={brand.id}
                       className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"

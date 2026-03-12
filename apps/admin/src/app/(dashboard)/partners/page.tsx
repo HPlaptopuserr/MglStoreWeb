@@ -15,6 +15,8 @@ import {
   Store,
   ShoppingCart,
   X,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -26,6 +28,7 @@ type Partner = {
   type: string;
   status: string;
   isVerified: boolean;
+  businessCategory: string | null;
   email: string | null;
   phone: string | null;
   logoUrl?: string | null;
@@ -38,6 +41,105 @@ type Partner = {
     orders: number;
   };
 };
+
+const CATEGORIES = [
+  { value: "retail", label: "Худалдаа" },
+  { value: "food", label: "Хоол үйлдвэрлэл" },
+  { value: "service", label: "Үйлчилгээ" },
+  { value: "pharmacy", label: "Эм, эмнэлэг" },
+  { value: "electronics", label: "Электроник" },
+  { value: "other", label: "Бусад" },
+];
+
+const categoryStyles: Record<string, { bg: string; text: string; border: string }> = {
+  retail: { bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-200" },
+  food: { bg: "bg-orange-50", text: "text-orange-600", border: "border-orange-200" },
+  service: { bg: "bg-purple-50", text: "text-purple-600", border: "border-purple-200" },
+  pharmacy: { bg: "bg-green-50", text: "text-green-600", border: "border-green-200" },
+  electronics: { bg: "bg-cyan-50", text: "text-cyan-600", border: "border-cyan-200" },
+  other: { bg: "bg-slate-50", text: "text-slate-500", border: "border-slate-200" },
+};
+
+function CategoryDropdown({
+  partner,
+  onUpdated,
+}: {
+  partner: Partner;
+  onUpdated: (id: string, cat: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const current = CATEGORIES.find((c) => c.value === partner.businessCategory);
+  const style = categoryStyles[partner.businessCategory ?? "other"] ?? categoryStyles.other;
+
+  const handleSelect = async (value: string | null) => {
+    setOpen(false);
+    setSaving(true);
+    try {
+      await fetch(`http://localhost:4000/api/partners/${partner.id}/category`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ businessCategory: value }),
+      });
+      onUpdated(partner.id, value);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => { e.preventDefault(); setOpen((v) => !v); }}
+        disabled={saving}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer select-none ${style.bg} ${style.text} ${style.border} hover:opacity-80`}
+      >
+        <Store size={11} />
+        {saving ? "..." : (current?.label ?? "Ангилал сонгох")}
+        <ChevronDown size={11} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <>
+          {/* backdrop */}
+          <div
+            className="fixed inset-0 z-10"
+            onClick={(e) => { e.preventDefault(); setOpen(false); }}
+          />
+          <div className="absolute left-0 top-full mt-1 z-20 min-w-[160px] bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden">
+            <button
+              onClick={(e) => { e.preventDefault(); handleSelect(null); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-400 hover:bg-slate-50 transition-colors"
+            >
+              <span className="w-3" />
+              Ангилалгүй
+            </button>
+            <div className="border-t border-slate-100" />
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.value}
+                onClick={(e) => { e.preventDefault(); handleSelect(cat.value); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 transition-colors"
+              >
+                {partner.businessCategory === cat.value ? (
+                  <Check size={12} className="text-indigo-500 shrink-0" />
+                ) : (
+                  <span className="w-3" />
+                )}
+                <span className={`font-medium ${categoryStyles[cat.value]?.text ?? "text-slate-600"}`}>
+                  {cat.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function PartnersPage() {
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -61,6 +163,12 @@ export default function PartnersPage() {
     });
     const data = await res.json();
     setPartners(data);
+  };
+
+  const handleCategoryUpdated = (id: string, cat: string | null) => {
+    setPartners((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, businessCategory: cat } : p))
+    );
   };
 
   useEffect(() => {
@@ -159,6 +267,12 @@ export default function PartnersPage() {
                     <Briefcase size={12} />
                     {partner.type}
                   </span>
+
+                  {/* ← Inline ангилал сонгогч */}
+                  <CategoryDropdown
+                    partner={partner}
+                    onUpdated={handleCategoryUpdated}
+                  />
 
                   <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-medium text-slate-600">
                     <FileText size={12} />

@@ -131,6 +131,7 @@ export async function approvePartnerRequest(
         email: existingRequest.organizationEmail || existingRequest.email,
         phone: existingRequest.organizationPhone || existingRequest.phoneNumber,
         address: existingRequest.organizationAddress,
+        businessCategory: existingRequest.businessCategory,
         isVerified: false,
       },
       select: {

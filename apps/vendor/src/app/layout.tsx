@@ -8,9 +8,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "MGL Store | The Unified Retail Network of Mongolia",
+  title: "MGL Store | Монголын худалдааны нэгдсэн сүлжээ",
   description:
-    "Connecting Mongolian businesses into one modern retail ecosystem.",
+    "Монголын бизнесүүдийг орчин үеийн жижиглэн худалдааны нэг экосистемд холбох.",
 };
 
 export default function RootLayout({

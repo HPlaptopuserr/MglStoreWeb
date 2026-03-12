@@ -16,21 +16,21 @@ const categories = [
 export default function Categories() {
   return (
     <div className="py-24 bg-white border-y border-gray-100">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div 
+      <div className="mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           className="text-center mb-12"
         >
-          <h2 className="text-3xl font-bold text-gray-900 mb-4 tracking-tight">Shop by Category</h2>
-          <p className="text-lg text-gray-500">Find exactly what you need from our partner network</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-4 tracking-tight">Ангилалаар дэлгүүр хэсэх</h2>
+          <p className="text-lg text-gray-500">Манай түншийн сүлжээнээс яг хэрэгтэй зүйлээ олоорой</p>
         </motion.div>
-        
+
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 sm:gap-6">
           {categories.map((cat, index) => (
-            <motion.button 
-              key={cat.name} 
+            <motion.button
+              key={cat.name}
               initial={{ opacity: 0, scale: 0.9 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}

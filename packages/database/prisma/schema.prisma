@@ -341,6 +341,25 @@ model OrganizationInvite {
 }
 
 //////////////////////////////////////////////////
+// BUSINESS CATEGORY
+//////////////////////////////////////////////////
+
+model BusinessCategory {
+  id        String  @id @default(uuid())
+  slug      String  @unique
+  name      String
+  icon      String? // emoji or icon key
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+//////////////////////////////////////////////////
 // ORGANIZATION
 //////////////////////////////////////////////////
 
@@ -353,6 +372,8 @@ model Organization {
   type       OrgType   @default(SUPPLIER)
   status     OrgStatus @default(ACTIVE)
   isVerified Boolean   @default(false)
+
+  businessCategory String?
 
   email   String?
   phone   String?
