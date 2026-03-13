@@ -1,18 +1,18 @@
 import { ReactNode } from "react";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Manrope } from "next/font/google";
 import "./globals.css";
 import { FloatingSideNav } from "@/components/organisms/layouts/FloatingSideNav";
 import { Header } from "@/components/organisms/layouts/Header";
 import { Footer } from "@/components/organisms/layouts/Footer";
 import { SmoothScrollProvider } from "@/components/organisms/layouts/SmoothScrollProvider";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
 });
 
@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="mn">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} bg-slate-50 antialiased min-h-screen flex flex-col`}
+        className={`${inter.variable} ${manrope.variable} bg-white antialiased min-h-screen flex flex-col`}
         suppressHydrationWarning
       >
         <SmoothScrollProvider>

@@ -10,35 +10,39 @@ interface FeaturedStoreCardProps {
   className?: string;
 }
 
-export const FeaturedStoreCard = ({ company, className }: FeaturedStoreCardProps) => {
+export const FeaturedStoreCard = ({
+  company,
+  className,
+}: FeaturedStoreCardProps) => {
   return (
     <Link
       href={`/organizations/${company.slug}`}
-      className={`group flex flex-col rounded-[24px] border border-slate-100 bg-white shadow-sm hover:shadow-xl hover:border-orange-200 transition-all duration-300 snap-start hover:-translate-y-1 ${className || "min-w-[280px] sm:min-w-[320px]"}`}
+      className={`group flex flex-col border border-slate-100 bg-white shadow-sm hover:shadow-xl hover:border-orange-200 transition-all duration-300 snap-start hover:-translate-y-1 ${className || "min-w-70 sm:min-w-[320px]"}`}
     >
-      <div className="relative h-[160px] w-full bg-slate-100 rounded-t-[24px] overflow-hidden">
+      <div className="relative h-40 w-full bg-slate-100 rounded-t-3xl overflow-hidden">
         <Image
           src={company.banner}
           alt={company.name}
           fill
           className="object-cover transition-transform duration-700 group-hover:scale-105"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-t from-slate-900/30 to-transparent" />
 
         <div className="absolute top-4 right-4 z-20">
           <span
-            className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-full shadow-sm text-white ${company.isOpen
+            className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-full shadow-sm text-white ${
+              company.isOpen
                 ? "bg-[#0bb783]"
                 : "bg-slate-800/80 backdrop-blur-md"
-              }`}
+            }`}
           >
             {company.isOpen ? "Нээлттэй" : "Хаалттай"}
           </span>
         </div>
       </div>
 
-      <div className="flex flex-col flex-1 pb-6 px-6 bg-white relative z-10 rounded-b-[24px]">
-        <div className="h-[72px] w-[72px] rounded-2xl border-[4px] border-white bg-white shadow-sm overflow-hidden z-20 -mt-9 mb-3 shrink-0">
+      <div className="flex flex-col flex-1 pb-6 px-6 bg-white relative z-10 rounded-b-3xl">
+        <div className="h-18 w-18 rounded-2xl border-4 border-white bg-white shadow-sm overflow-hidden z-20 -mt-9 mb-3 shrink-0">
           <div className="relative w-full h-full rounded-[10px] overflow-hidden bg-slate-100">
             <Image
               src={company.logo}

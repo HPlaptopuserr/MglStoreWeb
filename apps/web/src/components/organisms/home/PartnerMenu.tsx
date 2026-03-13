@@ -108,7 +108,7 @@ export const PartnerMenu = () => {
                         </div>
 
                         <div
-                          className="max-h-[320px] overflow-y-auto overscroll-contain pr-2 [scrollbar-gutter:stable]"
+                          className="max-h-80 overflow-y-auto overscroll-contain pr-2 [scrollbar-gutter:stable]"
                           data-lenis-prevent="true"
                         >
                           <ul className="space-y-3">

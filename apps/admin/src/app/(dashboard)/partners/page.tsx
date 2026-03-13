@@ -147,7 +147,7 @@ function CategoryDropdown({
               setOpen(false);
             }}
           />
-          <div className="absolute left-0 top-full mt-1 z-20 min-w-[160px] bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden">
+          <div className="absolute left-0 top-full mt-1 z-20 min-w-40 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden">
             <button
               onClick={(e) => {
                 e.preventDefault();
@@ -253,7 +253,7 @@ export default function PartnersPage() {
             </div>
           </div>
 
-          <div className="relative w-full lg:w-auto lg:min-w-[400px] max-w-md group">
+          <div className="relative w-full lg:w-auto lg:min-w-100 max-w-md group">
             <Search
               className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-slate-600"
               size={18}

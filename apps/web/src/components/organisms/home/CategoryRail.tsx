@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { API } from "@/lib/api";
+import { useRouter } from "next/navigation";
 
 interface Category {
   id: string;
@@ -19,6 +20,7 @@ export default function Categories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   const scroll = (direction: "left" | "right") => {
     if (scrollContainerRef.current) {
@@ -116,7 +118,8 @@ export default function Categories() {
                   whileInView={{ opacity: 1, scale: 1 }}
                   viewport={{ once: true }}
                   transition={{ delay: index * 0.05, duration: 0.4 }}
-                  className="shrink-0 w-32 sm:w-36 flex flex-col items-center justify-center p-6 rounded-3xl bg-gray-50 hover:bg-white hover:shadow-xl hover:shadow-gray-200/50 hover:-translate-y-1 transition-all group border border-transparent hover:border-gray-100 snap-center"
+                  className="shrink-0 w-32 sm:w-36 flex flex-col items-center justify-center p-6 rounded-3xl bg-gray-50 hover:bg-white hover:shadow-xl hover:shadow-gray-200/50 hover:-translate-y-1 transition-all group border border-transparent hover:border-gray-100 snap-center cursor-pointer"
+                  onClick={() => router.push(`/products?category=${cat.id}`)}
                 >
                   <div
                     className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-colors duration-300 ${colorClass}`}

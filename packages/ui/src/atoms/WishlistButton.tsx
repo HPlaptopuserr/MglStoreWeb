@@ -15,12 +15,12 @@ export function WishlistButton({
       type="button"
       aria-label="Add to wishlist"
       className={`absolute right-3 top-3 z-20 grid h-9 w-9 place-items-center rounded-full 
-      bg-white/90 text-slate-900 shadow-sm backdrop-blur hover:bg-white
+      bg-white text-black shadow-md hover:shadow-lg transition-shadow
       ${className}`}
       {...props}
     >
       <Heart
-        className={`h-5 w-5 ${active ? "fill-red-500 text-red-500" : ""}`}
+        className={`h-5 w-5 ${active ? "fill-black text-black" : ""}`}
         strokeWidth={1.5}
       />
     </button>

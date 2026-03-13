@@ -9,12 +9,14 @@ import {
   Tag,
   Loader2,
 } from "lucide-react";
-import { API } from "@/lib/api";
 
 interface SearchOption {
   id: string;
   name: string;
+  icon?: string;
 }
+
+const API = "http://localhost:4000/api";
 
 const contextOptions = [
   "Бүгд",
@@ -52,10 +54,7 @@ export const SearchBar = () => {
         if (catRes.ok) {
           const cats = await catRes.json();
           setApiCategories(
-            cats.map((c: any) => ({
-              id: c.id,
-              name: `${c.icon ?? "🏷️"} ${c.name}`,
-            })),
+            cats.map((c: any) => ({ id: c.id, name: c.name, icon: c.icon })),
           );
         }
         if (partRes.ok) {
@@ -129,14 +128,14 @@ export const SearchBar = () => {
       {/* Overlay */}
       {isFocused && (
         <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[50] transition-opacity duration-300"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 transition-opacity duration-300"
           onClick={closeSearch}
         />
       )}
 
       {/* 1. Normal Search Bar */}
       <div
-        className={`relative flex items-center w-full max-w-3xl mx-auto bg-white rounded-full border-2 border-orange-500 h-[48px] transition-all duration-300 ${
+        className={`relative flex items-center w-full max-w-3xl mx-auto bg-white rounded-full border-2 border-orange-500 h-12 transition-all duration-300 ${
           isFocused
             ? "opacity-0 invisible scale-95"
             : "opacity-100 visible scale-100"
@@ -162,7 +161,7 @@ export const SearchBar = () => {
 
       {/* 2. Expanded Search UI */}
       <div
-        className={`fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-5xl z-[60] transition-all duration-500 ease-in-out ${
+        className={`fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-5xl z-60 transition-all duration-500 ease-in-out ${
           isFocused
             ? "translate-y-0 opacity-100 scale-100"
             : "-translate-y-12 opacity-0 scale-95 pointer-events-none"
@@ -170,7 +169,7 @@ export const SearchBar = () => {
       >
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-white">
           {/* Search Input Area */}
-          <div className="relative flex items-center h-[72px] px-6 bg-white border-b border-slate-100">
+          <div className="relative flex items-center h-18 px-6 bg-white border-b border-slate-100">
             {/* Context Selector */}
             <div className="relative mr-4">
               <button
@@ -186,7 +185,7 @@ export const SearchBar = () => {
                 />
               </button>
               {isContextOpen && (
-                <div className="absolute top-12 left-0 w-56 bg-white border border-slate-100 shadow-2xl rounded-2xl py-3 z-[70] animate-in fade-in zoom-in duration-200">
+                <div className="absolute top-12 left-0 w-56 bg-white border border-slate-100 shadow-2xl rounded-2xl py-3 z-70 animate-in fade-in zoom-in duration-200">
                   {contextOptions.map((opt) => (
                     <button
                       key={opt}
@@ -238,7 +237,7 @@ export const SearchBar = () => {
           </div>
 
           {/* Results Area */}
-          <div className="flex flex-col md:flex-row h-[500px] bg-white">
+          <div className="flex flex-col md:flex-row h-125 bg-white">
             {/* Left: Search Suggestions / Recent */}
             <div
               className="flex-1 p-8 overflow-y-auto overscroll-contain"
@@ -286,7 +285,7 @@ export const SearchBar = () => {
                   <h4 className="text-slate-800 font-bold mb-2">
                     Сүүлд үзсэн бараа байхгүй
                   </h4>
-                  <p className="text-slate-400 text-sm max-w-[240px]">
+                  <p className="text-slate-400 text-sm max-w-60">
                     Таны саяхан сонирхсон бүтээгдэхүүнүүд энд харагдах болно.
                   </p>
                 </div>
@@ -320,11 +319,19 @@ export const SearchBar = () => {
                             key={cat.id}
                             className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
                           >
-                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center group-hover:border-orange-200">
-                              <Tag
-                                size={14}
-                                className="text-slate-300 group-hover:text-orange-500"
-                              />
+                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center group-hover:border-orange-200 overflow-hidden">
+                              {cat.icon ? (
+                                <img
+                                  src={cat.icon}
+                                  alt={cat.name}
+                                  className="w-5 h-5 object-contain"
+                                />
+                              ) : (
+                                <Tag
+                                  size={14}
+                                  className="text-slate-300 group-hover:text-orange-500"
+                                />
+                              )}
                             </div>
                             <span className="text-sm font-bold text-left">
                               {cat.name}

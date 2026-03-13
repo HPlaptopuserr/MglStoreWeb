@@ -1,22 +1,23 @@
 import type { ID } from "../primitives";
 
 export interface ProductCardProps {
-    id?: ID;
-    image: string;
-    name: string;
-    price: number;
+  id?: ID;
+  image: string;
+  images?: string[]; // Multiple images support (2-3 images)
+  name: string;
+  price: number;
 
-    originalPrice?: number;
-    category?: string;
-    tag?: string;
+  originalPrice?: number;
+  category?: string;
+  tag?: string;
 
-    rating?: number;
-    reviews?: number;
-    stock?: number;
+  rating?: number;
+  reviews?: number;
+  stock?: number;
 
-    storeName?: string;
+  storeName?: string;
 
-    colorCount?: number;
-    tags?: string[];
-    isPrime?: boolean;
+  colorCount?: number;
+  tags?: string[];
+  isPrime?: boolean;
 }

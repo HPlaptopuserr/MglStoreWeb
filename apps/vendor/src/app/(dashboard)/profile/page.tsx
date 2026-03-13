@@ -182,7 +182,7 @@ export default function ProfilePage() {
     <div className="max-w-5xl mx-auto p-4 pb-16 space-y-6">
       {/* Cover + Avatar card */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="relative h-52 bg-gradient-to-br from-slate-100 to-slate-200 group/cover">
+        <div className="relative h-52 bg-linear-to-br from-slate-100 to-slate-200 group/cover">
           {coverPreview ? (
             <img
               src={coverPreview}
@@ -190,7 +190,7 @@ export default function ProfilePage() {
               className="absolute inset-0 w-full h-full object-cover"
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-[#FFAD02]/10 via-amber-50 to-slate-100" />
+            <div className="absolute inset-0 bg-linear-to-br from-[#FFAD02]/10 via-amber-50 to-slate-100" />
           )}
           <input
             ref={coverInputRef}
@@ -225,7 +225,7 @@ export default function ProfilePage() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-[#FFAD02] to-amber-500 flex items-center justify-center">
+                  <div className="w-full h-full bg-linear-to-br from-[#FFAD02] to-amber-500 flex items-center justify-center">
                     <span className="text-white text-4xl font-black">
                       {partner.name?.charAt(0).toUpperCase() || "V"}
                     </span>
@@ -459,10 +459,9 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Right column */}
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-center">
-            <div className="w-16 h-16 bg-gradient-to-br from-[#FFAD02] to-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-200/50">
+            <div className="w-16 h-16 bg-linear-to-br from-[#FFAD02] to-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-200/50">
               <Building2 className="text-white" size={28} />
             </div>
             <h4 className="text-lg font-bold text-slate-900 mb-1">
