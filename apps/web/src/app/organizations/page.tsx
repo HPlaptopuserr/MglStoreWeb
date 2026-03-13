@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Search, Building2, MapPin, Briefcase } from "lucide-react";
 import { FeaturedStoreCard } from "@/components/organisms/home/FeaturedStoreCard";
+import { API } from "@/lib/api";
 
 type Partner = {
   id: string;
@@ -40,7 +41,7 @@ export default function OrganizationsPage() {
   useEffect(() => {
     const fetchStores = async () => {
       try {
-        const res = await fetch("http://localhost:4000/api/partners");
+        const res = await fetch(`${API}/partners`);
         if (!res.ok) throw new Error("Failed to fetch stores");
         const data = await res.json();
 
@@ -114,7 +115,11 @@ export default function OrganizationsPage() {
         ) : filteredStores.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredStores.map((company) => (
-              <FeaturedStoreCard key={company.id} company={company} className="w-full" />
+              <FeaturedStoreCard
+                key={company.id}
+                company={company}
+                className="w-full"
+              />
             ))}
           </div>
         ) : (

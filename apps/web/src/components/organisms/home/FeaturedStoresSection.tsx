@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { FeaturedStoreCard } from "./FeaturedStoreCard";
+import { API } from "@/lib/api";
 
 interface ApiPartner {
   id: string;
@@ -24,7 +25,7 @@ export const FeaturedStoresSection = () => {
   useEffect(() => {
     const fetchStores = async () => {
       try {
-        const res = await fetch("http://localhost:4000/api/partners");
+        const res = await fetch(`${API}/partners`);
         if (!res.ok) throw new Error("Failed to fetch stores");
         const data = await res.json();
 
@@ -35,7 +36,8 @@ export const FeaturedStoresSection = () => {
             name: p.name,
             slug: p.slug,
             logo: p.logoUrl || "https://picsum.photos/100/100?random=" + p.id,
-            banner: p.bannerUrl || "https://picsum.photos/1200/400?random=" + p.id,
+            banner:
+              p.bannerUrl || "https://picsum.photos/1200/400?random=" + p.id,
             isOpen: true,
             category: p.businessCategory || p.type || "Бизнес",
             rating: 5.0,

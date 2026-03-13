@@ -13,11 +13,17 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { API } from "@/lib/api";
 
 type GroupedCategory = {
   category: string;
   label: string;
-  partners: { id: string; name: string; slug: string; logoUrl: string | null }[];
+  partners: {
+    id: string;
+    name: string;
+    slug: string;
+    logoUrl: string | null;
+  }[];
 };
 
 const categoryIcons: Record<string, LucideIcon> = {
@@ -35,7 +41,7 @@ export const PartnerMenu = () => {
   const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
-    fetch("http://localhost:4000/api/partners/grouped")
+    fetch(`${API}/partners/grouped`)
       .then((res) => res.json())
       .then((data: GroupedCategory[]) => {
         setCategories(data);
@@ -52,13 +58,15 @@ export const PartnerMenu = () => {
     >
       <button
         type="button"
-        className={`flex h-full items-center gap-1.5 text-sm font-semibold transition-colors ${isOpen ? "text-orange-600" : "text-gray-600 hover:text-gray-900"
-          }`}
+        className={`flex h-full items-center gap-1.5 text-sm font-semibold transition-colors ${
+          isOpen ? "text-orange-600" : "text-gray-600 hover:text-gray-900"
+        }`}
       >
         Гишүүн байгууллагууд
         <ChevronDown
-          className={`h-4 w-4 transition-transform duration-200 ${isOpen ? "rotate-180" : ""
-            }`}
+          className={`h-4 w-4 transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
         />
       </button>
 
@@ -77,7 +85,12 @@ export const PartnerMenu = () => {
                   Бүртгэлтэй байгууллага байхгүй байна
                 </p>
               ) : (
-                <div className={`grid gap-8`} style={{ gridTemplateColumns: `repeat(${Math.min(categories.length, 4)}, 1fr)` }}>
+                <div
+                  className={`grid gap-8`}
+                  style={{
+                    gridTemplateColumns: `repeat(${Math.min(categories.length, 4)}, 1fr)`,
+                  }}
+                >
                   {categories.map((category, idx) => {
                     const Icon = categoryIcons[category.category] || Store;
                     return (
@@ -86,7 +99,9 @@ export const PartnerMenu = () => {
                           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
                             <Icon className="h-5 w-5" />
                           </div>
-                          <h3 className="text-base font-bold">{category.label}</h3>
+                          <h3 className="text-base font-bold">
+                            {category.label}
+                          </h3>
                           <span className="ml-auto text-xs font-medium text-gray-400">
                             {category.partners.length}
                           </span>
@@ -97,16 +112,18 @@ export const PartnerMenu = () => {
                           data-lenis-prevent="true"
                         >
                           <ul className="space-y-3">
-                            {category.partners.slice(0, 10).map((partner, pIdx) => (
-                              <li key={pIdx}>
-                                <Link
-                                  href={`/company/${partner.slug}`}
-                                  className="inline-block text-sm text-gray-500 transition-transform hover:translate-x-1 hover:text-orange-600"
-                                >
-                                  {partner.name}
-                                </Link>
-                              </li>
-                            ))}
+                            {category.partners
+                              .slice(0, 10)
+                              .map((partner, pIdx) => (
+                                <li key={pIdx}>
+                                  <Link
+                                    href={`/company/${partner.slug}`}
+                                    className="inline-block text-sm text-gray-500 transition-transform hover:translate-x-1 hover:text-orange-600"
+                                  >
+                                    {partner.name}
+                                  </Link>
+                                </li>
+                              ))}
                             {category.partners.length > 10 && (
                               <li>
                                 <Link
@@ -127,7 +144,8 @@ export const PartnerMenu = () => {
 
               <div className="mt-8 flex items-center justify-between border-t border-gray-100 pt-6">
                 <p className="text-sm text-gray-500">
-                  Нийт <span className="font-bold text-gray-900">{totalCount}+</span>{" "}
+                  Нийт{" "}
+                  <span className="font-bold text-gray-900">{totalCount}+</span>{" "}
                   баталгаажсан гишүүн байгууллагууд.
                 </p>
 

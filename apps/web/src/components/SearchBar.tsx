@@ -1,13 +1,20 @@
 "use client";
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { Search, ChevronDown, X, Clock, ArrowRight, Tag, Loader2 } from "lucide-react";
+import {
+  Search,
+  ChevronDown,
+  X,
+  Clock,
+  ArrowRight,
+  Tag,
+  Loader2,
+} from "lucide-react";
+import { API } from "@/lib/api";
 
 interface SearchOption {
   id: string;
   name: string;
 }
-
-const API = "http://localhost:4000/api";
 
 const contextOptions = [
   "Бүгд",
@@ -45,7 +52,10 @@ export const SearchBar = () => {
         if (catRes.ok) {
           const cats = await catRes.json();
           setApiCategories(
-            cats.map((c: any) => ({ id: c.id, name: `${c.icon ?? "🏷️"} ${c.name}` }))
+            cats.map((c: any) => ({
+              id: c.id,
+              name: `${c.icon ?? "🏷️"} ${c.name}`,
+            })),
           );
         }
         if (partRes.ok) {
@@ -62,18 +72,27 @@ export const SearchBar = () => {
   }, []);
 
   const filteredCategories = useMemo(
-    () => apiCategories.filter((cat) => cat.name.toLowerCase().includes(searchQuery.toLowerCase())),
+    () =>
+      apiCategories.filter((cat) =>
+        cat.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
     [searchQuery, apiCategories],
   );
 
   const filteredBrands = useMemo(
-    () => apiBrands.filter((brand) => brand.name.toLowerCase().includes(searchQuery.toLowerCase())),
+    () =>
+      apiBrands.filter((brand) =>
+        brand.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
     [searchQuery, apiBrands],
   );
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
         closeSearch();
       }
     };
@@ -117,15 +136,25 @@ export const SearchBar = () => {
 
       {/* 1. Normal Search Bar */}
       <div
-        className={`relative flex items-center w-full max-w-3xl mx-auto bg-white rounded-full border-2 border-orange-500 h-[48px] transition-all duration-300 ${isFocused ? "opacity-0 invisible scale-95" : "opacity-100 visible scale-100"
-          } cursor-text shadow-md overflow-hidden`}
+        className={`relative flex items-center w-full max-w-3xl mx-auto bg-white rounded-full border-2 border-orange-500 h-[48px] transition-all duration-300 ${
+          isFocused
+            ? "opacity-0 invisible scale-95"
+            : "opacity-100 visible scale-100"
+        } cursor-text shadow-md overflow-hidden`}
         onClick={() => setIsFocused(true)}
       >
         <div className="flex items-center px-4 h-full border-r border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors group">
-          <span className="text-sm font-bold text-slate-700 mr-2">{searchContext}</span>
-          <ChevronDown size={14} className="text-slate-400 group-hover:text-orange-500" />
+          <span className="text-sm font-bold text-slate-700 mr-2">
+            {searchContext}
+          </span>
+          <ChevronDown
+            size={14}
+            className="text-slate-400 group-hover:text-orange-500"
+          />
         </div>
-        <div className="flex-1 px-4 text-slate-400 text-sm">Хайх утгаа оруулна уу...</div>
+        <div className="flex-1 px-4 text-slate-400 text-sm">
+          Хайх утгаа оруулна уу...
+        </div>
         <div className="h-full px-6 flex items-center justify-center text-black">
           <Search size={20} strokeWidth={3} />
         </div>
@@ -133,10 +162,11 @@ export const SearchBar = () => {
 
       {/* 2. Expanded Search UI */}
       <div
-        className={`fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-5xl z-[60] transition-all duration-500 ease-in-out ${isFocused
-          ? "translate-y-0 opacity-100 scale-100"
-          : "-translate-y-12 opacity-0 scale-95 pointer-events-none"
-          }`}
+        className={`fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-5xl z-[60] transition-all duration-500 ease-in-out ${
+          isFocused
+            ? "translate-y-0 opacity-100 scale-100"
+            : "-translate-y-12 opacity-0 scale-95 pointer-events-none"
+        }`}
       >
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-white">
           {/* Search Input Area */}
@@ -147,7 +177,9 @@ export const SearchBar = () => {
                 onClick={() => setIsContextOpen(!isContextOpen)}
                 className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors text-slate-800"
               >
-                <span className="text-sm font-bold whitespace-nowrap">{searchContext}</span>
+                <span className="text-sm font-bold whitespace-nowrap">
+                  {searchContext}
+                </span>
                 <ChevronDown
                   size={16}
                   className={`transition-transform duration-300 ${isContextOpen ? "rotate-180" : ""}`}
@@ -158,9 +190,15 @@ export const SearchBar = () => {
                   {contextOptions.map((opt) => (
                     <button
                       key={opt}
-                      onClick={() => { setSearchContext(opt); setIsContextOpen(false); }}
-                      className={`w-full px-5 py-2.5 text-left text-sm hover:bg-orange-50 hover:text-orange-600 transition-colors ${searchContext === opt ? "text-orange-600 font-bold bg-orange-50/50" : "text-slate-600"
-                        }`}
+                      onClick={() => {
+                        setSearchContext(opt);
+                        setIsContextOpen(false);
+                      }}
+                      className={`w-full px-5 py-2.5 text-left text-sm hover:bg-orange-50 hover:text-orange-600 transition-colors ${
+                        searchContext === opt
+                          ? "text-orange-600 font-bold bg-orange-50/50"
+                          : "text-slate-600"
+                      }`}
                     >
                       {opt}
                     </button>
@@ -211,9 +249,14 @@ export const SearchBar = () => {
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">
                     Хайлтын үр дүн
                   </h3>
-                  {filteredCategories.length === 0 && filteredBrands.length === 0 ? (
+                  {filteredCategories.length === 0 &&
+                  filteredBrands.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-48 text-slate-400">
-                      <Search size={48} strokeWidth={1} className="mb-4 opacity-20" />
+                      <Search
+                        size={48}
+                        strokeWidth={1}
+                        className="mb-4 opacity-20"
+                      />
                       <p>Илэрц олдсонгүй</p>
                     </div>
                   ) : (
@@ -223,7 +266,9 @@ export const SearchBar = () => {
                           <div className="p-3 bg-orange-50 text-orange-500 rounded-xl">
                             <Search size={20} />
                           </div>
-                          <span className="font-semibold text-slate-700">"{searchQuery}" хайх</span>
+                          <span className="font-semibold text-slate-700">
+                            "{searchQuery}" хайх
+                          </span>
                         </div>
                         <ArrowRight
                           size={18}
@@ -238,7 +283,9 @@ export const SearchBar = () => {
                   <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
                     <Clock size={32} className="text-slate-300" />
                   </div>
-                  <h4 className="text-slate-800 font-bold mb-2">Сүүлд үзсэн бараа байхгүй</h4>
+                  <h4 className="text-slate-800 font-bold mb-2">
+                    Сүүлд үзсэн бараа байхгүй
+                  </h4>
                   <p className="text-slate-400 text-sm max-w-[240px]">
                     Таны саяхан сонирхсон бүтээгдэхүүнүүд энд харагдах болно.
                   </p>
@@ -264,18 +311,27 @@ export const SearchBar = () => {
                     </h4>
                     <div className="space-y-1">
                       {filteredCategories.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic">Ангилал олдсонгүй</p>
-                      ) : filteredCategories.map((cat) => (
-                        <button
-                          key={cat.id}
-                          className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center group-hover:border-orange-200">
-                            <Tag size={14} className="text-slate-300 group-hover:text-orange-500" />
-                          </div>
-                          <span className="text-sm font-bold text-left">{cat.name}</span>
-                        </button>
-                      ))}
+                        <p className="text-xs text-slate-400 italic">
+                          Ангилал олдсонгүй
+                        </p>
+                      ) : (
+                        filteredCategories.map((cat) => (
+                          <button
+                            key={cat.id}
+                            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center group-hover:border-orange-200">
+                              <Tag
+                                size={14}
+                                className="text-slate-300 group-hover:text-orange-500"
+                              />
+                            </div>
+                            <span className="text-sm font-bold text-left">
+                              {cat.name}
+                            </span>
+                          </button>
+                        ))
+                      )}
                     </div>
                   </div>
 
@@ -285,18 +341,24 @@ export const SearchBar = () => {
                     </h4>
                     <div className="grid grid-cols-1 gap-1">
                       {filteredBrands.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic">Байгууллага олдсонгүй</p>
-                      ) : filteredBrands.map((brand) => (
-                        <button
-                          key={brand.id}
-                          className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center text-[10px] font-black group-hover:bg-orange-500 shrink-0">
-                            {brand.name.charAt(0)}
-                          </div>
-                          <span className="text-sm font-bold truncate">{brand.name}</span>
-                        </button>
-                      ))}
+                        <p className="text-xs text-slate-400 italic">
+                          Байгууллага олдсонгүй
+                        </p>
+                      ) : (
+                        filteredBrands.map((brand) => (
+                          <button
+                            key={brand.id}
+                            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center text-[10px] font-black group-hover:bg-orange-500 shrink-0">
+                              {brand.name.charAt(0)}
+                            </div>
+                            <span className="text-sm font-bold truncate">
+                              {brand.name}
+                            </span>
+                          </button>
+                        ))
+                      )}
                     </div>
                   </div>
                 </>
@@ -306,8 +368,12 @@ export const SearchBar = () => {
 
           <div className="bg-slate-50 px-8 py-3 border-t border-slate-100 flex justify-between items-center">
             <div className="flex gap-4">
-              <span className="text-[10px] text-slate-400 font-bold uppercase">ESC - Хаах</span>
-              <span className="text-[10px] text-slate-400 font-bold uppercase">ENTER - Хайх</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase">
+                ESC - Хаах
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase">
+                ENTER - Хайх
+              </span>
             </div>
             <div className="text-[10px] text-orange-500 font-black flex items-center gap-1 cursor-pointer hover:underline">
               БҮХ БРЭНДҮҮД <ArrowRight size={10} strokeWidth={3} />
