@@ -191,6 +191,6 @@ app.post("/auth/login", async (req, res) => {
 
 const port = process.env.PORT || 4000;
 
-app.listen(port, () => {
-  console.log(`[api] Application is running on: http://localhost:${port}`);
+app.listen(Number(port), "0.0.0.0", () => {
+  console.log(`[api] Application is running on: http://0.0.0.0:${port}`);
 });
