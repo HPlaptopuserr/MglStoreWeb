@@ -57,7 +57,7 @@ export const PartnershipHeroSection: React.FC = () => {
                   <div className="h-32 bg-white/5 rounded-xl animate-pulse delay-200"></div>
                   <div className="col-span-2 h-16 bg-[#FFB700]/20 rounded-xl border border-[#FFB700]/30 flex items-center justify-center">
                     <span className="text-[#FFB700] font-bold">
-                      Growth +125%
+                      Өсөлт +125%
                     </span>
                   </div>
                 </div>
@@ -69,8 +69,8 @@ export const PartnershipHeroSection: React.FC = () => {
                     <ArrowRight className="w-5 h-5 text-green-600 -rotate-45" />
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Revenue</div>
-                    <div className="font-bold text-gray-900">$12,450</div>
+                    <div className="text-xs text-gray-500">Орлого</div>
+                    <div className="font-bold text-gray-900">Өсөлт</div>
                   </div>
                 </div>
               </div>

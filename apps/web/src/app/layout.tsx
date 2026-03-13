@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       >
         <SmoothScrollProvider>
           <Header />
-          <main className="grow pt-32">{children}</main>
+          <main className="grow pt-40 md:pt-32">{children}</main>
           <FloatingSideNav />
           <Footer />
         </SmoothScrollProvider>

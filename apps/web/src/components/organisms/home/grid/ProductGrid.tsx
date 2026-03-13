@@ -234,7 +234,7 @@ export const ProductGrid = () => {
             {visibleProducts.map((product, idx) => (
               <div
                 key={product.id}
-                className="flex shrink-0 w-[calc(50%-3px)] sm:w-[calc(33.333%-4px)] md:w-[calc(25%-5px)] border border-transparent hover:border-black transition-colors duration-200"
+                className="shrink-0 w-[calc(50%-3px)] sm:w-[calc(33.333%-4px)] md:w-[calc(25%-5px)] border border-transparent hover:border-black transition-colors duration-200"
               >
                 <ProductCard
                   image={product.image}

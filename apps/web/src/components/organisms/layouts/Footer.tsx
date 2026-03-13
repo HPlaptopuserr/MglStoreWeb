@@ -1,400 +1,264 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import {
   Facebook,
   Instagram,
   Youtube,
-  Linkedin,
   Twitter,
+  Mail,
+  Phone,
+  MapPin,
   ArrowRight,
+  Store,
+  ShieldCheck,
+  Truck,
+  HeartHandshake,
 } from "lucide-react";
 
 export const Footer = () => {
   return (
     <footer className="w-full font-sans">
-      {/* Top CTA Banner - Adidas Style */}
-      {/*       <div className="bg-[#FF6600] text-white py-8 px-4 md:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl flex flex-col md:flex-row items-center justify-between gap-6">
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-center md:text-left uppercase">
-            MGL Club-д нэгдээд 15% хөнгөлөлт эдлээрэй
-          </h2>
-          <button className="bg-white text-black px-6 py-3 font-bold text-sm uppercase tracking-wider hover:bg-gray-100 transition-colors flex items-center gap-2 group shrink-0">
-            Үнэгүй бүртгүүлэх
-            <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-          </button>
+      {/* ── Trust Badges ── */}
+      <div className="border-t border-gray-100 bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-8">
+            {[
+              {
+                icon: Truck,
+                title: "Хурдан хүргэлт",
+                desc: "Улаанбаатар хотод",
+                color: "text-blue-600 bg-blue-50",
+              },
+              {
+                icon: ShieldCheck,
+                title: "Баталгаат бараа",
+                desc: "100% жинхэнэ бүтээгдэхүүн",
+                color: "text-green-600 bg-green-50",
+              },
+              {
+                icon: HeartHandshake,
+                title: "Түншлэл",
+                desc: "300+ бизнес нэгдсэн",
+                color: "text-amber-600 bg-amber-50",
+              },
+              {
+                icon: Store,
+                title: "Нэг дэлгүүр",
+                desc: "Бүх зүйл нэг дороос",
+                color: "text-purple-600 bg-purple-50",
+              },
+            ].map((item) => (
+              <div key={item.title} className="flex items-start gap-3 sm:gap-4">
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-12 sm:w-12 ${item.color}`}
+                >
+                  <item.icon className="h-5 w-5 sm:h-6 sm:w-6" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 sm:text-base">
+                    {item.title}
+                  </p>
+                  <p className="text-xs text-gray-500 sm:text-sm">
+                    {item.desc}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div> */}
+      </div>
 
-      {/* Main Footer Content - Light Theme */}
-      <div className="bg-gray-50 text-gray-900 pt-16 pb-8 px-4 md:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 mb-16">
-          {/* Column 1 */}
-          <div className="flex flex-col gap-4">
-            <h3 className="font-bold text-lg uppercase tracking-wider mb-2">
-              Бүтээгдэхүүн
-            </h3>
-            <ul className="flex flex-col gap-2 text-sm text-gray-600">
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Гутал
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Хувцас
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Аксессуар
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Бэлгийн карт
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Шинэ загвар
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Хямдрал
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 2 */}
-          <div className="flex flex-col gap-4">
-            <h3 className="font-bold text-lg uppercase tracking-wider mb-2">
-              Спорт
-            </h3>
-            <ul className="flex flex-col gap-2 text-sm text-gray-600">
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Хөл бөмбөг
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Гүйлт
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Сагсан бөмбөг
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Фитнесс
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Теннис
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Аялал
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          <div className="flex flex-col gap-4">
-            <h3 className="font-bold text-lg uppercase tracking-wider mb-2">
-              Үйлчилгээ
-            </h3>
-            <ul className="flex flex-col gap-2 text-sm text-gray-600">
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Adicolor
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Ultraboost
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  NMD
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Forum
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Superstar
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Running
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 4 */}
-          <div className="flex flex-col gap-4">
-            <h3 className="font-bold text-lg uppercase tracking-wider mb-2">
-              Тусламж
-            </h3>
-            <ul className="flex flex-col gap-2 text-sm text-gray-600">
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Тусламжийн төв
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Буцаалт
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Хүргэлт
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Захиалга хянах
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Хэмжээний хүснэгт
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Төлбөрийн нөхцөл
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 5 */}
-          <div className="flex flex-col gap-4">
-            <h3 className="font-bold text-lg uppercase tracking-wider mb-2">
-              Компани
-            </h3>
-            <ul className="flex flex-col gap-2 text-sm text-gray-600">
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Бидний тухай
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/company/partnership"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Хамтран ажиллах
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Ажлын байр
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  Мэдээ
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="#"
-                  className="hover:text-[#FF6600] hover:underline transition-colors"
-                >
-                  MGL store
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 6 - Socials */}
-          <div className="flex flex-col gap-4">
-            <h3 className="font-bold text-lg uppercase tracking-wider mb-2">
-              Биднийг дагаарай
-            </h3>
-            <div className="flex flex-col gap-3">
-              <Link
-                href="#"
-                className="flex items-center gap-3 text-gray-600 hover:text-[#FF6600] transition-colors group"
-              >
-                <Facebook className="h-5 w-5 group-hover:scale-110 transition-transform" />
-                <span className="text-sm">Facebook</span>
-              </Link>
-              <Link
-                href="#"
-                className="flex items-center gap-3 text-gray-600 hover:text-[#FF6600] transition-colors group"
-              >
-                <Instagram className="h-5 w-5 group-hover:scale-110 transition-transform" />
-                <span className="text-sm">Instagram</span>
-              </Link>
-              <Link
-                href="#"
-                className="flex items-center gap-3 text-gray-600 hover:text-[#FF6600] transition-colors group"
-              >
-                <Twitter className="h-5 w-5 group-hover:scale-110 transition-transform" />
-                <span className="text-sm">Twitter</span>
-              </Link>
-              <Link
-                href="#"
-                className="flex items-center gap-3 text-gray-600 hover:text-[#FF6600] transition-colors group"
-              >
-                <Youtube className="h-5 w-5 group-hover:scale-110 transition-transform" />
-                <span className="text-sm">YouTube</span>
-              </Link>
-              <Link
-                href="#"
-                className="flex items-center gap-3 text-gray-600 hover:text-[#FF6600] transition-colors group"
-              >
-                <Linkedin className="h-5 w-5 group-hover:scale-110 transition-transform" />
-                <span className="text-sm">LinkedIn</span>
-              </Link>
+      {/* ── Newsletter CTA ── */}
+      <div className="bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <div className="flex flex-col items-center gap-6 text-center md:flex-row md:justify-between md:text-left">
+            <div className="max-w-lg">
+              <h3 className="text-xl font-bold text-white sm:text-2xl">
+                Шинэ мэдээлэл авах уу?
+              </h3>
+              <p className="mt-1.5 text-sm text-gray-400 sm:text-base">
+                Хямдрал, шинэ дэлгүүрүүд, онцгой санал — и-мэйлээр хүлээн
+                аваарай.
+              </p>
             </div>
+            <form
+              onSubmit={(e) => e.preventDefault()}
+              className="flex w-full max-w-md items-center gap-2"
+            >
+              <div className="relative flex-1">
+                <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                <input
+                  type="email"
+                  placeholder="И-мэйл хаяг"
+                  className="w-full rounded-xl border border-gray-700 bg-gray-800 py-3 pl-10 pr-4 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+              <button
+                type="submit"
+                className="flex shrink-0 items-center gap-1.5 rounded-xl bg-amber-500 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-amber-600 active:bg-amber-700"
+              >
+                Бүртгүүлэх
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </form>
           </div>
         </div>
+      </div>
 
-        {/* Bottom Legal Section - Toyota Style Layout */}
-        <div className="mx-auto max-w-7xl border-t border-gray-200 pt-8 flex flex-col md:flex-row items-center justify-between gap-6">
-          {/* Logo & Copyright */}
-          <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
-            <Link href="/" className="flex items-end gap-1">
-              <span className="text-2xl font-bold tracking-tight text-[#FF6600]">
-                MGL store
-              </span>
-              <span className="text-[8px] mb-1 text-gray-500 font-medium">
-                баяр
-                <br />
-                нэмье
-              </span>
-            </Link>
-            <div className="text-xs text-gray-500">
-              © 2026 MGL STORE. Бүх эрх хуулиар хамгаалагдсан.
+      {/* ── Main Footer Links ── */}
+      <div className="bg-gray-950 px-4 pt-12 pb-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5">
+            {/* Brand column */}
+            <div className="col-span-2 sm:col-span-2 md:col-span-4 lg:col-span-1 lg:pr-8">
+              <Link href="/" className="inline-flex items-center gap-2">
+                <Image
+                  src="/logo.png"
+                  alt="MGL Store"
+                  width={44}
+                  height={32}
+                  className="brightness-0 invert"
+                />
+                <span className="text-lg font-bold text-white">MGL Store</span>
+              </Link>
+              <p className="mt-3 text-sm leading-relaxed text-gray-400">
+                Монголын бизнесүүдийг нэг дор холбосон худалдааны нэгдсэн
+                платформ.
+              </p>
+
+              {/* Social icons */}
+              <div className="mt-5 flex items-center gap-2">
+                {[
+                  { icon: Facebook, href: "#", label: "Facebook" },
+                  { icon: Instagram, href: "#", label: "Instagram" },
+                  { icon: Twitter, href: "#", label: "Twitter" },
+                  { icon: Youtube, href: "#", label: "YouTube" },
+                ].map((social) => (
+                  <Link
+                    key={social.label}
+                    href={social.href}
+                    aria-label={social.label}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-800 text-gray-400 transition-colors hover:bg-amber-500 hover:text-white"
+                  >
+                    <social.icon className="h-4 w-4" />
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            {/* Дэлгүүр хэсэх */}
+            <div>
+              <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-500">
+                Дэлгүүр хэсэх
+              </h4>
+              <ul className="space-y-2.5">
+                {[
+                  { label: "Бүх бүтээгдэхүүн", href: "/products" },
+                  { label: "Дэлгүүрүүд", href: "/organizations" },
+                  { label: "Ангилалууд", href: "/products" },
+                  { label: "Хямдрал", href: "#" },
+                  { label: "Шинэ бараа", href: "#" },
+                ].map((link) => (
+                  <li key={link.label}>
+                    <Link
+                      href={link.href}
+                      className="text-sm text-gray-400 transition-colors hover:text-white"
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Компани */}
+            <div>
+              <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-500">
+                Компани
+              </h4>
+              <ul className="space-y-2.5">
+                {[
+                  { label: "Бидний тухай", href: "#" },
+                  { label: "Хамтран ажиллах", href: "/company/partnership" },
+                  { label: "Ажлын байр", href: "/company/careers" },
+                  { label: "Мэдээ", href: "#" },
+                  { label: "Блог", href: "#" },
+                ].map((link) => (
+                  <li key={link.label}>
+                    <Link
+                      href={link.href}
+                      className="text-sm text-gray-400 transition-colors hover:text-white"
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Тусламж & Холбоо барих */}
+            <div>
+              <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-500">
+                Тусламж
+              </h4>
+              <ul className="space-y-2.5">
+                {[
+                  { label: "Тусламжийн төв", href: "#" },
+                  { label: "Хүргэлтийн мэдээлэл", href: "#" },
+                  { label: "Буцаалтын бодлого", href: "#" },
+                  { label: "Түгээмэл асуулт", href: "#" },
+                ].map((link) => (
+                  <li key={link.label}>
+                    <Link
+                      href={link.href}
+                      className="text-sm text-gray-400 transition-colors hover:text-white"
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-6 space-y-2.5">
+                <a
+                  href="tel:+97677001234"
+                  className="flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-white"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                  7700-1234
+                </a>
+                <a
+                  href="mailto:info@mglstore.mn"
+                  className="flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-white"
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  info@mglstore.mn
+                </a>
+                <div className="flex items-start gap-2 text-sm text-gray-500">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>Улаанбаатар, Монгол</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Legal Links */}
-          <div className="flex flex-wrap justify-center gap-4 md:gap-8 text-xs text-gray-500">
-            <Link href="#" className="hover:text-[#FF6600] transition-colors">
-              Нууцлалын бодлого
-            </Link>
-            <span className="hidden md:inline text-gray-300">|</span>
-            <Link href="#" className="hover:text-[#FF6600] transition-colors">
-              Үйлчилгээний нөхцөл
-            </Link>
-            <span className="hidden md:inline text-gray-300">|</span>
-            <Link href="#" className="hover:text-[#FF6600] transition-colors">
-              Сайтын бүтэц
-            </Link>
-            <span className="hidden md:inline text-gray-300">|</span>
-            <div className="flex items-center gap-2">
-              <Link
-                href="#"
-                className="hover:text-[#FF6600] transition-colors font-bold"
-              >
-                Холбоо барих
+          {/* ── Bottom Bar ── */}
+          <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-gray-800 pt-6 sm:flex-row">
+            <p className="text-xs text-gray-500">
+              © {new Date().getFullYear()} MGL Store. Бүх эрх хуулиар
+              хамгаалагдсан.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-gray-500 sm:gap-6">
+              <Link href="#" className="transition-colors hover:text-gray-300">
+                Нууцлалын бодлого
               </Link>
-              <Link
-                href="#"
-                className="hover:text-[#FF6600] transition-colors font-bold"
-              >
-                FAQ
+              <Link href="#" className="transition-colors hover:text-gray-300">
+                Үйлчилгээний нөхцөл
+              </Link>
+              <Link href="#" className="transition-colors hover:text-gray-300">
+                Cookie тохиргоо
               </Link>
             </div>
           </div>

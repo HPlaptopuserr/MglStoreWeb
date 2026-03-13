@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Building2,
   Briefcase,
@@ -8,8 +8,35 @@ import {
   Mail,
   Phone,
   ArrowRight,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import { Button } from "../../../../../../packages/ui/src/atoms/Button";
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+
+interface BusinessCategory {
+  id: string;
+  slug: string;
+  name: string;
+  icon: string | null;
+  sortOrder: number;
+}
+
+const FALLBACK_CATEGORIES: BusinessCategory[] = [
+  { id: "1", slug: "retail", name: "Худалдаа", icon: null, sortOrder: 0 },
+  { id: "2", slug: "food", name: "Хоол үйлдвэрлэл", icon: null, sortOrder: 1 },
+  { id: "3", slug: "service", name: "Үйлчилгээ", icon: null, sortOrder: 2 },
+  { id: "4", slug: "pharmacy", name: "Эм, эмнэлэг", icon: null, sortOrder: 3 },
+  {
+    id: "5",
+    slug: "electronics",
+    name: "Электроник",
+    icon: null,
+    sortOrder: 4,
+  },
+  { id: "6", slug: "other", name: "Бусад", icon: null, sortOrder: 5 },
+];
 
 export function PartnershipForm() {
   const [form, setForm] = useState({
@@ -22,6 +49,33 @@ export function PartnershipForm() {
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  /* ── Business categories from API ── */
+  const [categories, setCategories] = useState<BusinessCategory[]>([]);
+  const [catOpen, setCatOpen] = useState(false);
+  const catRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch(`${API}/business-categories`)
+      .then((r) => r.json())
+      .then((data: BusinessCategory[]) =>
+        setCategories(data?.length ? data : FALLBACK_CATEGORIES),
+      )
+      .catch(() => setCategories(FALLBACK_CATEGORIES));
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (catRef.current && !catRef.current.contains(e.target as Node)) {
+        setCatOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  const selectedCat = categories.find((c) => c.slug === form.businessCategory);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -112,25 +166,108 @@ export function PartnershipForm() {
             </div>
           </div>
 
+          {/* ── Custom category dropdown ── */}
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-gray-700 ml-1">
               Үйл ажиллагааны чиглэл
             </label>
-            <div className="relative">
-              <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
-              <select
-                name="businessCategory"
-                value={form.businessCategory}
-                onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-[#FFB700] focus:border-[#FFB700] block pl-11 p-3.5 appearance-none outline-none"
-                required
+
+            {/* hidden native select for form-required validation */}
+            <select
+              tabIndex={-1}
+              name="businessCategory"
+              value={form.businessCategory}
+              onChange={() => {}}
+              required
+              className="sr-only"
+              aria-hidden="true"
+            >
+              <option value=""></option>
+              {categories.map((c) => (
+                <option key={c.slug} value={c.slug}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+
+            <div ref={catRef} className="relative">
+              <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5 z-1 pointer-events-none" />
+
+              {/* trigger */}
+              <button
+                type="button"
+                onClick={() => setCatOpen((v) => !v)}
+                className={`w-full bg-gray-50 border text-left text-sm rounded-xl pl-11 pr-10 p-3.5 outline-none transition-all flex items-center ${
+                  catOpen
+                    ? "border-[#FFB700] ring-2 ring-[#FFB700]/30"
+                    : "border-gray-200 hover:border-gray-300"
+                } ${selectedCat ? "text-gray-900" : "text-gray-400"}`}
               >
-                <option value="">Чиглэл сонгох</option>
-                <option value="retail">Худалдаа</option>
-                <option value="service">Үйлчилгээ</option>
-                <option value="food">Хоол үйлдвэрлэл</option>
-                <option value="other">Бусад</option>
-              </select>
+                {selectedCat ? (
+                  <span className="flex items-center gap-2">
+                    {selectedCat.icon && (
+                      <img
+                        src={selectedCat.icon}
+                        alt=""
+                        className="h-4 w-4 rounded object-cover"
+                      />
+                    )}
+                    {selectedCat.name}
+                  </span>
+                ) : (
+                  "Чиглэл сонгох"
+                )}
+              </button>
+
+              {/* chevron */}
+              <ChevronDown
+                className={`absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 transition-transform pointer-events-none ${catOpen ? "rotate-180" : ""}`}
+              />
+
+              {/* options list */}
+              {catOpen && (
+                <ul
+                  onWheel={(e) => e.stopPropagation()}
+                  className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 max-h-60 overflow-auto overscroll-contain animate-in fade-in slide-in-from-top-1 duration-150"
+                >
+                  {categories.map((cat) => {
+                    const active = form.businessCategory === cat.slug;
+                    return (
+                      <li key={cat.slug}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm((p) => ({
+                              ...p,
+                              businessCategory: cat.slug,
+                            }));
+                            setCatOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
+                            active
+                              ? "bg-[#FFB700]/10 text-[#FFB700] font-semibold"
+                              : "text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          {cat.icon ? (
+                            <img
+                              src={cat.icon}
+                              alt=""
+                              className="h-5 w-5 rounded object-cover"
+                            />
+                          ) : (
+                            <Briefcase className="h-4 w-4 text-gray-400 shrink-0" />
+                          )}
+                          <span className="flex-1">{cat.name}</span>
+                          {active && (
+                            <Check className="h-4 w-4 text-[#FFB700] shrink-0" />
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           </div>
 
