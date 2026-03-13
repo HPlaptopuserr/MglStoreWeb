@@ -12,22 +12,26 @@ dotenv.config();
 
 const app = express();
 
-app.use(
-  cors({
-    origin: [
-      // Local development
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:3002",
-      // Production - Render
-      process.env.WEB_URL,
-      process.env.ADMIN_URL,
-      process.env.VENDOR_URL,
-      // Legacy
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",")
+  : [
       "http://mglstore.mn:3002",
       "http://admin.mglstore.mn:3003",
       "http://vendor.mglstore.mn:3004",
-    ].filter(Boolean) as string[],
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:3002",
+      "https://mgl-web-n7wg.onrender.com",
+      "https://mgl-admin.onrender.com",
+      "https://mgl-vendor.onrender.com",
+      "https://mglstore.mn",
+      "https://admin.mglstore.mn",
+      "https://vendor.mglstore.mn",
+    ];
+
+app.use(
+  cors({
+    origin: allowedOrigins,
     credentials: true,
   }),
 );
