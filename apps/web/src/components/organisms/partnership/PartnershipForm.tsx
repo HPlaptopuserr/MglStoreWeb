@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Building2,
   Briefcase,
@@ -12,7 +12,14 @@ import {
 import { API } from "@/lib/api";
 import { Button } from "../../../../../../packages/ui/src/atoms/Button";
 
+type BusinessCategory = {
+  id: string;
+  slug: string;
+  name: string;
+};
+
 export function PartnershipForm() {
+  const [categories, setCategories] = useState<BusinessCategory[]>([]);
   const [form, setForm] = useState({
     organizationName: "",
     businessCategory: "",
@@ -23,6 +30,21 @@ export function PartnershipForm() {
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await fetch(`${API}/business-categories`);
+        if (res.ok) {
+          const data = await res.json();
+          setCategories(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch categories", error);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -127,10 +149,11 @@ export function PartnershipForm() {
                 required
               >
                 <option value="">Чиглэл сонгох</option>
-                <option value="retail">Худалдаа</option>
-                <option value="service">Үйлчилгээ</option>
-                <option value="food">Хоол үйлдвэрлэл</option>
-                <option value="other">Бусад</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.slug}>
+                    {cat.name}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
