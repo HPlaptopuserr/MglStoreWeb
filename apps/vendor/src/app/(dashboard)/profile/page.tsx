@@ -26,8 +26,7 @@ import {
   Loader2,
   Save,
 } from "lucide-react";
-
-const API = "http://localhost:4000/api";
+import { API } from "@/lib/api";
 
 type BusinessCategory = {
   id: string;
@@ -64,7 +63,9 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const storedUser = JSON.parse(localStorage.getItem("vendor_user") || "{}");
+        const storedUser = JSON.parse(
+          localStorage.getItem("vendor_user") || "{}",
+        );
         const userEmail = storedUser.email;
 
         const [partnersRes, catsRes] = await Promise.all([
@@ -123,8 +124,12 @@ export default function ProfilePage() {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center text-center p-8">
         <Building2 className="w-16 h-16 text-slate-300 mb-4" />
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">Байгууллагын мэдээлэл олдсонгүй</h2>
-        <p className="text-slate-500 mb-6">Таны бүртгэлтэй байгууллагын мэдээлэл системд олдсонгүй.</p>
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">
+          Байгууллагын мэдээлэл олдсонгүй
+        </h2>
+        <p className="text-slate-500 mb-6">
+          Таны бүртгэлтэй байгууллагын мэдээлэл системд олдсонгүй.
+        </p>
         <button
           onClick={() => router.back()}
           className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-colors"
@@ -136,15 +141,41 @@ export default function ProfilePage() {
     );
   }
 
-  const currentCat = categories.find((c) => c.slug === partner.businessCategory);
+  const currentCat = categories.find(
+    (c) => c.slug === partner.businessCategory,
+  );
 
   const statItems = partner.stats
     ? [
-      { label: "Хэрэглэгч", value: partner.stats.users, icon: Users, color: "text-indigo-600", bg: "bg-indigo-50" },
-      { label: "Бүтээгдэхүүн", value: partner.stats.products, icon: Package, color: "text-emerald-600", bg: "bg-emerald-50" },
-      { label: "Салбар", value: partner.stats.branches, icon: GitBranch, color: "text-amber-600", bg: "bg-amber-50" },
-      { label: "Захиалга", value: partner.stats.orders, icon: ShoppingCart, color: "text-sky-600", bg: "bg-sky-50" },
-    ]
+        {
+          label: "Хэрэглэгч",
+          value: partner.stats.users,
+          icon: Users,
+          color: "text-indigo-600",
+          bg: "bg-indigo-50",
+        },
+        {
+          label: "Бүтээгдэхүүн",
+          value: partner.stats.products,
+          icon: Package,
+          color: "text-emerald-600",
+          bg: "bg-emerald-50",
+        },
+        {
+          label: "Салбар",
+          value: partner.stats.branches,
+          icon: GitBranch,
+          color: "text-amber-600",
+          bg: "bg-amber-50",
+        },
+        {
+          label: "Захиалга",
+          value: partner.stats.orders,
+          icon: ShoppingCart,
+          color: "text-sky-600",
+          bg: "bg-sky-50",
+        },
+      ]
     : [];
 
   return (
@@ -153,11 +184,21 @@ export default function ProfilePage() {
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="relative h-52 bg-gradient-to-br from-slate-100 to-slate-200 group/cover">
           {coverPreview ? (
-            <img src={coverPreview} alt="Cover" className="absolute inset-0 w-full h-full object-cover" />
+            <img
+              src={coverPreview}
+              alt="Cover"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-[#FFAD02]/10 via-amber-50 to-slate-100" />
           )}
-          <input ref={coverInputRef} type="file" accept="image/*" onChange={handleCoverUpload} className="hidden" />
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleCoverUpload}
+            className="hidden"
+          />
           <button
             onClick={() => coverInputRef.current?.click()}
             className="absolute top-4 right-4 z-10 flex items-center gap-2 rounded-xl bg-white/80 backdrop-blur-sm px-4 py-2 text-slate-600 text-sm font-semibold opacity-0 group-hover/cover:opacity-100 transition-all hover:bg-white shadow-sm border border-slate-200/50"
@@ -172,9 +213,17 @@ export default function ProfilePage() {
             <div className="relative group/avatar">
               <div className="w-28 h-28 rounded-2xl bg-white border-4 border-white shadow-lg overflow-hidden flex items-center justify-center">
                 {profilePreview ? (
-                  <img src={profilePreview} alt={partner.name} className="w-full h-full object-cover" />
+                  <img
+                    src={profilePreview}
+                    alt={partner.name}
+                    className="w-full h-full object-cover"
+                  />
                 ) : partner.logoUrl ? (
-                  <img src={partner.logoUrl} alt={partner.name} className="w-full h-full object-cover" />
+                  <img
+                    src={partner.logoUrl}
+                    alt={partner.name}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <div className="w-full h-full bg-gradient-to-br from-[#FFAD02] to-amber-500 flex items-center justify-center">
                     <span className="text-white text-4xl font-black">
@@ -182,7 +231,13 @@ export default function ProfilePage() {
                     </span>
                   </div>
                 )}
-                <input ref={profileInputRef} type="file" accept="image/*" onChange={handleProfileUpload} className="hidden" />
+                <input
+                  ref={profileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfileUpload}
+                  className="hidden"
+                />
                 <button
                   onClick={() => profileInputRef.current?.click()}
                   className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover/avatar:opacity-100 transition-opacity rounded-2xl"
@@ -196,8 +251,12 @@ export default function ProfilePage() {
           <div className="pt-20 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-black text-slate-900">{partner.name}</h1>
-                {partner.isVerified && <CheckCircle2 className="text-blue-500 w-6 h-6" />}
+                <h1 className="text-3xl font-black text-slate-900">
+                  {partner.name}
+                </h1>
+                {partner.isVerified && (
+                  <CheckCircle2 className="text-blue-500 w-6 h-6" />
+                )}
               </div>
               <p className="text-slate-500 font-medium mt-1">@{partner.slug}</p>
             </div>
@@ -226,13 +285,22 @@ export default function ProfilePage() {
       {statItems.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {statItems.map((stat) => (
-            <div key={stat.label} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
-              <div className={`w-12 h-12 ${stat.bg} rounded-xl flex items-center justify-center shrink-0`}>
+            <div
+              key={stat.label}
+              className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex items-center gap-4 hover:shadow-md transition-shadow"
+            >
+              <div
+                className={`w-12 h-12 ${stat.bg} rounded-xl flex items-center justify-center shrink-0`}
+              >
                 <stat.icon size={22} className={stat.color} />
               </div>
               <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{stat.label}</p>
-                <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  {stat.label}
+                </p>
+                <p className={`text-2xl font-black ${stat.color}`}>
+                  {stat.value}
+                </p>
               </div>
             </div>
           ))}
@@ -244,19 +312,42 @@ export default function ProfilePage() {
         <div className="lg:col-span-2 space-y-6">
           {/* Org Details */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">Байгууллагын мэдээлэл</h3>
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
+              Байгууллагын мэдээлэл
+            </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <InfoItem icon={<FileText size={18} className="text-slate-400" />} label="Регистрийн дугаар" value={partner.taxId} />
-              <InfoItem icon={<Calendar size={18} className="text-slate-400" />} label="Бүртгүүлсэн огноо" value={new Date(partner.createdAt).toLocaleDateString("mn-MN")} />
-              <InfoItem icon={<Shield size={18} className="text-slate-400" />} label="Баталгаажилт" value={partner.isVerified ? "Баталгаажсан" : "Баталгаажаагүй"} valueColor={partner.isVerified ? "text-emerald-600" : "text-amber-600"} />
-              <InfoItem icon={<Briefcase size={18} className="text-slate-400" />} label="Төрөл" value={partner.type} />
+              <InfoItem
+                icon={<FileText size={18} className="text-slate-400" />}
+                label="Регистрийн дугаар"
+                value={partner.taxId}
+              />
+              <InfoItem
+                icon={<Calendar size={18} className="text-slate-400" />}
+                label="Бүртгүүлсэн огноо"
+                value={new Date(partner.createdAt).toLocaleDateString("mn-MN")}
+              />
+              <InfoItem
+                icon={<Shield size={18} className="text-slate-400" />}
+                label="Баталгаажилт"
+                value={partner.isVerified ? "Баталгаажсан" : "Баталгаажаагүй"}
+                valueColor={
+                  partner.isVerified ? "text-emerald-600" : "text-amber-600"
+                }
+              />
+              <InfoItem
+                icon={<Briefcase size={18} className="text-slate-400" />}
+                label="Төрөл"
+                value={partner.type}
+              />
             </div>
           </div>
 
           {/* ─── BUSINESS CATEGORY EDITOR ─── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Бизнесийн ангилал</h3>
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
+                Бизнесийн ангилал
+              </h3>
               {saved && (
                 <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
                   <Check size={13} /> Хадгалагдлаа
@@ -265,7 +356,8 @@ export default function ProfilePage() {
             </div>
 
             <p className="text-sm text-slate-500 mb-4">
-              Таны байгууллага ямар ангилалд харьяалагдахыг сонгоно уу. Энэ мэдээлэл нийтийн хайлт болон ангиллалд харагдана.
+              Таны байгууллага ямар ангилалд харьяалагдахыг сонгоно уу. Энэ
+              мэдээлэл нийтийн хайлт болон ангиллалд харагдана.
             </p>
 
             <div className="relative">
@@ -276,22 +368,33 @@ export default function ProfilePage() {
               >
                 <div className="flex items-center gap-3">
                   {saving ? (
-                    <Loader2 size={18} className="text-slate-400 animate-spin" />
+                    <Loader2
+                      size={18}
+                      className="text-slate-400 animate-spin"
+                    />
                   ) : (
                     <Tag size={18} className="text-slate-400" />
                   )}
-                  <span className={currentCat ? "text-slate-800" : "text-slate-400"}>
+                  <span
+                    className={currentCat ? "text-slate-800" : "text-slate-400"}
+                  >
                     {currentCat
                       ? `${currentCat.icon ?? "🏷️"} ${currentCat.name}`
                       : "Ангилал сонгоно уу..."}
                   </span>
                 </div>
-                <ChevronDown size={16} className={`text-slate-400 transition-transform ${catOpen ? "rotate-180" : ""}`} />
+                <ChevronDown
+                  size={16}
+                  className={`text-slate-400 transition-transform ${catOpen ? "rotate-180" : ""}`}
+                />
               </button>
 
               {catOpen && (
                 <>
-                  <div className="fixed inset-0 z-10" onClick={() => setCatOpen(false)} />
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setCatOpen(false)}
+                  />
                   <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
                     <button
                       onClick={() => handleCategorySelect(null)}
@@ -307,13 +410,20 @@ export default function ProfilePage() {
                         className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-indigo-50 transition-colors"
                       >
                         {partner.businessCategory === cat.slug ? (
-                          <Check size={14} className="text-indigo-500 shrink-0" />
+                          <Check
+                            size={14}
+                            className="text-indigo-500 shrink-0"
+                          />
                         ) : (
                           <span className="w-3.5" />
                         )}
                         <span className="text-lg">{cat.icon ?? "🏷️"}</span>
-                        <span className="font-semibold text-slate-700">{cat.name}</span>
-                        <code className="ml-auto text-xs text-slate-400 font-mono">{cat.slug}</code>
+                        <span className="font-semibold text-slate-700">
+                          {cat.name}
+                        </span>
+                        <code className="ml-auto text-xs text-slate-400 font-mono">
+                          {cat.slug}
+                        </code>
                       </button>
                     ))}
                   </div>
@@ -324,12 +434,26 @@ export default function ProfilePage() {
 
           {/* Contact */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">Холбоо барих</h3>
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
+              Холбоо барих
+            </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <InfoItem icon={<Mail size={18} className="text-slate-400" />} label="И-мэйл" value={partner.email || "Бүртгэлгүй"} />
-              <InfoItem icon={<Phone size={18} className="text-slate-400" />} label="Утас" value={partner.phone || "Бүртгэлгүй"} />
+              <InfoItem
+                icon={<Mail size={18} className="text-slate-400" />}
+                label="И-мэйл"
+                value={partner.email || "Бүртгэлгүй"}
+              />
+              <InfoItem
+                icon={<Phone size={18} className="text-slate-400" />}
+                label="Утас"
+                value={partner.phone || "Бүртгэлгүй"}
+              />
               <div className="sm:col-span-2">
-                <InfoItem icon={<MapPin size={18} className="text-slate-400" />} label="Хаяг" value={partner.address || "Бүртгэлгүй"} />
+                <InfoItem
+                  icon={<MapPin size={18} className="text-slate-400" />}
+                  label="Хаяг"
+                  value={partner.address || "Бүртгэлгүй"}
+                />
               </div>
             </div>
           </div>
@@ -341,16 +465,23 @@ export default function ProfilePage() {
             <div className="w-16 h-16 bg-gradient-to-br from-[#FFAD02] to-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-200/50">
               <Building2 className="text-white" size={28} />
             </div>
-            <h4 className="text-lg font-bold text-slate-900 mb-1">MglStore Vendor</h4>
-            <p className="text-sm text-slate-500 mb-4">Бүртгэлтэй албан ёсны түнш</p>
+            <h4 className="text-lg font-bold text-slate-900 mb-1">
+              MglStore Vendor
+            </h4>
+            <p className="text-sm text-slate-500 mb-4">
+              Бүртгэлтэй албан ёсны түнш
+            </p>
             <div className="w-full h-px bg-slate-100 mb-4" />
             <p className="text-xs text-slate-400 leading-relaxed">
-              Та MglStore платформын бүртгэлтэй vendor бөгөөд бараа бүтээгдэхүүнээ зарах, захиалга удирдах эрхтэй.
+              Та MglStore платформын бүртгэлтэй vendor бөгөөд бараа
+              бүтээгдэхүүнээ зарах, захиалга удирдах эрхтэй.
             </p>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Түргэн холбоосууд</h3>
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
+              Түргэн холбоосууд
+            </h3>
             <div className="space-y-2">
               {[
                 { label: "Бүтээгдэхүүн нэмэх", href: "/products" },
@@ -374,7 +505,10 @@ export default function ProfilePage() {
 }
 
 function InfoItem({
-  icon, label, value, valueColor,
+  icon,
+  label,
+  value,
+  valueColor,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -387,8 +521,14 @@ function InfoItem({
         {icon}
       </div>
       <div>
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
-        <p className={`text-sm font-semibold ${valueColor || "text-slate-800"}`}>{value}</p>
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
+          {label}
+        </p>
+        <p
+          className={`text-sm font-semibold ${valueColor || "text-slate-800"}`}
+        >
+          {value}
+        </p>
       </div>
     </div>
   );
