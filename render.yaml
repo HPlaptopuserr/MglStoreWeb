@@ -3,7 +3,7 @@ services:
     name: mgl-web
     rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm build && cd apps/web && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm run build
     startCommand: cd apps/web && pnpm start
     envVars:
       - key: NODE_ENV
@@ -15,32 +15,44 @@ services:
     name: mgl-admin
     rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm build && cd apps/admin && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm run build
     startCommand: cd apps/admin && pnpm start
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DATABASE_URL
+        sync: false
 
   - type: web
     name: mgl-vendor
     rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm build && cd apps/vendor && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm run build
     startCommand: cd apps/vendor && pnpm start
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DATABASE_URL
+        sync: false
 
   - type: web
     name: mgl-api
     rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm build && cd apps/api && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm run build
     startCommand: cd apps/api && pnpm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: WEB_URL
+        sync: false
+      - key: ADMIN_URL
+        sync: false
+      - key: VENDOR_URL
         sync: false
 
 databases:

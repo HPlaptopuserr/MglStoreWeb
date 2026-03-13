@@ -15,13 +15,19 @@ const app = express();
 app.use(
   cors({
     origin: [
-      "http://mglstore.mn:3002",
-      "http://admin.mglstore.mn:3003",
-      "http://vendor.mglstore.mn:3004",
+      // Local development
       "http://localhost:3000",
       "http://localhost:3001",
       "http://localhost:3002",
-    ],
+      // Production - Render
+      process.env.WEB_URL,
+      process.env.ADMIN_URL,
+      process.env.VENDOR_URL,
+      // Legacy
+      "http://mglstore.mn:3002",
+      "http://admin.mglstore.mn:3003",
+      "http://vendor.mglstore.mn:3004",
+    ].filter(Boolean) as string[],
     credentials: true,
   }),
 );
