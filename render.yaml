@@ -4,7 +4,7 @@ services:
     rootDir: .
     runtime: node
     buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm build && cd apps/web && pnpm build
-    startCommand: cd apps/web && pnpm next start -H 0.0.0.0 -p $PORT
+    startCommand: cd apps/web && pnpm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -16,7 +16,7 @@ services:
     rootDir: .
     runtime: node
     buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm build && cd apps/admin && pnpm build
-    startCommand: cd apps/admin && pnpm next start -H 0.0.0.0 -p $PORT
+    startCommand: cd apps/admin && pnpm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -26,7 +26,7 @@ services:
     rootDir: .
     runtime: node
     buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm build && cd apps/vendor && pnpm build
-    startCommand: cd apps/vendor && pnpm next start -H 0.0.0.0 -p $PORT
+    startCommand: cd apps/vendor && pnpm start
     envVars:
       - key: NODE_ENV
         value: production
