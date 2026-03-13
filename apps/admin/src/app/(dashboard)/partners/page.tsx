@@ -19,6 +19,7 @@ import {
   Check,
 } from "lucide-react";
 import Link from "next/link";
+import { API } from "@/lib/api";
 
 type Partner = {
   id: string;
@@ -51,13 +52,40 @@ const CATEGORIES = [
   { value: "other", label: "Бусад" },
 ];
 
-const categoryStyles: Record<string, { bg: string; text: string; border: string }> = {
-  retail: { bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-200" },
-  food: { bg: "bg-orange-50", text: "text-orange-600", border: "border-orange-200" },
-  service: { bg: "bg-purple-50", text: "text-purple-600", border: "border-purple-200" },
-  pharmacy: { bg: "bg-green-50", text: "text-green-600", border: "border-green-200" },
-  electronics: { bg: "bg-cyan-50", text: "text-cyan-600", border: "border-cyan-200" },
-  other: { bg: "bg-slate-50", text: "text-slate-500", border: "border-slate-200" },
+const categoryStyles: Record<
+  string,
+  { bg: string; text: string; border: string }
+> = {
+  retail: {
+    bg: "bg-blue-50",
+    text: "text-blue-600",
+    border: "border-blue-200",
+  },
+  food: {
+    bg: "bg-orange-50",
+    text: "text-orange-600",
+    border: "border-orange-200",
+  },
+  service: {
+    bg: "bg-purple-50",
+    text: "text-purple-600",
+    border: "border-purple-200",
+  },
+  pharmacy: {
+    bg: "bg-green-50",
+    text: "text-green-600",
+    border: "border-green-200",
+  },
+  electronics: {
+    bg: "bg-cyan-50",
+    text: "text-cyan-600",
+    border: "border-cyan-200",
+  },
+  other: {
+    bg: "bg-slate-50",
+    text: "text-slate-500",
+    border: "border-slate-200",
+  },
 };
 
 function CategoryDropdown({
@@ -71,13 +99,14 @@ function CategoryDropdown({
   const [saving, setSaving] = useState(false);
 
   const current = CATEGORIES.find((c) => c.value === partner.businessCategory);
-  const style = categoryStyles[partner.businessCategory ?? "other"] ?? categoryStyles.other;
+  const style =
+    categoryStyles[partner.businessCategory ?? "other"] ?? categoryStyles.other;
 
   const handleSelect = async (value: string | null) => {
     setOpen(false);
     setSaving(true);
     try {
-      await fetch(`http://localhost:4000/api/partners/${partner.id}/category`, {
+      await fetch(`${API}/partners/${partner.id}/category`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ businessCategory: value }),
@@ -93,13 +122,19 @@ function CategoryDropdown({
   return (
     <div className="relative">
       <button
-        onClick={(e) => { e.preventDefault(); setOpen((v) => !v); }}
+        onClick={(e) => {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
         disabled={saving}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer select-none ${style.bg} ${style.text} ${style.border} hover:opacity-80`}
       >
         <Store size={11} />
         {saving ? "..." : (current?.label ?? "Ангилал сонгох")}
-        <ChevronDown size={11} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown
+          size={11}
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
 
       {open && (
@@ -107,11 +142,17 @@ function CategoryDropdown({
           {/* backdrop */}
           <div
             className="fixed inset-0 z-10"
-            onClick={(e) => { e.preventDefault(); setOpen(false); }}
+            onClick={(e) => {
+              e.preventDefault();
+              setOpen(false);
+            }}
           />
           <div className="absolute left-0 top-full mt-1 z-20 min-w-[160px] bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden">
             <button
-              onClick={(e) => { e.preventDefault(); handleSelect(null); }}
+              onClick={(e) => {
+                e.preventDefault();
+                handleSelect(null);
+              }}
               className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-400 hover:bg-slate-50 transition-colors"
             >
               <span className="w-3" />
@@ -121,7 +162,10 @@ function CategoryDropdown({
             {CATEGORIES.map((cat) => (
               <button
                 key={cat.value}
-                onClick={(e) => { e.preventDefault(); handleSelect(cat.value); }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleSelect(cat.value);
+                }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 transition-colors"
               >
                 {partner.businessCategory === cat.value ? (
@@ -129,7 +173,9 @@ function CategoryDropdown({
                 ) : (
                   <span className="w-3" />
                 )}
-                <span className={`font-medium ${categoryStyles[cat.value]?.text ?? "text-slate-600"}`}>
+                <span
+                  className={`font-medium ${categoryStyles[cat.value]?.text ?? "text-slate-600"}`}
+                >
                   {cat.label}
                 </span>
               </button>
@@ -158,7 +204,7 @@ export default function PartnersPage() {
   });
 
   const fetchPartners = async () => {
-    const res = await fetch("http://localhost:4000/api/partners", {
+    const res = await fetch(`${API}/partners`, {
       cache: "no-store",
     });
     const data = await res.json();
@@ -167,7 +213,7 @@ export default function PartnersPage() {
 
   const handleCategoryUpdated = (id: string, cat: string | null) => {
     setPartners((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, businessCategory: cat } : p))
+      prev.map((p) => (p.id === id ? { ...p, businessCategory: cat } : p)),
     );
   };
 
@@ -185,8 +231,12 @@ export default function PartnersPage() {
                 <Building2 size={26} />
               </div>
               <div>
-                <p className="text-sm font-medium text-slate-500 mb-1">Нийт байгууллага</p>
-                <h3 className="text-3xl font-bold text-slate-900 leading-tight">{partners.length}</h3>
+                <p className="text-sm font-medium text-slate-500 mb-1">
+                  Нийт байгууллага
+                </p>
+                <h3 className="text-3xl font-bold text-slate-900 leading-tight">
+                  {partners.length}
+                </h3>
               </div>
             </div>
 
@@ -195,7 +245,8 @@ export default function PartnersPage() {
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Түншүүд</h1>
               <p className="text-sm text-slate-500 mt-1">
-                Хайлтанд: {filteredPartners.length} {searchQuery && (
+                Хайлтанд: {filteredPartners.length}{" "}
+                {searchQuery && (
                   <span className="text-slate-400"> (Олдсон)</span>
                 )}
               </p>

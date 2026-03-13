@@ -15,6 +15,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { API_BASE } from "@/lib/api";
 
 type PartnerRequest = {
   id: string;
@@ -26,10 +27,6 @@ type PartnerRequest = {
   createdAt: string;
   status: "PENDING" | "APPROVED" | "REJECTED" | string;
 };
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "http://localhost:4000";
 
 function getStatusLabel(status: string) {
   switch (status) {
