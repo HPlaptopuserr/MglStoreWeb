@@ -34,8 +34,9 @@ export default function SharedDashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans">
-      <div>
+    <div className="min-h-screen bg-slate-50 font-sans">
+      {/* Mobile header / drawer */}
+      <div className="md:hidden">
         <MobileDashboard
           onSignOut={handleLogout}
           userName="Admin User"
@@ -43,17 +44,24 @@ export default function SharedDashboardLayout({
           userInitials="AD"
         />
       </div>
-      <AdminSidebar
-        onSignOut={handleLogout}
-        userName="Admin User"
-        userRole="ADMIN"
-        userInitials="AD"
-      />
 
-      <div className="flex min-w-0 flex-1 flex-col h-screen pt-14 md:pt-0 transition-all duration-300 pr-10">
-        <main className="flex-1 w-full px-4 pt-4 pb-6 md:px-8 md:pt-8 md:pb-10 overflow-y-auto">
-          <div className="mx-auto w-full max-w-7xl">{children}</div>
-        </main>
+      <div className="flex min-h-screen">
+        {/* Desktop sidebar */}
+        <div className="hidden md:block">
+          <AdminSidebar
+            onSignOut={handleLogout}
+            userName="Admin User"
+            userRole="ADMIN"
+            userInitials="AD"
+          />
+        </div>
+
+        {/* Page content */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <main className="flex-1 w-full px-4 pt-2 pb-6 md:px-8 md:pt-8 md:pb-10">
+            <div className="mx-auto w-full max-w-7xl">{children}</div>
+          </main>
+        </div>
       </div>
     </div>
   );

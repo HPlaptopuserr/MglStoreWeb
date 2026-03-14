@@ -108,17 +108,31 @@ export function MobileDashboard({
 
   return (
     <>
-      <div className="h-16 items-center justify-between md:hidden">
+      {/* Fixed mobile header bar */}
+      <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b border-slate-200 bg-white/80 px-4 backdrop-blur-md md:hidden">
         <button
           onClick={() => setIsOpen(true)}
-          className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-700 transition hover:bg-slate-200 active:scale-95"
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 transition hover:bg-slate-200 active:scale-95"
           aria-label="Open menu"
         >
           <Menu className="h-5 w-5" />
         </button>
-      </div>
 
-      {/* Overlay */}
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#5B4CFF] text-white">
+            <ShieldCheck className="h-4 w-4" />
+          </div>
+          <span className="text-base font-bold text-slate-800">Marrow</span>
+        </div>
+
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#5B4CFF]/10 text-xs font-bold text-[#5B4CFF]">
+          {userInitials}
+        </div>
+      </header>
+
+      {/* Spacer so content doesn't hide behind fixed header */}
+      <div className="h-14 md:hidden" />
+
       {isOpen && (
         <button
           type="button"
@@ -128,10 +142,9 @@ export function MobileDashboard({
         />
       )}
 
-      {/* Drawer */}
       <aside
         className={`
-          fixed top-0 left-0 z-[60] flex h-screen w-[280px] flex-col border-r border-slate-200 bg-white px-4 pt-6 pb-6 shadow-xl transition-transform duration-300 md:hidden
+          fixed top-0 left-0 z-60 flex h-screen w-70 flex-col border-r border-slate-200 bg-white px-4 pt-6 pb-6 shadow-xl transition-transform duration-300 md:hidden
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
         `}
       >
