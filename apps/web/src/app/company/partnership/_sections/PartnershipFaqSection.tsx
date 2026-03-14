@@ -113,7 +113,7 @@ export default function FAQSection() {
           </div>
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-5 leading-tight">
             Байнга асуугддаг{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#FFB700] to-orange-500">
+            <span className="text-transparent bg-clip-text bg-linear-to-r from-[#FFB700] to-orange-500">
               асуултууд
             </span>
           </h2>
@@ -192,7 +192,7 @@ export default function FAQSection() {
                       className="overflow-hidden"
                     >
                       <div className="px-5 md:px-6 pb-6 ml-14">
-                        <div className="h-px bg-gradient-to-r from-[#FFB700]/20 via-gray-100 to-transparent mb-4"></div>
+                        <div className="h-px bg-linear-to-r from-[#FFB700]/20 via-gray-100 to-transparent mb-4"></div>
                         <p className="text-gray-500 leading-relaxed text-sm md:text-base">
                           {q.answer}
                         </p>
@@ -251,8 +251,7 @@ export default function FAQSection() {
               onClick={(e) => e.stopPropagation()}
               className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden"
             >
-              {/* Modal header */}
-              <div className="relative bg-gradient-to-r from-[#FFB700] to-orange-500 p-6 pb-8">
+              <div className="relative bg-linear-to-r from-[#FFB700] to-orange-500 p-6 pb-8">
                 <button
                   onClick={() => setContactOpen(false)}
                   className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"

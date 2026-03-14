@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AdminSidebar } from "@mgl/ui";
+import { MobileDashboard } from "../../components/organisms/MobileDashboard";
 
 export default function SharedDashboardLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
@@ -33,20 +34,25 @@ export default function SharedDashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
-      {/* Sidebar rendered outside of flex layout for guaranteed fixed position */}
+    <div className="flex min-h-screen bg-slate-50 font-sans">
+      <div>
+        <MobileDashboard
+          onSignOut={handleLogout}
+          userName="Admin User"
+          userRole="ADMIN"
+          userInitials="AD"
+        />
+      </div>
       <AdminSidebar
         onSignOut={handleLogout}
         userName="Admin User"
         userRole="ADMIN"
         userInitials="AD"
       />
-      {/* Main content shifted right by the width of the sidebar */}
-      <div className="flex flex-col min-h-screen pl-[260px] transition-all duration-300">
-        <main className="px-10 pt-8 pb-10 flex-1 w-full">
-          <div className="max-w-7xl mx-auto w-full">
-            {children}
-          </div>
+
+      <div className="flex min-w-0 flex-1 flex-col h-screen pt-14 md:pt-0 transition-all duration-300 pr-10">
+        <main className="flex-1 w-full px-4 pt-4 pb-6 md:px-8 md:pt-8 md:pb-10 overflow-y-auto">
+          <div className="mx-auto w-full max-w-7xl">{children}</div>
         </main>
       </div>
     </div>

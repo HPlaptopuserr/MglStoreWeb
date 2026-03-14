@@ -115,17 +115,15 @@ export function RevenueChart({
   ];
 
   return (
-    <div className="lg:col-span-2 bg-white p-8 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden transition-all duration-300 hover:shadow-lg flex flex-col min-h-100 min-w-0">
-      <div className="flex flex-col sm:flex-row items-center justify-between mb-8 relative z-10 gap-4">
+    <div className="lg:col-span-2 bg-white p-4 md:p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden transition-shadow duration-200 hover:shadow-md flex flex-col min-h-80 md:min-h-100 min-w-0">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 md:mb-6 relative z-10 gap-3">
         <div className="flex items-center gap-2">
-          <h3 className="font-bold text-slate-800 text-lg tracking-tight">
+          <h3 className="font-bold text-slate-800 text-base md:text-lg tracking-tight">
             Статистик
           </h3>
-          <div className="flex gap-2 ml-2">
-            <div className="flex items-center gap-1 text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full font-bold">
-              <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
-              Хүсэлт
-            </div>
+          <div className="flex items-center gap-1 text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full font-bold">
+            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
+            Хүсэлт
           </div>
         </div>
 
@@ -146,7 +144,7 @@ export function RevenueChart({
         </div>
       </div>
 
-      <div className="mt-4 h-80 w-full min-w-0">
+      <div className="mt-2 md:mt-4 h-60 md:h-80 w-full min-w-0">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={data}

@@ -64,7 +64,7 @@ export const PartnershipHeroSection: React.FC = () => {
   return (
     <section className="relative w-full bg-gray-900 py-24 px-4 md:px-6 lg:px-8 overflow-hidden">
       {/* Animated background elements */}
-      <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-[#FFB700]/10 to-transparent pointer-events-none"></div>
+      <div className="absolute top-0 right-0 w-1/2 h-full bg-linear-to-l from-[#FFB700]/10 to-transparent pointer-events-none"></div>
       <div className="absolute bottom-0 left-0 w-1/3 h-1/3 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute top-1/4 right-1/4 w-64 h-64 bg-[#FFB700]/5 rounded-full blur-3xl pointer-events-none animate-pulse"></div>
 
@@ -140,7 +140,7 @@ export const PartnershipHeroSection: React.FC = () => {
               <div className="absolute -inset-6 bg-linear-to-br from-[#FFB700]/15 to-blue-500/10 rounded-[3rem] blur-3xl pointer-events-none"></div>
               <div className="absolute -inset-2 bg-linear-to-tr from-blue-500/10 to-[#FFB700]/5 rounded-[2.5rem] blur-xl pointer-events-none"></div>
 
-              <div className="relative bg-white/[0.06] backdrop-blur-xl rounded-[2rem] border border-white/[0.08] shadow-2xl overflow-hidden">
+              <div className="relative bg-white/6 backdrop-blur-xl rounded-4xl border border-white/8 shadow-2xl overflow-hidden">
                 <div className="px-8 pt-8 pb-4">
                   <div className="flex items-center justify-between">
                     <div>
@@ -164,7 +164,7 @@ export const PartnershipHeroSection: React.FC = () => {
                       return (
                         <div
                           key={stat.label}
-                          className={`relative text-center p-4 rounded-xl bg-gradient-to-b ${stat.color} border border-white/[0.06] group hover:border-white/10 transition-all duration-300`}
+                          className={`relative text-center p-4 rounded-xl bg-linear-to-b ${stat.color} border border-white/6 group hover:border-white/10 transition-all duration-300`}
                         >
                           <Icon
                             className={`w-4 h-4 ${stat.iconColor} mx-auto mb-2 opacity-60 group-hover:opacity-100 transition-opacity`}
@@ -189,7 +189,7 @@ export const PartnershipHeroSection: React.FC = () => {
                     return (
                       <div
                         key={feature.text}
-                        className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.04] hover:bg-white/[0.07] hover:border-white/[0.08] transition-all duration-300 group cursor-default"
+                        className="flex items-start gap-3 p-3 rounded-xl bg-white/3 border border-white/4 hover:bg-white/7 hover:border-white/8 transition-all duration-300 group cursor-default"
                       >
                         <div className="w-9 h-9 rounded-lg bg-[#FFB700]/10 border border-[#FFB700]/20 flex items-center justify-center shrink-0 group-hover:bg-[#FFB700]/20 transition-colors">
                           <Icon className="w-4 h-4 text-[#FFB700]" />
@@ -208,8 +208,8 @@ export const PartnershipHeroSection: React.FC = () => {
                 </div>
 
                 <div className="m-8 mt-4">
-                  <div className="relative flex items-center gap-4 p-5 rounded-xl bg-gradient-to-r from-[#FFB700]/15 via-[#FFB700]/10 to-orange-500/5 border border-[#FFB700]/20 overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.03] to-transparent -translate-x-full animate-[shimmer_3s_ease-in-out_infinite]"></div>
+                  <div className="relative flex items-center gap-4 p-5 rounded-xl bg-linear-to-r from-[#FFB700]/15 via-[#FFB700]/10 to-orange-500/5 border border-[#FFB700]/20 overflow-hidden">
+                    <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/3 to-transparent -translate-x-full animate-[shimmer_3s_ease-in-out_infinite]"></div>
                     <div className="w-12 h-12 rounded-xl bg-[#FFB700] flex items-center justify-center shrink-0 shadow-lg shadow-[#FFB700]/20">
                       <TrendingUp className="w-6 h-6 text-gray-900" />
                     </div>
@@ -243,7 +243,7 @@ export const PartnershipHeroSection: React.FC = () => {
                   {[...Array(3)].map((_, i) => (
                     <div
                       key={i}
-                      className="w-6 h-6 rounded-full bg-gradient-to-br from-gray-500 to-gray-600 border-2 border-gray-900"
+                      className="w-6 h-6 rounded-full bg-linear-to-br from-gray-500 to-gray-600 border-2 border-gray-900"
                     />
                   ))}
                 </div>

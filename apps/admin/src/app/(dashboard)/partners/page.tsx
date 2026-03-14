@@ -222,29 +222,32 @@ export default function PartnersPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] text-slate-800 font-sans">
-      <div className="p-4 md:p-8 w-full">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6 flex flex-col lg:flex-row items-center justify-between gap-6">
-          <div className="flex flex-col sm:flex-row items-center gap-6 md:gap-8 w-full lg:w-auto text-center sm:text-left">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0 border border-indigo-100">
-                <Building2 size={26} />
+    <div className="text-slate-800 font-sans">
+      <div className="w-full">
+        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm border border-slate-100 mb-4 md:mb-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 md:gap-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 md:gap-8 w-full lg:w-auto">
+            <div className="flex items-center gap-3 md:gap-4">
+              <div className="w-11 h-11 md:w-14 md:h-14 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0 border border-indigo-100">
+                <Building2 size={22} className="md:hidden" />
+                <Building2 size={26} className="hidden md:block" />
               </div>
               <div>
-                <p className="text-sm font-medium text-slate-500 mb-1">
+                <p className="text-xs md:text-sm font-medium text-slate-500 mb-0.5 md:mb-1">
                   Нийт байгууллага
                 </p>
-                <h3 className="text-3xl font-bold text-slate-900 leading-tight">
+                <h3 className="text-2xl md:text-3xl font-bold text-slate-900 leading-tight">
                   {partners.length}
                 </h3>
               </div>
             </div>
 
-            <div className="w-full sm:w-px h-px sm:h-12 bg-slate-200"></div>
+            <div className="hidden sm:block w-full sm:w-px h-px sm:h-12 bg-slate-200"></div>
 
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Түншүүд</h1>
-              <p className="text-sm text-slate-500 mt-1">
+              <h1 className="text-lg md:text-2xl font-bold text-slate-900">
+                Түншүүд
+              </h1>
+              <p className="text-xs md:text-sm text-slate-500 mt-0.5 md:mt-1">
                 Хайлтанд: {filteredPartners.length}{" "}
                 {searchQuery && (
                   <span className="text-slate-400"> (Олдсон)</span>
@@ -253,7 +256,7 @@ export default function PartnersPage() {
             </div>
           </div>
 
-          <div className="relative w-full lg:w-auto lg:min-w-100 max-w-md group">
+          <div className="relative w-full lg:w-auto lg:min-w-80 max-w-md group">
             <Search
               className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-slate-600"
               size={18}
@@ -276,23 +279,23 @@ export default function PartnersPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
           {filteredPartners.map((partner) => (
             <Link
               href={`/partners/${partner.id}`}
               key={partner.id}
-              className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col group hover:shadow-md hover:border-indigo-200 transition-all duration-200 cursor-pointer"
+              className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col group hover:shadow-lg hover:border-indigo-200/60 transition-all duration-300 cursor-pointer"
             >
-              <div className="p-6 border-b border-slate-100">
-                <div className="flex justify-between items-start mb-4 gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
-                      <Building2 size={24} />
+              <div className="p-4 md:p-5 border-b border-slate-100">
+                <div className="flex justify-between items-start mb-3 gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-100 transition-colors">
+                      <Building2 size={20} />
                     </div>
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <h3 className="font-bold text-slate-900 text-lg truncate">
+                        <h3 className="font-bold text-slate-900 text-sm md:text-base truncate">
                           {partner.name}
                         </h3>
                         {partner.isVerified && (
@@ -332,7 +335,7 @@ export default function PartnersPage() {
                 </div>
               </div>
 
-              <div className="p-6 space-y-3 flex-1 bg-slate-50/50">
+              <div className="p-4 md:p-5 space-y-2.5 flex-1 bg-slate-50/40">
                 <div className="flex items-start gap-3 text-sm text-slate-600">
                   <Mail size={16} className="text-slate-400 mt-0.5 shrink-0" />
                   <span className="truncate">{partner.email || "N/A"}</span>
@@ -354,31 +357,31 @@ export default function PartnersPage() {
                 </div>
               </div>
 
-              <div className="p-4 border-t border-slate-100 bg-white grid grid-cols-4 divide-x divide-slate-100">
-                <div className="flex flex-col items-center justify-center p-2">
-                  <Users size={14} className="text-slate-400 mb-1" />
-                  <span className="font-semibold text-slate-900 text-sm">
+              <div className="p-3 md:p-4 border-t border-slate-100 bg-white grid grid-cols-4 divide-x divide-slate-100">
+                <div className="flex flex-col items-center justify-center py-1">
+                  <Users size={12} className="text-slate-300 mb-0.5" />
+                  <span className="font-bold text-slate-800 text-xs md:text-sm">
                     {partner.stats.users}
                   </span>
                 </div>
 
-                <div className="flex flex-col items-center justify-center p-2">
-                  <Package size={14} className="text-slate-400 mb-1" />
-                  <span className="font-semibold text-slate-900 text-sm">
+                <div className="flex flex-col items-center justify-center py-1">
+                  <Package size={12} className="text-slate-300 mb-0.5" />
+                  <span className="font-bold text-slate-800 text-xs md:text-sm">
                     {partner.stats.products}
                   </span>
                 </div>
 
-                <div className="flex flex-col items-center justify-center p-2">
-                  <Store size={14} className="text-slate-400 mb-1" />
-                  <span className="font-semibold text-slate-900 text-sm">
+                <div className="flex flex-col items-center justify-center py-1">
+                  <Store size={12} className="text-slate-300 mb-0.5" />
+                  <span className="font-bold text-slate-800 text-xs md:text-sm">
                     {partner.stats.branches}
                   </span>
                 </div>
 
-                <div className="flex flex-col items-center justify-center p-2">
-                  <ShoppingCart size={14} className="text-slate-400 mb-1" />
-                  <span className="font-semibold text-slate-900 text-sm">
+                <div className="flex flex-col items-center justify-center py-1">
+                  <ShoppingCart size={12} className="text-slate-300 mb-0.5" />
+                  <span className="font-bold text-slate-800 text-xs md:text-sm">
                     {partner.stats.orders}
                   </span>
                 </div>

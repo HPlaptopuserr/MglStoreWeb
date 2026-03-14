@@ -107,13 +107,11 @@ const steps: ServiceStep[] = [
 
 export const PartnershipWorksSection: React.FC = () => {
   return (
-    <section className="relative py-24 px-4 md:px-6 lg:px-8 bg-gradient-to-b from-white via-gray-50/80 to-white overflow-hidden">
-      {/* Background decoration */}
+    <section className="relative py-24 px-4 md:px-6 lg:px-8 bg-linear-to-b from-white via-gray-50/80 to-white overflow-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-[#FFB700]/[0.03] rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-500/[0.02] rounded-full blur-3xl pointer-events-none"></div>
 
       <div className="max-w-7xl mx-auto relative z-10">
-        {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-20">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#FFB700]/10 border border-[#FFB700]/20 text-[#FFB700] text-sm font-medium mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-[#FFB700]"></span>
@@ -131,20 +129,17 @@ export const PartnershipWorksSection: React.FC = () => {
           </p>
         </div>
 
-        {/* Cards grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
           {steps.map((step, index) => (
             <div
               key={step.title}
               className={`group relative bg-white rounded-2xl border border-gray-100 ${step.borderAccent} p-6 transition-all duration-500 hover:shadow-xl hover:shadow-gray-200/50 hover:-translate-y-1 cursor-default`}
             >
-              {/* Gradient overlay on hover */}
               <div
                 className={`absolute inset-0 bg-gradient-to-br ${step.accent} rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
               ></div>
 
               <div className="relative z-10">
-                {/* Number + Icon row */}
                 <div className="flex items-center justify-between mb-5">
                   <div
                     className={`w-12 h-12 ${step.iconBg} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}
@@ -159,17 +154,14 @@ export const PartnershipWorksSection: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Title */}
                 <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-gray-900 transition-colors">
                   {step.title}
                 </h3>
 
-                {/* Description */}
                 <p className="text-sm text-gray-500 leading-relaxed mb-4 line-clamp-3">
                   {step.description}
                 </p>
 
-                {/* Hover arrow */}
                 <div className="flex items-center gap-1.5 text-sm font-medium text-gray-400 group-hover:text-[#FFB700] transition-colors duration-300">
                   <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                     Дэлгэрэнгүй
@@ -181,7 +173,6 @@ export const PartnershipWorksSection: React.FC = () => {
           ))}
         </div>
 
-        {/* Bottom stat bar */}
         <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             {

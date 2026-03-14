@@ -159,51 +159,53 @@ export default function CategoriesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] font-sans">
-      <div className="p-4 md:p-8 w-full max-w-5xl mx-auto">
+    <div className="font-sans">
+      <div className="w-full max-w-5xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0 border border-indigo-100">
-              <Tag size={26} />
+        <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm border border-slate-100 mb-4 md:mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3 md:gap-4">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                <Tag size={20} />
+              </div>
+              <div>
+                <h1 className="text-lg md:text-2xl font-bold text-slate-900">
+                  Бизнесийн ангиллал
+                </h1>
+                <p className="text-xs md:text-sm text-slate-500 mt-0.5">
+                  Нийт{" "}
+                  <span className="font-bold text-slate-700">
+                    {categories.length}
+                  </span>{" "}
+                  ангилал
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">
-                Бизнесийн ангиллал
-              </h1>
-              <p className="text-sm text-slate-500 mt-0.5">
-                Нийт{" "}
-                <span className="font-bold text-slate-700">
-                  {categories.length}
-                </span>{" "}
-                ангилал
-              </p>
+            <div className="flex items-center gap-2 md:gap-3">
+              <button
+                onClick={() => {
+                  setLoading(true);
+                  fetchAll();
+                }}
+                className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-3 md:px-4 py-2 md:py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-sm"
+                disabled={loading}
+              >
+                <RefreshCw
+                  size={16}
+                  className={
+                    loading ? "animate-spin text-slate-400" : "text-slate-500"
+                  }
+                />
+                <span className="hidden sm:inline">Шинэчлэх</span>
+              </button>
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 md:px-5 py-2 md:py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-sm"
+              >
+                <Plus size={16} />
+                <span className="hidden xs:inline">Ангилал</span> нэмэх
+              </button>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                setLoading(true);
-                fetchAll();
-              }}
-              className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-sm"
-              disabled={loading}
-            >
-              <RefreshCw
-                size={18}
-                className={
-                  loading ? "animate-spin text-slate-400" : "text-slate-500"
-                }
-              />
-              <span className="hidden sm:inline">Шинэчлэх</span>
-            </button>
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-sm"
-            >
-              <Plus size={18} />
-              Ангилал нэмэх
-            </button>
           </div>
         </div>
 
@@ -222,91 +224,173 @@ export default function CategoriesPage() {
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              <div className="grid grid-cols-12 px-6 py-3 bg-slate-50 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                <div className="col-span-1">#</div>
-                <div className="col-span-1">Дүрс</div>
-                <div className="col-span-3">Нэр</div>
-                <div className="col-span-3">Slug</div>
-                <div className="col-span-2">Эрэмбэ</div>
-                <div className="col-span-2 text-right">Үйлдэл</div>
-              </div>
-              {categories
-                .slice()
-                .sort(
-                  (a, b) =>
-                    a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
-                )
-                .map((cat, idx) => (
-                  <div
-                    key={cat.id}
-                    className={`grid grid-cols-12 px-6 py-4 items-center transition-colors ${cat.isActive ? "hover:bg-slate-50" : "bg-slate-50/60 opacity-60"}`}
-                  >
-                    <div className="col-span-1 text-slate-400 text-sm font-medium">
-                      {idx + 1}
-                    </div>
-                    <div className="col-span-1 flex items-center justify-center w-10 h-10 rounded-lg bg-white border border-slate-100 shadow-sm overflow-hidden">
-                      {cat.icon ? (
-                        cat.icon.startsWith("data:image") ||
-                        cat.icon.startsWith("http") ? (
-                          <img
-                            src={cat.icon}
-                            alt={cat.name}
-                            className="w-6 h-6 object-contain"
-                          />
+            <>
+              {/* Desktop table */}
+              <div className="hidden md:block divide-y divide-slate-100">
+                <div className="grid grid-cols-12 px-6 py-3 bg-slate-50 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <div className="col-span-1">#</div>
+                  <div className="col-span-1">Дүрс</div>
+                  <div className="col-span-3">Нэр</div>
+                  <div className="col-span-3">Slug</div>
+                  <div className="col-span-2">Эрэмбэ</div>
+                  <div className="col-span-2 text-right">Үйлдэл</div>
+                </div>
+                {categories
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+                  )
+                  .map((cat, idx) => (
+                    <div
+                      key={cat.id}
+                      className={`grid grid-cols-12 px-6 py-4 items-center transition-colors ${cat.isActive ? "hover:bg-slate-50" : "bg-slate-50/60 opacity-60"}`}
+                    >
+                      <div className="col-span-1 text-slate-400 text-sm font-medium">
+                        {idx + 1}
+                      </div>
+                      <div className="col-span-1 flex items-center justify-center w-10 h-10 rounded-lg bg-white border border-slate-100 shadow-sm overflow-hidden">
+                        {cat.icon ? (
+                          cat.icon.startsWith("data:image") ||
+                          cat.icon.startsWith("http") ? (
+                            <img
+                              src={cat.icon}
+                              alt={cat.name}
+                              className="w-6 h-6 object-contain"
+                            />
+                          ) : (
+                            <span className="text-xl">{cat.icon}</span>
+                          )
                         ) : (
-                          <span className="text-xl">{cat.icon}</span>
-                        )
-                      ) : (
-                        <span className="text-xl text-slate-300">🏷️</span>
-                      )}
-                    </div>
-                    <div className="col-span-3">
-                      <span className="font-semibold text-slate-800 text-sm">
-                        {cat.name}
-                      </span>
-                      {!cat.isActive && (
-                        <span className="ml-2 text-xs text-slate-400 font-medium">
-                          (идэвхгүй)
-                        </span>
-                      )}
-                    </div>
-                    <div className="col-span-3">
-                      <code className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-mono">
-                        {cat.slug}
-                      </code>
-                    </div>
-                    <div className="col-span-2 flex items-center gap-1 text-sm text-slate-500">
-                      <GripVertical size={14} className="text-slate-300" />
-                      {cat.sortOrder}
-                    </div>
-                    <div className="col-span-2 flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => openEdit(cat)}
-                        className="p-2 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
-                        title="Засах"
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        onClick={() => toggleActive(cat)}
-                        className={`p-2 rounded-lg transition-colors ${
-                          cat.isActive
-                            ? "hover:bg-amber-50 text-emerald-500 hover:text-amber-500"
-                            : "hover:bg-emerald-50 text-slate-400 hover:text-emerald-500"
-                        }`}
-                        title={cat.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх"}
-                      >
-                        {cat.isActive ? (
-                          <ToggleRight size={18} />
-                        ) : (
-                          <ToggleLeft size={18} />
+                          <span className="text-xl text-slate-300">🏷️</span>
                         )}
-                      </button>
+                      </div>
+                      <div className="col-span-3">
+                        <span className="font-semibold text-slate-800 text-sm">
+                          {cat.name}
+                        </span>
+                        {!cat.isActive && (
+                          <span className="ml-2 text-xs text-slate-400 font-medium">
+                            (идэвхгүй)
+                          </span>
+                        )}
+                      </div>
+                      <div className="col-span-3">
+                        <code className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-mono">
+                          {cat.slug}
+                        </code>
+                      </div>
+                      <div className="col-span-2 flex items-center gap-1 text-sm text-slate-500">
+                        <GripVertical size={14} className="text-slate-300" />
+                        {cat.sortOrder}
+                      </div>
+                      <div className="col-span-2 flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => openEdit(cat)}
+                          className="p-2 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                          title="Засах"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          onClick={() => toggleActive(cat)}
+                          className={`p-2 rounded-lg transition-colors ${
+                            cat.isActive
+                              ? "hover:bg-amber-50 text-emerald-500 hover:text-amber-500"
+                              : "hover:bg-emerald-50 text-slate-400 hover:text-emerald-500"
+                          }`}
+                          title={
+                            cat.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх"
+                          }
+                        >
+                          {cat.isActive ? (
+                            <ToggleRight size={18} />
+                          ) : (
+                            <ToggleLeft size={18} />
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-            </div>
+                  ))}
+              </div>
+
+              {/* Mobile card list */}
+              <div className="md:hidden divide-y divide-slate-100">
+                {categories
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+                  )
+                  .map((cat, idx) => (
+                    <div
+                      key={cat.id}
+                      className={`p-4 transition-colors ${cat.isActive ? "" : "bg-slate-50/60 opacity-60"}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-slate-100 shadow-sm overflow-hidden shrink-0">
+                          {cat.icon ? (
+                            cat.icon.startsWith("data:image") ||
+                            cat.icon.startsWith("http") ? (
+                              <img
+                                src={cat.icon}
+                                alt={cat.name}
+                                className="w-6 h-6 object-contain"
+                              />
+                            ) : (
+                              <span className="text-xl">{cat.icon}</span>
+                            )
+                          ) : (
+                            <span className="text-xl text-slate-300">🏷️</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-800 text-sm truncate">
+                              {cat.name}
+                            </span>
+                            {!cat.isActive && (
+                              <span className="text-[10px] text-slate-400 font-medium shrink-0">
+                                (идэвхгүй)
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1">
+                            <code className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-mono">
+                              {cat.slug}
+                            </code>
+                            <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                              <GripVertical size={10} /> #{cat.sortOrder}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => openEdit(cat)}
+                            className="p-2 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            onClick={() => toggleActive(cat)}
+                            className={`p-2 rounded-lg transition-colors ${
+                              cat.isActive
+                                ? "hover:bg-amber-50 text-emerald-500 hover:text-amber-500"
+                                : "hover:bg-emerald-50 text-slate-400 hover:text-emerald-500"
+                            }`}
+                          >
+                            {cat.isActive ? (
+                              <ToggleRight size={18} />
+                            ) : (
+                              <ToggleLeft size={18} />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </>
           )}
         </div>
       </div>

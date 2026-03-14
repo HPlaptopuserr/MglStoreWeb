@@ -188,20 +188,27 @@ export default function RequestsPage() {
   }, [requests.length]);
 
   return (
-    <div className="h-screen bg-[#f8f9fa] text-slate-800 font-sans">
-      <main className="h-full w-full overflow-hidden">
-        <div className="h-full w-full overflow-y-auto px-2 py-3 md:px-4 md:py-4">
+    <div className="text-slate-800 font-sans">
+      <main className="w-full">
+        <div className="w-full">
           <div className="w-full rounded-2xl border border-slate-100 bg-white p-4 md:p-5 shadow-sm mb-4">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div>
-                <h1 className="text-xl md:text-2xl font-bold text-slate-900">
-                  Бүртгэлийн жагсаалт
-                </h1>
-                <p className="mt-1 text-sm text-slate-500">{totalText}</p>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                  <BookOpen size={20} />
+                </div>
+                <div>
+                  <h1 className="text-lg md:text-xl font-bold text-slate-900">
+                    Бүртгэлийн жагсаалт
+                  </h1>
+                  <p className="mt-0.5 text-xs md:text-sm text-slate-400">
+                    {totalText}
+                  </p>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative min-w-55 flex-1 sm:flex-none">
+              <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2">
+                <div className="relative flex-1 sm:flex-none">
                   <Search
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                     size={17}
@@ -215,30 +222,33 @@ export default function RequestsPage() {
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchTerm("");
-                    setStatusFilter("ALL");
-                  }}
-                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  <BookOpen size={15} className="text-slate-400" />
-                  Бүх хүсэлт
-                </button>
-
-                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
-                  <Filter size={15} className="text-slate-400" />
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="bg-transparent outline-none"
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm("");
+                      setStatusFilter("ALL");
+                    }}
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
                   >
-                    <option value="ALL">Бүгд</option>
-                    <option value="PENDING">Хүлээгдэж буй</option>
-                    <option value="APPROVED">Зөвшөөрсөн</option>
-                    <option value="REJECTED">Татгалзсан</option>
-                  </select>
+                    <BookOpen size={15} className="text-slate-400" />
+                    <span className="hidden sm:inline">Бүх хүсэлт</span>
+                    <span className="sm:hidden">Бүгд</span>
+                  </button>
+
+                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
+                    <Filter size={15} className="text-slate-400" />
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="bg-transparent outline-none"
+                    >
+                      <option value="ALL">Бүгд</option>
+                      <option value="PENDING">Хүлээгдэж буй</option>
+                      <option value="APPROVED">Зөвшөөрсөн</option>
+                      <option value="REJECTED">Татгалзсан</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -250,16 +260,17 @@ export default function RequestsPage() {
             </div>
           )}
 
-          <div className="w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+          {/* Desktop table */}
+          <div className="hidden md:block w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-245 border-collapse text-left">
+              <table className="w-full min-w-200 border-collapse text-left">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     <th className="px-4 py-3">Байгууллагын нэр</th>
                     <th className="px-4 py-3">Дугаар</th>
                     <th className="px-4 py-3">Чиглэл</th>
-                    <th className="px-4 py-3">Ажилласан жил</th>
-                    <th className="px-4 py-3">Хүсэлтийн огноо</th>
+                    <th className="px-4 py-3">Жил</th>
+                    <th className="px-4 py-3">Огноо</th>
                     <th className="px-4 py-3 text-right">Төлөв</th>
                   </tr>
                 </thead>
@@ -306,7 +317,7 @@ export default function RequestsPage() {
                                   {item.organizationName || "-"}
                                 </div>
                                 <div className="mt-0.5 truncate text-xs text-slate-400">
-                                  email: {item.email || "-"}
+                                  {item.email || "-"}
                                 </div>
                               </div>
                             </div>
@@ -397,6 +408,107 @@ export default function RequestsPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="md:hidden space-y-3">
+            {pageLoading ? (
+              <div className="flex items-center justify-center py-10 text-slate-400">
+                <Loader2 size={20} className="animate-spin" />
+                <span className="ml-2 text-sm">Ачааллаж байна...</span>
+              </div>
+            ) : requests.length === 0 ? (
+              <div className="text-center py-10 text-sm text-slate-500">
+                Хүсэлт олдсонгүй
+              </div>
+            ) : (
+              requests.map((item) => {
+                const isPending = item.status === "PENDING";
+                const isRowLoading = loadingId === item.id;
+
+                return (
+                  <div
+                    key={item.id}
+                    className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden"
+                  >
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                            <Building2 size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-900 text-sm truncate">
+                              {item.organizationName || "-"}
+                            </div>
+                            <div className="text-xs text-slate-400 truncate">
+                              {item.email || "-"}
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 ${getStatusClass(item.status)}`}
+                        >
+                          {getStatusLabel(item.status)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
+                        <div className="flex items-center gap-1.5">
+                          <Phone size={12} className="text-slate-400" />
+                          {item.phoneNumber || "-"}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Briefcase size={12} className="text-slate-400" />
+                          {item.businessCategory || "-"}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Clock size={12} className="text-slate-400" />
+                          {item.operatingYears ?? "-"} жил
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Calendar size={12} className="text-slate-400" />
+                          {item.createdAt
+                            ? new Date(item.createdAt).toLocaleDateString(
+                                "mn-MN",
+                              )
+                            : "-"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {isPending && (
+                      <div className="flex border-t border-slate-100 divide-x divide-slate-100">
+                        <button
+                          onClick={() => approveRequest(item.id)}
+                          disabled={isRowLoading}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                        >
+                          {isRowLoading ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <Check size={13} />
+                          )}
+                          Зөвшөөрөх
+                        </button>
+                        <button
+                          onClick={() => rejectRequest(item.id)}
+                          disabled={isRowLoading}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                        >
+                          {isRowLoading ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <X size={13} />
+                          )}
+                          Татгалзах
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </main>
