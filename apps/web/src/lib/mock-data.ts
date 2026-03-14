@@ -90,7 +90,7 @@ const baseServices: InfoCardData[] = [
     icon: Handshake,
   },
   {
-    title: "Шонпер карт",
+    title: "Шоппер карт",
     description: "Мөнгөн урсгалыг нэмэгдүүлнэ.",
     image: "https://picsum.photos/seed/card/200/200",
     icon: Target,

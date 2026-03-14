@@ -112,7 +112,7 @@ export default function CareersForm() {
   return (
     <section
       id="job-form"
-      className="w-full bg-gradient-to-br from-[#FFB700] to-[#FF9500] pt-24 px-4 md:px-6 lg:px-8 font-sans overflow-hidden relative"
+      className="w-full bg-linear-to-br from-[#FFB700] to-[#FF9500] pt-24 px-4 md:px-6 lg:px-8 font-sans overflow-hidden relative"
     >
       {/* Background Decor */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
@@ -133,7 +133,7 @@ export default function CareersForm() {
         <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-start">
           {/* Left Column - Form (Span 7) */}
           <div className="lg:col-span-7 relative">
-            <div className="bg-white rounded-[2rem] shadow-2xl p-8 md:p-10 border border-white/20 backdrop-blur-sm min-h-[600px] flex flex-col">
+            <div className="bg-white rounded-4xl shadow-2xl p-8 md:p-10 border border-white/20 backdrop-blur-sm min-h-150 flex flex-col">
               <div className="flex items-center justify-between mb-8 border-b border-gray-100 pb-6">
                 <div>
                   <h3 className="text-2xl font-bold text-gray-900">
@@ -205,7 +205,7 @@ export default function CareersForm() {
                           <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                           <input
                             type="tel"
-                            placeholder="9911xxxx"
+                            placeholder="9952xxxx"
                             className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none hover:bg-white"
                             required
                           />
@@ -252,7 +252,7 @@ export default function CareersForm() {
                         <MapPin className="absolute left-3.5 top-4 h-5 w-5 text-gray-400" />
                         <textarea
                           placeholder="Дүүрэг, хороо, байр, тоот..."
-                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-[100px] hover:bg-white"
+                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-25 hover:bg-white"
                           required
                         ></textarea>
                       </div>
@@ -339,7 +339,7 @@ export default function CareersForm() {
                       </label>
                       <textarea
                         placeholder="Өмнө нь ажиллаж байсан туршлагаа бичнэ үү..."
-                        className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none min-h-[120px] hover:bg-white"
+                        className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none min-h-30 hover:bg-white"
                       ></textarea>
                     </div>
                   </div>
@@ -360,7 +360,7 @@ export default function CareersForm() {
                         value={professionalSkills}
                         onChange={(e) => setProfessionalSkills(e.target.value)}
                         placeholder="Таны эзэмшсэн ур чадварууд..."
-                        className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none min-h-[80px] hover:bg-white"
+                        className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none min-h-20 hover:bg-white"
                       ></textarea>
                       <div className="flex flex-wrap gap-2 mt-2">
                         {professionalSkillSuggestions.map((skill) => (
@@ -386,7 +386,7 @@ export default function CareersForm() {
                           value={personalSkills}
                           onChange={(e) => setPersonalSkills(e.target.value)}
                           placeholder="Таны хувийн зан чанарууд..."
-                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-[80px] hover:bg-white"
+                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-20 hover:bg-white"
                         ></textarea>
                       </div>
                       <div className="flex flex-wrap gap-2 mt-2">
@@ -444,7 +444,7 @@ export default function CareersForm() {
                   ) : (
                     <button
                       type="submit"
-                      className="flex-[2] bg-[#FFB700] hover:bg-[#e6a600] text-white font-bold py-4 rounded-xl shadow-xl shadow-orange-200 transition-all transform hover:-translate-y-1 active:scale-[0.99] flex items-center justify-center gap-3 text-lg"
+                      className="flex-2 bg-[#FFB700] hover:bg-[#e6a600] text-white font-bold py-4 rounded-xl shadow-xl shadow-orange-200 transition-all transform hover:-translate-y-1 active:scale-[0.99] flex items-center justify-center gap-3 text-lg"
                     >
                       <span>Илгээх</span>
                       <CheckCircle2 className="h-5 w-5" />

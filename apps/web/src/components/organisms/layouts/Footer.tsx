@@ -34,7 +34,7 @@ export const Footer = () => {
               {
                 icon: ShieldCheck,
                 title: "Баталгаат бараа",
-                desc: "100% жинхэнэ бүтээгдэхүүн",
+                desc: "100% ийн баталгаа",
                 color: "text-green-600 bg-green-50",
               },
               {
@@ -76,7 +76,7 @@ export const Footer = () => {
           <div className="flex flex-col items-center gap-6 text-center md:flex-row md:justify-between md:text-left">
             <div className="max-w-lg">
               <h3 className="text-xl font-bold text-white sm:text-2xl">
-                Шинэ мэдээлэл авах уу?
+                Шинэ мэдээлэлийг цаг тухай бүрт авах ?
               </h3>
               <p className="mt-1.5 text-sm text-gray-400 sm:text-base">
                 Хямдрал, шинэ дэлгүүрүүд, онцгой санал — и-мэйлээр хүлээн
@@ -124,7 +124,7 @@ export const Footer = () => {
                 <span className="text-lg font-bold text-white">MGL Store</span>
               </Link>
               <p className="mt-3 text-sm leading-relaxed text-gray-400">
-                Монголын бизнесүүдийг нэг дор холбосон худалдааны нэгдсэн
+                Монголын худалдааны бизнесүүдийг нэг дор холбосон нэгдсэн
                 платформ.
               </p>
 

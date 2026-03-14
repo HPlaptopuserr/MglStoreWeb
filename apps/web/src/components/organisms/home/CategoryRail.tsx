@@ -71,10 +71,11 @@ export default function Categories() {
             className="text-left"
           >
             <h2 className="text-3xl font-bold text-gray-900 mb-4 tracking-tight">
-              Ангилалаар дэлгүүр хэсэх
+              Ангиллаар дэлгүүр хэсэх
             </h2>
             <p className="text-lg text-gray-500">
-              Манай түншийн сүлжээнээс яг хэрэгтэй зүйлээ олоорой
+              Манай нэгдсэн сүлжээнээс байгууллагуудаас өөрт хэрэгтэй зүйлээ
+              олоорой
             </p>
           </motion.div>
 

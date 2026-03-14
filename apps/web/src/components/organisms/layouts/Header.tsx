@@ -155,7 +155,7 @@ export const Header = () => {
           {/* Actions */}
           <div className="flex shrink-0 items-center gap-2 sm:gap-6">
             {/* Desktop: delivery/pickup toggle */}
-            <div className="hidden items-center rounded-full bg-amber-500 p-1 shadow-sm lg:flex">
+            {/*             <div className="hidden items-center rounded-full bg-amber-500 p-1 shadow-sm lg:flex">
               {isSwapped ? (
                 <button
                   type="button"
@@ -182,7 +182,7 @@ export const Header = () => {
                   <ShoppingBag size={18} strokeWidth={2.5} />
                 </button>
               )}
-            </div>
+            </div> */}
 
             {/* Desktop: User */}
             <button
@@ -271,7 +271,7 @@ export const Header = () => {
             <PartnerMenu />
           </div>
 
-          <Link
+          {/*  <Link
             href="#"
             className="ml-auto flex items-center gap-2 text-sm font-bold text-red-600 transition-colors hover:text-red-700"
           >
@@ -280,7 +280,7 @@ export const Header = () => {
               <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
             </span>
             Today&apos;s Deals
-          </Link>
+          </Link> */}
         </div>
       </div>
 

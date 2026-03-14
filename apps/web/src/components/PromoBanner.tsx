@@ -36,9 +36,9 @@ export default function Hero() {
 
           <p className="text-sm sm:text-lg md:text-2xl text-gray-500 mb-5 sm:mb-12 leading-relaxed max-w-3xl mx-auto font-light px-2 sm:px-0">
             Монголын бизнесүүдийг орчин үеийн жижиглэн худалдааны нэг экосистемд
-            холбох. Илүү ухаалаг дэлгүүр хэсч,
+            холбох. Илүү ухаалгаар дэлгүүр хэсэж,
             <br className="hidden md:block" />
-            орон нутгаа дэмжин, хамтдаа хөгжинө.
+            орон нутгаа хөрөнгө оруулан хамтдаа хөгжинө.
           </p>
 
           <motion.div
@@ -52,7 +52,7 @@ export default function Hero() {
               className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 text-sm sm:text-base font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-full transition-all shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:-translate-y-0.5"
             >
               <Building2 className="w-4 h-4 sm:w-5 sm:h-5" />
-              Бизнесээр элсээрэй
+              Хамтарч ажиллах
             </Link>
             <Link
               href="/organizations"

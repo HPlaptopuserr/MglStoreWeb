@@ -99,21 +99,18 @@ function ProductsContent() {
           </h1>
         </div>
 
-        {/* Description */}
         <div className="mb-8 max-w-3xl">
           <p className="text-sm text-gray-600 leading-relaxed">
             Хамгийн шилдэг, хамгийн эрэлттэй бүтээгдэхүүнүүдийг нэг дороос
             олоорой. Чанартай хүнсний бүтээгдэхүүнээс эхлээд өдөр тутмын
-            хэрэгцээний бараа хүртэл — бүгдийг хамгийн сайн үнээр.{" "}
+            хэрэгцээт бараа хүртэл — бүгдийг хамгийн сайн үнээр.{" "}
             <button className="underline font-medium text-black hover:text-[#FFAD02] transition-colors">
               Дэлгэрэнгүй
             </button>
           </p>
         </div>
 
-        {/* Category Tabs + Filter */}
         <div className="flex items-center justify-between border-b border-gray-200 mb-8">
-          {/* Tabs */}
           <div className="flex items-center gap-0 overflow-x-auto scrollbar-hide -mb-px">
             <button
               onClick={() => handleCategoryClick(null)}
