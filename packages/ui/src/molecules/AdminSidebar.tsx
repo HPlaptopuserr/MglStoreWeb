@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Tag,
+  Briefcase,
 } from "lucide-react";
 
 export interface NavItem {
@@ -53,6 +54,12 @@ export function AdminSidebar({
       label: "Хүсэлтүүд",
       icon: Users,
       href: "/requests",
+    },
+    {
+      id: "job-applications",
+      label: "Анкет",
+      icon: Briefcase,
+      href: "/applications",
     },
     {
       id: "partners",
@@ -102,6 +109,7 @@ export function AdminSidebar({
           fixed top-0 left-0 z-40 overflow-y-auto pb-10
           hidden md:flex
           md:block
+          py-10
         `}
       >
         <button

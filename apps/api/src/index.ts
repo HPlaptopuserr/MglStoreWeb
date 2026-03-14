@@ -7,6 +7,8 @@ import { prisma } from "@mgl/database";
 import partnerRequestRoutes from "./routes/partner-request.routes";
 import partnerRoutes from "./routes/partners.routes";
 import businessCategoriesRoutes from "./routes/business-categories.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
+import jobApplicationRoutes from "./routes/job-application.routes";
 
 dotenv.config();
 
@@ -41,6 +43,8 @@ app.use(express.urlencoded({ limit: "5mb", extended: true }));
 app.use("/api", partnerRequestRoutes);
 app.use("/api", partnerRoutes);
 app.use("/api", businessCategoriesRoutes);
+app.use("/api", dashboardRoutes);
+app.use("/api", jobApplicationRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");

@@ -341,6 +341,45 @@ model OrganizationInvite {
 }
 
 //////////////////////////////////////////////////
+// JOB APPLICATION (Careers form)
+//////////////////////////////////////////////////
+
+model JobApplication {
+  id String @id @default(uuid())
+
+  firstName   String
+  lastName    String
+  phone       String
+  registerNumber String?
+  age         Int?
+  gender      Gender?
+  address     String?
+
+  jobPosition   String?
+  education     String?
+  salaryExpect  String?
+  experience    String?
+
+  professionalSkills String?
+  personalSkills     String?
+  languages          String?
+
+  status ApprovalStatus @default(PENDING)
+
+  note         String?
+  rejectReason String?
+
+  reviewedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([phone])
+}
+
+//////////////////////////////////////////////////
 // BUSINESS CATEGORY
 //////////////////////////////////////////////////
 

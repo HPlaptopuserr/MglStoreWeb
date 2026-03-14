@@ -34,6 +34,24 @@ export default function CareersForm() {
   const [registerNumber, setRegisterNumber] = useState("");
   const [derivedAge, setDerivedAge] = useState<number | null>(null);
   const [derivedGender, setDerivedGender] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  // Form field states
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [jobPosition, setJobPosition] = useState("");
+  const [education, setEducation] = useState("");
+  const [salaryExpect, setSalaryExpect] = useState("");
+  const [experience, setExperience] = useState("");
+  const [languages, setLanguages] = useState("");
+
+  const API_URL =
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+    "http://localhost:4000";
 
   const professionalSkillSuggestions = [
     "Дүрэм журам баримтлах",
@@ -109,6 +127,42 @@ export default function CareersForm() {
   const nextStep = () => setCurrentStep((prev) => Math.min(prev + 1, 3));
   const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
 
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const res = await fetch(`${API_URL}/api/job-applications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          phone,
+          registerNumber: registerNumber || null,
+          age: derivedAge,
+          gender: derivedGender,
+          address,
+          jobPosition,
+          education,
+          salaryExpect,
+          experience,
+          professionalSkills,
+          personalSkills,
+          languages,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || "Илгээхэд алдаа гарлаа");
+      }
+      setSubmitted(true);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Алдаа гарлаа");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <section
       id="job-form"
@@ -162,295 +216,349 @@ export default function CareersForm() {
 
               <form
                 className="flex-1 flex flex-col"
-                onSubmit={(e) => e.preventDefault()}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (currentStep < 3) {
+                    nextStep();
+                  } else {
+                    handleSubmit();
+                  }
+                }}
               >
-                {/* Step 1: Personal Info */}
-                {currentStep === 1 && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
-                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                      <User className="w-4 h-4" /> Хувийн мэдээлэл
-                    </h4>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-semibold text-gray-700 ml-1">
-                          Нэр
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Нэр"
-                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none hover:bg-white"
-                          required
-                        />
+                {submitted ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
+                    <CheckCircle2 className="w-16 h-16 text-green-500 mb-4" />
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                      Амжилттай илгээгдлээ!
+                    </h3>
+                    <p className="text-gray-500 max-w-sm">
+                      Таны анкет амжилттай хүлээн авлаа. Бид тантай удахгүй
+                      холбогдох болно.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {submitError && (
+                      <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        {submitError}
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-semibold text-gray-700 ml-1">
-                          Овог
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Овог"
-                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none hover:bg-white"
-                          required
-                        />
-                      </div>
-                    </div>
+                    )}
+                    {/* Step 1: Personal Info */}
+                    {currentStep === 1 && (
+                      <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                          <User className="w-4 h-4" /> Хувийн мэдээлэл
+                        </h4>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-semibold text-gray-700 ml-1">
-                          Утасны дугаар
-                        </label>
-                        <div className="relative">
-                          <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                          <input
-                            type="tel"
-                            placeholder="9952xxxx"
-                            className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none hover:bg-white"
-                            required
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-semibold text-gray-700 ml-1">
+                              Нэр
+                            </label>
+                            <input
+                              type="text"
+                              value={firstName}
+                              onChange={(e) => setFirstName(e.target.value)}
+                              placeholder="Нэр"
+                              className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none hover:bg-white"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-semibold text-gray-700 ml-1">
+                              Овог
+                            </label>
+                            <input
+                              type="text"
+                              value={lastName}
+                              onChange={(e) => setLastName(e.target.value)}
+                              placeholder="Овог"
+                              className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none hover:bg-white"
+                              required
+                            />
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-semibold text-gray-700 ml-1">
-                          Регистрийн дугаар
-                        </label>
-                        <input
-                          type="text"
-                          value={registerNumber}
-                          onChange={(e) => parseRegisterNumber(e.target.value)}
-                          placeholder="УБ90010112"
-                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none uppercase hover:bg-white"
-                          maxLength={10}
-                          required
-                        />
-                        {(derivedAge !== null || derivedGender !== null) && (
-                          <div className="flex gap-2 mt-2 animate-in fade-in slide-in-from-top-1 duration-300">
-                            {derivedAge !== null && (
-                              <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200">
-                                {derivedAge} нас
-                              </span>
-                            )}
-                            {derivedGender !== null && (
-                              <span
-                                className={`text-xs font-semibold px-2.5 py-1 rounded-md border ${derivedGender === "Эрэгтэй" ? "text-blue-700 bg-blue-50 border-blue-100" : "text-pink-700 bg-pink-50 border-pink-100"}`}
-                              >
-                                {derivedGender}
-                              </span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-semibold text-gray-700 ml-1">
+                              Утасны дугаар
+                            </label>
+                            <div className="relative">
+                              <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                              <input
+                                type="tel"
+                                value={phone}
+                                onChange={(e) => setPhone(e.target.value)}
+                                placeholder="9952xxxx"
+                                className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none hover:bg-white"
+                                required
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-semibold text-gray-700 ml-1">
+                              Регистрийн дугаар
+                            </label>
+                            <input
+                              type="text"
+                              value={registerNumber}
+                              onChange={(e) =>
+                                parseRegisterNumber(e.target.value)
+                              }
+                              placeholder="УБ90010112"
+                              className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none uppercase hover:bg-white"
+                              maxLength={10}
+                              required
+                            />
+                            {(derivedAge !== null ||
+                              derivedGender !== null) && (
+                              <div className="flex gap-2 mt-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                                {derivedAge !== null && (
+                                  <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200">
+                                    {derivedAge} нас
+                                  </span>
+                                )}
+                                {derivedGender !== null && (
+                                  <span
+                                    className={`text-xs font-semibold px-2.5 py-1 rounded-md border ${derivedGender === "Эрэгтэй" ? "text-blue-700 bg-blue-50 border-blue-100" : "text-pink-700 bg-pink-50 border-pink-100"}`}
+                                  >
+                                    {derivedGender}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
-                        )}
-                      </div>
-                    </div>
+                        </div>
 
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-semibold text-gray-700 ml-1">
-                        Гэрийн хаяг
-                      </label>
-                      <div className="relative">
-                        <MapPin className="absolute left-3.5 top-4 h-5 w-5 text-gray-400" />
-                        <textarea
-                          placeholder="Дүүрэг, хороо, байр, тоот..."
-                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-25 hover:bg-white"
-                          required
-                        ></textarea>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Step 2: Job Info */}
-                {currentStep === 2 && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                      <Briefcase className="w-4 h-4" /> Ажлын мэдээлэл
-                    </h4>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-semibold text-gray-700 ml-1">
-                          Сонирхож буй ажил
-                        </label>
-                        <div className="relative">
-                          <select
-                            defaultValue=""
-                            className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none appearance-none hover:bg-white"
-                            required
-                          >
-                            <option value="" disabled>
-                              Ажлын байр сонгох
-                            </option>
-                            <option value="driver">Жолооч (Хүргэлт)</option>
-                            <option value="picker">Бараа бэлтгэгч</option>
-                            <option value="support">
-                              Хэрэглэгчийн үйлчилгээ
-                            </option>
-                            <option value="admin">Админ</option>
-                          </select>
-                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 rotate-90 pointer-events-none" />
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-semibold text-gray-700 ml-1">
+                            Гэрийн хаяг
+                          </label>
+                          <div className="relative">
+                            <MapPin className="absolute left-3.5 top-4 h-5 w-5 text-gray-400" />
+                            <textarea
+                              value={address}
+                              onChange={(e) => setAddress(e.target.value)}
+                              placeholder="Дүүрэг, хороо, байр, тоот..."
+                              className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-25 hover:bg-white"
+                              required
+                            ></textarea>
+                          </div>
                         </div>
                       </div>
+                    )}
 
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-semibold text-gray-700 ml-1">
-                          Боловсрол
-                        </label>
-                        <div className="relative">
-                          <select
-                            defaultValue=""
-                            className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none appearance-none hover:bg-white"
-                          >
-                            <option value="" disabled>
-                              Боловсролын түвшин
-                            </option>
-                            <option value="incomplete_secondary">
-                              Бүрэн бус дунд
-                            </option>
-                            <option value="high_school">Бүрэн дунд</option>
-                            <option value="vocational">МСҮТ / Коллеж</option>
-                            <option value="student">Оюутан</option>
-                            <option value="bachelor">Бакалавр</option>
-                            <option value="master">Магистр</option>
-                            <option value="doctor">Доктор</option>
-                          </select>
-                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 rotate-90 pointer-events-none" />
+                    {/* Step 2: Job Info */}
+                    {currentStep === 2 && (
+                      <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                          <Briefcase className="w-4 h-4" /> Ажлын мэдээлэл
+                        </h4>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-semibold text-gray-700 ml-1">
+                              Сонирхож буй ажил
+                            </label>
+                            <div className="relative">
+                              <select
+                                value={jobPosition}
+                                onChange={(e) => setJobPosition(e.target.value)}
+                                className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none appearance-none hover:bg-white"
+                                required
+                              >
+                                <option value="" disabled>
+                                  Ажлын байр сонгох
+                                </option>
+                                <option value="driver">Жолооч (Хүргэлт)</option>
+                                <option value="picker">Бараа бэлтгэгч</option>
+                                <option value="support">
+                                  Хэрэглэгчийн үйлчилгээ
+                                </option>
+                                <option value="admin">Админ</option>
+                              </select>
+                              <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 rotate-90 pointer-events-none" />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-semibold text-gray-700 ml-1">
+                              Боловсрол
+                            </label>
+                            <div className="relative">
+                              <select
+                                value={education}
+                                onChange={(e) => setEducation(e.target.value)}
+                                className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none appearance-none hover:bg-white"
+                              >
+                                <option value="" disabled>
+                                  Боловсролын түвшин
+                                </option>
+                                <option value="incomplete_secondary">
+                                  Бүрэн бус дунд
+                                </option>
+                                <option value="high_school">Бүрэн дунд</option>
+                                <option value="vocational">
+                                  МСҮТ / Коллеж
+                                </option>
+                                <option value="student">Оюутан</option>
+                                <option value="bachelor">Бакалавр</option>
+                                <option value="master">Магистр</option>
+                                <option value="doctor">Доктор</option>
+                              </select>
+                              <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 rotate-90 pointer-events-none" />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-semibold text-gray-700 ml-1">
+                            Цалингийн хүлээлт
+                          </label>
+                          <div className="relative">
+                            <Banknote className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                            <input
+                              type="text"
+                              value={salaryExpect}
+                              onChange={(e) => setSalaryExpect(e.target.value)}
+                              placeholder="Жишээ: 1,500,000"
+                              className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none hover:bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-semibold text-gray-700 ml-1">
+                            Ажлын туршлага
+                          </label>
+                          <textarea
+                            value={experience}
+                            onChange={(e) => setExperience(e.target.value)}
+                            placeholder="Өмнө нь ажиллаж байсан туршлагаа бичнэ үү..."
+                            className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none min-h-30 hover:bg-white"
+                          ></textarea>
                         </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-semibold text-gray-700 ml-1">
-                        Цалингийн хүлээлт
-                      </label>
-                      <div className="relative">
-                        <Banknote className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                        <input
-                          type="number"
-                          placeholder="Жишээ: 1,500,000"
-                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none hover:bg-white"
-                        />
+                    {/* Step 3: Skills & Qualifications */}
+                    {currentStep === 3 && (
+                      <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                          <Star className="w-4 h-4" /> Ур чадвар
+                        </h4>
+
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-semibold text-gray-700 ml-1">
+                            Мэргэжлийн ур чадвар
+                          </label>
+                          <textarea
+                            value={professionalSkills}
+                            onChange={(e) =>
+                              setProfessionalSkills(e.target.value)
+                            }
+                            placeholder="Таны эзэмшсэн ур чадварууд..."
+                            className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none min-h-20 hover:bg-white"
+                          ></textarea>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {professionalSkillSuggestions.map((skill) => (
+                              <button
+                                key={skill}
+                                type="button"
+                                onClick={() => addProfessionalSkill(skill)}
+                                className="text-xs bg-white border border-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-all hover:bg-[#FFB700] hover:text-white hover:border-[#FFB700] active:scale-95"
+                              >
+                                + {skill}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-semibold text-gray-700 ml-1">
+                            Хувь хүний ур чадвар
+                          </label>
+                          <div className="relative">
+                            <Heart className="absolute left-3.5 top-4 h-5 w-5 text-gray-400" />
+                            <textarea
+                              value={personalSkills}
+                              onChange={(e) =>
+                                setPersonalSkills(e.target.value)
+                              }
+                              placeholder="Таны хувийн зан чанарууд..."
+                              className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-20 hover:bg-white"
+                            ></textarea>
+                          </div>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {personalSkillSuggestions.map((skill) => (
+                              <button
+                                key={skill}
+                                type="button"
+                                onClick={() => addPersonalSkill(skill)}
+                                className="text-xs bg-white border border-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-all hover:bg-[#FFB700] hover:text-white hover:border-[#FFB700] active:scale-95"
+                              >
+                                + {skill}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-semibold text-gray-700 ml-1">
+                            Гадаад хэлний мэдлэг
+                          </label>
+                          <div className="relative">
+                            <Languages className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                            <input
+                              type="text"
+                              value={languages}
+                              onChange={(e) => setLanguages(e.target.value)}
+                              placeholder="Англи, Орос гэх мэт..."
+                              className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none hover:bg-white"
+                            />
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-semibold text-gray-700 ml-1">
-                        Ажлын туршлага
-                      </label>
-                      <textarea
-                        placeholder="Өмнө нь ажиллаж байсан туршлагаа бичнэ үү..."
-                        className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none min-h-30 hover:bg-white"
-                      ></textarea>
+                    {/* Navigation Buttons */}
+                    <div className="mt-auto pt-8 flex gap-4">
+                      {currentStep > 1 && (
+                        <button
+                          type="button"
+                          onClick={prevStep}
+                          className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-4 rounded-xl transition-all transform active:scale-[0.98] flex items-center justify-center gap-2"
+                        >
+                          <ArrowLeft className="h-5 w-5" />
+                          <span>Буцах</span>
+                        </button>
+                      )}
+
+                      {currentStep < 3 ? (
+                        <button
+                          type="submit"
+                          className="w-full bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl shadow-xl shadow-gray-200 transition-all transform hover:-translate-y-1 active:scale-[0.99] flex items-center justify-center gap-3 text-lg"
+                        >
+                          <span>Үргэлжлүүлэх</span>
+                          <ArrowRight className="h-5 w-5" />
+                        </button>
+                      ) : (
+                        <button
+                          type="submit"
+                          disabled={submitting}
+                          className="flex-2 bg-[#FFB700] hover:bg-[#e6a600] text-white font-bold py-4 rounded-xl shadow-xl shadow-orange-200 transition-all transform hover:-translate-y-1 active:scale-[0.99] flex items-center justify-center gap-3 text-lg disabled:opacity-60 disabled:pointer-events-none"
+                        >
+                          <span>
+                            {submitting ? "Илгээж байна..." : "Илгээх"}
+                          </span>
+                          <CheckCircle2 className="h-5 w-5" />
+                        </button>
+                      )}
                     </div>
-                  </div>
+                  </>
                 )}
-
-                {/* Step 3: Skills & Qualifications */}
-                {currentStep === 3 && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                      <Star className="w-4 h-4" /> Ур чадвар
-                    </h4>
-
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-semibold text-gray-700 ml-1">
-                        Мэргэжлийн ур чадвар
-                      </label>
-                      <textarea
-                        value={professionalSkills}
-                        onChange={(e) => setProfessionalSkills(e.target.value)}
-                        placeholder="Таны эзэмшсэн ур чадварууд..."
-                        className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none min-h-20 hover:bg-white"
-                      ></textarea>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {professionalSkillSuggestions.map((skill) => (
-                          <button
-                            key={skill}
-                            type="button"
-                            onClick={() => addProfessionalSkill(skill)}
-                            className="text-xs bg-white border border-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-all hover:bg-[#FFB700] hover:text-white hover:border-[#FFB700] active:scale-95"
-                          >
-                            + {skill}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-semibold text-gray-700 ml-1">
-                        Хувь хүний ур чадвар
-                      </label>
-                      <div className="relative">
-                        <Heart className="absolute left-3.5 top-4 h-5 w-5 text-gray-400" />
-                        <textarea
-                          value={personalSkills}
-                          onChange={(e) => setPersonalSkills(e.target.value)}
-                          placeholder="Таны хувийн зан чанарууд..."
-                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-20 hover:bg-white"
-                        ></textarea>
-                      </div>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {personalSkillSuggestions.map((skill) => (
-                          <button
-                            key={skill}
-                            type="button"
-                            onClick={() => addPersonalSkill(skill)}
-                            className="text-xs bg-white border border-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-all hover:bg-[#FFB700] hover:text-white hover:border-[#FFB700] active:scale-95"
-                          >
-                            + {skill}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-semibold text-gray-700 ml-1">
-                        Гадаад хэлний мэдлэг
-                      </label>
-                      <div className="relative">
-                        <Languages className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                        <input
-                          type="text"
-                          placeholder="Англи, Орос гэх мэт..."
-                          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none hover:bg-white"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Navigation Buttons */}
-                <div className="mt-auto pt-8 flex gap-4">
-                  {currentStep > 1 && (
-                    <button
-                      type="button"
-                      onClick={prevStep}
-                      className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-4 rounded-xl transition-all transform active:scale-[0.98] flex items-center justify-center gap-2"
-                    >
-                      <ArrowLeft className="h-5 w-5" />
-                      <span>Буцах</span>
-                    </button>
-                  )}
-
-                  {currentStep < 3 ? (
-                    <button
-                      type="button"
-                      onClick={nextStep}
-                      className="w-full bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl shadow-xl shadow-gray-200 transition-all transform hover:-translate-y-1 active:scale-[0.99] flex items-center justify-center gap-3 text-lg"
-                    >
-                      <span>Үргэлжлүүлэх</span>
-                      <ArrowRight className="h-5 w-5" />
-                    </button>
-                  ) : (
-                    <button
-                      type="submit"
-                      className="flex-2 bg-[#FFB700] hover:bg-[#e6a600] text-white font-bold py-4 rounded-xl shadow-xl shadow-orange-200 transition-all transform hover:-translate-y-1 active:scale-[0.99] flex items-center justify-center gap-3 text-lg"
-                    >
-                      <span>Илгээх</span>
-                      <CheckCircle2 className="h-5 w-5" />
-                    </button>
-                  )}
-                </div>
               </form>
             </div>
           </div>

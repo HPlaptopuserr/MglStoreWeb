@@ -13,6 +13,7 @@ import {
   Tag,
   Menu,
   X,
+  Briefcase,
 } from "lucide-react";
 
 export interface NavItem {
@@ -53,6 +54,12 @@ export function MobileDashboard({
       label: "Хүсэлтүүд",
       icon: Users,
       href: "/requests",
+    },
+    {
+      id: "job-applications",
+      label: "Анкет",
+      icon: Briefcase,
+      href: "/applications",
     },
     {
       id: "partners",

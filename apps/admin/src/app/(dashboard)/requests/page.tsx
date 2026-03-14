@@ -13,9 +13,14 @@ import {
   Check,
   X,
   Loader2,
+  User,
+  MapPin,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { API_BASE } from "@/lib/api";
+
+type TabType = "partners" | "careers";
 
 type PartnerRequest = {
   id: string;
@@ -26,6 +31,32 @@ type PartnerRequest = {
   operatingYears: number | null;
   createdAt: string;
   status: "PENDING" | "APPROVED" | "REJECTED" | string;
+};
+
+type JobApplication = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  registerNumber: string | null;
+  age: number | null;
+  gender: string | null;
+  address: string | null;
+  jobPosition: string | null;
+  education: string | null;
+  salaryExpect: string | null;
+  experience: string | null;
+  professionalSkills: string | null;
+  personalSkills: string | null;
+  languages: string | null;
+  createdAt: string;
+};
+
+const JOB_POSITION_LABELS: Record<string, string> = {
+  driver: "Жолооч",
+  picker: "Бараа бэлтгэгч",
+  support: "Хэрэглэгчийн үйлчилгээ",
+  admin: "Админ",
 };
 
 function getStatusLabel(status: string) {
@@ -55,7 +86,12 @@ function getStatusClass(status: string) {
 }
 
 export default function RequestsPage() {
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabType>(
+    searchParams.get("tab") === "jobs" ? "careers" : "partners",
+  );
   const [requests, setRequests] = useState<PartnerRequest[]>([]);
+  const [jobApps, setJobApps] = useState<JobApplication[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
   const [error, setError] = useState("");
@@ -86,8 +122,11 @@ export default function RequestsPage() {
         params.set("status", statusFilter);
       }
 
+      const endpoint =
+        activeTab === "partners" ? "partner-requests" : "job-applications";
+
       const res = await fetch(
-        `${API_BASE}/api/partner-requests?${params.toString()}`,
+        `${API_BASE}/api/${endpoint}?${params.toString()}`,
         {
           method: "GET",
           cache: "no-store",
@@ -108,15 +147,20 @@ export default function RequestsPage() {
           ? data.data
           : [];
 
-      setRequests(normalized);
+      if (activeTab === "partners") {
+        setRequests(normalized);
+      } else {
+        setJobApps(normalized);
+      }
     } catch (err) {
       console.error(err);
-      setRequests([]);
+      if (activeTab === "partners") setRequests([]);
+      else setJobApps([]);
       setError(err instanceof Error ? err.message : "Алдаа гарлаа");
     } finally {
       setPageLoading(false);
     }
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, activeTab]);
 
   useEffect(() => {
     fetchRequests();
@@ -127,15 +171,17 @@ export default function RequestsPage() {
       setLoadingId(id);
       setError("");
 
-      const res = await fetch(
-        `${API_BASE}/api/partner-requests/${id}/approve`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
+      const endpoint =
+        activeTab === "partners"
+          ? `partner-requests/${id}/approve`
+          : `job-applications/${id}/approve`;
+
+      const res = await fetch(`${API_BASE}/api/${endpoint}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+      });
 
       const data = await res.json().catch(() => null);
 
@@ -161,7 +207,12 @@ export default function RequestsPage() {
       setLoadingId(id);
       setError("");
 
-      const res = await fetch(`${API_BASE}/api/partner-requests/${id}/reject`, {
+      const endpoint =
+        activeTab === "partners"
+          ? `partner-requests/${id}/reject`
+          : `job-applications/${id}/reject`;
+
+      const res = await fetch(`${API_BASE}/api/${endpoint}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -184,8 +235,10 @@ export default function RequestsPage() {
   };
 
   const totalText = useMemo(() => {
-    return `Нийт хүсэлт: ${requests.length}`;
-  }, [requests.length]);
+    const count = activeTab === "partners" ? requests.length : jobApps.length;
+    const label = activeTab === "partners" ? "Түнш хүсэлт" : "Ажлын анкет";
+    return `Нийт ${label}: ${count}`;
+  }, [requests.length, jobApps.length, activeTab]);
 
   return (
     <div className="text-slate-800 font-sans">
@@ -254,6 +307,34 @@ export default function RequestsPage() {
             </div>
           </div>
 
+          {/* Tab pills */}
+          <div className="flex gap-2 mb-4">
+            <button
+              type="button"
+              onClick={() => setActiveTab("partners")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                activeTab === "partners"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Building2 size={15} />
+              Түнш хүсэлт
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("careers")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                activeTab === "careers"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Briefcase size={15} />
+              Ажлын анкет
+            </button>
+          </div>
+
           {error && (
             <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {error}
@@ -263,150 +344,321 @@ export default function RequestsPage() {
           {/* Desktop table */}
           <div className="hidden md:block w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-200 border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    <th className="px-4 py-3">Байгууллагын нэр</th>
-                    <th className="px-4 py-3">Дугаар</th>
-                    <th className="px-4 py-3">Чиглэл</th>
-                    <th className="px-4 py-3">Жил</th>
-                    <th className="px-4 py-3">Огноо</th>
-                    <th className="px-4 py-3 text-right">Төлөв</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {pageLoading ? (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-10 text-center text-sm text-slate-500"
-                      >
-                        <div className="inline-flex items-center gap-2">
-                          <Loader2 size={16} className="animate-spin" />
-                          Ачааллаж байна...
-                        </div>
-                      </td>
+              {activeTab === "partners" ? (
+                <table className="w-full min-w-200 border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <th className="px-4 py-3">Байгууллагын нэр</th>
+                      <th className="px-4 py-3">Дугаар</th>
+                      <th className="px-4 py-3">Чиглэл</th>
+                      <th className="px-4 py-3">Жил</th>
+                      <th className="px-4 py-3">Огноо</th>
+                      <th className="px-4 py-3 text-right">Төлөв</th>
                     </tr>
-                  ) : requests.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-10 text-center text-sm text-slate-500"
-                      >
-                        Хүсэлт олдсонгүй
-                      </td>
-                    </tr>
-                  ) : (
-                    requests.map((item) => {
-                      const isPending = item.status === "PENDING";
-                      const isRowLoading = loadingId === item.id;
+                  </thead>
 
-                      return (
-                        <tr
-                          key={item.id}
-                          className="group transition-colors hover:bg-slate-50/80"
+                  <tbody className="divide-y divide-slate-100">
+                    {pageLoading ? (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-4 py-10 text-center text-sm text-slate-500"
                         >
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
-                                <Building2 size={17} />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold text-slate-900">
-                                  {item.organizationName || "-"}
+                          <div className="inline-flex items-center gap-2">
+                            <Loader2 size={16} className="animate-spin" />
+                            Ачааллаж байна...
+                          </div>
+                        </td>
+                      </tr>
+                    ) : requests.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-4 py-10 text-center text-sm text-slate-500"
+                        >
+                          Хүсэлт олдсонгүй
+                        </td>
+                      </tr>
+                    ) : (
+                      requests.map((item) => {
+                        const isPending = item.status === "PENDING";
+                        const isRowLoading = loadingId === item.id;
+
+                        return (
+                          <tr
+                            key={item.id}
+                            className="group transition-colors hover:bg-slate-50/80"
+                          >
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                                  <Building2 size={17} />
                                 </div>
-                                <div className="mt-0.5 truncate text-xs text-slate-400">
-                                  {item.email || "-"}
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-semibold text-slate-900">
+                                    {item.organizationName || "-"}
+                                  </div>
+                                  <div className="mt-0.5 truncate text-xs text-slate-400">
+                                    {item.email || "-"}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-2 text-sm text-slate-600">
-                              <Phone size={14} className="text-slate-400" />
-                              <span>{item.phoneNumber || "-"}</span>
-                            </div>
-                          </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Phone size={14} className="text-slate-400" />
+                                <span>{item.phoneNumber || "-"}</span>
+                              </div>
+                            </td>
 
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-2 text-sm text-slate-600">
-                              <Briefcase size={14} className="text-slate-400" />
-                              <span>{item.businessCategory || "-"}</span>
-                            </div>
-                          </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Briefcase
+                                  size={14}
+                                  className="text-slate-400"
+                                />
+                                <span>{item.businessCategory || "-"}</span>
+                              </div>
+                            </td>
 
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-2 text-sm text-slate-600">
-                              <Clock size={14} className="text-slate-400" />
-                              <span>{item.operatingYears ?? "-"}</span>
-                            </div>
-                          </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Clock size={14} className="text-slate-400" />
+                                <span>{item.operatingYears ?? "-"}</span>
+                              </div>
+                            </td>
 
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-2 text-sm text-slate-600">
-                              <Calendar size={14} className="text-slate-400" />
-                              <span>
-                                {item.createdAt
-                                  ? new Date(item.createdAt).toLocaleDateString(
-                                      "mn-MN",
-                                    )
-                                  : "-"}
-                              </span>
-                            </div>
-                          </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Calendar
+                                  size={14}
+                                  className="text-slate-400"
+                                />
+                                <span>
+                                  {item.createdAt
+                                    ? new Date(
+                                        item.createdAt,
+                                      ).toLocaleDateString("mn-MN")
+                                    : "-"}
+                                </span>
+                              </div>
+                            </td>
 
-                          <td className="px-4 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                              <span
-                                className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${getStatusClass(
-                                  item.status,
-                                )}`}
-                              >
-                                {getStatusLabel(item.status)}
-                              </span>
+                            <td className="px-4 py-3.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${getStatusClass(
+                                    item.status,
+                                  )}`}
+                                >
+                                  {getStatusLabel(item.status)}
+                                </span>
 
-                              <button
-                                onClick={() => approveRequest(item.id)}
-                                disabled={isRowLoading || !isPending}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-600 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {isRowLoading ? (
-                                  <Loader2 size={13} className="animate-spin" />
-                                ) : (
-                                  <Check size={13} />
-                                )}
-                                Зөвшөөрөх
-                              </button>
+                                <button
+                                  onClick={() => approveRequest(item.id)}
+                                  disabled={isRowLoading || !isPending}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-600 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {isRowLoading ? (
+                                    <Loader2
+                                      size={13}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Check size={13} />
+                                  )}
+                                  Зөвшөөрөх
+                                </button>
 
-                              <button
-                                onClick={() => rejectRequest(item.id)}
-                                disabled={isRowLoading || !isPending}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {isRowLoading ? (
-                                  <Loader2 size={13} className="animate-spin" />
-                                ) : (
-                                  <X size={13} />
-                                )}
-                                Татгалзах
-                              </button>
+                                <button
+                                  onClick={() => rejectRequest(item.id)}
+                                  disabled={isRowLoading || !isPending}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {isRowLoading ? (
+                                    <Loader2
+                                      size={13}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <X size={13} />
+                                  )}
+                                  Татгалзах
+                                </button>
 
-                              <button
-                                type="button"
-                                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-                              >
-                                <MoreHorizontal size={15} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                                <button
+                                  type="button"
+                                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                                >
+                                  <MoreHorizontal size={15} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="w-full min-w-200 border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <th className="px-4 py-3">Нэр</th>
+                      <th className="px-4 py-3">Утас</th>
+                      <th className="px-4 py-3">Албан тушаал</th>
+                      <th className="px-4 py-3">Боловсрол</th>
+                      <th className="px-4 py-3">Огноо</th>
+                      <th className="px-4 py-3 text-right">Төлөв</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {pageLoading ? (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-4 py-10 text-center text-sm text-slate-500"
+                        >
+                          <div className="inline-flex items-center gap-2">
+                            <Loader2 size={16} className="animate-spin" />
+                            Ачааллаж байна...
+                          </div>
+                        </td>
+                      </tr>
+                    ) : jobApps.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-4 py-10 text-center text-sm text-slate-500"
+                        >
+                          Анкет олдсонгүй
+                        </td>
+                      </tr>
+                    ) : (
+                      jobApps.map((item) => {
+                        const isRowLoading = loadingId === item.id;
+
+                        return (
+                          <tr
+                            key={item.id}
+                            className="group transition-colors hover:bg-slate-50/80"
+                          >
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600">
+                                  <User size={17} />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-semibold text-slate-900">
+                                    {item.lastName} {item.firstName}
+                                  </div>
+                                  {item.address && (
+                                    <div className="mt-0.5 truncate text-xs text-slate-400 flex items-center gap-1">
+                                      <MapPin size={10} />
+                                      {item.address}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Phone size={14} className="text-slate-400" />
+                                <span>{item.phone || "-"}</span>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Briefcase
+                                  size={14}
+                                  className="text-slate-400"
+                                />
+                                <span>
+                                  {item.jobPosition
+                                    ? JOB_POSITION_LABELS[item.jobPosition] ||
+                                      item.jobPosition
+                                    : "-"}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <BookOpen
+                                  size={14}
+                                  className="text-slate-400"
+                                />
+                                <span>{item.education || "-"}</span>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Calendar
+                                  size={14}
+                                  className="text-slate-400"
+                                />
+                                <span>
+                                  {item.createdAt
+                                    ? new Date(
+                                        item.createdAt,
+                                      ).toLocaleDateString("mn-MN")
+                                    : "-"}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                                <button
+                                  onClick={() => approveRequest(item.id)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-600 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {isRowLoading ? (
+                                    <Loader2
+                                      size={13}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Check size={13} />
+                                  )}
+                                  Зөвшөөрөх
+                                </button>
+
+                                <button
+                                  onClick={() => rejectRequest(item.id)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {isRowLoading ? (
+                                    <Loader2
+                                      size={13}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <X size={13} />
+                                  )}
+                                  Татгалзах
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                                >
+                                  <MoreHorizontal size={15} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
 
@@ -417,13 +669,105 @@ export default function RequestsPage() {
                 <Loader2 size={20} className="animate-spin" />
                 <span className="ml-2 text-sm">Ачааллаж байна...</span>
               </div>
-            ) : requests.length === 0 ? (
+            ) : activeTab === "partners" ? (
+              requests.length === 0 ? (
+                <div className="text-center py-10 text-sm text-slate-500">
+                  Хүсэлт олдсонгүй
+                </div>
+              ) : (
+                requests.map((item) => {
+                  const isPending = item.status === "PENDING";
+                  const isRowLoading = loadingId === item.id;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden"
+                    >
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                              <Building2 size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-semibold text-slate-900 text-sm truncate">
+                                {item.organizationName || "-"}
+                              </div>
+                              <div className="text-xs text-slate-400 truncate">
+                                {item.email || "-"}
+                              </div>
+                            </div>
+                          </div>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 ${getStatusClass(item.status)}`}
+                          >
+                            {getStatusLabel(item.status)}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
+                          <div className="flex items-center gap-1.5">
+                            <Phone size={12} className="text-slate-400" />
+                            {item.phoneNumber || "-"}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Briefcase size={12} className="text-slate-400" />
+                            {item.businessCategory || "-"}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Clock size={12} className="text-slate-400" />
+                            {item.operatingYears ?? "-"} жил
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Calendar size={12} className="text-slate-400" />
+                            {item.createdAt
+                              ? new Date(item.createdAt).toLocaleDateString(
+                                  "mn-MN",
+                                )
+                              : "-"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {isPending && (
+                        <div className="flex border-t border-slate-100 divide-x divide-slate-100">
+                          <button
+                            onClick={() => approveRequest(item.id)}
+                            disabled={isRowLoading}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                          >
+                            {isRowLoading ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Check size={13} />
+                            )}
+                            Зөвшөөрөх
+                          </button>
+                          <button
+                            onClick={() => rejectRequest(item.id)}
+                            disabled={isRowLoading}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                          >
+                            {isRowLoading ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <X size={13} />
+                            )}
+                            Татгалзах
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )
+            ) : jobApps.length === 0 ? (
               <div className="text-center py-10 text-sm text-slate-500">
-                Хүсэлт олдсонгүй
+                Анкет олдсонгүй
               </div>
             ) : (
-              requests.map((item) => {
-                const isPending = item.status === "PENDING";
+              jobApps.map((item) => {
                 const isRowLoading = loadingId === item.id;
 
                 return (
@@ -434,37 +778,38 @@ export default function RequestsPage() {
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
-                            <Building2 size={18} />
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600">
+                            <User size={18} />
                           </div>
                           <div className="min-w-0">
                             <div className="font-semibold text-slate-900 text-sm truncate">
-                              {item.organizationName || "-"}
+                              {item.lastName} {item.firstName}
                             </div>
-                            <div className="text-xs text-slate-400 truncate">
-                              {item.email || "-"}
-                            </div>
+                            {item.address && (
+                              <div className="text-xs text-slate-400 truncate flex items-center gap-1">
+                                <MapPin size={10} />
+                                {item.address}
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 ${getStatusClass(item.status)}`}
-                        >
-                          {getStatusLabel(item.status)}
-                        </span>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
                         <div className="flex items-center gap-1.5">
                           <Phone size={12} className="text-slate-400" />
-                          {item.phoneNumber || "-"}
+                          {item.phone || "-"}
                         </div>
                         <div className="flex items-center gap-1.5">
                           <Briefcase size={12} className="text-slate-400" />
-                          {item.businessCategory || "-"}
+                          {item.jobPosition
+                            ? JOB_POSITION_LABELS[item.jobPosition] ||
+                              item.jobPosition
+                            : "-"}
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <Clock size={12} className="text-slate-400" />
-                          {item.operatingYears ?? "-"} жил
+                          <BookOpen size={12} className="text-slate-400" />
+                          {item.education || "-"}
                         </div>
                         <div className="flex items-center gap-1.5">
                           <Calendar size={12} className="text-slate-400" />
@@ -476,35 +821,6 @@ export default function RequestsPage() {
                         </div>
                       </div>
                     </div>
-
-                    {isPending && (
-                      <div className="flex border-t border-slate-100 divide-x divide-slate-100">
-                        <button
-                          onClick={() => approveRequest(item.id)}
-                          disabled={isRowLoading}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
-                        >
-                          {isRowLoading ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <Check size={13} />
-                          )}
-                          Зөвшөөрөх
-                        </button>
-                        <button
-                          onClick={() => rejectRequest(item.id)}
-                          disabled={isRowLoading}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
-                        >
-                          {isRowLoading ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <X size={13} />
-                          )}
-                          Татгалзах
-                        </button>
-                      </div>
-                    )}
                   </div>
                 );
               })
