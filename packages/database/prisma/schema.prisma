@@ -344,6 +344,23 @@ model OrganizationInvite {
 // JOB APPLICATION (Careers form)
 //////////////////////////////////////////////////
 
+model JobPosition {
+  id           String           @id @default(uuid())
+  name         String
+  slug         String           @unique
+  description  String?
+  isActive     Boolean          @default(true)
+  sortOrder    Int              @default(0)
+
+  applications JobApplication[]
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
 model JobApplication {
   id String @id @default(uuid())
 
@@ -355,7 +372,9 @@ model JobApplication {
   gender      Gender?
   address     String?
 
-  jobPosition   String?
+  jobPositionId String?
+  jobPosition   JobPosition? @relation(fields: [jobPositionId], references: [id])
+
   education     String?
   salaryExpect  String?
   experience    String?
@@ -377,6 +396,7 @@ model JobApplication {
   @@index([status])
   @@index([createdAt])
   @@index([phone])
+  @@index([jobPositionId])
 }
 
 //////////////////////////////////////////////////

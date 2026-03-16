@@ -1,31 +1,30 @@
 "use client";
 import { CareersPhone } from "@/components/organisms/careers/CareersPhone";
-
-import { useState } from "react";
+import { API } from "@/lib/api";
+import { useEffect, useState } from "react";
 import {
   User,
   Phone,
   MapPin,
   Briefcase,
-  Calendar,
   ArrowRight,
-  Bike,
-  Package,
-  Clock,
-  ShieldCheck,
   GraduationCap,
   Banknote,
-  FileText,
   Star,
   Languages,
   ChevronRight,
-  Wallet,
-  Bell,
-  Menu,
   ArrowLeft,
   CheckCircle2,
   Heart,
 } from "lucide-react";
+
+interface JobPosition {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  createdAt: string;
+}
 
 export default function CareersForm() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -38,7 +37,6 @@ export default function CareersForm() {
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  // Form field states
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
@@ -49,9 +47,8 @@ export default function CareersForm() {
   const [experience, setExperience] = useState("");
   const [languages, setLanguages] = useState("");
 
-  const API_URL =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-    "http://localhost:4000";
+  const [jobPositions, setJobPositions] = useState<JobPosition[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(true);
 
   const professionalSkillSuggestions = [
     "Дүрэм журам баримтлах",
@@ -69,6 +66,32 @@ export default function CareersForm() {
     "Эерэг хандлагатай",
     "Тууштай",
   ];
+
+  useEffect(() => {
+    const fetchJobPositions = async () => {
+      try {
+        setLoadingJobs(true);
+
+        const res = await fetch(`${API}/job-positions`, {
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          throw new Error("Ажлын байр авахад алдаа гарлаа");
+        }
+
+        const data = await res.json();
+        setJobPositions(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("fetch job positions error", error);
+        setJobPositions([]);
+      } finally {
+        setLoadingJobs(false);
+      }
+    };
+
+    fetchJobPositions();
+  }, []);
 
   const addProfessionalSkill = (skill: string) => {
     setProfessionalSkills((prev) => {
@@ -131,7 +154,7 @@ export default function CareersForm() {
     setSubmitting(true);
     setSubmitError("");
     try {
-      const res = await fetch(`${API_URL}/api/job-applications`, {
+      const res = await fetch(`${API}/api/job-applications`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -151,10 +174,12 @@ export default function CareersForm() {
           languages,
         }),
       });
+
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.message || "Илгээхэд алдаа гарлаа");
       }
+
       setSubmitted(true);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Алдаа гарлаа");
@@ -168,7 +193,6 @@ export default function CareersForm() {
       id="job-form"
       className="w-full bg-linear-to-br from-[#FFB700] to-[#FF9500] pt-24 px-4 md:px-6 lg:px-8 font-sans overflow-hidden relative"
     >
-      {/* Background Decor */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-white/10 rounded-full blur-3xl"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-600/20 rounded-full blur-3xl"></div>
@@ -185,7 +209,6 @@ export default function CareersForm() {
         </div>
 
         <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-start">
-          {/* Left Column - Form (Span 7) */}
           <div className="lg:col-span-7 relative">
             <div className="bg-white rounded-4xl shadow-2xl p-8 md:p-10 border border-white/20 backdrop-blur-sm min-h-150 flex flex-col">
               <div className="flex items-center justify-between mb-8 border-b border-gray-100 pb-6">
@@ -198,7 +221,7 @@ export default function CareersForm() {
                       <div
                         key={step}
                         className={`h-2 w-8 rounded-full transition-colors ${step <= currentStep ? "bg-[#FFB700]" : "bg-gray-200"}`}
-                      ></div>
+                      />
                     ))}
                     <span className="text-xs text-gray-400 font-medium ml-2">
                       Алхам {currentStep}/3
@@ -243,9 +266,9 @@ export default function CareersForm() {
                         {submitError}
                       </div>
                     )}
-                    {/* Step 1: Personal Info */}
+
                     {currentStep === 1 && (
-                      <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+                      <div className="space-y-6">
                         <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                           <User className="w-4 h-4" /> Хувийн мэдээлэл
                         </h4>
@@ -314,7 +337,7 @@ export default function CareersForm() {
                             />
                             {(derivedAge !== null ||
                               derivedGender !== null) && (
-                              <div className="flex gap-2 mt-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                              <div className="flex gap-2 mt-2">
                                 {derivedAge !== null && (
                                   <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200">
                                     {derivedAge} нас
@@ -344,15 +367,14 @@ export default function CareersForm() {
                               placeholder="Дүүрэг, хороо, байр, тоот..."
                               className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-25 hover:bg-white"
                               required
-                            ></textarea>
+                            />
                           </div>
                         </div>
                       </div>
                     )}
 
-                    {/* Step 2: Job Info */}
                     {currentStep === 2 && (
-                      <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="space-y-6">
                         <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                           <Briefcase className="w-4 h-4" /> Ажлын мэдээлэл
                         </h4>
@@ -366,18 +388,20 @@ export default function CareersForm() {
                               <select
                                 value={jobPosition}
                                 onChange={(e) => setJobPosition(e.target.value)}
-                                className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none appearance-none hover:bg-white"
+                                className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none appearance-none hover:bg-white disabled:opacity-60"
                                 required
+                                disabled={loadingJobs}
                               >
                                 <option value="" disabled>
-                                  Ажлын байр сонгох
+                                  {loadingJobs
+                                    ? "Ажлын байр ачааллаж байна..."
+                                    : "Ажлын байр сонгох"}
                                 </option>
-                                <option value="driver">Жолооч (Хүргэлт)</option>
-                                <option value="picker">Бараа бэлтгэгч</option>
-                                <option value="support">
-                                  Хэрэглэгчийн үйлчилгээ
-                                </option>
-                                <option value="admin">Админ</option>
+                                {jobPositions.map((job) => (
+                                  <option key={job.id} value={job.name}>
+                                    {job.name}
+                                  </option>
+                                ))}
                               </select>
                               <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 rotate-90 pointer-events-none" />
                             </div>
@@ -438,14 +462,13 @@ export default function CareersForm() {
                             onChange={(e) => setExperience(e.target.value)}
                             placeholder="Өмнө нь ажиллаж байсан туршлагаа бичнэ үү..."
                             className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none min-h-30 hover:bg-white"
-                          ></textarea>
+                          />
                         </div>
                       </div>
                     )}
 
-                    {/* Step 3: Skills & Qualifications */}
                     {currentStep === 3 && (
-                      <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <div className="space-y-6">
                         <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                           <Star className="w-4 h-4" /> Ур чадвар
                         </h4>
@@ -461,7 +484,7 @@ export default function CareersForm() {
                             }
                             placeholder="Таны эзэмшсэн ур чадварууд..."
                             className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none min-h-20 hover:bg-white"
-                          ></textarea>
+                          />
                           <div className="flex flex-wrap gap-2 mt-2">
                             {professionalSkillSuggestions.map((skill) => (
                               <button
@@ -489,7 +512,7 @@ export default function CareersForm() {
                               }
                               placeholder="Таны хувийн зан чанарууд..."
                               className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-20 hover:bg-white"
-                            ></textarea>
+                            />
                           </div>
                           <div className="flex flex-wrap gap-2 mt-2">
                             {personalSkillSuggestions.map((skill) => (
@@ -523,7 +546,6 @@ export default function CareersForm() {
                       </div>
                     )}
 
-                    {/* Navigation Buttons */}
                     <div className="mt-auto pt-8 flex gap-4">
                       {currentStep > 1 && (
                         <button

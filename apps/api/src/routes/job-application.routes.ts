@@ -89,8 +89,10 @@ router.get("/job-applications", async (req, res) => {
                 { phone: { contains: search, mode: "insensitive" as const } },
                 {
                   jobPosition: {
-                    contains: search,
-                    mode: "insensitive" as const,
+                    name: {
+                      contains: search,
+                      mode: "insensitive" as const,
+                    },
                   },
                 },
               ],

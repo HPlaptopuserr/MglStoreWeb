@@ -9,6 +9,7 @@ import partnerRoutes from "./routes/partners.routes";
 import businessCategoriesRoutes from "./routes/business-categories.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import jobApplicationRoutes from "./routes/job-application.routes";
+import jobPositionRoutes from "./routes/job-position.routes";
 
 dotenv.config();
 
@@ -45,6 +46,7 @@ app.use("/api", partnerRoutes);
 app.use("/api", businessCategoriesRoutes);
 app.use("/api", dashboardRoutes);
 app.use("/api", jobApplicationRoutes);
+app.use("/api", jobPositionRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");

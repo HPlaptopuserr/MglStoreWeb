@@ -1,6 +1,10 @@
 "use client";
 
+import { AdminButton } from "@/components/atoms/AddJobButton";
+import { Plus } from "lucide-react";
+import { AddJobPositionForm } from "@/components/organisms/AddJobPositionForm";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Trash2 } from "lucide-react";
 import {
   Search,
   Briefcase,
@@ -13,21 +17,20 @@ import {
   User,
   MapPin,
   GraduationCap,
-  Banknote,
   Clock,
   Star,
   Heart,
   Languages,
+  Banknote,
   FileText,
   Users,
-  ChevronDown,
   Eye,
   ArrowUpRight,
+  Pencil,
 } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 
-/* ── Types ─────────────────────────────────────────────── */
-type JobApplication = {
+interface JobApplication {
   id: string;
   firstName: string;
   lastName: string;
@@ -45,15 +48,15 @@ type JobApplication = {
   languages: string | null;
   status: string;
   createdAt: string;
-};
+}
 
-/* ── Labels ────────────────────────────────────────────── */
-const JOB_POSITION_LABELS: Record<string, string> = {
-  driver: "Жолооч",
-  picker: "Бараа бэлтгэгч",
-  support: "Хэрэглэгчийн үйлчилгээ",
-  admin: "Админ",
-};
+interface JobPosition {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  createdAt: string;
+}
 
 const EDUCATION_LABELS: Record<string, string> = {
   incomplete_secondary: "Бүрэн бус дунд",
@@ -70,7 +73,6 @@ const GENDER_LABELS: Record<string, string> = {
   FEMALE: "Эмэгтэй",
 };
 
-/* ── Status helpers ────────────────────────────────────── */
 function getStatusLabel(status: string) {
   switch (status) {
     case "PENDING":
@@ -97,7 +99,6 @@ function getStatusClass(status: string) {
   }
 }
 
-/* ── Detail field component ────────────────────────────── */
 function DetailItem({
   icon: Icon,
   label,
@@ -122,8 +123,14 @@ function DetailItem({
   );
 }
 
-/* ── Page ──────────────────────────────────────────────── */
 export default function ApplicationsPage() {
+  const [jobPositions, setJobPositions] = useState<JobPosition[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [creatingJob, setCreatingJob] = useState(false);
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
+  const [editingJobName, setEditingJobName] = useState("");
+  const [editingJobActive, setEditingJobActive] = useState(true);
+  const [savingJob, setSavingJob] = useState(false);
   const [apps, setApps] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
@@ -138,6 +145,23 @@ export default function ApplicationsPage() {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
     return () => clearTimeout(t);
   }, [searchTerm]);
+
+  const fetchJobPositions = useCallback(async () => {
+    try {
+      setLoadingJobs(true);
+      const res = await fetch(`${API_BASE}/api/job-positions`, {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("Ажлын байр ачааллах боломжгүй");
+      const data = await res.json();
+      setJobPositions(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setJobPositions([]);
+    } finally {
+      setLoadingJobs(false);
+    }
+  }, []);
 
   const fetchApps = useCallback(async () => {
     try {
@@ -171,7 +195,8 @@ export default function ApplicationsPage() {
 
   useEffect(() => {
     fetchApps();
-  }, [fetchApps]);
+    fetchJobPositions();
+  }, [fetchApps, fetchJobPositions]);
 
   const handleAction = useCallback(
     async (id: string, action: "approve" | "reject") => {
@@ -225,6 +250,94 @@ export default function ApplicationsPage() {
     return map;
   }, [apps]);
 
+  const handleCreateJobPosition = async ({
+    jobName,
+  }: {
+    jobName: string;
+  }) => {
+    try {
+      setCreatingJob(true);
+      setError("");
+
+      const res = await fetch(`${API_BASE}/api/job-positions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: jobName,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Ажлын байр үүсгэхэд алдаа гарлаа");
+      }
+      
+      await fetchJobPositions(); // Refresh job positions list
+    } catch (err) {
+      // Intentionally not logging to console.error to prevent Next.js from displaying crash overlay on logical user errors
+      throw err;
+    } finally {
+      setCreatingJob(false);
+    }
+  };
+
+  const handleEditJobPosition = async (id: string, name: string, isActive: boolean) => {
+    try {
+      setSavingJob(true);
+      setError("");
+
+      if (!name.trim()) return;
+
+      const res = await fetch(`${API_BASE}/api/job-positions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          isActive,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Ажлын байр шинэчлэхэд алдаа гарлаа");
+      }
+      
+      setEditingJobId(null);
+      await fetchJobPositions(); // Refresh job positions list
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Алдаа гарлаа");
+      alert(err instanceof Error ? err.message : "Алдаа гарлаа");
+    } finally {
+      setSavingJob(false);
+    }
+  };
+
+  const handleDeleteJobPosition = async (id: string) => {
+    if (!confirm("Та энэ ажлын байрыг устгахдаа итгэлтэй байна уу?")) return;
+    
+    try {
+      setError("");
+      
+      const res = await fetch(`${API_BASE}/api/job-positions/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || "Ажлын байр устгахад алдаа гарлаа");
+      }
+      
+      await fetchJobPositions(); // Refresh job positions list
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Алдаа гарлаа");
+      alert(err instanceof Error ? err.message : "Алдаа гарлаа");
+    }
+  };
+
   return (
     <div className="space-y-4 sm:space-y-5 pb-4 font-sans text-slate-800">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -243,6 +356,10 @@ export default function ApplicationsPage() {
             </p>
           </div>
         </div>
+        <AddJobPositionForm
+          loading={creatingJob}
+          onSubmit={handleCreateJobPosition}
+        />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
@@ -309,10 +426,101 @@ export default function ApplicationsPage() {
         ))}
       </div>
 
-      {/* ─── Filters & Search ─── */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
+        <h2 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+          <Briefcase className="w-4 h-4 text-violet-500" />
+          Зарлагдсан ажлын байрнууд
+        </h2>
+        
+        {loadingJobs ? (
+          <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
+            <Loader2 size={16} className="animate-spin text-violet-400" />
+            Уншиж байна...
+          </div>
+        ) : jobPositions.length === 0 ? (
+          <p className="text-sm text-slate-500 py-2">Ажлын байр бүртгэгдээгүй байна.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {jobPositions.map((job) => (
+              <div 
+                key={job.id} 
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors group relative overflow-hidden ${
+                  editingJobId === job.id 
+                    ? "border-violet-300 bg-white" 
+                    : "border-slate-200 bg-slate-50 hover:border-violet-200 hover:bg-violet-50/50"
+                }`}
+              >
+                {editingJobId === job.id ? (
+                  <div className="flex items-center gap-2 pr-1">
+                    <button 
+                      onClick={() => setEditingJobActive(!editingJobActive)}
+                      className={`w-3 h-3 rounded-full flex-shrink-0 transition-colors cursor-pointer ${editingJobActive ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-slate-300 hover:bg-slate-400'}`} 
+                      title={editingJobActive ? "Идэвхтэй байна (дарж идэвхгүй болгох)" : "Идэвхгүй байна (дарж идэвхтэй болгох)"}
+                    />
+                    <input 
+                      autoFocus
+                      type="text"
+                      className="w-32 bg-transparent text-sm font-semibold text-slate-800 outline-none border-b border-violet-200 focus:border-violet-500 h-6"
+                      value={editingJobName}
+                      onChange={(e) => setEditingJobName(e.target.value)}
+                      onKeyDown={(e) => {
+                         if (e.key === 'Enter') handleEditJobPosition(job.id, editingJobName, editingJobActive);
+                         if (e.key === 'Escape') setEditingJobId(null);
+                      }}
+                      disabled={savingJob}
+                    />
+                    <div className="flex items-center gap-1">
+                      <button 
+                        disabled={savingJob}
+                        onClick={() => handleEditJobPosition(job.id, editingJobName, editingJobActive)}
+                        className="w-6 h-6 flex items-center justify-center rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
+                      >
+                        {savingJob ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                      </button>
+                      <button 
+                        disabled={savingJob}
+                        onClick={() => setEditingJobId(null)}
+                        className="w-6 h-6 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${job.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                    <span className={`font-semibold ${job.isActive ? 'text-slate-700' : 'text-slate-500'}`}>{job.name}</span>
+                    
+                    <div className="absolute right-0 top-0 bottom-0 bg-gradient-to-l from-white via-white to-transparent pr-1 pl-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-2 group-hover:translate-x-0">
+                      <button 
+                        onClick={() => {
+                          setEditingJobId(job.id);
+                          setEditingJobName(job.name);
+                          setEditingJobActive(job.isActive);
+                        }}
+                        className="w-6 h-6 flex items-center justify-center rounded-full bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors shadow-sm"
+                        title="Засах"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteJobPosition(job.id)}
+                        className="w-6 h-6 flex items-center justify-center rounded-full bg-rose-100 text-rose-700 hover:bg-rose-200 transition-colors shadow-sm"
+                        title="Устгах"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="bg-white rounded-2xl border border-slate-100 p-3 sm:p-4 shadow-sm">
         <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2">
-          {/* search */}
           <div className="relative flex-1 sm:flex-none">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -327,7 +535,6 @@ export default function ApplicationsPage() {
             />
           </div>
 
-          {/* status filter */}
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
             <Filter size={15} className="text-slate-400" />
             <select
@@ -342,7 +549,6 @@ export default function ApplicationsPage() {
             </select>
           </div>
 
-          {/* position filter */}
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
             <Briefcase size={15} className="text-slate-400" />
             <select
@@ -351,15 +557,14 @@ export default function ApplicationsPage() {
               className="bg-transparent outline-none"
             >
               <option value="ALL">Бүх албан тушаал</option>
-              {Object.entries(JOB_POSITION_LABELS).map(([key, val]) => (
+              {Object.entries(positionStats).map(([key, count]) => (
                 <option key={key} value={key}>
-                  {val} {positionStats[key] ? `(${positionStats[key]})` : ""}
+                  {key === "other" ? "—" : key} {count ? `(${count})` : ""}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* reset */}
           {(searchTerm ||
             statusFilter !== "ALL" ||
             positionFilter !== "ALL") && (
@@ -378,7 +583,6 @@ export default function ApplicationsPage() {
         </div>
       </div>
 
-      {/* ─── Position Breakdown Pills ─── */}
       {Object.keys(positionStats).length > 0 && (
         <div className="flex flex-wrap gap-2">
           {Object.entries(positionStats).map(([key, count]) => (
@@ -393,7 +597,7 @@ export default function ApplicationsPage() {
                   : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
               }`}
             >
-              {JOB_POSITION_LABELS[key] || key}
+              {key === "other" ? "—" : key}
               <span
                 className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
                   positionFilter === key
@@ -408,14 +612,12 @@ export default function ApplicationsPage() {
         </div>
       )}
 
-      {/* ─── Error ─── */}
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
         </div>
       )}
 
-      {/* ─── Desktop Table ─── */}
       <div className="hidden md:block w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-225 border-collapse text-left">
@@ -502,10 +704,7 @@ export default function ApplicationsPage() {
                       <td className="px-4 py-3.5">
                         <span className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
                           <Briefcase size={12} />
-                          {item.jobPosition
-                            ? JOB_POSITION_LABELS[item.jobPosition] ||
-                              item.jobPosition
-                            : "—"}
+                          {item.jobPosition || "—"}
                         </span>
                       </td>
 
@@ -587,7 +786,6 @@ export default function ApplicationsPage() {
           </table>
         </div>
 
-        {/* table footer */}
         {!loading && filtered.length > 0 && (
           <div className="border-t border-slate-100 px-4 py-3 flex items-center justify-between text-xs text-slate-400">
             <span>
@@ -607,7 +805,6 @@ export default function ApplicationsPage() {
         )}
       </div>
 
-      {/* ─── Mobile Cards ─── */}
       <div className="md:hidden space-y-3">
         {loading ? (
           <div className="flex items-center justify-center py-16 text-slate-400">
@@ -669,10 +866,7 @@ export default function ApplicationsPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Briefcase size={12} className="text-slate-400" />
-                      {item.jobPosition
-                        ? JOB_POSITION_LABELS[item.jobPosition] ||
-                          item.jobPosition
-                        : "—"}
+                      {item.jobPosition || "—"}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <GraduationCap size={12} className="text-slate-400" />
@@ -721,7 +915,6 @@ export default function ApplicationsPage() {
         )}
       </div>
 
-      {/* ─── Detail Modal ─── */}
       {selectedApp && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
@@ -731,7 +924,6 @@ export default function ApplicationsPage() {
             className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* modal header */}
             <div className="sticky top-0 bg-white rounded-t-3xl border-b border-slate-100 px-5 py-4 flex items-center justify-between z-10">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600">
@@ -756,9 +948,7 @@ export default function ApplicationsPage() {
               </button>
             </div>
 
-            {/* modal body */}
             <div className="px-5 py-5 space-y-5">
-              {/* personal info */}
               <div>
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                   <Users className="w-3.5 h-3.5" /> Хувийн мэдээлэл
@@ -801,7 +991,6 @@ export default function ApplicationsPage() {
                 </div>
               </div>
 
-              {/* job info */}
               <div>
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                   <Briefcase className="w-3.5 h-3.5" /> Ажлын мэдээлэл
@@ -810,12 +999,7 @@ export default function ApplicationsPage() {
                   <DetailItem
                     icon={Briefcase}
                     label="Албан тушаал"
-                    value={
-                      selectedApp.jobPosition
-                        ? JOB_POSITION_LABELS[selectedApp.jobPosition] ||
-                          selectedApp.jobPosition
-                        : null
-                    }
+                    value={selectedApp.jobPosition}
                   />
                   <DetailItem
                     icon={GraduationCap}
@@ -849,7 +1033,6 @@ export default function ApplicationsPage() {
                 </div>
               </div>
 
-              {/* skills */}
               <div>
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                   <Star className="w-3.5 h-3.5" /> Ур чадвар
@@ -873,7 +1056,6 @@ export default function ApplicationsPage() {
                 </div>
               </div>
 
-              {/* action buttons in modal */}
               {selectedApp.status === "PENDING" && (
                 <div className="flex gap-3 pt-2">
                   <button
