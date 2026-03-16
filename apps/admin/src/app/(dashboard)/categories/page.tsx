@@ -59,7 +59,6 @@ export default function CategoriesPage() {
       if (!res.ok) throw new Error("fetch failed");
       setCategories(await res.json());
     } catch {
-      // fallback: use public endpoint
       const res = await fetch(`${API}/business-categories`);
       if (res.ok) setCategories(await res.json());
     } finally {

@@ -16,7 +16,7 @@ interface SearchOption {
   icon?: string;
 }
 
-const API = "http://localhost:4000/api";
+import { API } from "@/lib/api";
 
 const contextOptions = [
   "Бүгд",

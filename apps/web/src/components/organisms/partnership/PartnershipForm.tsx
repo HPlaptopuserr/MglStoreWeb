@@ -93,7 +93,7 @@ export function PartnershipForm() {
     try {
       setLoading(true);
 
-      const res = await fetch("http://localhost:4000/api/partner-requests", {
+      const res = await fetch(`${API}/partner-requests`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
