@@ -11,11 +11,13 @@
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.6",
     "prettier": "latest",
+    "prisma": "5.22.0",
     "tailwindcss": "^4.2.1",
     "turbo": "latest"
   },
   "packageManager": "pnpm@10.30.2",
   "dependencies": {
+    "@prisma/client": "5.22.0",
     "@radix-ui/react-slot": "^1.2.4",
     "@studio-freight/lenis": "^1.0.42",
     "class-variance-authority": "^0.7.1",

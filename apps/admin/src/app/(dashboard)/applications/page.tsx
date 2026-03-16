@@ -134,13 +134,11 @@ export default function ApplicationsPage() {
   const [positionFilter, setPositionFilter] = useState("ALL");
   const [selectedApp, setSelectedApp] = useState<JobApplication | null>(null);
 
-  /* ── Debounce search ── */
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
     return () => clearTimeout(t);
   }, [searchTerm]);
 
-  /* ── Fetch ── */
   const fetchApps = useCallback(async () => {
     try {
       setLoading(true);
@@ -175,7 +173,6 @@ export default function ApplicationsPage() {
     fetchApps();
   }, [fetchApps]);
 
-  /* ── Approve / Reject ── */
   const handleAction = useCallback(
     async (id: string, action: "approve" | "reject") => {
       try {
@@ -203,13 +200,11 @@ export default function ApplicationsPage() {
     [fetchApps, selectedApp],
   );
 
-  /* ── Client-side position filter ── */
   const filtered = useMemo(() => {
     if (positionFilter === "ALL") return apps;
     return apps.filter((a) => a.jobPosition === positionFilter);
   }, [apps, positionFilter]);
 
-  /* ── Stats ── */
   const stats = useMemo(() => {
     const total = apps.length;
     const pending = apps.filter((a) => a.status === "PENDING").length;
@@ -221,7 +216,6 @@ export default function ApplicationsPage() {
     return { total, pending, approved, rejected, today };
   }, [apps]);
 
-  /* ── Position breakdown ── */
   const positionStats = useMemo(() => {
     const map: Record<string, number> = {};
     for (const a of apps) {
@@ -233,7 +227,6 @@ export default function ApplicationsPage() {
 
   return (
     <div className="space-y-4 sm:space-y-5 pb-4 font-sans text-slate-800">
-      {/* ─── Header ─── */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600 shrink-0">
@@ -252,7 +245,6 @@ export default function ApplicationsPage() {
         </div>
       </div>
 
-      {/* ─── Stat Cards ─── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
         {[
           {
