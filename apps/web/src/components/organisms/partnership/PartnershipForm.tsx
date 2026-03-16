@@ -12,8 +12,7 @@ import {
   Check,
 } from "lucide-react";
 import { Button } from "../../../../../../packages/ui/src/atoms/Button";
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+import { API } from "@/lib/api";
 
 interface BusinessCategory {
   id: string;
@@ -50,12 +49,12 @@ export function PartnershipForm() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  /* ── Business categories from API ── */
   const [categories, setCategories] = useState<BusinessCategory[]>([]);
   const [catOpen, setCatOpen] = useState(false);
   const catRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    console.log("=== Partnership form API URL ===", API);
     fetch(`${API}/business-categories`)
       .then((r) => r.json())
       .then((data: BusinessCategory[]) =>
@@ -64,7 +63,6 @@ export function PartnershipForm() {
       .catch(() => setCategories(FALLBACK_CATEGORIES));
   }, []);
 
-  // Close dropdown on outside click
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
       if (catRef.current && !catRef.current.contains(e.target as Node)) {
@@ -166,13 +164,11 @@ export function PartnershipForm() {
             </div>
           </div>
 
-          {/* ── Custom category dropdown ── */}
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-gray-700 ml-1">
               Үйл ажиллагааны чиглэл
             </label>
 
-            {/* hidden native select for form-required validation */}
             <select
               tabIndex={-1}
               name="businessCategory"
@@ -193,7 +189,6 @@ export function PartnershipForm() {
             <div ref={catRef} className="relative">
               <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5 z-1 pointer-events-none" />
 
-              {/* trigger */}
               <button
                 type="button"
                 onClick={() => setCatOpen((v) => !v)}
@@ -219,12 +214,10 @@ export function PartnershipForm() {
                 )}
               </button>
 
-              {/* chevron */}
               <ChevronDown
                 className={`absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 transition-transform pointer-events-none ${catOpen ? "rotate-180" : ""}`}
               />
 
-              {/* options list */}
               {catOpen && (
                 <ul
                   onWheel={(e) => e.stopPropagation()}
