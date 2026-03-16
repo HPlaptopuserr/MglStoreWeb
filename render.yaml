@@ -35,7 +35,7 @@ services:
     name: mgl-api
     rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm build && cd apps/api && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm exec prisma migrate deploy --schema=packages/database/prisma/schema.prisma && pnpm -F @mgl/database run db:generate && pnpm build && cd apps/api && pnpm build
     startCommand: cd apps/api && pnpm start
     envVars:
       - key: NODE_ENV

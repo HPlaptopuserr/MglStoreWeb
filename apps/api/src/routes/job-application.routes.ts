@@ -3,7 +3,6 @@ import { prisma, ApprovalStatus } from "@mgl/database";
 
 const router: ExpressRouter = Router();
 
-/* POST /job-applications — create new application from careers form */
 router.post("/job-applications", async (req, res) => {
   try {
     const {
@@ -14,7 +13,7 @@ router.post("/job-applications", async (req, res) => {
       age,
       gender,
       address,
-      jobPosition,
+      jobPositionId,
       education,
       salaryExpect,
       experience,
@@ -22,7 +21,7 @@ router.post("/job-applications", async (req, res) => {
       personalSkills,
       languages,
     } = req.body;
-
+    console.log("incoming body:", req.body);
     if (!firstName || !lastName || !phone) {
       return res.status(400).json({
         message: "Нэр, овог, утасны дугаар шаардлагатай",
@@ -43,7 +42,7 @@ router.post("/job-applications", async (req, res) => {
               ? "FEMALE"
               : null,
         address: address || null,
-        jobPosition: jobPosition || null,
+        jobPositionId: jobPositionId || null,
         education: education || null,
         salaryExpect: salaryExpect || null,
         experience: experience || null,
@@ -73,30 +72,32 @@ router.get("/job-applications", async (req, res) => {
     const applications = await prisma.jobApplication.findMany({
       where: {
         ...(status &&
-        status !== "ALL" &&
-        ApprovalStatus[status as keyof typeof ApprovalStatus]
+          status !== "ALL" &&
+          ApprovalStatus[status as keyof typeof ApprovalStatus]
           ? { status: ApprovalStatus[status as keyof typeof ApprovalStatus] }
           : {}),
         ...(search
           ? {
-              OR: [
-                {
-                  firstName: { contains: search, mode: "insensitive" as const },
-                },
-                {
-                  lastName: { contains: search, mode: "insensitive" as const },
-                },
-                { phone: { contains: search, mode: "insensitive" as const } },
-                {
-                  jobPosition: {
+            OR: [
+              {
+                firstName: { contains: search, mode: "insensitive" as const },
+              },
+              {
+                lastName: { contains: search, mode: "insensitive" as const },
+              },
+              { phone: { contains: search, mode: "insensitive" as const } },
+              {
+                jobPosition: {
+                  is: {
                     name: {
                       contains: search,
                       mode: "insensitive" as const,
                     },
                   },
                 },
-              ],
-            }
+              },
+            ],
+          }
           : {}),
       },
       orderBy: { createdAt: "desc" },

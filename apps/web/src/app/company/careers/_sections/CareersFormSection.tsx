@@ -8,7 +8,6 @@ import {
   MapPin,
   Briefcase,
   ArrowRight,
-  GraduationCap,
   Banknote,
   Star,
   Languages,
@@ -41,7 +40,7 @@ export default function CareersForm() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
-  const [jobPosition, setJobPosition] = useState("");
+  const [jobPositionId, setJobPositionId] = useState("");
   const [education, setEducation] = useState("");
   const [salaryExpect, setSalaryExpect] = useState("");
   const [experience, setExperience] = useState("");
@@ -139,6 +138,7 @@ export default function CareersForm() {
       if (m < 0 || (m === 0 && today.getDate() < dd)) {
         age--;
       }
+
       setDerivedAge(age);
       setDerivedGender(g % 2 !== 0 ? "Эрэгтэй" : "Эмэгтэй");
     } else {
@@ -153,30 +153,36 @@ export default function CareersForm() {
   const handleSubmit = async () => {
     setSubmitting(true);
     setSubmitError("");
+
+    const payload = {
+      firstName,
+      lastName,
+      phone,
+      registerNumber: registerNumber || null,
+      age: derivedAge,
+      gender: derivedGender || null,
+      address: address || null,
+      jobPositionId: jobPositionId || null,
+      education: education || null,
+      salaryExpect: salaryExpect || null,
+      experience: experience || null,
+      professionalSkills: professionalSkills || null,
+      personalSkills: personalSkills || null,
+      languages: languages || null,
+    };
+
+    console.log("job application payload:", payload);
+
     try {
-      const res = await fetch(`${API}/api/job-applications`, {
+      const res = await fetch(`${API}/job-applications`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName,
-          lastName,
-          phone,
-          registerNumber: registerNumber || null,
-          age: derivedAge,
-          gender: derivedGender,
-          address,
-          jobPosition,
-          education,
-          salaryExpect,
-          experience,
-          professionalSkills,
-          personalSkills,
-          languages,
-        }),
+        body: JSON.stringify(payload),
       });
 
+      const data = await res.json().catch(() => null);
+
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
         throw new Error(data?.message || "Илгээхэд алдаа гарлаа");
       }
 
@@ -220,7 +226,8 @@ export default function CareersForm() {
                     {[1, 2, 3].map((step) => (
                       <div
                         key={step}
-                        className={`h-2 w-8 rounded-full transition-colors ${step <= currentStep ? "bg-[#FFB700]" : "bg-gray-200"}`}
+                        className={`h-2 w-8 rounded-full transition-colors ${step <= currentStep ? "bg-[#FFB700]" : "bg-gray-200"
+                          }`}
                       />
                     ))}
                     <span className="text-xs text-gray-400 font-medium ml-2">
@@ -337,21 +344,24 @@ export default function CareersForm() {
                             />
                             {(derivedAge !== null ||
                               derivedGender !== null) && (
-                              <div className="flex gap-2 mt-2">
-                                {derivedAge !== null && (
-                                  <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200">
-                                    {derivedAge} нас
-                                  </span>
-                                )}
-                                {derivedGender !== null && (
-                                  <span
-                                    className={`text-xs font-semibold px-2.5 py-1 rounded-md border ${derivedGender === "Эрэгтэй" ? "text-blue-700 bg-blue-50 border-blue-100" : "text-pink-700 bg-pink-50 border-pink-100"}`}
-                                  >
-                                    {derivedGender}
-                                  </span>
-                                )}
-                              </div>
-                            )}
+                                <div className="flex gap-2 mt-2">
+                                  {derivedAge !== null && (
+                                    <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200">
+                                      {derivedAge} нас
+                                    </span>
+                                  )}
+                                  {derivedGender !== null && (
+                                    <span
+                                      className={`text-xs font-semibold px-2.5 py-1 rounded-md border ${derivedGender === "Эрэгтэй"
+                                          ? "text-blue-700 bg-blue-50 border-blue-100"
+                                          : "text-pink-700 bg-pink-50 border-pink-100"
+                                        }`}
+                                    >
+                                      {derivedGender}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                           </div>
                         </div>
 
@@ -386,8 +396,10 @@ export default function CareersForm() {
                             </label>
                             <div className="relative">
                               <select
-                                value={jobPosition}
-                                onChange={(e) => setJobPosition(e.target.value)}
+                                value={jobPositionId}
+                                onChange={(e) =>
+                                  setJobPositionId(e.target.value)
+                                }
                                 className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block p-3.5 transition-all outline-none appearance-none hover:bg-white disabled:opacity-60"
                                 required
                                 disabled={loadingJobs}
@@ -398,7 +410,7 @@ export default function CareersForm() {
                                     : "Ажлын байр сонгох"}
                                 </option>
                                 {jobPositions.map((job) => (
-                                  <option key={job.id} value={job.name}>
+                                  <option key={job.id} value={job.id}>
                                     {job.name}
                                   </option>
                                 ))}
@@ -507,9 +519,7 @@ export default function CareersForm() {
                             <Heart className="absolute left-3.5 top-4 h-5 w-5 text-gray-400" />
                             <textarea
                               value={personalSkills}
-                              onChange={(e) =>
-                                setPersonalSkills(e.target.value)
-                              }
+                              onChange={(e) => setPersonalSkills(e.target.value)}
                               placeholder="Таны хувийн зан чанарууд..."
                               className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#FFB700] focus:border-transparent block pl-11 p-3.5 transition-all outline-none min-h-20 hover:bg-white"
                             />
