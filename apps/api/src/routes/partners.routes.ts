@@ -34,14 +34,19 @@ router.get("/partners/grouped", async (req, res) => {
       where: { isActive: true },
     });
 
-    const categoryMap = new Map(activeCategories.map(c => [c.slug, c.name]));
+    const categoryMap = new Map(activeCategories.map((c) => [c.slug, c.name]));
 
     const grouped: Record<
       string,
       {
         category: string;
         label: string;
-        partners: { id: string; name: string; slug: string; logoUrl: string | null }[];
+        partners: {
+          id: string;
+          name: string;
+          slug: string;
+          logoUrl: string | null;
+        }[];
       }
     > = {};
 
@@ -74,6 +79,9 @@ router.get("/partners/grouped", async (req, res) => {
 router.get("/partners", async (req, res) => {
   try {
     const partners = await prisma.organization.findMany({
+      where: {
+        deletedAt: null,
+      },
       orderBy: {
         createdAt: "desc",
       },
@@ -160,10 +168,7 @@ router.get("/partners/:slugOrId", async (req, res) => {
 
     const partner = await prisma.organization.findFirst({
       where: {
-        OR: [
-          { slug: slugOrId },
-          { id: slugOrId },
-        ],
+        OR: [{ slug: slugOrId }, { id: slugOrId }],
         deletedAt: null,
       },
       include: {
@@ -262,7 +267,9 @@ router.patch("/partners/:id/category", async (req, res) => {
     res.json(updated);
   } catch (error) {
     console.error("update businessCategory error", error);
-    res.status(500).json({ message: "BusinessCategory шинэчлэхэд алдаа гарлаа" });
+    res
+      .status(500)
+      .json({ message: "BusinessCategory шинэчлэхэд алдаа гарлаа" });
   }
 });
 
@@ -294,11 +301,13 @@ router.patch("/partners/:id/profile", async (req, res) => {
     if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
     if (bannerUrl !== undefined) updateData.bannerUrl = bannerUrl;
     if (description !== undefined) updateData.description = description;
-    if (shortDescription !== undefined) updateData.shortDescription = shortDescription;
+    if (shortDescription !== undefined)
+      updateData.shortDescription = shortDescription;
     if (openingHours !== undefined) updateData.openingHours = openingHours;
     if (deliveryText !== undefined) updateData.deliveryText = deliveryText;
     if (deliveryPrice !== undefined) updateData.deliveryPrice = deliveryPrice;
-    if (operatingYears !== undefined) updateData.operatingYears = operatingYears;
+    if (operatingYears !== undefined)
+      updateData.operatingYears = operatingYears;
 
     const updated = await prisma.organization.update({
       where: { id },
@@ -324,6 +333,60 @@ router.patch("/partners/:id/profile", async (req, res) => {
   } catch (error) {
     console.error("update partner profile error", error);
     res.status(500).json({ message: "Профайл шинэчлэхэд алдаа гарлаа" });
+  }
+});
+
+// Delete organization (soft delete)
+router.delete("/partners/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if organization exists
+    const org = await prisma.organization.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            orders: true,
+            products: true,
+            users: true,
+          },
+        },
+      },
+    });
+
+    if (!org) {
+      return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+    }
+
+    // Soft delete - set deletedAt timestamp
+    await prisma.organization.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        status: "SUSPENDED",
+      },
+    });
+
+    // Also deactivate all users of this organization
+    await prisma.user.updateMany({
+      where: { organizationId: id },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Байгууллага амжилттай устгагдлаа",
+      deletedOrg: {
+        id: org.id,
+        name: org.name,
+      },
+    });
+  } catch (error) {
+    console.error("delete organization error", error);
+    res.status(500).json({ message: "Байгууллага устгахад алдаа гарлаа" });
   }
 });
 

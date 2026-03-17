@@ -17,6 +17,8 @@ import {
   X,
   ChevronDown,
   Check,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { API } from "@/lib/api";
@@ -190,6 +192,29 @@ function CategoryDropdown({
 export default function PartnersPage() {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleteModal, setDeleteModal] = useState<Partner | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async (partner: Partner) => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`${API}/partners/${partner.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setPartners((prev) => prev.filter((p) => p.id !== partner.id));
+        setDeleteModal(null);
+      } else {
+        const data = await res.json();
+        alert(data.message || "Устгахад алдаа гарлаа");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Устгахад алдаа гарлаа");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const filteredPartners = partners.filter((partner) => {
     const query = searchQuery.toLowerCase();
@@ -386,10 +411,116 @@ export default function PartnersPage() {
                   </span>
                 </div>
               </div>
+
+              {/* Delete Button */}
+              <div className="p-3 md:p-4 border-t border-slate-100 bg-white">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDeleteModal(partner);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-medium transition-colors"
+                >
+                  <Trash2 size={14} />
+                  Устгах
+                </button>
+              </div>
             </Link>
           ))}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="text-red-600" size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Байгууллага устгах
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Энэ үйлдлийг буцаах боломжгүй
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                  <Building2 size={20} className="text-indigo-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-900">
+                    {deleteModal.name}
+                  </p>
+                  <p className="text-sm text-slate-500">@{deleteModal.slug}</p>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-4 gap-2 text-center">
+                <div>
+                  <p className="text-lg font-bold text-slate-800">
+                    {deleteModal.stats.users}
+                  </p>
+                  <p className="text-xs text-slate-500">Хэрэглэгч</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-slate-800">
+                    {deleteModal.stats.products}
+                  </p>
+                  <p className="text-xs text-slate-500">Бараа</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-slate-800">
+                    {deleteModal.stats.branches}
+                  </p>
+                  <p className="text-xs text-slate-500">Салбар</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-slate-800">
+                    {deleteModal.stats.orders}
+                  </p>
+                  <p className="text-xs text-slate-500">Захиалга</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-600 mb-4">
+              <strong>{deleteModal.name}</strong> байгууллагыг устгахдаа
+              итгэлтэй байна уу? Энэ байгууллагын бүх хэрэглэгчид мөн идэвхигүй
+              болно.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteModal(null)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors"
+              >
+                Болих
+              </button>
+              <button
+                onClick={() => handleDelete(deleteModal)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                {deleting ? (
+                  <span>Устгаж байна...</span>
+                ) : (
+                  <>
+                    <Trash2 size={16} />
+                    Устгах
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
