@@ -16,4 +16,7 @@ export {
   ProductApprovalStatus,
   ProductRequestType,
   AuditAction,
+  ServiceRequestType,
+  ServiceRequestStatus,
+  StockRequestStatus,
 } from "@prisma/client";

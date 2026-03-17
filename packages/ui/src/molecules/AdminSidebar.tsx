@@ -14,6 +14,8 @@ import {
   ChevronRight,
   Tag,
   Briefcase,
+  ClipboardList,
+  Package,
 } from "lucide-react";
 
 export interface NavItem {
@@ -66,6 +68,24 @@ export function AdminSidebar({
       label: "Түншүүд",
       icon: Users,
       href: "/partners",
+    },
+    {
+      id: "services",
+      label: "Үйлчилгээний хүсэлт",
+      icon: ClipboardList,
+      href: "/services",
+    },
+    {
+      id: "warehouses",
+      label: "Агуулах",
+      icon: Package,
+      href: "/warehouses",
+    },
+    {
+      id: "stock-requests",
+      label: "Бараа татах хүсэлт",
+      icon: ClipboardList,
+      href: "/requests/stock-requests",
     },
     {
       id: "categories",

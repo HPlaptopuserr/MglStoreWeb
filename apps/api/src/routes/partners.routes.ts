@@ -86,6 +86,17 @@ router.get("/partners", async (req, res) => {
             orders: true,
           },
         },
+        products: {
+          where: {
+            isActive: true,
+            deletedAt: null,
+          },
+          include: {
+            images: true,
+            category: true,
+          },
+          take: 20,
+        },
       },
     });
 
@@ -101,7 +112,17 @@ router.get("/partners", async (req, res) => {
       email: partner.email,
       phone: partner.phone,
       logoUrl: partner.logoUrl,
+      bannerUrl: partner.bannerUrl,
       address: partner.address,
+      description: partner.description,
+      shortDescription: partner.shortDescription,
+      openingHours: partner.openingHours,
+      deliveryText: partner.deliveryText,
+      deliveryPrice: partner.deliveryPrice,
+      rating: partner.rating,
+      reviewCount: partner.reviewCount,
+      customers: partner.customerCount,
+      years: partner.operatingYears,
       createdAt: partner.createdAt,
       stats: {
         users: partner._count.users,
@@ -109,6 +130,18 @@ router.get("/partners", async (req, res) => {
         branches: partner._count.branches,
         orders: partner._count.orders,
       },
+      products: partner.products.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        title: p.name,
+        description: p.description,
+        price: Number(p.price),
+        originalPrice: p.costPrice ? Number(p.costPrice) : undefined,
+        stock: p.stock,
+        category: p.category?.name,
+        image: p.images?.[0]?.url,
+        images: p.images?.map((img: any) => img.url),
+      })),
     }));
 
     res.json(result);
@@ -116,6 +149,101 @@ router.get("/partners", async (req, res) => {
     console.error("get partners error", error);
     res.status(500).json({
       message: "Түншүүдийг авахад алдаа гарлаа",
+    });
+  }
+});
+
+// Get single partner by slug or id
+router.get("/partners/:slugOrId", async (req, res) => {
+  try {
+    const { slugOrId } = req.params;
+
+    const partner = await prisma.organization.findFirst({
+      where: {
+        OR: [
+          { slug: slugOrId },
+          { id: slugOrId },
+        ],
+        deletedAt: null,
+      },
+      include: {
+        _count: {
+          select: {
+            users: true,
+            products: true,
+            branches: true,
+            orders: true,
+          },
+        },
+        products: {
+          where: {
+            isActive: true,
+            deletedAt: null,
+          },
+          include: {
+            images: true,
+            category: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+      },
+    });
+
+    if (!partner) {
+      return res.status(404).json({ message: "Түнш олдсонгүй" });
+    }
+
+    const result = {
+      id: partner.id,
+      name: partner.name,
+      slug: partner.slug,
+      taxId: partner.taxId,
+      type: partner.type,
+      status: partner.status,
+      isVerified: partner.isVerified,
+      businessCategory: partner.businessCategory,
+      email: partner.email,
+      phone: partner.phone,
+      logoUrl: partner.logoUrl,
+      bannerUrl: partner.bannerUrl,
+      address: partner.address,
+      description: partner.description,
+      shortDescription: partner.shortDescription,
+      openingHours: partner.openingHours,
+      deliveryText: partner.deliveryText,
+      deliveryPrice: partner.deliveryPrice,
+      rating: partner.rating,
+      reviewCount: partner.reviewCount,
+      customers: partner.customerCount,
+      years: partner.operatingYears,
+      createdAt: partner.createdAt,
+      stats: {
+        users: partner._count.users,
+        products: partner._count.products,
+        branches: partner._count.branches,
+        orders: partner._count.orders,
+      },
+      products: partner.products.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        title: p.name,
+        description: p.description,
+        price: Number(p.price),
+        originalPrice: p.costPrice ? Number(p.costPrice) : undefined,
+        stock: p.stock,
+        category: p.category?.name,
+        image: p.images?.[0]?.url,
+        images: p.images?.map((img: any) => img.url),
+      })),
+    };
+
+    res.json(result);
+  } catch (error) {
+    console.error("get partner detail error", error);
+    res.status(500).json({
+      message: "Түншийн мэдээлэл авахад алдаа гарлаа",
     });
   }
 });
@@ -135,6 +263,67 @@ router.patch("/partners/:id/category", async (req, res) => {
   } catch (error) {
     console.error("update businessCategory error", error);
     res.status(500).json({ message: "BusinessCategory шинэчлэхэд алдаа гарлаа" });
+  }
+});
+
+// Update partner profile
+router.patch("/partners/:id/profile", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      phone,
+      email,
+      address,
+      logoUrl,
+      bannerUrl,
+      description,
+      shortDescription,
+      openingHours,
+      deliveryText,
+      deliveryPrice,
+      operatingYears,
+    } = req.body;
+
+    const updateData: Record<string, any> = {};
+
+    if (name !== undefined) updateData.name = name;
+    if (phone !== undefined) updateData.phone = phone;
+    if (email !== undefined) updateData.email = email;
+    if (address !== undefined) updateData.address = address;
+    if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
+    if (bannerUrl !== undefined) updateData.bannerUrl = bannerUrl;
+    if (description !== undefined) updateData.description = description;
+    if (shortDescription !== undefined) updateData.shortDescription = shortDescription;
+    if (openingHours !== undefined) updateData.openingHours = openingHours;
+    if (deliveryText !== undefined) updateData.deliveryText = deliveryText;
+    if (deliveryPrice !== undefined) updateData.deliveryPrice = deliveryPrice;
+    if (operatingYears !== undefined) updateData.operatingYears = operatingYears;
+
+    const updated = await prisma.organization.update({
+      where: { id },
+      data: updateData,
+    });
+
+    res.json({
+      id: updated.id,
+      name: updated.name,
+      slug: updated.slug,
+      phone: updated.phone,
+      email: updated.email,
+      address: updated.address,
+      logoUrl: updated.logoUrl,
+      bannerUrl: updated.bannerUrl,
+      description: updated.description,
+      shortDescription: updated.shortDescription,
+      openingHours: updated.openingHours,
+      deliveryText: updated.deliveryText,
+      deliveryPrice: updated.deliveryPrice,
+      operatingYears: updated.operatingYears,
+    });
+  } catch (error) {
+    console.error("update partner profile error", error);
+    res.status(500).json({ message: "Профайл шинэчлэхэд алдаа гарлаа" });
   }
 });
 

@@ -10,6 +10,7 @@ import {
   LogOut,
   Users,
   RotateCcw,
+  ClipboardList,
 } from "lucide-react";
 
 function cn(...classes: Array<string | false | undefined>) {
@@ -21,8 +22,9 @@ const navigation = [
   { name: "Warehouses", href: "/warehouses", icon: Warehouse },
   { name: "Products", href: "/products", icon: Package },
   { name: "Drivers", href: "/drivers", icon: Users },
-  { name: "Shipments", href: "/shipments", icon: Truck },
+  { name: "Бараа татах хүсэлт", href: "/shipments", icon: Truck },
   { name: "Returns", href: "/returns", icon: RotateCcw },
+  { name: "Үйлчилгээ", href: "/services", icon: ClipboardList },
 ];
 
 export interface VendorSidebarProps {

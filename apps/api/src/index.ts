@@ -10,6 +10,9 @@ import businessCategoriesRoutes from "./routes/business-categories.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import jobApplicationRoutes from "./routes/job-application.routes";
 import jobPositionRoutes from "./routes/job-position.routes";
+import serviceRequestsRoutes from "./routes/service-requests.routes";
+import warehousesRoutes from "./routes/warehouses.routes";
+import stockRequestsRoutes from "./routes/stock-requests.routes";
 
 dotenv.config();
 
@@ -47,6 +50,9 @@ app.use("/api", businessCategoriesRoutes);
 app.use("/api", dashboardRoutes);
 app.use("/api", jobApplicationRoutes);
 app.use("/api", jobPositionRoutes);
+app.use("/api", serviceRequestsRoutes);
+app.use("/api", warehousesRoutes);
+app.use("/api", stockRequestsRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");

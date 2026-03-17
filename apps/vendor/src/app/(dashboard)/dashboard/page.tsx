@@ -21,7 +21,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Түр mock data
     setUser({ displayName: "Partner" });
 
     setStats({
@@ -40,17 +39,17 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-4xl font-black tracking-tighter text-black">
-            Overview
+            Хяналтын самбар
           </h2>
           <p className="mt-1 font-medium text-slate-500">
-            Welcome back, {user?.displayName || "Partner"}
+            Тавтай морил, {user?.displayName || "Partner"}
           </p>
         </div>
 
         <div className="flex items-center space-x-2 rounded-full border border-slate-100 bg-white px-4 py-2 shadow-sm">
           <div className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
           <span className="text-xs font-bold uppercase tracking-wide text-slate-700">
-            System Online
+            Систем онлайн
           </span>
         </div>
       </div>
@@ -68,7 +67,7 @@ export default function Dashboard() {
                   <Truck className="h-8 w-8 text-black" />
                 </div>
                 <span className="rounded-full bg-black/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-black">
-                  Total Active
+                  Хүргэгдэж буй
                 </span>
               </div>
 
@@ -77,7 +76,7 @@ export default function Dashboard() {
                   {stats.activeShipments}
                 </h3>
                 <p className="text-lg font-bold text-black/70">
-                  Shipments In Transit
+                  Тээвэрлэлт
                 </p>
               </div>
 
@@ -96,7 +95,7 @@ export default function Dashboard() {
                 <h3 className="mb-1 text-5xl font-black tracking-tighter text-white">
                   {stats.delivered}
                 </h3>
-                <p className="font-bold text-slate-400">Delivered</p>
+                <p className="font-bold text-slate-400">Хүргэгдсэн</p>
               </div>
             </CardContent>
           </Card>
@@ -112,7 +111,7 @@ export default function Dashboard() {
                 <h3 className="mb-1 text-5xl font-black tracking-tighter text-slate-900">
                   {stats.pendingReceipts}
                 </h3>
-                <p className="font-bold text-slate-500">Pending</p>
+                <p className="font-bold text-slate-500">Хүлээгдэж буй</p>
               </div>
             </CardContent>
           </Card>
@@ -124,7 +123,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Warehouses
+                  Агуулахууд
                 </p>
                 <p className="text-2xl font-black text-slate-900">
                   {stats.warehouses}
@@ -140,7 +139,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Products
+                  Бүтээгдэхүүнүүд
                 </p>
                 <p className="text-2xl font-black text-slate-900">
                   {stats.products}
@@ -159,7 +158,7 @@ export default function Dashboard() {
                   <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[#FFAD02] transition-transform group-hover:scale-110">
                     <Truck className="h-6 w-6 text-black" />
                   </div>
-                  <span className="font-bold text-slate-900">New Shipment</span>
+                  <span className="font-bold text-slate-900">Тээвэрлэлт</span>
                 </Link>
 
                 <Link
@@ -169,7 +168,7 @@ export default function Dashboard() {
                   <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-black transition-transform group-hover:scale-110">
                     <Package className="h-6 w-6 text-white" />
                   </div>
-                  <span className="font-bold text-slate-900">Add Product</span>
+                  <span className="font-bold text-slate-900">Бүтээгдэхүүн нэмэх</span>
                 </Link>
               </div>
             </CardContent>

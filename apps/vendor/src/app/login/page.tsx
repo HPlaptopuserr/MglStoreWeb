@@ -18,7 +18,6 @@ export default function VendorLoginPage() {
     setError("");
     setIsLoading(true);
 
-    // Basic frontend validation
     if (!email || !password) {
       setError("Имэйл болон нууц үгээ бүрэн оруулна уу.");
       setIsLoading(false);

@@ -114,7 +114,8 @@ export default function OrganizationsPage() {
             deliveryTime: "N/A",
             products: [],
           }));
-
+console.log("partners data:", data);
+console.log("activeStores:", activeStores);
         setStores(activeStores);
       } catch (error) {
         console.error("Error fetching stores:", error);
@@ -143,7 +144,6 @@ export default function OrganizationsPage() {
 
   return (
     <div className="min-h-screen bg-white pb-24">
-      {/* Hero Section */}
       <div className="relative bg-black overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,173,2,0.15),_transparent_60%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(255,173,2,0.08),_transparent_50%)]" />
@@ -158,7 +158,6 @@ export default function OrganizationsPage() {
               Баталгаажсан байгууллагуудын жагсаалт
             </p>
 
-            {/* Stats - desktop only */}
             <div className="hidden sm:flex items-center gap-8 pt-4">
               <div className="text-center">
                 <div className="text-2xl font-black text-white">

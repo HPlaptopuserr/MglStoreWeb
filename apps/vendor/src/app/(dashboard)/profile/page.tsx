@@ -25,6 +25,13 @@ import {
   Check,
   Loader2,
   Save,
+  Pencil,
+  X,
+  Clock,
+  Truck,
+  Info,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { API } from "@/lib/api";
 
@@ -33,6 +40,18 @@ type BusinessCategory = {
   slug: string;
   name: string;
   icon: string | null;
+};
+
+type ProfileFormData = {
+  phone: string;
+  email: string;
+  address: string;
+  description: string;
+  shortDescription: string;
+  openingHours: string[];
+  deliveryText: string;
+  deliveryPrice: string;
+  operatingYears: number;
 };
 
 export default function ProfilePage() {
@@ -49,6 +68,22 @@ export default function ProfilePage() {
   const [catOpen, setCatOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [formData, setFormData] = useState<ProfileFormData>({
+    phone: "",
+    email: "",
+    address: "",
+    description: "",
+    shortDescription: "",
+    openingHours: [],
+    deliveryText: "",
+    deliveryPrice: "",
+    operatingYears: 1,
+  });
 
   const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -78,7 +113,21 @@ export default function ProfilePage() {
         if (partnersRes.ok && userEmail) {
           const data = await partnersRes.json();
           const found = data.find((p: any) => p.email === userEmail);
-          if (found) setPartner(found);
+          if (found) {
+            setPartner(found);
+            // Initialize form data
+            setFormData({
+              phone: found.phone || "",
+              email: found.email || "",
+              address: found.address || "",
+              description: found.description || "",
+              shortDescription: found.shortDescription || "",
+              openingHours: found.openingHours || [],
+              deliveryText: found.deliveryText || "",
+              deliveryPrice: found.deliveryPrice || "",
+              operatingYears: found.years || 1,
+            });
+          }
         }
       } catch (error) {
         console.error("Failed to fetch profile:", error);
@@ -110,6 +159,71 @@ export default function ProfilePage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleProfileSave = async () => {
+    if (!partner?.id) return;
+    setProfileSaving(true);
+    setProfileSaved(false);
+    try {
+      const res = await fetch(`${API}/partners/${partner.id}/profile`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setPartner((prev: any) => ({
+          ...prev,
+          ...updated,
+          years: updated.operatingYears,
+        }));
+        setProfileSaved(true);
+        setIsEditing(false);
+        setTimeout(() => setProfileSaved(false), 2500);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    // Reset form data to current partner data
+    setFormData({
+      phone: partner?.phone || "",
+      email: partner?.email || "",
+      address: partner?.address || "",
+      description: partner?.description || "",
+      shortDescription: partner?.shortDescription || "",
+      openingHours: partner?.openingHours || [],
+      deliveryText: partner?.deliveryText || "",
+      deliveryPrice: partner?.deliveryPrice || "",
+      operatingYears: partner?.years || 1,
+    });
+    setIsEditing(false);
+  };
+
+  const addOpeningHour = () => {
+    setFormData((prev) => ({
+      ...prev,
+      openingHours: [...prev.openingHours, ""],
+    }));
+  };
+
+  const removeOpeningHour = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      openingHours: prev.openingHours.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateOpeningHour = (index: number, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      openingHours: prev.openingHours.map((h, i) => (i === index ? value : h)),
+    }));
   };
 
   if (isLoading) {
@@ -307,10 +421,8 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          {/* Org Details */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
               Байгууллагын мэдээлэл
@@ -342,7 +454,6 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* ─── BUSINESS CATEGORY EDITOR ─── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
@@ -432,11 +543,26 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Contact */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
-              Холбоо барих
-            </h3>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
+                Холбоо барих
+              </h3>
+              {!isEditing && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                >
+                  <Pencil size={14} />
+                  Засах
+                </button>
+              )}
+              {profileSaved && (
+                <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                  <Check size={13} /> Хадгалагдлаа
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <InfoItem
                 icon={<Mail size={18} className="text-slate-400" />}
@@ -457,6 +583,259 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+
+          {/* Profile Edit Form */}
+          {isEditing && (
+            <div className="bg-white rounded-2xl border-2 border-indigo-200 shadow-sm p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <Pencil size={18} className="text-indigo-500" />
+                  Профайл засах
+                </h3>
+                <button
+                  onClick={handleCancelEdit}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Basic Info */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                      И-мэйл
+                    </label>
+                    <div className="relative">
+                      <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                        placeholder="example@mail.com"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                      Утас
+                    </label>
+                    <div className="relative">
+                      <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                        placeholder="99001122"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    Хаяг
+                  </label>
+                  <div className="relative">
+                    <MapPin size={16} className="absolute left-3 top-3 text-slate-400" />
+                    <input
+                      type="text"
+                      value={formData.address}
+                      onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                      className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                      placeholder="Улаанбаатар хот, Баянзүрх дүүрэг..."
+                    />
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    Богино танилцуулга
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.shortDescription}
+                    onChange={(e) => setFormData(prev => ({ ...prev, shortDescription: e.target.value }))}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                    placeholder="Чанартай бараа бүтээгдэхүүн..."
+                    maxLength={100}
+                  />
+                  <p className="text-xs text-slate-400 mt-1">Нийтийн хуудсанд гарчиг болон харагдана</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    Дэлгэрэнгүй танилцуулга
+                  </label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                    rows={4}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 resize-none"
+                    placeholder="Байгууллагын талаар дэлгэрэнгүй мэдээлэл..."
+                  />
+                </div>
+
+                {/* Opening Hours */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                      <Clock size={14} />
+                      Ажлын цаг
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addOpeningHour}
+                      className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                    >
+                      <Plus size={14} />
+                      Нэмэх
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {formData.openingHours.length === 0 ? (
+                      <p className="text-sm text-slate-400 italic">Цагийн хуваарь нэмэгдээгүй байна</p>
+                    ) : (
+                      formData.openingHours.map((hour, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={hour}
+                            onChange={(e) => updateOpeningHour(index, e.target.value)}
+                            className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                            placeholder="Даваа-Баасан: 09:00-18:00"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeOpeningHour(index)}
+                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Delivery Info */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                      <Truck size={14} />
+                      Хүргэлтийн мэдээлэл
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.deliveryText}
+                      onChange={(e) => setFormData(prev => ({ ...prev, deliveryText: e.target.value }))}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                      placeholder="Улаанбаатар хотод хүргэнэ"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                      Хүргэлтийн үнэ
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.deliveryPrice}
+                      onChange={(e) => setFormData(prev => ({ ...prev, deliveryPrice: e.target.value }))}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                      placeholder="5,000₮"
+                    />
+                  </div>
+                </div>
+
+                {/* Operating Years */}
+                <div className="w-full sm:w-1/2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <Calendar size={14} />
+                    Үйл ажиллагаа явуулсан жил
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={formData.operatingYears}
+                    onChange={(e) => setFormData(prev => ({ ...prev, operatingYears: parseInt(e.target.value) || 1 }))}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                  />
+                </div>
+
+                {/* Save Button */}
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    onClick={handleCancelEdit}
+                    className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                  >
+                    Цуцлах
+                  </button>
+                  <button
+                    onClick={handleProfileSave}
+                    disabled={profileSaving}
+                    className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-60"
+                  >
+                    {profileSaving ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Save size={16} />
+                    )}
+                    Хадгалах
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Public Profile Preview Section */}
+          {!isEditing && (partner.description || partner.shortDescription || partner.deliveryText || partner.openingHours?.length > 0) && (
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
+                Нийтийн профайл мэдээлэл
+              </h3>
+              <div className="space-y-4">
+                {partner.shortDescription && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 mb-1">Богино танилцуулга</p>
+                    <p className="text-sm text-slate-700">{partner.shortDescription}</p>
+                  </div>
+                )}
+                {partner.description && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 mb-1">Дэлгэрэнгүй</p>
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{partner.description}</p>
+                  </div>
+                )}
+                {partner.openingHours?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                      <Clock size={12} /> Ажлын цаг
+                    </p>
+                    <div className="space-y-1">
+                      {partner.openingHours.map((h: string, i: number) => (
+                        <p key={i} className="text-sm text-slate-700">{h}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(partner.deliveryText || partner.deliveryPrice) && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                      <Truck size={12} /> Хүргэлт
+                    </p>
+                    <p className="text-sm text-slate-700">
+                      {partner.deliveryText}
+                      {partner.deliveryPrice && <span className="text-indigo-600 font-semibold ml-2">{partner.deliveryPrice}</span>}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">

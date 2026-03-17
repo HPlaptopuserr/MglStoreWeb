@@ -1,125 +1,191 @@
-import React from "react";
 import { notFound } from "next/navigation";
-import { companies } from "@/lib/mock-data";
-import { CompanyHero } from "@/components/organisms/home/CompanyHero";
-import { CompanySidebar } from "@/components/organisms/home/CompanySidebar";
-import { ProductCard } from "@mgl/ui";
 import { API } from "@/lib/api";
+import BusinessProfileClient from "./BusinessProfileClient";
 
 interface PageProps {
-  params: Promise<{ id: string }>;
+  params: Promise<{
+    id: string;
+  }>;
 }
 
-async function fetchBackendPartner(slugOrId: string) {
-  try {
-    const res = await fetch(`${API}/partners`, { cache: "no-store" });
-    if (!res.ok) return null;
-    const partners = await res.json();
-    const partner = partners.find(
-      (p: any) => p.slug === slugOrId || p.id === slugOrId,
-    );
-    if (!partner) return null;
+interface BackendProduct {
+  id: string;
+  title?: string;
+  name?: string;
+  image?: string;
+  images?: string[];
+  price?: number;
+  originalPrice?: number;
+  category?: string;
+  tag?: string;
+  rating?: number;
+  reviews?: number;
+  stock?: number;
+}
 
-    // Map backend partner to mock company structure
-    return {
-      id: partner.id,
-      name: partner.name,
-      slug: partner.slug,
-      logo:
-        partner.logoUrl ||
-        `https://picsum.photos/seed/${partner.slug || partner.id}/100/100`,
-      banner: `https://picsum.photos/seed/banner-${partner.slug || partner.id}/1200/400`,
-      description: "Бүртгэлтэй албан ёсны байгууллага.",
-      distance: "Тодорхойгүй",
-      deliveryTime: "Тодорхойгүй",
-      address: partner.address || "Хаяг бүртгэлгүй",
-      openingHours: "Цагийн хуваарь бүртгэлгүй",
-      isOpen: partner.status === "ACTIVE",
-      rating: 5.0,
-      category: partner.type,
-      categories: [partner.type],
-      products: [],
+interface BackendPartner {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl?: string;
+  bannerUrl?: string;
+  address?: string;
+  description?: string;
+  shortDescription?: string;
+  status?: string;
+  businessCategory?: string;
+  type?: string;
+  phone?: string;
+  openingHours?: string[] | string;
+  deliveryText?: string;
+  deliveryPrice?: string;
+  rating?: number;
+  reviewCount?: number;
+  customers?: string;
+  years?: number;
+  products?: BackendProduct[];
+}
+
+export interface OrganizationDetailData {
+  id: string;
+  name: string;
+  slug: string;
+  logo: string;
+  coverImage: string;
+  isOpen: boolean;
+  isVerified: boolean;
+  categories: string[];
+  rating: number;
+  reviewCount: number;
+  shortDescription: string;
+  description: string;
+  stats: {
+    customers: string;
+    years: number;
+  };
+  info: {
+    hours: string[];
+    delivery?: {
+      text: string;
+      price?: string;
     };
+    location: string;
+    phone?: string;
+  };
+  products: {
+    id: string;
+    image: string;
+    title: string;
+    price: number;
+    originalPrice?: number;
+    category?: string;
+    tag?: string;
+    rating?: number;
+    reviews?: number;
+    stock?: number;
+  }[];
+}
+
+function normalizeHours(value?: string[] | string): string[] {
+  if (!value) return ["Цагийн хуваарь бүртгэлгүй"];
+  if (Array.isArray(value)) {
+    return value.length ? value : ["Цагийн хуваарь бүртгэлгүй"];
+  }
+  return [value];
+}
+
+function mapPartnerToDetailData(
+  partner: BackendPartner
+): OrganizationDetailData {
+  const category = partner.businessCategory || partner.type || "Бизнес";
+
+  return {
+    id: partner.id,
+    name: partner.name,
+    slug: partner.slug,
+    logo:
+      partner.logoUrl ||
+      `https://picsum.photos/seed/logo-${partner.slug || partner.id}/400/400`,
+    coverImage:
+      partner.bannerUrl ||
+      `https://picsum.photos/seed/banner-${partner.slug || partner.id}/1600/900`,
+    isOpen: partner.status === "ACTIVE",
+    isVerified: true,
+    categories: [category],
+    rating: partner.rating ?? 5,
+    reviewCount: partner.reviewCount ?? 0,
+    shortDescription:
+      partner.shortDescription ||
+      "Чанартай үйлчилгээ, найдвартай албан ёсны байгууллага.",
+    description:
+      partner.description ||
+      "Байгууллагын дэлгэрэнгүй танилцуулга удахгүй нэмэгдэх болно.",
+    stats: {
+      customers: partner.customers || "100+",
+      years: partner.years ?? 1,
+    },
+    info: {
+      hours: normalizeHours(partner.openingHours),
+      delivery:
+        partner.deliveryText || partner.deliveryPrice
+          ? {
+              text: partner.deliveryText || "Хүргэлтийн мэдээлэл тодорхойгүй",
+              price: partner.deliveryPrice,
+            }
+          : undefined,
+      location: partner.address || "Хаяг бүртгэлгүй",
+      phone: partner.phone,
+    },
+    products: Array.isArray(partner.products)
+      ? partner.products.map((product) => ({
+          id: product.id,
+          image:
+            product.image ||
+            product.images?.[0] ||
+            `https://picsum.photos/seed/product-${product.id}/600/600`,
+          title: product.title || product.name || "Нэргүй бүтээгдэхүүн",
+          price: product.price ?? 0,
+          originalPrice: product.originalPrice,
+          category: product.category,
+          tag: product.tag,
+          rating: product.rating ?? 5,
+          reviews: product.reviews ?? 0,
+          stock: product.stock,
+        }))
+      : [],
+  };
+}
+
+async function fetchOrganization(
+  slugOrId: string
+): Promise<OrganizationDetailData | null> {
+  try {
+    // Use dedicated endpoint for single partner
+    const res = await fetch(`${API}/partners/${encodeURIComponent(slugOrId)}`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) return null;
+      console.error("Failed to fetch partner:", res.status);
+      return null;
+    }
+
+    const partner: BackendPartner = await res.json();
+    return mapPartnerToDetailData(partner);
   } catch (error) {
+    console.error("Failed to fetch organization:", error);
     return null;
   }
 }
 
-export default async function CompanyPage({ params }: PageProps) {
+export default async function OrganizationDetailPage({ params }: PageProps) {
   const { id } = await params;
+  const organization = await fetchOrganization(id);
 
-  let company: any = companies.find((c) => c.slug === id);
-
-  if (!company) {
-    company = await fetchBackendPartner(id);
-  }
-
-  if (!company) {
+  if (!organization) {
     notFound();
   }
 
-  return (
-    <main className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      <div className="container mx-auto px-4 py-8 space-y-8">
-        <CompanyHero company={company} />
-
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          <div className="hidden lg:block lg:col-span-1">
-            <div className="sticky top-36 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-              <CompanySidebar categories={company.categories || []} />
-            </div>
-          </div>
-
-          <div className="lg:col-span-3">
-            {company.products && company.products.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {company.products.map((product: any) => (
-                  <ProductCard
-                    key={product.id}
-                    image={product.image}
-                    name={product.title}
-                    price={product.price}
-                    originalPrice={product.originalPrice}
-                    category={product.category}
-                    tag={product.tag}
-                    rating={product.rating}
-                    reviews={product.reviews}
-                    stock={product.stock}
-                    storeName={company.name}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl p-12 text-center border border-slate-100 shadow-sm flex flex-col items-center justify-center">
-                <div className="w-16 h-16 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mb-4 border border-slate-100">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="32"
-                    height="32"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="m7.5 4.27 9 5.15" />
-                    <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-                    <path d="m3.3 7 8.7 5 8.7-5" />
-                    <path d="M12 22V12" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-slate-800 mb-2">
-                  Бүтээгдэхүүн оруулаагүй байна
-                </h3>
-                <p className="text-slate-500">
-                  Тун удахгүй энэ байгууллагын бараанууд нэмэгдэх болно.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </main>
-  );
+  return <BusinessProfileClient data={organization} />;
 }

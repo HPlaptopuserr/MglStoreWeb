@@ -54,7 +54,6 @@ export function PartnershipForm() {
   const catRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    console.log("=== Partnership form API URL ===", API);
     fetch(`${API}/business-categories`)
       .then((r) => r.json())
       .then((data: BusinessCategory[]) =>
