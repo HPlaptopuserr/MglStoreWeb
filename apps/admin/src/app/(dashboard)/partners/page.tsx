@@ -194,16 +194,28 @@ export default function PartnersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteModal, setDeleteModal] = useState<Partner | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
 
   const handleDelete = async (partner: Partner) => {
+    if (!deleteReason.trim() || deleteReason.trim().length < 5) {
+      alert("Устгах шалтгааныг дор хаяж 5 тэмдэгтээр бичнэ үү");
+      return;
+    }
+
     setDeleting(true);
     try {
       const res = await fetch(`${API}/partners/${partner.id}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: deleteReason.trim(),
+          deletedBy: "admin",
+        }),
       });
       if (res.ok) {
         setPartners((prev) => prev.filter((p) => p.id !== partner.id));
         setDeleteModal(null);
+        setDeleteReason("");
       } else {
         const data = await res.json();
         alert(data.message || "Устгахад алдаа гарлаа");
@@ -443,7 +455,7 @@ export default function PartnersPage() {
                   Байгууллага устгах
                 </h3>
                 <p className="text-sm text-slate-500">
-                  Энэ үйлдлийг буцаах боломжгүй
+                  30 хоногийн дотор сэргээх боломжтой
                 </p>
               </div>
             </div>
@@ -488,15 +500,37 @@ export default function PartnersPage() {
               </div>
             </div>
 
-            <p className="text-sm text-slate-600 mb-4">
-              <strong>{deleteModal.name}</strong> байгууллагыг устгахдаа
-              итгэлтэй байна уу? Энэ байгууллагын бүх хэрэглэгчид мөн идэвхигүй
-              болно.
-            </p>
+            {/* Deletion reason textarea */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Устгах шалтгаан <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="Устгах шалтгаанаа бичнэ үү (дор хаяж 5 тэмдэгт)..."
+                rows={3}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 resize-none"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                {deleteReason.length}/5 тэмдэгт (хамгийн багадаа)
+              </p>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+              <p className="text-xs text-amber-700">
+                <strong>Анхааруулга:</strong> Энэ байгууллагын бүх хэрэглэгчид 
+                идэвхигүй болно. Дата 30 хоногийн турш хадгалагдаж, дараа нь 
+                бүрмөсөн устгагдана. Энэ хугацаанд сэргээх боломжтой.
+              </p>
+            </div>
 
             <div className="flex gap-3">
               <button
-                onClick={() => setDeleteModal(null)}
+                onClick={() => {
+                  setDeleteModal(null);
+                  setDeleteReason("");
+                }}
                 disabled={deleting}
                 className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors"
               >
@@ -504,8 +538,8 @@ export default function PartnersPage() {
               </button>
               <button
                 onClick={() => handleDelete(deleteModal)}
-                disabled={deleting}
-                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                disabled={deleting || deleteReason.trim().length < 5}
+                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
               >
                 {deleting ? (
                   <span>Устгаж байна...</span>

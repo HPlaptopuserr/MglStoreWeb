@@ -481,10 +481,14 @@ model Organization {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+  deletionReason String?
+  deletedBy      String?
+  scheduledPermanentDeletionAt DateTime?
 
   @@index([type])
   @@index([status])
   @@index([deletedAt])
+  @@index([scheduledPermanentDeletionAt])
 }
 
 model OrganizationMember {

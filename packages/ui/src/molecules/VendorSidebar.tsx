@@ -18,12 +18,12 @@ function cn(...classes: Array<string | false | undefined>) {
 }
 
 const navigation = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Warehouses", href: "/warehouses", icon: Warehouse },
-  { name: "Products", href: "/products", icon: Package },
-  { name: "Drivers", href: "/drivers", icon: Users },
+  { name: "Хяналтын самбар", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Агуулахууд", href: "/warehouses", icon: Warehouse },
+  { name: "Бүтээгдэхүүнүүд", href: "/products", icon: Package },
+  { name: "Жолооч нар", href: "/drivers", icon: Users },
   { name: "Бараа татах хүсэлт", href: "/shipments", icon: Truck },
-  { name: "Returns", href: "/returns", icon: RotateCcw },
+  { name: "Буцаалт", href: "/returns", icon: RotateCcw },
   { name: "Үйлчилгээ", href: "/services", icon: ClipboardList },
 ];
 
@@ -46,7 +46,7 @@ export function VendorSidebar({ onSignOut }: VendorSidebarProps) {
               MGL<span className="text-[#FFAD02]">Store</span>
             </h1>
             <p className="text-[10px] font-medium uppercase tracking-widest text-white/40">
-              Vendor Hub
+              Marrow
             </p>
           </div>
         </div>
@@ -55,7 +55,7 @@ export function VendorSidebar({ onSignOut }: VendorSidebarProps) {
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <nav className="space-y-2">
           <p className="mb-4 px-4 text-xs font-bold uppercase tracking-wider text-white/30">
-            Menu
+            Цэс
           </p>
 
           {navigation.map((item) => {
@@ -94,7 +94,7 @@ export function VendorSidebar({ onSignOut }: VendorSidebarProps) {
           className="group flex w-full items-center justify-center rounded-2xl px-4 py-4 text-sm font-bold text-white/60 transition-all duration-300 hover:bg-red-500/20 hover:text-red-400"
         >
           <LogOut className="mr-3 h-5 w-5 transition-transform group-hover:scale-110" />
-          Sign Out
+          Гарах
         </button>
       </div>
     </aside>

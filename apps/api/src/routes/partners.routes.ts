@@ -336,10 +336,56 @@ router.patch("/partners/:id/profile", async (req, res) => {
   }
 });
 
-// Delete organization (soft delete)
+// Get deleted organizations (trash)
+router.get("/partners/deleted/list", async (req, res) => {
+  try {
+    const deletedOrgs = await prisma.organization.findMany({
+      where: {
+        deletedAt: { not: null },
+      },
+      orderBy: {
+        deletedAt: "desc",
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        email: true,
+        phone: true,
+        deletedAt: true,
+        deletionReason: true,
+        deletedBy: true,
+        scheduledPermanentDeletionAt: true,
+        _count: {
+          select: {
+            users: true,
+            products: true,
+            orders: true,
+          },
+        },
+      },
+    });
+
+    res.json(deletedOrgs);
+  } catch (error) {
+    console.error("get deleted organizations error", error);
+    res
+      .status(500)
+      .json({ message: "Устгасан байгууллагуудыг авахад алдаа гарлаа" });
+  }
+});
+
+// Delete organization (soft delete with reason, 30 days retention)
 router.delete("/partners/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    const { reason, deletedBy } = req.body;
+
+    if (!reason || reason.trim().length < 5) {
+      return res.status(400).json({
+        message: "Устгах шалтгааныг дор хаяж 5 тэмдэгтээр бичнэ үү",
+      });
+    }
 
     // Check if organization exists
     const org = await prisma.organization.findUnique({
@@ -359,11 +405,20 @@ router.delete("/partners/:id", async (req, res) => {
       return res.status(404).json({ message: "Байгууллага олдсонгүй" });
     }
 
+    // Calculate 30 days from now for permanent deletion
+    const scheduledPermanentDeletionAt = new Date();
+    scheduledPermanentDeletionAt.setDate(
+      scheduledPermanentDeletionAt.getDate() + 30,
+    );
+
     // Soft delete - set deletedAt timestamp
     await prisma.organization.update({
       where: { id },
       data: {
         deletedAt: new Date(),
+        deletionReason: reason.trim(),
+        deletedBy: deletedBy || "admin",
+        scheduledPermanentDeletionAt,
         status: "SUSPENDED",
       },
     });
@@ -378,15 +433,122 @@ router.delete("/partners/:id", async (req, res) => {
 
     res.json({
       success: true,
-      message: "Байгууллага амжилттай устгагдлаа",
+      message:
+        "Байгууллага амжилттай устгагдлаа. 30 хоногийн дараа бүрмөсөн устгагдана.",
       deletedOrg: {
         id: org.id,
         name: org.name,
+        scheduledPermanentDeletionAt,
       },
     });
   } catch (error) {
     console.error("delete organization error", error);
     res.status(500).json({ message: "Байгууллага устгахад алдаа гарлаа" });
+  }
+});
+
+// Restore deleted organization
+router.post("/partners/:id/restore", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const org = await prisma.organization.findUnique({
+      where: { id },
+    });
+
+    if (!org) {
+      return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+    }
+
+    if (!org.deletedAt) {
+      return res
+        .status(400)
+        .json({ message: "Энэ байгууллага устгагдаагүй байна" });
+    }
+
+    // Restore organization
+    await prisma.organization.update({
+      where: { id },
+      data: {
+        deletedAt: null,
+        deletionReason: null,
+        deletedBy: null,
+        scheduledPermanentDeletionAt: null,
+        status: "ACTIVE",
+      },
+    });
+
+    // Restore users
+    await prisma.user.updateMany({
+      where: { organizationId: id },
+      data: {
+        deletedAt: null,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Байгууллага амжилттай сэргээгдлээ",
+      restoredOrg: {
+        id: org.id,
+        name: org.name,
+      },
+    });
+  } catch (error) {
+    console.error("restore organization error", error);
+    res.status(500).json({ message: "Байгууллага сэргээхэд алдаа гарлаа" });
+  }
+});
+
+// Permanently delete organization (only after 30 days or by force)
+router.delete("/partners/:id/permanent", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { force } = req.body;
+
+    const org = await prisma.organization.findUnique({
+      where: { id },
+    });
+
+    if (!org) {
+      return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+    }
+
+    if (!org.deletedAt) {
+      return res.status(400).json({
+        message: "Зөвхөн устгагдсан байгууллагыг бүрмөсөн устгах боломжтой",
+      });
+    }
+
+    // Check if 30 days have passed (unless force is true)
+    if (
+      !force &&
+      org.scheduledPermanentDeletionAt &&
+      new Date() < org.scheduledPermanentDeletionAt
+    ) {
+      const daysLeft = Math.ceil(
+        (org.scheduledPermanentDeletionAt.getTime() - Date.now()) /
+          (1000 * 60 * 60 * 24),
+      );
+      return res.status(400).json({
+        message: `Бүрмөсөн устгах хугацаа болоогүй байна. ${daysLeft} хоног үлдсэн.`,
+      });
+    }
+
+    // Permanently delete (cascade will handle related records based on schema)
+    await prisma.organization.delete({
+      where: { id },
+    });
+
+    res.json({
+      success: true,
+      message: "Байгууллага бүрмөсөн устгагдлаа",
+    });
+  } catch (error) {
+    console.error("permanent delete organization error", error);
+    res
+      .status(500)
+      .json({ message: "Байгууллага бүрмөсөн устгахад алдаа гарлаа" });
   }
 });
 

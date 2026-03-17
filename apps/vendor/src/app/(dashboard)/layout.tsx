@@ -22,7 +22,7 @@ export default function VendorDashboardLayout({
     const token = localStorage.getItem("vendor_token");
 
     if (!token) {
-      router.replace("/vendor/login");
+      router.replace("/login");
       return;
     }
 
@@ -52,7 +52,7 @@ export default function VendorDashboardLayout({
   const handleLogout = () => {
     localStorage.removeItem("vendor_token");
     localStorage.removeItem("vendor_user");
-    router.replace("/vendor/login");
+    router.replace("/login");
   };
 
   if (!isReady) return null;
@@ -66,7 +66,6 @@ export default function VendorDashboardLayout({
       userRole={userData.role}
       userInitials={userData.initials}
     >
-      
       {children}
     </DashboardLayout>
   );
