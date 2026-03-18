@@ -13,6 +13,7 @@ import jobPositionRoutes from "./routes/job-position.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
 import warehousesRoutes from "./routes/warehouses.routes";
 import stockRequestsRoutes from "./routes/stock-requests.routes";
+import vendorSetupRoutes from "./routes/vendor-setup.routes";
 
 dotenv.config();
 
@@ -53,6 +54,7 @@ app.use("/api", jobPositionRoutes);
 app.use("/api", serviceRequestsRoutes);
 app.use("/api", warehousesRoutes);
 app.use("/api", stockRequestsRoutes);
+app.use("/api", vendorSetupRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");
@@ -88,6 +90,12 @@ app.post("/auth/admin/login", async (req, res) => {
     if (user.role !== "ADMIN") {
       return res.status(403).json({
         message: "Admin эрхгүй байна",
+      });
+    }
+
+    if (!user.passwordHash) {
+      return res.status(401).json({
+        message: "Нууц үг тохируулаагүй байна",
       });
     }
 
@@ -155,6 +163,13 @@ app.post("/auth/login", async (req, res) => {
     if (!user.isActive) {
       return res.status(403).json({
         message: "Хэрэглэгч идэвхгүй байна",
+      });
+    }
+
+    if (!user.passwordHash) {
+      return res.status(401).json({
+        message:
+          "Нууц үг тохируулаагүй байна. Урилгын линкээр нууц үгээ тохируулна уу.",
       });
     }
 

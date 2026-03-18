@@ -149,7 +149,7 @@ enum AuditAction {
 model User {
   id           String @id @default(uuid())
   email        String @unique
-  passwordHash String
+  passwordHash String?
 
   registerNumber String?   @unique
   role           Role      @default(INDIVIDUAL)
@@ -177,6 +177,7 @@ model User {
   auditLogs           AuditLog[]
   inventoryLedgers    InventoryLedger[]    @relation("InventoryLedgerCreatedBy")
   passwordResetTokens PasswordResetToken[] @relation("UserPasswordResetTokens")
+  vendorSetupTokens   VendorSetupToken[]   @relation("UserVendorSetupTokens")
 
   changedOrderHistories  OrderHistory[]  @relation("OrderHistoryChangedBy")
   resolvedReturnRequests ReturnRequest[] @relation("ReturnRequestResolvedBy")
@@ -264,6 +265,22 @@ model PasswordResetToken {
   @@index([usedAt])
 }
 
+model VendorSetupToken {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation("UserVendorSetupTokens", fields: [userId], references: [id], onDelete: Cascade)
+
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
 model AuditLog {
   id String @id @default(uuid())
 
@@ -317,6 +334,9 @@ model RegistrationRequest {
   approvedUserId String? @unique
   approvedUser   User?   @relation("ApprovedUserRegistrationRequest", fields: [approvedUserId], references: [id], onDelete: SetNull)
 
+  inviteToken          String?   @unique
+  inviteTokenExpiresAt DateTime?
+
   reviewedAt DateTime?
   approvedAt DateTime?
   rejectedAt DateTime?
@@ -325,6 +345,7 @@ model RegistrationRequest {
   updatedAt DateTime @updatedAt
 
   @@index([email])
+  @@index([inviteToken])
   @@index([status])
   @@index([requestedRole])
   @@index([source])

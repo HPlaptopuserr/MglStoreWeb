@@ -15,6 +15,9 @@ import {
   Loader2,
   User,
   MapPin,
+  Copy,
+  Link,
+  CheckCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -98,6 +101,13 @@ export default function RequestsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("PENDING");
+  const [inviteLinkModal, setInviteLinkModal] = useState<{
+    show: boolean;
+    link: string;
+    orgName: string;
+    email: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -191,6 +201,16 @@ export default function RequestsPage() {
         );
       }
 
+      // Show invite link modal for partner requests
+      if (activeTab === "partners" && data?.data?.inviteLink) {
+        setInviteLinkModal({
+          show: true,
+          link: data.data.inviteLink,
+          orgName: data.data.organization?.name || "",
+          email: data.data.user?.email || "",
+        });
+      }
+
       await fetchRequests();
     } catch (err) {
       console.error(err);
@@ -240,8 +260,83 @@ export default function RequestsPage() {
     return `Нийт ${label}: ${count}`;
   }, [requests.length, jobApps.length, activeTab]);
 
+  const copyToClipboard = async () => {
+    if (inviteLinkModal?.link) {
+      await navigator.clipboard.writeText(inviteLinkModal.link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <div className="text-slate-800 font-sans">
+      {/* Invite Link Modal */}
+      {inviteLinkModal?.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+                <CheckCircle className="h-6 w-6 text-emerald-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Амжилттай зөвшөөрөгдлөө!
+                </h3>
+                <p className="text-sm text-slate-500">
+                  {inviteLinkModal.orgName}
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-4 rounded-xl bg-slate-50 p-4">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <Link size={16} />
+                Нууц үг тохируулах линк
+              </div>
+              <p className="mb-3 text-xs text-slate-500">
+                Энэ линкийг <strong>{inviteLinkModal.email}</strong> хаягт
+                илгээнэ үү. Линк 24 цагийн дотор хүчинтэй.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={inviteLinkModal.link}
+                  className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 focus:outline-none"
+                />
+                <button
+                  onClick={copyToClipboard}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                    copied
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-indigo-600 text-white hover:bg-indigo-700"
+                  }`}
+                >
+                  {copied ? (
+                    <>
+                      <Check size={14} />
+                      Хуулсан
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={14} />
+                      Хуулах
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setInviteLinkModal(null)}
+              className="w-full rounded-xl bg-slate-100 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition-colors"
+            >
+              Хаах
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="w-full">
         <div className="w-full">
           <div className="w-full rounded-2xl border border-slate-100 bg-white p-4 md:p-5 shadow-sm mb-4">
