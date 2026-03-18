@@ -3,7 +3,7 @@ services:
     name: mgl-web
     rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm build && cd apps/web && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/web
     startCommand: cd apps/web && pnpm exec next start -H 0.0.0.0 -p $PORT
     envVars:
       - key: NODE_ENV
@@ -15,7 +15,7 @@ services:
     name: mgl-admin
     rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm build && cd apps/admin && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/admin
     startCommand: cd apps/admin && pnpm exec next start -H 0.0.0.0 -p $PORT
     envVars:
       - key: NODE_ENV
@@ -25,7 +25,7 @@ services:
     name: mgl-vendor
     rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm build && cd apps/vendor && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/vendor
     startCommand: cd apps/vendor && pnpm exec next start -H 0.0.0.0 -p $PORT
     envVars:
       - key: NODE_ENV
@@ -35,7 +35,7 @@ services:
     name: mgl-api
     rootDir: .
     runtime: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm exec prisma migrate deploy --schema=packages/database/prisma/schema.prisma && pnpm -F @mgl/database run db:generate && pnpm build && cd apps/api && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm exec prisma migrate deploy --schema=packages/database/prisma/schema.prisma && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/api
     startCommand: cd apps/api && pnpm start
     envVars:
       - key: NODE_ENV
