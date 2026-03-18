@@ -55,7 +55,6 @@ export async function validateVendorSetupToken(
     return { valid: false, error: "Token хугацаа дууссан байна (24 цаг)" };
   }
 
-  // Check if user already has a password set
   if (setupToken.user.passwordHash) {
     return {
       valid: false,
@@ -69,10 +68,7 @@ export async function validateVendorSetupToken(
     organizationName: setupToken.user.organization?.name || undefined,
   };
 }
-
-/**
- * Set password for vendor using the setup token
- */
+ 
 export async function setVendorPassword(
   token: string,
   password: string,
