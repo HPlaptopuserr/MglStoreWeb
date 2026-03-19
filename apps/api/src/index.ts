@@ -13,6 +13,7 @@ import stockRequestsRoutes from "./routes/stock-requests.routes";
 import vendorSetupRoutes from "./routes/vendor-setup.routes";
 import investorRoutes from "./routes/investors.routes";
 import authRoutes from "./routes/auth.routes";
+import siteSettingsRoutes from "./routes/site-settings.routes";
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ app.use("/api", warehousesRoutes);
 app.use("/api", stockRequestsRoutes);
 app.use("/api", vendorSetupRoutes);
 app.use("/api", investorRoutes);
+app.use("/api", siteSettingsRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");

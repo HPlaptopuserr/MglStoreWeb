@@ -199,6 +199,12 @@ model JobPosition {
   @@index([sortOrder])
 }
 
+model SiteSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model JobApplication {
   id                 String         @id @default(uuid())
   firstName          String

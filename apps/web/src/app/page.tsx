@@ -5,6 +5,7 @@ import { ProductGrid } from "@/components/organisms/home/grid/ProductGrid";
 import { PartnershipContact } from "@/components/organisms/partnership/PartnershipContact";
 import { FeaturedStoresSection } from "@/components/organisms/home/FeaturedStoresSection";
 import { InvestorSection } from "@/components/organisms/home/InvestorSection";
+import { PromoBanner } from "@/components/organisms/home/PromoBanner";
 
 export default function HomePage() {
   return (
@@ -15,6 +16,7 @@ export default function HomePage() {
          <HeroSection />
           </div>
         </div>
+        <PromoBanner />
         <BrandTicker />
         <FeaturedStoresSection />
         <Categories />
