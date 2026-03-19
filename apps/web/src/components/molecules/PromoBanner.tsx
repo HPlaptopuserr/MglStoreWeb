@@ -1,99 +1,121 @@
 "use client";
+
+import { useEffect, useState, useCallback, useRef } from "react";
 import Image from "next/image";
-import Link from "next/link";
-import { Building2, ShoppingBag } from "lucide-react";
-import { motion } from "motion/react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { API } from "@/lib/api";
 
 export default function Hero() {
+  const [banners, setBanners] = useState<string[]>([]);
+  const [current, setCurrent] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    fetch(`${API}/site-settings`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((data: Record<string, string>) => {
+        // Support both "promo-banners" (JSON array) and "promo-banner" (single)
+        const raw = data["promo-banners"];
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setBanners(parsed);
+              return;
+            }
+          } catch {}
+        }
+        // Fall back to single banner key
+        if (data["promo-banner"]) {
+          setBanners([data["promo-banner"]]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const goTo = useCallback(
+    (index: number) => {
+      if (banners.length === 0) return;
+      setCurrent((index + banners.length) % banners.length);
+    },
+    [banners.length]
+  );
+
+  const next = useCallback(() => goTo(current + 1), [current, goTo]);
+  const prev = useCallback(() => goTo(current - 1), [current, goTo]);
+
+  // Auto-advance every 5s
+  useEffect(() => {
+    if (banners.length <= 1) return;
+    timerRef.current = setTimeout(next, 5000);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [banners.length, current, next]);
+
+  if (banners.length === 0) return null;
+
   return (
-    <div className="relative bg-white overflow-hidden border-b border-gray-100">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,var(--tw-gradient-stops))] from-orange-50 via-white to-white opacity-70" />
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-12 sm:pt-24 sm:pb-20 md:pt-40 md:pb-32 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="text-center max-w-4xl mx-auto"
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 border border-orange-100 text-orange-700 text-xs sm:text-sm font-semibold mb-4 sm:mb-8 shadow-sm"
-          >
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-            </span>
-            Монголын Нэгдсэн Дэлгүүрийн Сүлжээ
-          </motion.div>
-
-          <h1 className="text-3xl sm:text-5xl md:text-7xl font-extrabold text-gray-900 tracking-tight mb-4 sm:mb-8 leading-[1.1]">
-            Монголын худалдааны <br className="hidden md:block" /> нэгдсэн
-            сүлжээ
-          </h1>
-
-          <p className="text-sm sm:text-lg md:text-2xl text-gray-500 mb-5 sm:mb-12 leading-relaxed max-w-3xl mx-auto font-light px-2 sm:px-0">
-            Монголын бизнесүүдийг орчин үеийн жижиглэн худалдааны нэг экосистемд
-            холбох. Илүү ухаалгаар дэлгүүр хэсэж,
-            <br className="hidden md:block" />
-            орон нутгаа хөрөнгө оруулан хамтдаа хөгжинө.
-          </p> 
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.5 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-4 sm:px-0"
-          >
-            <Link
-              href="/company/partnership"
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 text-sm sm:text-base font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-full transition-all shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:-translate-y-0.5"
-            >
-              <Building2 className="w-4 h-4 sm:w-5 sm:h-5" />
-              Хамтарч ажиллах
-            </Link>
-            <Link
-              href="/organizations"
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 sm:px-8 sm:py-4 text-sm sm:text-base font-bold text-gray-700 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 rounded-full transition-all shadow-sm hover:-translate-y-0.5"
-            >
-              <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5" />
-              Дэлгүүрүүдтэй танилцах
-            </Link>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6, duration: 0.5 }}
-            className="mt-6 sm:mt-16 flex items-center justify-center gap-3 text-xs sm:text-sm text-gray-500 font-medium"
-          >
-            <div className="flex -space-x-2 sm:-space-x-3">
-              {[1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-white overflow-hidden shadow-sm"
-                >
-                  <Image
-                    src={`https://picsum.photos/seed/face${i}/100/100`}
-                    alt="Partner"
-                    fill
-                    className="object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-col items-start">
-              <div className="flex items-center gap-0.5 text-yellow-400 text-xs sm:text-sm">
-                {"★★★★★"}
-              </div>
-              <p className="text-xs sm:text-sm">300+ бизнес нэгдсэн</p>
-            </div>
-          </motion.div>
-        </motion.div>
+    <div className="relative w-full overflow-hidden rounded-2xl bg-slate-100 group"
+      style={{ height: "clamp(180px, 33vh, 380px)" }}
+    >
+      {/* Slides */}
+      <div
+        className="flex h-full transition-transform duration-500 ease-in-out"
+        style={{ transform: `translateX(-${current * 100}%)`, width: `${banners.length * 100}%` }}
+      >
+        {banners.map((url, i) => (
+          <div key={i} className="relative h-full flex-shrink-0" style={{ width: `${100 / banners.length}%` }}>
+            <Image
+              src={url}
+              alt={`Промо баннер ${i + 1}`}
+              fill
+              className="object-cover"
+              unoptimized={url.startsWith("data:")}
+              priority={i === 0}
+            />
+          </div>
+        ))}
       </div>
+
+      {/* Only show controls if multiple banners */}
+      {banners.length > 1 && (
+        <>
+          {/* Left arrow */}
+          <button
+            onClick={(e) => { e.preventDefault(); if (timerRef.current) clearTimeout(timerRef.current); prev(); }}
+            className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/80 hover:bg-white shadow-md backdrop-blur-sm flex items-center justify-center text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+            aria-label="Өмнөх"
+          >
+            <ChevronLeft size={18} strokeWidth={2.5} />
+          </button>
+
+          {/* Right arrow */}
+          <button
+            onClick={(e) => { e.preventDefault(); if (timerRef.current) clearTimeout(timerRef.current); next(); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/80 hover:bg-white shadow-md backdrop-blur-sm flex items-center justify-center text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+            aria-label="Дараагийн"
+          >
+            <ChevronRight size={18} strokeWidth={2.5} />
+          </button>
+
+          {/* Dot indicators */}
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5">
+            {banners.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => { if (timerRef.current) clearTimeout(timerRef.current); goTo(i); }}
+                className={`rounded-full transition-all duration-300 ${
+                  i === current
+                    ? "bg-white w-5 h-2"
+                    : "bg-white/50 w-2 h-2 hover:bg-white/80"
+                }`}
+                aria-label={`Слайд ${i + 1}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
