@@ -10,8 +10,11 @@ import {
   Clock,
   ShoppingBag,
   ArrowRight,
+  Crown,
 } from "lucide-react";
 import { API } from "@/lib/api";
+import { toCategoryMN } from "@/lib/constants";
+import { InvestorCard } from "@/components/molecules/InvestorCard";
 
 interface ApiPartner {
   id: string;
@@ -22,6 +25,22 @@ interface ApiPartner {
   status: string;
   businessCategory?: string;
   type?: string;
+  isInvestor?: boolean;
+  investorTier?: "TOP" | "STRATEGIC" | "INVESTOR" | null;
+  investorLevel?: string | null;
+}
+
+interface Investor {
+  id: string;
+  organizationId: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  tier: "TOP" | "STRATEGIC" | "INVESTOR";
+  tierLabel: string;
+  featured: boolean;
+  investmentLevel: string | null;
+  description: string | null;
 }
 
 interface StoreItem {
@@ -34,97 +53,65 @@ interface StoreItem {
   category: string;
   rating: number;
   deliveryTime: string;
-  products: any[];
+  products: string[];
 }
 
-// Mongolian translations for business categories
-const CATEGORY_MN: Record<string, string> = {
-  // Seed & common categories
-  Electronics: "Цахилгаан бараа",
-  electronics: "Цахилгаан бараа",
-  Food: "Хүнс",
-  food: "Хүнс",
-  Clothing: "Хувцас",
-  clothing: "Хувцас",
-  // Business types from registrations
-  Retail: "Жижиглэн худалдаа",
-  retail: "Жижиглэн худалдаа",
-  Pharmacy: "Эмийн сан",
-  pharmacy: "Эмийн сан",
-  "Building-Materials": "Барилгын материал",
-  "building-materials": "Барилгын материал",
-  "Building Materials": "Барилгын материал",
-  Service: "Үйлчилгээ",
-  service: "Үйлчилгээ",
-  Grocery: "Хүнсний дэлгүүр",
-  grocery: "Хүнсний дэлгүүр",
-  Fashion: "Загвар өмсгөл",
-  fashion: "Загвар өмсгөл",
-  Beauty: "Гоо сайхан",
-  beauty: "Гоо сайхан",
-  Health: "Эрүүл мэнд",
-  health: "Эрүүл мэнд",
-  Sports: "Спорт",
-  sports: "Спорт",
-  Automotive: "Авто машин",
-  automotive: "Авто машин",
-  Education: "Боловсрол",
-  education: "Боловсрол",
-  Restaurant: "Ресторан",
-  restaurant: "Ресторан",
-  Cafe: "Кафе",
-  cafe: "Кафе",
-  Hotel: "Зочид буудал",
-  hotel: "Зочид буудал",
-  Travel: "Аялал жуулчлал",
-  travel: "Аялал жуулчлал",
-  IT: "Мэдээллийн технологи",
-  it: "Мэдээллийн технологи",
-  Бизнес: "Бизнес",
+const TIER_LABEL: Record<string, string> = {
+  TOP: "Top Investor",
+  STRATEGIC: "Strategic Investor",
+  INVESTOR: "Investor",
 };
-
-const toCategoryMN = (cat: string): string =>
-  CATEGORY_MN[cat] || CATEGORY_MN[cat.toLowerCase()] || cat;
 
 export default function OrganizationsPage() {
   const [stores, setStores] = useState<StoreItem[]>([]);
+  const [investors, setInvestors] = useState<Investor[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
 
   useEffect(() => {
-    const fetchStores = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch(`${API}/partners`);
-        if (!res.ok) throw new Error("Failed to fetch stores");
-        const data = await res.json();
+        const [partnersRes, investorsRes] = await Promise.all([
+          fetch(`${API}/partners`),
+          fetch(`${API}/investors`),
+        ]);
 
-        const activeStores = data
-          .filter((p: ApiPartner) => p.status === "ACTIVE")
-          .map((p: ApiPartner) => ({
-            id: p.id,
-            name: p.name,
-            slug: p.slug,
-            logo: p.logoUrl || "https://picsum.photos/100/100?random=" + p.id,
-            banner:
-              p.bannerUrl || "https://picsum.photos/1200/400?random=" + p.id,
-            isOpen: true,
-            category: p.businessCategory || p.type || "Бизнес",
-            rating: 5.0,
-            deliveryTime: "N/A",
-            products: [],
-          }));
-console.log("partners data:", data);
-console.log("activeStores:", activeStores);
-        setStores(activeStores);
+        if (partnersRes.ok) {
+          const data = await partnersRes.json();
+          const activeStores = data
+            .filter(
+              (p: ApiPartner) => p.status === "ACTIVE" && !p.isInvestor,
+            )
+            .map((p: ApiPartner) => ({
+              id: p.id,
+              name: p.name,
+              slug: p.slug,
+              logo:
+                p.logoUrl || "https://picsum.photos/100/100?random=" + p.id,
+              banner:
+                p.bannerUrl || "https://picsum.photos/1200/400?random=" + p.id,
+              isOpen: true,
+              category: p.businessCategory || p.type || "Бизнес",
+              rating: 5.0,
+              deliveryTime: "N/A",
+              products: [],
+            }));
+          setStores(activeStores);
+        }
+
+        if (investorsRes.ok) {
+          const invData = await investorsRes.json();
+          if (Array.isArray(invData)) setInvestors(invData);
+        }
       } catch (error) {
-        console.error("Error fetching stores:", error);
+        console.error("Error fetching data:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchStores();
+    fetchData();
   }, []);
 
   const categories = [
@@ -207,6 +194,49 @@ console.log("activeStores:", activeStores);
         </div>
       </div>
 
+      {/* ═══════ Investors Section ═══════ */}
+      {investors.length > 0 && (
+        <div className="relative bg-gray-950 overflow-hidden">
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-amber-500/[0.07] blur-3xl" />
+            <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-purple-500/[0.05] blur-3xl" />
+          </div>
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-12 md:py-16">
+            <div className="mb-8 text-center">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-4 py-1.5">
+                <Crown size={14} className="text-amber-400" />
+                <span className="text-xs font-bold uppercase tracking-widest text-amber-400">
+                  Хөрөнгө оруулагчид
+                </span>
+              </div>
+              <h2 className="text-xl sm:text-3xl font-black text-white">
+                Платформыг дэмжигчид
+              </h2>
+              <p className="mt-2 text-sm text-gray-500 max-w-md mx-auto">
+                MGL Store-д итгэл үзүүлсэн хөрөнгө оруулагч байгууллагууд
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              {investors.map((inv) => (
+                <InvestorCard
+                  key={inv.id}
+                  name={inv.name}
+                  slug={inv.slug}
+                  logoUrl={inv.logoUrl}
+                  tier={inv.tier}
+                  tierLabel={inv.tierLabel || TIER_LABEL[inv.tier] || "Investor"}
+                  investmentLevel={inv.investmentLevel}
+                  description={inv.description}
+                  featured={inv.featured}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ Partners Section ═══════ */}
       {categories.length > 2 && (
         <div className="border-b border-gray-100 bg-white sticky top-20 sm:top-32 z-30">
           <div className="max-w-7xl mx-auto px-3 sm:px-6">
@@ -230,6 +260,16 @@ console.log("activeStores:", activeStores);
       )}
 
       <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-6 sm:pt-10">
+        {/* Partners section header */}
+        <div className="mb-6 sm:mb-8">
+          <h2 className="text-lg sm:text-2xl font-black text-gray-900">
+            Хамтран ажиллагч байгууллагууд
+          </h2>
+          <p className="mt-1 text-sm text-gray-400">
+            Идэвхтэй үйл ажиллагаа явуулж буй түнш байгууллагууд
+          </p>
+        </div>
+
         <div className="flex items-center justify-between mb-4 sm:mb-8">
           <p className="text-sm text-gray-500">
             <span className="font-bold text-black">

@@ -29,6 +29,8 @@ router.get("/admin/dashboard/stats", async (_req, res) => {
       usersLast30Days,
       orgsLast30Days,
       jobAppsLast30Days,
+      totalInvestors,
+      investorProfiles,
     ] = await Promise.all([
       // Total active users
       prisma.user.count({ where: { isActive: true, deletedAt: null } }),
@@ -107,7 +109,20 @@ router.get("/admin/dashboard/stats", async (_req, res) => {
         select: { createdAt: true },
         orderBy: { createdAt: "asc" },
       }),
+
+      // Total investors
+      prisma.investorProfile.count(),
+
+      // All investor profiles with investment amounts
+      prisma.investorProfile.findMany({
+        select: { investmentLevel: true },
+      }),
     ]);
+
+    // Calculate total investment amount
+    const totalInvestmentAmount = investorProfiles.reduce((sum, p) => {
+      return sum + (p.investmentLevel ? Number(p.investmentLevel) : 0);
+    }, 0);
 
     // Build daily user counts for sparkline (last 12 data points)
     const userSparkline = buildDailySparkline(
@@ -181,6 +196,8 @@ router.get("/admin/dashboard/stats", async (_req, res) => {
         activeOrganizations,
         totalRegistrations,
         totalJobApplications,
+        totalInvestors,
+        totalInvestmentAmount,
       },
       sparklines: {
         users: userSparkline,

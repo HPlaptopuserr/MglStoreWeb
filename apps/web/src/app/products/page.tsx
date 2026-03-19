@@ -4,8 +4,11 @@ import React, { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ProductCard } from "@mgl/ui";
-import { products } from "@/components/organisms/home/grid/ProductGrid";
+import { products } from "@/lib/product-mock-data";
 import { API } from "@/lib/api";
+import { BRAND_ACCENT } from "@/lib/constants";
+
+const PRODUCTS_PER_PAGE = 16;
 
 interface ApiCategory {
   id: string;
@@ -69,7 +72,7 @@ function ProductsContent() {
   const activeCategoryName = apiCategories.find(
     (c) => c.id === activeCategory,
   )?.name;
-  const displayProducts = showMore ? products : products.slice(0, 16);
+  const displayProducts = showMore ? products : products.slice(0, PRODUCTS_PER_PAGE);
 
   return (
     <div className="min-h-screen bg-white">
@@ -182,13 +185,13 @@ function ProductsContent() {
         </div>
 
         {/* Load More */}
-        {!showMore && products.length > 16 && (
+        {!showMore && products.length > PRODUCTS_PER_PAGE && (
           <div className="mt-12 flex justify-center">
             <button
               onClick={() => setShowMore(true)}
               className="px-12 py-3.5 bg-black text-white text-xs font-bold uppercase tracking-widest hover:bg-[#FFAD02] hover:text-black transition-colors"
             >
-              Бүгдийг харах ({products.length - 16} бараа)
+              Бүгдийг харах ({products.length - PRODUCTS_PER_PAGE} бараа)
             </button>
           </div>
         )}

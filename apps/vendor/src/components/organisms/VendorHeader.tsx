@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell, Search } from "lucide-react";
-import { Input } from "@/components/ui/Input";
+import { Input } from "@/components/atoms/Input";
 
 export default function VendorHeader() {
   const [displayName, setDisplayName] = useState("Vendor User");

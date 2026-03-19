@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, Search } from "lucide-react";
-import { Input } from "./Input";
+import { Input } from "../atoms/Input";
 
 interface VendorHeaderProps {
   userName?: string;

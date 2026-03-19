@@ -171,8 +171,6 @@ export default function CareersForm() {
       languages: languages || null,
     };
 
-    console.log("job application payload:", payload);
-
     try {
       const res = await fetch(`${API}/job-applications`, {
         method: "POST",

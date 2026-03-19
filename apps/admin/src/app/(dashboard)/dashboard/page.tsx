@@ -6,18 +6,11 @@ import {
   Users,
   Building2,
   TrendingUp,
-  Wallet,
-  ArrowUpRight,
-  ArrowDownRight,
   Clock,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
   FileText,
   Eye,
   UserPlus,
   Settings,
-  Bell,
   ChevronRight,
   CalendarDays,
   Activity,
@@ -33,370 +26,40 @@ import {
   Star,
   Heart,
   X,
+  Wallet,
+  DollarSign,
 } from "lucide-react";
-import {
-  RevenueChart,
-  TimeRange,
-} from "../../../components/organisms/RevenueChart";
 import { PieChart } from "../../../components/organisms/PieChart";
+import {
+  StatCard,
+  QuickAction,
+  ActivityItem,
+  DetailItem,
+} from "../../../components/molecules/DashboardWidgets";
 
-import { MOCK_REVENUE_DATA } from "../../../lib/mock-data";
 import {
   fetchDashboardStats,
   type DashboardStats,
 } from "../../../lib/dashboard-api";
 import { API_BASE } from "../../../lib/api";
-
-type JobApplication = {
-  id: string;
-  firstName: string;
-  lastName: string;
-  phone: string;
-  registerNumber: string | null;
-  age: number | null;
-  gender: string | null;
-  address: string | null;
-  jobPosition: string | null;
-  education: string | null;
-  salaryExpect: string | null;
-  experience: string | null;
-  professionalSkills: string | null;
-  personalSkills: string | null;
-  languages: string | null;
-  status: string;
-  createdAt: string;
-};
-
-const JOB_POSITION_LABELS: Record<string, string> = {
-  driver: "Жолооч",
-  picker: "Бараа бэлтгэгч",
-  support: "Хэрэглэгчийн үйлчилгээ",
-  admin: "Админ",
-};
-
-const EDUCATION_LABELS: Record<string, string> = {
-  incomplete_secondary: "Бүрэн бус дунд",
-  high_school: "Бүрэн дунд",
-  vocational: "МСҮТ / Коллеж",
-  student: "Оюутан",
-  bachelor: "Бакалавр",
-  master: "Магистр",
-  doctor: "Доктор",
-};
-
-const GENDER_LABELS: Record<string, string> = {
-  MALE: "Эрэгтэй",
-  FEMALE: "Эмэгтэй",
-};
-
-function getStatusLabel(status: string) {
-  switch (status) {
-    case "PENDING":
-      return "Хүлээгдэж буй";
-    case "APPROVED":
-      return "Зөвшөөрсөн";
-    case "REJECTED":
-      return "Татгалзсан";
-    default:
-      return status;
-  }
-}
-
-function getStatusClass(status: string) {
-  switch (status) {
-    case "PENDING":
-      return "bg-amber-50 text-amber-700 border border-amber-200";
-    case "APPROVED":
-      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
-    case "REJECTED":
-      return "bg-rose-50 text-rose-700 border border-rose-200";
-    default:
-      return "bg-slate-50 text-slate-600 border border-slate-200";
-  }
-}
-
-function StatCard({
-  icon: Icon,
-  iconBg,
-  iconColor,
-  label,
-  value,
-  trend,
-  trendUp,
-  sparkData,
-}: {
-  icon: React.ElementType;
-  iconBg: string;
-  iconColor: string;
-  label: string;
-  value: string;
-  trend: string;
-  trendUp: boolean;
-  sparkData: number[];
-}) {
-  const max = Math.max(...sparkData);
-  const min = Math.min(...sparkData);
-  const range = max - min || 1;
-  const points = sparkData
-    .map((v, i) => {
-      const x = (i / (sparkData.length - 1)) * 80;
-      const y = 24 - ((v - min) / range) * 20;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-3 sm:p-4 md:p-5 shadow-sm hover:shadow-md transition-all duration-300 group relative overflow-hidden">
-      <div className="relative z-10">
-        <div className="flex items-start justify-between mb-2 sm:mb-3">
-          <div
-            className={`p-2 sm:p-2.5 rounded-xl ${iconBg} ${iconColor} transition-transform duration-200 group-hover:scale-110`}
-          >
-            <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
-          </div>
-
-          <svg
-            width="60"
-            height="24"
-            viewBox="0 0 80 28"
-            className="opacity-40 group-hover:opacity-70 transition-opacity hidden sm:block"
-          >
-            <polyline
-              points={points}
-              fill="none"
-              stroke={trendUp ? "#10b981" : "#f43f5e"}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-
-        <h3 className="text-lg sm:text-2xl md:text-[28px] font-extrabold text-slate-900 leading-none tracking-tight">
-          {value}
-        </h3>
-        <div className="flex items-center justify-between mt-1.5 sm:mt-2 gap-1">
-          <p className="text-[10px] sm:text-[11px] md:text-xs font-medium text-slate-400 truncate">
-            {label}
-          </p>
-          <div
-            className={`flex items-center gap-0.5 text-[10px] sm:text-[11px] font-bold px-1 sm:px-1.5 py-0.5 rounded-md shrink-0 ${
-              trendUp
-                ? "text-emerald-600 bg-emerald-50"
-                : "text-rose-600 bg-rose-50"
-            }`}
-          >
-            {trendUp ? (
-              <ArrowUpRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-            ) : (
-              <ArrowDownRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-            )}
-            {trend}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Quick Action Button ──────────────────────────────── */
-function QuickAction({
-  icon: Icon,
-  label,
-  color,
-  onClick,
-}: {
-  icon: React.ElementType;
-  label: string;
-  color: string;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex flex-col items-center gap-1.5 sm:gap-2 p-2.5 sm:p-3 md:p-4 rounded-xl border border-slate-100 bg-white hover:shadow-md hover:border-slate-200 transition-all duration-200 group active:scale-95"
-    >
-      <div
-        className={`w-9 h-9 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-xl ${color} flex items-center justify-center transition-transform group-hover:scale-110`}
-      >
-        <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-      </div>
-      <span className="text-[10px] sm:text-[11px] md:text-xs font-semibold text-slate-600 text-center leading-tight">
-        {label}
-      </span>
-    </button>
-  );
-}
-
-/* ── Activity Item ────────────────────────────────────── */
-function ActivityItem({
-  icon: Icon,
-  iconBg,
-  iconColor,
-  title,
-  description,
-  time,
-  isLast,
-}: {
-  icon: React.ElementType;
-  iconBg: string;
-  iconColor: string;
-  title: string;
-  description: string;
-  time: string;
-  isLast?: boolean;
-}) {
-  return (
-    <div className="flex gap-3 group">
-      <div className="flex flex-col items-center">
-        <div
-          className={`w-8 h-8 rounded-lg ${iconBg} ${iconColor} flex items-center justify-center shrink-0 transition-transform group-hover:scale-110`}
-        >
-          <Icon className="w-3.5 h-3.5" />
-        </div>
-        {!isLast && <div className="w-px flex-1 bg-slate-100 mt-1.5" />}
-      </div>
-      <div className={`flex-1 ${!isLast ? "pb-4" : ""}`}>
-        <p className="text-sm font-semibold text-slate-800 leading-snug">
-          {title}
-        </p>
-        <p className="text-xs text-slate-400 mt-0.5">{description}</p>
-        <p className="text-[10px] text-slate-300 mt-1 font-medium">{time}</p>
-      </div>
-    </div>
-  );
-}
-
-/* ── Fallback mock spark data ─────────────────────────── */
-const FALLBACK_SPARK = {
-  users: [120, 132, 101, 134, 190, 230, 210, 250, 270, 300, 340, 310],
-  companies: [20, 25, 22, 30, 28, 35, 40, 38, 42, 45, 43, 45],
-  registrations: [50, 65, 55, 80, 70, 95, 100, 85, 110, 105, 115, 110],
-  revenue: [18, 20, 19, 24, 28, 30, 32, 35, 38, 40, 42, 45],
-};
-
-/* ── Audit action → UI mapping ────────────────────────── */
-const AUDIT_ACTION_MAP: Record<
-  string,
-  {
-    icon: React.ElementType;
-    iconBg: string;
-    iconColor: string;
-    title: string;
-    description: string;
-  }
-> = {
-  REGISTRATION_REQUEST_CREATED: {
-    icon: UserPlus,
-    iconBg: "bg-blue-50",
-    iconColor: "text-blue-500",
-    title: "Шинэ бүртгэл ирсэн",
-    description: "Түншийн хүсэлт ирлээ",
-  },
-  REGISTRATION_REQUEST_APPROVED: {
-    icon: CheckCircle2,
-    iconBg: "bg-emerald-50",
-    iconColor: "text-emerald-500",
-    title: "Хүсэлт зөвшөөрөгдсөн",
-    description: "Түншийн хүсэлт батлагдсан",
-  },
-  REGISTRATION_REQUEST_REJECTED: {
-    icon: XCircle,
-    iconBg: "bg-rose-50",
-    iconColor: "text-rose-500",
-    title: "Хүсэлт татгалзсан",
-    description: "Түншийн хүсэлт татгалзсан",
-  },
-  LOGIN: {
-    icon: Users,
-    iconBg: "bg-indigo-50",
-    iconColor: "text-indigo-500",
-    title: "Нэвтэрсэн",
-    description: "Хэрэглэгч нэвтэрсэн",
-  },
-  ORDER_CREATED: {
-    icon: FileText,
-    iconBg: "bg-violet-50",
-    iconColor: "text-violet-500",
-    title: "Шинэ захиалга",
-    description: "Захиалга үүссэн",
-  },
-  PRODUCT_PUBLISHED: {
-    icon: CheckCircle2,
-    iconBg: "bg-emerald-50",
-    iconColor: "text-emerald-500",
-    title: "Бүтээгдэхүүн нийтлэгдсэн",
-    description: "Шинэ бүтээгдэхүүн нэмэгдсэн",
-  },
-};
-
-const DEFAULT_AUDIT = {
-  icon: AlertCircle,
-  iconBg: "bg-amber-50",
-  iconColor: "text-amber-500",
-  title: "Үйлдэл",
-  description: "",
-};
-
-function formatTimeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Дөнгөж сая";
-  if (mins < 60) return `${mins} минутын өмнө`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} цагийн өмнө`;
-  const days = Math.floor(hours / 24);
-  return `${days} өдрийн өмнө`;
-}
-
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return n.toLocaleString();
-  return String(n);
-}
-
-/* ── Page ─────────────────────────────────────────────── */
-const MN_WEEKDAYS = [
-  "Ням",
-  "Даваа",
-  "Мягмар",
-  "Лхагва",
-  "Пүрэв",
-  "Баасан",
-  "Бямба",
-];
-const MN_MONTHS = [
-  "1-р сарын",
-  "2-р сарын",
-  "3-р сарын",
-  "4-р сарын",
-  "5-р сарын",
-  "6-р сарын",
-  "7-р сарын",
-  "8-р сарын",
-  "9-р сарын",
-  "10-р сарын",
-  "11-р сарын",
-  "12-р сарын",
-];
-
-function formatMnDate(d: Date) {
-  const weekday = MN_WEEKDAYS[d.getDay()];
-  const year = d.getFullYear();
-  const month = MN_MONTHS[d.getMonth()];
-  const day = d.getDate();
-  return `${year} оны ${month} ${day}, ${weekday} гараг`;
-}
-
-function formatMnTime(d: Date) {
-  const h = d.getHours().toString().padStart(2, "0");
-  const m = d.getMinutes().toString().padStart(2, "0");
-  return `${h}:${m}`;
-}
+import {
+  JOB_POSITION_LABELS,
+  EDUCATION_LABELS,
+  GENDER_LABELS,
+  getStatusLabel,
+  getStatusClass,
+  FALLBACK_SPARK,
+  AUDIT_ACTION_MAP,
+  DEFAULT_AUDIT,
+  formatMnDate,
+  formatMnTime,
+  formatTimeAgo,
+  formatNumber,
+} from "../../../lib/constants";
+import type { JobApplication } from "../../../lib/types";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [activeRange, setActiveRange] = useState<TimeRange>("7d");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [data, setData] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -533,6 +196,52 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* ─── Investor Stats ─── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 md:gap-4">
+        {loading ? (
+          <div className="col-span-2 flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
+          </div>
+        ) : (
+          <>
+            <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200/60 p-4 sm:p-5 shadow-sm">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                  <Wallet className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-amber-600/70">Хөрөнгө оруулагчид</p>
+                  <p className="text-2xl sm:text-3xl font-extrabold text-amber-800">
+                    {data?.stats.totalInvestors ?? 0}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-amber-600/60">
+                Нийт түншүүдийн {data?.stats.activeOrganizations ? Math.round(((data?.stats.totalInvestors ?? 0) / data.stats.activeOrganizations) * 100) : 0}% нь хөрөнгө оруулагч
+              </p>
+            </div>
+
+            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border border-emerald-200/60 p-4 sm:p-5 shadow-sm">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-emerald-600/70">Нийт оруулсан хөрөнгө</p>
+                  <p className="text-2xl sm:text-3xl font-extrabold text-emerald-800">
+                    {((data?.stats.totalInvestmentAmount ?? 0) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                    <span className="text-base font-bold text-emerald-500 ml-1">сая ₮</span>
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-emerald-600/60">
+                Дундаж: {data?.stats.totalInvestors ? ((data.stats.totalInvestmentAmount / data.stats.totalInvestors) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 }) : 0} сая ₮ / хөрөнгө оруулагч
+              </p>
+            </div>
+          </>
+        )}
+      </div>
+
       {/* ─── Quick Actions ─── */}
       <div className="bg-white rounded-2xl border border-slate-100 p-3 sm:p-4 md:p-5 shadow-sm">
         <div className="flex items-center justify-between mb-2.5 sm:mb-3">
@@ -543,7 +252,7 @@ export default function DashboardPage() {
             </h3>
           </div>
         </div>
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 md:gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 md:gap-3">
           <QuickAction
             icon={Eye}
             label="Хүсэлт харах"
@@ -557,28 +266,22 @@ export default function DashboardPage() {
             onClick={() => router.push("/partners")}
           />
           <QuickAction
-            icon={BarChart3}
-            label="Тайлан"
-            color="bg-violet-500"
-            onClick={() => router.push("/dashboard")}
+            icon={FileText}
+            label="Ангилал"
+            color="bg-rose-500"
+            onClick={() => router.push("/categories")}
           />
           <QuickAction
-            icon={Bell}
-            label="Мэдэгдэл"
-            color="bg-amber-500"
-            onClick={() => router.push("/dashboard")}
+            icon={Briefcase}
+            label="Анкетууд"
+            color="bg-violet-500"
+            onClick={() => router.push("/applications")}
           />
           <QuickAction
             icon={Settings}
             label="Тохиргоо"
             color="bg-slate-500"
-            onClick={() => router.push("/dashboard")}
-          />
-          <QuickAction
-            icon={FileText}
-            label="Ангилал"
-            color="bg-rose-500"
-            onClick={() => router.push("/categories")}
+            onClick={() => router.push("/settings")}
           />
         </div>
       </div>
@@ -727,12 +430,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ─── Charts Row ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5">
-        <RevenueChart
-          data={MOCK_REVENUE_DATA[activeRange]}
-          activeRange={activeRange}
-          onRangeChange={setActiveRange}
-        />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 md:gap-5">
         {data ? (
           <PieChart
             title="Бүртгэлийн хүсэлтийн тоо"
@@ -748,56 +446,9 @@ export default function DashboardPage() {
             <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
           </div>
         )}
-      </div>
 
-      {/* ─── Bottom: Activity + Summary ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 md:gap-5">
-        {/* Recent Activity */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-indigo-500" />
-              <h3 className="text-sm font-bold text-slate-800">
-                Сүүлийн үйл ажиллагаа
-              </h3>
-            </div>
-            <button className="text-xs font-semibold text-indigo-500 hover:text-indigo-700 transition-colors flex items-center gap-1">
-              Бүгдийг харах
-              <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
-
-          <div>
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
-              </div>
-            ) : data?.activity && data.activity.length > 0 ? (
-              data.activity.map((item, i) => {
-                const mapping = AUDIT_ACTION_MAP[item.action] || DEFAULT_AUDIT;
-                return (
-                  <ActivityItem
-                    key={item.id}
-                    icon={mapping.icon}
-                    iconBg={mapping.iconBg}
-                    iconColor={mapping.iconColor}
-                    title={`${mapping.title} — ${item.userName}`}
-                    description={mapping.description}
-                    time={formatTimeAgo(item.createdAt)}
-                    isLast={i === data.activity.length - 1}
-                  />
-                );
-              })
-            ) : (
-              <p className="text-xs text-slate-400 text-center py-8">
-                Үйл ажиллагаа байхгүй байна
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Summary Card */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-5 flex flex-col">
+        {/* Өнөөдрийн товч */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-5 flex flex-col">
           <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-indigo-500" />
             Өнөөдрийн товч
@@ -864,23 +515,44 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-indigo-50 rounded-xl p-3 text-center">
-                <p className="text-lg font-extrabold text-indigo-600">98%</p>
-                <p className="text-[10px] font-medium text-indigo-400 mt-0.5">
-                  Серверийн uptime
-                </p>
-              </div>
-              <div className="bg-emerald-50 rounded-xl p-3 text-center">
-                <p className="text-lg font-extrabold text-emerald-600">1.2s</p>
-                <p className="text-[10px] font-medium text-emerald-400 mt-0.5">
-                  Дундаж хариу хугацаа
-                </p>
-              </div>
+      {/* ─── Recent Activity ─── */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Activity className="w-4 h-4 text-indigo-500" />
+          <h3 className="text-sm font-bold text-slate-800">
+            Сүүлийн үйл ажиллагаа
+          </h3>
+        </div>
+
+        <div>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
             </div>
-          </div>
+          ) : data?.activity && data.activity.length > 0 ? (
+            data.activity.map((item, i) => {
+              const mapping = AUDIT_ACTION_MAP[item.action] || DEFAULT_AUDIT;
+              return (
+                <ActivityItem
+                  key={item.id}
+                  icon={mapping.icon}
+                  iconBg={mapping.iconBg}
+                  iconColor={mapping.iconColor}
+                  title={`${mapping.title} — ${item.userName}`}
+                  description={mapping.description}
+                  time={formatTimeAgo(item.createdAt)}
+                  isLast={i === data.activity.length - 1}
+                />
+              );
+            })
+          ) : (
+            <p className="text-xs text-slate-400 text-center py-8">
+              Үйл ажиллагаа байхгүй байна
+            </p>
+          )}
         </div>
       </div>
 
@@ -1034,30 +706,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function DetailItem({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string | null | undefined;
-}) {
-  return (
-    <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-      <div className="flex items-center gap-1.5 mb-1">
-        <Icon className="w-3 h-3 text-slate-400" />
-        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-          {label}
-        </span>
-      </div>
-      <p className="text-sm font-medium text-slate-800 wrap-break-word">
-        {value || "-"}
-      </p>
     </div>
   );
 }

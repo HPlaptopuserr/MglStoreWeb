@@ -1,7 +1,6 @@
 "use client";
 import React from "react";
-import { Text } from "../../../../../../../packages/ui/src/atoms/Text";
-import { Button } from "../../../../../../../packages/ui/src/atoms/Button";
+import { Text, Button } from "@mgl/ui";
 import {
   ArrowRight,
   TrendingUp,

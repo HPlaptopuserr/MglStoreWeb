@@ -4,6 +4,7 @@ import { BrandTicker } from "@/components/organisms/home/BrandTicker";
 import { ProductGrid } from "@/components/organisms/home/grid/ProductGrid";
 import { PartnershipContact } from "@/components/organisms/partnership/PartnershipContact";
 import { FeaturedStoresSection } from "@/components/organisms/home/FeaturedStoresSection";
+import { InvestorSection } from "@/components/organisms/home/InvestorSection";
 
 export default function HomePage() {
   return (
@@ -11,9 +12,10 @@ export default function HomePage() {
       <div className="container mx-auto px-4 md:px-6">
         <div className="flex flex-col lg:flex-row gap-6 items-stretch mb-12">
           <div className="flex-1 min-w-0">
-            <HeroSection />
+         <HeroSection />
           </div>
         </div>
+        <BrandTicker />
         <FeaturedStoresSection />
         <Categories />
       </div>
@@ -21,11 +23,16 @@ export default function HomePage() {
       <div className="container mx-auto px-4 md:px-8 mt-12 mb-20">
         <ProductGrid />
       </div>
+
+      <div className="container mx-auto px-4 md:px-6">
+        <InvestorSection />
+      </div>
+
       <div className="container mx-auto mt-12 mb-20">
         <PartnershipContact />
       </div>
 
-      <BrandTicker />
+
     </div>
   );
 }

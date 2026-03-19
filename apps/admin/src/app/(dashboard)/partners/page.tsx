@@ -19,6 +19,7 @@ import {
   Check,
   Trash2,
   AlertTriangle,
+  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 import { API } from "@/lib/api";
@@ -37,6 +38,8 @@ type Partner = {
   logoUrl?: string | null;
   address: string | null;
   createdAt: string;
+  isInvestor?: boolean;
+  investmentAmount?: number | null;
   stats: {
     users: number;
     products: number;
@@ -53,6 +56,28 @@ type ApiCategory = {
   sortOrder: number;
   level: number;
 };
+
+const INVESTOR_RING_COLORS = [
+  "#FF6B6B", "#FF9F43", "#FECA57", "#2ED573", "#0ABDE3",
+  "#48DBFB", "#A55EEA", "#F368E0", "#1DD1A1", "#FF6348",
+];
+
+function getInvestorRingStyle(amount: number | null | undefined) {
+  if (!amount || amount <= 0) return undefined;
+  const count = Math.min(Math.floor(amount / 10_000_000), 10);
+  if (count <= 0) return undefined;
+  const stops: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const start = (i / count) * 360;
+    const end = ((i + 1) / count) * 360;
+    stops.push(`${INVESTOR_RING_COLORS[i]} ${start}deg ${end}deg`);
+  }
+  return {
+    background: `conic-gradient(${stops.join(", ")})`,
+    padding: "3px",
+    borderRadius: "14px",
+  } as React.CSSProperties;
+}
 
 function CategoryDropdown({
   partner,
@@ -208,7 +233,7 @@ export default function PartnersPage() {
       cache: "no-store",
     });
     const data = await res.json();
-    setPartners(data);
+    setPartners(Array.isArray(data) ? data : []);
   };
 
   const handleCategoryUpdated = (id: string, cat: string | null) => {
@@ -290,12 +315,29 @@ export default function PartnersPage() {
               key={partner.id}
               className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col group hover:shadow-lg hover:border-indigo-200/60 transition-all duration-300 cursor-pointer"
             >
-              <div className="p-4 md:p-5 border-b border-slate-100">
+              <div className={`p-4 md:p-5 border-b ${partner.isInvestor ? 'border-amber-200' : 'border-slate-100'}`}>
+                {partner.isInvestor && (
+                  <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg w-fit">
+                    <TrendingUp size={12} className="text-amber-600" />
+                    <span className="text-xs font-semibold text-amber-700">
+                      Хөрөнгө оруулагч
+                      {partner.investmentAmount ? ` · ${Number(partner.investmentAmount).toLocaleString()}₮` : ''}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between items-start mb-3 gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:bg-indigo-100 transition-colors">
-                      <Building2 size={20} />
-                    </div>
+                    {partner.isInvestor && partner.investmentAmount ? (
+                      <div style={getInvestorRingStyle(partner.investmentAmount)} className="shrink-0">
+                        <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center bg-amber-50 text-amber-600 group-hover:bg-amber-100 transition-colors">
+                          <Building2 size={20} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100">
+                        <Building2 size={20} />
+                      </div>
+                    )}
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">

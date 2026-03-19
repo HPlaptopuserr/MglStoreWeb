@@ -6,6 +6,8 @@ export interface DashboardStats {
     activeOrganizations: number;
     totalRegistrations: number;
     totalJobApplications: number;
+    totalInvestors: number;
+    totalInvestmentAmount: number;
   };
   sparklines: {
     users: number[];

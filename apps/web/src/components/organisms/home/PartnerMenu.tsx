@@ -62,7 +62,7 @@ export const PartnerMenu = () => {
           isOpen ? "text-orange-600" : "text-gray-600 hover:text-gray-900"
         }`}
       >
-        Гишүүн байгууллагууд
+        Гишүүд
         <ChevronDown
           className={`h-4 w-4 transition-transform duration-200 ${
             isOpen ? "rotate-180" : ""

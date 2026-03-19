@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
-import { AdminSidebar, SidebarProps } from "../molecules/AdminSidebar";
-import { VendorSidebar } from "../molecules/VendorSidebar";
-import { VendorHeader } from "../molecules/VendorHeader";
+import { AdminSidebar, SidebarProps } from "../organisms/AdminSidebar";
+import { VendorSidebar } from "../organisms/VendorSidebar";
+import { VendorHeader } from "../organisms/VendorHeader";
 
 export interface DashboardLayoutProps extends Partial<SidebarProps> {
   children: ReactNode;

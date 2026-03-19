@@ -1,5 +1,5 @@
 "use client";
-import Hero from "../../PromoBanner";
+import Hero from "../../molecules/PromoBanner";
 
 export const HeroSection = () => {
   return (

@@ -23,7 +23,9 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowLeft,
+  Crown,
 } from "lucide-react";
+import { getInvestorRingStyle } from "@/lib/utils";
 
 type ProductItem = OrganizationDetailData["products"][number] & {
   isAvailable?: boolean;
@@ -62,8 +64,10 @@ function HeroSection({ data }: { data: OrganizationDetailData }) {
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-[1.5rem] border-4 border-white overflow-hidden bg-white shadow-xl shrink-0"
+            className="shrink-0"
+            style={data.investor?.investmentAmount ? { ...getInvestorRingStyle(data.investor.investmentAmount), borderRadius: "1.5rem" } : undefined}
           >
+            <div className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-[1.5rem] border-4 border-white overflow-hidden bg-white shadow-xl">
             <Image
               src={data.logo}
               alt={data.name}
@@ -77,6 +81,7 @@ function HeroSection({ data }: { data: OrganizationDetailData }) {
                 title="Яг одоо идэвхтэй"
               />
             )}
+            </div>
           </motion.div>
 
           <div className="flex-1 text-white pb-1 sm:pb-2">
@@ -90,6 +95,17 @@ function HeroSection({ data }: { data: OrganizationDetailData }) {
                 <span className="bg-blue-500 text-white text-[10px] sm:text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
                   <ShieldCheck className="w-3.5 h-3.5" />
                   Баталгаат
+                </span>
+              )}
+              {data.investor?.isInvestor && (
+                <span className="bg-gradient-to-r from-amber-400 to-yellow-500 text-gray-900 text-[10px] sm:text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                  <Crown className="w-3.5 h-3.5" />
+                  {data.investor.level ||
+                    (data.investor.tier === "TOP"
+                      ? "Top Investor"
+                      : data.investor.tier === "STRATEGIC"
+                        ? "Strategic Investor"
+                        : "Investor")}
                 </span>
               )}
               {data.categories.map((cat, i) => (
@@ -587,6 +603,36 @@ export default function BusinessProfileClient({
         <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
           <div className="flex-1 min-w-0">
             <TrustBadges stats={data.stats} />
+
+            {/* Investor highlight section */}
+            {data.investor?.isInvestor && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-8 rounded-2xl border border-amber-200/60 bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 p-5 sm:p-6"
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100">
+                    <Crown className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">
+                      MGL Store-д хөрөнгө оруулсан
+                    </h3>
+                    {data.investor.level && (
+                      <span className="text-xs font-semibold text-amber-600">
+                        {data.investor.level}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Энэ байгууллага нь MGL Store платформд хөрөнгө оруулсан
+                  итгэлт түнш юм.
+                </p>
+              </motion.div>
+            )}
+
             <ExpandableDescription text={data.description} />
             <InfoCards info={data.info} />
             <ProductsSection products={data.products as ProductItem[]} />

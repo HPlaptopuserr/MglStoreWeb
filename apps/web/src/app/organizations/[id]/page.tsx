@@ -44,6 +44,10 @@ interface BackendPartner {
   customers?: string;
   years?: number;
   products?: BackendProduct[];
+  isInvestor?: boolean;
+  investorTier?: string | null;
+  investorLevel?: string | null;
+  investmentAmount?: number | null;
 }
 
 export interface OrganizationDetailData {
@@ -84,6 +88,12 @@ export interface OrganizationDetailData {
     reviews?: number;
     stock?: number;
   }[];
+  investor?: {
+    isInvestor: boolean;
+    tier: string;
+    level?: string | null;
+    investmentAmount?: number | null;
+  };
 }
 
 function normalizeHours(value?: string[] | string): string[] {
@@ -112,6 +122,14 @@ function mapPartnerToDetailData(
     isOpen: partner.status === "ACTIVE",
     isVerified: true,
     categories: [category],
+    investor: partner.isInvestor
+      ? {
+          isInvestor: true,
+          tier: partner.investorTier || "INVESTOR",
+          level: partner.investorLevel,
+          investmentAmount: partner.investmentAmount ?? null,
+        }
+      : undefined,
     rating: partner.rating ?? 5,
     reviewCount: partner.reviewCount ?? 0,
     shortDescription:

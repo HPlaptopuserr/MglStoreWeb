@@ -80,6 +80,72 @@ router.get("/partners/grouped", async (req, res) => {
   }
 });
 
+// Toggle investor role for a partner
+router.patch("/partners/:id/investor", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isInvestor, investmentAmount, addAmount } = req.body;
+
+    const org = await prisma.organization.findUnique({
+      where: { id },
+      include: { investorProfile: true },
+    });
+
+    if (!org) {
+      return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+    }
+
+    if (isInvestor) {
+      if (org.investorProfile) {
+        let newLevel = org.investorProfile.investmentLevel;
+        if (addAmount && investmentAmount) {
+          const current = Number(org.investorProfile.investmentLevel) || 0;
+          newLevel = String(current + Number(investmentAmount));
+        } else if (investmentAmount) {
+          newLevel = String(investmentAmount);
+        }
+        await prisma.investorProfile.update({
+          where: { organizationId: id },
+          data: { investmentLevel: newLevel },
+        });
+      } else {
+        // Create investor profile
+        await prisma.investorProfile.create({
+          data: {
+            organizationId: id,
+            investmentLevel: investmentAmount ? String(investmentAmount) : null,
+          },
+        });
+      }
+    } else {
+      // Remove investor profile
+      if (org.investorProfile) {
+        await prisma.investorProfile.delete({
+          where: { organizationId: id },
+        });
+      }
+    }
+
+    const updated = await prisma.organization.findUnique({
+      where: { id },
+      include: {
+        investorProfile: true,
+        _count: { select: { users: true, products: true, branches: true, orders: true } },
+      },
+    });
+
+    res.json({
+      id: updated!.id,
+      name: updated!.name,
+      isInvestor: !!updated!.investorProfile,
+      investmentAmount: updated!.investorProfile?.investmentLevel ? Number(updated!.investorProfile.investmentLevel) : null,
+    });
+  } catch (error) {
+    console.error("toggle investor error", error);
+    res.status(500).json({ message: "Хөрөнгө оруулагч төлөв өөрчлөхөд алдаа гарлаа" });
+  }
+});
+
 router.get("/partners", async (req, res) => {
   try {
     const partners = await prisma.organization.findMany({
@@ -96,6 +162,15 @@ router.get("/partners", async (req, res) => {
             products: true,
             branches: true,
             orders: true,
+          },
+        },
+        investorProfile: {
+          select: {
+            id: true,
+            tier: true,
+            featured: true,
+            investmentLevel: true,
+            publiclyVisible: true,
           },
         },
         products: {
@@ -136,6 +211,9 @@ router.get("/partners", async (req, res) => {
       customers: partner.customerCount,
       years: partner.operatingYears,
       createdAt: partner.createdAt,
+      isInvestor: !!partner.investorProfile,
+      investorTier: partner.investorProfile?.tier || null,
+      investmentAmount: partner.investorProfile?.investmentLevel ? Number(partner.investorProfile.investmentLevel) : null,
       stats: {
         users: partner._count.users,
         products: partner._count.products,
@@ -155,6 +233,16 @@ router.get("/partners", async (req, res) => {
         images: p.images?.map((img: any) => img.url),
       })),
     }));
+
+    // Sort: investors first (by investmentAmount desc), then regular partners by createdAt
+    result.sort((a: any, b: any) => {
+      if (a.isInvestor && !b.isInvestor) return -1;
+      if (!a.isInvestor && b.isInvestor) return 1;
+      if (a.isInvestor && b.isInvestor) {
+        return (b.investmentAmount || 0) - (a.investmentAmount || 0);
+      }
+      return 0; // keep createdAt desc from DB
+    });
 
     res.json(result);
   } catch (error) {
@@ -182,6 +270,15 @@ router.get("/partners/:slugOrId", async (req, res) => {
             products: true,
             branches: true,
             orders: true,
+          },
+        },
+        investorProfile: {
+          select: {
+            id: true,
+            tier: true,
+            featured: true,
+            investmentLevel: true,
+            publiclyVisible: true,
           },
         },
         products: {
@@ -228,6 +325,9 @@ router.get("/partners/:slugOrId", async (req, res) => {
       customers: partner.customerCount,
       years: partner.operatingYears,
       createdAt: partner.createdAt,
+      isInvestor: !!partner.investorProfile,
+      investorTier: partner.investorProfile?.tier || null,
+      investmentAmount: partner.investorProfile?.investmentLevel ? Number(partner.investorProfile.investmentLevel) : null,
       stats: {
         users: partner._count.users,
         products: partner._count.products,

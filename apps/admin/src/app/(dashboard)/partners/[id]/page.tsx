@@ -13,6 +13,9 @@ import {
   XCircle,
   FileText,
   Briefcase,
+  TrendingUp,
+  DollarSign,
+  Loader2,
 } from "lucide-react";
 import { API } from "@/lib/api";
 
@@ -21,26 +24,28 @@ export default function PartnerDetailsPage() {
   const router = useRouter();
   const [partner, setPartner] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [investorSaving, setInvestorSaving] = useState(false);
+  const [investmentInput, setInvestmentInput] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addInput, setAddInput] = useState("");
+  const [lastAdded, setLastAdded] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchPartner = async () => {
       try {
-        const res = await fetch(`${API}/partners`, {
+        const res = await fetch(`${API}/partners/${params.id}`, {
           cache: "no-store",
         });
 
         if (!res.ok) {
-          throw new Error("Failed to fetch partners");
+          throw new Error("Failed to fetch partner");
         }
 
         const data = await res.json();
-        const found = data.find((p: any) => String(p.id) === String(params.id));
-
-        if (!found) {
-          throw new Error("Partner not found");
+        setPartner(data);
+        if (data.investmentAmount) {
+          setInvestmentInput(String(data.investmentAmount));
         }
-
-        setPartner(found);
       } catch (error) {
         console.error("Failed to fetch partner:", error);
       } finally {
@@ -52,6 +57,76 @@ export default function PartnerDetailsPage() {
       fetchPartner();
     }
   }, [params?.id]);
+
+  const handleInvestorToggle = async (makeInvestor: boolean) => {
+    if (makeInvestor && (!investmentInput || Number(investmentInput) <= 0)) {
+      alert("Хөрөнгө оруулсан дүнг оруулна уу");
+      return;
+    }
+    setInvestorSaving(true);
+    try {
+      const res = await fetch(`${API}/partners/${partner.id}/investor`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          isInvestor: makeInvestor,
+          investmentAmount: makeInvestor ? Number(investmentInput) : null,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPartner((prev: any) => ({
+          ...prev,
+          isInvestor: data.isInvestor,
+          investmentAmount: data.investmentAmount,
+        }));
+        if (!makeInvestor) {
+          setInvestmentInput("");
+          setLastAdded(null);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Алдаа гарлаа");
+    } finally {
+      setInvestorSaving(false);
+    }
+  };
+
+  const handleAddAmount = async () => {
+    if (!addInput || Number(addInput) <= 0) {
+      alert("Нэмэх дүнг оруулна уу");
+      return;
+    }
+    setInvestorSaving(true);
+    try {
+      const res = await fetch(`${API}/partners/${partner.id}/investor`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          isInvestor: true,
+          investmentAmount: Number(addInput),
+          addAmount: true,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLastAdded(Number(addInput));
+        setPartner((prev: any) => ({
+          ...prev,
+          isInvestor: data.isInvestor,
+          investmentAmount: data.investmentAmount,
+        }));
+        setAddInput("");
+        setShowAddForm(false);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Алдаа гарлаа");
+    } finally {
+      setInvestorSaving(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -274,6 +349,118 @@ export default function PartnerDetailsPage() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Investor Section */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <TrendingUp size={20} className="text-amber-500" />
+              Хөрөнгө оруулагч
+            </h3>
+
+            {partner.isInvestor ? (
+              <div className="space-y-4">
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <DollarSign size={16} className="text-amber-600" />
+                    <span className="text-sm font-semibold text-amber-800">
+                      Хөрөнгө оруулагч
+                    </span>
+                  </div>
+                  <p className="text-2xl font-bold text-amber-700">
+                    {partner.investmentAmount
+                      ? `${Number(partner.investmentAmount).toLocaleString()}₮`
+                      : "Дүн оруулаагүй"}
+                  </p>
+                  {lastAdded && (
+                    <p className="text-sm text-green-600 mt-1 font-medium">
+                      +{lastAdded.toLocaleString()}₮ нэмэгдлээ
+                    </p>
+                  )}
+                </div>
+
+                {showAddForm ? (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-slate-600">
+                      Нэмэх дүн (₮)
+                    </label>
+                    <input
+                      type="number"
+                      value={addInput}
+                      onChange={(e) => setAddInput(e.target.value)}
+                      placeholder="Жишээ: 10000000"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleAddAmount}
+                        disabled={investorSaving || !addInput}
+                        className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                      >
+                        {investorSaving ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <DollarSign size={16} />
+                        )}
+                        {investorSaving ? "Боловсруулж байна..." : "Нэмэх"}
+                      </button>
+                      <button
+                        onClick={() => { setShowAddForm(false); setAddInput(""); }}
+                        className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-xl transition-colors"
+                      >
+                        Болих
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setShowAddForm(true); setLastAdded(null); }}
+                    className="w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                  >
+                    <DollarSign size={16} />
+                    Хөрөнгө нэмэх
+                  </button>
+                )}
+
+                <button
+                  onClick={() => handleInvestorToggle(false)}
+                  disabled={investorSaving}
+                  className="w-full px-4 py-2.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-600 text-sm font-medium rounded-xl transition-colors"
+                >
+                  {investorSaving ? "Боловсруулж байна..." : "Хөрөнгө оруулагч төлвийг болиулах"}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-slate-500">
+                  Энэ түнш одоогоор энгийн төлөвтэй байна. Хөрөнгө оруулагч болгохын тулд дүнг оруулна уу.
+                </p>
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">
+                    Хөрөнгө оруулсан дүн (₮)
+                  </label>
+                  <input
+                    type="number"
+                    value={investmentInput}
+                    onChange={(e) => setInvestmentInput(e.target.value)}
+                    placeholder="Жишээ: 50000000"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                  />
+                </div>
+                <button
+                  onClick={() => handleInvestorToggle(true)}
+                  disabled={investorSaving || !investmentInput}
+                  className="w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  {investorSaving ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <TrendingUp size={16} />
+                  )}
+                  {investorSaving ? "Боловсруулж байна..." : "Хөрөнгө оруулагч болгох"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

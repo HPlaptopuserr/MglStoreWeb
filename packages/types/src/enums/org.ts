@@ -8,3 +8,9 @@ export enum OrgStatus {
   SUSPENDED = "SUSPENDED",
   BLOCKED = "BLOCKED",
 }
+
+export enum InvestorTier {
+  INVESTOR = "INVESTOR",
+  STRATEGIC = "STRATEGIC",
+  TOP = "TOP",
+}

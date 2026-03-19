@@ -11,7 +11,7 @@ import {
   ChevronDown,
   Check,
 } from "lucide-react";
-import { Button } from "../../../../../../packages/ui/src/atoms/Button";
+import { Button } from "@mgl/ui";
 import { API } from "@/lib/api";
 
 interface BusinessCategory {

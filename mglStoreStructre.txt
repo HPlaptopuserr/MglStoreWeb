@@ -1,128 +1,323 @@
-mgl_storew/
-├── apps/
-│   ├── web/                          # mglstore.mn (Public Frontend & E-commerce)
-│   │   ├── public/                   # Static assets (images, fonts)
-│   │   ├── src/
-│   │   │   ├── app/
-│   │   │   │   ├── (marketing)/      # Public marketing pages
-│   │   │   │   │   ├── about/page.tsx
-│   │   │   │   │   ├── contact/page.tsx
-│   │   │   │   │   ├── company/      # Partner/Company pages
-│   │   │   │   │   │   └── page.tsx
-│   │   │   │   │   ├── driver/       # Driver landing pages
-│   │   │   │   │   │   └── page.tsx
-│   │   │   │   │   ├── organizations/# B2B Marketing
-│   │   │   │   │   │   └── page.tsx
-│   │   │   │   │   └── page.tsx      # Main Homepage
-│   │   │   │   ├── (shop)/           # E-commerce core
-│   │   │   │   │   ├── products/
-│   │   │   │   │   │   ├── [slug]/page.tsx # Product detail
-│   │   │   │   │   │   └── page.tsx  # Product listing
-│   │   │   │   │   ├── cart/page.tsx
-│   │   │   │   │   └── checkout/page.tsx
-│   │   │   │   ├── (auth)/           # User Auth pages
-│   │   │   │   │   ├── login/page.tsx
-│   │   │   │   │   └── register/page.tsx
-│   │   │   │   ├── account/          # User Dashboard
-│   │   │   │   │   ├── orders/page.tsx
-│   │   │   │   │   └── profile/page.tsx
-│   │   │   │   ├── globals.css
-│   │   │   │   └── layout.tsx        # Root web layout
-│   │   │   ├── components/
-│   │   │   │   ├── organisms/        # Complex web-specific components (e.g., Header, Footer)
-│   │   │   │   ├── templates/        # Page layout templates
-│   │   │   └── ui/               # Web-specific local atoms/molecules
-│   │   │   ├── hooks/                # React hooks (e.g., useCart, useAuth)
-│   │   │   └── lib/                  # Web utilities & mock data
-│   │   └── package.json
-│   │
-│   ├── admin/                        # admin.mglstore.mn (Internal Admin Dashboard)
-│   │   ├── src/
-│   │   │   ├── app/
-│   │   │   │   ├── (auth)/           # Admin Auth
-│   │   │   │   │   └── login/page.tsx
-│   │   │   │   ├── (dashboard)/      # Protected Admin Routes
-│   │   │   │   │   ├── layout.tsx    # Sidebar + Auth Guard
-│   │   │   │   │   ├── page.tsx      # Admin overview
-│   │   │   │   │   ├── orders/
-│   │   │   │   │   ├── products/
-│   │   │   │   │   ├── users/
-│   │   │   │   │   ├── drivers/
-│   │   │   │   │   └── settings/
-│   │   │   │   └── layout.tsx        # Root admin layout
-│   │   │   ├── components/           # Admin Dashboard specific UI
-│   │   │   │   ├── atoms/
-│   │   │   │   ├── molecules/
-│   │   │   │   ├── organisms/        # Charts, DataTables, Sidebars
-│   │   │   │   └── templates/
-│   │   │   └── lib/                  # Admin utilities (e.g., API clients)
-│   │   └── package.json
-│   │
-│   ├── vendor/                       # vendor.mglstore.mn (Seller/Partner Dashboard)
-│   │   ├── public/
-│   │   ├── src/
-│   │   │   ├── app/
-│   │   │   │   ├── (auth)/           # Vendor Auth
-│   │   │   │   │   ├── login/page.tsx
-│   │   │   │   │   └── register/page.tsx
-│   │   │   │   ├── (dashboard)/      # Protected Vendor Routes
-│   │   │   │   │   ├── layout.tsx    # Vendor Sidebar + Guard
-│   │   │   │   │   ├── page.tsx      # Shop performance overview
-│   │   │   │   │   ├── inventory/
-│   │   │   │   │   ├── orders/
-│   │   │   │   │   └── payouts/
-│   │   │   │   └── layout.tsx
-│   │   │   └── components/
-│   │   └── package.json
-│   │
-│   ├── api/                          # Backend NestJS / Express / TRPC Server
-│   │   ├── src/
-│   │   │   ├── auth/                 # Authentication logic, JWT
-│   │   │   ├── users/
-│   │   │   ├── products/
-│   │   │   ├── orders/
-│   │   │   ├── payments/
-│   │   │   └── main.ts               # Entry point
-│   │   └── package.json
-│   │
-│   └── mobile/                       # React Native / Expo Mobile App (Customer & Driver)
-│       ├── src/
-│       │   ├── screens/              # App Screens
-│       │   ├── components/           # Mobile Components
-│       │   ├── navigation/           # React Navigation configurations
-│       │   └── store/                # Zustand or Redux global state
-│       ├── App.tsx                   # Entry point
-│       └── package.json
+mglstorew/
+├── .env
+├── .env.example
+├── .gitignore
+├── package.json
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+├── tailwind.config.js
+├── turbo.json
+├── vercel.json
+├── render.yaml
+├── README.md
+├── README_MONOREPO.md
+├── DEPLOYMENT.md
+├── DEPLOYMENT_CHECKLIST.md
+├── RENDER_DEPLOY_STEPS.md
+├── mglStoreStructre.txt
 │
-└── packages/                         # Shared Monorepo Packages
-    ├── config/                       # Centralized Configurations
-    │   ├── eslint-preset.js
-    │   ├── prettier-preset.js
-    │   └── tsconfig/
-    │       ├── base.json
-    │       ├── nextjs.json
-    │       └── react-library.json
-    │
-    ├── database/                     # Database Layer & ORM
-    │   ├── prisma/
-    │   │   ├── schema.prisma         # Central database schema
-    │   │   └── migrations/
-    │   ├── src/
-    │   │   └── index.ts              # Exported typed Prisma Client
-    │   └── package.json
-    │
-    ├── types/                        # Global Shared TypeScript Types/Interfaces
-    │   ├── src/
-    │   │   ├── common.ts
-    │   │   ├── order.ts
-    │   │   ├── product.ts
-    │   │   └── user.ts
-    │   └── package.json
-    │
-    └── ui/                           # Shared UI Component Library (@mgl/ui)
-        ├── src/
-        │   ├── atoms/                # Base primitives (Button, Text, Heading, Input, Badge)
-        │   ├── molecules/            # Compound elements (Cards, Dialogs, Selectors)
-        │   └── lib/                  # Shared UI utilities (cn, tailwind merge)
-        ├── tailwind.config.ts        # Shared Tailwind theme config
-        └── package.json
+├── apps/
+│   ├── admin/                          # Admin dashboard (Next.js)
+│   │   ├── package.json
+│   │   ├── next.config.ts
+│   │   ├── postcss.config.mjs
+│   │   ├── tsconfig.json
+│   │   └── src/
+│   │       ├── app/
+│   │       │   ├── globals.css
+│   │       │   ├── layout.tsx
+│   │       │   ├── page.tsx
+│   │       │   ├── (auth)/
+│   │       │   │   └── login/
+│   │       │   │       └── page.tsx
+│   │       │   └── (dashboard)/
+│   │       │       ├── layout.tsx
+│   │       │       ├── applications/page.tsx
+│   │       │       ├── categories/page.tsx
+│   │       │       ├── dashboard/page.tsx
+│   │       │       ├── partners/
+│   │       │       │   ├── page.tsx
+│   │       │       │   └── [id]/page.tsx
+│   │       │       ├── requests/
+│   │       │       │   ├── page.tsx
+│   │       │       │   └── stock-requests/page.tsx
+│   │       │       ├── sections/page.tsx
+│   │       │       ├── services/page.tsx
+│   │       │       ├── settings/page.tsx
+│   │       │       └── warehouses/
+│   │       │           ├── page.tsx
+│   │       │           └── [id]/page.tsx
+│   │       ├── components/
+│   │       │   ├── atoms/
+│   │       │   │   ├── AddJobButton.tsx
+│   │       │   │   ├── Badge.tsx
+│   │       │   │   ├── Button.tsx
+│   │       │   │   ├── Input.tsx
+│   │       │   │   └── Label.tsx
+│   │       │   ├── molecules/
+│   │       │   │   └── MetricCard.tsx
+│   │       │   └── organisms/
+│   │       │       ├── AddJobPositionForm.tsx
+│   │       │       ├── DashboardMetrics.tsx
+│   │       │       ├── DashboardXYChard.tsx
+│   │       │       ├── MobileDashboard.tsx
+│   │       │       ├── PieChart.tsx
+│   │       │       └── RevenueChart.tsx
+│   │       └── lib/
+│   │           ├── api.ts
+│   │           ├── dashboard-api.ts
+│   │           └── mock-data.ts
+│   │
+│   ├── api/                            # Backend API (Express/Hono)
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   └── src/
+│   │       ├── index.ts
+│   │       ├── routes/
+│   │       │   ├── business-categories.routes.ts
+│   │       │   ├── dashboard.routes.ts
+│   │       │   ├── job-application.routes.ts
+│   │       │   ├── job-position.routes.ts
+│   │       │   ├── partner-request.routes.ts
+│   │       │   ├── partners.routes.ts
+│   │       │   ├── service-requests.routes.ts
+│   │       │   ├── stock-requests.routes.ts
+│   │       │   ├── vendor-setup.routes.ts
+│   │       │   └── warehouses.routes.ts
+│   │       └── services/
+│   │           ├── partner-request.service.ts
+│   │           └── vendor-setup.service.ts
+│   │
+│   ├── vendor/                         # Vendor portal (Next.js)
+│   │   ├── package.json
+│   │   ├── next.config.ts
+│   │   ├── postcss.config.mjs
+│   │   ├── tsconfig.json
+│   │   ├── public/
+│   │   │   ├── file.svg
+│   │   │   ├── globe.svg
+│   │   │   ├── next.svg
+│   │   │   ├── vercel.svg
+│   │   │   └── window.svg
+│   │   └── src/
+│   │       ├── app/
+│   │       │   ├── globals.css
+│   │       │   ├── layout.tsx
+│   │       │   ├── page.tsx
+│   │       │   ├── tailwind.config.ts
+│   │       │   ├── login/page.tsx
+│   │       │   ├── set-password/page.tsx
+│   │       │   ├── invite/[token]/page.tsx
+│   │       │   └── (dashboard)/
+│   │       │       ├── layout.tsx
+│   │       │       ├── dashboard/page.tsx
+│   │       │       ├── drivers/page.tsx
+│   │       │       ├── products/page.tsx
+│   │       │       ├── profile/page.tsx
+│   │       │       ├── returns/page.tsx
+│   │       │       ├── services/page.tsx
+│   │       │       ├── shipments/page.tsx
+│   │       │       └── warehouses/page.tsx
+│   │       ├── components/
+│   │       │   ├── AppLayout.tsx
+│   │       │   ├── VendorHeader.tsx
+│   │       │   └── ui/
+│   │       │       ├── Button.tsx
+│   │       │       ├── Card.tsx
+│   │       │       └── Input.tsx
+│   │       └── lib/
+│   │           └── api.ts
+│   │
+│   └── web/                            # Public website (Next.js)
+│       ├── package.json
+│       ├── next.config.ts
+│       ├── postcss.config.mjs
+│       ├── tsconfig.json
+│       ├── public/
+│       │   ├── hero-vegetables.png
+│       │   └── logo.png
+│       └── src/
+│           ├── app/
+│           │   ├── globals.css
+│           │   ├── layout.tsx
+│           │   ├── page.tsx
+│           │   ├── company/
+│           │   │   ├── careers/
+│           │   │   │   ├── page.tsx
+│           │   │   │   └── _sections/
+│           │   │   │       ├── CareersFaqSection.tsx
+│           │   │   │       ├── CareersFormSection.tsx
+│           │   │   │       ├── CareersHero.tsx
+│           │   │   │       ├── CareersWhoJoin.tsx
+│           │   │   │       └── CareersWhyWeSection.tsx
+│           │   │   └── partnership/
+│           │   │       ├── page.tsx
+│           │   │       └── _sections/
+│           │   │           ├── PartnershipFaqSection.tsx
+│           │   │           ├── PartnershipFormSection.tsx
+│           │   │           ├── PartnershipHeroSection.tsx
+│           │   │           ├── PartnershipServiceSection.tsx
+│           │   │           └── PartnershipWorksSection.tsx
+│           │   ├── organizations/
+│           │   │   ├── page.tsx
+│           │   │   └── [id]/
+│           │   │       ├── BusinessProfileClient.tsx
+│           │   │       └── page.tsx
+│           │   └── products/
+│           │       └── page.tsx
+│           ├── components/
+│           │   ├── FAQItem.tsx
+│           │   ├── MegaMenu.tsx
+│           │   ├── PartnershipFAQ.tsx
+│           │   ├── PartnershipWorkInfoCard.tsx
+│           │   ├── PromoBanner.tsx
+│           │   ├── SearchBar.tsx
+│           │   └── organisms/
+│           │       ├── careers/
+│           │       │   └── CareersPhone.tsx
+│           │       ├── home/
+│           │       │   ├── BrandTicker.tsx
+│           │       │   ├── CategoryRail.tsx
+│           │       │   ├── CategorySearch.tsx
+│           │       │   ├── CompanyHero.tsx
+│           │       │   ├── CompanySidebar.tsx
+│           │       │   ├── FeaturedStoreCard.tsx
+│           │       │   ├── FeaturedStoresSection.tsx
+│           │       │   ├── HeroSection.tsx
+│           │       │   ├── PartnerMenu.tsx
+│           │       │   ├── PopupStoreCard.tsx
+│           │       │   ├── Sidebar.tsx
+│           │       │   ├── StoreRow.tsx
+│           │       │   └── grid/
+│           │       │       ├── CategoryGrid.tsx
+│           │       │       ├── ProductGrid.tsx
+│           │       │       ├── ServicesGrid.tsx
+│           │       │       ├── SpecialCompaniesGrid.tsx
+│           │       │       └── SpecialProductGrid.tsx
+│           │       ├── layouts/
+│           │       │   ├── FloatingSideNav.tsx
+│           │       │   ├── Footer.tsx
+│           │       │   ├── Header.tsx
+│           │       │   └── SmoothScrollProvider.tsx
+│           │       └── partnership/
+│           │           ├── PartnershipContact.tsx
+│           │           ├── PartnershipForm.tsx
+│           │           └── PartnershipHero.tsx
+│           ├── hooks/
+│           │   └── use-mobile.ts
+│           └── lib/
+│               ├── api.ts
+│               ├── mock-data.ts
+│               └── utils.ts
+│
+├── packages/
+│   ├── config/                         # Shared config
+│   │   ├── package.json
+│   │   └── tsconfig/
+│   │       ├── base.json
+│   │       └── nextjs.json
+│   │
+│   ├── database/                       # Prisma database
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   ├── README.md
+│   │   ├── prisma/
+│   │   │   ├── schema.prisma
+│   │   │   ├── seed.ts
+│   │   │   └── migrations/
+│   │   │       ├── 20260306141958_add_product_request_workflow/
+│   │   │       ├── 20260309015620_init/
+│   │   │       ├── 20260309060258_add_business_category_to_registration_request/
+│   │   │       ├── 20260309085831_add_organization_member/
+│   │   │       ├── 20260310025407_add_organization_invite/
+│   │   │       ├── 20260312014742_add_business_category_to_organization/
+│   │   │       ├── 20260312023107_add_business_category/
+│   │   │       ├── 20260314100652_add_job_application/
+│   │   │       ├── 20260316040342_add_job_position/
+│   │   │       ├── 20260317071255_add_organization_profile_fields/
+│   │   │       ├── 20260317073411_add_service_request_and_warehouse/
+│   │   │       ├── 20260319100000_add_category_hierarchy/
+│   │   │       └── migration_lock.toml
+│   │   └── src/
+│   │       ├── client.ts
+│   │       └── index.ts
+│   │
+│   ├── types/                          # Shared TypeScript types
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   └── src/
+│   │       ├── index.ts
+│   │       ├── common.ts
+│   │       ├── primitives.ts
+│   │       ├── prisma.ts
+│   │       ├── domain/
+│   │       │   ├── company.ts
+│   │       │   ├── courier.ts
+│   │       │   ├── delivery.ts
+│   │       │   ├── order.ts
+│   │       │   ├── organozation.ts
+│   │       │   ├── product.ts
+│   │       │   └── user.ts
+│   │       ├── dto/
+│   │       │   ├── auth.dto.ts
+│   │       │   ├── order.dto.ts
+│   │       │   ├── product.dto.ts
+│   │       │   └── registration.dto.ts
+│   │       ├── enums/
+│   │       │   ├── index.ts
+│   │       │   ├── approval.ts
+│   │       │   ├── deliveryStatus.ts
+│   │       │   ├── misc.ts
+│   │       │   ├── orderStatus.ts
+│   │       │   ├── org.ts
+│   │       │   ├── payment.ts
+│   │       │   └── role.ts
+│   │       ├── responses/
+│   │       │   ├── index.ts
+│   │       │   ├── api.ts
+│   │       │   ├── order.response.ts
+│   │       │   └── product.response.ts
+│   │       └── ui/
+│   │           ├── index.ts
+│   │           ├── companyCard.ts
+│   │           └── productCard.ts
+│   │
+│   └── ui/                             # Shared UI components
+│       ├── package.json
+│       ├── tsconfig.json
+│       └── src/
+│           ├── index.ts
+│           ├── lib/
+│           │   └── utils.ts
+│           ├── atoms/
+│           │   ├── Badge.tsx
+│           │   ├── Button.tsx
+│           │   ├── FAQIcon.tsx
+│           │   ├── FormField.tsx
+│           │   ├── Heading.tsx
+│           │   ├── Input.tsx
+│           │   ├── Label.tsx
+│           │   ├── Logo.tsx
+│           │   ├── Text.tsx
+│           │   └── WishlistButton.tsx
+│           ├── molecules/
+│           │   ├── AdminSidebar.tsx
+│           │   ├── AlertMessage.tsx
+│           │   ├── AuthLayout.tsx
+│           │   ├── Input.tsx
+│           │   ├── LocationSelector.tsx
+│           │   ├── LoginForm.tsx
+│           │   ├── NavLinks.tsx
+│           │   ├── utils.ts
+│           │   ├── VendorHeader.tsx
+│           │   ├── VendorSidebar.tsx
+│           │   └── cards/
+│           │       ├── CategoryCard.tsx
+│           │       ├── PartnerCard.tsx
+│           │       └── ProductCard.tsx
+│           └── templates/
+│               └── DashboardLayout.tsx
+│
+└── scripts/
+    ├── post-deploy.sh
+    └── pre-deploy.sh

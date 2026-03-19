@@ -1,7 +1,6 @@
 import React from "react";
 import type { LucideIcon } from "lucide-react";
-import { Heading } from "../../../../packages/ui/src/atoms/Heading";
-import { Text } from "../../../../packages/ui/src/atoms/Text";
+import { Heading, Text } from "@mgl/ui";
 
 interface InfoCardProps {
   icon: LucideIcon;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent } from "../../../components/ui/Card";
+import { Card, CardContent } from "@/components/atoms/Card";
 import { Warehouse, Package, Truck, CheckCircle2, Clock } from "lucide-react";
 import Link from "next/link";
 

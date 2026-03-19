@@ -39,7 +39,7 @@ export default function Hero() {
             холбох. Илүү ухаалгаар дэлгүүр хэсэж,
             <br className="hidden md:block" />
             орон нутгаа хөрөнгө оруулан хамтдаа хөгжинө.
-          </p>
+          </p> 
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}

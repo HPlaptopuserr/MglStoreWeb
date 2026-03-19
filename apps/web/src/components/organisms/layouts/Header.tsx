@@ -1,80 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Truck,
-  ShoppingBag,
   ShoppingCart,
   User,
   Search,
   Menu,
   X,
-  ShoppingBasket,
-  Briefcase,
-  Store,
-  Tag,
   ChevronRight,
   Flame,
 } from "lucide-react";
 import Image from "next/image";
-import { SearchBar } from "../../SearchBar";
-import { MegaMenu } from "@/components/MegaMenu";
+import { SearchBar } from "../../molecules/SearchBar";
+import { MegaMenu } from "@/components/organisms/MegaMenu";
 import { PartnerMenu } from "@/components/organisms/home/PartnerMenu";
-import { API } from "@/lib/api";
+import { CategoryIcon } from "@/components/atoms/CategoryIcon";
+import { useBusinessCategories } from "@/hooks/useBusinessCategories";
+import { CATEGORY_COLORS, NAV_LINKS } from "@/lib/constants";
 import { useRouter, usePathname } from "next/navigation";
 
-export const HEADER_HEIGHT = "128px";
-
-interface MobileCategory {
-  id: string;
-  name: string;
-  icon?: string;
-}
-
-const NAV_LINKS = [
-  {
-    href: "/organizations",
-    label: "Дэлгүүрүүд",
-    desc: "Бүх түнш дэлгүүрүүд",
-    icon: Store,
-    color: "bg-blue-50 text-blue-600",
-  },
-  {
-    href: "/products",
-    label: "Бүтээгдэхүүн",
-    desc: "Бараа бүтээгдэхүүн",
-    icon: Tag,
-    color: "bg-amber-50 text-amber-600",
-  },
-  {
-    href: "/company/partnership",
-    label: "Хамтрах",
-    desc: "Бизнесээ холбох",
-    icon: Briefcase,
-    color: "bg-green-50 text-green-600",
-  },
-];
-
 export const Header = () => {
-  const [isSwapped, setIsSwapped] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearch, setMobileSearch] = useState("");
-  const [mobileCategories, setMobileCategories] = useState<MobileCategory[]>(
-    [],
-  );
-  const mobileSearchRef = useRef<HTMLInputElement>(null);
+  const { categories } = useBusinessCategories();
   const router = useRouter();
   const pathname = usePathname();
-
-  useEffect(() => {
-    fetch(`${API}/business-categories`)
-      .then((r) => r.json())
-      .then((data: MobileCategory[]) => {
-        if (Array.isArray(data)) setMobileCategories(data);
-      })
-      .catch(() => {});
-  }, []);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -101,17 +52,6 @@ export const Header = () => {
   };
 
   const closeMobile = () => setMobileMenuOpen(false);
-
-  const catColors = [
-    "bg-emerald-50 text-emerald-600",
-    "bg-blue-50 text-blue-600",
-    "bg-amber-50 text-amber-600",
-    "bg-rose-50 text-rose-600",
-    "bg-purple-50 text-purple-600",
-    "bg-cyan-50 text-cyan-600",
-    "bg-orange-50 text-orange-600",
-    "bg-pink-50 text-pink-600",
-  ];
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex flex-col bg-white/95 backdrop-blur-md shadow-sm">
@@ -156,36 +96,6 @@ export const Header = () => {
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-6">
-            {/* Desktop: delivery/pickup toggle */}
-            {/*             <div className="hidden items-center rounded-full bg-amber-500 p-1 shadow-sm lg:flex">
-              {isSwapped ? (
-                <button
-                  type="button"
-                  className="cursor-pointer rounded-full bg-white px-3 py-1.5 text-amber-500"
-                  onClick={() => setIsSwapped(false)}
-                >
-                  <ShoppingBag size={18} strokeWidth={2.5} />
-                </button>
-              ) : (
-                <div className="rounded-full bg-amber-500 px-3 py-1.5 text-white">
-                  <Truck size={18} strokeWidth={2.5} />
-                </div>
-              )}
-              {isSwapped ? (
-                <div className="rounded-full bg-amber-500 px-3 py-1.5 text-white">
-                  <Truck size={18} strokeWidth={2.5} />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="cursor-pointer rounded-full bg-white px-3 py-1.5 text-amber-500"
-                  onClick={() => setIsSwapped(true)}
-                >
-                  <ShoppingBag size={18} strokeWidth={2.5} />
-                </button>
-              )}
-            </div> */}
-
             <button
               type="button"
               className="hidden items-center gap-2 text-sm font-medium uppercase text-slate-700 hover:text-amber-600 sm:flex"
@@ -220,7 +130,6 @@ export const Header = () => {
             className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
           />
           <input
-            ref={mobileSearchRef}
             type="text"
             value={mobileSearch}
             onChange={(e) => setMobileSearch(e.target.value)}
@@ -231,31 +140,18 @@ export const Header = () => {
       </div>
 
       {/* ── Row 3 mobile: scrollable category pills ── */}
-      {mobileCategories.length > 0 && (
+      {categories.length > 0 && (
         <div
           className="flex gap-2 overflow-x-auto border-b border-gray-100 px-4 py-2 md:hidden"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {mobileCategories.map((cat) => (
+          {categories.map((cat) => (
             <Link
               key={cat.id}
               href={`/products?category=${cat.id}`}
               className="flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-colors active:bg-amber-50 active:border-amber-300 active:text-amber-700"
             >
-              {cat.icon ? (
-                cat.icon.startsWith("data:image") ||
-                cat.icon.startsWith("http") ? (
-                  <img
-                    src={cat.icon}
-                    alt=""
-                    className="h-3.5 w-3.5 rounded-sm object-contain"
-                  />
-                ) : (
-                  <span className="text-xs">{cat.icon}</span>
-                )
-              ) : (
-                <ShoppingBasket size={12} className="text-gray-400" />
-              )}
+              <CategoryIcon category={cat} size={12} />
               {cat.name}
             </Link>
           ))}
@@ -271,29 +167,18 @@ export const Header = () => {
           </div>
 
           {/* Category links */}
-          {mobileCategories.length > 0 && (
+          {categories.length > 0 && (
             <div
               className="flex items-center gap-1 overflow-x-auto ml-2"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
-              {mobileCategories.map((cat) => (
+              {categories.map((cat) => (
                 <Link
                   key={cat.id}
                   href={`/products?category=${cat.id}`}
                   className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-orange-50 hover:text-orange-600"
                 >
-                  {cat.icon ? (
-                    cat.icon.startsWith("data:image") ||
-                    cat.icon.startsWith("http") ? (
-                      <img
-                        src={cat.icon}
-                        alt=""
-                        className="h-4 w-4 rounded-sm object-contain"
-                      />
-                    ) : (
-                      <span className="text-sm">{cat.icon}</span>
-                    )
-                  ) : null}
+                  <CategoryIcon category={cat} size={14} />
                   {cat.name}
                 </Link>
               ))}
@@ -392,7 +277,7 @@ export const Header = () => {
         </div>
 
         {/* Categories */}
-        {mobileCategories.length > 0 && (
+        {categories.length > 0 && (
           <div className="px-5 pb-4">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
@@ -407,7 +292,7 @@ export const Header = () => {
               </Link>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {mobileCategories.map((cat, i) => (
+              {categories.map((cat, i) => (
                 <Link
                   key={cat.id}
                   href={`/products?category=${cat.id}`}
@@ -415,22 +300,9 @@ export const Header = () => {
                   className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 py-3 transition-colors active:bg-gray-50"
                 >
                   <div
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${catColors[i % catColors.length]}`}
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${CATEGORY_COLORS[i % CATEGORY_COLORS.length]}`}
                   >
-                    {cat.icon ? (
-                      cat.icon.startsWith("data:image") ||
-                      cat.icon.startsWith("http") ? (
-                        <img
-                          src={cat.icon}
-                          alt=""
-                          className="h-4 w-4 rounded-sm object-contain"
-                        />
-                      ) : (
-                        <span className="text-sm">{cat.icon}</span>
-                      )
-                    ) : (
-                      <ShoppingBasket size={16} />
-                    )}
+                    <CategoryIcon category={cat} size={16} />
                   </div>
                   <span className="text-sm font-medium text-gray-700 leading-tight">
                     {cat.name}

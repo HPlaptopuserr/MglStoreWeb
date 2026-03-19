@@ -13,33 +13,17 @@ export const BrandTicker = () => {
 
       <div className="relative flex overflow-hidden group mask-linear-fade">
         <div className="flex animate-marquee whitespace-nowrap gap-16 min-w-full items-center">
-          {brands.map((brand, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-2 text-2xl font-bold text-slate-300 hover:text-amber-500 transition-colors cursor-pointer shrink-0"
-            >
-              <Star size={16} className="text-amber-200" />
-              {brand}
-            </div>
-          ))}
-          {brands.map((brand, i) => (
-            <div
-              key={`dup-${i}`}
-              className="flex items-center gap-2 text-2xl font-bold text-slate-300 hover:text-amber-500 transition-colors cursor-pointer shrink-0"
-            >
-              <Star size={16} className="text-amber-200" />
-              {brand}
-            </div>
-          ))}
-          {brands.map((brand, i) => (
-            <div
-              key={`dup2-${i}`}
-              className="flex items-center gap-2 text-2xl font-bold text-slate-300 hover:text-amber-500 transition-colors cursor-pointer shrink-0"
-            >
-              <Star size={16} className="text-amber-200" />
-              {brand}
-            </div>
-          ))}
+          {Array.from({ length: 3 }).flatMap((_, rep) =>
+            brands.map((brand, i) => (
+              <div
+                key={`${rep}-${i}`}
+                className="flex items-center gap-2 text-2xl font-bold text-slate-300 hover:text-amber-500 transition-colors cursor-pointer shrink-0"
+              >
+                <Star size={16} className="text-amber-200" />
+                {brand}
+              </div>
+            ))
+          )}
         </div>
 
         <div className="absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-white to-transparent pointer-events-none"></div>

@@ -21,7 +21,6 @@ router.post("/job-applications", async (req, res) => {
       personalSkills,
       languages,
     } = req.body;
-    console.log("incoming body:", req.body);
     if (!firstName || !lastName || !phone) {
       return res.status(400).json({
         message: "Нэр, овог, утасны дугаар шаардлагатай",

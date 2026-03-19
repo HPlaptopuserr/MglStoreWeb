@@ -1,5 +1,5 @@
 import * as React from "react";
-import { cn } from "../../../../../packages/ui/src/molecules/utils";
+import { cn } from "@mgl/ui";
 
 const Card = React.forwardRef<
   HTMLDivElement,

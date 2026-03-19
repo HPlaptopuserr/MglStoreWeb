@@ -1,6 +1,6 @@
 "use client";
 
-import { PartnershipWorkInfoCard } from "@/components/PartnershipWorkInfoCard";
+import { PartnershipWorkInfoCard } from "@/components/molecules/PartnershipWorkInfoCard";
 import { partnershipServices } from "@/lib/mock-data";
 
 export default function PartnershipServiceSection() {

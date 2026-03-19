@@ -1,0 +1,26 @@
+import { Briefcase, Store, Tag } from "lucide-react";
+import type { NavLinkItem } from "@/types";
+
+export const NAV_LINKS: NavLinkItem[] = [
+  {
+    href: "/organizations",
+    label: "Дэлгүүрүүд",
+    desc: "Бүх түнш дэлгүүрүүд",
+    icon: Store,
+    color: "bg-blue-50 text-blue-600",
+  },
+  {
+    href: "/products",
+    label: "Бүтээгдэхүүн",
+    desc: "Бараа бүтээгдэхүүн",
+    icon: Tag,
+    color: "bg-amber-50 text-amber-600",
+  },
+  {
+    href: "/company/partnership",
+    label: "Хамтрах",
+    desc: "Бизнесээ холбох",
+    icon: Briefcase,
+    color: "bg-green-50 text-green-600",
+  },
+];

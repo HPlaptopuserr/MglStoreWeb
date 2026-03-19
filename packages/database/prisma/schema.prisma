@@ -290,11 +290,32 @@ model Organization {
   users                        User[]
   warehouseAssignments         WarehouseOrganization[]
   stockRequests                WarehouseStockRequest[] @relation("OrganizationStockRequests")
+  investorProfile              InvestorProfile?
 
   @@index([type])
   @@index([status])
   @@index([deletedAt])
   @@index([scheduledPermanentDeletionAt])
+}
+
+model InvestorProfile {
+  id              String       @id @default(uuid())
+  organizationId  String       @unique
+  tier            InvestorTier @default(INVESTOR)
+  featured        Boolean      @default(false)
+  priority        Int          @default(0)
+  publiclyVisible Boolean      @default(true)
+  investmentLevel String?
+  description     String?
+  joinedAt        DateTime     @default(now())
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([tier])
+  @@index([featured])
+  @@index([priority])
+  @@index([publiclyVisible])
 }
 
 model OrganizationMember {
@@ -836,6 +857,12 @@ enum OrgStatus {
   ACTIVE
   SUSPENDED
   BLOCKED
+}
+
+enum InvestorTier {
+  INVESTOR
+  STRATEGIC
+  TOP
 }
 
 enum OrderStatus {

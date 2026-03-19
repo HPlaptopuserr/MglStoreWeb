@@ -206,7 +206,7 @@ export const MegaMenu = () => {
         }`}
       >
         {isOpen ? <X size={18} /> : <Menu size={18} />}
-        <span className="hidden xl:inline-block">Бүх ангилал</span>
+        <span className="hidden xl:inline-block text-sm font-bold">Бүх ангилал</span>
         <ChevronDown
           size={14}
           className={`ml-1 transition-transform duration-200 ${
