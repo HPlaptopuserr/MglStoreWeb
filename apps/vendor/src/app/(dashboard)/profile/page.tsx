@@ -138,7 +138,39 @@ export default function ProfilePage() {
     fetchData();
   }, []);
 
-  const handleCategorySelect = async (slug: string | null) => {
+  const getSelectedSlugs = (): string[] => {
+    if (!partner?.businessCategory) return [];
+    return partner.businessCategory.split(",").filter(Boolean);
+  };
+
+  const handleCategoryToggle = async (slug: string) => {
+    if (!partner?.id) return;
+    const current = getSelectedSlugs();
+    const updated = current.includes(slug)
+      ? current.filter((s: string) => s !== slug)
+      : [...current, slug];
+    const value = updated.length > 0 ? updated.join(",") : null;
+    setSaving(true);
+    setSaved(false);
+    try {
+      const res = await fetch(`${API}/partners/${partner.id}/category`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ businessCategory: value }),
+      });
+      if (res.ok) {
+        setPartner((prev: any) => ({ ...prev, businessCategory: value }));
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClearCategories = async () => {
     setCatOpen(false);
     if (!partner?.id) return;
     setSaving(true);
@@ -147,10 +179,10 @@ export default function ProfilePage() {
       const res = await fetch(`${API}/partners/${partner.id}/category`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ businessCategory: slug }),
+        body: JSON.stringify({ businessCategory: null }),
       });
       if (res.ok) {
-        setPartner((prev: any) => ({ ...prev, businessCategory: slug }));
+        setPartner((prev: any) => ({ ...prev, businessCategory: null }));
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
       }
@@ -255,9 +287,8 @@ export default function ProfilePage() {
     );
   }
 
-  const currentCat = categories.find(
-    (c) => c.slug === partner.businessCategory,
-  );
+  const selectedSlugs = getSelectedSlugs();
+  const selectedCats = categories.filter((c) => selectedSlugs.includes(c.slug));
 
   const statItems = partner.stats
     ? [
@@ -467,9 +498,30 @@ export default function ProfilePage() {
             </div>
 
             <p className="text-sm text-slate-500 mb-4">
-              Таны байгууллага ямар ангилалд харьяалагдахыг сонгоно уу. Энэ
-              мэдээлэл нийтийн хайлт болон ангиллалд харагдана.
+              Таны байгууллага ямар ангилалд харьяалагдахыг сонгоно уу. Олон
+              ангилал сонгох боломжтой.
             </p>
+
+            {selectedCats.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {selectedCats.map((cat) => (
+                  <span
+                    key={cat.slug}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-semibold text-indigo-700"
+                  >
+                    <span>{cat.icon ?? "🏷️"}</span>
+                    {cat.name}
+                    <button
+                      type="button"
+                      onClick={() => handleCategoryToggle(cat.slug)}
+                      className="ml-0.5 hover:text-red-500 transition-colors"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
 
             <div className="relative">
               <button
@@ -487,10 +539,10 @@ export default function ProfilePage() {
                     <Tag size={18} className="text-slate-400" />
                   )}
                   <span
-                    className={currentCat ? "text-slate-800" : "text-slate-400"}
+                    className={selectedCats.length > 0 ? "text-slate-800" : "text-slate-400"}
                   >
-                    {currentCat
-                      ? `${currentCat.icon ?? "🏷️"} ${currentCat.name}`
+                    {selectedCats.length > 0
+                      ? `${selectedCats.length} ангилал сонгогдсон`
                       : "Ангилал сонгоно уу..."}
                   </span>
                 </div>
@@ -506,37 +558,43 @@ export default function ProfilePage() {
                     className="fixed inset-0 z-10"
                     onClick={() => setCatOpen(false)}
                   />
-                  <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
-                    <button
-                      onClick={() => handleCategorySelect(null)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-400 hover:bg-slate-50 transition-colors border-b border-slate-100"
-                    >
-                      <span className="w-4" />
-                      Ангилалгүй болгох
-                    </button>
-                    {categories.map((cat) => (
+                  <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+                    {selectedCats.length > 0 && (
                       <button
-                        key={cat.slug}
-                        onClick={() => handleCategorySelect(cat.slug)}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-indigo-50 transition-colors"
+                        onClick={handleClearCategories}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-400 hover:bg-slate-50 transition-colors border-b border-slate-100"
                       >
-                        {partner.businessCategory === cat.slug ? (
-                          <Check
-                            size={14}
-                            className="text-indigo-500 shrink-0"
-                          />
-                        ) : (
-                          <span className="w-3.5" />
-                        )}
-                        <span className="text-lg">{cat.icon ?? "🏷️"}</span>
-                        <span className="font-semibold text-slate-700">
-                          {cat.name}
-                        </span>
-                        <code className="ml-auto text-xs text-slate-400 font-mono">
-                          {cat.slug}
-                        </code>
+                        <span className="w-4" />
+                        Бүгдийг арилгах
                       </button>
-                    ))}
+                    )}
+                    {categories.map((cat) => {
+                      const isSelected = selectedSlugs.includes(cat.slug);
+                      return (
+                        <button
+                          key={cat.slug}
+                          onClick={() => handleCategoryToggle(cat.slug)}
+                          className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-indigo-50 transition-colors ${
+                            isSelected ? "bg-indigo-50/50" : ""
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${
+                            isSelected
+                              ? "border-indigo-500 bg-indigo-500"
+                              : "border-slate-300"
+                          }`}>
+                            {isSelected && <Check size={10} className="text-white" />}
+                          </div>
+                          <span className="text-lg">{cat.icon ?? "🏷️"}</span>
+                          <span className="font-semibold text-slate-700">
+                            {cat.name}
+                          </span>
+                          <code className="ml-auto text-xs text-slate-400 font-mono">
+                            {cat.slug}
+                          </code>
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}

@@ -3,9 +3,38 @@ import { prisma } from "@mgl/database";
 
 const router: ExpressRouter = Router();
 
-router.get("/business-categories", async (_req, res) => {
+// Public: get active categories (supports ?level=0 to filter by level)
+router.get("/business-categories", async (req, res) => {
   try {
+    const where: { isActive: boolean; level?: number } = { isActive: true };
+    if (req.query.level !== undefined) {
+      where.level = Number(req.query.level);
+    }
     const categories = await prisma.businessCategory.findMany({
+      where,
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        icon: true,
+        sortOrder: true,
+        parentId: true,
+        level: true,
+      },
+    });
+    // Return flat list — frontend builds tree if needed
+    res.json(categories);
+  } catch (error) {
+    console.error("get business-categories error", error);
+    res.status(500).json({ message: "Ангиллуудыг авахад алдаа гарлаа" });
+  }
+});
+
+// Public: get categories as nested tree
+router.get("/business-categories/tree", async (_req, res) => {
+  try {
+    const all = await prisma.businessCategory.findMany({
       where: { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: {
@@ -14,19 +43,32 @@ router.get("/business-categories", async (_req, res) => {
         name: true,
         icon: true,
         sortOrder: true,
+        parentId: true,
+        level: true,
       },
     });
-    res.json(categories);
+
+    // Build tree: level 0 → level 1 → level 2
+    const roots = all.filter((c) => !c.parentId);
+    const buildTree = (parentId: string): any[] => {
+      return all
+        .filter((c) => c.parentId === parentId)
+        .map((c) => ({ ...c, children: buildTree(c.id) }));
+    };
+
+    const tree = roots.map((r) => ({ ...r, children: buildTree(r.id) }));
+    res.json(tree);
   } catch (error) {
-    console.error("get business-categories error", error);
+    console.error("get business-categories tree error", error);
     res.status(500).json({ message: "Ангиллуудыг авахад алдаа гарлаа" });
   }
 });
 
+// Admin: get ALL categories (including inactive) as flat list
 router.get("/admin/business-categories-all", async (_req, res) => {
   try {
     const categories = await prisma.businessCategory.findMany({
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
     });
     res.json(categories);
   } catch (error) {
@@ -35,9 +77,10 @@ router.get("/admin/business-categories-all", async (_req, res) => {
   }
 });
 
+// Admin: create category
 router.post("/admin/business-categories", async (req, res) => {
   try {
-    const { slug, name, icon, sortOrder } = req.body;
+    const { slug, name, icon, sortOrder, parentId } = req.body;
 
     if (!slug?.trim() || !name?.trim()) {
       return res.status(400).json({ message: "slug болон name шаардлагатай" });
@@ -52,12 +95,31 @@ router.post("/admin/business-categories", async (req, res) => {
         .json({ message: "Ийм slug-тай ангилал аль хэдийн байна" });
     }
 
+    // Determine level from parent
+    let level = 0;
+    if (parentId) {
+      const parent = await prisma.businessCategory.findUnique({
+        where: { id: parentId },
+      });
+      if (!parent) {
+        return res.status(400).json({ message: "Эцэг ангилал олдсонгүй" });
+      }
+      if (parent.level >= 2) {
+        return res
+          .status(400)
+          .json({ message: "3-аас дээш түвшин нэмэх боломжгүй" });
+      }
+      level = parent.level + 1;
+    }
+
     const category = await prisma.businessCategory.create({
       data: {
         slug: slug.trim().toLowerCase(),
         name: name.trim(),
         icon: icon?.trim() || null,
         sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
+        parentId: parentId || null,
+        level,
       },
     });
 
@@ -68,10 +130,32 @@ router.post("/admin/business-categories", async (req, res) => {
   }
 });
 
+// Admin: update category
 router.patch("/admin/business-categories/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, icon, sortOrder, isActive } = req.body;
+    const { name, icon, sortOrder, isActive, parentId } = req.body;
+
+    // If parentId is being changed, recalculate level
+    let level: number | undefined;
+    if (parentId !== undefined) {
+      if (parentId === null) {
+        level = 0;
+      } else {
+        const parent = await prisma.businessCategory.findUnique({
+          where: { id: parentId },
+        });
+        if (!parent) {
+          return res.status(400).json({ message: "Эцэг ангилал олдсонгүй" });
+        }
+        if (parent.level >= 2) {
+          return res
+            .status(400)
+            .json({ message: "3-аас дээш түвшин нэмэх боломжгүй" });
+        }
+        level = parent.level + 1;
+      }
+    }
 
     const updated = await prisma.businessCategory.update({
       where: { id },
@@ -80,6 +164,8 @@ router.patch("/admin/business-categories/:id", async (req, res) => {
         ...(icon !== undefined && { icon: icon?.trim() || null }),
         ...(sortOrder !== undefined && { sortOrder }),
         ...(isActive !== undefined && { isActive }),
+        ...(parentId !== undefined && { parentId: parentId || null }),
+        ...(level !== undefined && { level }),
       },
     });
 
@@ -93,6 +179,7 @@ router.patch("/admin/business-categories/:id", async (req, res) => {
   }
 });
 
+// Admin: soft delete
 router.delete("/admin/business-categories/:id", async (req, res) => {
   try {
     const { id } = req.params;

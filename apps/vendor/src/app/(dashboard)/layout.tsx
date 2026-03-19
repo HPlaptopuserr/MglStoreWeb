@@ -16,6 +16,7 @@ export default function VendorDashboardLayout({
     email: "vendor@mglstore.mn",
     role: "VENDOR",
     initials: "VN",
+    organizationName: "",
   });
 
   useEffect(() => {
@@ -32,10 +33,11 @@ export default function VendorDashboardLayout({
       );
 
       setUserData({
-        name: storedUser.name || "Vendor",
+        name: storedUser.name || storedUser.fullName || "Vendor",
         email: storedUser.email || "vendor@mglstore.mn",
         role: storedUser.role || "VENDOR",
         initials: storedUser.name?.slice(0, 2).toUpperCase() || "VN",
+        organizationName: storedUser.organizationName || "",
       });
     } catch {
       setUserData({
@@ -43,6 +45,7 @@ export default function VendorDashboardLayout({
         email: "vendor@mglstore.mn",
         role: "VENDOR",
         initials: "VN",
+        organizationName: "",
       });
     }
 
@@ -65,6 +68,7 @@ export default function VendorDashboardLayout({
       userEmail={userData.email}
       userRole={userData.role}
       userInitials={userData.initials}
+      organizationName={userData.organizationName}
     >
       {children}
     </DashboardLayout>

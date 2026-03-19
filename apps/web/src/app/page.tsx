@@ -14,8 +14,8 @@ export default function HomePage() {
             <HeroSection />
           </div>
         </div>
-        <Categories />
         <FeaturedStoresSection />
+        <Categories />
       </div>
 
       <div className="container mx-auto px-4 md:px-8 mt-12 mb-20">

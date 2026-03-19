@@ -7,9 +7,806 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-//////////////////////////////////////////////////
-// ENUMS
-//////////////////////////////////////////////////
+model User {
+  id                           String                   @id @default(uuid())
+  email                        String                   @unique
+  registerNumber               String?                  @unique
+  role                         Role                     @default(INDIVIDUAL)
+  isActive                     Boolean                  @default(true)
+  emailVerified                Boolean                  @default(false)
+  lastLoginAt                  DateTime?
+  onboardingSource             OnboardingSource         @default(ADMIN)
+  organizationId               String?
+  createdAt                    DateTime                 @default(now())
+  updatedAt                    DateTime                 @updatedAt
+  deletedAt                    DateTime?
+  passwordHash                 String?
+  addresses                    Address[]
+  auditLogs                    AuditLog[]
+  courierLocationHistories     CourierLocationHistory[] @relation("CourierLocationHistoryUser")
+  deliveries                   Delivery[]               @relation("CourierDeliveries")
+  inventoryLedgers             InventoryLedger[]        @relation("InventoryLedgerCreatedBy")
+  orders                       Order[]                  @relation("CustomerOrders")
+  changedOrderHistories        OrderHistory[]           @relation("OrderHistoryChangedBy")
+  organizationMemberships      OrganizationMember[]
+  passwordResetTokens          PasswordResetToken[]     @relation("UserPasswordResetTokens")
+  reviewedProductRequests      ProductRequest[]         @relation("ReviewedProductRequests")
+  submittedProductRequests     ProductRequest[]         @relation("SubmittedProductRequests")
+  profile                      Profile?
+  approvedFromRequest          RegistrationRequest?     @relation("ApprovedUserRegistrationRequest")
+  reviewedRegistrationRequests RegistrationRequest[]    @relation("ReviewedRegistrationRequests")
+  resolvedReturnRequests       ReturnRequest[]          @relation("ReturnRequestResolvedBy")
+  assignedServiceRequests      ServiceRequest[]         @relation("ServiceRequestAssignedTo")
+  requestedServiceRequests     ServiceRequest[]         @relation("ServiceRequestRequestedBy")
+  confirmedPayments            StockRequestPayment[]    @relation("PaymentConfirmations")
+  organization                 Organization?            @relation(fields: [organizationId], references: [id])
+  sessions                     UserSession[]
+  vendorSetupTokens            VendorSetupToken[]       @relation("UserVendorSetupTokens")
+  createdWarehouses            Warehouse[]              @relation("WarehouseCreatedBy")
+  warehouseAssignments         WarehouseOrganization[]  @relation("WarehouseAssignedBy")
+  requestedStockRequests       WarehouseStockRequest[]  @relation("StockRequestsRequested")
+  reviewedStockRequests        WarehouseStockRequest[]  @relation("StockRequestsReviewed")
+
+  @@index([organizationId])
+  @@index([role])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([onboardingSource])
+}
+
+model Profile {
+  userId         String    @id
+  fullName       String
+  phoneNumber    String?
+  avatarUrl      String?
+  birthDate      DateTime?
+  gender         Gender?
+  birthPlaceCode String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserSession {
+  id          String    @id @default(uuid())
+  userId      String
+  refreshHash String    @unique
+  userAgent   String?
+  ip          String?
+  deviceId    String?
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation("UserPasswordResetTokens", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
+}
+
+model VendorSetupToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation("UserVendorSetupTokens", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  userId    String?
+  action    AuditAction
+  ip        String?
+  userAgent String?
+  meta      Json?
+  createdAt DateTime    @default(now())
+  user      User?       @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model RegistrationRequest {
+  id                   String           @id @default(uuid())
+  email                String
+  requestedRole        Role
+  source               OnboardingSource @default(SELF_SERVICE)
+  status               ApprovalStatus   @default(PENDING)
+  fullName             String?
+  phoneNumber          String?
+  organizationName     String?
+  organizationType     OrgType?
+  registerNumber       String?
+  taxId                String?
+  organizationEmail    String?
+  organizationPhone    String?
+  organizationAddress  String?
+  note                 String?
+  rejectReason         String?
+  reviewedById         String?
+  approvedUserId       String?          @unique
+  reviewedAt           DateTime?
+  approvedAt           DateTime?
+  rejectedAt           DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  passwordHash         String?
+  businessCategory     String?
+  operatingYears       Int?
+  inviteToken          String?          @unique
+  inviteTokenExpiresAt DateTime?
+  approvedUser         User?            @relation("ApprovedUserRegistrationRequest", fields: [approvedUserId], references: [id])
+  reviewedBy           User?            @relation("ReviewedRegistrationRequests", fields: [reviewedById], references: [id])
+
+  @@index([email])
+  @@index([inviteToken])
+  @@index([status])
+  @@index([requestedRole])
+  @@index([source])
+  @@index([reviewedById])
+  @@index([createdAt])
+}
+
+model OrganizationInvite {
+  id             String                 @id @default(uuid())
+  email          String
+  organizationId String
+  role           OrganizationMemberRole @default(OWNER)
+  tokenHash      String                 @unique
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime               @default(now())
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([expiresAt])
+}
+
+model JobPosition {
+  id           String           @id @default(uuid())
+  name         String
+  slug         String           @unique
+  description  String?
+  isActive     Boolean          @default(true)
+  sortOrder    Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  applications JobApplication[]
+
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+model JobApplication {
+  id                 String         @id @default(uuid())
+  firstName          String
+  lastName           String
+  phone              String
+  registerNumber     String?
+  age                Int?
+  gender             Gender?
+  address            String?
+  education          String?
+  salaryExpect       String?
+  experience         String?
+  professionalSkills String?
+  personalSkills     String?
+  languages          String?
+  status             ApprovalStatus @default(PENDING)
+  note               String?
+  rejectReason       String?
+  reviewedAt         DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  jobPositionId      String?
+  jobPosition        JobPosition?   @relation(fields: [jobPositionId], references: [id])
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([phone])
+  @@index([jobPositionId])
+}
+
+model BusinessCategory {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  icon      String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  parentId  String?
+  level     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   BusinessCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children BusinessCategory[] @relation("CategoryHierarchy")
+
+  @@index([isActive])
+  @@index([sortOrder])
+  @@index([parentId])
+  @@index([level])
+}
+
+model Organization {
+  id                           String                  @id @default(uuid())
+  name                         String
+  slug                         String                  @unique
+  taxId                        String                  @unique
+  type                         OrgType                 @default(SUPPLIER)
+  status                       OrgStatus               @default(ACTIVE)
+  isVerified                   Boolean                 @default(false)
+  email                        String?
+  phone                        String?
+  logoUrl                      String?
+  address                      String?
+  createdAt                    DateTime                @default(now())
+  updatedAt                    DateTime                @updatedAt
+  deletedAt                    DateTime?
+  businessCategory             String?
+  bannerUrl                    String?
+  customerCount                String?                 @default("0")
+  deliveryPrice                String?
+  deliveryText                 String?
+  description                  String?
+  openingHours                 String[]                @default([])
+  operatingYears               Int                     @default(1)
+  rating                       Float                   @default(5)
+  reviewCount                  Int                     @default(0)
+  shortDescription             String?
+  deletedBy                    String?
+  deletionReason               String?
+  scheduledPermanentDeletionAt DateTime?
+  branches                     Branch[]
+  orders                       Order[]
+  invites                      OrganizationInvite[]
+  members                      OrganizationMember[]
+  products                     Product[]
+  productRequests              ProductRequest[]
+  serviceRequests              ServiceRequest[]
+  stockRequestPayments         StockRequestPayment[]   @relation("OrganizationStockPayments")
+  users                        User[]
+  warehouseAssignments         WarehouseOrganization[]
+  stockRequests                WarehouseStockRequest[] @relation("OrganizationStockRequests")
+
+  @@index([type])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([scheduledPermanentDeletionAt])
+}
+
+model OrganizationMember {
+  id             String                 @id @default(uuid())
+  userId         String
+  organizationId String
+  role           OrganizationMemberRole @default(STAFF)
+  isActive       Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([role])
+  @@index([isActive])
+}
+
+model Branch {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  address        String
+  lat            Float?
+  lng            Float?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([deletedAt])
+}
+
+model Address {
+  id             String    @id @default(uuid())
+  userId         String
+  label          String?
+  fullAddress    String
+  city           String?
+  district       String?
+  khoroo         String?
+  entrance       String?
+  apartment      String?
+  lat            Float?
+  lng            Float?
+  isDefault      Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shippingOrders Order[]   @relation("OrderShippingAddressRef")
+
+  @@index([userId])
+  @@index([isDefault])
+  @@index([deletedAt])
+}
+
+model Category {
+  id              String           @id @default(uuid())
+  name            String
+  slug            String           @unique
+  parentId        String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  parent          Category?        @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children        Category[]       @relation("CategoryHierarchy")
+  products        Product[]
+  productRequests ProductRequest[]
+
+  @@index([parentId])
+}
+
+model Product {
+  id                   String                      @id @default(uuid())
+  organizationId       String
+  name                 String
+  description          String?
+  sku                  String?
+  price                Decimal                     @db.Decimal(18, 2)
+  costPrice            Decimal?                    @db.Decimal(18, 2)
+  stock                Int                         @default(0)
+  isActive             Boolean                     @default(true)
+  categoryId           String?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  deletedAt            DateTime?
+  discounts            Discount[]
+  inventoryLogs        InventoryLedger[]
+  orderItems           OrderItem[]
+  category             Category?                   @relation(fields: [categoryId], references: [id])
+  organization         Organization                @relation(fields: [organizationId], references: [id])
+  images               ProductImage[]
+  productRequests      ProductRequest[]
+  warehouseInventories WarehouseInventory[]
+  stockRequestItems    WarehouseStockRequestItem[] @relation("StockRequestProducts")
+
+  @@unique([organizationId, sku])
+  @@index([organizationId, isActive])
+  @@index([categoryId])
+  @@index([deletedAt])
+  @@index([name])
+}
+
+model ProductRequest {
+  id             String                @id @default(uuid())
+  type           ProductRequestType    @default(CREATE)
+  organizationId String
+  submittedById  String
+  reviewedById   String?
+  productId      String?
+  status         ProductApprovalStatus @default(PENDING)
+  name           String
+  description    String?
+  sku            String?
+  price          Decimal               @db.Decimal(18, 2)
+  costPrice      Decimal?              @db.Decimal(18, 2)
+  stock          Int                   @default(0)
+  categoryId     String?
+  rejectReason   String?
+  reviewNote     String?
+  submittedAt    DateTime              @default(now())
+  reviewedAt     DateTime?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  category       Category?             @relation(fields: [categoryId], references: [id])
+  organization   Organization          @relation(fields: [organizationId], references: [id])
+  product        Product?              @relation(fields: [productId], references: [id])
+  reviewedBy     User?                 @relation("ReviewedProductRequests", fields: [reviewedById], references: [id])
+  submittedBy    User                  @relation("SubmittedProductRequests", fields: [submittedById], references: [id])
+  images         ProductRequestImage[]
+
+  @@index([organizationId])
+  @@index([submittedById])
+  @@index([reviewedById])
+  @@index([status])
+  @@index([productId])
+  @@index([categoryId])
+  @@index([createdAt])
+  @@index([organizationId, sku])
+}
+
+model ProductRequestImage {
+  id               String         @id @default(uuid())
+  productRequestId String
+  url              String
+  productRequest   ProductRequest @relation(fields: [productRequestId], references: [id], onDelete: Cascade)
+
+  @@index([productRequestId])
+}
+
+model ProductImage {
+  id        String  @id @default(uuid())
+  productId String
+  url       String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model Discount {
+  id         String    @id @default(uuid())
+  productId  String
+  percent    Int
+  validUntil DateTime
+  createdAt  DateTime  @default(now())
+  isActive   Boolean   @default(true)
+  updatedAt  DateTime  @updatedAt
+  validFrom  DateTime?
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([isActive])
+  @@index([validUntil])
+}
+
+model InventoryLedger {
+  id            String          @id @default(uuid())
+  productId     String
+  change        Int
+  reason        InventoryReason
+  note          String?
+  createdAt     DateTime        @default(now())
+  createdById   String?
+  referenceId   String?
+  referenceType String?
+  createdBy     User?           @relation("InventoryLedgerCreatedBy", fields: [createdById], references: [id])
+  product       Product         @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([reason])
+  @@index([referenceType, referenceId])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model Order {
+  id                 String           @id @default(uuid())
+  organizationId     String
+  customerId         String
+  status             OrderStatus      @default(PENDING)
+  paymentStatus      PaymentStatus    @default(PENDING)
+  paymentMethod      PaymentMethod?
+  shippingAddress    String
+  phone              String
+  note               String?
+  shippingAddressId  String?
+  subtotal           Decimal          @db.Decimal(18, 2)
+  discountAmount     Decimal          @default(0) @db.Decimal(18, 2)
+  deliveryFee        Decimal          @default(0) @db.Decimal(18, 2)
+  total              Decimal          @db.Decimal(18, 2)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+  orderNumber        String           @unique
+  delivery           Delivery?
+  customer           User             @relation("CustomerOrders", fields: [customerId], references: [id])
+  organization       Organization     @relation(fields: [organizationId], references: [id])
+  shippingAddressRef Address?         @relation("OrderShippingAddressRef", fields: [shippingAddressId], references: [id])
+  history            OrderHistory[]
+  items              OrderItem[]
+  payments           PaymentAttempt[]
+  returnRequest      ReturnRequest?
+
+  @@index([organizationId, status])
+  @@index([customerId])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@index([shippingAddressId])
+  @@index([paymentStatus])
+  @@index([orderNumber])
+}
+
+model OrderItem {
+  id          String  @id @default(uuid())
+  orderId     String
+  productId   String
+  quantity    Int
+  price       Decimal @db.Decimal(18, 2)
+  subtotal    Decimal @db.Decimal(18, 2)
+  productName String
+  productSku  String?
+  order       Order   @relation(fields: [orderId], references: [id])
+  product     Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderHistory {
+  id          String       @id @default(uuid())
+  orderId     String
+  timestamp   DateTime     @default(now())
+  changedById String?
+  note        String?
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  changedBy   User?        @relation("OrderHistoryChangedBy", fields: [changedById], references: [id])
+  order       Order        @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@index([timestamp])
+  @@index([changedById])
+}
+
+model PaymentAttempt {
+  id            String        @id @default(uuid())
+  orderId       String
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  amount        Decimal       @db.Decimal(18, 2)
+  providerRef   String?
+  rawPayload    Json?
+  failureReason String?
+  paidAt        DateTime?
+  refundedAt    DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  order         Order         @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@index([status])
+  @@index([method])
+  @@index([createdAt])
+}
+
+model Delivery {
+  id           String         @id @default(uuid())
+  orderId      String         @unique
+  courierId    String?
+  status       DeliveryStatus @default(WAITING)
+  trackingCode String?
+  pickupTime   DateTime?
+  deliveredAt  DateTime?
+  proofImage   String?
+  updatedAt    DateTime       @updatedAt
+  cancelledAt  DateTime?
+  createdAt    DateTime       @default(now())
+  courier      User?          @relation("CourierDeliveries", fields: [courierId], references: [id])
+  order        Order          @relation(fields: [orderId], references: [id])
+
+  @@index([courierId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model CourierLocationHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  lat       Float
+  lng       Float
+  createdAt DateTime @default(now())
+  user      User     @relation("CourierLocationHistoryUser", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model ReturnRequest {
+  id           String       @id @default(uuid())
+  orderId      String       @unique
+  reason       String
+  status       ReturnStatus @default(PENDING)
+  resolvedAt   DateTime?
+  resolvedById String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  order        Order        @relation(fields: [orderId], references: [id])
+  resolvedBy   User?        @relation("ReturnRequestResolvedBy", fields: [resolvedById], references: [id])
+
+  @@index([status])
+  @@index([resolvedById])
+  @@index([createdAt])
+}
+
+model ServiceRequest {
+  id             String               @id @default(uuid())
+  organizationId String
+  requestedById  String
+  type           ServiceRequestType
+  title          String
+  description    String?
+  status         ServiceRequestStatus @default(PENDING)
+  adminNote      String?
+  assignedToId   String?
+  estimatedPrice Decimal?             @db.Decimal(18, 2)
+  finalPrice     Decimal?             @db.Decimal(18, 2)
+  completedAt    DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  assignedTo     User?                @relation("ServiceRequestAssignedTo", fields: [assignedToId], references: [id])
+  organization   Organization         @relation(fields: [organizationId], references: [id])
+  requestedBy    User                 @relation("ServiceRequestRequestedBy", fields: [requestedById], references: [id])
+
+  @@index([organizationId])
+  @@index([requestedById])
+  @@index([assignedToId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Warehouse {
+  id            String                  @id @default(uuid())
+  name          String
+  address       String
+  capacity      Int                     @default(0)
+  lat           Float?
+  lng           Float?
+  createdById   String?
+  isActive      Boolean                 @default(true)
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  deletedAt     DateTime?
+  city          String                  @default("")
+  district      String                  @default("")
+  phone         String?
+  createdBy     User?                   @relation("WarehouseCreatedBy", fields: [createdById], references: [id])
+  inventories   WarehouseInventory[]
+  organizations WarehouseOrganization[]
+  stockRequests WarehouseStockRequest[] @relation("WarehouseStockRequests")
+
+  @@index([createdById])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+model WarehouseOrganization {
+  id             String       @id @default(uuid())
+  warehouseId    String
+  organizationId String
+  assignedAt     DateTime     @default(now())
+  assignedById   String?
+  assignedBy     User?        @relation("WarehouseAssignedBy", fields: [assignedById], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  warehouse      Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, organizationId])
+  @@index([warehouseId])
+  @@index([organizationId])
+}
+
+model WarehouseInventory {
+  id              String    @id @default(uuid())
+  warehouseId     String
+  productId       String
+  quantity        Int       @default(0)
+  minQuantity     Int       @default(0)
+  maxQuantity     Int?
+  location        String?
+  batchNumber     String?
+  expiryDate      DateTime?
+  lastRestockedAt DateTime?
+  lastAuditedAt   DateTime?
+  note            String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, productId])
+  @@index([warehouseId])
+  @@index([productId])
+  @@index([quantity])
+}
+
+model WarehouseStockRequest {
+  id              String                      @id @default(uuid())
+  requestNumber   String                      @unique
+  organizationId  String
+  warehouseId     String
+  status          StockRequestStatus          @default(PENDING)
+  note            String?
+  deliveryAddress String?
+  deliveryPhone   String?
+  requestedById   String
+  reviewedById    String?
+  reviewNote      String?
+  reviewedAt      DateTime?
+  requestedAt     DateTime                    @default(now())
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+  payment         StockRequestPayment?
+  organization    Organization                @relation("OrganizationStockRequests", fields: [organizationId], references: [id])
+  requestedBy     User                        @relation("StockRequestsRequested", fields: [requestedById], references: [id])
+  reviewedBy      User?                       @relation("StockRequestsReviewed", fields: [reviewedById], references: [id])
+  warehouse       Warehouse                   @relation("WarehouseStockRequests", fields: [warehouseId], references: [id])
+  items           WarehouseStockRequestItem[]
+
+  @@index([organizationId])
+  @@index([warehouseId])
+  @@index([status])
+  @@index([requestedById])
+  @@index([reviewedById])
+  @@index([requestedAt])
+}
+
+model WarehouseStockRequestItem {
+  id               String                @id @default(uuid())
+  requestId        String
+  productId        String
+  quantity         Int
+  approvedQuantity Int?
+  note             String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  product          Product               @relation("StockRequestProducts", fields: [productId], references: [id])
+  request          WarehouseStockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, productId])
+  @@index([requestId])
+  @@index([productId])
+}
+
+model StockRequestPayment {
+  id             String                @id @default(uuid())
+  invoiceNumber  String                @unique
+  requestId      String                @unique
+  organizationId String
+  totalAmount    Decimal               @db.Decimal(12, 2)
+  paidAmount     Decimal               @default(0) @db.Decimal(12, 2)
+  status         PaymentStatus         @default(PENDING)
+  paymentMethod  PaymentMethod?
+  paidAt         DateTime?
+  paidBy         String?
+  transactionId  String?
+  note           String?
+  confirmedById  String?
+  confirmedAt    DateTime?
+  dueDate        DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  confirmedBy    User?                 @relation("PaymentConfirmations", fields: [confirmedById], references: [id])
+  organization   Organization          @relation("OrganizationStockPayments", fields: [organizationId], references: [id])
+  request        WarehouseStockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// ///////////////////////////////////////////////
+/// ///////////////////////////////////////////////
 enum OrganizationMemberRole {
   OWNER
   ADMIN
@@ -81,10 +878,10 @@ enum PaymentMethod {
 
 enum InventoryReason {
   ORDER
-  ORDER_CANCEL
   RETURN
   RESTOCK
   MANUAL_ADJUST
+  ORDER_CANCEL
   DAMAGE
   TRANSFER_IN
   TRANSFER_OUT
@@ -122,19 +919,16 @@ enum AuditAction {
   PASSWORD_RESET_REQUEST
   PASSWORD_RESET_SUCCESS
   PASSWORD_CHANGED
-
   ORDER_CREATED
   ORDER_STATUS_CHANGED
   PAYMENT_CREATED
   PAYMENT_STATUS_CHANGED
   DELIVERY_STATUS_CHANGED
   RETURN_STATUS_CHANGED
-
   REGISTRATION_REQUEST_CREATED
   REGISTRATION_REQUEST_APPROVED
   REGISTRATION_REQUEST_REJECTED
   USER_CREATED_BY_ADMIN
-
   PRODUCT_REQUEST_CREATED
   PRODUCT_REQUEST_APPROVED
   PRODUCT_REQUEST_REJECTED
@@ -142,1097 +936,28 @@ enum AuditAction {
   PRODUCT_PUBLISHED
 }
 
-//////////////////////////////////////////////////
-// USER
-//////////////////////////////////////////////////
-
-model User {
-  id           String @id @default(uuid())
-  email        String @unique
-  passwordHash String?
-
-  registerNumber String?   @unique
-  role           Role      @default(INDIVIDUAL)
-  isActive       Boolean   @default(true)
-  emailVerified  Boolean   @default(false)
-  lastLoginAt    DateTime?
-
-  onboardingSource        OnboardingSource     @default(ADMIN)
-  organizationMemberships OrganizationMember[]
-  organizationId          String?
-  organization            Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-
-  profile Profile?
-
-  // customer
-  orders Order[] @relation("CustomerOrders")
-
-  // courier
-  deliveries               Delivery[]               @relation("CourierDeliveries")
-  courierLocationHistories CourierLocationHistory[] @relation("CourierLocationHistoryUser")
-
-  // common
-  addresses           Address[]
-  sessions            UserSession[]
-  auditLogs           AuditLog[]
-  inventoryLedgers    InventoryLedger[]    @relation("InventoryLedgerCreatedBy")
-  passwordResetTokens PasswordResetToken[] @relation("UserPasswordResetTokens")
-  vendorSetupTokens   VendorSetupToken[]   @relation("UserVendorSetupTokens")
-
-  changedOrderHistories  OrderHistory[]  @relation("OrderHistoryChangedBy")
-  resolvedReturnRequests ReturnRequest[] @relation("ReturnRequestResolvedBy")
-
-  // registration approval
-  reviewedRegistrationRequests RegistrationRequest[] @relation("ReviewedRegistrationRequests")
-  approvedFromRequest          RegistrationRequest?  @relation("ApprovedUserRegistrationRequest")
-
-  // product approval
-  submittedProductRequests ProductRequest[] @relation("SubmittedProductRequests")
-  reviewedProductRequests  ProductRequest[] @relation("ReviewedProductRequests")
-
-  // service requests
-  requestedServiceRequests ServiceRequest[] @relation("ServiceRequestRequestedBy")
-  assignedServiceRequests  ServiceRequest[] @relation("ServiceRequestAssignedTo")
-
-  // warehouses
-  createdWarehouses Warehouse[] @relation("WarehouseCreatedBy")
-  warehouseAssignments WarehouseOrganization[] @relation("WarehouseAssignedBy")
-
-  // stock requests
-  requestedStockRequests WarehouseStockRequest[] @relation("StockRequestsRequested")
-  reviewedStockRequests  WarehouseStockRequest[] @relation("StockRequestsReviewed")
-  confirmedPayments      StockRequestPayment[]   @relation("PaymentConfirmations")
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  @@index([organizationId])
-  @@index([role])
-  @@index([isActive])
-  @@index([deletedAt])
-  @@index([onboardingSource])
-}
-
-model Profile {
-  userId String @id
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  fullName    String
-  phoneNumber String?
-  avatarUrl   String?
-
-  birthDate      DateTime?
-  gender         Gender?
-  birthPlaceCode String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model UserSession {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  refreshHash String  @unique
-  userAgent   String?
-  ip          String?
-  deviceId    String?
-
-  createdAt DateTime  @default(now())
-  expiresAt DateTime
-  revokedAt DateTime?
-
-  @@index([userId])
-  @@index([expiresAt])
-  @@index([revokedAt])
-}
-
-model PasswordResetToken {
-  id String @id @default(uuid())
-
-  userId String
-  user   User   @relation("UserPasswordResetTokens", fields: [userId], references: [id], onDelete: Cascade)
-
-  tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  @@index([userId])
-  @@index([expiresAt])
-  @@index([usedAt])
-}
-
-model VendorSetupToken {
-  id String @id @default(uuid())
-
-  userId String
-  user   User   @relation("UserVendorSetupTokens", fields: [userId], references: [id], onDelete: Cascade)
-
-  token     String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  @@index([userId])
-  @@index([token])
-  @@index([expiresAt])
-}
-
-model AuditLog {
-  id String @id @default(uuid())
-
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  action    AuditAction
-  ip        String?
-  userAgent String?
-  meta      Json?
-
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([action])
-  @@index([createdAt])
-}
-
-//////////////////////////////////////////////////
-// REGISTRATION REQUEST
-//////////////////////////////////////////////////
-
-model RegistrationRequest {
-  id String @id @default(uuid())
-
-  email         String
-  passwordHash  String?
-  requestedRole Role
-  source        OnboardingSource @default(SELF_SERVICE)
-  status        ApprovalStatus   @default(PENDING)
-
-  fullName    String?
-  phoneNumber String?
-
-  organizationName    String?
-  organizationType    OrgType?
-  businessCategory    String?
-  operatingYears      Int?
-  registerNumber      String?
-  taxId               String?
-  organizationEmail   String?
-  organizationPhone   String?
-  organizationAddress String?
-
-  note         String?
-  rejectReason String?
-
-  reviewedById String?
-  reviewedBy   User?   @relation("ReviewedRegistrationRequests", fields: [reviewedById], references: [id], onDelete: SetNull)
-
-  approvedUserId String? @unique
-  approvedUser   User?   @relation("ApprovedUserRegistrationRequest", fields: [approvedUserId], references: [id], onDelete: SetNull)
-
-  inviteToken          String?   @unique
-  inviteTokenExpiresAt DateTime?
-
-  reviewedAt DateTime?
-  approvedAt DateTime?
-  rejectedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([email])
-  @@index([inviteToken])
-  @@index([status])
-  @@index([requestedRole])
-  @@index([source])
-  @@index([reviewedById])
-  @@index([createdAt])
-}
-
-model OrganizationInvite {
-  id String @id @default(uuid())
-
-  email String
-
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  role OrganizationMemberRole @default(OWNER)
-
-  tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@index([organizationId])
-  @@index([email])
-  @@index([expiresAt])
-}
-
-//////////////////////////////////////////////////
-// JOB APPLICATION (Careers form)
-//////////////////////////////////////////////////
-
-model JobPosition {
-  id           String           @id @default(uuid())
-  name         String
-  slug         String           @unique
-  description  String?
-  isActive     Boolean          @default(true)
-  sortOrder    Int              @default(0)
-
-  applications JobApplication[]
-
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-
-  @@index([isActive])
-  @@index([sortOrder])
-}
-
-model JobApplication {
-  id String @id @default(uuid())
-
-  firstName   String
-  lastName    String
-  phone       String
-  registerNumber String?
-  age         Int?
-  gender      Gender?
-  address     String?
-
-  jobPositionId String?
-  jobPosition   JobPosition? @relation(fields: [jobPositionId], references: [id])
-
-  education     String?
-  salaryExpect  String?
-  experience    String?
-
-  professionalSkills String?
-  personalSkills     String?
-  languages          String?
-
-  status ApprovalStatus @default(PENDING)
-
-  note         String?
-  rejectReason String?
-
-  reviewedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([status])
-  @@index([createdAt])
-  @@index([phone])
-  @@index([jobPositionId])
-}
-
-//////////////////////////////////////////////////
-// BUSINESS CATEGORY
-//////////////////////////////////////////////////
-
-model BusinessCategory {
-  id        String  @id @default(uuid())
-  slug      String  @unique
-  name      String
-  icon      String? // emoji or icon key
-  sortOrder Int     @default(0)
-  isActive  Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([isActive])
-  @@index([sortOrder])
-}
-
-//////////////////////////////////////////////////
-// ORGANIZATION
-//////////////////////////////////////////////////
-
-model Organization {
-  id    String @id @default(uuid())
-  name  String
-  slug  String @unique
-  taxId String @unique
-
-  type       OrgType   @default(SUPPLIER)
-  status     OrgStatus @default(ACTIVE)
-  isVerified Boolean   @default(false)
-
-  businessCategory String?
-
-  email   String?
-  phone   String?
-  logoUrl String?
-  bannerUrl String?
-  address String?
-
-  // Profile fields for public display
-  description      String?
-  shortDescription String?
-  openingHours     String[] @default([])
-  deliveryText     String?
-  deliveryPrice    String?
-
-  // Stats
-  rating         Float   @default(5)
-  reviewCount    Int     @default(0)
-  customerCount  String? @default("0")
-  operatingYears Int     @default(1)
-
-  users           User[]
-  members         OrganizationMember[]
-  products        Product[]
-  productRequests ProductRequest[]
-  branches        Branch[]
-  orders          Order[]
-  invites         OrganizationInvite[]
-  serviceRequests ServiceRequest[]
-  warehouseAssignments WarehouseOrganization[]
-  stockRequests   WarehouseStockRequest[] @relation("OrganizationStockRequests")
-  stockRequestPayments StockRequestPayment[] @relation("OrganizationStockPayments")
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-  deletionReason String?
-  deletedBy      String?
-  scheduledPermanentDeletionAt DateTime?
-
-  @@index([type])
-  @@index([status])
-  @@index([deletedAt])
-  @@index([scheduledPermanentDeletionAt])
-}
-
-model OrganizationMember {
-  id String @id @default(uuid())
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  role     OrganizationMemberRole @default(STAFF)
-  isActive Boolean                @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, organizationId])
-  @@index([userId])
-  @@index([organizationId])
-  @@index([role])
-  @@index([isActive])
-}
-
-model Branch {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-
-  name    String
-  address String
-  lat     Float?
-  lng     Float?
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  @@index([organizationId])
-  @@index([deletedAt])
-}
-
-//////////////////////////////////////////////////
-// ADDRESS
-//////////////////////////////////////////////////
-
-model Address {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  shippingOrders Order[] @relation("OrderShippingAddressRef")
-
-  label       String?
-  fullAddress String
-  city        String?
-  district    String?
-  khoroo      String?
-  entrance    String?
-  apartment   String?
-
-  lat Float?
-  lng Float?
-
-  isDefault Boolean @default(false)
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  @@index([userId])
-  @@index([isDefault])
-  @@index([deletedAt])
-}
-
-//////////////////////////////////////////////////
-// CATEGORY
-//////////////////////////////////////////////////
-
-model Category {
-  id   String @id @default(uuid())
-  name String
-  slug String @unique
-
-  parentId String?
-  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children Category[] @relation("CategoryHierarchy")
-
-  products        Product[]
-  productRequests ProductRequest[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([parentId])
-}
-
-//////////////////////////////////////////////////
-// PRODUCT
-//////////////////////////////////////////////////
-
-model Product {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-
-  name        String
-  description String?
-  sku         String?
-
-  price     Decimal  @db.Decimal(18, 2)
-  costPrice Decimal? @db.Decimal(18, 2)
-
-  stock    Int     @default(0)
-  isActive Boolean @default(true)
-
-  categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-
-  productRequests ProductRequest[]
-
-  discounts     Discount[]
-  images        ProductImage[]
-  orderItems    OrderItem[]
-  inventoryLogs InventoryLedger[]
-  warehouseInventories WarehouseInventory[]
-  stockRequestItems WarehouseStockRequestItem[] @relation("StockRequestProducts")
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  @@unique([organizationId, sku])
-  @@index([organizationId, isActive])
-  @@index([categoryId])
-  @@index([deletedAt])
-  @@index([name])
-}
-
-//////////////////////////////////////////////////
-// PRODUCT REQUEST
-//////////////////////////////////////////////////
-
-model ProductRequest {
-  id   String             @id @default(uuid())
-  type ProductRequestType @default(CREATE)
-
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-
-  submittedById String
-  submittedBy   User   @relation("SubmittedProductRequests", fields: [submittedById], references: [id], onDelete: Restrict)
-
-  reviewedById String?
-  reviewedBy   User?   @relation("ReviewedProductRequests", fields: [reviewedById], references: [id], onDelete: SetNull)
-
-  productId String?
-  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-
-  status ProductApprovalStatus @default(PENDING)
-
-  name        String
-  description String?
-  sku         String?
-
-  price     Decimal  @db.Decimal(18, 2)
-  costPrice Decimal? @db.Decimal(18, 2)
-  stock     Int      @default(0)
-
-  categoryId String?
-  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-
-  rejectReason String?
-  reviewNote   String?
-
-  submittedAt DateTime  @default(now())
-  reviewedAt  DateTime?
-  approvedAt  DateTime?
-  rejectedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  images ProductRequestImage[]
-
-  @@index([organizationId])
-  @@index([submittedById])
-  @@index([reviewedById])
-  @@index([status])
-  @@index([productId])
-  @@index([categoryId])
-  @@index([createdAt])
-  @@index([organizationId, sku])
-}
-
-model ProductRequestImage {
-  id               String         @id @default(uuid())
-  productRequestId String
-  productRequest   ProductRequest @relation(fields: [productRequestId], references: [id], onDelete: Cascade)
-  url              String
-
-  @@index([productRequestId])
-}
-
-model ProductImage {
-  id        String  @id @default(uuid())
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  url       String
-
-  @@index([productId])
-}
-
-model Discount {
-  id        String  @id @default(uuid())
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  validFrom  DateTime?
-  isActive   Boolean   @default(true)
-  percent    Int
-  validUntil DateTime
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([productId])
-  @@index([isActive])
-  @@index([validUntil])
-}
-
-//////////////////////////////////////////////////
-// INVENTORY LEDGER
-//////////////////////////////////////////////////
-
-model InventoryLedger {
-  id        String  @id @default(uuid())
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
-
-  change Int
-  reason InventoryReason
-  note   String?
-
-  referenceType String?
-  referenceId   String?
-
-  createdById String?
-  createdBy   User?   @relation("InventoryLedgerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-
-  @@index([productId])
-  @@index([reason])
-  @@index([referenceType, referenceId])
-  @@index([createdById])
-  @@index([createdAt])
-}
-
-//////////////////////////////////////////////////
-// ORDER
-//////////////////////////////////////////////////
-
-model Order {
-  id          String @id @default(uuid())
-  orderNumber String @unique
-
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-
-  customerId String
-  customer   User   @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
-
-  status        OrderStatus    @default(PENDING)
-  paymentStatus PaymentStatus  @default(PENDING)
-  paymentMethod PaymentMethod?
-
-  shippingAddress String
-  phone           String
-  note            String?
-
-  shippingAddressId  String?
-  shippingAddressRef Address? @relation("OrderShippingAddressRef", fields: [shippingAddressId], references: [id], onDelete: SetNull)
-
-  subtotal       Decimal @db.Decimal(18, 2)
-  discountAmount Decimal @default(0) @db.Decimal(18, 2)
-  deliveryFee    Decimal @default(0) @db.Decimal(18, 2)
-  total          Decimal @db.Decimal(18, 2)
-
-  items         OrderItem[]
-  history       OrderHistory[]
-  delivery      Delivery?
-  returnRequest ReturnRequest?
-  payments      PaymentAttempt[]
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  @@index([organizationId, status])
-  @@index([customerId])
-  @@index([createdAt])
-  @@index([deletedAt])
-  @@index([shippingAddressId])
-  @@index([paymentStatus])
-  @@index([orderNumber])
-}
-
-model OrderItem {
-  id String @id @default(uuid())
-
-  orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
-
-  quantity Int
-  price    Decimal @db.Decimal(18, 2)
-  subtotal Decimal @db.Decimal(18, 2)
-
-  productName String
-  productSku  String?
-
-  @@index([orderId])
-  @@index([productId])
-}
-
-model OrderHistory {
-  id String @id @default(uuid())
-
-  orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
-
-  fromStatus OrderStatus?
-  toStatus   OrderStatus
-  timestamp  DateTime     @default(now())
-
-  changedById String?
-  changedBy   User?   @relation("OrderHistoryChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
-
-  note String?
-
-  @@index([orderId])
-  @@index([timestamp])
-  @@index([changedById])
-}
-
-//////////////////////////////////////////////////
-// PAYMENT
-//////////////////////////////////////////////////
-
-model PaymentAttempt {
-  id String @id @default(uuid())
-
-  orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
-
-  method PaymentMethod
-  status PaymentStatus @default(PENDING)
-
-  amount Decimal @db.Decimal(18, 2)
-
-  providerRef String?
-  rawPayload  Json?
-
-  failureReason String?
-  paidAt        DateTime?
-  refundedAt    DateTime?
-  cancelledAt   DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([orderId])
-  @@index([status])
-  @@index([method])
-  @@index([createdAt])
-}
-
-//////////////////////////////////////////////////
-// DELIVERY
-//////////////////////////////////////////////////
-
-model Delivery {
-  id String @id @default(uuid())
-
-  orderId String @unique
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
-
-  courierId String?
-  courier   User?   @relation("CourierDeliveries", fields: [courierId], references: [id], onDelete: SetNull)
-
-  status       DeliveryStatus @default(WAITING)
-  trackingCode String?
-
-  pickupTime  DateTime?
-  deliveredAt DateTime?
-  proofImage  String?
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  cancelledAt DateTime?
-
-  @@index([courierId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-//////////////////////////////////////////////////
-// GPS HISTORY
-//////////////////////////////////////////////////
-
-model CourierLocationHistory {
-  id String @id @default(uuid())
-
-  userId String
-  user   User   @relation("CourierLocationHistoryUser", fields: [userId], references: [id], onDelete: Restrict)
-
-  lat Float
-  lng Float
-
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([createdAt])
-}
-
-//////////////////////////////////////////////////
-// RETURNS
-//////////////////////////////////////////////////
-
-model ReturnRequest {
-  id String @id @default(uuid())
-
-  orderId String @unique
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
-
-  reason String
-  status ReturnStatus @default(PENDING)
-
-  resolvedAt   DateTime?
-  resolvedById String?
-  resolvedBy   User?     @relation("ReturnRequestResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([status])
-  @@index([resolvedById])
-  @@index([createdAt])
-}
-
-//////////////////////////////////////////////////
-// SERVICE REQUEST - Vendor service requests to admin
-//////////////////////////////////////////////////
-
 enum ServiceRequestType {
-  POSTER_DESIGN       // Poster хийлгэх
-  PRODUCT_PHOTOSHOOT  // Бараа зураг авалт
-  LEGAL_CONSULTATION  // Хуульч дуудлага
-  TRAINING            // Сургалт авах
-  HR_SERVICE          // Хүний нөөцийн үйлчилгээ
-  MARKETING           // Маркетинг үйлчилгээ
-  OTHER               // Бусад
+  POSTER_DESIGN
+  PRODUCT_PHOTOSHOOT
+  LEGAL_CONSULTATION
+  TRAINING
+  HR_SERVICE
+  MARKETING
+  OTHER
 }
 
 enum ServiceRequestStatus {
-  PENDING     // Хүлээгдэж буй
-  IN_PROGRESS // Хийгдэж буй
-  COMPLETED   // Дууссан
-  CANCELLED   // Цуцлагдсан
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
-
-model ServiceRequest {
-  id String @id @default(uuid())
-
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-
-  requestedById String
-  requestedBy   User   @relation("ServiceRequestRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
-
-  type        ServiceRequestType
-  title       String
-  description String?
-
-  status ServiceRequestStatus @default(PENDING)
-
-  // Admin response
-  adminNote    String?
-  assignedToId String?
-  assignedTo   User?   @relation("ServiceRequestAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
-
-  estimatedPrice Decimal? @db.Decimal(18, 2)
-  finalPrice     Decimal? @db.Decimal(18, 2)
-
-  completedAt DateTime?
-  cancelledAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([organizationId])
-  @@index([requestedById])
-  @@index([assignedToId])
-  @@index([type])
-  @@index([status])
-  @@index([createdAt])
-}
-
-//////////////////////////////////////////////////
-// WAREHOUSE - Admin creates, assigned to vendors
-//////////////////////////////////////////////////
-
-model Warehouse {
-  id String @id @default(uuid())
-
-  name     String
-  address  String
-  city     String  @default("")
-  district String  @default("")
-  phone    String?
-  capacity Int     @default(0)
-
-  lat Float?
-  lng Float?
-
-  // Many-to-many relationship with organizations
-  organizations WarehouseOrganization[]
-  inventories   WarehouseInventory[]
-  stockRequests WarehouseStockRequest[] @relation("WarehouseStockRequests")
-
-  // Created by admin
-  createdById String?
-  createdBy   User?   @relation("WarehouseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-
-  isActive Boolean @default(true)
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  @@index([createdById])
-  @@index([isActive])
-  @@index([deletedAt])
-}
-
-// Junction table for Warehouse <-> Organization many-to-many
-model WarehouseOrganization {
-  id String @id @default(uuid())
-
-  warehouseId String
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  assignedAt DateTime @default(now())
-  assignedById String?
-  assignedBy   User?   @relation("WarehouseAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
-
-  @@unique([warehouseId, organizationId])
-  @@index([warehouseId])
-  @@index([organizationId])
-}
-
-//////////////////////////////////////////////////
-// WAREHOUSE INVENTORY - Tracks products in warehouses
-//////////////////////////////////////////////////
-
-model WarehouseInventory {
-  id String @id @default(uuid())
-
-  warehouseId String
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  quantity    Int      @default(0)
-  minQuantity Int      @default(0) // Minimum stock level for alerts
-  maxQuantity Int?               // Maximum capacity
-  
-  location    String?  // Location within warehouse (e.g., "A-1-3" - Aisle A, Rack 1, Shelf 3)
-  batchNumber String?  // Batch or lot number
-  expiryDate  DateTime?
-
-  lastRestockedAt DateTime?
-  lastAuditedAt   DateTime?
-  note            String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([warehouseId, productId])
-  @@index([warehouseId])
-  @@index([productId])
-  @@index([quantity])
-}
-
-//////////////////////////////////////////////////
-// WAREHOUSE STOCK REQUEST - Vendor requests products from warehouse
-//////////////////////////////////////////////////
 
 enum StockRequestStatus {
-  PENDING      // Waiting for admin approval
-  APPROVED     // Admin approved, ready to process
-  REJECTED     // Admin rejected
-  PROCESSING   // Being prepared/shipped
-  COMPLETED    // Delivered to vendor
-  CANCELLED    // Cancelled by vendor
-}
-
-model WarehouseStockRequest {
-  id String @id @default(uuid())
-  
-  requestNumber String @unique  // e.g., "WSR-2024-001"
-
-  // Requesting organization (vendor)
-  organizationId String
-  organization   Organization @relation("OrganizationStockRequests", fields: [organizationId], references: [id], onDelete: Restrict)
-
-  // Source warehouse
-  warehouseId String
-  warehouse   Warehouse @relation("WarehouseStockRequests", fields: [warehouseId], references: [id], onDelete: Restrict)
-
-  // Request details
-  status           StockRequestStatus @default(PENDING)
-  note             String?            // Vendor's note
-  deliveryAddress  String?            // Where to deliver
-  deliveryPhone    String?
-  
-  // Requested by (vendor user)
-  requestedById String
-  requestedBy   User @relation("StockRequestsRequested", fields: [requestedById], references: [id], onDelete: Restrict)
-
-  // Admin review
-  reviewedById   String?
-  reviewedBy     User?   @relation("StockRequestsReviewed", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewNote     String?
-  reviewedAt     DateTime?
-  
-  // Timing
-  requestedAt DateTime @default(now())
-  approvedAt  DateTime?
-  rejectedAt  DateTime?
-  completedAt DateTime?
-
-  // Items in this request
-  items WarehouseStockRequestItem[]
-  
-  // Payment for this request
-  payment StockRequestPayment?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([organizationId])
-  @@index([warehouseId])
-  @@index([status])
-  @@index([requestedById])
-  @@index([reviewedById])
-  @@index([requestedAt])
-}
-
-model WarehouseStockRequestItem {
-  id String @id @default(uuid())
-
-  requestId String
-  request   WarehouseStockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
-  productId String
-  product   Product @relation("StockRequestProducts", fields: [productId], references: [id], onDelete: Restrict)
-
-  quantity         Int    // Requested quantity
-  approvedQuantity Int?   // Admin may approve different quantity
-  note             String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([requestId, productId])
-  @@index([requestId])
-  @@index([productId])
-}
-
-// Payment/Invoice for stock requests
-model StockRequestPayment {
-  id String @id @default(uuid())
-  
-  invoiceNumber String @unique  // e.g., "INV-2024-001"
-  
-  // Related stock request
-  requestId String @unique
-  request   WarehouseStockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  
-  // Organization that needs to pay
-  organizationId String
-  organization   Organization @relation("OrganizationStockPayments", fields: [organizationId], references: [id], onDelete: Restrict)
-  
-  // Payment details
-  totalAmount    Decimal @db.Decimal(12, 2)  // Total amount to pay
-  paidAmount     Decimal @default(0) @db.Decimal(12, 2)  // Amount already paid
-  status         PaymentStatus @default(PENDING)
-  paymentMethod  PaymentMethod?
-  
-  // Bank/payment info
-  paidAt         DateTime?
-  paidBy         String?       // Who paid (name or reference)
-  transactionId  String?       // Bank transaction ID
-  note           String?
-  
-  // Admin who confirmed payment
-  confirmedById  String?
-  confirmedBy    User?   @relation("PaymentConfirmations", fields: [confirmedById], references: [id], onDelete: SetNull)
-  confirmedAt    DateTime?
-  
-  dueDate        DateTime?     // Payment deadline
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  @@index([organizationId])
-  @@index([status])
-  @@index([createdAt])
+  PENDING
+  APPROVED
+  REJECTED
+  PROCESSING
+  COMPLETED
+  CANCELLED
 }

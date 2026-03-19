@@ -51,20 +51,24 @@ router.get("/partners/grouped", async (req, res) => {
     > = {};
 
     for (const partner of partners) {
-      const catSlug = partner.businessCategory || "other";
-      if (!grouped[catSlug]) {
-        grouped[catSlug] = {
-          category: catSlug,
-          label: categoryMap.get(catSlug) || catSlug,
-          partners: [],
-        };
+      const catSlugs = partner.businessCategory
+        ? partner.businessCategory.split(",").filter(Boolean)
+        : ["other"];
+      for (const catSlug of catSlugs) {
+        if (!grouped[catSlug]) {
+          grouped[catSlug] = {
+            category: catSlug,
+            label: categoryMap.get(catSlug) || catSlug,
+            partners: [],
+          };
+        }
+        grouped[catSlug].partners.push({
+          id: partner.id,
+          name: partner.name,
+          slug: partner.slug,
+          logoUrl: partner.logoUrl,
+        });
       }
-      grouped[catSlug].partners.push({
-        id: partner.id,
-        name: partner.name,
-        slug: partner.slug,
-        logoUrl: partner.logoUrl,
-      });
     }
 
     res.json(Object.values(grouped));

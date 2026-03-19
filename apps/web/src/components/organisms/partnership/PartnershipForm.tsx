@@ -54,7 +54,7 @@ export function PartnershipForm() {
   const catRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch(`${API}/business-categories`)
+    fetch(`${API}/business-categories?level=0`)
       .then((r) => r.json())
       .then((data: BusinessCategory[]) =>
         setCategories(data?.length ? data : FALLBACK_CATEGORIES),

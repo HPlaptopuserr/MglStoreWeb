@@ -45,64 +45,28 @@ type Partner = {
   };
 };
 
-const CATEGORIES = [
-  { value: "retail", label: "Худалдаа" },
-  { value: "food", label: "Хоол үйлдвэрлэл" },
-  { value: "service", label: "Үйлчилгээ" },
-  { value: "pharmacy", label: "Эм, эмнэлэг" },
-  { value: "electronics", label: "Электроник" },
-  { value: "other", label: "Бусад" },
-];
-
-const categoryStyles: Record<
-  string,
-  { bg: string; text: string; border: string }
-> = {
-  retail: {
-    bg: "bg-blue-50",
-    text: "text-blue-600",
-    border: "border-blue-200",
-  },
-  food: {
-    bg: "bg-orange-50",
-    text: "text-orange-600",
-    border: "border-orange-200",
-  },
-  service: {
-    bg: "bg-purple-50",
-    text: "text-purple-600",
-    border: "border-purple-200",
-  },
-  pharmacy: {
-    bg: "bg-green-50",
-    text: "text-green-600",
-    border: "border-green-200",
-  },
-  electronics: {
-    bg: "bg-cyan-50",
-    text: "text-cyan-600",
-    border: "border-cyan-200",
-  },
-  other: {
-    bg: "bg-slate-50",
-    text: "text-slate-500",
-    border: "border-slate-200",
-  },
+type ApiCategory = {
+  id: string;
+  slug: string;
+  name: string;
+  icon: string | null;
+  sortOrder: number;
+  level: number;
 };
 
 function CategoryDropdown({
   partner,
+  categories,
   onUpdated,
 }: {
   partner: Partner;
+  categories: ApiCategory[];
   onUpdated: (id: string, cat: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const current = CATEGORIES.find((c) => c.value === partner.businessCategory);
-  const style =
-    categoryStyles[partner.businessCategory ?? "other"] ?? categoryStyles.other;
+  const current = categories.find((c) => c.slug === partner.businessCategory);
 
   const handleSelect = async (value: string | null) => {
     setOpen(false);
@@ -129,10 +93,10 @@ function CategoryDropdown({
           setOpen((v) => !v);
         }}
         disabled={saving}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer select-none ${style.bg} ${style.text} ${style.border} hover:opacity-80`}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer select-none bg-indigo-50 text-indigo-600 border-indigo-200 hover:opacity-80"
       >
         <Store size={11} />
-        {saving ? "..." : (current?.label ?? "Ангилал сонгох")}
+        {saving ? "..." : (current?.name ?? "Ангилал сонгох")}
         <ChevronDown
           size={11}
           className={`transition-transform ${open ? "rotate-180" : ""}`}
@@ -141,7 +105,6 @@ function CategoryDropdown({
 
       {open && (
         <>
-          {/* backdrop */}
           <div
             className="fixed inset-0 z-10"
             onClick={(e) => {
@@ -161,24 +124,23 @@ function CategoryDropdown({
               Ангилалгүй
             </button>
             <div className="border-t border-slate-100" />
-            {CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <button
-                key={cat.value}
+                key={cat.slug}
                 onClick={(e) => {
                   e.preventDefault();
-                  handleSelect(cat.value);
+                  handleSelect(cat.slug);
                 }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 transition-colors"
               >
-                {partner.businessCategory === cat.value ? (
+                {partner.businessCategory === cat.slug ? (
                   <Check size={12} className="text-indigo-500 shrink-0" />
                 ) : (
                   <span className="w-3" />
                 )}
-                <span
-                  className={`font-medium ${categoryStyles[cat.value]?.text ?? "text-slate-600"}`}
-                >
-                  {cat.label}
+                <span className="font-medium text-slate-600">
+                  {cat.icon && !cat.icon.startsWith("data:") && !cat.icon.startsWith("http") ? `${cat.icon} ` : ""}
+                  {cat.name}
                 </span>
               </button>
             ))}
@@ -195,6 +157,7 @@ export default function PartnersPage() {
   const [deleteModal, setDeleteModal] = useState<Partner | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
+  const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
 
   const handleDelete = async (partner: Partner) => {
     if (!deleteReason.trim() || deleteReason.trim().length < 5) {
@@ -256,6 +219,10 @@ export default function PartnersPage() {
 
   useEffect(() => {
     fetchPartners();
+    fetch(`${API}/business-categories?level=0`)
+      .then((r) => r.json())
+      .then((data: ApiCategory[]) => setApiCategories(data))
+      .catch(console.error);
   }, []);
 
   return (
@@ -376,6 +343,7 @@ export default function PartnersPage() {
                   {/* ← Inline ангилал сонгогч */}
                   <CategoryDropdown
                     partner={partner}
+                    categories={apiCategories}
                     onUpdated={handleCategoryUpdated}
                   />
 

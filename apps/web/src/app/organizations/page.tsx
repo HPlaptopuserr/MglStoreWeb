@@ -207,7 +207,6 @@ console.log("activeStores:", activeStores);
         </div>
       </div>
 
-      {/* Category Filter */}
       {categories.length > 2 && (
         <div className="border-b border-gray-100 bg-white sticky top-20 sm:top-32 z-30">
           <div className="max-w-7xl mx-auto px-3 sm:px-6">
@@ -230,9 +229,7 @@ console.log("activeStores:", activeStores);
         </div>
       )}
 
-      {/* Content */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-6 sm:pt-10">
-        {/* Results count */}
         <div className="flex items-center justify-between mb-4 sm:mb-8">
           <p className="text-sm text-gray-500">
             <span className="font-bold text-black">

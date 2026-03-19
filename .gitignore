@@ -40,3 +40,5 @@ coverage
 
 # Next.js
 next-env.d.ts
+nul
+_tmp_*

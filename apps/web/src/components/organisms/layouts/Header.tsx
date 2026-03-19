@@ -115,10 +115,8 @@ export const Header = () => {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex flex-col bg-white/95 backdrop-blur-md shadow-sm">
-      {/* ── Row 1: Mobile top bar ── */}
       <div className="border-b border-slate-100">
-        <div className="container mx-auto flex h-14 items-center justify-between gap-3 px-4 md:h-16 md:gap-8">
-          {/* Mobile: hamburger */}
+        <div className="container mx-auto flex h-14 items-center justify-between gap-3 px-4 md:h-16 md:gap-6">
           <button
             type="button"
             onClick={() => setMobileMenuOpen((v) => !v)}
@@ -145,14 +143,18 @@ export const Header = () => {
               height={50}
               priority
             />
+            <div className="hidden items-center gap-8 sm:flex py-3">
+              <div className="h-8 w-px bg-gradient-to-b from-transparent via-amber-400 to-transparent" />
+              <span className="max-w-[300px] font-[family-name:var(--font-marck-script)] text-[15px] leading-[1.3] text-gray-900">
+                Монгол эзэнтэй жижиг дунд бизнес эрхлэгчдийн нэгдсэн холбоо
+              </span>
+            </div>
           </Link>
 
-          {/* Desktop: SearchBar */}
           <div className="hidden max-w-3xl flex-1 items-center justify-center md:flex">
             <SearchBar />
           </div>
 
-          {/* Actions */}
           <div className="flex shrink-0 items-center gap-2 sm:gap-6">
             {/* Desktop: delivery/pickup toggle */}
             {/*             <div className="hidden items-center rounded-full bg-amber-500 p-1 shadow-sm lg:flex">
@@ -184,7 +186,6 @@ export const Header = () => {
               )}
             </div> */}
 
-            {/* Desktop: User */}
             <button
               type="button"
               className="hidden items-center gap-2 text-sm font-medium uppercase text-slate-700 hover:text-amber-600 sm:flex"
@@ -193,7 +194,6 @@ export const Header = () => {
               <span>Нэвтрэх</span>
             </button>
 
-            {/* Mobile: User icon */}
             <button
               type="button"
               className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50 text-gray-600 transition-colors active:bg-gray-100 sm:hidden"
@@ -201,7 +201,6 @@ export const Header = () => {
               <User size={18} />
             </button>
 
-            {/* Cart */}
             <button
               type="button"
               className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3.5 py-2 text-sm font-bold text-white shadow-md hover:bg-amber-600 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-base"
@@ -263,24 +262,43 @@ export const Header = () => {
         </div>
       )}
 
-      {/* ── Row 2 desktop: MegaMenu + PartnerMenu ── */}
+      {/* ── Row 2 desktop: MegaMenu + PartnerMenu + Categories ── */}
       <div className="relative hidden border-t border-gray-100 md:block">
-        <div className="container mx-auto flex h-14 items-center justify-between gap-8 px-4">
+        <div className="container mx-auto flex h-14 items-center gap-8 px-4">
           <div className="flex h-12 items-center gap-8">
             <MegaMenu />
             <PartnerMenu />
           </div>
 
-          {/*  <Link
-            href="#"
-            className="ml-auto flex items-center gap-2 text-sm font-bold text-red-600 transition-colors hover:text-red-700"
-          >
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
-            </span>
-            Today&apos;s Deals
-          </Link> */}
+          {/* Category links */}
+          {mobileCategories.length > 0 && (
+            <div
+              className="flex items-center gap-1 overflow-x-auto ml-2"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
+              {mobileCategories.map((cat) => (
+                <Link
+                  key={cat.id}
+                  href={`/products?category=${cat.id}`}
+                  className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-orange-50 hover:text-orange-600"
+                >
+                  {cat.icon ? (
+                    cat.icon.startsWith("data:image") ||
+                    cat.icon.startsWith("http") ? (
+                      <img
+                        src={cat.icon}
+                        alt=""
+                        className="h-4 w-4 rounded-sm object-contain"
+                      />
+                    ) : (
+                      <span className="text-sm">{cat.icon}</span>
+                    )
+                  ) : null}
+                  {cat.name}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

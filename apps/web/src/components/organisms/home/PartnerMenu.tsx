@@ -117,7 +117,7 @@ export const PartnerMenu = () => {
                               .map((partner, pIdx) => (
                                 <li key={pIdx}>
                                   <Link
-                                    href={`/company/${partner.slug}`}
+                                    href={`/organizations/${partner.slug}`}
                                     className="inline-block text-sm text-gray-500 transition-transform hover:translate-x-1 hover:text-orange-600"
                                   >
                                     {partner.name}

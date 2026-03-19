@@ -10,6 +10,7 @@ export interface DashboardLayoutProps extends Partial<SidebarProps> {
   userEmail?: string;
   userRole?: string;
   userInitials?: string;
+  organizationName?: string;
   onSignOut?: () => void;
 }
 
@@ -19,6 +20,7 @@ export function DashboardLayout({
   userName,
   userRole,
   userInitials,
+  organizationName,
   onSignOut,
   ...sidebarProps
 }: DashboardLayoutProps) {
@@ -40,7 +42,7 @@ export function DashboardLayout({
       {isVendor && <VendorSidebar onSignOut={onSignOut} />}
 
       <div className="flex flex-1 flex-col bg-slate-50 min-h-screen">
-        {isVendor && <VendorHeader />}
+        {isVendor && <VendorHeader userName={organizationName || userName} />}
         <main
           className={`overflow-x-hidden ${
             isAdmin ? "px-10 pt-8 pb-10" : "px-6 pt-6 pb-10"

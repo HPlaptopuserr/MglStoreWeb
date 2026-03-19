@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Inter, Manrope } from "next/font/google";
+import { Inter, Manrope, Marck_Script } from "next/font/google";
 import "./globals.css";
 import { FloatingSideNav } from "@/components/organisms/layouts/FloatingSideNav";
 import { Header } from "@/components/organisms/layouts/Header";
@@ -13,7 +13,13 @@ const inter = Inter({
 
 const manrope = Manrope({
   variable: "--font-manrope",
-  subsets: ["latin"],
+  subsets: ["latin", "cyrillic"],
+});
+
+const marckScript = Marck_Script({
+  variable: "--font-marck-script",
+  weight: "400",
+  subsets: ["latin", "cyrillic"],
 });
 
 export const metadata = {
@@ -28,7 +34,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="mn">
       <body
-        className={`${inter.variable} ${manrope.variable} bg-white antialiased min-h-screen flex flex-col`}
+        className={`${inter.variable} ${manrope.variable} ${marckScript.variable} bg-white antialiased min-h-screen flex flex-col`}
         suppressHydrationWarning
       >
         <SmoothScrollProvider>

@@ -1,12 +1,22 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell, Search } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 
 export default function VendorHeader() {
-  const displayName = "Admin User";
-  const role = "Logistics Manager";
+  const [displayName, setDisplayName] = useState("Vendor User");
+  const [role, setRole] = useState("Vendor");
+
+  useEffect(() => {
+    try {
+      const storedUser = JSON.parse(localStorage.getItem("vendor_user") || "{}");
+      setDisplayName(storedUser.organizationName || storedUser.name || "Vendor User");
+      setRole(storedUser.role || "Vendor");
+    } catch {}
+  }, []);
+
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
