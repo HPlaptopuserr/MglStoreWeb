@@ -56,9 +56,7 @@ export default function Hero() {
   if (banners.length === 0) return null;
 
   return (
-    <div className="relative w-full overflow-hidden rounded-2xl bg-slate-100 group"
-      style={{ height: "clamp(180px, 33vh, 380px)" }}
-    >
+    <div className="relative w-full overflow-hidden rounded-2xl bg-slate-100 group aspect-[16/9] sm:aspect-[21/9] lg:aspect-[3/1]">
       {/* Slides */}
       <div
         className="flex h-full transition-transform duration-500 ease-in-out"
@@ -84,31 +82,31 @@ export default function Hero() {
           {/* Left arrow */}
           <button
             onClick={(e) => { e.preventDefault(); if (timerRef.current) clearTimeout(timerRef.current); prev(); }}
-            className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/80 hover:bg-white shadow-md backdrop-blur-sm flex items-center justify-center text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+            className="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white/70 hover:bg-white shadow-md backdrop-blur-md flex items-center justify-center text-slate-800 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105"
             aria-label="Өмнөх"
           >
-            <ChevronLeft size={18} strokeWidth={2.5} />
+            <ChevronLeft size={20} strokeWidth={2.5} className="mr-0.5" />
           </button>
 
           {/* Right arrow */}
           <button
             onClick={(e) => { e.preventDefault(); if (timerRef.current) clearTimeout(timerRef.current); next(); }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/80 hover:bg-white shadow-md backdrop-blur-sm flex items-center justify-center text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+            className="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white/70 hover:bg-white shadow-md backdrop-blur-md flex items-center justify-center text-slate-800 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105"
             aria-label="Дараагийн"
           >
-            <ChevronRight size={18} strokeWidth={2.5} />
+            <ChevronRight size={20} strokeWidth={2.5} className="ml-0.5" />
           </button>
 
           {/* Dot indicators */}
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
             {banners.map((_, i) => (
               <button
                 key={i}
-                onClick={() => { if (timerRef.current) clearTimeout(timerRef.current); goTo(i); }}
+                onClick={(e) => { e.preventDefault(); if (timerRef.current) clearTimeout(timerRef.current); goTo(i); }}
                 className={`rounded-full transition-all duration-300 ${
                   i === current
-                    ? "bg-white w-5 h-2"
-                    : "bg-white/50 w-2 h-2 hover:bg-white/80"
+                    ? "bg-amber-500 w-6 h-1.5 sm:h-2 sm:w-8"
+                    : "bg-white/60 hover:bg-white/90 w-1.5 h-1.5 sm:w-2 sm:h-2"
                 }`}
                 aria-label={`Слайд ${i + 1}`}
               />

@@ -10,7 +10,8 @@ import {
   X,
   CheckCircle2,
   Loader2,
-  GripVertical,
+  MoveLeft,
+  MoveRight,
 } from "lucide-react";
 import Image from "next/image";
 import { API } from "@/lib/api";
@@ -80,6 +81,17 @@ export default function SectionsPage() {
 
   const removeBanner = (index: number) => {
     setBanners((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const swapBanners = (index1: number, index2: number) => {
+    setBanners((prev) => {
+      const newArr = [...prev];
+      // Swap items
+      const temp = newArr[index1];
+      newArr[index1] = newArr[index2];
+      newArr[index2] = temp;
+      return newArr;
+    });
   };
 
   const handleSave = async () => {
@@ -177,50 +189,78 @@ export default function SectionsPage() {
               </div>
 
               {/* Banner list */}
-              <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {banners.map((url, i) => (
                   <div
                     key={i}
-                    className="relative w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 group"
-                    style={{ height: "200px" }}
+                    className="relative w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 group aspect-[2/1] md:aspect-[5/3] shadow-sm hover:shadow-md transition-all"
                   >
                     <Image
                       src={url}
                       alt={`Баннер ${i + 1}`}
                       fill
-                      className="object-cover"
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
                       unoptimized={url.startsWith("data:")}
                     />
-                    {/* Index badge */}
-                    <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-black/50 backdrop-blur-sm text-white text-xs font-bold px-2.5 py-1 rounded-lg">
-                      <GripVertical size={12} />
-                      Слайд {i + 1}
+                    
+                    {/* Dark gradient overlay on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+                    {/* Order Controls */}
+                    <div className="absolute top-3 left-3 z-10 flex text-white opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 rounded-xl overflow-hidden backdrop-blur-md border border-white/10">
+                      <button
+                        onClick={() => swapBanners(i, i - 1)}
+                        disabled={i === 0}
+                        className="p-1.5 hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                        title="Зүүн тийш зөөх"
+                      >
+                        <MoveLeft size={16} />
+                      </button>
+                      <div className="w-px bg-white/20" />
+                      <button
+                        onClick={() => swapBanners(i, i + 1)}
+                        disabled={i === banners.length - 1}
+                        className="p-1.5 hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                        title="Баруун тийш зөөх"
+                      >
+                        <MoveRight size={16} />
+                      </button>
                     </div>
+
                     {/* Remove */}
                     <button
                       onClick={() => removeBanner(i)}
-                      className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-red-500/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:scale-110 shadow-lg"
+                      title="Устгах"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={15} />
                     </button>
+
+                    {/* Slide Number */}
+                    <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="bg-white/90 text-slate-900 text-xs font-bold px-2.5 py-1 rounded-lg shadow-sm">
+                        Слайд {i + 1}
+                      </span>
+                    </div>
                   </div>
                 ))}
 
                 {/* Add banner button */}
                 {banners.length < MAX_BANNERS && (
-                  <button
+                  <div
                     onClick={() => fileRef.current?.click()}
-                    className="relative w-full rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 cursor-pointer hover:border-violet-400 hover:bg-violet-50/30 transition-colors flex flex-col items-center justify-center gap-3 text-slate-400 hover:text-violet-500"
-                    style={{ height: "160px" }}
+                    className="relative w-full rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/50 cursor-pointer hover:border-violet-400 hover:bg-violet-50/50 transition-all flex flex-col items-center justify-center gap-3 text-slate-400 hover:text-violet-600 aspect-[2/1] md:aspect-[5/3] group shadow-sm"
                   >
-                    <ImagePlus size={36} strokeWidth={1.5} />
+                    <div className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <ImagePlus size={24} className="text-violet-500" strokeWidth={2} />
+                    </div>
                     <div className="text-center">
-                      <p className="font-semibold text-sm">Баннер нэмэх</p>
-                      <p className="text-xs mt-1 text-slate-400">
-                        PNG, JPG, WEBP · {banners.length}/{MAX_BANNERS}
+                      <p className="font-semibold text-sm text-slate-700">Баннер нэмэх</p>
+                      <p className="text-xs mt-1 text-slate-500">
+                        {banners.length} / {MAX_BANNERS}
                       </p>
                     </div>
-                  </button>
+                  </div>
                 )}
               </div>
 
