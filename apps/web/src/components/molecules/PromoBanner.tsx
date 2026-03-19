@@ -56,14 +56,14 @@ export default function Hero() {
   if (banners.length === 0) return null;
 
   return (
-    <div className="relative w-full overflow-hidden rounded-2xl bg-slate-100 group aspect-[16/9] sm:aspect-[21/9] lg:aspect-[3/1]">
+    <div className="relative w-full overflow-hidden rounded-2xl bg-slate-100 group aspect-[5/2] sm:aspect-[10/3] lg:aspect-[21/5]">
       {/* Slides */}
       <div
-        className="flex h-full transition-transform duration-500 ease-in-out"
-        style={{ transform: `translateX(-${current * 100}%)`, width: `${banners.length * 100}%` }}
+        className="flex h-full w-full transition-transform duration-500 ease-in-out"
+        style={{ transform: `translateX(-${current * 100}%)` }}
       >
         {banners.map((url, i) => (
-          <div key={i} className="relative h-full flex-shrink-0" style={{ width: `${100 / banners.length}%` }}>
+          <div key={i} className="relative min-w-full h-full flex-shrink-0">
             <Image
               src={url}
               alt={`Промо баннер ${i + 1}`}
