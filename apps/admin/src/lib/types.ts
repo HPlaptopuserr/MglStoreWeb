@@ -7,7 +7,7 @@ export type JobApplication = {
   age: number | null;
   gender: string | null;
   address: string | null;
-  jobPosition: string | null;
+  jobPosition: { id: string; name: string; slug: string; isActive: boolean; createdAt: string } | null;
   education: string | null;
   salaryExpect: string | null;
   experience: string | null;

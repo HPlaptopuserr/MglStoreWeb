@@ -39,7 +39,7 @@ interface JobApplication {
   age: number | null;
   gender: string | null;
   address: string | null;
-  jobPosition: string | null;
+  jobPosition: { id: string; name: string; slug: string; isActive: boolean; createdAt: string } | null;
   education: string | null;
   salaryExpect: string | null;
   experience: string | null;
@@ -227,7 +227,7 @@ export default function ApplicationsPage() {
 
   const filtered = useMemo(() => {
     if (positionFilter === "ALL") return apps;
-    return apps.filter((a) => a.jobPosition === positionFilter);
+    return apps.filter((a) => a.jobPosition?.name === positionFilter);
   }, [apps, positionFilter]);
 
   const stats = useMemo(() => {
@@ -244,7 +244,7 @@ export default function ApplicationsPage() {
   const positionStats = useMemo(() => {
     const map: Record<string, number> = {};
     for (const a of apps) {
-      const key = a.jobPosition || "other";
+      const key = a.jobPosition?.name || "other";
       map[key] = (map[key] || 0) + 1;
     }
     return map;
@@ -704,7 +704,7 @@ export default function ApplicationsPage() {
                       <td className="px-4 py-3.5">
                         <span className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
                           <Briefcase size={12} />
-                          {item.jobPosition || "—"}
+                          {item.jobPosition?.name || "—"}
                         </span>
                       </td>
 
@@ -866,7 +866,7 @@ export default function ApplicationsPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Briefcase size={12} className="text-slate-400" />
-                      {item.jobPosition || "—"}
+                      {item.jobPosition?.name || "—"}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <GraduationCap size={12} className="text-slate-400" />
@@ -999,7 +999,7 @@ export default function ApplicationsPage() {
                   <DetailItem
                     icon={Briefcase}
                     label="Албан тушаал"
-                    value={selectedApp.jobPosition}
+                    value={selectedApp.jobPosition?.name}
                   />
                   <DetailItem
                     icon={GraduationCap}

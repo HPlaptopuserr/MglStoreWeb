@@ -20,7 +20,7 @@ export const FeaturedStoreCard = ({
       href={`/organizations/${company.slug}`}
       className={`group flex flex-col border border-slate-100 bg-white shadow-sm hover:shadow-xl hover:border-orange-200 transition-all duration-300 snap-start hover:-translate-y-1 ${className || "min-w-70 sm:min-w-[320px]"}`}
     >
-      <div className="relative h-40 w-full bg-slate-100 rounded-t-3xl overflow-hidden">
+      <div className="relative h-40 w-full bg-slate-100 overflow-hidden">
         <Image
           src={company.banner}
           alt={company.name}

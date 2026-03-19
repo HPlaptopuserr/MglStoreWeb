@@ -352,10 +352,7 @@ export default function DashboardPage() {
                         {app.phone}
                       </td>
                       <td className="px-3 py-3 text-sm text-slate-600">
-                        {app.jobPosition
-                          ? JOB_POSITION_LABELS[app.jobPosition] ||
-                            app.jobPosition
-                          : "-"}
+                        {app.jobPosition?.name || "-"}
                       </td>
                       <td className="px-3 py-3 text-sm text-slate-500">
                         {new Date(app.createdAt).toLocaleDateString("mn-MN")}
@@ -413,10 +410,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-500">
                     <span>
-                      {app.jobPosition
-                        ? JOB_POSITION_LABELS[app.jobPosition] ||
-                          app.jobPosition
-                        : "-"}
+                      {app.jobPosition?.name || "-"}
                     </span>
                     <span>
                       {new Date(app.createdAt).toLocaleDateString("mn-MN")}
@@ -641,12 +635,7 @@ export default function DashboardPage() {
                   <DetailItem
                     icon={Briefcase}
                     label="Албан тушаал"
-                    value={
-                      selectedApp.jobPosition
-                        ? JOB_POSITION_LABELS[selectedApp.jobPosition] ||
-                          selectedApp.jobPosition
-                        : null
-                    }
+                    value={selectedApp.jobPosition?.name ?? null}
                   />
                   <DetailItem
                     icon={GraduationCap}

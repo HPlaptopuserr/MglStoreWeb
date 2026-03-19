@@ -99,6 +99,7 @@ router.get("/job-applications", async (req, res) => {
           }
           : {}),
       },
+      include: { jobPosition: true },
       orderBy: { createdAt: "desc" },
     });
 
