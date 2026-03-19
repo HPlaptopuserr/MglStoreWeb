@@ -15,6 +15,7 @@ import {
 import { API } from "@/lib/api";
 import { toCategoryMN } from "@/lib/constants";
 import { InvestorCard } from "@/components/molecules/InvestorCard";
+import { getInvestorRingStyle } from "@/lib/utils";
 
 interface ApiPartner {
   id: string;
@@ -28,6 +29,7 @@ interface ApiPartner {
   isInvestor?: boolean;
   investorTier?: "TOP" | "STRATEGIC" | "INVESTOR" | null;
   investorLevel?: string | null;
+  investmentAmount?: number | null;
 }
 
 interface Investor {
@@ -54,6 +56,8 @@ interface StoreItem {
   rating: number;
   deliveryTime: string;
   products: string[];
+  isInvestor?: boolean;
+  investmentAmount?: number;
 }
 
 const TIER_LABEL: Record<string, string> = {
@@ -81,7 +85,7 @@ export default function OrganizationsPage() {
           const data = await partnersRes.json();
           const activeStores = data
             .filter(
-              (p: ApiPartner) => p.status === "ACTIVE" && !p.isInvestor,
+              (p: ApiPartner) => p.status === "ACTIVE",
             )
             .map((p: ApiPartner) => ({
               id: p.id,
@@ -96,6 +100,8 @@ export default function OrganizationsPage() {
               rating: 5.0,
               deliveryTime: "N/A",
               products: [],
+              isInvestor: p.isInvestor || false,
+              investmentAmount: p.investmentAmount || 0,
             }));
           setStores(activeStores);
         }
@@ -328,16 +334,26 @@ export default function OrganizationsPage() {
                     </span>
                   </div>
 
+
                   {/* Logo overlay on banner */}
                   <div className="absolute -bottom-5 left-3 sm:-bottom-6 sm:left-4">
-                    <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-lg sm:rounded-xl border-2 sm:border-[3px] border-white bg-white shadow-lg overflow-hidden">
-                      <div className="relative w-full h-full">
-                        <Image
-                          src={company.logo}
-                          alt={company.name}
-                          fill
-                          className="object-cover"
-                        />
+                    <div
+                      className="rounded-full"
+                      style={
+                        company.isInvestor && company.investmentAmount
+                          ? { ...getInvestorRingStyle(company.investmentAmount), borderRadius: "9999px" }
+                          : undefined
+                      }
+                    >
+                      <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-full border-2 sm:border-[3px] border-white bg-white shadow-lg overflow-hidden">
+                        <div className="relative w-full h-full rounded-full overflow-hidden">
+                          <Image
+                            src={company.logo}
+                            alt={company.name}
+                            fill
+                            className="object-cover"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -360,9 +376,11 @@ export default function OrganizationsPage() {
                     </div>
                   </div>
 
-                  <p className="text-[11px] sm:text-xs text-gray-400 mb-3 sm:mb-4">
+                  <p className="text-[11px] sm:text-xs text-gray-400 mb-1">
                     {toCategoryMN(company.category)}
                   </p>
+
+
 
                   <div className="hidden sm:flex items-center gap-2 mt-auto">
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 rounded-lg text-[11px] font-medium text-gray-500">

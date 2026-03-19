@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Clock, Star, MapPin, ChevronRight, ShoppingBag } from "lucide-react";
 import type { CompanyCard } from "@mgl/types";
+import { getInvestorRingStyle } from "@/lib/utils";
 
 interface FeaturedStoreCardProps {
   company: CompanyCard;
@@ -39,17 +40,28 @@ export const FeaturedStoreCard = ({
             {company.isOpen ? "Нээлттэй" : "Хаалттай"}
           </span>
         </div>
+
+
       </div>
 
       <div className="flex flex-col flex-1 pb-6 px-6 bg-white relative z-10 rounded-b-3xl">
-        <div className="h-18 w-18 rounded-2xl border-4 border-white bg-white shadow-sm overflow-hidden z-20 -mt-9 mb-3 shrink-0">
-          <div className="relative w-full h-full rounded-[10px] overflow-hidden bg-slate-100">
-            <Image
-              src={company.logo}
-              alt={company.name}
-              fill
-              className="object-cover"
-            />
+        <div
+          className="z-20 -mt-9 mb-3 shrink-0 w-[76px] h-[76px] rounded-full"
+          style={
+            company.isInvestor && company.investmentAmount
+              ? { ...getInvestorRingStyle(company.investmentAmount), borderRadius: "9999px" }
+              : undefined
+          }
+        >
+          <div className="w-full h-full rounded-full border-[3px] border-white bg-white shadow-sm overflow-hidden">
+            <div className="relative w-full h-full rounded-full overflow-hidden bg-slate-100">
+              <Image
+                src={company.logo}
+                alt={company.name}
+                fill
+                className="object-cover"
+              />
+            </div>
           </div>
         </div>
 

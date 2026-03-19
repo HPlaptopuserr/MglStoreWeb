@@ -14,6 +14,8 @@ interface ApiPartner {
   status: string;
   businessCategory?: string;
   type?: string;
+  isInvestor?: boolean;
+  investmentAmount?: number | null;
 }
 
 export const FeaturedStoresSection = () => {
@@ -43,6 +45,8 @@ export const FeaturedStoresSection = () => {
             rating: 5.0,
             deliveryTime: "N/A",
             products: [],
+            isInvestor: p.isInvestor || false,
+            investmentAmount: p.investmentAmount || 0,
           }));
 
         setStores(activeStores);

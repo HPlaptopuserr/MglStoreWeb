@@ -42,4 +42,7 @@ export interface CompanyCard {
     categories?: string[];
 
     products: ProductCardItem[];
+
+    isInvestor?: boolean;
+    investmentAmount?: number;
 }
