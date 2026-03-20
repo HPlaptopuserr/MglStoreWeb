@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { FeaturedStoreCard } from "./FeaturedStoreCard";
 import { API } from "@/lib/api";
 
@@ -75,10 +76,16 @@ export const FeaturedStoresSection = () => {
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
           <div className="mb-5 flex items-center justify-between">
             <h2 className="text-base font-bold text-slate-900">
-              Хамтрагч дэлгүүрүүд
+              Хамтрагч байгууллагууд
             </h2>
 
             <div className="flex items-center gap-2">
+              <Link
+                href="/organizations"
+                className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition-colors px-3 py-1.5 rounded-lg hover:bg-orange-50"
+              >
+                Бүгд ›
+              </Link>
               <button
                 onClick={() => scroll("left")}
                 className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50"

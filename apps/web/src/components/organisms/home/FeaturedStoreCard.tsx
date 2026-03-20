@@ -20,7 +20,7 @@ export const FeaturedStoreCard = ({
       href={`/organizations/${company.slug}`}
       className={`group flex flex-col rounded-3xl border border-slate-200 bg-white shadow-sm hover:shadow-xl hover:border-orange-200 transition-all duration-300 snap-start hover:-translate-y-1 overflow-hidden ${className || "min-w-70 sm:min-w-[320px]"}`}
     >
-      <div className="relative h-40 w-full bg-slate-100 overflow-hidden">
+      <div className="relative h-40 w-full bg-slate-100">
         <Image
           src={company.banner}
           alt={company.name}
@@ -40,20 +40,19 @@ export const FeaturedStoreCard = ({
             {company.isOpen ? "Нээлттэй" : "Хаалттай"}
           </span>
         </div>
-
-
       </div>
 
-      <div className="flex flex-col flex-1 pb-6 px-6 bg-white relative z-10 rounded-b-3xl">
+      <div className="flex flex-col flex-1 pb-6 px-6 bg-white relative z-10 rounded-b-3xl pt-3">
+        {/* Logo */}
         <div
-          className="z-20 -mt-9 mb-3 shrink-0 w-[76px] h-[76px] rounded-full"
+          className="-mt-10 mb-3 shrink-0 w-[76px] h-[76px] rounded-full"
           style={
             company.isInvestor && company.investmentAmount
               ? { ...getInvestorRingStyle(company.investmentAmount), borderRadius: "9999px" }
               : undefined
           }
         >
-          <div className="w-full h-full rounded-full border-[3px] border-white bg-white shadow-sm overflow-hidden">
+          <div className="w-full h-full rounded-full border-[3px] border-white bg-white shadow-md overflow-hidden">
             <div className="relative w-full h-full rounded-full overflow-hidden bg-slate-100">
               <Image
                 src={company.logo}

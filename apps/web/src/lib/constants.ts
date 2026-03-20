@@ -40,10 +40,28 @@ export const CATEGORY_MN: Record<string, string> = {
   IT: "Мэдээллийн технологи",
   it: "Мэдээллийн технологи",
   Бизнес: "Бизнес",
+  Construction: "Барилга",
+  construction: "Барилга",
+  "Convenience-Store": "Тохиромжтой дэлгүүр",
+  "convenience-store": "Тохиромжтой дэлгүүр",
+  Taxi: "Такси",
+  taxi: "Такси",
+  Logistics: "Логистик",
+  logistics: "Логистик",
+  Wholesale: "Бөөний худалдаа",
+  wholesale: "Бөөний худалдаа",
 };
 
-export const toCategoryMN = (cat: string): string =>
-  CATEGORY_MN[cat] || CATEGORY_MN[cat.toLowerCase()] || cat;
+export const toCategoryMN = (cat: string): string => {
+  const stripped = cat.replace(/^-+/, "");
+  return (
+    CATEGORY_MN[cat] ||
+    CATEGORY_MN[cat.toLowerCase()] ||
+    CATEGORY_MN[stripped] ||
+    CATEGORY_MN[stripped.toLowerCase()] ||
+    stripped
+  );
+};
 
 /** Brand accent color used across the web app */
 export const BRAND_ACCENT = "#FFAD02";
