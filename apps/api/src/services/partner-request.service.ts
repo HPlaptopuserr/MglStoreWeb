@@ -218,6 +218,21 @@ export async function approvePartnerRequest(
       });
     }
 
+    // Upsert profile with phone number so vendor can login by phone
+    await tx.profile.upsert({
+      where: { userId: finalUser.id },
+      update: {
+        ...(existingRequest.phoneNumber
+          ? { phoneNumber: existingRequest.phoneNumber }
+          : {}),
+      },
+      create: {
+        userId: finalUser.id,
+        fullName: existingRequest.fullName || existingRequest.organizationName || "",
+        phoneNumber: existingRequest.phoneNumber || null,
+      },
+    });
+
     // Create setup token for vendor
     await tx.vendorSetupToken.create({
       data: {

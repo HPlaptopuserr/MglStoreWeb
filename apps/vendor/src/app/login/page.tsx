@@ -7,7 +7,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const url = process.env.NEXT_PUBLIC_URL || "http://localhost:3000";
 
 export default function VendorLoginPage() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -19,17 +19,23 @@ export default function VendorLoginPage() {
     setError("");
     setIsLoading(true);
 
-    if (!email || !password) {
-      setError("Имэйл болон нууц үгээ бүрэн оруулна уу.");
+    if (!identifier || !password) {
+      setError("Нэвтрэх нэр болон нууц үгээ бүрэн оруулна уу.");
       setIsLoading(false);
       return;
     }
+
+    const isPhone = /^[0-9+\-\s()]{7,15}$/.test(identifier.trim());
 
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        body: JSON.stringify(
+          isPhone
+            ? { phone: identifier.trim(), password }
+            : { email: identifier.trim().toLowerCase(), password },
+        ),
       });
 
       const data = await res.json();
@@ -127,17 +133,17 @@ export default function VendorLoginPage() {
               <div>
                 <label
                   className="block text-sm font-medium text-slate-700 mb-1"
-                  htmlFor="email"
+                  htmlFor="identifier"
                 >
-                  Имэйл хаяг
+                  И-мэйл эсвэл утасны дугаар
                 </label>
                 <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="identifier"
+                  type="text"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors bg-slate-50 focus:bg-white text-slate-900"
-                  placeholder="vendor@company.mn"
+                  placeholder="vendor@company.mn эсвэл 9911xxxx"
                   disabled={isLoading}
                 />
               </div>

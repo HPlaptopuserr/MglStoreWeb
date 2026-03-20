@@ -74,18 +74,50 @@ router.post("/admin/login", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, phone, password } = req.body;
+    const identifier: string | undefined = email || phone;
 
-    if (!email || !password) {
+    if (!identifier || !password) {
       return res.status(400).json({
-        message: "Email болон password шаардлагатай",
+        message: "И-мэйл эсвэл утасны дугаар болон нууц үг шаардлагатай",
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-      include: { profile: true, organization: true },
-    });
+    const isPhone = /^[0-9+\-\s()]{7,15}$/.test(identifier.trim()) && !identifier.includes("@");
+
+    let user;
+    if (isPhone) {
+      const phone = identifier.trim();
+
+      // 1. Profile.phoneNumber-аар хай
+      user = await prisma.user.findFirst({
+        where: { profile: { phoneNumber: phone } },
+        include: { profile: true, organization: true },
+      });
+
+      // 2. Fallback: хуучин vendor-уудын хувьд RegistrationRequest-аас хай
+      if (!user) {
+        const regReq = await prisma.registrationRequest.findFirst({
+          where: {
+            phoneNumber: phone,
+            approvedUserId: { not: null },
+            status: "APPROVED",
+          },
+          select: { approvedUserId: true },
+        });
+        if (regReq?.approvedUserId) {
+          user = await prisma.user.findUnique({
+            where: { id: regReq.approvedUserId },
+            include: { profile: true, organization: true },
+          });
+        }
+      }
+    } else {
+      user = await prisma.user.findUnique({
+        where: { email: identifier.trim().toLowerCase() },
+        include: { profile: true, organization: true },
+      });
+    }
 
     if (!user) {
       return res.status(401).json({ message: "Хэрэглэгч олдсонгүй" });

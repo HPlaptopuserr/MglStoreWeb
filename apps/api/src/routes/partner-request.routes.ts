@@ -24,9 +24,15 @@ router.post("/partner-requests", async (req, res) => {
       note,
     } = req.body;
 
-    if (!email || !organizationName) {
+    if (!organizationName) {
       return res.status(400).json({
-        message: "email болон organizationName шаардлагатай",
+        message: "organizationName шаардлагатай",
+      });
+    }
+
+    if (!email && !phoneNumber) {
+      return res.status(400).json({
+        message: "И-мэйл эсвэл утасны дугаарын аль нэгийг оруулна уу",
       });
     }
 
@@ -161,6 +167,46 @@ router.patch("/partner-requests/:id/reject", async (req, res) => {
       message:
         error instanceof Error ? error.message : "Reject хийхэд алдаа гарлаа",
     });
+  }
+});
+
+// One-time sync: copy phoneNumber from RegistrationRequest → User Profile
+// for already-approved vendors that were created before this fix
+router.post("/partner-requests/sync-profiles", async (req, res) => {
+  try {
+    const approved = await prisma.registrationRequest.findMany({
+      where: {
+        status: ApprovalStatus.APPROVED,
+        approvedUserId: { not: null },
+        phoneNumber: { not: null },
+      },
+      select: {
+        approvedUserId: true,
+        phoneNumber: true,
+        fullName: true,
+        organizationName: true,
+      },
+    });
+
+    let updated = 0;
+    for (const req of approved) {
+      if (!req.approvedUserId || !req.phoneNumber) continue;
+      await prisma.profile.upsert({
+        where: { userId: req.approvedUserId },
+        update: { phoneNumber: req.phoneNumber },
+        create: {
+          userId: req.approvedUserId,
+          fullName: req.fullName || req.organizationName || "",
+          phoneNumber: req.phoneNumber,
+        },
+      });
+      updated++;
+    }
+
+    return res.json({ message: `${updated} vendor profile синк хийгдлээ` });
+  } catch (error) {
+    console.error("sync profiles error", error);
+    return res.status(500).json({ message: "Синк хийхэд алдаа гарлаа" });
   }
 });
 

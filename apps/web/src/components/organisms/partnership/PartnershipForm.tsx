@@ -284,8 +284,9 @@ export function PartnershipForm() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-gray-700 ml-1">
+              <label className="text-sm font-semibold text-gray-700 ml-1 flex items-center gap-1.5">
                 И-мэйл
+                <span className="text-xs font-normal text-gray-400">(сонголтот)</span>
               </label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
@@ -296,7 +297,6 @@ export function PartnershipForm() {
                   onChange={handleChange}
                   placeholder="name@example.com"
                   className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-[#FFB700] focus:border-[#FFB700] block pl-11 p-3.5 outline-none"
-                  required
                 />
               </div>
             </div>
