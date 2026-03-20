@@ -232,4 +232,172 @@ function buildDailySparkline(dates: Date[], days: number): number[] {
   return buckets;
 }
 
+/* ─── GET /vendor/dashboard/stats?organizationId=xxx ─── */
+router.get("/vendor/dashboard/stats", async (req, res) => {
+  try {
+    const { organizationId } = req.query;
+    if (!organizationId || typeof organizationId !== "string") {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [
+      totalProducts,
+      activeProducts,
+      totalServicePosts,
+      activeServicePosts,
+      servicePostViews,
+      stockRequestsByStatus,
+      totalServiceRequests,
+      pendingServiceRequests,
+      inProgressServiceRequests,
+      warehouseCount,
+      recentStockRequests,
+      pendingPayments,
+      recentServiceRequests,
+    ] = await Promise.all([
+      // Products
+      prisma.product.count({
+        where: { organizationId, deletedAt: null },
+      }),
+      prisma.product.count({
+        where: { organizationId, deletedAt: null, isActive: true },
+      }),
+
+      // Service posts (ads)
+      prisma.servicePost.count({
+        where: { organizationId, deletedAt: null },
+      }),
+      prisma.servicePost.count({
+        where: { organizationId, deletedAt: null, isActive: true },
+      }),
+      prisma.servicePost.aggregate({
+        where: { organizationId, deletedAt: null },
+        _sum: { viewCount: true },
+      }),
+
+      // Stock requests by status
+      prisma.warehouseStockRequest.groupBy({
+        by: ["status"],
+        where: { organizationId },
+        _count: { id: true },
+      }),
+
+      // Service requests
+      prisma.serviceRequest.count({ where: { organizationId } }),
+      prisma.serviceRequest.count({
+        where: { organizationId, status: "PENDING" },
+      }),
+      prisma.serviceRequest.count({
+        where: { organizationId, status: "IN_PROGRESS" },
+      }),
+
+      // Warehouses assigned
+      prisma.warehouseOrganization.count({ where: { organizationId } }),
+
+      // Recent 6 stock requests
+      prisma.warehouseStockRequest.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: "desc" },
+        take: 6,
+        select: {
+          id: true,
+          requestNumber: true,
+          status: true,
+          createdAt: true,
+          warehouse: { select: { name: true } },
+          items: { select: { id: true } },
+          payment: { select: { totalAmount: true, status: true } },
+        },
+      }),
+
+      // Pending payment total
+      prisma.stockRequestPayment.aggregate({
+        where: {
+          organizationId,
+          status: "PENDING",
+        },
+        _sum: { totalAmount: true },
+        _count: { id: true },
+      }),
+
+      // Recent 4 service requests
+      prisma.serviceRequest.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: "desc" },
+        take: 4,
+        select: {
+          id: true,
+          title: true,
+          type: true,
+          status: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    // Build stock request status map
+    const srMap: Record<string, number> = {};
+    for (const s of stockRequestsByStatus) {
+      srMap[s.status] = s._count.id;
+    }
+
+    const stockRequests = {
+      pending: srMap["PENDING"] || 0,
+      approved: srMap["APPROVED"] || 0,
+      completed: srMap["COMPLETED"] || 0,
+      rejected: srMap["REJECTED"] || 0,
+      cancelled: srMap["CANCELLED"] || 0,
+      total: stockRequestsByStatus.reduce((a, b) => a + b._count.id, 0),
+    };
+
+    return res.json({
+      products: {
+        total: totalProducts,
+        active: activeProducts,
+        inactive: totalProducts - activeProducts,
+      },
+      servicePosts: {
+        total: totalServicePosts,
+        active: activeServicePosts,
+        totalViews: servicePostViews._sum.viewCount || 0,
+      },
+      stockRequests,
+      serviceRequests: {
+        total: totalServiceRequests,
+        pending: pendingServiceRequests,
+        inProgress: inProgressServiceRequests,
+        completed:
+          totalServiceRequests - pendingServiceRequests - inProgressServiceRequests,
+      },
+      warehouses: warehouseCount,
+      pendingPayments: {
+        count: pendingPayments._count.id,
+        totalAmount: Number(pendingPayments._sum.totalAmount || 0),
+      },
+      recentStockRequests: recentStockRequests.map((r) => ({
+        id: r.id,
+        requestNumber: r.requestNumber,
+        status: r.status,
+        warehouseName: r.warehouse.name,
+        itemCount: r.items.length,
+        totalAmount: r.payment ? Number(r.payment.totalAmount) : null,
+        paymentStatus: r.payment?.status || null,
+        createdAt: r.createdAt,
+      })),
+      recentServiceRequests: recentServiceRequests.map((r) => ({
+        id: r.id,
+        title: r.title,
+        type: r.type,
+        status: r.status,
+        createdAt: r.createdAt,
+      })),
+    });
+  } catch (error) {
+    console.error("[vendor dashboard stats error]", error);
+    return res.status(500).json({ message: "Серверийн алдаа гарлаа" });
+  }
+});
+
 export default router;
