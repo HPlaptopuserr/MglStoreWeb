@@ -115,7 +115,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4 sm:space-y-5 md:space-y-6 pb-4">
-      {/* ─── Header ─── */}
+
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 sm:gap-3">
         <div>
           <div className="flex items-center gap-1.5 mb-0.5">
@@ -140,7 +140,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ─── Stats Grid ─── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 md:gap-4">
         {loading ? (
           <div className="col-span-2 lg:col-span-4 flex items-center justify-center py-12">
