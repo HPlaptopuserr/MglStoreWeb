@@ -64,7 +64,7 @@ export const CATEGORY_COLORS = [
 ];
 
 import type { LucideIcon } from "lucide-react";
-import { Store, Tag, Briefcase } from "lucide-react";
+import { Store, Tag, Briefcase, Wrench } from "lucide-react";
 
 export interface NavLink {
   href: string;
@@ -88,6 +88,13 @@ export const NAV_LINKS: NavLink[] = [
     desc: "Бараа бүтээгдэхүүн",
     icon: Tag,
     color: "bg-amber-50 text-amber-600",
+  },
+  {
+    href: "/services",
+    label: "Үйлчилгээ",
+    desc: "Байгууллагын үйлчилгээнүүд",
+    icon: Wrench,
+    color: "bg-purple-50 text-purple-600",
   },
   {
     href: "/company/partnership",

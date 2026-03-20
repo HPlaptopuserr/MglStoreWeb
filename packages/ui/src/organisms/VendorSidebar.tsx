@@ -11,6 +11,7 @@ import {
   Users,
   RotateCcw,
   ClipboardList,
+  Megaphone,
 } from "lucide-react";
 
 function cn(...classes: Array<string | false | undefined>) {
@@ -21,6 +22,7 @@ const navigation = [
   { name: "Хяналтын самбар", href: "/dashboard", icon: LayoutDashboard },
   { name: "Агуулахууд", href: "/warehouses", icon: Warehouse },
   { name: "Бүтээгдэхүүнүүд", href: "/products", icon: Package },
+  { name: "Үйлчилгээний постууд", href: "/service-posts", icon: Megaphone },
   { name: "Жолооч нар", href: "/drivers", icon: Users },
   { name: "Бараа татах хүсэлт", href: "/shipments", icon: Truck },
   { name: "Буцаалт", href: "/returns", icon: RotateCcw },

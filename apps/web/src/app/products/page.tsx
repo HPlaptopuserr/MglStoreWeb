@@ -1,19 +1,38 @@
 "use client";
 
-import React, { Suspense, useState, useEffect } from "react";
+import React, { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ProductCard } from "@mgl/ui";
-import { products } from "@/lib/product-mock-data";
 import { API } from "@/lib/api";
-import { BRAND_ACCENT } from "@/lib/constants";
 
 const PRODUCTS_PER_PAGE = 16;
+
+type SortKey = "newest" | "price_asc" | "price_desc" | "discount";
 
 interface ApiCategory {
   id: string;
   name: string;
 }
+
+interface ApiProduct {
+  id: string;
+  name: string;
+  price: number;
+  images: { id: string; url: string }[];
+  organization: { id: string; name: string } | null;
+  discounts: { percent: number }[];
+  businessCategoryId: string | null;
+  businessCategory: { id: string; name: string } | null;
+  createdAt: string;
+}
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "newest", label: "Шинэ эхэнд" },
+  { key: "price_asc", label: "Үнэ: Бага → Их" },
+  { key: "price_desc", label: "Үнэ: Их → Бага" },
+  { key: "discount", label: "Хямдралтай эхэнд" },
+];
 
 export default function ProductsPage() {
   return (
@@ -35,25 +54,58 @@ function ProductsContent() {
   const categoryParam = searchParams.get("category");
 
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string | null>(
-    categoryParam,
-  );
+  const [apiProducts, setApiProducts] = useState<ApiProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState<string | null>(categoryParam);
   const [showMore, setShowMore] = useState(false);
+
+  // Filter & Sort state
+  const [sortKey, setSortKey] = useState<SortKey>("newest");
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [discountOnly, setDiscountOnly] = useState(false);
+  const [priceMin, setPriceMin] = useState("");
+  const [priceMax, setPriceMax] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const filterPanelRef = useRef<HTMLDivElement>(null);
+
+  // Close filter panel on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+        setFilterPanelOpen(false);
+      }
+    };
+    if (filterPanelOpen) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [filterPanelOpen]);
 
   useEffect(() => {
     const loadCategories = async () => {
       try {
         const res = await fetch(`${API}/business-categories`);
-        if (res.ok) {
-          const data = await res.json();
-          setApiCategories(data);
-        }
-      } catch (e) {
-        console.error("Failed to load categories", e);
-      }
+        if (res.ok) setApiCategories(await res.json());
+      } catch {}
     };
     loadCategories();
   }, []);
+
+  useEffect(() => {
+    const loadProducts = async () => {
+      setProductsLoading(true);
+      try {
+        const url = activeCategory
+          ? `${API}/products?businessCategoryId=${activeCategory}`
+          : `${API}/products`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          setApiProducts(Array.isArray(data) ? data : []);
+        }
+      } catch {}
+      finally { setProductsLoading(false); }
+    };
+    loadProducts();
+  }, [activeCategory]);
 
   useEffect(() => {
     setActiveCategory(categoryParam);
@@ -62,147 +114,396 @@ function ProductsContent() {
   const handleCategoryClick = (catId: string | null) => {
     setActiveCategory(catId);
     setShowMore(false);
-    if (catId) {
-      router.push(`/products?category=${catId}`, { scroll: false });
-    } else {
-      router.push("/products", { scroll: false });
-    }
+    router.push(catId ? `/products?category=${catId}` : "/products", { scroll: false });
   };
 
-  const activeCategoryName = apiCategories.find(
-    (c) => c.id === activeCategory,
-  )?.name;
-  const displayProducts = showMore ? products : products.slice(0, PRODUCTS_PER_PAGE);
+  const clearFilters = () => {
+    setDiscountOnly(false);
+    setPriceMin("");
+    setPriceMax("");
+    setSearchQuery("");
+    setSortKey("newest");
+  };
+
+  const activeFilterCount = [
+    discountOnly,
+    priceMin !== "",
+    priceMax !== "",
+    searchQuery !== "",
+    sortKey !== "newest",
+  ].filter(Boolean).length;
+
+  // Apply filters + sort client-side
+  const processedProducts = useMemo(() => {
+    let list = [...apiProducts];
+
+    // Search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.organization?.name.toLowerCase().includes(q) ||
+          p.businessCategory?.name.toLowerCase().includes(q)
+      );
+    }
+
+    // Discount only
+    if (discountOnly) {
+      list = list.filter((p) => p.discounts.length > 0);
+    }
+
+    // Price range
+    const min = priceMin !== "" ? parseFloat(priceMin) : null;
+    const max = priceMax !== "" ? parseFloat(priceMax) : null;
+    if (min !== null) list = list.filter((p) => p.price >= min);
+    if (max !== null) list = list.filter((p) => p.price <= max);
+
+    // Sort
+    switch (sortKey) {
+      case "price_asc":
+        list.sort((a, b) => a.price - b.price);
+        break;
+      case "price_desc":
+        list.sort((a, b) => b.price - a.price);
+        break;
+      case "discount":
+        list.sort((a, b) => (b.discounts[0]?.percent ?? 0) - (a.discounts[0]?.percent ?? 0));
+        break;
+      case "newest":
+      default:
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        break;
+    }
+
+    return list;
+  }, [apiProducts, searchQuery, discountOnly, priceMin, priceMax, sortKey]);
+
+  const displayProducts = showMore
+    ? processedProducts
+    : processedProducts.slice(0, PRODUCTS_PER_PAGE);
+
+  const activeCategoryName = apiCategories.find((c) => c.id === activeCategory)?.name;
+
+  // Price bounds for hints
+  const prices = apiProducts.map((p) => p.price);
+  const minPrice = prices.length ? Math.min(...prices) : 0;
+  const maxPrice = prices.length ? Math.max(...prices) : 0;
 
   return (
     <div className="min-h-screen bg-white">
       {/* Breadcrumb */}
       <div className="container mx-auto px-4 lg:px-8 pt-6">
         <nav className="flex items-center gap-2 text-xs text-gray-500 mb-6">
-          <Link href="/" className="hover:underline underline">
-            Нүүр
-          </Link>
+          <Link href="/" className="hover:underline">Нүүр</Link>
           <span>/</span>
-          <Link href="/" className="hover:underline underline">
-            Дэлгүүр
-          </Link>
+          <Link href="/products" className="hover:underline">Дэлгүүр</Link>
           <span>/</span>
-          <span className="text-gray-400">
-            {activeCategoryName ?? "Бүх бараа"}
-          </span>
+          <span className="text-gray-400">{activeCategoryName ?? "Бүх бараа"}</span>
         </nav>
 
-        {/* Title Section */}
+        {/* Title */}
         <div className="mb-6">
           <h1 className="text-2xl md:text-4xl font-black tracking-tight text-black uppercase">
             {activeCategoryName ?? "Бүх бараа бүтээгдэхүүн"}{" "}
             <span className="text-[#FFAD02] text-sm md:text-base font-bold align-middle">
-              ({displayProducts.length})
+              ({processedProducts.length})
             </span>
           </h1>
         </div>
 
-        <div className="mb-8 max-w-3xl">
-          <p className="text-sm text-gray-600 leading-relaxed">
-            Хамгийн шилдэг, хамгийн эрэлттэй бүтээгдэхүүнүүдийг нэг дороос
-            олоорой. Чанартай хүнсний бүтээгдэхүүнээс эхлээд өдөр тутмын
-            хэрэгцээт бараа хүртэл — бүгдийг хамгийн сайн үнээр.{" "}
-            <button className="underline font-medium text-black hover:text-[#FFAD02] transition-colors">
-              Дэлгэрэнгүй
+        {/* Search bar */}
+        <div className="mb-6 relative max-w-md">
+          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Бараа хайх..."
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setShowMore(false); }}
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 text-sm focus:outline-none focus:border-black transition-colors bg-gray-50 focus:bg-white"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
             </button>
-          </p>
+          )}
         </div>
 
-        <div className="flex items-center justify-between border-b border-gray-200 mb-8">
+        {/* Category tabs + filter button row */}
+        <div className="flex items-center justify-between border-b border-gray-200 mb-0">
           <div className="flex items-center gap-0 overflow-x-auto scrollbar-hide -mb-px">
             <button
               onClick={() => handleCategoryClick(null)}
               className={`relative px-4 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap transition-colors ${
-                !activeCategory
-                  ? "text-black"
-                  : "text-gray-400 hover:text-black"
+                !activeCategory ? "text-black" : "text-gray-400 hover:text-black"
               }`}
             >
               Бүгд
-              {!activeCategory && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.75 bg-[#FFAD02]" />
-              )}
+              {!activeCategory && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFAD02]" />}
             </button>
             {apiCategories.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => handleCategoryClick(cat.id)}
                 className={`relative px-4 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap transition-colors ${
-                  activeCategory === cat.id
-                    ? "text-black"
-                    : "text-gray-400 hover:text-black"
+                  activeCategory === cat.id ? "text-black" : "text-gray-400 hover:text-black"
                 }`}
               >
                 {cat.name}
-                {activeCategory === cat.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.75 bg-[#FFAD02]" />
-                )}
+                {activeCategory === cat.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFAD02]" />}
               </button>
             ))}
           </div>
 
-          {/* Filter & Sort */}
-          <button className="hidden md:flex items-center gap-2 px-4 py-2 border text-black border-black text-xs font-medium uppercase tracking-wider hover:bg-black hover:text-white transition-colors shrink-0">
-            Шүүлт & Эрэмбэ
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+          {/* Filter trigger button */}
+          <div className="relative shrink-0 ml-4" ref={filterPanelRef}>
+            <button
+              onClick={() => setFilterPanelOpen((v) => !v)}
+              className={`flex items-center gap-2 px-4 py-2.5 border text-xs font-bold uppercase tracking-wider transition-colors ${
+                filterPanelOpen || activeFilterCount > 0
+                  ? "bg-black text-white border-black"
+                  : "text-black border-black hover:bg-black hover:text-white"
+              }`}
             >
-              <path d="M4 6h16M7 12h10M10 18h4" />
-            </svg>
-          </button>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path d="M4 6h16M7 12h10M10 18h4" />
+              </svg>
+              Шүүлт & Эрэмбэ
+              {activeFilterCount > 0 && (
+                <span className="ml-0.5 w-4 h-4 rounded-full bg-[#FFAD02] text-black text-[10px] font-black flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {/* Dropdown panel */}
+            {filterPanelOpen && (
+              <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-200 shadow-xl z-50">
+                {/* Panel header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                  <span className="text-xs font-bold uppercase tracking-wider text-black">Шүүлт & Эрэмбэ</span>
+                  <button
+                    onClick={clearFilters}
+                    className="text-[11px] text-gray-400 hover:text-black underline transition-colors"
+                  >
+                    Цэвэрлэх
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-5">
+                  {/* Sort */}
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Эрэмбэлэх</p>
+                    <div className="space-y-1">
+                      {SORT_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.key}
+                          onClick={() => { setSortKey(opt.key); setShowMore(false); }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
+                            sortKey === opt.key
+                              ? "bg-black text-white font-medium"
+                              : "text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          {sortKey === opt.key && (
+                            <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                          <span className={sortKey === opt.key ? "" : "ml-[22px]"}>{opt.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="border-t border-gray-100" />
+
+                  {/* Price range */}
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Үнийн хязгаар</p>
+                    {maxPrice > 0 && (
+                      <p className="text-[11px] text-gray-400 mb-2">
+                        ₮{minPrice.toLocaleString()} – ₮{maxPrice.toLocaleString()}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        placeholder="Доод"
+                        value={priceMin}
+                        min={0}
+                        onChange={(e) => { setPriceMin(e.target.value); setShowMore(false); }}
+                        className="w-full px-3 py-1.5 border border-gray-200 text-sm focus:outline-none focus:border-black transition-colors"
+                      />
+                      <span className="text-gray-300 text-sm">—</span>
+                      <input
+                        type="number"
+                        placeholder="Дээд"
+                        value={priceMax}
+                        min={0}
+                        onChange={(e) => { setPriceMax(e.target.value); setShowMore(false); }}
+                        className="w-full px-3 py-1.5 border border-gray-200 text-sm focus:outline-none focus:border-black transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="border-t border-gray-100" />
+
+                  {/* Discount toggle */}
+                  <div>
+                    <button
+                      onClick={() => { setDiscountOnly((v) => !v); setShowMore(false); }}
+                      className="w-full flex items-center justify-between group"
+                    >
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-black">Зөвхөн хямдралтай</p>
+                        <p className="text-[11px] text-gray-400">
+                          {apiProducts.filter((p) => p.discounts.length > 0).length} бараа хямдралтай
+                        </p>
+                      </div>
+                      <div className={`w-10 h-5.5 rounded-full transition-colors relative ${
+                        discountOnly ? "bg-black" : "bg-gray-200"
+                      }`}
+                        style={{ minWidth: "40px", height: "22px" }}
+                      >
+                        <span className={`absolute top-0.5 w-4.5 h-4.5 rounded-full bg-white shadow transition-all ${
+                          discountOnly ? "left-[18px]" : "left-0.5"
+                        }`}
+                          style={{ width: "18px", height: "18px", left: discountOnly ? "20px" : "2px" }}
+                        />
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Apply/close button */}
+                <div className="px-4 pb-4">
+                  <button
+                    onClick={() => setFilterPanelOpen(false)}
+                    className="w-full py-2.5 bg-black text-white text-xs font-bold uppercase tracking-wider hover:bg-[#FFAD02] hover:text-black transition-colors"
+                  >
+                    Хэрэглэх
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Active filter chips */}
+        {activeFilterCount > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pt-3 pb-1">
+            <span className="text-[11px] text-gray-400 uppercase tracking-wider">Идэвхтэй:</span>
+            {sortKey !== "newest" && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
+                {SORT_OPTIONS.find((o) => o.key === sortKey)?.label}
+                <button onClick={() => setSortKey("newest")} className="ml-1 text-gray-400 hover:text-black">×</button>
+              </span>
+            )}
+            {discountOnly && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
+                Хямдралтай
+                <button onClick={() => setDiscountOnly(false)} className="ml-1 text-gray-400 hover:text-black">×</button>
+              </span>
+            )}
+            {(priceMin !== "" || priceMax !== "") && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
+                ₮{priceMin || "0"} – ₮{priceMax || "∞"}
+                <button onClick={() => { setPriceMin(""); setPriceMax(""); }} className="ml-1 text-gray-400 hover:text-black">×</button>
+              </span>
+            )}
+            {searchQuery && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
+                "{searchQuery}"
+                <button onClick={() => setSearchQuery("")} className="ml-1 text-gray-400 hover:text-black">×</button>
+              </span>
+            )}
+            <button onClick={clearFilters} className="text-[11px] text-gray-400 hover:text-black underline ml-1">
+              Бүгдийг арилгах
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Product Grid - 4 columns like Adidas */}
-      <div className="container mx-auto px-4 lg:px-8 pb-12">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
-          {displayProducts.map((product, idx) => (
-            <div
-              key={product.id}
-              className="border border-transparent hover:border-black transition-colors duration-200"
-            >
-              <ProductCard
-                image={product.image}
-                price={product.price}
-                name={product.title}
-                category={["Performance", "Sportswear", "Originals"][idx % 3]}
-                originalPrice={product.originalPrice}
-                storeName={product.store?.name}
-                isPrime={idx % 5 === 0}
-              />
-            </div>
-          ))}
-        </div>
+      {/* Product Grid */}
+      <div className="container mx-auto px-4 lg:px-8 pb-12 mt-6">
+        {productsLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="aspect-square bg-gray-100 animate-pulse" />
+            ))}
+          </div>
+        ) : displayProducts.length === 0 ? (
+          <div className="py-24 text-center">
+            <svg className="w-12 h-12 text-gray-200 mx-auto mb-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            <p className="text-gray-400 text-sm font-medium">
+              {searchQuery || discountOnly || priceMin || priceMax
+                ? "Шүүлтэд тохирох бараа олдсонгүй"
+                : "Энэ ангилалд бараа байхгүй байна"}
+            </p>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={clearFilters}
+                className="mt-3 text-xs underline text-gray-400 hover:text-black"
+              >
+                Шүүлтийг цэвэрлэх
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+            {displayProducts.map((product) => {
+              const discount = product.discounts?.[0]?.percent;
+              const originalPrice = discount ? Math.round(product.price / (1 - discount / 100)) : undefined;
+              return (
+                <div
+                  key={product.id}
+                >
+                  <ProductCard
+                    href={`/products/${product.id}`}
+                    image={product.images?.[0]?.url}
+                    price={product.price}
+                    name={product.name}
+                    category={product.businessCategory?.name}
+                    originalPrice={originalPrice}
+                    storeName={product.organization?.name}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Load More */}
-        {!showMore && products.length > PRODUCTS_PER_PAGE && (
-          <div className="mt-12 flex justify-center">
+        {!showMore && processedProducts.length > PRODUCTS_PER_PAGE && (
+          <div className="mt-12 flex flex-col items-center gap-3">
             <button
               onClick={() => setShowMore(true)}
               className="px-12 py-3.5 bg-black text-white text-xs font-bold uppercase tracking-widest hover:bg-[#FFAD02] hover:text-black transition-colors"
             >
-              Бүгдийг харах ({products.length - PRODUCTS_PER_PAGE} бараа)
+              Цааш харах ({processedProducts.length - PRODUCTS_PER_PAGE} бараа)
             </button>
+            <p className="text-xs text-gray-400">
+              {PRODUCTS_PER_PAGE} / {processedProducts.length} бараа харагдаж байна
+            </p>
           </div>
         )}
 
         {showMore && (
           <div className="mt-12 flex justify-center">
             <button
-              onClick={() => {
-                setShowMore(false);
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
+              onClick={() => { setShowMore(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
               className="px-12 py-3.5 border border-black text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white transition-colors"
             >
               Хураах
@@ -213,3 +514,4 @@ function ProductsContent() {
     </div>
   );
 }
+

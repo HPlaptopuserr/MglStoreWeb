@@ -70,47 +70,50 @@ export const FeaturedStoresSection = () => {
   };
 
   return (
-    <section className="mt-12">
-      <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-900">
-          Хамтрагч дэлгүүрүүд
-        </h2>
+    <section className="py-6">
+      <div className="container mx-auto px-4 lg:px-8">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-base font-bold text-slate-900">
+              Хамтрагч дэлгүүрүүд
+            </h2>
 
-        <div className="hidden md:flex items-center gap-2">
-          <button
-            onClick={() => scroll("left")}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <ChevronLeft size={18} />
-          </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => scroll("left")}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                onClick={() => scroll("right")}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
 
-          <button
-            onClick={() => scroll("right")}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <ChevronRight size={18} />
-          </button>
+          {isLoading ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 p-16 flex items-center justify-center">
+              <Loader2 className="animate-spin text-orange-500" size={32} />
+            </div>
+          ) : stores.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
+              Дэлгүүрийн өгөгдөл олдсонгүй
+            </div>
+          ) : (
+            <div
+              ref={railRef}
+              className="flex gap-4 overflow-x-auto scroll-smooth pb-2 scrollbar-hide snap-x snap-mandatory md:gap-4"
+            >
+              {stores.map((company) => (
+                <FeaturedStoreCard key={company.id} company={company} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      {isLoading ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 p-16 flex items-center justify-center">
-          <Loader2 className="animate-spin text-orange-500" size={32} />
-        </div>
-      ) : stores.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
-          Дэлгүүрийн өгөгдөл олдсонгүй
-        </div>
-      ) : (
-        <div
-          ref={railRef}
-          className="flex gap-4 overflow-x-auto scroll-smooth pb-4 scrollbar-hide snap-x snap-mandatory pt-2 px-2 -mx-2"
-        >
-          {stores.map((company) => (
-            <FeaturedStoreCard key={company.id} company={company} />
-          ))}
-        </div>
-      )}
     </section>
   );
 };

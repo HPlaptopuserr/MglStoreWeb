@@ -2,6 +2,7 @@ import { HeroSection } from "@/components/organisms/home/HeroSection";
 import Categories from "@/components/organisms/home/CategoryRail";
 import { BrandTicker } from "@/components/organisms/home/BrandTicker";
 import { ProductGrid } from "@/components/organisms/home/grid/ProductGrid";
+import { ServiceGrid } from "@/components/organisms/home/grid/ServiceGrid";
 import { PartnershipContact } from "@/components/organisms/partnership/PartnershipContact";
 import { FeaturedStoresSection } from "@/components/organisms/home/FeaturedStoresSection";
 import { InvestorSection } from "@/components/organisms/home/InvestorSection";
@@ -9,32 +10,28 @@ import { PromoBanner } from "@/components/organisms/home/PromoBanner";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen">
-      <div className="container mx-auto px-4 md:px-6">
-        <div className="flex flex-col lg:flex-row gap-6 items-stretch mb-12">
-          <div className="flex-1 min-w-0">
-         <HeroSection />
-          </div>
+    <main className="min-h-screen">
+      {/* Hero + secondary promo */}
+      <div className="bg-white">
+        <div className="container mx-auto px-4 md:px-6 pt-4 pb-6 space-y-4">
+          <HeroSection />
+          <PromoBanner />
         </div>
-        <PromoBanner />
-        <BrandTicker />
-        <FeaturedStoresSection />
-        <Categories />
       </div>
 
-      <div className="container mx-auto px-4 md:px-8 mt-12 mb-20">
-        <ProductGrid />
-      </div>
+      <BrandTicker />
+      <FeaturedStoresSection />
+      <Categories />
+      <ProductGrid />
+      <ServiceGrid />
 
       <div className="container mx-auto px-4 md:px-6">
         <InvestorSection />
       </div>
 
-      <div className="container mx-auto mt-12 mb-20">
+      <div className="container mx-auto px-4 lg:px-8">
         <PartnershipContact />
       </div>
-
-
-    </div>
+    </main>
   );
 }

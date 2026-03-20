@@ -19,10 +19,14 @@ import { CategoryIcon } from "@/components/atoms/CategoryIcon";
 import { useBusinessCategories } from "@/hooks/useBusinessCategories";
 import { CATEGORY_COLORS, NAV_LINKS } from "@/lib/constants";
 import { useRouter, usePathname } from "next/navigation";
+import { useCart } from "@/hooks/useCart";
+import { CartDrawer } from "@/components/organisms/CartDrawer";
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearch, setMobileSearch] = useState("");
+  const [cartOpen, setCartOpen] = useState(false);
+  const { count, total } = useCart();
   const { categories } = useBusinessCategories();
   const router = useRouter();
   const pathname = usePathname();
@@ -54,6 +58,7 @@ export const Header = () => {
   const closeMobile = () => setMobileMenuOpen(false);
 
   return (
+    <>
     <header className="fixed top-0 left-0 right-0 z-50 flex flex-col bg-white/95 backdrop-blur-md shadow-sm">
       <div className="border-b border-slate-100">
         <div className="container mx-auto flex h-14 items-center justify-between gap-3 px-4 md:h-16 md:gap-6">
@@ -113,10 +118,16 @@ export const Header = () => {
 
             <button
               type="button"
-              className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3.5 py-2 text-sm font-bold text-white shadow-md hover:bg-amber-600 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-base"
+              onClick={() => setCartOpen(true)}
+              className="relative flex items-center gap-1.5 rounded-full bg-amber-500 px-3.5 py-2 text-sm font-bold text-white shadow-md hover:bg-amber-600 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-base transition-colors"
             >
               <ShoppingCart size={16} className="sm:h-5 sm:w-5" />
-              <span>₮ 0</span>
+              <span>₮{total > 0 ? total.toLocaleString() : "0"}</span>
+              {count > 0 && (
+                <span className="absolute -top-2 -right-2 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white px-1 shadow">
+                  {count}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -325,5 +336,8 @@ export const Header = () => {
         </div>
       </div>
     </header>
+
+    <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
+    </>
   );
 };

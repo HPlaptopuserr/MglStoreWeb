@@ -5,8 +5,8 @@ import { Handshake, TrendingUp, Briefcase, UserPlus } from "lucide-react";
 
 export const PartnershipContact = () => {
   return (
-    <section className="w-full py-16 px-4 md:px-6 lg:px-8 bg-white">
-      <div className="mx-auto bg-white p-8 md:p-16 border border-gray-100">
+    <section className="w-full py-16 bg-white">
+      <div className="mx-auto bg-white p-8 md:p-16 border border-gray-100   rounded-2xl">
         <h2 className="text-2xl md:text-3xl font-bold text-center text-gray-900 mb-12">
           Хамтын ажиллагаа
         </h2>

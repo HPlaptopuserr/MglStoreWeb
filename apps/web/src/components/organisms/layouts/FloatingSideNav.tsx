@@ -20,7 +20,7 @@ export const FloatingSideNav = () => {
   return (
     <nav
       aria-label="Quick links"
-      className="fixed right-0 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col gap-4 bg-white rounded-l-3xl py-6 px-3 shadow-[-4px_0_24px_rgba(0,0,0,0.08)] border border-gray-100 border-r-0"
+      className="fixed right-0 top-1/2 -translate-y-1/2 z-40 hidden md:flex flex-col gap-4 bg-white rounded-l-3xl py-3 px-3 shadow-[-4px_0_24px_rgba(0,0,0,0.08)] border border-gray-100 border-r-0"
     >
       {navItems.map((item, idx) => (
         <Link

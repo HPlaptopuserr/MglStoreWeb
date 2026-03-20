@@ -50,6 +50,18 @@ interface BackendPartner {
   investmentAmount?: number | null;
 }
 
+export interface ServicePost {
+  id: string;
+  title: string;
+  description?: string;
+  priceText?: string;
+  tags: string[];
+  isActive: boolean;
+  viewCount: number;
+  images: { id: string; url: string }[];
+  createdAt: string;
+}
+
 export interface OrganizationDetailData {
   id: string;
   name: string;
@@ -94,6 +106,7 @@ export interface OrganizationDetailData {
     level?: string | null;
     investmentAmount?: number | null;
   };
+  servicePosts: ServicePost[];
 }
 
 function normalizeHours(value?: string[] | string): string[] {
@@ -171,6 +184,7 @@ function mapPartnerToDetailData(
           stock: product.stock,
         }))
       : [],
+    servicePosts: [],
   };
 }
 
@@ -197,6 +211,20 @@ async function fetchOrganization(
   }
 }
 
+async function fetchServicePosts(organizationId: string): Promise<ServicePost[]> {
+  try {
+    const res = await fetch(
+      `${API}/service-posts?organizationId=${encodeURIComponent(organizationId)}&activeOnly=true`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function OrganizationDetailPage({ params }: PageProps) {
   const { id } = await params;
   const organization = await fetchOrganization(id);
@@ -204,6 +232,9 @@ export default async function OrganizationDetailPage({ params }: PageProps) {
   if (!organization) {
     notFound();
   }
+
+  const servicePosts = await fetchServicePosts(organization.id);
+  organization.servicePosts = servicePosts;
 
   return <BusinessProfileClient data={organization} />;
 }

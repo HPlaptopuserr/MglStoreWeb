@@ -16,6 +16,12 @@ import {
   TrendingUp,
   DollarSign,
   Loader2,
+  Key,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
 } from "lucide-react";
 import { API } from "@/lib/api";
 
@@ -29,6 +35,10 @@ export default function PartnerDetailsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [addInput, setAddInput] = useState("");
   const [lastAdded, setLastAdded] = useState<number | null>(null);
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchPartner = async () => {
@@ -126,6 +136,31 @@ export default function PartnerDetailsPage() {
     } finally {
       setInvestorSaving(false);
     }
+  };
+
+  const handleResetPassword = async (userId: string) => {
+    if (!confirm("Энэ хэрэглэгчийн нууц үгийг шинэчлэхдээ итгэлтэй байна уу?")) return;
+    setResettingUserId(userId);
+    try {
+      const res = await fetch(`${API}/partners/${partner.id}/members/${userId}/reset-password`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setTempPasswords((prev) => ({ ...prev, [userId]: data.tempPassword }));
+      setShowPasswords((prev) => ({ ...prev, [userId]: true }));
+    } catch {
+      alert("Нууц үг шинэчлэхэд алдаа гарлаа");
+    } finally {
+      setResettingUserId(null);
+    }
+  };
+
+  const handleCopy = (text: string, userId: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(userId);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
   };
 
   if (isLoading) {
@@ -251,6 +286,77 @@ export default function PartnerDetailsPage() {
               </div>
             </div>
           </div>
+
+          {/* Login Credentials */}
+          {partner.members && partner.members.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 lg:p-8">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-5 sm:mb-6 flex items-center gap-2">
+                <Key size={18} className="text-indigo-500" />
+                Нэвтрэх мэдээлэл
+              </h3>
+              <div className="space-y-4">
+                {partner.members.map((member: any) => (
+                  <div key={member.id} className="border border-slate-100 rounded-xl p-4 bg-slate-50/50">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">{member.role}</p>
+                        <p className="text-sm font-bold text-slate-800 break-all">{member.fullName || "Нэр байхгүй"}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Mail size={13} className="text-slate-400 shrink-0" />
+                          <span className="text-sm text-slate-600 break-all">{member.email}</span>
+                        </div>
+                        {member.lastLoginAt && (
+                          <p className="text-xs text-slate-400 mt-1">
+                            Сүүлд нэвтэрсэн: {new Date(member.lastLoginAt).toLocaleString("mn-MN")}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleResetPassword(member.userId)}
+                        disabled={resettingUserId === member.userId}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-100 text-indigo-600 disabled:text-slate-400 rounded-lg transition-colors shrink-0"
+                      >
+                        {resettingUserId === member.userId ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <RefreshCw size={13} />
+                        )}
+                        Нууц үг шинэчлэх
+                      </button>
+                    </div>
+
+                    {tempPasswords[member.userId] && (
+                      <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-xs font-semibold text-amber-700 mb-1.5">Түр нууц үг:</p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 text-sm font-mono font-bold text-amber-900 tracking-wider">
+                            {showPasswords[member.userId] ? tempPasswords[member.userId] : "••••••••"}
+                          </code>
+                          <button
+                            onClick={() =>
+                              setShowPasswords((prev) => ({ ...prev, [member.userId]: !prev[member.userId] }))
+                            }
+                            className="p-1.5 rounded-md hover:bg-amber-100 text-amber-600 transition-colors"
+                          >
+                            {showPasswords[member.userId] ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                          <button
+                            onClick={() => handleCopy(tempPasswords[member.userId], member.userId)}
+                            className="p-1.5 rounded-md hover:bg-amber-100 text-amber-600 transition-colors"
+                          >
+                            {copiedId === member.userId ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                          </button>
+                        </div>
+                        <p className="text-xs text-amber-600 mt-1.5">
+                          ⚠️ Хэрэглэгчид энэ нууц үгийг өгч, дараа нь өөрчлүүлэхийг зөвлөнө.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Contact Information */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 lg:p-8">

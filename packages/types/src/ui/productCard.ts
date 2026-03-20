@@ -2,7 +2,8 @@ import type { ID } from "../primitives";
 
 export interface ProductCardProps {
   id?: ID;
-  image: string;
+  href?: string;
+  image?: string;
   images?: string[]; // Multiple images support (2-3 images)
   name: string;
   price: number;
@@ -20,4 +21,5 @@ export interface ProductCardProps {
   colorCount?: number;
   tags?: string[];
   isPrime?: boolean;
+  onAddToCart?: () => void;
 }

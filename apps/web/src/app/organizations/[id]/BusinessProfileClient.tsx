@@ -4,7 +4,7 @@ import React, { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import type { OrganizationDetailData } from "./page";
+import type { OrganizationDetailData, ServicePost } from "./page";
 import {
   Star,
   MapPin,
@@ -24,8 +24,13 @@ import {
   ChevronUp,
   ArrowLeft,
   Crown,
+  Megaphone,
+  Tag,
+  Eye,
 } from "lucide-react";
 import { getInvestorRingStyle } from "@/lib/utils";
+import { ProductDetailOverlay } from "@/components/organisms/ProductDetailOverlay";
+import { ServiceDetailOverlay } from "@/components/organisms/ServiceDetailOverlay";
 
 type ProductItem = OrganizationDetailData["products"][number] & {
   isAvailable?: boolean;
@@ -369,8 +374,97 @@ function InfoCards({ info }: { info: OrganizationDetailData["info"] }) {
   );
 }
 
+function ServicesSection({ posts }: { posts: ServicePost[] }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  if (posts.length === 0) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.65 }}
+      className="mt-12"
+    >
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center text-purple-600">
+          <Megaphone className="w-5 h-5" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Үйлчилгээ</h2>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        {posts.map((post) => {
+          const thumb = post.images?.[0]?.url;
+          return (
+            <motion.div
+              key={post.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onClick={() => setSelectedId(post.id)}
+              className="group flex flex-col bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer"
+            >
+              {thumb ? (
+                <div className="relative w-full aspect-video bg-slate-50 overflow-hidden">
+                  <Image
+                    src={thumb}
+                    alt={post.title}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                    <Eye className="w-7 h-7 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full aspect-video bg-purple-50 flex items-center justify-center">
+                  <Megaphone className="w-10 h-10 text-purple-300" />
+                </div>
+              )}
+              <div className="p-4 flex flex-col flex-1">
+                <h3 className="text-sm font-bold text-slate-900 mb-1 line-clamp-2 leading-tight">
+                  {post.title}
+                </h3>
+                {post.priceText && (
+                  <p className="text-base font-extrabold mb-2" style={{ color: "#FFAD02" }}>
+                    {post.priceText}
+                  </p>
+                )}
+                {post.description && (
+                  <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">
+                    {post.description}
+                  </p>
+                )}
+                {post.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-auto">
+                    {post.tags.slice(0, 3).map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full"
+                      >
+                        <Tag className="w-2.5 h-2.5" />
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {selectedId && (
+        <ServiceDetailOverlay postId={selectedId} onClose={() => setSelectedId(null)} />
+      )}
+    </motion.div>
+  );
+}
+
 function ProductsSection({ products }: { products: ProductItem[] }) {
   const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) =>
@@ -444,7 +538,8 @@ function ProductsSection({ products }: { products: ProductItem[] }) {
                 key={product.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="group flex flex-col bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-md transition-all"
+                onClick={() => setSelectedId(product.id)}
+                className="group flex flex-col bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer"
               >
                 <div className="relative w-full aspect-square bg-slate-50 overflow-hidden">
                   <Image
@@ -454,6 +549,9 @@ function ProductsSection({ products }: { products: ProductItem[] }) {
                     className="object-cover group-hover:scale-105 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                    <Eye className="w-7 h-7 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                  </div>
                   {!isAvailable && (
                     <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] flex items-center justify-center">
                       <span className="bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-full">
@@ -475,6 +573,7 @@ function ProductsSection({ products }: { products: ProductItem[] }) {
                     </span>
                     <button
                       disabled={!isAvailable}
+                      onClick={(e) => e.stopPropagation()}
                       className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
                         isAvailable
                           ? "bg-orange-50 text-orange-600 hover:bg-orange-500 hover:text-white active:scale-95"
@@ -489,6 +588,10 @@ function ProductsSection({ products }: { products: ProductItem[] }) {
             );
           })}
         </div>
+      )}
+
+      {selectedId && (
+        <ProductDetailOverlay productId={selectedId} onClose={() => setSelectedId(null)} />
       )}
     </motion.div>
   );
@@ -636,6 +739,7 @@ export default function BusinessProfileClient({
             <ExpandableDescription text={data.description} />
             <InfoCards info={data.info} />
             <ProductsSection products={data.products as ProductItem[]} />
+            <ServicesSection posts={data.servicePosts} />
           </div>
 
           <div className="w-full lg:w-[340px] shrink-0 hidden lg:block">

@@ -1,5 +1,6 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
+import bcrypt from "bcryptjs";
 
 const router: ExpressRouter = Router();
 
@@ -281,6 +282,24 @@ router.get("/partners/:slugOrId", async (req, res) => {
             publiclyVisible: true,
           },
         },
+        members: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            role: true,
+            createdAt: true,
+            user: {
+              select: {
+                id: true,
+                email: true,
+                isActive: true,
+                lastLoginAt: true,
+                profile: { select: { fullName: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
         products: {
           where: {
             isActive: true,
@@ -334,6 +353,16 @@ router.get("/partners/:slugOrId", async (req, res) => {
         branches: partner._count.branches,
         orders: partner._count.orders,
       },
+      members: partner.members.map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        createdAt: m.createdAt,
+        userId: m.user.id,
+        email: m.user.email,
+        fullName: m.user.profile?.fullName || null,
+        isActive: m.user.isActive,
+        lastLoginAt: m.user.lastLoginAt,
+      })),
       products: partner.products.map((p: any) => ({
         id: p.id,
         name: p.name,
@@ -354,6 +383,33 @@ router.get("/partners/:slugOrId", async (req, res) => {
     res.status(500).json({
       message: "Түншийн мэдээлэл авахад алдаа гарлаа",
     });
+  }
+});
+
+/* ─── POST /partners/:id/members/:userId/reset-password ─────────────── */
+router.post("/partners/:id/members/:userId/reset-password", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+
+    // Generate an 8-char temporary password: letters + digits
+    const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    const tempPassword = Array.from({ length: 8 }, () =>
+      chars[Math.floor(Math.random() * chars.length)]
+    ).join("");
+
+    const hash = await bcrypt.hash(tempPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: hash },
+    });
+
+    return res.json({ tempPassword });
+  } catch (error) {
+    console.error("reset password error", error);
+    return res.status(500).json({ message: "Нууц үг шинэчлэхэд алдаа гарлаа" });
   }
 });
 

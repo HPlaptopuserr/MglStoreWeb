@@ -14,6 +14,8 @@ import vendorSetupRoutes from "./routes/vendor-setup.routes";
 import investorRoutes from "./routes/investors.routes";
 import authRoutes from "./routes/auth.routes";
 import siteSettingsRoutes from "./routes/site-settings.routes";
+import productsRoutes from "./routes/products.routes";
+import servicePostsRoutes from "./routes/service-posts.routes";
 
 dotenv.config();
 
@@ -42,8 +44,8 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json({ limit: "5mb" }));
-app.use(express.urlencoded({ limit: "5mb", extended: true }));
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 app.use("/api", partnerRequestRoutes);
 app.use("/api", partnerRoutes);
@@ -57,6 +59,8 @@ app.use("/api", stockRequestsRoutes);
 app.use("/api", vendorSetupRoutes);
 app.use("/api", investorRoutes);
 app.use("/api", siteSettingsRoutes);
+app.use("/api", productsRoutes);
+app.use("/api", servicePostsRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");

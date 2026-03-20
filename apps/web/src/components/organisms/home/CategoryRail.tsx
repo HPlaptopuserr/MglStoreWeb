@@ -104,8 +104,8 @@ export default function Categories() {
   };
 
   return (
-    <div className="py-16 sm:py-24 bg-white border-y border-gray-100">
-      <div className="mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="py-16 sm:py-24 bg-white">
+      <div className="container mx-auto px-4 lg:px-8 px-4 sm:px-6 lg:px-8">
         <div className="flex items-end justify-between mb-10 sm:mb-12">
           <motion.div
             initial={{ opacity: 0, y: 20 }}

@@ -249,6 +249,7 @@ model BusinessCategory {
 
   parent   BusinessCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children BusinessCategory[] @relation("CategoryHierarchy")
+  products Product[]
 
   @@index([isActive])
   @@index([sortOrder])
@@ -297,11 +298,41 @@ model Organization {
   warehouseAssignments         WarehouseOrganization[]
   stockRequests                WarehouseStockRequest[] @relation("OrganizationStockRequests")
   investorProfile              InvestorProfile?
+  servicePosts                 ServicePost[]
 
   @@index([type])
   @@index([status])
   @@index([deletedAt])
   @@index([scheduledPermanentDeletionAt])
+}
+
+model ServicePost {
+  id             String             @id @default(uuid())
+  organizationId String
+  title          String
+  description    String?
+  priceText      String?
+  tags           String[]           @default([])
+  isActive       Boolean            @default(true)
+  viewCount      Int                @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  deletedAt      DateTime?
+  organization   Organization       @relation(fields: [organizationId], references: [id])
+  images         ServicePostImage[]
+
+  @@index([organizationId, isActive])
+  @@index([deletedAt])
+  @@index([createdAt])
+}
+
+model ServicePostImage {
+  id            String      @id @default(uuid())
+  servicePostId String
+  url           String
+  servicePost   ServicePost @relation(fields: [servicePostId], references: [id], onDelete: Cascade)
+
+  @@index([servicePostId])
 }
 
 model InvestorProfile {
@@ -408,6 +439,7 @@ model Product {
   stock                Int                         @default(0)
   isActive             Boolean                     @default(true)
   categoryId           String?
+  businessCategoryId   String?
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
   deletedAt            DateTime?
@@ -415,6 +447,7 @@ model Product {
   inventoryLogs        InventoryLedger[]
   orderItems           OrderItem[]
   category             Category?                   @relation(fields: [categoryId], references: [id])
+  businessCategory     BusinessCategory?           @relation(fields: [businessCategoryId], references: [id])
   organization         Organization                @relation(fields: [organizationId], references: [id])
   images               ProductImage[]
   productRequests      ProductRequest[]
@@ -424,6 +457,7 @@ model Product {
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
   @@index([categoryId])
+  @@index([businessCategoryId])
   @@index([deletedAt])
   @@index([name])
 }
