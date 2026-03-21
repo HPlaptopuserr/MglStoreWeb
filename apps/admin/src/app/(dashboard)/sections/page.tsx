@@ -12,16 +12,46 @@ import {
   Loader2,
   MoveLeft,
   MoveRight,
+  CreditCard,
+  Printer,
 } from "lucide-react";
 import Image from "next/image";
 import { API } from "@/lib/api";
+import {
+  BusinessCardFront,
+  BusinessCardBack,
+  CARD_COLOR_SCHEMES,
+  type CardColorScheme,
+  type BusinessCardData,
+} from "@mgl/ui";
 
 const SECTIONS = [
   { key: "banner", label: "Промо баннер", icon: ImagePlus },
   { key: "categories", label: "Ангилалууд", icon: Tag },
+  { key: "cards", label: "Карт хэвлэх", icon: CreditCard },
 ];
 
-type SectionKey = "banner" | "categories";
+type SectionKey = "banner" | "categories" | "cards";
+
+type CardPartner = {
+  id: string;
+  name: string;
+  slug: string;
+  type?: string | null;
+  logoUrl?: string | null;
+  bannerUrl?: string | null;
+  businessCategory?: string | null;
+  phone?: string | null;
+  address?: string | null;
+};
+
+const SCHEME_ORDER: CardColorScheme[] = [
+  "default",
+  "dark",
+  "charcoal",
+  "navy",
+  "forest",
+];
 
 const MAX_BANNERS = 3;
 
@@ -37,6 +67,34 @@ export default function SectionsPage() {
   // Categories section state
   const [categories, setCategories] = useState<string[]>([]);
   const [newCat, setNewCat] = useState("");
+
+  // Cards section state
+  const [cardPartners, setCardPartners] = useState<CardPartner[]>([]);
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string>("");
+  const [cardScheme, setCardScheme] = useState<CardColorScheme>("default");
+  const [webBaseUrl, setWebBaseUrl] = useState<string>("https://mglstore.mn");
+  const printAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const envUrl = process.env.NEXT_PUBLIC_WEB_URL;
+    if (envUrl && envUrl.trim()) {
+      setWebBaseUrl(envUrl.trim());
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const { protocol, hostname } = window.location;
+      if (hostname === "localhost" || hostname === "127.0.0.1") {
+        // Admin runs on 3001, web runs on 3000 in local dev
+        setWebBaseUrl("http://localhost:3000");
+        return;
+      }
+      setWebBaseUrl(`${protocol}//${hostname}`);
+      return;
+    }
+
+    setWebBaseUrl("https://mglstore.mn");
+  }, []);
 
   useEffect(() => {
     fetch(`${API}/site-settings`)
@@ -127,6 +185,79 @@ export default function SectionsPage() {
     setCategories(categories.filter((c) => c !== cat));
   };
 
+  // Fetch partners when cards tab is activated
+  useEffect(() => {
+    if (active !== "cards") return;
+    fetch(`${API}/partners`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: CardPartner[]) => {
+        setCardPartners(data);
+        if (!selectedPartnerId && data.length > 0) {
+          setSelectedPartnerId(data[0].id);
+        }
+      })
+      .catch(() => {});
+  }, [active]);
+
+  const handlePrint = () => {
+    const style = document.createElement("style");
+    style.id = "card-print-override";
+    style.textContent = `
+      @media print {
+        @page { margin: 8mm; }
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        body > * { visibility: hidden !important; }
+        #card-print-area, #card-print-area * { visibility: visible !important; }
+        #card-print-area {
+          position: fixed !important;
+          inset: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 24px !important;
+          background: white !important;
+          z-index: 99999 !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    window.print();
+    window.addEventListener(
+      "afterprint",
+      () => {
+        const existing = document.getElementById("card-print-override");
+        if (existing) existing.remove();
+      },
+      { once: true }
+    );
+  };
+
+  const selectedPartner = cardPartners.find((p) => p.id === selectedPartnerId);
+  const profileTarget = selectedPartner
+    ? (selectedPartner.slug?.trim() || selectedPartner.id)
+    : "";
+  const cardData: BusinessCardData | null = selectedPartner
+    ? {
+        name: selectedPartner.name,
+        type: selectedPartner.type ?? undefined,
+        slug: profileTarget,
+        profileTarget,
+        profileId: selectedPartner.id,
+        category: selectedPartner.businessCategory ?? undefined,
+        phone: selectedPartner.phone ?? undefined,
+        address: selectedPartner.address ?? undefined,
+        logoUrl: selectedPartner.logoUrl ?? undefined,
+        bannerUrl: selectedPartner.bannerUrl ?? undefined,
+      }
+    : null;
+  const qrPreviewUrl = cardData
+    ? `${webBaseUrl}/organizations/${encodeURIComponent(cardData.profileTarget || cardData.slug)}${cardData.profileId ? `?oid=${encodeURIComponent(cardData.profileId)}` : ""}`
+    : "";
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -137,20 +268,31 @@ export default function SectionsPage() {
             Нүүр хуудасны агуулгыг удирдана
           </p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors disabled:opacity-60 shadow-sm"
-        >
-          {saving ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : saved ? (
-            <CheckCircle2 size={16} />
-          ) : (
-            <Save size={16} />
-          )}
-          {saved ? "Хадгалагдлаа" : "Хадгалах"}
-        </button>
+        {active === "cards" ? (
+          <button
+            onClick={handlePrint}
+            disabled={!cardData}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-40 shadow-sm"
+          >
+            <Printer size={16} />
+            Карт хэвлэх
+          </button>
+        ) : (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors disabled:opacity-60 shadow-sm"
+          >
+            {saving ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : saved ? (
+              <CheckCircle2 size={16} />
+            ) : (
+              <Save size={16} />
+            )}
+            {saved ? "Хадгалагдлаа" : "Хадгалах"}
+          </button>
+        )}
       </div>
 
       {/* Two-panel layout */}
@@ -343,6 +485,195 @@ export default function SectionsPage() {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── CARDS SECTION ── */}
+          {active === "cards" && (
+            <div className="flex flex-col gap-6">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 mb-1">
+                  Бизнесийн карт хэвлэх
+                </h2>
+                <p className="text-sm text-slate-400">
+                  Гишүүн байгууллагын бизнес карт үүсгэж хэвлэнэ. QR код уншуулахад
+                  байгууллагын профайл руу хөтлөнө.
+                </p>
+              </div>
+
+              {cardPartners.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <Loader2 size={40} strokeWidth={1.5} className="animate-spin text-slate-300" />
+                  <p className="mt-3 text-sm font-medium text-slate-400">
+                    Байгууллагуудыг татаж байна...
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                  {/* Left: controls */}
+                  <div className="lg:col-span-2 flex flex-col gap-6">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                        Байгууллага сонгох
+                      </label>
+                      <select
+                        value={selectedPartnerId}
+                        onChange={(e) => setSelectedPartnerId(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-800 bg-white focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all"
+                      >
+                        {cardPartners.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                        Өнгөний хоршил
+                      </label>
+                      <div className="flex flex-wrap gap-3">
+                        {SCHEME_ORDER.map((key) => {
+                          const s = CARD_COLOR_SCHEMES[key];
+                          const isActive = cardScheme === key;
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => setCardScheme(key)}
+                              title={s.label}
+                              className={`flex flex-col items-center gap-1.5 transition-all ${
+                                isActive
+                                  ? "scale-110"
+                                  : "opacity-60 hover:opacity-100 hover:scale-105"
+                              }`}
+                            >
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  width: 44,
+                                  height: 44,
+                                  borderRadius: 10,
+                                  background: s.bg,
+                                  border: isActive
+                                    ? `3px solid ${s.accent}`
+                                    : "2px solid #e5e7eb",
+                                  boxShadow: isActive
+                                    ? `0 0 0 3px ${s.accent}40`
+                                    : undefined,
+                                  position: "relative",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    position: "absolute",
+                                    bottom: 0,
+                                    right: 0,
+                                    width: "55%",
+                                    height: "55%",
+                                    background: s.accent,
+                                    borderTopLeftRadius: 5,
+                                  }}
+                                />
+                              </span>
+                              <span className="text-[10px] font-semibold text-slate-600 text-center leading-tight max-w-[52px]">
+                                {s.label.split(" ")[0]}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {cardData && (
+                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600 space-y-1.5">
+                        <p>
+                          <span className="font-semibold text-slate-800">Нэр: </span>
+                          {cardData.name}
+                        </p>
+                        {cardData.category && (
+                          <p>
+                            <span className="font-semibold text-slate-800">Ангилал: </span>
+                            {cardData.category}
+                          </p>
+                        )}
+                        {cardData.phone && (
+                          <p>
+                            <span className="font-semibold text-slate-800">Утас: </span>
+                            {cardData.phone}
+                          </p>
+                        )}
+                        {cardData.address && (
+                          <p>
+                            <span className="font-semibold text-slate-800">Хаяг: </span>
+                            {cardData.address}
+                          </p>
+                        )}
+                        <div className="pt-2 mt-2 border-t border-slate-200">
+                          <p className="text-xs font-semibold text-slate-500 mb-1">
+                            QR шалгах линк (хэвлэгдэхгүй)
+                          </p>
+                          <a
+                            href={qrPreviewUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 break-all underline underline-offset-2"
+                          >
+                            {qrPreviewUrl}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right: card preview */}
+                  <div className="lg:col-span-3 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100/70 p-6 flex flex-col gap-6 items-center justify-start pt-6">
+                    {cardData ? (
+                      <>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 text-center">
+                            Нүүр тал
+                          </p>
+                          <BusinessCardFront data={cardData} scheme={cardScheme} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 text-center">
+                            Ар тал
+                          </p>
+                          <BusinessCardBack
+                            data={cardData}
+                            scheme={cardScheme}
+                            webBaseUrl={webBaseUrl}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-20 text-slate-300">
+                        <CreditCard size={48} strokeWidth={1.5} />
+                        <p className="mt-3 text-sm font-medium text-slate-400">
+                          Байгууллага сонгоно уу
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {cardData && (
+                <div
+                  id="card-print-area"
+                  ref={printAreaRef}
+                  style={{ display: "none" }}
+                >
+                  <BusinessCardFront data={cardData} scheme={cardScheme} />
+                  <BusinessCardBack
+                    data={cardData}
+                    scheme={cardScheme}
+                    webBaseUrl={webBaseUrl}
+                  />
                 </div>
               )}
             </div>

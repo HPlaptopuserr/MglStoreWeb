@@ -6,6 +6,9 @@ interface PageProps {
   params: Promise<{
     id: string;
   }>;
+  searchParams?: Promise<{
+    oid?: string;
+  }>;
 }
 
 interface BackendProduct {
@@ -189,13 +192,20 @@ function mapPartnerToDetailData(
 }
 
 async function fetchOrganization(
-  slugOrId: string
+  slugOrId: string,
+  fallbackId?: string
 ): Promise<OrganizationDetailData | null> {
   try {
     // Use dedicated endpoint for single partner
-    const res = await fetch(`${API}/partners/${encodeURIComponent(slugOrId)}`, {
+    let res = await fetch(`${API}/partners/${encodeURIComponent(slugOrId)}`, {
       cache: "no-store",
     });
+
+    if (!res.ok && res.status === 404 && fallbackId && fallbackId !== slugOrId) {
+      res = await fetch(`${API}/partners/${encodeURIComponent(fallbackId)}`, {
+        cache: "no-store",
+      });
+    }
 
     if (!res.ok) {
       if (res.status === 404) return null;
@@ -225,9 +235,11 @@ async function fetchServicePosts(organizationId: string): Promise<ServicePost[]>
   }
 }
 
-export default async function OrganizationDetailPage({ params }: PageProps) {
+export default async function OrganizationDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
-  const organization = await fetchOrganization(id);
+  const query = searchParams ? await searchParams : undefined;
+  const fallbackId = query?.oid?.trim();
+  const organization = await fetchOrganization(id, fallbackId || undefined);
 
   if (!organization) {
     notFound();

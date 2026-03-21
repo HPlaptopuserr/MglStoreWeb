@@ -44,7 +44,9 @@ export const PartnerMenu = () => {
     fetch(`${API}/partners/grouped`)
       .then((res) => res.json())
       .then((data: GroupedCategory[]) => {
-        setCategories(data);
+        // Sort categories by number of partners in descending order
+        const sorted = data.sort((a, b) => b.partners.length - a.partners.length);
+        setCategories(sorted);
         setTotalCount(data.reduce((sum, cat) => sum + cat.partners.length, 0));
       })
       .catch(console.error);

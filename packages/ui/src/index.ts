@@ -19,6 +19,7 @@ export * from "./molecules/NavLinks";
 export * from "./molecules/cards/CategoryCard";
 export * from "./molecules/cards/PartnerCard";
 export * from "./molecules/cards/ProductCard";
+export * from "./molecules/cards/BusinessCard";
 
 // ── Organisms ──
 export * from "./organisms/AdminSidebar";
