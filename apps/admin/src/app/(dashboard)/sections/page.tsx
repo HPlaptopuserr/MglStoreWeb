@@ -14,9 +14,11 @@ import {
   MoveRight,
   CreditCard,
   Printer,
+  Wrench,
 } from "lucide-react";
 import Image from "next/image";
 import { API } from "@/lib/api";
+import { QrGeneratorPanel } from "@/components/organisms/QrGeneratorPanel";
 import {
   BusinessCardFront,
   BusinessCardBack,
@@ -29,9 +31,10 @@ const SECTIONS = [
   { key: "banner", label: "Промо баннер", icon: ImagePlus },
   { key: "categories", label: "Ангилалууд", icon: Tag },
   { key: "cards", label: "Карт хэвлэх", icon: CreditCard },
+  { key: "qr", label: "QR Generator", icon: Wrench },
 ];
 
-type SectionKey = "banner" | "categories" | "cards";
+type SectionKey = "banner" | "categories" | "cards" | "qr";
 
 type CardPartner = {
   id: string;
@@ -263,7 +266,7 @@ export default function SectionsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Сайтын хэсгүүд</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Нэмэлт хэсгүүд</h1>
           <p className="text-sm text-slate-400 mt-0.5">
             Нүүр хуудасны агуулгыг удирдана
           </p>
@@ -277,7 +280,7 @@ export default function SectionsPage() {
             <Printer size={16} />
             Карт хэвлэх
           </button>
-        ) : (
+        ) : active === "banner" || active === "categories" ? (
           <button
             onClick={handleSave}
             disabled={saving}
@@ -292,7 +295,7 @@ export default function SectionsPage() {
             )}
             {saved ? "Хадгалагдлаа" : "Хадгалах"}
           </button>
-        )}
+        ) : null}
       </div>
 
       {/* Two-panel layout */}
@@ -678,6 +681,9 @@ export default function SectionsPage() {
               )}
             </div>
           )}
+
+          {/* ── QR GENERATOR SECTION ── */}
+          {active === "qr" && <QrGeneratorPanel showHeader={false} />}
         </div>
       </div>
     </div>

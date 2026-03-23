@@ -1,5 +1,5 @@
 import React from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { QrGenerator } from "../../atoms/QrGenerator";
 import { cn } from "../../lib/utils";
 
 export type CardColorScheme =
@@ -247,7 +247,7 @@ export function BusinessCardFront({
 
             <div style={{ minWidth: 0 }}>
               <p style={{ margin: 0, fontSize: 11, color: c.sub, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>
-                MGL Store
+                MGL Дэлгүүр
               </p>
               <p
                 style={{
@@ -395,7 +395,7 @@ export function BusinessCardBack({
             boxShadow: "0 8px 20px rgba(0,0,0,0.16)",
           }}
         >
-          <QRCodeSVG
+          <QrGenerator
             value={profileUrl}
             size={154}
             bgColor="#ffffff"

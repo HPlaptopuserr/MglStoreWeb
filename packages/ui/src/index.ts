@@ -9,6 +9,7 @@ export * from "./atoms/Heading";
 export * from "./atoms/Input";
 export * from "./atoms/Label";
 export * from "./atoms/Logo";
+export * from "./atoms/QrGenerator";
 export * from "./atoms/Text";
 export * from "./atoms/WishlistButton";
 

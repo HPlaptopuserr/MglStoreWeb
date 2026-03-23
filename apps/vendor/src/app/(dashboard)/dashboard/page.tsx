@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  Warehouse,
   Package,
   Truck,
   CheckCircle2,
@@ -269,14 +268,6 @@ export default function Dashboard() {
                 sub: `${data?.products.active ?? 0} идэвхтэй`,
                 href: "/products",
                 color: "bg-violet-50 text-violet-600",
-              },
-              {
-                icon: Warehouse,
-                label: "Агуулах",
-                value: data?.warehouses ?? 0,
-                sub: "Хуваарилагдсан",
-                href: "/warehouses",
-                color: "bg-sky-50 text-sky-600",
               },
               {
                 icon: Megaphone,

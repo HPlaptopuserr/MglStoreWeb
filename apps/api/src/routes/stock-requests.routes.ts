@@ -731,6 +731,142 @@ router.get(
   },
 );
 
+// Get centralized warehouse products available to an organization
+router.get(
+  "/stock-requests/catalog/organization/:organizationId",
+  async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+
+      const inventories = await prisma.warehouseInventory.findMany({
+        where: {
+          quantity: { gt: 0 },
+          warehouse: {
+            deletedAt: null,
+            isActive: true,
+            organizations: {
+              some: { organizationId },
+            },
+          },
+          product: {
+            deletedAt: null,
+            isActive: true,
+          },
+        },
+        include: {
+          warehouse: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              district: true,
+            },
+          },
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              price: true,
+              stock: true,
+              images: {
+                take: 1,
+                select: { url: true },
+              },
+              category: {
+                select: { id: true, name: true, slug: true },
+              },
+              businessCategory: {
+                select: { id: true, name: true, slug: true },
+              },
+              organization: {
+                select: { id: true, name: true, slug: true },
+              },
+            },
+          },
+        },
+        orderBy: [
+          { warehouse: { name: "asc" } },
+          { product: { name: "asc" } },
+        ],
+      });
+
+      const categoriesMap = new Map<
+        string,
+        { name: string; itemCount: number; totalQuantity: number }
+      >();
+      const warehousesMap = new Map<string, { id: string; name: string; city: string; district: string }>();
+      const getAlertThreshold = (item: (typeof inventories)[number]) =>
+        item.minQuantity > 0 ? item.minQuantity : 5;
+      const lowStockCount = inventories.filter(
+        (item) => item.quantity <= getAlertThreshold(item),
+      ).length;
+
+      for (const item of inventories) {
+        const categoryName =
+          item.product.businessCategory?.name ||
+          item.product.category?.name ||
+          "Ангилагдаагүй";
+
+        const current = categoriesMap.get(categoryName) || {
+          name: categoryName,
+          itemCount: 0,
+          totalQuantity: 0,
+        };
+
+        current.itemCount += 1;
+        current.totalQuantity += item.quantity;
+        categoriesMap.set(categoryName, current);
+
+        warehousesMap.set(item.warehouse.id, item.warehouse);
+      }
+
+      res.json({
+        organizationId,
+        summary: {
+          totalItems: inventories.length,
+          totalQuantity: inventories.reduce((sum, item) => sum + item.quantity, 0),
+          totalCategories: categoriesMap.size,
+          totalWarehouses: warehousesMap.size,
+          lowStockItems: lowStockCount,
+        },
+        categories: Array.from(categoriesMap.values()).sort((a, b) =>
+          a.name.localeCompare(b.name),
+        ),
+        warehouses: Array.from(warehousesMap.values()).sort((a, b) =>
+          a.name.localeCompare(b.name),
+        ),
+        items: inventories.map((item) => {
+          const alertThreshold = getAlertThreshold(item);
+
+          return {
+            id: item.id,
+            quantity: item.quantity,
+            minQuantity: item.minQuantity,
+            maxQuantity: item.maxQuantity,
+            alertThreshold,
+            isLowStock: item.quantity <= alertThreshold,
+            location: item.location,
+            warehouse: item.warehouse,
+            product: {
+              ...item.product,
+              categoryName:
+                item.product.businessCategory?.name ||
+                item.product.category?.name ||
+                "Ангилагдаагүй",
+            },
+          };
+        }),
+      });
+    } catch (error) {
+      console.error("get organization catalog error", error);
+      res.status(500).json({
+        message: "Нэгдсэн барааны жагсаалт авахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
 // ========== PAYMENT ENDPOINTS ==========
 
 // Get payment history for an organization

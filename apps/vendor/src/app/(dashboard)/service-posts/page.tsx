@@ -124,12 +124,12 @@ function ImageUploadGrid({
                   setDragging(null);
                 }}
                 className={`relative group aspect-square rounded-xl overflow-hidden border-2 cursor-grab active:cursor-grabbing transition-all ${
-                  isFirst ? "border-violet-400" : "border-slate-200"
+                  isFirst ? "border-amber-400" : "border-slate-200"
                 } ${dragging === idx ? "opacity-50 scale-95" : ""}`}
               >
                 <img src={img} alt={`Зураг ${idx + 1}`} className="w-full h-full object-cover" />
                 {isFirst && (
-                  <div className="absolute top-1 left-1 bg-violet-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                  <div className="absolute top-1 left-1 bg-amber-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
                     Үндсэн
                   </div>
                 )}
@@ -150,7 +150,7 @@ function ImageUploadGrid({
               key={idx}
               className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-colors ${
                 canAdd
-                  ? "border-slate-300 hover:border-violet-400 hover:bg-violet-50 cursor-pointer"
+                  ? "border-slate-300 hover:border-amber-400 hover:bg-amber-50 cursor-pointer"
                   : "border-slate-100 bg-slate-50/50 cursor-not-allowed"
               }`}
             >
@@ -351,7 +351,7 @@ export default function ServicePostsPage() {
       {toast && (
         <div
           className={`fixed top-5 right-5 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-semibold text-white transition-all ${
-            toast.type === "success" ? "bg-emerald-500" : "bg-red-500"
+            toast.type === "success" ? "bg-amber-500" : "bg-red-500"
           }`}
         >
           {toast.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
@@ -369,7 +369,7 @@ export default function ServicePostsPage() {
         </div>
         <button
           onClick={openAdd}
-          className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-bold rounded-xl hover:bg-violet-700 transition-colors shadow-sm"
+          className="flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white text-sm font-bold rounded-xl hover:bg-amber-700 transition-colors shadow-sm"
         >
           <Plus size={16} />
           Шинэ пост нэмэх
@@ -379,13 +379,13 @@ export default function ServicePostsPage() {
       {/* Stats bar */}
       <div className="bg-white border-b border-slate-100 px-8 py-3 flex items-center gap-8">
         <div className="flex items-center gap-2">
-          <Megaphone size={15} className="text-violet-500" />
+          <Megaphone size={15} className="text-amber-500" />
           <span className="text-sm text-slate-600">
             Нийт: <strong className="text-slate-900">{posts.length}</strong>
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-400" />
+          <div className="w-2 h-2 rounded-full bg-amber-400" />
           <span className="text-sm text-slate-500">
             Идэвхтэй: <strong className="text-slate-900">{activePosts}</strong>
           </span>
@@ -413,7 +413,7 @@ export default function ServicePostsPage() {
                 placeholder="Хайх..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 h-10 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all"
+                className="w-full pl-9 pr-4 h-10 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
               />
               {searchQuery && (
                 <button
@@ -442,7 +442,7 @@ export default function ServicePostsPage() {
                 {!searchQuery && (
                   <button
                     onClick={openAdd}
-                    className="mt-4 text-xs font-bold text-violet-600 hover:text-violet-800 flex items-center gap-1"
+                    className="mt-4 text-xs font-bold text-amber-600 hover:text-amber-800 flex items-center gap-1"
                   >
                     <Plus size={13} />
                     Эхний постоо нэмэх
@@ -456,8 +456,8 @@ export default function ServicePostsPage() {
                   onClick={() => setSelectedPost(selectedPost?.id === post.id ? null : post)}
                   className={`group bg-white rounded-2xl border transition-all cursor-pointer hover:shadow-md ${
                     selectedPost?.id === post.id
-                      ? "border-violet-400 shadow-md ring-2 ring-violet-100"
-                      : "border-slate-200 hover:border-violet-200"
+                      ? "border-amber-400 shadow-md ring-2 ring-amber-100"
+                      : "border-slate-200 hover:border-amber-200"
                   }`}
                 >
                   <div className="flex items-start gap-3 p-4">
@@ -485,7 +485,7 @@ export default function ServicePostsPage() {
                         <span
                           className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             post.isActive
-                              ? "bg-emerald-100 text-emerald-700"
+                              ? "bg-amber-100 text-amber-700"
                               : "bg-slate-100 text-slate-500"
                           }`}
                         >
@@ -493,7 +493,7 @@ export default function ServicePostsPage() {
                         </span>
                       </div>
                       {post.priceText && (
-                        <p className="text-xs text-violet-600 font-medium mt-1 flex items-center gap-1">
+                        <p className="text-xs text-amber-600 font-medium mt-1 flex items-center gap-1">
                           <DollarSign size={11} />
                           {post.priceText}
                         </p>
@@ -529,10 +529,10 @@ export default function ServicePostsPage() {
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); handleToggleActive(post); }}
-                      className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-violet-600 transition-colors"
+                      className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-amber-600 transition-colors"
                     >
                       {post.isActive ? (
-                        <ToggleRight size={16} className="text-emerald-500" />
+                        <ToggleRight size={16} className="text-amber-500" />
                       ) : (
                         <ToggleLeft size={16} />
                       )}
@@ -542,7 +542,7 @@ export default function ServicePostsPage() {
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); openEdit(post); }}
-                      className="flex items-center gap-1 text-xs text-slate-500 hover:text-violet-600 transition-colors px-2 py-1 rounded-lg hover:bg-violet-50"
+                      className="flex items-center gap-1 text-xs text-slate-500 hover:text-amber-600 transition-colors px-2 py-1 rounded-lg hover:bg-amber-50"
                     >
                       <Pencil size={13} />
                       Засах
@@ -596,7 +596,7 @@ export default function ServicePostsPage() {
             )}
 
             {selectedPost.priceText && (
-              <div className="flex items-center gap-2 mb-4 text-violet-700 font-semibold text-base">
+              <div className="flex items-center gap-2 mb-4 text-amber-700 font-semibold text-base">
                 <DollarSign size={16} />
                 {selectedPost.priceText}
               </div>
@@ -613,7 +613,7 @@ export default function ServicePostsPage() {
                 {selectedPost.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="flex items-center gap-1 text-xs bg-violet-50 text-violet-700 font-medium px-3 py-1 rounded-full"
+                    className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 font-medium px-3 py-1 rounded-full"
                   >
                     <Tag size={11} />
                     {tag}
@@ -625,7 +625,7 @@ export default function ServicePostsPage() {
             <div className="flex gap-3 pt-4 border-t border-slate-100">
               <button
                 onClick={() => openEdit(selectedPost)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-bold rounded-xl hover:bg-violet-700 transition-colors"
+                className="flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white text-sm font-bold rounded-xl hover:bg-amber-700 transition-colors"
               >
                 <Pencil size={14} />
                 Засах
@@ -684,7 +684,7 @@ export default function ServicePostsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                   placeholder="Жишээ: Нягтлан бодох үйлчилгээ"
                   maxLength={200}
-                  className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 transition-all"
+                  className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition-all"
                 />
               </div>
 
@@ -698,7 +698,7 @@ export default function ServicePostsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder="Үйлчилгээний дэлгэрэнгүй тайлбар, онцлог, хамрах хүрээ..."
                   rows={5}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 transition-all resize-none"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition-all resize-none"
                 />
               </div>
 
@@ -718,7 +718,7 @@ export default function ServicePostsPage() {
                     onChange={(e) => setForm((f) => ({ ...f, priceText: e.target.value }))}
                     placeholder="Жишээ: 150,000₮-аас эхлэн, Тохиролцооны..."
                     maxLength={100}
-                    className="w-full h-11 pl-9 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 transition-all"
+                    className="w-full h-11 pl-9 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition-all"
                   />
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
@@ -738,7 +738,7 @@ export default function ServicePostsPage() {
                     value={form.tags}
                     onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
                     placeholder="нягтлан, татвар, санхүү (таслалаар тусгаарлана)"
-                    className="w-full h-11 pl-9 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 transition-all"
+                    className="w-full h-11 pl-9 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition-all"
                   />
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
@@ -766,7 +766,7 @@ export default function ServicePostsPage() {
                   className="transition-colors"
                 >
                   {form.isActive ? (
-                    <ToggleRight size={32} className="text-emerald-500" />
+                    <ToggleRight size={32} className="text-amber-500" />
                   ) : (
                     <ToggleLeft size={32} className="text-slate-400" />
                   )}
@@ -788,7 +788,7 @@ export default function ServicePostsPage() {
                 form=""
                 onClick={handleSave}
                 disabled={saving}
-                className="flex-1 h-11 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                className="flex-1 h-11 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {saving ? (
                   <Loader2 size={16} className="animate-spin" />

@@ -383,7 +383,6 @@ export default function AdminStockRequestsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
@@ -402,9 +401,8 @@ export default function AdminStockRequestsPage() {
         </button>
       </div>
 
-      {/* Pending Alert */}
       {pendingCount > 0 && (
-        <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-100 p-4">
+        <div className="flex items-start gap-3 rounded-xl  bg-[#5B4CFF]/10 border border-[#5B4CFF]/10 p-4">
           <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-amber-800">

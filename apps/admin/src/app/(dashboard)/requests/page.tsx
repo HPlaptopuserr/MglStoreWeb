@@ -1,5 +1,6 @@
 "use client";
 
+import NextLink from "next/link";
 import {
   Search,
   BookOpen,
@@ -16,14 +17,18 @@ import {
   User,
   MapPin,
   Copy,
-  Link,
+  Link as LinkIcon,
   CheckCircle,
+  Truck,
+  Wrench,
+  ArrowRight,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { API_BASE } from "@/lib/api";
+import { API, API_BASE } from "@/lib/api";
 
 type TabType = "partners" | "careers";
+type SectionType = "partner-career" | "stock" | "service";
 
 type PartnerRequest = {
   id: string;
@@ -53,6 +58,25 @@ type JobApplication = {
   personalSkills: string | null;
   languages: string | null;
   createdAt: string;
+};
+
+type StockRequestSummary = {
+  id: string;
+  requestNumber: string;
+  status: string;
+  requestedAt: string;
+  organization?: { name?: string };
+  warehouse?: { name?: string };
+};
+
+type ServiceRequestSummary = {
+  id: string;
+  title: string;
+  typeLabel?: string;
+  status: string;
+  statusLabel?: string;
+  createdAt: string;
+  organization?: { name?: string };
 };
 
 const JOB_POSITION_LABELS: Record<string, string> = {
@@ -90,11 +114,22 @@ function getStatusClass(status: string) {
 
 export default function RequestsPage() {
   const searchParams = useSearchParams();
+  const [activeSection, setActiveSection] = useState<SectionType>(
+    searchParams.get("section") === "stock"
+      ? "stock"
+      : searchParams.get("section") === "service"
+        ? "service"
+        : "partner-career",
+  );
   const [activeTab, setActiveTab] = useState<TabType>(
     searchParams.get("tab") === "jobs" ? "careers" : "partners",
   );
   const [requests, setRequests] = useState<PartnerRequest[]>([]);
   const [jobApps, setJobApps] = useState<JobApplication[]>([]);
+  const [stockRequests, setStockRequests] = useState<StockRequestSummary[]>([]);
+  const [serviceRequests, setServiceRequests] = useState<ServiceRequestSummary[]>(
+    [],
+  );
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
   const [error, setError] = useState("");
@@ -176,6 +211,32 @@ export default function RequestsPage() {
     fetchRequests();
   }, [fetchRequests]);
 
+  useEffect(() => {
+    const fetchSectionLists = async () => {
+      try {
+        if (activeSection === "stock") {
+          const res = await fetch(`${API}/stock-requests`, { cache: "no-store" });
+          if (res.ok) {
+            const data = await res.json();
+            setStockRequests(Array.isArray(data) ? data : []);
+          }
+        }
+
+        if (activeSection === "service") {
+          const res = await fetch(`${API}/service-requests`, { cache: "no-store" });
+          if (res.ok) {
+            const data = await res.json();
+            setServiceRequests(Array.isArray(data) ? data : []);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch section data:", err);
+      }
+    };
+
+    fetchSectionLists();
+  }, [activeSection]);
+
   const approveRequest = async (id: string) => {
     try {
       setLoadingId(id);
@@ -255,10 +316,25 @@ export default function RequestsPage() {
   };
 
   const totalText = useMemo(() => {
+    if (activeSection === "stock") {
+      return `Нийт бараа таталтын хүсэлт: ${stockRequests.length}`;
+    }
+
+    if (activeSection === "service") {
+      return `Нийт үйлчилгээний хүсэлт: ${serviceRequests.length}`;
+    }
+
     const count = activeTab === "partners" ? requests.length : jobApps.length;
     const label = activeTab === "partners" ? "Түнш хүсэлт" : "Ажлын анкет";
     return `Нийт ${label}: ${count}`;
-  }, [requests.length, jobApps.length, activeTab]);
+  }, [
+    activeSection,
+    activeTab,
+    jobApps.length,
+    requests.length,
+    serviceRequests.length,
+    stockRequests.length,
+  ]);
 
   const copyToClipboard = async () => {
     if (inviteLinkModal?.link) {
@@ -290,7 +366,7 @@ export default function RequestsPage() {
 
             <div className="mb-4 rounded-xl bg-slate-50 p-4">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
-                <Link size={16} />
+                <LinkIcon size={16} />
                 Нууц үг тохируулах линк
               </div>
               <p className="mb-3 text-xs text-slate-500">
@@ -402,6 +478,70 @@ export default function RequestsPage() {
             </div>
           </div>
 
+          <div className="mb-4 grid gap-3 md:grid-cols-3">
+            <button
+              type="button"
+              onClick={() => setActiveSection("partner-career")}
+              className={`rounded-2xl border p-4 text-left transition-colors ${
+                activeSection === "partner-career"
+                  ? "border-indigo-300 bg-indigo-50"
+                  : "border-slate-200 bg-white hover:bg-slate-50"
+              }`}
+            >
+              <div className="mb-2 flex items-center gap-2 text-indigo-700">
+                <BookOpen size={16} />
+                <p className="text-sm font-bold">Түнш ба анкет</p>
+              </div>
+              <p className="text-xs text-indigo-700/80">
+                Энэ хэсэг дотроо түнш хүсэлт болон ажлын анкет ангилагдан харагдана.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSection("stock")}
+              className={`group rounded-2xl border p-4 text-left transition-colors ${
+                activeSection === "stock"
+                  ? "border-amber-300 bg-amber-50"
+                  : "border-slate-200 bg-white hover:bg-slate-50"
+              }`}
+            >
+              <div className="mb-2 flex items-center justify-between text-amber-700">
+                <div className="flex items-center gap-2">
+                  <Truck size={16} />
+                  <p className="text-sm font-bold">Бараа таталтын хүсэлт</p>
+                </div>
+                <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+              </div>
+              <p className="text-xs text-amber-800/90">
+                Агуулахын таталтын хүсэлтүүдийг хянах хэсэг
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSection("service")}
+              className={`group rounded-2xl border p-4 text-left transition-colors ${
+                activeSection === "service"
+                  ? "border-emerald-300 bg-emerald-50"
+                  : "border-slate-200 bg-white hover:bg-slate-50"
+              }`}
+            >
+              <div className="mb-2 flex items-center justify-between text-emerald-700">
+                <div className="flex items-center gap-2">
+                  <Wrench size={16} />
+                  <p className="text-sm font-bold">Үйлчилгээний хүсэлт</p>
+                </div>
+                <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+              </div>
+              <p className="text-xs text-emerald-800/90">
+                Маркетинг, зөвлөгөө зэрэг үйлчилгээний хүсэлтүүд
+              </p>
+            </button>
+          </div>
+
+          {activeSection === "partner-career" && (
+            <>
           {/* Tab pills */}
           <div className="flex gap-2 mb-4">
             <button
@@ -921,6 +1061,130 @@ export default function RequestsPage() {
               })
             )}
           </div>
+            </>
+          )}
+
+          {activeSection === "stock" && (
+            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+                <p className="text-sm font-bold text-slate-800">Бараа таталтын хүсэлтүүд</p>
+                <NextLink
+                  href="/requests/stock-requests"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-800"
+                >
+                  Дэлгэрэнгүй <ArrowRight size={14} />
+                </NextLink>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <th className="px-4 py-3">Хүсэлтийн №</th>
+                      <th className="px-4 py-3">Байгууллага</th>
+                      <th className="px-4 py-3">Агуулах</th>
+                      <th className="px-4 py-3">Огноо</th>
+                      <th className="px-4 py-3 text-right">Төлөв</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {stockRequests.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
+                          Бараа таталтын хүсэлт олдсонгүй
+                        </td>
+                      </tr>
+                    ) : (
+                      stockRequests.slice(0, 12).map((item) => (
+                        <tr key={item.id} className="hover:bg-slate-50/70">
+                          <td className="px-4 py-3.5 text-sm font-semibold text-slate-900">
+                            {item.requestNumber}
+                          </td>
+                          <td className="px-4 py-3.5 text-sm text-slate-600">
+                            {item.organization?.name || "-"}
+                          </td>
+                          <td className="px-4 py-3.5 text-sm text-slate-600">
+                            {item.warehouse?.name || "-"}
+                          </td>
+                          <td className="px-4 py-3.5 text-sm text-slate-600">
+                            {item.requestedAt
+                              ? new Date(item.requestedAt).toLocaleDateString("mn-MN")
+                              : "-"}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${getStatusClass(item.status)}`}>
+                              {getStatusLabel(item.status)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "service" && (
+            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+                <p className="text-sm font-bold text-slate-800">Үйлчилгээний хүсэлтүүд</p>
+                <NextLink
+                  href="/services"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+                >
+                  Дэлгэрэнгүй <ArrowRight size={14} />
+                </NextLink>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <th className="px-4 py-3">Гарчиг</th>
+                      <th className="px-4 py-3">Төрөл</th>
+                      <th className="px-4 py-3">Байгууллага</th>
+                      <th className="px-4 py-3">Огноо</th>
+                      <th className="px-4 py-3 text-right">Төлөв</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {serviceRequests.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
+                          Үйлчилгээний хүсэлт олдсонгүй
+                        </td>
+                      </tr>
+                    ) : (
+                      serviceRequests.slice(0, 12).map((item) => (
+                        <tr key={item.id} className="hover:bg-slate-50/70">
+                          <td className="px-4 py-3.5 text-sm font-semibold text-slate-900">
+                            {item.title || "-"}
+                          </td>
+                          <td className="px-4 py-3.5 text-sm text-slate-600">
+                            {item.typeLabel || "-"}
+                          </td>
+                          <td className="px-4 py-3.5 text-sm text-slate-600">
+                            {item.organization?.name || "-"}
+                          </td>
+                          <td className="px-4 py-3.5 text-sm text-slate-600">
+                            {item.createdAt
+                              ? new Date(item.createdAt).toLocaleDateString("mn-MN")
+                              : "-"}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${getStatusClass(item.status)}`}>
+                              {item.statusLabel || getStatusLabel(item.status)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

@@ -134,7 +134,7 @@ function CategorySelector({
               setOpen(false);
             }
           }}
-          className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors text-left hover:bg-violet-50 ${isSelected ? "bg-violet-50 font-semibold text-violet-700" : "text-slate-700"}`}
+          className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors text-left hover:bg-amber-50 ${isSelected ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-700"}`}
           style={{ paddingLeft: `${16 + depth * 20}px` }}
         >
           {hasChildren ? (
@@ -147,7 +147,7 @@ function CategorySelector({
             <span className="w-3.5 shrink-0" />
           )}
           <span className="flex-1">{cat.name}</span>
-          {isSelected && <CheckCircle2 size={14} className="text-violet-600 shrink-0" />}
+          {isSelected && <CheckCircle2 size={14} className="text-amber-600 shrink-0" />}
         </button>
         {hasChildren && isExpanded && (
           <div>{cat.children!.map((child) => renderNode(child, depth + 1))}</div>
@@ -163,7 +163,7 @@ function CategorySelector({
         onClick={() => setOpen((v) => !v)}
         className={`w-full flex items-center justify-between gap-2 h-11 px-4 rounded-xl border text-sm transition-all outline-none ${
           open
-            ? "border-violet-500 ring-2 ring-violet-100 bg-white"
+            ? "border-amber-500 ring-2 ring-amber-100 bg-white"
             : "border-slate-200 bg-slate-50 hover:bg-white hover:border-slate-300"
         }`}
       >
@@ -270,7 +270,7 @@ function ImageUploadGrid({
                   setDragging(null);
                 }}
                 className={`relative group aspect-square rounded-xl overflow-hidden border-2 cursor-grab active:cursor-grabbing transition-all ${
-                  isFirst ? "border-violet-400" : "border-slate-200"
+                  isFirst ? "border-amber-400" : "border-slate-200"
                 } ${dragging === idx ? "opacity-50 scale-95" : ""}`}
               >
                 <img
@@ -279,7 +279,7 @@ function ImageUploadGrid({
                   className="w-full h-full object-cover"
                 />
                 {isFirst && (
-                  <div className="absolute top-1 left-1 bg-violet-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                  <div className="absolute top-1 left-1 bg-amber-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
                     Үндсэн
                   </div>
                 )}
@@ -300,7 +300,7 @@ function ImageUploadGrid({
               key={idx}
               className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-colors ${
                 canAdd
-                  ? "border-slate-300 hover:border-violet-400 hover:bg-violet-50 cursor-pointer"
+                  ? "border-slate-300 hover:border-amber-400 hover:bg-amber-50 cursor-pointer"
                   : "border-slate-100 bg-slate-50/50 cursor-not-allowed"
               }`}
             >
@@ -510,12 +510,12 @@ export default function ProductsPage() {
         <div
           className={`fixed top-5 right-5 z-[100] flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm font-semibold shadow-2xl shadow-black/10 border transition-all animate-in slide-in-from-top-2 ${
             toast.type === "success"
-              ? "bg-white border-emerald-200 text-emerald-700"
+              ? "bg-white border-amber-200 text-amber-700"
               : "bg-white border-red-200 text-red-600"
           }`}
         >
           {toast.type === "success" ? (
-            <CheckCircle2 size={18} className="text-emerald-500" />
+            <CheckCircle2 size={18} className="text-amber-500" />
           ) : (
             <AlertCircle size={18} className="text-red-500" />
           )}
@@ -533,7 +533,7 @@ export default function ProductsPage() {
           <div className="relative flex-1 md:w-72">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
-              className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all"
+              className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
               placeholder="Нэр, SKU хайх..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -541,7 +541,7 @@ export default function ProductsPage() {
           </div>
           <button
             onClick={openAdd}
-            className="flex items-center gap-2 h-10 px-5 rounded-xl bg-violet-600 text-white text-sm font-bold shadow-lg shadow-violet-500/25 hover:bg-violet-700 transition-colors whitespace-nowrap"
+            className="flex items-center gap-2 h-10 px-5 rounded-xl bg-amber-600 text-white text-sm font-bold shadow-lg shadow-amber-500/25 hover:bg-amber-700 transition-colors whitespace-nowrap"
           >
             <Plus size={16} />
             Бараа нэмэх
@@ -552,9 +552,9 @@ export default function ProductsPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Нийт бараа", value: products.length, icon: Package, color: "bg-violet-50 text-violet-600" },
-          { label: "Идэвхтэй", value: products.filter((p) => p.isActive).length, icon: ToggleRight, color: "bg-emerald-50 text-emerald-600" },
-          { label: "Нийт нөөц", value: products.reduce((s, p) => s + p.stock, 0), icon: BarChart2, color: "bg-blue-50 text-blue-600" },
+          { label: "Нийт бараа", value: products.length, icon: Package, color: "bg-amber-50 text-amber-600" },
+          { label: "Идэвхтэй", value: products.filter((p) => p.isActive).length, icon: ToggleRight, color: "bg-amber-50 text-amber-600" },
+          { label: "Нийт нөөц", value: products.reduce((s, p) => s + p.stock, 0), icon: BarChart2, color: "bg-amber-50 text-amber-600" },
           { label: "Ангилалтай", value: products.filter((p) => p.businessCategoryId).length, icon: Layers, color: "bg-amber-50 text-amber-600" },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3 shadow-sm">
@@ -596,7 +596,7 @@ export default function ProductsPage() {
                   </label>
                   <input
                     required
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white transition-all"
+                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
                     placeholder="Жишээ: Самар гоймон"
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -605,7 +605,7 @@ export default function ProductsPage() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">SKU / Код</label>
                   <input
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white transition-all"
+                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
                     placeholder="Жишээ: GM-001-BLK"
                     value={form.sku}
                     onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
@@ -625,7 +625,7 @@ export default function ProductsPage() {
                       type="number"
                       min="0"
                       step="1"
-                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white transition-all"
+                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
                       placeholder="0"
                       value={form.price}
                       onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
@@ -640,7 +640,7 @@ export default function ProductsPage() {
                       type="number"
                       min="0"
                       max="2147483647"
-                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white transition-all"
+                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
                       placeholder="0"
                       value={form.stock}
                       onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
@@ -662,7 +662,7 @@ export default function ProductsPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Тайлбар</label>
                 <textarea
                   rows={3}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white transition-all resize-none"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all resize-none"
                   placeholder="Барааны дэлгэрэнгүй тайлбар..."
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
@@ -685,7 +685,7 @@ export default function ProductsPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex items-center gap-2 h-10 px-7 rounded-xl bg-violet-600 text-white text-sm font-bold shadow-lg shadow-violet-500/25 hover:bg-violet-700 disabled:opacity-60 transition-colors"
+                  className="flex items-center gap-2 h-10 px-7 rounded-xl bg-amber-600 text-white text-sm font-bold shadow-lg shadow-amber-500/25 hover:bg-amber-700 disabled:opacity-60 transition-colors"
                 >
                   {saving && <Loader2 size={15} className="animate-spin" />}
                   {editingId ? "Хадгалах" : "Нэмэх"}
@@ -735,10 +735,10 @@ export default function ProductsPage() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="text-2xl font-black text-violet-600">
+                <span className="text-2xl font-black text-amber-600">
                   ₮{Number(selectedProduct.price).toLocaleString()}
                 </span>
-                <span className={`text-xs font-bold px-2 py-1 rounded-full ${selectedProduct.isActive ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"}`}>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${selectedProduct.isActive ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"}`}>
                   {selectedProduct.isActive ? "Идэвхтэй" : "Идэвхгүй"}
                 </span>
               </div>
@@ -770,7 +770,7 @@ export default function ProductsPage() {
               <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
                 <button
                   onClick={() => openEdit(selectedProduct)}
-                  className="flex items-center justify-center gap-2 h-10 rounded-xl bg-violet-600 text-white text-sm font-bold"
+                  className="flex items-center justify-center gap-2 h-10 rounded-xl bg-amber-600 text-white text-sm font-bold"
                 >
                   <Pencil size={14} />
                   Засах
@@ -799,7 +799,7 @@ export default function ProductsPage() {
       {/* Product Grid */}
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-1 h-6 rounded-full bg-violet-600" />
+          <div className="w-1 h-6 rounded-full bg-amber-600" />
           <h2 className="text-base font-black text-slate-900">Миний бараа</h2>
           <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-500">
             {filtered.length}
@@ -808,7 +808,7 @@ export default function ProductsPage() {
 
         {loading ? (
           <div className="flex justify-center py-24">
-            <Loader2 size={32} className="animate-spin text-violet-400" />
+            <Loader2 size={32} className="animate-spin text-amber-400" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white py-24 text-center">
@@ -821,7 +821,7 @@ export default function ProductsPage() {
             {!searchQuery && (
               <button
                 onClick={openAdd}
-                className="mt-4 inline-flex items-center gap-2 h-10 px-6 rounded-xl bg-violet-600 text-white text-sm font-bold"
+                className="mt-4 inline-flex items-center gap-2 h-10 px-6 rounded-xl bg-amber-600 text-white text-sm font-bold"
               >
                 <Plus size={15} />
                 Эхний бараагаа нэмэх
@@ -834,7 +834,7 @@ export default function ProductsPage() {
               <div
                 key={product.id}
                 onClick={() => setSelectedProduct(product)}
-                className="group relative bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-violet-200 transition-all cursor-pointer overflow-hidden"
+                className="group relative bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-amber-200 transition-all cursor-pointer overflow-hidden"
               >
                 <div className="relative h-44 bg-slate-50">
                   {product.images.length > 0 ? (
@@ -848,7 +848,7 @@ export default function ProductsPage() {
                       <Package size={36} className="text-slate-200" />
                     </div>
                   )}
-                  <div className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${product.isActive ? "bg-emerald-500 text-white" : "bg-slate-300 text-white"}`}>
+                  <div className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${product.isActive ? "bg-amber-500 text-white" : "bg-slate-300 text-white"}`}>
                     {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
                   </div>
                   {product.images.length > 1 && (
@@ -862,8 +862,8 @@ export default function ProductsPage() {
                   <h3 className="font-bold text-slate-900 text-sm leading-tight line-clamp-2">{product.name}</h3>
                   {product.businessCategory && (
                     <div className="flex items-center gap-1 mt-1.5">
-                      <Tag size={10} className="text-violet-400" />
-                      <span className="text-[11px] text-violet-600 font-medium">{product.businessCategory.name}</span>
+                      <Tag size={10} className="text-amber-400" />
+                      <span className="text-[11px] text-amber-600 font-medium">{product.businessCategory.name}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between mt-3">
@@ -878,7 +878,7 @@ export default function ProductsPage() {
                 <div className="absolute inset-x-0 bottom-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={(e) => { e.stopPropagation(); openEdit(product); }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 transition-colors"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors"
                   >
                     <Pencil size={12} />
                     Засах

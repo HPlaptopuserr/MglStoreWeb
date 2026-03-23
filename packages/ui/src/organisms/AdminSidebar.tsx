@@ -13,8 +13,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Tag,
-  Briefcase,
-  ClipboardList,
   Package,
 } from "lucide-react";
 
@@ -25,6 +23,12 @@ export interface NavItem {
   href: string;
   isActive?: boolean;
 }
+
+type NavGroup = {
+  id: string;
+  title: string;
+  items: NavItem[];
+};
 
 export interface SidebarProps {
   userName?: string;
@@ -44,70 +48,84 @@ export function AdminSidebar({
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const defaultNavItems: NavItem[] = [
+  const defaultNavGroups: NavGroup[] = [
     {
-      id: "dashboard",
-      label: "Хяналтын самбар",
-      icon: LayoutGrid,
-      href: "/dashboard",
+      id: "core",
+      title: "Үндсэн",
+      items: [
+        {
+          id: "dashboard",
+          label: "Хяналтын самбар",
+          icon: LayoutGrid,
+          href: "/dashboard",
+        },
+      ],
     },
     {
       id: "requests",
-      label: "Хүсэлтүүд",
-      icon: Users,
-      href: "/requests",
+      title: "Хүсэлтүүд",
+      items: [
+        {
+          id: "requests",
+          label: "Хүсэлтүүд",
+          icon: Users,
+          href: "/requests",
+        },
+      ],
     },
     {
-      id: "job-applications",
-      label: "Анкет",
-      icon: Briefcase,
-      href: "/applications",
+      id: "catalog",
+      title: "Каталог ба түнш",
+      items: [
+        {
+          id: "partners",
+          label: "Түншүүд",
+          icon: Users,
+          href: "/partners",
+        },
+        {
+          id: "warehouses",
+          label: "Агуулах",
+          icon: Package,
+          href: "/warehouses",
+        },
+      ],
     },
     {
-      id: "partners",
-      label: "Түншүүд",
-      icon: Users,
-      href: "/partners",
+      id: "content",
+      title: "Сайт",
+      items: [
+        {
+          id: "sections",
+          label: "Нэмэлт хэсгүүд",
+          icon: Layers,
+          href: "/sections",
+        },
+      ],
     },
     {
-      id: "services",
-      label: "Үйлчилгээний хүсэлт",
-      icon: ClipboardList,
-      href: "/services",
-    },
-    {
-      id: "warehouses",
-      label: "Агуулах",
-      icon: Package,
-      href: "/warehouses",
-    },
-    {
-      id: "stock-requests",
-      label: "Бараа татах хүсэлт",
-      icon: ClipboardList,
-      href: "/requests/stock-requests",
-    },
-    {
-      id: "categories",
-      label: "Бизнесийн ангиллал",
-      icon: Tag,
-      href: "/categories",
-    },
-    {
-      id: "sections",
-      label: "Сайтын хэсгүүд",
-      icon: Layers,
-      href: "/sections",
-    },
-    {
-      id: "settings",
-      label: "Тохиргоо",
-      icon: Settings,
-      href: "/settings",
+      id: "system",
+      title: "Систем",
+      items: [
+        {
+          id: "categories",
+          label: "Бизнесийн ангилал",
+          icon: Tag,
+          href: "/categories",
+        },
+        {
+          id: "settings",
+          label: "Тохиргоо",
+          icon: Settings,
+          href: "/settings",
+        },
+      ],
     },
   ];
 
-  const items = navItems || defaultNavItems;
+  const navGroups: NavGroup[] = navItems
+    ? [{ id: "custom", title: "Цэс", items: navItems }]
+    : defaultNavGroups;
 
   return (
     <>
@@ -126,7 +144,7 @@ export function AdminSidebar({
           px-4 pt-8 pb-6
           transition-all duration-300
           h-screen
-          fixed top-0 left-0 z-40 overflow-y-auto pb-10
+          fixed top-0 left-0 z-40 overflow-y-auto overflow-x-visible pb-10
           hidden md:flex
           md:block
           py-10
@@ -134,13 +152,13 @@ export function AdminSidebar({
       >
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute -right-3 top-8 z-10 hidden rounded-full border border-slate-200 bg-white p-1 text-slate-500 shadow-sm hover:text-[#5B4CFF] md:flex"
+          className="absolute -right-3 top-1/2 z-50 flex -translate-y-1/2 rounded-full border border-slate-200 bg-white p-1 text-slate-500 shadow-md transition-all hover:scale-105 hover:text-[#5B4CFF]"
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {isCollapsed ? (
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-6 w-6" />
           ) : (
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-6 w-6" />
           )}
         </button>
 
@@ -160,40 +178,50 @@ export function AdminSidebar({
           )}
         </div>
 
-        <nav className="flex-1 space-y-2">
-          {items.map((item) => {
-            const Icon = item.icon;
-            const isActive =
-              item.isActive !== undefined
-                ? item.isActive
-                : item.href === "/dashboard"
-                  ? pathname === "/dashboard"
-                  : pathname?.startsWith(item.href);
+        <nav className="flex-1 space-y-5">
+          {navGroups.map((group) => (
+            <div key={group.id} className="space-y-2">
+              {!isCollapsed && (
+                <p className="px-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  {group.title}
+                </p>
+              )}
 
-            return (
-              <Link
-                key={item.id}
-                href={item.href}
-                title={isCollapsed ? item.label : undefined}
-                className={`
-                  flex items-center rounded-2xl transition-all duration-200
-                  ${isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"}
-                  ${
-                    isActive
-                      ? "bg-[#5B4CFF]/10 text-[#5B4CFF] font-semibold"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium"
-                  }
-                `}
-              >
-                <Icon className="h-5 w-5 shrink-0" />
-                {!isCollapsed && (
-                  <span className="truncate whitespace-nowrap">
-                    {item.label}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive =
+                  item.isActive !== undefined
+                    ? item.isActive
+                    : item.href === "/dashboard"
+                      ? pathname === "/dashboard"
+                      : pathname?.startsWith(item.href);
+
+                return (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    title={isCollapsed ? item.label : undefined}
+                    className={`
+                      flex items-center rounded-2xl transition-all duration-200
+                      ${isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"}
+                      ${
+                        isActive
+                          ? "bg-[#5B4CFF]/10 text-[#5B4CFF] font-semibold"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium"
+                      }
+                    `}
+                  >
+                    <Icon className="h-5 w-5 shrink-0" />
+                    {!isCollapsed && (
+                      <span className="truncate whitespace-nowrap">
+                        {item.label}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="mt-6 border-t border-slate-100 pt-4">
@@ -233,7 +261,7 @@ export function AdminSidebar({
               `}
             >
               <LogOut className="h-4 w-4 shrink-0" />
-              {!isCollapsed && <span>Sign Out</span>}
+              {!isCollapsed && <span>Гарах</span>}
             </button>
           </div>
         </div>
