@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { API } from "@/lib/api";
-import { QrGeneratorPanel } from "@/components/organisms/QrGeneratorPanel";
+import { QrGeneratorPanel } from "@/components/organisms";
 import {
   BusinessCardFront,
   BusinessCardBack,
@@ -57,6 +57,19 @@ const SCHEME_ORDER: CardColorScheme[] = [
 ];
 
 const MAX_BANNERS = 3;
+const PRINT_COPIES = 8;
+const PRINT_SCALE = 0.84;
+
+function buildBackPrintOrder(total: number, columns: number): number[] {
+  const order: number[] = [];
+  for (let i = 0; i < total; i += columns) {
+    const row = Array.from({ length: columns }, (_, idx) => i + idx).filter(
+      (idx) => idx < total,
+    );
+    order.push(...row.reverse());
+  }
+  return order;
+}
 
 export default function SectionsPage() {
   const [active, setActive] = useState<SectionKey>("banner");
@@ -87,12 +100,27 @@ export default function SectionsPage() {
 
     if (typeof window !== "undefined") {
       const { protocol, hostname } = window.location;
+      const host = hostname.toLowerCase();
+
       if (hostname === "localhost" || hostname === "127.0.0.1") {
         // Admin runs on 3001, web runs on 3000 in local dev
         setWebBaseUrl("http://localhost:3000");
         return;
       }
-      setWebBaseUrl(`${protocol}//${hostname}`);
+
+      // Map admin/vendor domains to the public web domain for QR/profile links.
+      if (host === "mgl-admin.onrender.com" || host === "mgl-vendor.onrender.com") {
+        setWebBaseUrl("https://mgl-web-n7wg.onrender.com");
+        return;
+      }
+
+      if (host.startsWith("admin.") || host.startsWith("vendor.")) {
+        const rootHost = host.split(".").slice(1).join(".");
+        setWebBaseUrl(`${protocol}//${rootHost}`);
+        return;
+      }
+
+      setWebBaseUrl(`${protocol}//${host}`);
       return;
     }
 
@@ -203,40 +231,100 @@ export default function SectionsPage() {
   }, [active]);
 
   const handlePrint = () => {
+    if (!printAreaRef.current) return;
+
+    const existingRuntime = document.getElementById("card-print-area-runtime");
+    if (existingRuntime) existingRuntime.remove();
+
+    const existingStyle = document.getElementById("card-print-override");
+    if (existingStyle) existingStyle.remove();
+
+    const runtimeRoot = printAreaRef.current.cloneNode(true) as HTMLDivElement;
+    runtimeRoot.id = "card-print-area-runtime";
+    runtimeRoot.style.display = "block";
+    document.body.appendChild(runtimeRoot);
+
     const style = document.createElement("style");
     style.id = "card-print-override";
     style.textContent = `
+      #card-print-area-runtime {
+        position: fixed !important;
+        left: -99999px !important;
+        top: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+
       @media print {
-        @page { margin: 8mm; }
+        @page { size: A4 portrait; margin: 6mm; }
         * {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
-        body > * { visibility: hidden !important; }
-        #card-print-area, #card-print-area * { visibility: visible !important; }
-        #card-print-area {
-          position: fixed !important;
-          inset: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          align-items: center !important;
-          justify-content: center !important;
-          gap: 24px !important;
+        body > *:not(#card-print-area-runtime) {
+          display: none !important;
+        }
+        #card-print-area-runtime,
+        #card-print-area-runtime * {
+          visibility: visible !important;
+        }
+        #card-print-area-runtime {
+          position: static !important;
+          width: 100% !important;
+          min-height: auto !important;
+          display: block !important;
           background: white !important;
-          z-index: 99999 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        #card-print-area-runtime .print-page {
+          min-height: auto !important;
+          display: grid !important;
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          gap: 6mm 5mm !important;
+          align-content: start !important;
+          justify-items: center !important;
+          justify-content: center !important;
+          padding: 0 !important;
+        }
+
+        #card-print-area-runtime .print-page-front {
+          break-after: page !important;
+          page-break-after: always !important;
+        }
+
+        #card-print-area-runtime .print-card-slot {
+          width: ${420 * PRINT_SCALE}px !important;
+          height: ${240 * PRINT_SCALE}px !important;
+          overflow: hidden !important;
+          display: flex !important;
+          align-items: flex-start !important;
+          justify-content: center !important;
+        }
+
+        #card-print-area-runtime .print-card-slot > * {
+          transform: scale(${PRINT_SCALE}) !important;
+          transform-origin: top center !important;
         }
       }
     `;
     document.head.appendChild(style);
+
+    const cleanup = () => {
+      const existing = document.getElementById("card-print-override");
+      if (existing) existing.remove();
+
+      const runtime = document.getElementById("card-print-area-runtime");
+      if (runtime) runtime.remove();
+    };
+
+    window.addEventListener("afterprint", cleanup, { once: true });
+
     window.print();
-    window.addEventListener(
-      "afterprint",
-      () => {
-        const existing = document.getElementById("card-print-override");
-        if (existing) existing.remove();
-      },
-      { once: true }
-    );
   };
 
   const selectedPartner = cardPartners.find((p) => p.id === selectedPartnerId);
@@ -260,6 +348,8 @@ export default function SectionsPage() {
   const qrPreviewUrl = cardData
     ? `${webBaseUrl}/organizations/${encodeURIComponent(cardData.profileTarget || cardData.slug)}${cardData.profileId ? `?oid=${encodeURIComponent(cardData.profileId)}` : ""}`
     : "";
+  const printSlots = Array.from({ length: PRINT_COPIES }, (_, i) => i);
+  const backPrintSlots = buildBackPrintOrder(PRINT_COPIES, 2);
 
   return (
     <div className="flex flex-col gap-6">
@@ -671,12 +761,25 @@ export default function SectionsPage() {
                   ref={printAreaRef}
                   style={{ display: "none" }}
                 >
-                  <BusinessCardFront data={cardData} scheme={cardScheme} />
-                  <BusinessCardBack
-                    data={cardData}
-                    scheme={cardScheme}
-                    webBaseUrl={webBaseUrl}
-                  />
+                  <div className="print-page print-page-front">
+                    {printSlots.map((slot) => (
+                      <div key={`front-${slot}`} className="print-card-slot">
+                        <BusinessCardFront data={cardData} scheme={cardScheme} />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="print-page print-page-back">
+                    {backPrintSlots.map((slot) => (
+                      <div key={`back-${slot}`} className="print-card-slot">
+                        <BusinessCardBack
+                          data={cardData}
+                          scheme={cardScheme}
+                          webBaseUrl={webBaseUrl}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

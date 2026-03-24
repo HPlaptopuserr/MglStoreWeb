@@ -108,16 +108,16 @@ export function AdminSidebar({
       title: "Систем",
       items: [
         {
-          id: "categories",
-          label: "Бизнесийн ангилал",
-          icon: Tag,
-          href: "/categories",
-        },
-        {
           id: "settings",
           label: "Тохиргоо",
           icon: Settings,
           href: "/settings",
+        },
+        {
+          id: "categories",
+          label: "Бизнесийн ангилал",
+          icon: Tag,
+          href: "/categories",
         },
       ],
     },

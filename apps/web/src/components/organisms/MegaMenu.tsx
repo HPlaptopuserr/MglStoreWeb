@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { API } from "@/lib/api";
 
-/* ── Types from API ── */
 type ApiTreeNode = {
   id: string;
   slug: string;
@@ -24,7 +23,6 @@ type ApiTreeNode = {
   children: ApiTreeNode[];
 };
 
-/* ── MegaMenu display types ── */
 type MegaCategory = {
   id: string;
   slug: string;
@@ -37,7 +35,6 @@ type MegaCategory = {
   }[];
 };
 
-/* ── Convert API tree → MegaMenu format ── */
 function apiTreeToMega(tree: ApiTreeNode[]): MegaCategory[] {
   return tree.map((root) => ({
     id: root.id,
@@ -59,7 +56,6 @@ const buildProductUrl = (categorySlug: string, subSlug?: string) => {
   return `/products?${params.toString()}`;
 };
 
-/* ── Icon renderer for string icons ── */
 function CategoryIcon({
   icon,
   isActive,
@@ -92,7 +88,6 @@ function CategoryIcon({
       />
     );
   }
-  // Emoji
   return <span style={{ fontSize: size - 2 }}>{icon}</span>;
 }
 
@@ -107,7 +102,6 @@ export const MegaMenu = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch categories from API
   useEffect(() => {
     fetch(`${API}/business-categories/tree`)
       .then((r) => r.json())
@@ -217,7 +211,6 @@ export const MegaMenu = () => {
 
       {isOpen && (
         <div className="absolute top-12 left-0 w-[900px] min-h-[500px] max-h-[750px] bg-white rounded-r-2xl rounded-bl-2xl shadow-xl border border-slate-200 z-50 flex overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-          {/* ── Left sidebar: Categories ── */}
           <div className="w-[260px] bg-white border-r border-slate-100 flex flex-col pb-6 shrink-0">
             <div className="px-3 pt-3 pb-2 border-b border-slate-100">
               <div className="relative">

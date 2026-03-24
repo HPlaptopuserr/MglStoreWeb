@@ -10,33 +10,50 @@ import {
   X,
   ChevronRight,
   Flame,
+  LogOut,
+  Loader2,
 } from "lucide-react";
 import Image from "next/image";
 import { SearchBar } from "../../molecules/SearchBar";
 import { MegaMenu } from "@/components/organisms/MegaMenu";
 import { PartnerMenu } from "@/components/organisms/home/PartnerMenu";
 import { CategoryIcon } from "@/components/atoms/CategoryIcon";
+import { LoginModal } from "@/components/organisms/auth/LoginModal";
 import { useBusinessCategories } from "@/hooks/useBusinessCategories";
 import { CATEGORY_COLORS, NAV_LINKS } from "@/lib/constants";
 import { useRouter, usePathname } from "next/navigation";
 import { useCart } from "@/hooks/useCart";
 import { CartDrawer } from "@/components/organisms/CartDrawer";
+import { API_BASE } from "@/lib/api";
+
+type AuthUser = {
+  id: string;
+  email: string;
+  role: string;
+  fullName?: string;
+  organizationName?: string;
+};
+
+const AUTH_TOKEN_KEY = "mgl_web_access_token";
+const AUTH_USER_KEY = "mgl_web_user";
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearch, setMobileSearch] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [user, setUser] = useState<AuthUser | null>(null);
   const { count, total } = useCart();
   const { categories } = useBusinessCategories();
   const router = useRouter();
   const pathname = usePathname();
 
-  // Close mobile menu on route change
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  // Lock body scroll when mobile menu open
   useEffect(() => {
     if (mobileMenuOpen) {
       document.body.style.overflow = "hidden";
@@ -48,6 +65,34 @@ export const Header = () => {
     };
   }, [mobileMenuOpen]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = localStorage.getItem(AUTH_USER_KEY);
+    if (!raw) return;
+
+    try {
+      const parsed = JSON.parse(raw) as AuthUser;
+      if (parsed?.id) {
+        setUser(parsed);
+      }
+    } catch {
+      localStorage.removeItem(AUTH_USER_KEY);
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (authOpen || mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    }
+    if (!authOpen && !mobileMenuOpen) {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [authOpen, mobileMenuOpen]);
+
   const handleMobileSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!mobileSearch.trim()) return;
@@ -56,6 +101,25 @@ export const Header = () => {
   };
 
   const closeMobile = () => setMobileMenuOpen(false);
+
+  const openAuthModal = () => {
+    setAuthError("");
+    setAuthOpen(true);
+  };
+
+  const closeAuthModal = () => {
+    setAuthOpen(false);
+    setAuthError("");
+  };
+
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_USER_KEY);
+    }
+    setUser(null);
+    closeAuthModal();
+  };
 
   return (
     <>
@@ -75,7 +139,6 @@ export const Header = () => {
             )}
           </button>
 
-          {/* Logo */}
           <Link
             href="/"
             className="flex shrink-0 items-center gap-2"
@@ -101,16 +164,32 @@ export const Header = () => {
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-6">
-            <button
-              type="button"
-              className="hidden items-center gap-2 text-sm font-medium uppercase text-slate-700 hover:text-amber-600 sm:flex"
-            >
-              <User size={22} />
-              <span>Нэвтрэх</span>
-            </button>
+            {user ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="hidden items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 sm:flex"
+              >
+                <User size={18} />
+                <span className="max-w-[180px] truncate">
+                  {user.fullName?.trim() || user.email}
+                </span>
+                <LogOut size={16} className="text-slate-400" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={openAuthModal}
+                className="hidden items-center gap-2 text-sm font-medium uppercase text-slate-700 hover:text-amber-600 sm:flex"
+              >
+                <User size={22} />
+                <span>Нэвтрэх</span>
+              </button>
+            )}
 
             <button
               type="button"
+              onClick={user ? handleLogout : openAuthModal}
               className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50 text-gray-600 transition-colors active:bg-gray-100 sm:hidden"
             >
               <User size={18} />
@@ -133,7 +212,6 @@ export const Header = () => {
         </div>
       </div>
 
-      {/* ── Row 2 mobile: search ── */}
       <div className="border-b border-slate-100 px-4 py-2 md:hidden">
         <form onSubmit={handleMobileSearch} className="relative">
           <Search
@@ -150,7 +228,6 @@ export const Header = () => {
         </form>
       </div>
 
-      {/* ── Row 3 mobile: scrollable category pills ── */}
       {categories.length > 0 && (
         <div
           className="flex gap-2 overflow-x-auto border-b border-gray-100 px-4 py-2 md:hidden"
@@ -169,7 +246,6 @@ export const Header = () => {
         </div>
       )}
 
-      {/* ── Row 2 desktop: MegaMenu + PartnerMenu + Categories ── */}
       <div className="relative hidden border-t border-gray-100 md:block">
         <div className="container mx-auto flex h-14 items-center gap-8 px-4">
           <div className="flex h-12 items-center gap-8">
@@ -177,7 +253,6 @@ export const Header = () => {
             <PartnerMenu />
           </div>
 
-          {/* Category links */}
           {categories.length > 0 && (
             <div
               className="flex items-center gap-1 overflow-x-auto ml-2"
@@ -198,9 +273,6 @@ export const Header = () => {
         </div>
       </div>
 
-      {/* ═══════ Mobile full-screen dropdown menu ═══════ */}
-
-      {/* Backdrop */}
       <div
         className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
           mobileMenuOpen
@@ -210,14 +282,12 @@ export const Header = () => {
         onClick={closeMobile}
       />
 
-      {/* Panel — slides down from top, full width */}
       <div
         className={`fixed inset-x-0 top-0 z-50 max-h-[85vh] overflow-y-auto bg-white shadow-2xl transition-transform duration-300 ease-out md:hidden ${
           mobileMenuOpen ? "translate-y-0" : "-translate-y-full"
         }`}
         style={{ scrollbarWidth: "none" }}
       >
-        {/* Panel header */}
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white/95 px-5 py-3.5 backdrop-blur-sm">
           <Link
             href="/"
@@ -236,7 +306,6 @@ export const Header = () => {
           </button>
         </div>
 
-        {/* Search inside panel */}
         <div className="px-5 pt-4 pb-2">
           <form onSubmit={handleMobileSearch} className="relative">
             <Search
@@ -254,7 +323,6 @@ export const Header = () => {
           </form>
         </div>
 
-        {/* Nav links as cards */}
         <div className="px-5 py-3">
           <div className="grid grid-cols-3 gap-2">
             {NAV_LINKS.map((link) => (
@@ -277,7 +345,6 @@ export const Header = () => {
           </div>
         </div>
 
-        {/* Deals banner */}
         <div className="mx-5 mb-3 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-red-500 to-orange-500 px-4 py-3">
           <Flame size={20} className="shrink-0 text-white" />
           <div className="flex-1">
@@ -287,7 +354,6 @@ export const Header = () => {
           <ChevronRight size={16} className="text-white/60" />
         </div>
 
-        {/* Categories */}
         {categories.length > 0 && (
           <div className="px-5 pb-4">
             <div className="mb-3 flex items-center justify-between">
@@ -324,18 +390,94 @@ export const Header = () => {
           </div>
         )}
 
-        {/* Footer actions */}
         <div className="border-t border-gray-100 px-5 py-4">
-          <button
-            type="button"
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-colors active:bg-gray-800"
-          >
-            <User size={16} />
-            Нэвтрэх / Бүртгүүлэх
-          </button>
+          {user ? (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors active:bg-slate-200"
+            >
+              <LogOut size={16} />
+              Гарах ({user.fullName?.trim() || user.email})
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={openAuthModal}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-colors active:bg-gray-800"
+            >
+              <User size={16} />
+              Нэвтрэх / Бүртгүүлэх
+            </button>
+          )}
         </div>
       </div>
     </header>
+
+    {authOpen && (
+      <LoginModal
+        open={authOpen}
+        onClose={closeAuthModal}
+        onLogin={async (identifier, password) => {
+          const isEmail = identifier.includes("@");
+          const payload = isEmail
+            ? { email: identifier.trim(), password: password.trim() }
+            : { phone: identifier.trim(), password: password.trim() };
+
+          const res = await fetch(`${API_BASE}/auth/web/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            setAuthError(data?.message || "Нэвтрэхэд алдаа гарлаа.");
+            throw new Error(data?.message || "Login failed");
+          }
+
+          if (typeof window !== "undefined") {
+            localStorage.setItem(AUTH_TOKEN_KEY, data.accessToken || "");
+            localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user || {}));
+          }
+
+          setUser(data.user || null);
+          closeAuthModal();
+          closeMobile();
+        }}
+        onRegister={async (fullName, identifier, password) => {
+          const isEmail = identifier.includes("@");
+          const payload = isEmail
+            ? { email: identifier.trim(), password: password.trim(), fullName: fullName.trim() }
+            : { phone: identifier.trim(), password: password.trim(), fullName: fullName.trim() };
+
+          const res = await fetch(`${API_BASE}/auth/web/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            setAuthError(data?.message || "Бүртгүүлэхэд алдаа гарлаа.");
+            throw new Error(data?.message || "Register failed");
+          }
+
+          if (typeof window !== "undefined") {
+            localStorage.setItem(AUTH_TOKEN_KEY, data.accessToken || "");
+            localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user || {}));
+          }
+
+          setUser(data.user || null);
+          closeAuthModal();
+          closeMobile();
+        }}
+        isLoading={authLoading}
+        error={authError}
+      />
+    )}
 
     <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
     </>

@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/atoms/Button";
-import { Input } from "@/components/atoms/Input";
-import { Card, CardContent } from "@/components/atoms/Card";
+import { Button, Input, Card, CardContent } from "@/components/atoms";
 import {
   RotateCcw,
   Plus,

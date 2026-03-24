@@ -1,21 +1,23 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import partnerRequestRoutes from "./routes/partner-request.routes";
-import partnerRoutes from "./routes/partners.routes";
-import businessCategoriesRoutes from "./routes/business-categories.routes";
-import dashboardRoutes from "./routes/dashboard.routes";
-import jobApplicationRoutes from "./routes/job-application.routes";
-import jobPositionRoutes from "./routes/job-position.routes";
-import serviceRequestsRoutes from "./routes/service-requests.routes";
-import warehousesRoutes from "./routes/warehouses.routes";
-import stockRequestsRoutes from "./routes/stock-requests.routes";
-import vendorSetupRoutes from "./routes/vendor-setup.routes";
-import investorRoutes from "./routes/investors.routes";
-import authRoutes from "./routes/auth.routes";
-import siteSettingsRoutes from "./routes/site-settings.routes";
-import productsRoutes from "./routes/products.routes";
-import servicePostsRoutes from "./routes/service-posts.routes";
+import {
+  authRoutes,
+  investorRoutes,
+  partnerRequestRoutes,
+  partnerRoutes,
+  vendorSetupRoutes,
+  businessCategoriesRoutes,
+  productsRoutes,
+  servicePostsRoutes,
+  jobApplicationRoutes,
+  jobPositionRoutes,
+  serviceRequestsRoutes,
+  stockRequestsRoutes,
+  warehousesRoutes,
+  dashboardRoutes,
+  siteSettingsRoutes,
+} from "./routes";
 
 dotenv.config();
 

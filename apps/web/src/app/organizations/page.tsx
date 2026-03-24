@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { API } from "@/lib/api";
+import { useBusinessCategories } from "@/hooks/useBusinessCategories";
 
 import { OrganizationsHero } from "@/components/organisms/organizations/OrganizationsHero";
 import { InvestorsSection } from "@/components/organisms/organizations/InvestorsSection";
@@ -50,8 +51,21 @@ export interface StoreItem {
   rating: number;
   deliveryTime: string;
   products: string[];
+  categorySlugs: string[];
   isInvestor?: boolean;
   investmentAmount?: number;
+}
+
+function normalizeCategoryKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function parseCategorySlugs(raw?: string) {
+  if (!raw) return [] as string[];
+  return raw
+    .split(",")
+    .map((v) => normalizeCategoryKey(v))
+    .filter(Boolean);
 }
 
 export default function OrganizationsPage() {
@@ -60,6 +74,7 @@ export default function OrganizationsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
+  const { categories: businessCategories } = useBusinessCategories();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -74,21 +89,32 @@ export default function OrganizationsPage() {
 
           const activeStores = data
             .filter((p: ApiPartner) => p.status === "ACTIVE")
-            .map((p: ApiPartner) => ({
-              id: p.id,
-              name: p.name,
-              slug: p.slug,
-              logo: p.logoUrl || `https://picsum.photos/100/100?random=${p.id}`,
-              banner:
-                p.bannerUrl || `https://picsum.photos/1200/400?random=${p.id}`,
-              isOpen: true,
-              category: p.businessCategory || p.type || "Бизнес",
-              rating: 5.0,
-              deliveryTime: "N/A",
-              products: [],
-              isInvestor: p.isInvestor || false,
-              investmentAmount: p.investmentAmount || 0,
-            }));
+            .map((p: ApiPartner) => {
+              const parsedSlugs = parseCategorySlugs(p.businessCategory);
+              const fallbackType = p.type
+                ? normalizeCategoryKey(p.type)
+                : "business";
+              const categorySlugs =
+                parsedSlugs.length > 0 ? parsedSlugs : [fallbackType];
+              const primarySlug = categorySlugs[0];
+
+              return {
+                id: p.id,
+                name: p.name,
+                slug: p.slug,
+                logo: p.logoUrl || `https://picsum.photos/100/100?random=${p.id}`,
+                banner:
+                  p.bannerUrl || `https://picsum.photos/1200/400?random=${p.id}`,
+                isOpen: true,
+                category: primarySlug,
+                categorySlugs,
+                rating: 5.0,
+                deliveryTime: "N/A",
+                products: [],
+                isInvestor: p.isInvestor || false,
+                investmentAmount: p.investmentAmount || 0,
+              };
+            });
 
           setStores(activeStores);
         }
@@ -109,10 +135,23 @@ export default function OrganizationsPage() {
     fetchData();
   }, []);
 
-  const categories = [
-    "all",
-    ...Array.from(new Set(stores.map((store) => store.category))),
-  ];
+  const categories = useMemo(() => {
+    const fromDb = businessCategories
+      .map((c) => normalizeCategoryKey(c.slug))
+      .filter(Boolean);
+
+    const fromStores = stores.flatMap((store) => store.categorySlugs);
+    const merged = Array.from(new Set([...fromDb, ...fromStores]));
+
+    return ["all", ...merged];
+  }, [businessCategories, stores]);
+
+  useEffect(() => {
+    if (activeFilter === "all") return;
+    if (!categories.includes(activeFilter)) {
+      setActiveFilter("all");
+    }
+  }, [activeFilter, categories]);
 
   const filteredStores = stores.filter((store) => {
     const query = searchQuery.toLowerCase();
@@ -121,8 +160,10 @@ export default function OrganizationsPage() {
       store.name.toLowerCase().includes(query) ||
       store.category.toLowerCase().includes(query);
 
+    const normalizedFilter = normalizeCategoryKey(activeFilter);
     const matchesFilter =
-      activeFilter === "all" || store.category === activeFilter;
+      activeFilter === "all" ||
+      store.categorySlugs.some((slug) => slug === normalizedFilter);
 
     return matchesSearch && matchesFilter;
   });

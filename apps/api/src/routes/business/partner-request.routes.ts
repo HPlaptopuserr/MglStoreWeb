@@ -3,7 +3,7 @@ import { prisma, Role, OnboardingSource, ApprovalStatus } from "@mgl/database";
 import {
   approvePartnerRequest,
   rejectPartnerRequest,
-} from "../services/partner-request.service";
+} from "../../services/partner-request.service";
 
 const router: ExpressRouter = Router();
 

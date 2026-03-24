@@ -3,7 +3,7 @@ import {
   validateVendorSetupToken,
   setVendorPassword,
   regenerateInviteToken,
-} from "../services/vendor-setup.service";
+} from "../../services/vendor-setup.service";
 
 const router: ExpressRouter = Router();
 

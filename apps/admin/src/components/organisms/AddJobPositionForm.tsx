@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Briefcase, Plus, X } from "lucide-react";
-import { AdminButton } from "@/components/atoms/AddJobButton";
+import { AdminButton } from "@/components/atoms";
 
 interface AddJobPositionFormProps {
   loading?: boolean;

@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AdminSidebar } from "@mgl/ui";
-import { MobileDashboard } from "../../components/organisms/MobileDashboard";
+import { MobileDashboard } from "@/components/organisms";
 
 export default function SharedDashboardLayout({
   children,

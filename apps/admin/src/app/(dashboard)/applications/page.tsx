@@ -1,8 +1,8 @@
 "use client";
 
-import { AdminButton } from "@/components/atoms/AddJobButton";
+import { AdminButton } from "@/components/atoms";
 import { Plus } from "lucide-react";
-import { AddJobPositionForm } from "@/components/organisms/AddJobPositionForm";
+import { AddJobPositionForm } from "@/components/organisms";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import {

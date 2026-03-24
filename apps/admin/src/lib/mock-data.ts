@@ -1,4 +1,4 @@
-import { TimeRange } from "../components/organisms/RevenueChart";
+import type { TimeRange } from "@/components/organisms";
 
 const generateChartData = (days: number, points: number, startRevenue: number) => {
     const data = [];

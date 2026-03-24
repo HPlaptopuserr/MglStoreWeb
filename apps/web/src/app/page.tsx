@@ -11,7 +11,6 @@ import { PromoBanner } from "@/components/organisms/home/PromoBanner";
 export default function HomePage() {
   return (
     <main className="min-h-screen">
-      {/* Hero + secondary promo */}
       <div className="bg-white">
         <div className="container mx-auto px-4 md:px-6 pt-4 pb-6 space-y-4">
           <HeroSection />

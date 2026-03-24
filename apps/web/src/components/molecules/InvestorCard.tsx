@@ -59,10 +59,8 @@ export function InvestorCard({
       href={`/organizations/${slug}`}
       className={`group relative flex flex-col items-center gap-4 rounded-2xl border border-gray-800/60 bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 p-6 md:p-8 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${style.ring} ${style.glow} ${style.scale}`}
     >
-      {/* Subtle glow on hover */}
       <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-b from-white/[0.03] to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
-      {/* Badge */}
       <div className="absolute -top-3 left-1/2 -translate-x-1/2">
         <span
           className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${style.badge}`}
@@ -71,7 +69,6 @@ export function InvestorCard({
         </span>
       </div>
 
-      {/* Logo */}
       <div
         className={`relative rounded-2xl mt-2`}
         style={getInvestorRingStyle(investmentLevel) || {}}
@@ -94,7 +91,6 @@ export function InvestorCard({
         </div>
       </div>
 
-      {/* Name */}
       <h3
         className={`font-bold text-white ${style.nameSize} leading-tight`}
       >
@@ -102,12 +98,12 @@ export function InvestorCard({
       </h3>
 
       {/* Investment level label */}
-      {investmentLevel && (
+{/*       {investmentLevel && (
         <span className="text-xs font-medium text-amber-400/80">
           {investmentLevel}
         </span>
       )}
-
+ */}
       {/* Description */}
       {description && tier !== "INVESTOR" && (
         <p className="text-xs text-gray-400 line-clamp-2 max-w-[240px]">
@@ -115,7 +111,6 @@ export function InvestorCard({
         </p>
       )}
 
-      {/* Hover shimmer */}
       <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-400/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
     </Link>
   );

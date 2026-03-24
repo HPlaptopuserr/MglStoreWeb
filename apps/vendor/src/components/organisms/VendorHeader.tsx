@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, Search } from "lucide-react";
-import { Input } from "@/components/atoms/Input";
+import { Input } from "@/components/atoms";
 import { API } from "@/lib/api";
 
 type StockAlertResponse = {

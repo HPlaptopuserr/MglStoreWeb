@@ -75,12 +75,6 @@ export function MobileDashboard({
       href: "/partners",
     },
     {
-      id: "categories",
-      label: "Бизнесийн ангилал",
-      icon: Tag,
-      href: "/categories",
-    },
-    {
       id: "sections",
       label: "Сайтын хэсгүүд",
       icon: Layers,
@@ -91,6 +85,12 @@ export function MobileDashboard({
       label: "Тохиргоо",
       icon: Settings,
       href: "/settings",
+    },
+    {
+      id: "categories",
+      label: "Бизнесийн ангилал",
+      icon: Tag,
+      href: "/categories",
     },
   ];
 

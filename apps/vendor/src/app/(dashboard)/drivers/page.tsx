@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Button } from "@/components/atoms/Button";
-import { Input } from "@/components/atoms/Input";
-import { Card, CardContent } from "@/components/atoms/Card";
+import { Button, Input, Card, CardContent } from "@/components/atoms";
 import { User, Truck, Phone, Star, ShieldCheck } from "lucide-react";
 
 const mockDrivers: any[] = [

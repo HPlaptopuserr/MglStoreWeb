@@ -34,7 +34,6 @@ export function InvestorSection() {
         const data = await res.json();
         if (!cancelled && Array.isArray(data)) setInvestors(data);
       } catch {
-        // Section gracefully hides when no data
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -50,14 +49,12 @@ export function InvestorSection() {
 
   return (
     <section className="relative overflow-hidden rounded-3xl bg-gray-950 px-6 py-12 md:px-12 md:py-16 my-12">
-      {/* Background effects */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-amber-500/[0.07] blur-3xl" />
         <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-purple-500/[0.05] blur-3xl" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(251,191,36,0.04),_transparent_70%)]" />
       </div>
 
-      {/* Header */}
       <div className="relative mb-10 text-center">
         <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-4 py-1.5">
           <Crown size={14} className="text-amber-400" />
@@ -73,7 +70,6 @@ export function InvestorSection() {
         </p>
       </div>
 
-      {/* Investor grid — TOP investors are visually larger via col-span */}
       <div className="relative grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
         {investors.map((inv) => (
           <InvestorCard

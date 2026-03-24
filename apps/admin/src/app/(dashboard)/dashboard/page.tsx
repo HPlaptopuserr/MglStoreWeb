@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { DashboardHeader } from "../../../components/organisms/dashboard/DashboardHeader";
-import { DashboardStatsGrid } from "../../../components/organisms/dashboard/DashboardStatsGrid";
-import { InvestorStatsGrid } from "../../../components/organisms/dashboard/InvestorStatsGrid";
-import { DashboardQuickActions } from "../../../components/organisms/dashboard/DashboardQuickActions";
-import { JobApplicationsSection } from "../../../components/organisms/dashboard/JobApplicationsSection";
-import { DashboardChartsRow } from "../../../components/organisms/dashboard/DashboardChartsRow";
-import { RecentActivitySection } from "../../../components/organisms/dashboard/RecentActivitySection";
-import { JobApplicationDetailModal } from "../../../components/organisms/dashboard/JobApplicationDetailModal";
+import {
+  DashboardHeader,
+  DashboardStatsGrid,
+  InvestorStatsGrid,
+  DashboardQuickActions,
+  JobApplicationsSection,
+  DashboardChartsRow,
+  RecentActivitySection,
+  JobApplicationDetailModal,
+} from "@/components/organisms";
 import { useDashboardData } from "../../../hooks/useDashboardData";
 import { useJobApplications } from "../../../hooks/useJobApplications";
 import type { JobApplication } from "../../../lib/types";

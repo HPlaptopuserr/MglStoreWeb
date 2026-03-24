@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ChevronDown,
   ArrowRight,
@@ -39,12 +39,12 @@ export const PartnerMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [categories, setCategories] = useState<GroupedCategory[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     fetch(`${API}/partners/grouped`)
       .then((res) => res.json())
       .then((data: GroupedCategory[]) => {
-        // Sort categories by number of partners in descending order
         const sorted = data.sort((a, b) => b.partners.length - a.partners.length);
         setCategories(sorted);
         setTotalCount(data.reduce((sum, cat) => sum + cat.partners.length, 0));
@@ -52,14 +52,36 @@ export const PartnerMenu = () => {
       .catch(console.error);
   }, []);
 
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!menuRef.current) return;
+      if (!menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
   return (
-    <div
-      className="h-full flex items-center"
-      onMouseEnter={() => setIsOpen(true)}
-      onMouseLeave={() => setIsOpen(false)}
-    >
+    <div ref={menuRef} className="h-full flex items-center">
       <button
         type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
         className={`flex h-full items-center gap-1.5 text-sm font-semibold transition-colors ${
           isOpen ? "text-orange-600" : "text-gray-600 hover:text-gray-900"
         }`}
@@ -79,16 +101,18 @@ export const PartnerMenu = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
             transition={{ duration: 0.2 }}
-            className="absolute left-0 top-full z-50 w-full border-b border-gray-200 bg-white shadow-xl"
+            className="absolute left-0 top-full z-50 w-full overflow-hidden border-b border-gray-200 bg-white shadow-xl"
+            style={{ maxHeight: "calc(100vh - 8.5rem)" }}
           >
-            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+            <div className="mx-auto flex max-h-[calc(100vh-8.5rem)] max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
               {categories.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-8">
                   Бүртгэлтэй байгууллага байхгүй байна
                 </p>
               ) : (
                 <div
-                  className={`grid gap-8`}
+                  className={`grid flex-1 gap-8 overflow-y-auto overscroll-contain pr-1`}
+                  data-lenis-prevent="true"
                   style={{
                     gridTemplateColumns: `repeat(${Math.min(categories.length, 4)}, 1fr)`,
                   }}
@@ -120,6 +144,7 @@ export const PartnerMenu = () => {
                                 <li key={pIdx}>
                                   <Link
                                     href={`/organizations/${partner.slug}`}
+                                    onClick={() => setIsOpen(false)}
                                     className="inline-block text-sm text-gray-500 transition-transform hover:translate-x-1 hover:text-orange-600"
                                   >
                                     {partner.name}
@@ -130,6 +155,7 @@ export const PartnerMenu = () => {
                               <li>
                                 <Link
                                   href="/organizations"
+                                  onClick={() => setIsOpen(false)}
                                   className="inline-block text-sm font-semibold text-orange-500 hover:text-orange-600"
                                 >
                                   + {category.partners.length - 10} бусад...
@@ -144,7 +170,7 @@ export const PartnerMenu = () => {
                 </div>
               )}
 
-              <div className="mt-8 flex items-center justify-between border-t border-gray-100 pt-6">
+              <div className="mt-6 flex shrink-0 items-center justify-between border-t border-gray-100 pt-5">
                 <p className="text-sm text-gray-500">
                   Нийт{" "}
                   <span className="font-bold text-gray-900">{totalCount}+</span>{" "}
@@ -153,6 +179,7 @@ export const PartnerMenu = () => {
 
                 <Link
                   href="/organizations"
+                  onClick={() => setIsOpen(false)}
                   className="group flex items-center gap-1 text-sm font-bold text-orange-600 hover:text-orange-700"
                 >
                   Гишүүд байгууллагуудын мэдээлэл харах

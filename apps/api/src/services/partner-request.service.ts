@@ -91,6 +91,13 @@ function getInviteTokenExpiry(): Date {
   return now;
 }
 
+function normalizeEmail(value?: string | null): string | null {
+  const raw = value?.trim().toLowerCase();
+  if (!raw) return null;
+  if (!raw.includes("@")) return null;
+  return raw;
+}
+
 const VENDOR_APP_URL =
   process.env.VENDOR_APP_URL || "https://vendor.mglstore.mn";
 
@@ -117,15 +124,21 @@ export async function approvePartnerRequest(
     throw new Error("Байгууллагын нэр дутуу байна");
   }
 
-  // Check if user with this email already exists
-  const existingUser = await prisma.user.findUnique({
-    where: { email: existingRequest.email },
-    select: {
-      id: true,
-      organizationId: true,
-      passwordHash: true,
-    },
-  });
+  const normalizedEmail = normalizeEmail(existingRequest.email);
+  const fallbackEmail = `vendor-${existingRequest.id}@no-email.local`;
+  const resolvedUserEmail = normalizedEmail || fallbackEmail;
+
+  // Check if user with this email already exists (only when a real email exists)
+  const existingUser = normalizedEmail
+    ? await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        select: {
+          id: true,
+          organizationId: true,
+          passwordHash: true,
+        },
+      })
+    : null;
 
   // If user exists and already has an organization, we can't approve
   if (existingUser?.organizationId) {
@@ -163,7 +176,7 @@ export async function approvePartnerRequest(
         taxId,
         type: existingRequest.organizationType || OrgType.SUPPLIER,
         status: OrgStatus.ACTIVE,
-        email: existingRequest.organizationEmail || existingRequest.email,
+        email: normalizeEmail(existingRequest.organizationEmail) || normalizedEmail,
         phone: existingRequest.organizationPhone || existingRequest.phoneNumber,
         address: existingRequest.organizationAddress,
         businessCategory: existingRequest.businessCategory,
@@ -201,7 +214,7 @@ export async function approvePartnerRequest(
       // Create new user WITHOUT password - vendor will set it via invite link
       finalUser = await tx.user.create({
         data: {
-          email: existingRequest.email,
+          email: resolvedUserEmail,
           // passwordHash is null - vendor needs to set password via invite link
           role: Role.SUPPLIER,
           isActive: true,
