@@ -15,6 +15,8 @@ import {
   CreditCard,
   Printer,
   Wrench,
+  MapPin,
+  Navigation,
 } from "lucide-react";
 import Image from "next/image";
 import { API } from "@/lib/api";
@@ -30,11 +32,12 @@ import {
 const SECTIONS = [
   { key: "banner", label: "Промо баннер", icon: ImagePlus },
   { key: "categories", label: "Ангилалууд", icon: Tag },
+  { key: "branches", label: "Салбар байршил", icon: MapPin },
   { key: "cards", label: "Карт хэвлэх", icon: CreditCard },
   { key: "qr", label: "QR Generator", icon: Wrench },
 ];
 
-type SectionKey = "banner" | "categories" | "cards" | "qr";
+type SectionKey = "banner" | "categories" | "branches" | "cards" | "qr";
 
 type CardPartner = {
   id: string;
@@ -48,6 +51,22 @@ type CardPartner = {
   address?: string | null;
 };
 
+type BranchMapItem = {
+  id: string;
+  name: string;
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  organizationId: string;
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+    logoUrl: string | null;
+  };
+  createdAt?: string;
+};
+
 const SCHEME_ORDER: CardColorScheme[] = [
   "default",
   "dark",
@@ -59,6 +78,7 @@ const SCHEME_ORDER: CardColorScheme[] = [
 const MAX_BANNERS = 3;
 const PRINT_COPIES = 8;
 const PRINT_SCALE = 0.84;
+const MIN_BRANCH_DISTANCE_METERS = 500;
 
 function buildBackPrintOrder(total: number, columns: number): number[] {
   const order: number[] = [];
@@ -69,6 +89,35 @@ function buildBackPrintOrder(total: number, columns: number): number[] {
     order.push(...row.reverse());
   }
   return order;
+}
+
+async function getLeafletLib() {
+  const leafletModule: any = await import("leaflet");
+  return leafletModule?.default ?? leafletModule;
+}
+
+function haversineDistanceMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+) {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const earthRadius = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadius * c;
+}
+
+function normalizeText(value: string) {
+  return value.toLowerCase().trim();
 }
 
 export default function SectionsPage() {
@@ -90,6 +139,33 @@ export default function SectionsPage() {
   const [cardScheme, setCardScheme] = useState<CardColorScheme>("default");
   const [webBaseUrl, setWebBaseUrl] = useState<string>("https://mglstore.mn");
   const printAreaRef = useRef<HTMLDivElement>(null);
+
+  // Branch map section state
+  const [branchPartners, setBranchPartners] = useState<CardPartner[]>([]);
+  const [branchOrgId, setBranchOrgId] = useState<string>("");
+  const [branchSaving, setBranchSaving] = useState(false);
+  const [branchMapVisibilitySaving, setBranchMapVisibilitySaving] = useState(false);
+  const [showBranchMapOnWeb, setShowBranchMapOnWeb] = useState(false);
+  const [branchLoading, setBranchLoading] = useState(false);
+  const [branchMapError, setBranchMapError] = useState<string>("");
+  const [selectedRegisteredBranchId, setSelectedRegisteredBranchId] = useState<string>("");
+  const [branchSearchCity, setBranchSearchCity] = useState("");
+  const [branchSearchDistrict, setBranchSearchDistrict] = useState("");
+  const [branchSearchKhoroo, setBranchSearchKhoroo] = useState("");
+  const [branchForm, setBranchForm] = useState({
+    name: "",
+    address: "",
+    lat: "",
+    lng: "",
+  });
+  const [branchItems, setBranchItems] = useState<BranchMapItem[]>([]);
+  const branchMapPickerRef = useRef<HTMLDivElement>(null);
+  const branchMapInstanceRef = useRef<any>(null);
+  const branchMarkerInstanceRef = useRef<any>(null);
+  const branchRadiusCircleRef = useRef<any>(null);
+  const branchPreviewMapRef = useRef<HTMLDivElement>(null);
+  const branchPreviewMapInstanceRef = useRef<any>(null);
+  const branchPreviewLayerRef = useRef<any>(null);
 
   useEffect(() => {
     const envUrl = process.env.NEXT_PUBLIC_WEB_URL;
@@ -150,9 +226,37 @@ export default function SectionsPage() {
             if (Array.isArray(parsed)) setCategories(parsed);
           } catch {}
         }
+
+        const showMapRaw = data["show-branch-map"];
+        setShowBranchMapOnWeb(
+          showMapRaw === "true" || showMapRaw === "1" || showMapRaw === "on",
+        );
       })
       .catch(() => {});
   }, []);
+
+  const handleToggleBranchMapOnWeb = async () => {
+    const nextValue = !showBranchMapOnWeb;
+    setShowBranchMapOnWeb(nextValue);
+    setBranchMapVisibilitySaving(true);
+
+    try {
+      const res = await fetch(`${API}/site-settings/show-branch-map`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: nextValue ? "true" : "false" }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Салбарын map-ийн төлвийг хадгалах үед алдаа гарлаа");
+      }
+    } catch {
+      setShowBranchMapOnWeb(!nextValue);
+      alert("Салбарын map-ийн төлвийг хадгалах үед алдаа гарлаа");
+    } finally {
+      setBranchMapVisibilitySaving(false);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -229,6 +333,130 @@ export default function SectionsPage() {
       })
       .catch(() => {});
   }, [active]);
+
+  // Fetch data when branches tab is activated
+  useEffect(() => {
+    if (active !== "branches") return;
+
+    setBranchLoading(true);
+    Promise.all([
+      fetch(`${API}/partners`)
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []),
+      fetch(`${API}/branches/map`)
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []),
+    ])
+      .then(([partnersData, branchesData]) => {
+        const partners = Array.isArray(partnersData)
+          ? (partnersData as CardPartner[])
+          : [];
+        const branches = Array.isArray(branchesData)
+          ? (branchesData as BranchMapItem[])
+          : [];
+
+        setBranchPartners(partners);
+        setBranchItems(branches);
+
+        if (branches.length > 0) {
+          setSelectedRegisteredBranchId((prev) => {
+            if (prev && branches.some((b) => b.id === prev)) return prev;
+            return branches[0].id;
+          });
+        } else {
+          setSelectedRegisteredBranchId("");
+        }
+
+        if (partners.length > 0) {
+          setBranchOrgId((prev) => {
+            if (prev && partners.some((p) => p.id === prev)) return prev;
+            return partners[0].id;
+          });
+        }
+      })
+      .finally(() => setBranchLoading(false));
+  }, [active]);
+
+  const handleCreateBranch = async () => {
+    if (!branchOrgId) {
+      alert("Эхлээд байгууллага сонгоно уу");
+      return;
+    }
+    if (!branchForm.name.trim() || !branchForm.address.trim()) {
+      alert("Салбарын нэр болон хаяг оруулна уу");
+      return;
+    }
+
+    const parsedLat = Number(branchForm.lat);
+    const parsedLng = Number(branchForm.lng);
+    if (
+      branchForm.lat.trim() === "" ||
+      branchForm.lng.trim() === "" ||
+      !Number.isFinite(parsedLat) ||
+      !Number.isFinite(parsedLng)
+    ) {
+      alert("Lat/Lng координатыг зөв оруулна уу");
+      return;
+    }
+
+    const hasTooCloseBranch = allRegisteredBranchItems.some((item) => {
+      if (item.lat === null || item.lng === null) return false;
+      const distanceMeters = haversineDistanceMeters(
+        parsedLat,
+        parsedLng,
+        item.lat,
+        item.lng,
+      );
+      return distanceMeters < MIN_BRANCH_DISTANCE_METERS;
+    });
+
+    if (hasTooCloseBranch) {
+      alert("500м радиус дотор өөр салбар байна. Илүү хол байршил сонгоно уу.");
+      return;
+    }
+
+    setBranchSaving(true);
+    try {
+      const res = await fetch(`${API}/partners/${branchOrgId}/branches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: branchForm.name,
+          address: branchForm.address,
+          lat: parsedLat,
+          lng: parsedLng,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || "Салбар нэмэхэд алдаа гарлаа");
+      }
+
+      const created = await res.json();
+      const selectedOrg = branchPartners.find((p) => p.id === branchOrgId);
+
+      if (selectedOrg) {
+        const newItem: BranchMapItem = {
+          ...created,
+          organizationId: selectedOrg.id,
+          organization: {
+            id: selectedOrg.id,
+            name: selectedOrg.name,
+            slug: selectedOrg.slug,
+            logoUrl: selectedOrg.logoUrl || null,
+          },
+        };
+        setBranchItems((prev) => [newItem, ...prev]);
+      }
+
+      setBranchForm({ name: "", address: "", lat: "", lng: "" });
+    } catch (error: any) {
+      alert(error?.message || "Салбар нэмэхэд алдаа гарлаа");
+    } finally {
+      setBranchSaving(false);
+    }
+  };
 
   const handlePrint = () => {
     if (!printAreaRef.current) return;
@@ -350,6 +578,293 @@ export default function SectionsPage() {
     : "";
   const printSlots = Array.from({ length: PRINT_COPIES }, (_, i) => i);
   const backPrintSlots = buildBackPrintOrder(PRINT_COPIES, 2);
+  const selectedBranchOrg = branchPartners.find((p) => p.id === branchOrgId);
+  const parsedBranchLat = Number(branchForm.lat);
+  const parsedBranchLng = Number(branchForm.lng);
+  const allRegisteredBranchItems = branchItems;
+  const normalizedCity = normalizeText(branchSearchCity);
+  const normalizedDistrict = normalizeText(branchSearchDistrict);
+  const normalizedKhoroo = normalizeText(branchSearchKhoroo);
+  const filteredRegisteredBranchItems = allRegisteredBranchItems.filter((item) => {
+    const haystack = normalizeText(
+      `${item.name} ${item.address} ${item.organization.name}`,
+    );
+
+    if (normalizedCity && !haystack.includes(normalizedCity)) return false;
+    if (normalizedDistrict && !haystack.includes(normalizedDistrict)) return false;
+    if (normalizedKhoroo && !haystack.includes(normalizedKhoroo)) return false;
+    return true;
+  });
+  const selectedRegisteredBranch =
+    allRegisteredBranchItems.find((item) => item.id === selectedRegisteredBranchId) ||
+    allRegisteredBranchItems[0] ||
+    null;
+  const isBranchCoordsValid =
+    branchForm.lat.trim() !== "" &&
+    branchForm.lng.trim() !== "" &&
+    Number.isFinite(parsedBranchLat) &&
+    Number.isFinite(parsedBranchLng);
+  const previewLat = isBranchCoordsValid
+    ? parsedBranchLat
+    : selectedRegisteredBranch?.lat ?? null;
+  const previewLng = isBranchCoordsValid
+    ? parsedBranchLng
+    : selectedRegisteredBranch?.lng ?? null;
+  const hasMapPreview =
+    previewLat !== null &&
+    previewLng !== null &&
+    Number.isFinite(previewLat) &&
+    Number.isFinite(previewLng);
+  const draftNearbyBranches = isBranchCoordsValid
+    ? allRegisteredBranchItems
+        .filter((item) => item.lat !== null && item.lng !== null)
+        .map((item) => {
+          const distanceMeters = haversineDistanceMeters(
+            parsedBranchLat,
+            parsedBranchLng,
+            item.lat as number,
+            item.lng as number,
+          );
+          return { item, distanceMeters };
+        })
+        .filter(({ distanceMeters }) => distanceMeters < MIN_BRANCH_DISTANCE_METERS)
+        .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    : [];
+  const nearestDraftConflict = draftNearbyBranches[0] || null;
+  const branchMapAttribution =
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+  useEffect(() => {
+    if (active !== "branches") {
+      if (branchMapInstanceRef.current) {
+        branchMapInstanceRef.current.remove();
+        branchMapInstanceRef.current = null;
+        branchMarkerInstanceRef.current = null;
+        branchRadiusCircleRef.current = null;
+      }
+      return;
+    }
+
+    if (branchLoading) return;
+
+    if (!branchMapPickerRef.current || branchMapInstanceRef.current) return;
+
+    setBranchMapError("");
+    let isCancelled = false;
+
+    const setupMap = async () => {
+      const L = await getLeafletLib();
+      if (isCancelled || !branchMapPickerRef.current || branchMapInstanceRef.current) return;
+
+      const map = L.map(branchMapPickerRef.current).setView([47.9184, 106.9177], 12);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: branchMapAttribution,
+      }).addTo(map);
+
+      map.on("click", (event: any) => {
+        const { lat, lng } = event.latlng;
+        setBranchForm((prev) => ({
+          ...prev,
+          lat: lat.toFixed(6),
+          lng: lng.toFixed(6),
+        }));
+      });
+
+      // Ensure tiles/layout are recalculated after the container is painted.
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 0);
+
+      branchMapInstanceRef.current = map;
+    };
+
+    setupMap().catch((error) => {
+      console.error("Failed to initialize branch map", error);
+      setBranchMapError("Map ачаалахад алдаа гарлаа. Хуудсаа дахин ачаална уу.");
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [active, branchLoading]);
+
+  useEffect(() => {
+    if (!branchMapInstanceRef.current) return;
+
+    if (!isBranchCoordsValid) {
+      if (branchMarkerInstanceRef.current) {
+        branchMarkerInstanceRef.current.remove();
+        branchMarkerInstanceRef.current = null;
+      }
+      if (branchRadiusCircleRef.current) {
+        branchRadiusCircleRef.current.remove();
+        branchRadiusCircleRef.current = null;
+      }
+      return;
+    }
+
+    const map = branchMapInstanceRef.current;
+    const nextLatLng: [number, number] = [parsedBranchLat, parsedBranchLng];
+
+    const syncMarker = async () => {
+      const L = await getLeafletLib();
+      if (!branchMapInstanceRef.current) return;
+
+      if (branchMarkerInstanceRef.current) {
+        branchMarkerInstanceRef.current.setLatLng(nextLatLng);
+      } else {
+        branchMarkerInstanceRef.current = L.circleMarker(nextLatLng, {
+          radius: 8,
+          color: nearestDraftConflict ? "#dc2626" : "#7c3aed",
+          weight: 2,
+          fillColor: nearestDraftConflict ? "#fca5a5" : "#a78bfa",
+          fillOpacity: 0.8,
+        }).addTo(map);
+      }
+
+      if (branchRadiusCircleRef.current) {
+        branchRadiusCircleRef.current.setLatLng(nextLatLng);
+        branchRadiusCircleRef.current.setRadius(MIN_BRANCH_DISTANCE_METERS);
+        branchRadiusCircleRef.current.setStyle({
+          color: nearestDraftConflict ? "#ef4444" : "#7c3aed",
+          fillColor: nearestDraftConflict ? "#fca5a5" : "#c4b5fd",
+        });
+      } else {
+        branchRadiusCircleRef.current = L.circle(nextLatLng, {
+          radius: MIN_BRANCH_DISTANCE_METERS,
+          color: nearestDraftConflict ? "#ef4444" : "#7c3aed",
+          weight: 2,
+          fillColor: nearestDraftConflict ? "#fca5a5" : "#c4b5fd",
+          fillOpacity: 0.18,
+        }).addTo(map);
+      }
+
+      if (map.getZoom() < 14) {
+        map.setView(nextLatLng, 14);
+      } else {
+        map.panTo(nextLatLng);
+      }
+    };
+
+    syncMarker().catch(() => {});
+  }, [isBranchCoordsValid, parsedBranchLat, parsedBranchLng, nearestDraftConflict]);
+
+  useEffect(() => {
+    if (active !== "branches") {
+      if (branchPreviewMapInstanceRef.current) {
+        branchPreviewMapInstanceRef.current.remove();
+        branchPreviewMapInstanceRef.current = null;
+        branchPreviewLayerRef.current = null;
+      }
+      return;
+    }
+
+    if (branchLoading) return;
+    if (!branchPreviewMapRef.current || branchPreviewMapInstanceRef.current) return;
+
+    let isCancelled = false;
+
+    const setupPreviewMap = async () => {
+      const L = await getLeafletLib();
+      if (isCancelled || !branchPreviewMapRef.current || branchPreviewMapInstanceRef.current) {
+        return;
+      }
+
+      const map = L.map(branchPreviewMapRef.current).setView([47.9184, 106.9177], 11);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: branchMapAttribution,
+      }).addTo(map);
+
+      branchPreviewLayerRef.current = L.layerGroup().addTo(map);
+      branchPreviewMapInstanceRef.current = map;
+
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 0);
+    };
+
+    setupPreviewMap().catch((error) => {
+      console.error("Failed to initialize branch preview map", error);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [active, branchLoading, branchMapAttribution]);
+
+  useEffect(() => {
+    if (!branchPreviewMapInstanceRef.current || !branchPreviewLayerRef.current) return;
+
+    const syncPreviewMarkers = async () => {
+      const L = await getLeafletLib();
+      if (!branchPreviewMapInstanceRef.current || !branchPreviewLayerRef.current) return;
+
+      const map = branchPreviewMapInstanceRef.current;
+      const layer = branchPreviewLayerRef.current;
+      layer.clearLayers();
+
+      const bounds = L.latLngBounds([]);
+      const activeId = selectedRegisteredBranch?.id || selectedRegisteredBranchId;
+
+      allRegisteredBranchItems.forEach((item) => {
+        if (item.lat === null || item.lng === null) return;
+
+        const latLng: [number, number] = [item.lat, item.lng];
+        const isActive = item.id === activeId;
+
+        const marker = L.circleMarker(latLng, {
+          radius: isActive ? 9 : 7,
+          color: isActive ? "#7c3aed" : "#334155",
+          weight: isActive ? 3 : 2,
+          fillColor: isActive ? "#c4b5fd" : "#94a3b8",
+          fillOpacity: isActive ? 0.95 : 0.8,
+        });
+
+        marker.bindTooltip(item.name, { direction: "top", offset: [0, -8] });
+        marker.on("click", () => setSelectedRegisteredBranchId(item.id));
+        marker.addTo(layer);
+
+        L.circle(latLng, {
+          radius: MIN_BRANCH_DISTANCE_METERS,
+          color: isActive ? "#7c3aed" : "#64748b",
+          weight: 1,
+          fillColor: isActive ? "#c4b5fd" : "#cbd5e1",
+          fillOpacity: isActive ? 0.12 : 0.06,
+        }).addTo(layer);
+
+        bounds.extend(latLng);
+      });
+
+      if (isBranchCoordsValid) {
+        const draftLatLng: [number, number] = [parsedBranchLat, parsedBranchLng];
+        const draftMarker = L.circleMarker(draftLatLng, {
+          radius: 8,
+          color: "#16a34a",
+          weight: 2,
+          fillColor: "#86efac",
+          fillOpacity: 0.85,
+        });
+        draftMarker.bindTooltip("Шинэ байршлын draft", { direction: "top", offset: [0, -8] });
+        draftMarker.addTo(layer);
+        bounds.extend(draftLatLng);
+      }
+
+      if (bounds.isValid()) {
+        map.fitBounds(bounds.pad(0.2), { maxZoom: 14 });
+      }
+    };
+
+    syncPreviewMarkers().catch(() => {});
+  }, [
+    allRegisteredBranchItems,
+    isBranchCoordsValid,
+    parsedBranchLat,
+    parsedBranchLng,
+    selectedRegisteredBranch,
+    selectedRegisteredBranchId,
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -578,6 +1093,259 @@ export default function SectionsPage() {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── BRANCHES SECTION ── */}
+          {active === "branches" && (
+            <div className="flex flex-col gap-6">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 mb-1">
+                  Салбарын байршил
+                </h2>
+                <p className="text-sm text-slate-400">
+                  Нүүр хуудасны хамгийн доод хэсэгт харагдах map-д салбарын байршлыг нэмнэ.
+                </p>
+                <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">Web дээр map харуулах</p>
+                    <p className="text-xs text-slate-500">
+                      Асаалттай үед web нүүр хуудсанд салбарын map харагдана.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleBranchMapOnWeb}
+                    disabled={branchMapVisibilitySaving}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                      showBranchMapOnWeb ? "bg-violet-600" : "bg-slate-300"
+                    } disabled:opacity-60`}
+                    aria-label="Web map visibility toggle"
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                        showBranchMapOnWeb ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {branchLoading ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                  <Loader2 size={34} className="animate-spin" />
+                  <p className="mt-3 text-sm">Байгууллага болон салбарын мэдээлэл ачаалж байна...</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Байгууллага сонгох
+                    </label>
+                    <select
+                      value={branchOrgId}
+                      onChange={(e) => setBranchOrgId(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                    >
+                      {branchPartners.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {selectedBranchOrg && (
+                      <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-500">
+                          Салбар нэмэгдэх газар
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-indigo-900 break-words">
+                          {selectedBranchOrg.name}
+                        </p>
+                        <p className="text-xs text-indigo-600 break-all">@{selectedBranchOrg.slug}</p>
+                      </div>
+                    )}
+
+                    <input
+                      type="text"
+                      value={branchForm.name}
+                      onChange={(e) =>
+                        setBranchForm((prev) => ({ ...prev, name: e.target.value }))
+                      }
+                      placeholder="Салбарын нэр"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                    />
+                    <input
+                      type="text"
+                      value={branchForm.address}
+                      onChange={(e) =>
+                        setBranchForm((prev) => ({ ...prev, address: e.target.value }))
+                      }
+                      placeholder="Салбарын хаяг"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="number"
+                        step="any"
+                        value={branchForm.lat}
+                        onChange={(e) =>
+                          setBranchForm((prev) => ({ ...prev, lat: e.target.value }))
+                        }
+                        placeholder="Өргөрөг (lat)"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                      />
+                      <input
+                        type="number"
+                        step="any"
+                        value={branchForm.lng}
+                        onChange={(e) =>
+                          setBranchForm((prev) => ({ ...prev, lng: e.target.value }))
+                        }
+                        placeholder="Уртраг (lng)"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                      />
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-slate-50">
+                        <p className="text-xs font-semibold text-slate-600">Pin дээр дарж координат сонгох</p>
+                        <span className="text-[11px] text-slate-500">Map дээр click хийнэ үү</span>
+                      </div>
+                      <div ref={branchMapPickerRef} className="h-56 w-full" />
+                      <div className="px-3 py-2 border-t border-slate-200 bg-slate-50">
+                        <p className="text-[11px] text-slate-600">
+                          Map дээр 500м радиус автоматаар тэмдэглэгдэнэ.
+                        </p>
+                      </div>
+                      {branchMapError && (
+                        <p className="px-3 py-2 text-xs text-rose-600 border-t border-rose-100 bg-rose-50">
+                          {branchMapError}
+                        </p>
+                      )}
+                    </div>
+
+                    {nearestDraftConflict && (
+                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                        500м дотор "{nearestDraftConflict.item.name}" салбар байна ({Math.round(nearestDraftConflict.distanceMeters)}м).
+                        Өөр цэг сонгоно уу.
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleCreateBranch}
+                      disabled={branchSaving || !branchOrgId || !!nearestDraftConflict}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-60"
+                    >
+                      {branchSaving ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <Plus size={15} />
+                      )}
+                      {branchSaving ? "Нэмж байна..." : "Салбар нэмэх"}
+                    </button>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        Хаана орж байгааг харах preview
+                      </p>
+                      {hasMapPreview && (
+                        <a
+                          href={`https://maps.google.com/?q=${previewLat},${previewLng}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-700"
+                        >
+                          <Navigation size={13} />
+                          Google Maps
+                        </a>
+                      )}
+                    </div>
+
+                    {hasMapPreview ? (
+                      <div>
+                        <div
+                          ref={branchPreviewMapRef}
+                          className="h-56 w-full rounded-xl border border-slate-200"
+                        />
+                        {!isBranchCoordsValid && selectedRegisteredBranch && (
+                          <p className="mt-2 text-xs text-slate-500">
+                            Сонгосон хаяг: {selectedRegisteredBranch.name}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-56 rounded-xl border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center text-center px-6">
+                        <p className="text-sm text-slate-500">
+                          Lat/Lng оруулах эсвэл доорх жагсаалтаас хаяг сонгоход map preview энд харагдана.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                      <div className="px-1">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          Бүртгэгдсэн хаягууд ({filteredRegisteredBranchItems.length}/{allRegisteredBranchItems.length})
+                        </p>
+                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <input
+                            type="text"
+                            value={branchSearchCity}
+                            onChange={(e) => setBranchSearchCity(e.target.value)}
+                            placeholder="Хотоор хайх"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                          />
+                          <input
+                            type="text"
+                            value={branchSearchDistrict}
+                            onChange={(e) => setBranchSearchDistrict(e.target.value)}
+                            placeholder="Дүүргээр хайх"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                          />
+                          <input
+                            type="text"
+                            value={branchSearchKhoroo}
+                            onChange={(e) => setBranchSearchKhoroo(e.target.value)}
+                            placeholder="Хороогоор хайх"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-2 max-h-44 overflow-y-auto pr-1 space-y-2">
+                        {filteredRegisteredBranchItems.length === 0 ? (
+                          <p className="text-sm text-slate-500 px-1">Одоогоор салбарын хаяг бүртгэгдээгүй байна.</p>
+                        ) : (
+                          filteredRegisteredBranchItems.map((item) => {
+                            const isActive =
+                              item.id ===
+                              (selectedRegisteredBranch?.id || selectedRegisteredBranchId);
+
+                            return (
+                            <button
+                              type="button"
+                              key={item.id}
+                              onClick={() => setSelectedRegisteredBranchId(item.id)}
+                              className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                                isActive
+                                  ? "border-violet-300 bg-violet-50"
+                                  : "border-slate-100 bg-white hover:border-slate-200"
+                              }`}
+                            >
+                              <p className="text-sm font-semibold text-slate-800 break-words">{item.name}</p>
+                              <p className="text-xs text-slate-500 mt-1 break-words">{item.address}</p>
+                              <p className="text-[11px] text-indigo-600 mt-1 break-words">{item.organization.name}</p>
+                              <p className="text-xs text-slate-400 mt-1">{item.lat}, {item.lng}</p>
+                            </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

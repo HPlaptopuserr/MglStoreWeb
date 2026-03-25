@@ -7,6 +7,7 @@ import { PartnershipContact } from "@/components/organisms/partnership/Partnersh
 import { FeaturedStoresSection } from "@/components/organisms/home/FeaturedStoresSection";
 import { InvestorSection } from "@/components/organisms/home/InvestorSection";
 import { PromoBanner } from "@/components/organisms/home/PromoBanner";
+import { BranchMapSection } from "@/components/organisms/home/BranchMapSection";
 
 export default function HomePage() {
   return (
@@ -31,6 +32,8 @@ export default function HomePage() {
       <div className="container mx-auto px-4 lg:px-8">
         <PartnershipContact />
       </div>
+
+      <BranchMapSection />
     </main>
   );
 }

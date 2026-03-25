@@ -11,6 +11,28 @@ const categoryLabels: Record<string, string> = {
   other: "Бусад",
 };
 
+const MIN_BRANCH_DISTANCE_METERS = 500;
+
+function haversineDistanceMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+) {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const earthRadius = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadius * c;
+}
+
 // Grouped by businessCategory (must be before /partners to avoid Express matching issues)
 router.get("/partners/grouped", async (req, res) => {
   try {
@@ -254,6 +276,165 @@ router.get("/partners", async (req, res) => {
   }
 });
 
+router.get("/branches/map", async (_req, res) => {
+  try {
+    const branches = await prisma.branch.findMany({
+      where: {
+        deletedAt: null,
+        lat: { not: null },
+        lng: { not: null },
+        organization: {
+          deletedAt: null,
+          status: "ACTIVE",
+        },
+      },
+      orderBy: [{ organizationId: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        lat: true,
+        lng: true,
+        organizationId: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            logoUrl: true,
+          },
+        },
+      },
+    });
+
+    res.json(branches);
+  } catch (error) {
+    console.error("get branch map data error", error);
+    res.status(500).json({ message: "Салбарын байршлын мэдээлэл авахад алдаа гарлаа" });
+  }
+});
+
+router.post("/partners/:id/branches", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, address, lat, lng } = req.body as {
+      name?: string;
+      address?: string;
+      lat?: number | string;
+      lng?: number | string;
+    };
+
+    if (!name?.trim() || !address?.trim()) {
+      return res.status(400).json({ message: "Салбарын нэр болон хаяг заавал шаардлагатай" });
+    }
+
+    const organization = await prisma.organization.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!organization) {
+      return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+    }
+
+    const parsedLat = lat === undefined || lat === null || lat === "" ? null : Number(lat);
+    const parsedLng = lng === undefined || lng === null || lng === "" ? null : Number(lng);
+
+    if ((parsedLat !== null && Number.isNaN(parsedLat)) || (parsedLng !== null && Number.isNaN(parsedLng))) {
+      return res.status(400).json({ message: "Өргөрөг/уртраг зөв тоо байх ёстой" });
+    }
+
+    if (parsedLat !== null && parsedLng !== null) {
+      const existingBranches = await prisma.branch.findMany({
+        where: {
+          deletedAt: null,
+          lat: { not: null },
+          lng: { not: null },
+        },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          lat: true,
+          lng: true,
+          organization: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      let nearestConflict: {
+        id: string;
+        name: string;
+        address: string;
+        distanceMeters: number;
+        organization: { id: string; name: string };
+      } | null = null;
+
+      for (const branch of existingBranches) {
+        if (branch.lat === null || branch.lng === null) continue;
+
+        const distanceMeters = haversineDistanceMeters(
+          parsedLat,
+          parsedLng,
+          branch.lat,
+          branch.lng,
+        );
+
+        if (distanceMeters < MIN_BRANCH_DISTANCE_METERS) {
+          if (!nearestConflict || distanceMeters < nearestConflict.distanceMeters) {
+            nearestConflict = {
+              id: branch.id,
+              name: branch.name,
+              address: branch.address,
+              distanceMeters,
+              organization: branch.organization,
+            };
+          }
+        }
+      }
+
+      if (nearestConflict) {
+        return res.status(409).json({
+          message:
+            "500м радиус дотор өөр салбар байна. 500м-ээс хол байршил сонгоно уу.",
+          conflict: nearestConflict,
+          minimumDistanceMeters: MIN_BRANCH_DISTANCE_METERS,
+        });
+      }
+    }
+
+    const created = await prisma.branch.create({
+      data: {
+        organizationId: id,
+        name: name.trim(),
+        address: address.trim(),
+        lat: parsedLat,
+        lng: parsedLng,
+      },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        lat: true,
+        lng: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(201).json(created);
+  } catch (error) {
+    console.error("create branch error", error);
+    res.status(500).json({ message: "Салбар үүсгэхэд алдаа гарлаа" });
+  }
+});
+
 // Get single partner by slug or id
 router.get("/partners/:slugOrId", async (req, res) => {
   try {
@@ -312,6 +493,18 @@ router.get("/partners/:slugOrId", async (req, res) => {
           orderBy: {
             createdAt: "desc",
           },
+        },
+        branches: {
+          where: { deletedAt: null },
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            lat: true,
+            lng: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
         },
       },
     });
@@ -374,6 +567,14 @@ router.get("/partners/:slugOrId", async (req, res) => {
         category: p.category?.name,
         image: p.images?.[0]?.url,
         images: p.images?.map((img: any) => img.url),
+      })),
+      branches: partner.branches.map((b: any) => ({
+        id: b.id,
+        name: b.name,
+        address: b.address,
+        lat: b.lat,
+        lng: b.lng,
+        createdAt: b.createdAt,
       })),
     };
 
