@@ -101,69 +101,59 @@ export const PartnerMenu = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
             transition={{ duration: 0.2 }}
-            className="absolute left-0 top-full z-50 w-full overflow-hidden border-b border-gray-200 bg-white shadow-xl"
-            style={{ maxHeight: "calc(100vh - 8.5rem)" }}
+            className="absolute left-0 top-full z-50 max-h-[calc(100vh-8.5rem)] w-full overflow-y-auto overscroll-contain border-b border-gray-200 bg-white shadow-xl [scrollbar-gutter:stable]"
+            data-lenis-prevent="true"
           >
-            <div className="mx-auto flex max-h-[calc(100vh-8.5rem)] max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
+            <div className="mx-auto flex max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
               {categories.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-8">
                   Бүртгэлтэй байгууллага байхгүй байна
                 </p>
               ) : (
                 <div
-                  className={`grid flex-1 gap-8 overflow-y-auto overscroll-contain pr-1`}
-                  data-lenis-prevent="true"
-                  style={{
-                    gridTemplateColumns: `repeat(${Math.min(categories.length, 4)}, 1fr)`,
-                  }}
+                  className="grid auto-rows-fr grid-cols-1 gap-4 pr-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
                 >
                   {categories.map((category, idx) => {
                     const Icon = categoryIcons[category.category] || Store;
                     return (
-                      <div key={idx} className="min-h-0">
-                        <div className="mb-5 flex items-center gap-3 text-gray-900">
+                      <div key={idx} className="min-w-0 rounded-xl border border-gray-100 bg-gray-50 p-4">
+                        <div className="mb-4 flex items-start gap-3 text-gray-900">
                           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
                             <Icon className="h-5 w-5" />
                           </div>
-                          <h3 className="text-base font-bold">
+                          <h3 className="min-w-0 break-words text-base font-bold leading-6">
                             {category.label}
                           </h3>
-                          <span className="ml-auto text-xs font-medium text-gray-400">
+                          <span className="ml-auto shrink-0 pt-1 text-xs font-medium text-gray-400">
                             {category.partners.length}
                           </span>
                         </div>
 
-                        <div
-                          className="max-h-80 overflow-y-auto overscroll-contain pr-2 [scrollbar-gutter:stable]"
-                          data-lenis-prevent="true"
-                        >
-                          <ul className="space-y-3">
-                            {category.partners
-                              .slice(0, 10)
-                              .map((partner, pIdx) => (
-                                <li key={pIdx}>
-                                  <Link
-                                    href={`/organizations/${partner.slug}`}
-                                    onClick={() => setIsOpen(false)}
-                                    className="inline-block text-sm text-gray-500 transition-transform hover:translate-x-1 hover:text-orange-600"
-                                  >
-                                    {partner.name}
-                                  </Link>
-                                </li>
-                              ))}
-                            {category.partners.length > 10 && (
-                              <li>
-                                <Link
-                                  href="/organizations"
-                                  onClick={() => setIsOpen(false)}
-                                  className="inline-block text-sm font-semibold text-orange-500 hover:text-orange-600"
-                                >
-                                  + {category.partners.length - 10} бусад...
-                                </Link>
-                              </li>
-                            )}
-                          </ul>
-                        </div>
+                        <ul className="space-y-2">
+                          {category.partners.slice(0, 10).map((partner, pIdx) => (
+                            <li key={pIdx}>
+                              <Link
+                                href={`/organizations/${partner.slug}`}
+                                onClick={() => setIsOpen(false)}
+                                className="block truncate text-sm text-gray-500 transition-colors hover:text-orange-600"
+                                title={partner.name}
+                              >
+                                {partner.name}
+                              </Link>
+                            </li>
+                          ))}
+                          {category.partners.length > 10 && (
+                            <li>
+                              <Link
+                                href="/organizations"
+                                onClick={() => setIsOpen(false)}
+                                className="inline-block text-sm font-semibold text-orange-500 hover:text-orange-600"
+                              >
+                                + {category.partners.length - 10} бусад...
+                              </Link>
+                            </li>
+                          )}
+                        </ul>
                       </div>
                     );
                   })}

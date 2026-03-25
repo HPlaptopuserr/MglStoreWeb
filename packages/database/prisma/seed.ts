@@ -1,5 +1,11 @@
 import bcrypt from "bcryptjs";
-import { PrismaClient, Role, OrgType, OnboardingSource } from "@prisma/client";
+import {
+  PrismaClient,
+  Role,
+  OrgType,
+  OrgStatus,
+  OnboardingSource,
+} from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -59,6 +65,45 @@ async function main() {
     ],
     skipDuplicates: true,
   });
+
+  const activeBusinessCategories = await prisma.businessCategory.findMany({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { slug: true, name: true },
+  });
+
+  let mockOrganizationsUpserted = 0;
+
+  for (const [categoryIndex, category] of activeBusinessCategories.entries()) {
+    for (let i = 1; i <= 10; i++) {
+      const indexPart = String(i).padStart(2, "0");
+      const categoryPart = String(categoryIndex + 1).padStart(3, "0");
+      const slug = `${category.slug}-mock-org-${indexPart}`;
+      const taxId = `MOCK-${categoryPart}-${indexPart}`;
+
+      await prisma.organization.upsert({
+        where: { slug },
+        update: {
+          name: `${category.name} Mock Org ${i}`,
+          businessCategory: category.slug,
+          type: OrgType.SUPPLIER,
+          status: OrgStatus.ACTIVE,
+          deletedAt: null,
+        },
+        create: {
+          name: `${category.name} Mock Org ${i}`,
+          slug,
+          taxId,
+          businessCategory: category.slug,
+          type: OrgType.SUPPLIER,
+          status: OrgStatus.ACTIVE,
+          isVerified: true,
+        },
+      });
+
+      mockOrganizationsUpserted += 1;
+    }
+  }
 
   // Create sample warehouse
   const warehouse = await prisma.warehouse.upsert({
@@ -287,6 +332,12 @@ async function main() {
   });
 
   console.log("✅ Seed completed");
+  console.log(
+    `   - Active business categories: ${activeBusinessCategories.length}`,
+  );
+  console.log(
+    `   - Upserted mock organizations: ${mockOrganizationsUpserted}`,
+  );
   console.log(`   - Created warehouse: ${warehouse.name}`);
   console.log(`   - Created ${products.length} products`);
   console.log(
