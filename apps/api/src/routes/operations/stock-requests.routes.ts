@@ -738,20 +738,10 @@ router.get(
     try {
       const { organizationId } = req.params;
 
-      const inventories = await prisma.warehouseInventory.findMany({
+      const completedRequests = await prisma.warehouseStockRequest.findMany({
         where: {
-          quantity: { gt: 0 },
-          warehouse: {
-            deletedAt: null,
-            isActive: true,
-            organizations: {
-              some: { organizationId },
-            },
-          },
-          product: {
-            deletedAt: null,
-            isActive: true,
-          },
+          organizationId,
+          status: StockRequestStatus.COMPLETED,
         },
         include: {
           warehouse: {
@@ -762,51 +752,74 @@ router.get(
               district: true,
             },
           },
-          product: {
-            select: {
-              id: true,
-              name: true,
-              sku: true,
-              price: true,
-              stock: true,
-              images: {
-                take: 1,
-                select: { url: true },
-              },
-              category: {
-                select: { id: true, name: true, slug: true },
-              },
-              businessCategory: {
-                select: { id: true, name: true, slug: true },
-              },
-              organization: {
-                select: { id: true, name: true, slug: true },
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  sku: true,
+                  price: true,
+                  stock: true,
+                  images: {
+                    take: 1,
+                    select: { url: true },
+                  },
+                  category: {
+                    select: { id: true, name: true, slug: true },
+                  },
+                  businessCategory: {
+                    select: { id: true, name: true, slug: true },
+                  },
+                  organization: {
+                    select: { id: true, name: true, slug: true },
+                  },
+                },
               },
             },
           },
         },
         orderBy: [
+          { completedAt: "desc" },
           { warehouse: { name: "asc" } },
-          { product: { name: "asc" } },
         ],
       });
+
+      const catalogItems = completedRequests.flatMap((request) =>
+        request.items.map((item) => {
+          const quantity = item.approvedQuantity ?? item.quantity;
+          const alertThreshold = 5;
+
+          return {
+            id: item.id,
+            quantity,
+            minQuantity: 0,
+            maxQuantity: null,
+            alertThreshold,
+            isLowStock: quantity <= alertThreshold,
+            location: null,
+            source: "warehouse" as const,
+            warehouse: request.warehouse,
+            product: {
+              ...item.product,
+              categoryName:
+                item.product.businessCategory?.name ||
+                item.product.category?.name ||
+                "Ангилагдаагүй",
+            },
+          };
+        }),
+      );
 
       const categoriesMap = new Map<
         string,
         { name: string; itemCount: number; totalQuantity: number }
       >();
       const warehousesMap = new Map<string, { id: string; name: string; city: string; district: string }>();
-      const getAlertThreshold = (item: (typeof inventories)[number]) =>
-        item.minQuantity > 0 ? item.minQuantity : 5;
-      const lowStockCount = inventories.filter(
-        (item) => item.quantity <= getAlertThreshold(item),
-      ).length;
+      const lowStockCount = catalogItems.filter((item) => item.isLowStock).length;
 
-      for (const item of inventories) {
-        const categoryName =
-          item.product.businessCategory?.name ||
-          item.product.category?.name ||
-          "Ангилагдаагүй";
+      for (const item of catalogItems) {
+        const categoryName = item.product.categoryName;
 
         const current = categoriesMap.get(categoryName) || {
           name: categoryName,
@@ -815,7 +828,7 @@ router.get(
         };
 
         current.itemCount += 1;
-        current.totalQuantity += item.quantity;
+        current.totalQuantity += Number(item.quantity || 0);
         categoriesMap.set(categoryName, current);
 
         warehousesMap.set(item.warehouse.id, item.warehouse);
@@ -824,8 +837,11 @@ router.get(
       res.json({
         organizationId,
         summary: {
-          totalItems: inventories.length,
-          totalQuantity: inventories.reduce((sum, item) => sum + item.quantity, 0),
+          totalItems: catalogItems.length,
+          totalQuantity: catalogItems.reduce(
+            (sum, item) => sum + Number(item.quantity || 0),
+            0,
+          ),
           totalCategories: categoriesMap.size,
           totalWarehouses: warehousesMap.size,
           lowStockItems: lowStockCount,
@@ -836,27 +852,7 @@ router.get(
         warehouses: Array.from(warehousesMap.values()).sort((a, b) =>
           a.name.localeCompare(b.name),
         ),
-        items: inventories.map((item) => {
-          const alertThreshold = getAlertThreshold(item);
-
-          return {
-            id: item.id,
-            quantity: item.quantity,
-            minQuantity: item.minQuantity,
-            maxQuantity: item.maxQuantity,
-            alertThreshold,
-            isLowStock: item.quantity <= alertThreshold,
-            location: item.location,
-            warehouse: item.warehouse,
-            product: {
-              ...item.product,
-              categoryName:
-                item.product.businessCategory?.name ||
-                item.product.category?.name ||
-                "Ангилагдаагүй",
-            },
-          };
-        }),
+        items: catalogItems,
       });
     } catch (error) {
       console.error("get organization catalog error", error);

@@ -1,0 +1,37 @@
+import {
+  ImagePlus,
+  Tag,
+  MapPin,
+  CreditCard,
+  Wrench,
+  Monitor,
+  Users,
+} from "lucide-react";
+import type { CardColorScheme } from "@mgl/ui";
+import type { SectionKey } from "./types";
+
+export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType }[] = [
+  { key: "banner", label: "Промо баннер", icon: ImagePlus },
+  { key: "categories", label: "Ангилалууд", icon: Tag },
+  { key: "branches", label: "Салбар байршил", icon: MapPin },
+  { key: "cards", label: "Карт хэвлэх", icon: CreditCard },
+  { key: "qr", label: "QR Generator", icon: Wrench },
+  { key: "pos", label: "POS Register", icon: Monitor },
+  { key: "hr", label: "Хүний нөөц", icon: Users },
+];
+
+export const SCHEME_ORDER: CardColorScheme[] = [
+  "default",
+  "dark",
+  "charcoal",
+  "navy",
+  "forest",
+];
+
+export const MAX_BANNERS = 3;
+export const PRINT_COPIES = 8;
+export const PRINT_SCALE = 0.84;
+export const MIN_BRANCH_DISTANCE_METERS = 500;
+export const BRANCH_MAP_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+export const UB_CENTER: [number, number] = [47.9184, 106.9177];

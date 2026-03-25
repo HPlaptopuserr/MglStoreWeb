@@ -1,5 +1,12 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma } from "@mgl/database";
+import crypto from "crypto";
+import {
+  prisma,
+  OnboardingSource,
+  OrgStatus,
+  OrgType,
+  Role,
+} from "@mgl/database";
 import bcrypt from "bcryptjs";
 
 const router: ExpressRouter = Router();
@@ -12,6 +19,66 @@ const categoryLabels: Record<string, string> = {
 };
 
 const MIN_BRANCH_DISTANCE_METERS = 500;
+const VENDOR_APP_URL =
+  process.env.VENDOR_APP_URL || "https://vendor.mglstore.mn";
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
+async function generateUniqueOrganizationSlug(name: string): Promise<string> {
+  const baseSlug = slugify(name) || "organization";
+  let slug = baseSlug;
+  let counter = 0;
+
+  while (true) {
+    const exists = await prisma.organization.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+
+    if (!exists) return slug;
+
+    counter += 1;
+    slug = `${baseSlug}-${counter}`;
+  }
+}
+
+async function generateUniqueTaxId(prefix = "TEMP"): Promise<string> {
+  let taxId = `${prefix}-${Date.now()}`;
+
+  while (true) {
+    const exists = await prisma.organization.findUnique({
+      where: { taxId },
+      select: { id: true },
+    });
+
+    if (!exists) return taxId;
+
+    taxId = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  }
+}
+
+function generateInviteToken(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+function getInviteTokenExpiry(): Date {
+  const now = new Date();
+  now.setHours(now.getHours() + 24);
+  return now;
+}
+
+function normalizeEmail(value?: string | null): string | null {
+  const raw = value?.trim().toLowerCase();
+  if (!raw || !raw.includes("@")) return null;
+  return raw;
+}
 
 function haversineDistanceMeters(
   lat1: number,
@@ -34,6 +101,168 @@ function haversineDistanceMeters(
 }
 
 // Grouped by businessCategory (must be before /partners to avoid Express matching issues)
+router.post("/admin/organizations", async (req, res) => {
+  try {
+    const {
+      name,
+      ownerEmail,
+      ownerName,
+      phone,
+      address,
+      type,
+      businessCategory,
+      taxId,
+    } = req.body as {
+      name?: string;
+      ownerEmail?: string;
+      ownerName?: string;
+      phone?: string;
+      address?: string;
+      type?: string;
+      businessCategory?: string;
+      taxId?: string;
+    };
+
+    if (!name?.trim()) {
+      return res.status(400).json({ message: "Байгууллагын нэр шаардлагатай" });
+    }
+
+    const normalizedEmail = normalizeEmail(ownerEmail);
+    if (!normalizedEmail) {
+      return res.status(400).json({ message: "Owner email зөв форматтай байх ёстой" });
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: {
+        id: true,
+        organizationId: true,
+        passwordHash: true,
+      },
+    });
+
+    if (existingUser?.organizationId) {
+      return res.status(409).json({
+        message: "Энэ email дээр user аль хэдийн өөр байгууллагад бүртгэлтэй байна",
+      });
+    }
+
+    if (existingUser?.passwordHash) {
+      return res.status(409).json({
+        message: "Энэ email дээр user аль хэдийн бүртгэлтэй байна. Өөр email ашиглана уу.",
+      });
+    }
+
+    const slug = await generateUniqueOrganizationSlug(name);
+    const resolvedTaxId = taxId?.trim() || (await generateUniqueTaxId("TEMP"));
+    const inviteToken = generateInviteToken();
+    const inviteTokenExpiresAt = getInviteTokenExpiry();
+
+    const result = await prisma.$transaction(async (tx) => {
+      const organization = await tx.organization.create({
+        data: {
+          name: name.trim(),
+          slug,
+          taxId: resolvedTaxId,
+          type:
+            type && Object.values(OrgType).includes(type as OrgType)
+              ? (type as OrgType)
+              : OrgType.SUPPLIER,
+          status: OrgStatus.ACTIVE,
+          email: normalizedEmail,
+          phone: phone?.trim() || null,
+          address: address?.trim() || null,
+          businessCategory: businessCategory?.trim() || null,
+          isVerified: false,
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          taxId: true,
+        },
+      });
+
+      const user = existingUser
+        ? await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              role: Role.SUPPLIER,
+              isActive: true,
+              emailVerified: true,
+              onboardingSource: OnboardingSource.ADMIN,
+              organizationId: organization.id,
+            },
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              organizationId: true,
+            },
+          })
+        : await tx.user.create({
+            data: {
+              email: normalizedEmail,
+              role: Role.SUPPLIER,
+              isActive: true,
+              emailVerified: true,
+              onboardingSource: OnboardingSource.ADMIN,
+              organizationId: organization.id,
+            },
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              organizationId: true,
+            },
+          });
+
+      await tx.profile.upsert({
+        where: { userId: user.id },
+        update: {
+          fullName: ownerName?.trim() || name.trim(),
+          phoneNumber: phone?.trim() || null,
+        },
+        create: {
+          userId: user.id,
+          fullName: ownerName?.trim() || name.trim(),
+          phoneNumber: phone?.trim() || null,
+        },
+      });
+
+      await tx.vendorSetupToken.create({
+        data: {
+          userId: user.id,
+          token: inviteToken,
+          expiresAt: inviteTokenExpiresAt,
+        },
+      });
+
+      await tx.organizationMember.create({
+        data: {
+          userId: user.id,
+          organizationId: organization.id,
+          role: "OWNER",
+          isActive: true,
+        },
+      });
+
+      return { organization, user };
+    });
+
+    return res.status(201).json({
+      organization: result.organization,
+      user: result.user,
+      inviteToken,
+      inviteTokenExpiresAt,
+      inviteLink: `${VENDOR_APP_URL}/set-password?token=${inviteToken}`,
+    });
+  } catch (error) {
+    console.error("create admin organization error", error);
+    return res.status(500).json({ message: "Байгууллага үүсгэхэд алдаа гарлаа" });
+  }
+});
+
 router.get("/partners/grouped", async (req, res) => {
   try {
     const partners = await prisma.organization.findMany({
@@ -273,6 +502,211 @@ router.get("/partners", async (req, res) => {
     res.status(500).json({
       message: "Түншүүдийг авахад алдаа гарлаа",
     });
+  }
+});
+
+// ─── HR / Staff endpoints ────────────────────────────────────────────────────
+
+const VALID_STAFF_ROLES = ["OWNER", "ADMIN", "STAFF", "VIEWER", "CASHIER", "DRIVER"] as const;
+type StaffRole = (typeof VALID_STAFF_ROLES)[number];
+
+const ROLE_LABEL: Record<StaffRole, string> = {
+  OWNER: "Эзэмшигч",
+  ADMIN: "Менежер",
+  STAFF: "Ажилтан",
+  VIEWER: "Ажиглагч",
+  CASHIER: "Кассчин",
+  DRIVER: "Жолооч",
+};
+
+// GET /admin/organizations/:id/staff
+router.get("/admin/organizations/:id/staff", async (req, res) => {
+  const { id: organizationId } = req.params;
+  try {
+    const members = await prisma.organizationMember.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: { select: { fullName: true, phoneNumber: true } },
+          },
+        },
+      },
+    });
+    return res.json(
+      members.map((m) => ({
+        id: m.id,
+        userId: m.user.id,
+        email: m.user.email,
+        fullName: m.user.profile?.fullName || "",
+        phone: m.user.profile?.phoneNumber || null,
+        role: m.role,
+        roleLabel: ROLE_LABEL[m.role as StaffRole] ?? m.role,
+        isActive: m.isActive,
+        createdAt: m.createdAt,
+      })),
+    );
+  } catch (error) {
+    console.error("list staff error", error);
+    return res.status(500).json({ message: "Ажилтнуудын жагсаалт авахад алдаа гарлаа" });
+  }
+});
+
+// POST /admin/organizations/:id/staff — create a new staff member
+router.post("/admin/organizations/:id/staff", async (req, res) => {
+  const { id: organizationId } = req.params;
+  const { fullName, email, phone, password, role } = req.body as {
+    fullName?: string;
+    email?: string;
+    phone?: string;
+    password?: string;
+    role?: string;
+  };
+
+  if (!fullName?.trim()) {
+    return res.status(400).json({ message: "Нэр шаардлагатай" });
+  }
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return res.status(400).json({ message: "Имэйл зөв форматтай байх ёстой" });
+  }
+  const memberRole: StaffRole = VALID_STAFF_ROLES.includes(role as StaffRole)
+    ? (role as StaffRole)
+    : "STAFF";
+
+  try {
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { id: true },
+    });
+    if (!org) return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true, organizationId: true },
+    });
+
+    if (existingUser) {
+      const alreadyMember = await prisma.organizationMember.findUnique({
+        where: { userId_organizationId: { userId: existingUser.id, organizationId } },
+      });
+      if (alreadyMember) {
+        return res.status(409).json({ message: "Энэ хэрэглэгч аль хэдийн тухайн байгууллагад бүртгэлтэй байна" });
+      }
+    }
+
+    const passwordHash = password?.trim()
+      ? await bcrypt.hash(password.trim(), 10)
+      : null;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const user = existingUser
+        ? existingUser
+        : await tx.user.create({
+            data: {
+              email: normalizedEmail,
+              role: memberRole === "DRIVER" ? "COURIER" : "SUPPLIER",
+              isActive: true,
+              emailVerified: true,
+              onboardingSource: OnboardingSource.ADMIN,
+              organizationId,
+              ...(passwordHash ? { passwordHash } : {}),
+            },
+            select: { id: true },
+          });
+
+      await tx.profile.upsert({
+        where: { userId: user.id },
+        update: { fullName: fullName.trim(), phoneNumber: phone?.trim() || null },
+        create: { userId: user.id, fullName: fullName.trim(), phoneNumber: phone?.trim() || null },
+      });
+
+      const member = await tx.organizationMember.create({
+        data: {
+          userId: user.id,
+          organizationId,
+          role: memberRole,
+          isActive: true,
+        },
+      });
+
+      if (passwordHash && existingUser) {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { passwordHash },
+        });
+      }
+
+      return { userId: user.id, memberId: member.id };
+    });
+
+    return res.status(201).json({
+      memberId: result.memberId,
+      userId: result.userId,
+      email: normalizedEmail,
+      fullName: fullName.trim(),
+      role: memberRole,
+      roleLabel: ROLE_LABEL[memberRole],
+    });
+  } catch (error) {
+    console.error("create staff error", error);
+    return res.status(500).json({ message: "Ажилтан бүртгэхэд алдаа гарлаа" });
+  }
+});
+
+// PATCH /admin/organizations/:id/staff/:memberId/toggle — toggle active
+router.patch("/admin/organizations/:id/staff/:memberId/toggle", async (req, res) => {
+  const { memberId } = req.params;
+  try {
+    const member = await prisma.organizationMember.findUnique({ where: { id: memberId } });
+    if (!member) return res.status(404).json({ message: "Гишүүн олдсонгүй" });
+    const updated = await prisma.organizationMember.update({
+      where: { id: memberId },
+      data: { isActive: !member.isActive },
+      select: { id: true, isActive: true },
+    });
+    return res.json(updated);
+  } catch (error) {
+    console.error("toggle staff error", error);
+    return res.status(500).json({ message: "Идэвхжүүлэхэд алдаа гарлаа" });
+  }
+});
+
+// DELETE /admin/organizations/:id/staff/:memberId
+router.delete("/admin/organizations/:id/staff/:memberId", async (req, res) => {
+  const { memberId } = req.params;
+  try {
+    await prisma.organizationMember.delete({ where: { id: memberId } });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("delete staff error", error);
+    return res.status(500).json({ message: "Ажилтан устгахад алдаа гарлаа" });
+  }
+});
+
+// GET /admin/branches?organizationId= — list branches for a given org
+router.get("/admin/branches", async (req, res) => {
+  const organizationId = String(req.query.organizationId || "").trim();
+  if (!organizationId) {
+    return res.status(400).json({ message: "organizationId шаардлагатай" });
+  }
+  try {
+    const branches = await prisma.branch.findMany({
+      where: { organizationId, deletedAt: null },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, name: true, address: true },
+    });
+    return res.json(branches);
+  } catch (error) {
+    console.error("list admin branches error", error);
+    return res.status(500).json({ message: "Салбарын жагсаалт авахад алдаа гарлаа" });
   }
 });
 

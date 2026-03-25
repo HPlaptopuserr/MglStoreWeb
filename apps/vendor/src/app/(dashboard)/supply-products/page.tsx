@@ -37,6 +37,7 @@ type CatalogItem = {
   alertThreshold: number;
   isLowStock: boolean;
   location: string | null;
+  source?: "warehouse" | "own";
   warehouse: CatalogWarehouse;
   product: {
     id: string;
@@ -72,12 +73,16 @@ export default function SupplyProductsPage() {
   const searchParams = useSearchParams();
   const [data, setData] = useState<CatalogResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("Бүгд");
   const isLowStockView = searchParams.get("filter") === "low-stock";
 
   useEffect(() => {
     const load = async () => {
+      setError("");
+      setLoading(true);
       try {
         const storedUser = JSON.parse(localStorage.getItem("vendor_user") || "{}");
         if (!storedUser.organizationId) {
@@ -88,18 +93,19 @@ export default function SupplyProductsPage() {
         const res = await fetch(
           `${API}/stock-requests/catalog/organization/${storedUser.organizationId}`,
         );
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         setData(json);
-      } catch (error) {
-        console.error("Failed to load supply products:", error);
+      } catch (err) {
+        console.error("Failed to load supply products:", err);
+        setError("Нэгдсэн барааны жагсаалт авахад алдаа гарлаа. Дахин оролдоно уу.");
       } finally {
         setLoading(false);
       }
     };
 
     load();
-  }, []);
+  }, [retryKey]);
 
   const filteredItems = useMemo(() => {
     const list = data?.items || [];
@@ -139,6 +145,23 @@ export default function SupplyProductsPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" />
+              <p className="font-medium">{error}</p>
+            </div>
+            <button
+              onClick={() => setRetryKey((k) => k + 1)}
+              className="shrink-0 rounded-xl bg-red-100 px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-200"
+            >
+              Дахин оролдох
+            </button>
+          </div>
+        </div>
+      )}
+
       {isLowStockView && (
         <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
           <p className="font-bold">Үлдэгдэл багассан барааны анхааруулга</p>
@@ -153,11 +176,10 @@ export default function SupplyProductsPage() {
         <div className="flex items-start gap-3">
           <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
           <div>
-            <p className="font-bold">Ирээдүйн POS ба агуулахын урсгалд зориулсан суурь</p>
+            <p className="font-bold">Зөвхөн татагдсан барааны жагсаалт</p>
             <p className="mt-1 text-amber-800">
-              Энд харагдаж буй бараанууд нь vendor өөрөө шинээр бүртгэх бараа биш. Энэ бол
-              нэгдсэн агуулахаас татаж ажиллуулах барааны жагсаалт бөгөөд цаашид POS борлуулалт
-              хийгдэхэд store бүрийн өөрийн үлдэгдлээс хасагдах логиктай уялдана.
+              Энэ хэсэгт зөвхөн агуулахаас танай байгууллагад хүргэгдэж дууссан
+              (татагдсан) бараанууд харагдана.
             </p>
           </div>
         </div>
@@ -233,6 +255,7 @@ export default function SupplyProductsPage() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredItems.map((item) => {
             const isLowStock = item.quantity <= item.alertThreshold;
+            const isOwnProduct = item.source === "own";
 
             return (
             <div
@@ -317,12 +340,12 @@ export default function SupplyProductsPage() {
               </div>
 
               <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-                <span>Өөрийн бараа биш</span>
+                <span>{isOwnProduct ? "Өөрийн бараа" : "Татагдсан бараа"}</span>
                 <Link
                   href={`/shipments?warehouseId=${encodeURIComponent(item.warehouse.id)}&productId=${encodeURIComponent(item.product.id)}`}
                   className={`inline-flex items-center gap-1 font-bold hover:underline ${isLowStock ? "text-red-700" : "text-amber-700"}`}
                 >
-                  Татах хүсэлт <ChevronRight size={12} />
+                  Таталтын түүх <ChevronRight size={12} />
                 </Link>
               </div>
             </div>

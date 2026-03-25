@@ -14,6 +14,7 @@ export { servicePostsRoutes } from "./content";
 export { jobApplicationRoutes, jobPositionRoutes } from "./jobs";
 
 export {
+  posRoutes,
   serviceRequestsRoutes,
   stockRequestsRoutes,
   warehousesRoutes,

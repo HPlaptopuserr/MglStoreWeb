@@ -287,6 +287,7 @@ model Organization {
   deletionReason               String?
   scheduledPermanentDeletionAt DateTime?
   branches                     Branch[]
+  posRegisters                 PosRegister[]
   orders                       Order[]
   invites                      OrganizationInvite[]
   members                      OrganizationMember[]
@@ -374,19 +375,50 @@ model OrganizationMember {
 }
 
 model Branch {
-  id             String       @id @default(uuid())
+  id             String        @id @default(uuid())
   organizationId String
   name           String
   address        String
   lat            Float?
   lng            Float?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  posRegisters   PosRegister[]
 
   @@index([organizationId])
   @@index([deletedAt])
+}
+
+model PosRegister {
+  id                String       @id @default(uuid())
+  organizationId    String
+  branchId          String
+  name              String
+  label             String?
+
+  // Card terminal
+  cardEnabled       Boolean      @default(false)
+  cardProviderType  String?      // e.g. "QPOSLANE" | "GANTIGO" | "IDPAY"
+  cardTerminalId    String?      // hardware S/N or LAN IP
+  terminalBridgeUrl String?      // e.g. "http://localhost:7420"
+
+  // QPay
+  qpayEnabled       Boolean      @default(false)
+  qpayMerchantId    String?
+  qpayTerminalId    String?
+
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  organization      Organization @relation(fields: [organizationId], references: [id])
+  branch            Branch       @relation(fields: [branchId], references: [id])
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([isActive])
 }
 
 model Address {
@@ -873,6 +905,8 @@ enum OrganizationMemberRole {
   ADMIN
   STAFF
   VIEWER
+  CASHIER
+  DRIVER
 }
 
 enum ProductRequestType {

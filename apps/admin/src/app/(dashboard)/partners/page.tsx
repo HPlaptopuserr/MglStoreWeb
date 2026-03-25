@@ -20,6 +20,9 @@ import {
   Trash2,
   AlertTriangle,
   TrendingUp,
+  Plus,
+  Copy,
+  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 import { API } from "@/lib/api";
@@ -55,6 +58,28 @@ type ApiCategory = {
   icon: string | null;
   sortOrder: number;
   level: number;
+};
+
+type CreateOrganizationForm = {
+  name: string;
+  ownerEmail: string;
+  ownerName: string;
+  phone: string;
+  address: string;
+  type: string;
+  businessCategory: string;
+  taxId: string;
+};
+
+const EMPTY_CREATE_FORM: CreateOrganizationForm = {
+  name: "",
+  ownerEmail: "",
+  ownerName: "",
+  phone: "",
+  address: "",
+  type: "SUPPLIER",
+  businessCategory: "",
+  taxId: "",
 };
 
 const INVESTOR_RING_COLORS = [
@@ -183,6 +208,16 @@ export default function PartnersPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createForm, setCreateForm] = useState<CreateOrganizationForm>(EMPTY_CREATE_FORM);
+  const [inviteModal, setInviteModal] = useState<{
+    organizationName: string;
+    email: string;
+    inviteLink: string;
+  } | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   const handleDelete = async (partner: Partner) => {
     if (!deleteReason.trim() || deleteReason.trim().length < 5) {
@@ -242,6 +277,59 @@ export default function PartnersPage() {
     );
   };
 
+  const handleCreateOrganization = async () => {
+    if (!createForm.name.trim() || !createForm.ownerEmail.trim()) {
+      setCreateError("Байгууллагын нэр болон owner email шаардлагатай");
+      return;
+    }
+
+    setCreating(true);
+    setCreateError("");
+    try {
+      const res = await fetch(`${API}/admin/organizations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...createForm,
+          name: createForm.name.trim(),
+          ownerEmail: createForm.ownerEmail.trim(),
+          ownerName: createForm.ownerName.trim(),
+          phone: createForm.phone.trim(),
+          address: createForm.address.trim(),
+          taxId: createForm.taxId.trim(),
+          businessCategory: createForm.businessCategory || null,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Байгууллага үүсгэхэд алдаа гарлаа");
+      }
+
+      setCreateModalOpen(false);
+      setCreateForm(EMPTY_CREATE_FORM);
+      setInviteModal({
+        organizationName: data.organization?.name || createForm.name,
+        email: data.user?.email || createForm.ownerEmail,
+        inviteLink: data.inviteLink,
+      });
+      await fetchPartners();
+    } catch (error) {
+      setCreateError(
+        error instanceof Error ? error.message : "Байгууллага үүсгэхэд алдаа гарлаа",
+      );
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const copyInviteLink = async () => {
+    if (!inviteModal?.inviteLink) return;
+    await navigator.clipboard.writeText(inviteModal.inviteLink);
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 2000);
+  };
+
   useEffect(() => {
     fetchPartners();
     fetch(`${API}/business-categories?level=0`)
@@ -252,6 +340,181 @@ export default function PartnersPage() {
 
   return (
     <div className="text-slate-800 font-sans">
+      {inviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Байгууллага амжилттай үүслээ</h3>
+                <p className="text-sm text-slate-500">Owner хэрэглэгч invite link-ээр нууц үгээ тохируулна.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl bg-slate-50 p-4">
+              <div>
+                <p className="text-xs text-slate-400">Байгууллага</p>
+                <p className="font-semibold text-slate-900">{inviteModal.organizationName}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">Owner email</p>
+                <p className="font-medium text-slate-700">{inviteModal.email}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">Invite link</p>
+                <div className="mt-1 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 break-all">
+                  {inviteModal.inviteLink}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setInviteModal(null)}
+                className="flex-1 rounded-xl bg-slate-100 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-200"
+              >
+                Хаах
+              </button>
+              <button
+                onClick={copyInviteLink}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 font-medium text-white hover:bg-indigo-700"
+              >
+                <Copy size={16} />
+                {inviteCopied ? "Хуулсан" : "Link хуулах"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {createModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Байгууллага бүртгэх</h3>
+                <p className="text-sm text-slate-500">Шууд байгууллага үүсгээд owner invite link үүсгэнэ.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setCreateModalOpen(false);
+                  setCreateError("");
+                }}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {createError && (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {createError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Байгууллагын нэр *</label>
+                <input
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Owner email *</label>
+                <input
+                  type="email"
+                  value={createForm.ownerEmail}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerEmail: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Owner нэр</label>
+                <input
+                  value={createForm.ownerName}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerName: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Утас</label>
+                <input
+                  value={createForm.phone}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Төрөл</label>
+                <select
+                  value={createForm.type}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, type: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                >
+                  <option value="SUPPLIER">SUPPLIER</option>
+                  <option value="SERVICE_PROVIDER">SERVICE_PROVIDER</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Татварын дугаар</label>
+                <input
+                  value={createForm.taxId}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, taxId: e.target.value }))}
+                  placeholder="Хоосон бол автоматаар үүсгэнэ"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Ангилал</label>
+                <select
+                  value={createForm.businessCategory}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, businessCategory: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                >
+                  <option value="">Сонгоогүй</option>
+                  {apiCategories.map((cat) => (
+                    <option key={cat.id} value={cat.slug}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Хаяг</label>
+                <textarea
+                  value={createForm.address}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, address: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => {
+                  setCreateModalOpen(false);
+                  setCreateError("");
+                }}
+                className="flex-1 rounded-xl bg-slate-100 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-200"
+              >
+                Болих
+              </button>
+              <button
+                onClick={handleCreateOrganization}
+                disabled={creating}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+              >
+                <Plus size={16} />
+                {creating ? "Үүсгэж байна..." : "Байгууллага үүсгэх"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full">
         <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm border border-slate-100 mb-4 md:mb-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 md:gap-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 md:gap-8 w-full lg:w-auto">
@@ -285,26 +548,39 @@ export default function PartnersPage() {
             </div>
           </div>
 
-          <div className="relative w-full lg:w-auto lg:min-w-80 max-w-md group">
-            <Search
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-slate-600"
-              size={18}
-            />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Компанийн нэр, И-мэйл, РД-р хайх..."
-              className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm transition-all focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white placeholder:text-slate-400 font-medium placeholder:font-normal"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 rounded-full p-1 hover:bg-slate-100 transition-colors"
-              >
-                <X size={14} />
-              </button>
-            )}
+          <div className="flex w-full max-w-full flex-col gap-3 lg:w-auto lg:flex-row lg:items-center">
+            <button
+              onClick={() => {
+                setCreateModalOpen(true);
+                setCreateError("");
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              <Plus size={16} />
+              Байгууллага бүртгэх
+            </button>
+
+            <div className="relative w-full lg:min-w-80 max-w-md group">
+              <Search
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-slate-600"
+                size={18}
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Компанийн нэр, И-мэйл, РД-р хайх..."
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm transition-all focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white placeholder:text-slate-400 font-medium placeholder:font-normal"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 rounded-full p-1 hover:bg-slate-100 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

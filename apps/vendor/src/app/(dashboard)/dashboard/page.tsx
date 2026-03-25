@@ -15,6 +15,7 @@ import {
   TrendingUp,
   ShoppingCart,
   CreditCard,
+  Barcode,
   ChevronRight,
   Boxes,
   Zap,
@@ -127,7 +128,10 @@ export default function Dashboard() {
     if (!orgId) return;
     setLoading(true);
     fetch(`${API_BASE}/api/vendor/dashboard/stats?organizationId=${orgId}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((d) => {
         setData(d);
         setError("");
@@ -137,7 +141,7 @@ export default function Dashboard() {
   }, [orgId]);
 
   const activeShipments = data
-    ? data.stockRequests.pending + data.stockRequests.approved
+    ? (data.stockRequests?.pending ?? 0) + (data.stockRequests?.approved ?? 0)
     : 0;
 
   return (
@@ -153,6 +157,13 @@ export default function Dashboard() {
           </h1>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/pos"
+            className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
+          >
+            <Barcode size={15} />
+            POS Demo
+          </Link>
           {(data?.pendingPayments?.count ?? 0) > 0 && (
             <Link
               href="/shipments"

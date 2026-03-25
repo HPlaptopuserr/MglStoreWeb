@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import path from "path";
 import {
   authRoutes,
   investorRoutes,
@@ -12,6 +13,7 @@ import {
   servicePostsRoutes,
   jobApplicationRoutes,
   jobPositionRoutes,
+  posRoutes,
   serviceRequestsRoutes,
   stockRequestsRoutes,
   warehousesRoutes,
@@ -19,7 +21,9 @@ import {
   siteSettingsRoutes,
 } from "./routes";
 
-dotenv.config();
+// Resolve .env from monorepo root (../../.. from src/, ../../../ from dist/)
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+dotenv.config(); // fallback: local .env if present
 
 const app = express();
 
@@ -55,6 +59,7 @@ app.use("/api", businessCategoriesRoutes);
 app.use("/api", dashboardRoutes);
 app.use("/api", jobApplicationRoutes);
 app.use("/api", jobPositionRoutes);
+app.use("/api", posRoutes);
 app.use("/api", serviceRequestsRoutes);
 app.use("/api", warehousesRoutes);
 app.use("/api", stockRequestsRoutes);

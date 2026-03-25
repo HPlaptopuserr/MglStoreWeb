@@ -12,6 +12,7 @@ import {
   Users,
   ClipboardList,
   Megaphone,
+  ScanLine,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -22,6 +23,7 @@ function cn(...classes: Array<string | false | undefined>) {
 
 const navigation = [
   { name: "Хяналтын самбар", href: "/dashboard", icon: LayoutDashboard },
+  { name: "POS касс", href: "/pos", icon: ScanLine },
   { name: "Өөрийн бүтээгдэхүүн", href: "/products", icon: Package },
   { name: "Нэгдсэн бараа", href: "/supply-products", icon: Boxes },
   { name: "Үйлчилгээний постууд", href: "/service-posts", icon: Megaphone },
@@ -31,9 +33,13 @@ const navigation = [
 
 export interface VendorSidebarProps {
   onSignOut?: () => void;
+  showPos?: boolean;
 }
 
-export function VendorSidebar({ onSignOut }: VendorSidebarProps) {
+export function VendorSidebar({ onSignOut, showPos = false }: VendorSidebarProps) {
+  const filteredNavigation = navigation.filter(
+    (item) => item.href !== "/pos" || showPos,
+  );
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -83,9 +89,10 @@ export function VendorSidebar({ onSignOut }: VendorSidebarProps) {
             </p>
           )}
 
-          {navigation.map((item) => {
+          {filteredNavigation.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + "/");
+            const isPosActive = isActive && item.href === "/pos";
 
             return (
               <Link
@@ -95,7 +102,9 @@ export function VendorSidebar({ onSignOut }: VendorSidebarProps) {
                 className={cn(
                   "group flex items-center rounded-2xl text-sm font-bold transition-all duration-300",
                   isCollapsed ? "justify-center px-0 py-3.5" : "px-4 py-3.5",
-                  isActive
+                  isPosActive
+                    ? "bg-emerald-500 text-white shadow-[0_0_22px_rgba(16,185,129,0.35)] ring-2 ring-emerald-300/40"
+                    : isActive
                     ? "bg-[#FFAD02] text-black shadow-[0_0_20px_rgba(255,173,2,0.25)]"
                     : "text-white/60 hover:bg-white/10 hover:text-white",
                 )}
@@ -104,7 +113,9 @@ export function VendorSidebar({ onSignOut }: VendorSidebarProps) {
                   className={cn(
                     "h-5 w-5 shrink-0",
                     !isCollapsed && "mr-3",
-                    isActive
+                    isPosActive
+                      ? "text-white"
+                      : isActive
                       ? "text-black"
                       : "text-white/60 group-hover:text-white",
                   )}
