@@ -55,21 +55,18 @@ export default function VendorDashboardLayout({
       });
     }
 
-    // POS is visible only when org has registers and admin has POS access toggle enabled.
+    // Vendor UI should not call admin-only register list endpoint.
+    // Keep POS menu visibility based on org POS toggle; register readiness is handled inside POS page.
     if (organizationId) {
-      Promise.all([
-        fetch(`${API_URL}/api/admin/pos-registers?organizationId=${organizationId}`),
-        fetch(`${API_URL}/api/site-settings`),
-      ])
-        .then(async ([regRes, settingRes]) => {
-          const registers = regRes.ok ? await regRes.json() : [];
+      fetch(`${API_URL}/api/site-settings`)
+        .then(async (settingRes) => {
           const settings = settingRes.ok
             ? ((await settingRes.json()) as Record<string, string>)
             : {};
           const raw = settings[`pos-enabled-${organizationId}`];
           const posEnabled =
             raw == null || raw === "" || raw === "1" || raw === "true" || raw === "on";
-          setShowPos(Array.isArray(registers) && registers.length > 0 && posEnabled);
+          setShowPos(posEnabled);
         })
         .catch(() => setShowPos(false));
     }

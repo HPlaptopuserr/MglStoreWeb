@@ -23,6 +23,10 @@ export async function posRequest<T>(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const csrfToken = getCsrfToken();
   if (csrfToken) headers["x-csrf-token"] = csrfToken;
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("vendor_token") || localStorage.getItem("admin_token");
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
 
   const res = await fetch(`${API}${path}`, {
     method: options.method ?? "GET",

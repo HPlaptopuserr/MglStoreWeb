@@ -115,6 +115,12 @@ export default function PosDemoPage() {
   const [demoShiftId] = useState("demo-shift-1");
   const [demoBranchId] = useState("demo-branch-1");
   const [isCardProcessing, setIsCardProcessing] = useState(false);
+  const [autoCheckoutActive, setAutoCheckoutActive] = useState(false);
+  const [autoFinalizing, setAutoFinalizing] = useState(false);
+  const [successOverlay, setSuccessOverlay] = useState<{ visible: boolean; text: string }>({
+    visible: false,
+    text: "",
+  });
   const [registerConfig, setRegisterConfig] = useState<RegisterConfig | null>(null);
   const [showSetupPanel, setShowSetupPanel] = useState(false);
   // self-registration form
@@ -131,10 +137,49 @@ export default function PosDemoPage() {
   const syncChannelRef = useRef<BroadcastChannel | null>(null);
   const keyBufferRef = useRef("");
   const lastKeyTsRef = useRef(0);
+  const clientSaleIdRef = useRef<string | null>(null);
+  const progressTickerRef = useRef<number | null>(null);
+  const successOverlayTimerRef = useRef<number | null>(null);
 
   const { products, loading, error } = useOwnProducts(organizationId);
   const { state, totals, addProduct, dispatch } = usePosCart();
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
+
+  const clearProgressTicker = () => {
+    if (progressTickerRef.current !== null) {
+      window.clearInterval(progressTickerRef.current);
+      progressTickerRef.current = null;
+    }
+  };
+
+  const startProgressTicker = (baseText: string) => {
+    clearProgressTicker();
+    let tick = 0;
+    setScanStatus("idle");
+    setScanMessage(baseText);
+    console.info(`[POS] ${baseText}`);
+
+    progressTickerRef.current = window.setInterval(() => {
+      tick += 1;
+      const dots = ".".repeat((tick % 3) + 1);
+      const text = `${baseText}${dots}`;
+      setScanMessage(text);
+      console.info(`[POS] ${text}`);
+    }, 2000);
+  };
+
+  const showSuccessOverlay = (text: string) => {
+    if (successOverlayTimerRef.current !== null) {
+      window.clearTimeout(successOverlayTimerRef.current);
+      successOverlayTimerRef.current = null;
+    }
+    setSuccessOverlay({ visible: true, text });
+    console.info(`[POS] ${text}`);
+    successOverlayTimerRef.current = window.setTimeout(() => {
+      setSuccessOverlay({ visible: false, text: "" });
+      successOverlayTimerRef.current = null;
+    }, 1800);
+  };
 
   useEffect(() => {
     try {
@@ -172,12 +217,21 @@ export default function PosDemoPage() {
       setSetupError("Нэр болон салбараа сонгоно уу.");
       return;
     }
+    const token = localStorage.getItem("vendor_token");
+    if (!token) {
+      setSetupError("Нэвтрэлтийн хугацаа дууссан байна. Дахин нэвтэрнэ үү.");
+      return;
+    }
+
     setSetupRegistering(true);
     setSetupError("");
     try {
-      const res = await fetch(`${API}/admin/pos-registers`, {
+      const res = await fetch(`${API}/pos/registers/self-claim`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           organizationId,
           branchId: setupBranchId,
@@ -226,6 +280,15 @@ export default function PosDemoPage() {
 
   useEffect(() => {
     scannerInputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearProgressTicker();
+      if (successOverlayTimerRef.current !== null) {
+        window.clearTimeout(successOverlayTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -359,37 +422,56 @@ export default function PosDemoPage() {
     const paymentBreakdown: SalePaymentLine[] = confirmedPayments.map((item) => ({
       method: item.method,
       amount: item.amount,
+      attemptId: item.attemptId,
       transactionId: item.transactionId,
       invoiceId: item.invoiceId,
     }));
     const finalMethod = paymentBreakdown.length === 1 ? paymentBreakdown[0].method : "MIXED";
 
-    const receipt = await submitSale({
-      shiftId: demoShiftId,
-      branchId: demoBranchId,
-      paymentMethod: finalMethod,
-      paymentBreakdown,
-      totalPaid: confirmedPaid,
-      remaining,
-      status: "PAID",
-      lines: state.cart.map((line) => ({
-        productId: line.productId,
-        qty: line.qty,
-        unitPrice: line.unitPrice,
-        discountAmount: line.discountAmount,
-        taxRate: line.taxRate,
-      })),
-      note: "POS checkout",
-    });
+    if (!clientSaleIdRef.current) {
+      clientSaleIdRef.current = `sale-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    }
 
-    setQpayModal(null);
-    setPaymentEntries([]);
-    dispatch({ type: "clear-cart" });
-    setView("register");
-    setScanStatus("success");
-    setScanMessage("Split payment амжилттай дууслаа");
+    try {
+      const receipt = await submitSale({
+        shiftId: demoShiftId,
+        branchId: registerConfig?.branchId ?? demoBranchId,
+        registerId: registerConfig?.id,
+        organizationId,
+        clientSaleId: clientSaleIdRef.current,
+        paymentMethod: finalMethod,
+        paymentBreakdown,
+        totalPaid: confirmedPaid,
+        remaining,
+        status: "PAID",
+        lines: state.cart.map((line) => ({
+          productId: line.productId,
+          qty: line.qty,
+          unitPrice: line.unitPrice,
+          discountAmount: line.discountAmount,
+          taxRate: line.taxRate,
+        })),
+        note: "POS checkout",
+      });
 
-    printReceipt(receipt);
+      setQpayModal(null);
+      setPaymentEntries([]);
+      clientSaleIdRef.current = null;
+      dispatch({ type: "clear-cart" });
+      setView("register");
+      setScanStatus("success");
+      setScanMessage("Split payment амжилттай дууслаа");
+      showSuccessOverlay("Төлбөр амжилттай");
+
+      printReceipt(receipt);
+    } catch (e: any) {
+      const message = e?.message || "Гүйлгээ батлах үед алдаа гарлаа.";
+      // Keep cart intact so cashier can adjust qty and retry when stock changed elsewhere.
+      setScanStatus("not-found");
+      setScanMessage(message.includes("нөөц")
+        ? `${message} Тоо ширхэгээ бууруулаад дахин оролдоно уу.`
+        : message);
+    }
   };
 
   const addPaymentEntry = async (method: PaymentMethod, amount: number) => {
@@ -409,14 +491,15 @@ export default function PosDemoPage() {
       ]);
 
       setIsCardProcessing(true);
-      setScanStatus("idle");
-      setScanMessage("Card terminal хүлээж байна...");
+      startProgressTicker("Карт уншуулна уу");
 
       try {
         const attempt = await createCardAttempt({
           amount: safeAmount,
           terminalId: registerConfig?.cardTerminalId ?? "terminal-1",
           bridgeUrl: registerConfig?.terminalBridgeUrl ?? undefined,
+          registerId: registerConfig?.id,
+          organizationId,
         });
 
         let approvedAttempt = attempt;
@@ -428,7 +511,9 @@ export default function PosDemoPage() {
         }
 
         if (approvedAttempt.status !== "APPROVED") {
+          clearProgressTicker();
           setPaymentEntries((prev) => prev.filter((item) => item.id !== pendingId));
+          setAutoCheckoutActive(false);
           setScanStatus("not-found");
           setScanMessage(approvedAttempt.message || "Card төлбөр цуцлагдлаа");
           return;
@@ -440,15 +525,20 @@ export default function PosDemoPage() {
               ? {
                   ...item,
                   status: "confirmed",
+                  attemptId: approvedAttempt.attemptId,
                   transactionId: approvedAttempt.transactionId,
                 }
               : item,
           ),
         );
+        clearProgressTicker();
         setScanStatus("success");
         setScanMessage("Card төлбөр амжилттай баталгаажлаа");
+        showSuccessOverlay("Карт төлбөр амжилттай");
       } catch {
+        clearProgressTicker();
         setPaymentEntries((prev) => prev.filter((item) => item.id !== pendingId));
+        setAutoCheckoutActive(false);
         setScanStatus("not-found");
         setScanMessage("Card terminal холболтын алдаа гарлаа");
       } finally {
@@ -474,7 +564,12 @@ export default function PosDemoPage() {
     if (safeAmount <= 0) return;
 
     try {
-      const invoice = await createQPayInvoice({ amount: safeAmount });
+      startProgressTicker("QPay төлбөр хүлээж байна");
+      const invoice = await createQPayInvoice({
+        amount: safeAmount,
+        registerId: registerConfig?.id,
+        organizationId,
+      });
       const modalPayload: QPayModalPayload = {
         open: true,
         invoiceId: invoice.invoiceId,
@@ -497,6 +592,8 @@ export default function PosDemoPage() {
       setScanStatus("idle");
       setScanMessage("QPay invoice үүслээ. Баталгаажилт хүлээж байна");
     } catch {
+      clearProgressTicker();
+      setAutoCheckoutActive(false);
       setScanStatus("not-found");
       setScanMessage("QPay invoice үүсгэхэд алдаа гарлаа");
     }
@@ -518,8 +615,10 @@ export default function PosDemoPage() {
           setQpayModal(null);
         }
 
+        clearProgressTicker();
         setScanStatus("success");
         setScanMessage("QPay төлбөр баталгаажлаа");
+        showSuccessOverlay("QPay төлбөр амжилттай");
       } catch {
         setScanStatus("not-found");
         setScanMessage("QPay баталгаажуулахад алдаа гарлаа");
@@ -536,8 +635,10 @@ export default function PosDemoPage() {
   };
 
   const resetPaymentEntries = () => {
+    setAutoCheckoutActive(false);
     setPaymentEntries([]);
     setQpayModal(null);
+    clientSaleIdRef.current = null;
   };
 
   const handlePaymentMethodChange = (method: PaymentMethod) => {
@@ -546,6 +647,49 @@ export default function PosDemoPage() {
       setQpayModal(null);
     }
   };
+
+  const startAutoCheckoutFlow = async () => {
+    if (state.cart.length === 0) return;
+
+    setQpayModal(null);
+    setPaymentEntries([]);
+    setView("checkout");
+    setAutoCheckoutActive(true);
+
+    const total = totals.grandTotal;
+    if (total <= 0) {
+      setAutoCheckoutActive(false);
+      return;
+    }
+
+    if (paymentMethod === "QR") {
+      setScanStatus("idle");
+      setScanMessage("QPay QR үүсгэж байна...");
+      await requestQPay(total);
+      return;
+    }
+
+    if (paymentMethod === "CARD") {
+      setScanStatus("idle");
+      setScanMessage("Card terminal руу хүсэлт илгээж байна...");
+      await addPaymentEntry("CARD", total);
+      return;
+    }
+
+    await addPaymentEntry("CASH", total);
+  };
+
+  useEffect(() => {
+    if (!autoCheckoutActive) return;
+    if (view !== "checkout") return;
+    if (!canFinalizeSale || saleLoading || autoFinalizing) return;
+
+    setAutoFinalizing(true);
+    void handleCreateDemoSale().finally(() => {
+      setAutoFinalizing(false);
+      setAutoCheckoutActive(false);
+    });
+  }, [autoCheckoutActive, view, canFinalizeSale, saleLoading, autoFinalizing, handleCreateDemoSale]);
 
   useEffect(() => {
     const pendingQpayIds = paymentEntries
@@ -568,8 +712,10 @@ export default function PosDemoPage() {
               if (qpayModal?.invoiceId === invoiceId) {
                 setQpayModal(null);
               }
+              clearProgressTicker();
               setScanStatus("success");
               setScanMessage("QPay төлбөр баталгаажлаа");
+              showSuccessOverlay("QPay төлбөр амжилттай");
             }
 
             if (status.status === "EXPIRED") {
@@ -577,6 +723,7 @@ export default function PosDemoPage() {
               if (qpayModal?.invoiceId === invoiceId) {
                 setQpayModal(null);
               }
+              clearProgressTicker();
               setScanStatus("not-found");
               setScanMessage("QPay invoice хугацаа дууссан");
             }
@@ -809,9 +956,23 @@ export default function PosDemoPage() {
           onResetPayments={resetPaymentEntries}
           onFinalize={handleCreateDemoSale}
           canFinalize={canFinalizeSale}
-          onBack={() => setView("register")}
+          onBack={() => {
+            clearProgressTicker();
+            setAutoCheckoutActive(false);
+            setView("register");
+          }}
           disabled={saleLoading || state.cart.length === 0 || isCardProcessing}
         />
+      )}
+
+      {successOverlay.visible && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 backdrop-blur-[1px] pointer-events-none">
+          <div className="rounded-3xl border border-emerald-300/60 bg-emerald-500/15 px-10 py-8 text-center shadow-2xl">
+            <CheckCircle2 className="mx-auto h-24 w-24 text-emerald-400" strokeWidth={2.4} />
+            <p className="mt-4 text-3xl font-black tracking-tight text-emerald-300">Амжилттай</p>
+            <p className="mt-1 text-sm font-semibold text-emerald-100/90">{successOverlay.text}</p>
+          </div>
+        </div>
       )}
 
       <div className="flex items-center gap-2 px-1">
@@ -1001,11 +1162,9 @@ export default function PosDemoPage() {
             paymentMethod={paymentMethod}
             onChangeMethod={handlePaymentMethodChange}
             onSubmit={() => {
-              setQpayModal(null);
-              setPaymentEntries([]);
-              setView("checkout");
+              void startAutoCheckoutFlow();
             }}
-            disabled={state.cart.length === 0}
+            disabled={state.cart.length === 0 || saleLoading || isCardProcessing || autoFinalizing}
           />
 
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">

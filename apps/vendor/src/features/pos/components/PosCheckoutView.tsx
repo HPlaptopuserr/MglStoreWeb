@@ -40,6 +40,7 @@ export type CheckoutPaymentEntry = {
   method: PaymentMethod;
   amount: number;
   status: "confirmed" | "pending";
+  attemptId?: string;
   invoiceId?: string;
   transactionId?: string;
 };

@@ -28,6 +28,8 @@ export function createCardAttempt(payload: {
   amount: number;
   terminalId?: string;
   bridgeUrl?: string;
+  registerId?: string;
+  organizationId?: string;
 }): Promise<CardAttempt> {
   return posRequest<CardAttempt>("/pos/payments/card/authorize", {
     method: "POST",
@@ -35,6 +37,8 @@ export function createCardAttempt(payload: {
       amount: payload.amount,
       terminalId: payload.terminalId || "terminal-1",
       bridgeUrl: payload.bridgeUrl || null,
+      registerId: payload.registerId || null,
+      organizationId: payload.organizationId || null,
     },
   });
 }
@@ -43,11 +47,17 @@ export function getCardAttemptStatus(attemptId: string): Promise<CardAttempt> {
   return posRequest<CardAttempt>(`/pos/payments/card/status/${attemptId}`);
 }
 
-export function createQPayInvoice(payload: { amount: number }): Promise<QPayInvoice> {
+export function createQPayInvoice(payload: {
+  amount: number;
+  registerId?: string;
+  organizationId?: string;
+}): Promise<QPayInvoice> {
   return posRequest<QPayInvoice>("/pos/payments/qpay/invoice", {
     method: "POST",
     body: {
       amount: payload.amount,
+      registerId: payload.registerId || null,
+      organizationId: payload.organizationId || null,
     },
   });
 }

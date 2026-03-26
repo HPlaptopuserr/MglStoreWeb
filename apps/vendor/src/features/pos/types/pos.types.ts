@@ -35,6 +35,7 @@ export type SalePaymentMethod = "CASH" | "CARD" | "QR";
 export type SalePaymentLine = {
   method: SalePaymentMethod;
   amount: number;
+  attemptId?: string;
   transactionId?: string;
   invoiceId?: string;
 };
@@ -42,6 +43,9 @@ export type SalePaymentLine = {
 export type SalePayload = {
   shiftId: string;
   branchId: string;
+  registerId?: string;
+  organizationId?: string;
+  clientSaleId?: string;
   paymentMethod: string;
   paymentBreakdown?: SalePaymentLine[];
   totalPaid?: number;

@@ -38,6 +38,9 @@ model User {
   resolvedReturnRequests       ReturnRequest[]          @relation("ReturnRequestResolvedBy")
   assignedServiceRequests      ServiceRequest[]         @relation("ServiceRequestAssignedTo")
   requestedServiceRequests     ServiceRequest[]         @relation("ServiceRequestRequestedBy")
+  reviewedPosRegisters         PosRegister[]            @relation("PosRegisterReviewedBy")
+  initiatedCardAttempts        CardPaymentAttempt[]     @relation("CardPaymentAttemptInitiatedBy")
+  initiatedQPayInvoices        QPayInvoice[]            @relation("QPayInvoiceInitiatedBy")
   confirmedPayments            StockRequestPayment[]    @relation("PaymentConfirmations")
   organization                 Organization?            @relation(fields: [organizationId], references: [id])
   sessions                     UserSession[]
@@ -399,26 +402,39 @@ model PosRegister {
   label             String?
 
   // Card terminal
-  cardEnabled       Boolean      @default(false)
-  cardProviderType  String?      // e.g. "QPOSLANE" | "GANTIGO" | "IDPAY"
-  cardTerminalId    String?      // hardware S/N or LAN IP
-  terminalBridgeUrl String?      // e.g. "http://localhost:7420"
+  cardEnabled       Boolean             @default(false)
+  cardProviderType  String?             // e.g. "QPOSLANE" | "GANTIGO" | "IDPAY"
+  cardTerminalId    String?             // hardware S/N or LAN IP
+  terminalBridgeUrl String?             // e.g. "http://localhost:7420"
 
   // QPay
-  qpayEnabled       Boolean      @default(false)
+  qpayEnabled       Boolean             @default(false)
   qpayMerchantId    String?
   qpayTerminalId    String?
 
-  isActive          Boolean      @default(true)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  // Activation workflow
+  activationStatus  PosActivationStatus @default(PENDING)
+  reviewedById      String?
+  reviewedAt        DateTime?
+  rejectReason      String?
 
-  organization      Organization @relation(fields: [organizationId], references: [id])
-  branch            Branch       @relation(fields: [branchId], references: [id])
+  isActive          Boolean             @default(false)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  organization      Organization        @relation(fields: [organizationId], references: [id])
+  branch            Branch              @relation(fields: [branchId], references: [id])
+  reviewedBy        User?               @relation("PosRegisterReviewedBy", fields: [reviewedById], references: [id])
+  cardAttempts      CardPaymentAttempt[]
+  qpayInvoices      QPayInvoice[]
 
   @@index([organizationId])
   @@index([branchId])
   @@index([isActive])
+  @@index([activationStatus])
+  @@unique([organizationId, branchId, name])
+  @@unique([cardProviderType, cardTerminalId])
+  @@unique([qpayMerchantId, qpayTerminalId])
 }
 
 model Address {
@@ -1035,6 +1051,104 @@ enum AuditAction {
   PRODUCT_REQUEST_REJECTED
   PRODUCT_REQUEST_CHANGES_REQUESTED
   PRODUCT_PUBLISHED
+  POS_REGISTER_CREATED
+  POS_REGISTER_CLAIMED
+  POS_REGISTER_ACTIVATED
+  POS_REGISTER_REJECTED
+  POS_REGISTER_UPDATED
+  POS_REGISTER_DELETED
+  POS_CARD_AUTHORIZED
+  POS_QPAY_INVOICE_CREATED
+  POS_QPAY_PAID
+  POS_QPAY_WEBHOOK_RECEIVED
+  POS_SALE_CREATED
+}
+
+enum PosActivationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PosPaymentStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  FAILED
+}
+
+enum PosQPayStatus {
+  PENDING
+  PAID
+  EXPIRED
+}
+
+model CardPaymentAttempt {
+  id             String           @id @default(uuid())
+  registerId     String?
+  organizationId String?
+  initiatedById  String?
+  terminalId     String
+  bridgeUrl      String?
+  amount         Decimal          @db.Decimal(18, 2)
+  status         PosPaymentStatus @default(PENDING)
+  transactionId  String?
+  message        String?
+  providerPayload Json?
+  saleReference  String?
+  consumedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  register       PosRegister?     @relation(fields: [registerId], references: [id])
+  initiatedBy    User?            @relation("CardPaymentAttemptInitiatedBy", fields: [initiatedById], references: [id])
+
+  @@index([registerId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([initiatedById])
+  @@index([saleReference])
+}
+
+model QPayInvoice {
+  id             String        @id @default(uuid())
+  registerId     String?
+  organizationId String?
+  initiatedById  String?
+  amount         Decimal       @db.Decimal(18, 2)
+  qrText         String
+  status         PosQPayStatus @default(PENDING)
+  paymentId      String?       @unique
+  expiresAt      DateTime
+  paidAt         DateTime?
+  webhookPayload Json?
+  saleReference  String?
+  consumedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  register       PosRegister?  @relation(fields: [registerId], references: [id])
+  initiatedBy    User?         @relation("QPayInvoiceInitiatedBy", fields: [initiatedById], references: [id])
+
+  @@index([registerId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([initiatedById])
+  @@index([saleReference])
+}
+
+model PosSaleIdempotency {
+  id            String   @id @default(uuid())
+  clientSaleId  String
+  receiptNo     String   @unique
+  organizationId String
+  registerId    String?
+  response      Json
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([organizationId, clientSaleId])
+  @@index([organizationId])
+  @@index([registerId])
+  @@index([createdAt])
 }
 
 enum ServiceRequestType {

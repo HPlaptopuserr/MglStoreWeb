@@ -10,6 +10,7 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
       "paymentBreakdown.method",
     ) as SalePaymentMethod,
     amount: Number(line.amount) || 0,
+    attemptId: line.attemptId,
     transactionId: line.transactionId,
     invoiceId: line.invoiceId,
   }));
@@ -18,6 +19,9 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
     ...payload,
     shiftId: assertNonEmptyString(payload.shiftId, "shiftId"),
     branchId: assertNonEmptyString(payload.branchId, "branchId"),
+    registerId: payload.registerId,
+    organizationId: payload.organizationId,
+    clientSaleId: assertNonEmptyString(payload.clientSaleId || "", "clientSaleId"),
     paymentMethod: assertNonEmptyString(payload.paymentMethod, "paymentMethod"),
     paymentBreakdown: safeBreakdown,
     note: sanitizeReceiptNote(payload.note),

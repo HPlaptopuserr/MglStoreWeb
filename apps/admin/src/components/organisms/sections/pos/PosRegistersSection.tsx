@@ -69,6 +69,21 @@ const CARD_PROVIDERS = ["QPOSLANE", "GANTIGO", "IDPAY"];
 const getPosVisibilityKey = (organizationId: string) =>
   `pos-enabled-${organizationId}`;
 
+const getAuthHeaders = (): HeadersInit => {
+  const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+const adminFetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  return fetch(input, {
+    ...init,
+    headers: {
+      ...getAuthHeaders(),
+      ...(init?.headers || {}),
+    },
+  });
+};
+
 /* ─── component ──────────────────────────────────────────────────────── */
 export function PosRegistersSection() {
   const [orgs, setOrgs] = useState<Org[]>([]);
@@ -88,6 +103,11 @@ export function PosRegistersSection() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [checkingBridge, setCheckingBridge] = useState(false);
+  const [bridgeCheckMessage, setBridgeCheckMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   /* fetch orgs on mount */
   useEffect(() => {
@@ -109,9 +129,9 @@ export function PosRegistersSection() {
     setError("");
     try {
       const [branchRes, regRes, settingRes] = await Promise.all([
-        fetch(`${API}/admin/branches?organizationId=${orgId}`),
-        fetch(`${API}/admin/pos-registers?organizationId=${orgId}`),
-        fetch(`${API}/site-settings`),
+        adminFetch(`${API}/admin/branches?organizationId=${orgId}`),
+        adminFetch(`${API}/admin/pos-registers?organizationId=${orgId}`),
+        adminFetch(`${API}/site-settings`),
       ]);
       if (branchRes.ok) setBranches(await branchRes.json());
       if (regRes.ok) setRegisters(await regRes.json());
@@ -144,6 +164,7 @@ export function PosRegistersSection() {
     setEditingId(null);
     setFormOpen(true);
     setError("");
+    setBridgeCheckMessage(null);
   };
 
   const openEdit = (r: PosRegister) => {
@@ -162,17 +183,129 @@ export function PosRegistersSection() {
     setEditingId(r.id);
     setFormOpen(true);
     setError("");
+    setBridgeCheckMessage(null);
   };
 
-  const closeForm = () => { setFormOpen(false); setEditingId(null); setError(""); };
+  const closeForm = () => {
+    setFormOpen(false);
+    setEditingId(null);
+    setError("");
+    setBridgeCheckMessage(null);
+  };
 
   const set = <K extends keyof FormState>(key: K, val: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: val }));
+
+  const toggleCardEnabled = () => {
+    setForm((prev) => {
+      const nextEnabled = !prev.cardEnabled;
+      if (nextEnabled) return { ...prev, cardEnabled: true };
+      return {
+        ...prev,
+        cardEnabled: false,
+        cardProviderType: "",
+        cardTerminalId: "",
+        terminalBridgeUrl: "",
+      };
+    });
+    setBridgeCheckMessage(null);
+  };
+
+  const toggleQpayEnabled = () => {
+    setForm((prev) => {
+      const nextEnabled = !prev.qpayEnabled;
+      if (nextEnabled) return { ...prev, qpayEnabled: true };
+      return {
+        ...prev,
+        qpayEnabled: false,
+        qpayMerchantId: "",
+        qpayTerminalId: "",
+      };
+    });
+  };
+
+  const checkBridgeHealth = async () => {
+    const rawUrl = form.terminalBridgeUrl.trim();
+
+    if (!rawUrl) {
+      setBridgeCheckMessage({
+        type: "error",
+        text: "Bridge URL оруулсны дараа шалгана уу.",
+      });
+      return;
+    }
+
+    let healthUrl = "";
+    try {
+      const parsed = new URL(rawUrl);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        throw new Error("invalid-protocol");
+      }
+      healthUrl = `${parsed.origin}/health`;
+    } catch {
+      setBridgeCheckMessage({
+        type: "error",
+        text: "Bridge URL буруу байна.",
+      });
+      return;
+    }
+
+    setCheckingBridge(true);
+    setBridgeCheckMessage(null);
+    try {
+      const res = await fetch(healthUrl, {
+        method: "GET",
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!res.ok) {
+        setBridgeCheckMessage({
+          type: "error",
+          text: `Bridge health check амжилтгүй (${res.status}).`,
+        });
+        return;
+      }
+
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        provider?: string;
+        port?: number;
+      };
+
+      if (!data.ok) {
+        setBridgeCheckMessage({
+          type: "error",
+          text: "Bridge /health endpoint буруу хариу өглөө.",
+        });
+        return;
+      }
+
+      setBridgeCheckMessage({
+        type: "success",
+        text: `Bridge холболт OK${data.provider ? ` (${data.provider})` : ""}${data.port ? ` :${data.port}` : ""}`,
+      });
+    } catch {
+      setBridgeCheckMessage({
+        type: "error",
+        text: "Bridge сервертэй холбогдож чадсангүй. URL, сүлжээ, CORS-г шалгана уу.",
+      });
+    } finally {
+      setCheckingBridge(false);
+    }
+  };
 
   /* save */
   const handleSave = async () => {
     if (!form.name.trim() || !form.branchId) {
       setError("Нэр болон салбар сонгоно уу.");
+      return;
+    }
+    if (form.cardEnabled && (!form.cardProviderType || !form.cardTerminalId.trim())) {
+      setError("Карт идэвхтэй үед Провайдер болон Terminal ID заавал бөглөнө үү.");
+      return;
+    }
+    if (form.qpayEnabled && (!form.qpayMerchantId.trim() || !form.qpayTerminalId.trim())) {
+      setError("QPay идэвхтэй үед Merchant ID болон Terminal ID заавал бөглөнө үү.");
       return;
     }
     if (form.terminalBridgeUrl) {
@@ -203,7 +336,7 @@ export function PosRegistersSection() {
       const url = editingId
         ? `${API}/admin/pos-registers/${editingId}`
         : `${API}/admin/pos-registers`;
-      const res = await fetch(url, {
+      const res = await adminFetch(url, {
         method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -225,7 +358,7 @@ export function PosRegistersSection() {
   /* toggle active */
   const toggleActive = async (r: PosRegister) => {
     try {
-      await fetch(`${API}/admin/pos-registers/${r.id}`, {
+      await adminFetch(`${API}/admin/pos-registers/${r.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !r.isActive }),
@@ -239,7 +372,7 @@ export function PosRegistersSection() {
     if (!confirm("POS касс устгах уу?")) return;
     setDeletingId(id);
     try {
-      await fetch(`${API}/admin/pos-registers/${id}`, { method: "DELETE" });
+      await adminFetch(`${API}/admin/pos-registers/${id}`, { method: "DELETE" });
       reload(selectedOrgId);
     } finally {
       setDeletingId(null);
@@ -251,7 +384,7 @@ export function PosRegistersSection() {
     const next = !posVisible;
     setSavingPosVisibility(true);
     try {
-      const res = await fetch(
+      const res = await adminFetch(
         `${API}/site-settings/${getPosVisibilityKey(selectedOrgId)}`,
         {
           method: "PUT",
@@ -529,7 +662,7 @@ export function PosRegistersSection() {
               <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 flex flex-col gap-3">
                 <label className="flex items-center gap-3 cursor-pointer select-none">
                   <div
-                    onClick={() => set("cardEnabled", !form.cardEnabled)}
+                    onClick={toggleCardEnabled}
                     className={`relative h-5 w-9 rounded-full transition-colors ${form.cardEnabled ? "bg-emerald-500" : "bg-slate-300"}`}
                   >
                     <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.cardEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
@@ -566,10 +699,40 @@ export function PosRegistersSection() {
                     <Field label="Bridge URL" className="col-span-2">
                       <input
                         value={form.terminalBridgeUrl}
-                        onChange={(e) => set("terminalBridgeUrl", e.target.value)}
+                        onChange={(e) => {
+                          set("terminalBridgeUrl", e.target.value);
+                          setBridgeCheckMessage(null);
+                        }}
                         placeholder="http://localhost:7420"
                         className={INPUT}
                       />
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={checkBridgeHealth}
+                          disabled={checkingBridge || !form.terminalBridgeUrl.trim()}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {checkingBridge ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <CheckCircle2 size={12} />
+                          )}
+                          Bridge шалгах
+                        </button>
+
+                        {bridgeCheckMessage && (
+                          <span
+                            className={`text-xs font-medium ${
+                              bridgeCheckMessage.type === "success"
+                                ? "text-emerald-700"
+                                : "text-rose-700"
+                            }`}
+                          >
+                            {bridgeCheckMessage.text}
+                          </span>
+                        )}
+                      </div>
                       <p className="mt-1 text-[11px] text-slate-400">
                         Касс дахь локал bridge server хаяг (хоосон бол mock simulation хэрэглэнэ)
                       </p>
@@ -582,7 +745,7 @@ export function PosRegistersSection() {
               <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 flex flex-col gap-3">
                 <label className="flex items-center gap-3 cursor-pointer select-none">
                   <div
-                    onClick={() => set("qpayEnabled", !form.qpayEnabled)}
+                    onClick={toggleQpayEnabled}
                     className={`relative h-5 w-9 rounded-full transition-colors ${form.qpayEnabled ? "bg-sky-500" : "bg-slate-300"}`}
                   >
                     <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.qpayEnabled ? "translate-x-4" : "translate-x-0.5"}`} />

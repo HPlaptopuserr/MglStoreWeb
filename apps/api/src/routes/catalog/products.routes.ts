@@ -87,9 +87,42 @@ router.post("/products", async (req, res) => {
       return res.status(400).json({ message: "Үнэ буруу байна" });
     }
 
+    const costPriceNum =
+      costPrice === undefined || costPrice === null || costPrice === ""
+        ? null
+        : parseFloat(String(costPrice));
+    if (costPriceNum !== null && (isNaN(costPriceNum) || costPriceNum < 0)) {
+      return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
+    }
+
     const stockNum = stock ? parseInt(String(stock)) : 0;
     if (isNaN(stockNum) || stockNum < 0 || stockNum > 2_147_483_647) {
       return res.status(400).json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
+    }
+
+    const normalizedSku = sku ? String(sku).trim() : null;
+    if (normalizedSku) {
+      const existingSku = await prisma.product.findFirst({
+        where: {
+          organizationId,
+          sku: normalizedSku,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (existingSku) {
+        return res.status(409).json({ message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна" });
+      }
+    }
+
+    if (businessCategoryId) {
+      const category = await prisma.businessCategory.findUnique({
+        where: { id: String(businessCategoryId) },
+        select: { id: true },
+      });
+      if (!category) {
+        return res.status(400).json({ message: "Сонгосон ангилал олдсонгүй" });
+      }
     }
 
     // Validate max 5 images
@@ -100,9 +133,9 @@ router.post("/products", async (req, res) => {
         organizationId,
         name: String(name).trim(),
         description: description ? String(description).trim() : null,
-        sku: sku ? String(sku).trim() : null,
+        sku: normalizedSku,
         price: priceNum,
-        costPrice: costPrice ? parseFloat(String(costPrice)) : null,
+        costPrice: costPriceNum,
         stock: stockNum,
         businessCategoryId: businessCategoryId || null,
         isActive: true,
@@ -118,6 +151,23 @@ router.post("/products", async (req, res) => {
 
     return res.status(201).json(product);
   } catch (error) {
+    const maybePrisma = error as { code?: string; meta?: { target?: unknown } };
+    if (maybePrisma?.code === "P2002") {
+      const target = Array.isArray(maybePrisma.meta?.target)
+        ? maybePrisma.meta?.target.join(",")
+        : String(maybePrisma.meta?.target || "");
+      if (target.includes("organizationId") && target.includes("sku")) {
+        return res.status(409).json({ message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна" });
+      }
+      return res.status(409).json({
+        message: target
+          ? `Давхардсан утга байна (${target})`
+          : "Давхардсан утга байна",
+      });
+    }
+    if (maybePrisma?.code === "P2003") {
+      return res.status(400).json({ message: "Холбоотой өгөгдөл буруу байна (ангилал/байгууллага шалгана уу)" });
+    }
     console.error("create product error", error);
     return res.status(500).json({ message: "Бараа үүсгэхэд алдаа гарлаа", error: String(error) });
   }

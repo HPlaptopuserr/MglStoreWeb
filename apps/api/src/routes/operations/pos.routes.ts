@@ -1,39 +1,31 @@
-import { Router, type Router as ExpressRouter } from "express";
+import crypto from "crypto";
+import { Router, type Request, type Response, type Router as ExpressRouter } from "express";
+import jwt from "jsonwebtoken";
 import {
   prisma,
+  AuditAction,
   InventoryReason,
   PaymentMethod,
+  PosPaymentStatus,
+  PosQPayStatus,
+  PosActivationStatus,
 } from "@mgl/database";
 
 const router: ExpressRouter = Router();
 
-type CardAttemptStatus = "PENDING" | "APPROVED" | "DECLINED" | "FAILED";
-type QPayInvoiceStatus = "PENDING" | "PAID" | "EXPIRED";
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
+const runtimeEnv = String(process.env.APP_ENV || process.env.NODE_ENV || "development").toLowerCase();
+const isProdLikeEnv = runtimeEnv === "production" || runtimeEnv === "staging";
+const allowPosSimulation = process.env.POS_ALLOW_SIMULATION === "true" && runtimeEnv === "development";
+const bridgeSharedSecret = String(process.env.POS_BRIDGE_SHARED_SECRET || "").trim();
 
-type CardAttemptRecord = {
-  attemptId: string;
-  amount: number;
-  terminalId: string;
-  bridgeUrl?: string;
-  status: CardAttemptStatus;
-  transactionId?: string;
-  message?: string;
-  createdAt: string;
-  updatedAt: string;
+const MONEY_EPSILON = 0.01;
+
+type AuthClaims = {
+  userId: string;
+  role?: string;
+  organizationId?: string | null;
 };
-
-type QPayInvoiceRecord = {
-  invoiceId: string;
-  amount: number;
-  qrText: string;
-  status: QPayInvoiceStatus;
-  expiresAt: string;
-  paidAt?: string;
-  createdAt: string;
-};
-
-const cardAttempts = new Map<string, CardAttemptRecord>();
-const qpayInvoices = new Map<string, QPayInvoiceRecord>();
 
 type SaleLineInput = {
   productId: string;
@@ -46,6 +38,7 @@ type SaleLineInput = {
 type SalePaymentLineInput = {
   method: string;
   amount: number;
+  attemptId?: string;
   transactionId?: string;
   invoiceId?: string;
 };
@@ -53,6 +46,9 @@ type SalePaymentLineInput = {
 type CreateSaleBody = {
   shiftId?: string;
   branchId?: string;
+  registerId?: string;
+  organizationId?: string;
+  clientSaleId?: string;
   paymentMethod?: string;
   paymentBreakdown?: SalePaymentLineInput[];
   lines?: SaleLineInput[];
@@ -64,7 +60,46 @@ type ApiError = {
   message: string;
 };
 
+type AuthUser = {
+  id: string;
+  role: string;
+  isActive: boolean;
+  deletedAt: Date | null;
+  organizationId: string | null;
+};
+
 const toApiError = (status: number, message: string): ApiError => ({ status, message });
+
+const getBearerToken = (req: Request): string | null => {
+  const header = req.headers.authorization;
+  if (!header) return null;
+  const [scheme, token] = header.split(" ");
+  if (scheme !== "Bearer" || !token) return null;
+  return token.trim();
+};
+
+const parseAuthClaims = (req: Request): AuthClaims | null => {
+  const token = getBearerToken(req);
+  if (!token) return null;
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!decoded || typeof decoded !== "object") return null;
+    const claims = decoded as Partial<AuthClaims>;
+    if (!claims.userId || typeof claims.userId !== "string") return null;
+
+    return {
+      userId: claims.userId,
+      role: typeof claims.role === "string" ? claims.role : undefined,
+      organizationId:
+        claims.organizationId === null || typeof claims.organizationId === "string"
+          ? claims.organizationId
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
+};
 
 const normalizePaymentMethod = (value?: string): PaymentMethod | null => {
   if (!value) return null;
@@ -77,10 +112,99 @@ const normalizePaymentMethod = (value?: string): PaymentMethod | null => {
   return null;
 };
 
+const normalizeRegisterName = (value?: string) => String(value || "").trim();
+
+const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+const moneyMatches = (left: number, right: number) => Math.abs(roundMoney(left) - roundMoney(right)) < MONEY_EPSILON;
+
+const signPayload = (payload: string, secret: string) =>
+  crypto.createHmac("sha256", secret).update(payload).digest("hex");
+
+const timingSafeEqualHex = (provided: string, expected: string): boolean => {
+  if (!provided || !expected) return false;
+  if (!/^[0-9a-f]+$/i.test(provided) || !/^[0-9a-f]+$/i.test(expected)) return false;
+  const providedBuf = Buffer.from(provided, "hex");
+  const expectedBuf = Buffer.from(expected, "hex");
+  if (providedBuf.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(providedBuf, expectedBuf);
+};
+
+const getHeaderValue = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
+const parseBridgeResultStatus = (status?: string): PosPaymentStatus => {
+  if (status === "APPROVED") return PosPaymentStatus.APPROVED;
+  if (status === "DECLINED") return PosPaymentStatus.DECLINED;
+  return PosPaymentStatus.FAILED;
+};
+
+const parseQPaySuccess = (statusValue: unknown): boolean => {
+  const status = String(statusValue || "").trim().toUpperCase();
+  return ["PAID", "SUCCESS", "SUCCEEDED", "COMPLETED"].includes(status);
+};
+
+const parseOptionalDate = (value: unknown): Date | null => {
+  if (value == null || value === "") return null;
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getAuthUser = async (req: Request): Promise<AuthUser | null> => {
+  const claims = parseAuthClaims(req);
+  if (!claims) return null;
+
+  return prisma.user.findUnique({
+    where: { id: claims.userId },
+    select: {
+      id: true,
+      role: true,
+      isActive: true,
+      deletedAt: true,
+      organizationId: true,
+    },
+  });
+};
+
+const requireAdminUser = async (req: Request, res: Response) => {
+  const actor = await getAuthUser(req);
+  if (!actor || actor.deletedAt || !actor.isActive) {
+    res.status(401).json({ message: "Нэвтрэлт шаардлагатай" });
+    return null;
+  }
+
+  if (actor.role !== "ADMIN") {
+    res.status(403).json({ message: "Admin эрх шаардлагатай" });
+    return null;
+  }
+
+  return actor;
+};
+
+const requirePosUser = async (req: Request, res: Response) => {
+  const actor = await getAuthUser(req);
+  if (!actor || actor.deletedAt || !actor.isActive) {
+    res.status(401).json({ message: "Нэвтрэлт шаардлагатай" });
+    return null;
+  }
+
+  if (!["ADMIN", "SUPPLIER"].includes(actor.role)) {
+    res.status(403).json({ message: "POS ашиглах эрх хүрэлцэхгүй" });
+    return null;
+  }
+
+  return actor;
+};
+
 router.post("/pos/payments/card/authorize", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
   const amount = Number(req.body?.amount || 0);
   const terminalId = String(req.body?.terminalId || "terminal-1");
   const bridgeUrl: string | null = req.body?.bridgeUrl || null;
+  const registerId: string | null = req.body?.registerId || null;
+  const bodyOrganizationId: string | null = req.body?.organizationId || null;
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ message: "CARD amount буруу байна" });
@@ -97,157 +221,502 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     }
   }
 
-  const attemptId = `card-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-  const now = new Date().toISOString();
-  const record: CardAttemptRecord = {
-    attemptId,
-    amount,
-    terminalId,
-    ...(bridgeUrl && { bridgeUrl }),
-    status: "PENDING",
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  cardAttempts.set(attemptId, record);
-
-  if (bridgeUrl) {
-    // Forward to local bridge running on the cashier machine.
-    // The bridge translates this to the card terminal's native protocol (USB / LAN).
-    void (async () => {
-      try {
-        const bridgeRes = await fetch(`${bridgeUrl}/charge`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ attemptId, amount, terminalId }),
-          signal: AbortSignal.timeout(30_000),
-        });
-        const bridgeData = (await bridgeRes.json()) as {
-          status?: string;
-          transactionId?: string;
-          message?: string;
-        };
-
-        const latest = cardAttempts.get(attemptId);
-        if (!latest || latest.status !== "PENDING") return;
-
-        cardAttempts.set(attemptId, {
-          ...latest,
-          status:
-            bridgeData.status === "APPROVED"
-              ? "APPROVED"
-              : bridgeData.status === "DECLINED"
-                ? "DECLINED"
-                : "FAILED",
-          transactionId: bridgeData.transactionId,
-          message: bridgeData.message,
-          updatedAt: new Date().toISOString(),
-        });
-      } catch {
-        const latest = cardAttempts.get(attemptId);
-        if (!latest || latest.status !== "PENDING") return;
-        cardAttempts.set(attemptId, {
-          ...latest,
-          status: "FAILED",
-          message: "Bridge холболт амжилтгүй боллоо",
-          updatedAt: new Date().toISOString(),
-        });
-      }
-    })();
-  } else {
-    // Integration-ready simulation: replace with bank terminal SDK/bridge callback.
-    setTimeout(() => {
-      const latest = cardAttempts.get(attemptId);
-      if (!latest || latest.status !== "PENDING") return;
-
-      cardAttempts.set(attemptId, {
-        ...latest,
-        status: "APPROVED",
-        transactionId: `card-txn-${Date.now()}`,
-        message: "Card төлбөр баталгаажлаа",
-        updatedAt: new Date().toISOString(),
-      });
-    }, 1800);
+  if (!bridgeUrl && !allowPosSimulation) {
+    return res.status(400).json({
+      message:
+        "Card simulation идэвхгүй байна. terminalBridgeUrl тохируулж bridge-р authorize хийнэ үү.",
+    });
   }
 
-  return res.status(201).json(record);
+  if (bridgeUrl && isProdLikeEnv && !bridgeSharedSecret) {
+    return res.status(500).json({
+      message: "POS bridge shared secret тохируулаагүй байна",
+    });
+  }
+
+  try {
+    let effectiveOrganizationId: string | null = null;
+    if (registerId) {
+      const register = await prisma.posRegister.findUnique({
+        where: { id: registerId },
+        select: {
+          id: true,
+          organizationId: true,
+          activationStatus: true,
+          isActive: true,
+        },
+      });
+
+      if (!register) {
+        return res.status(404).json({ message: "POS register олдсонгүй" });
+      }
+      if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
+        return res.status(403).json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
+      }
+      if (actor.role !== "ADMIN" && actor.organizationId !== register.organizationId) {
+        return res.status(403).json({ message: "Өөр байгууллагын register дээр authorize хийх боломжгүй" });
+      }
+
+      effectiveOrganizationId = register.organizationId;
+    }
+
+    if (!effectiveOrganizationId) {
+      effectiveOrganizationId = actor.role === "ADMIN" ? bodyOrganizationId : actor.organizationId;
+    }
+
+    if (actor.role !== "ADMIN" && bodyOrganizationId && bodyOrganizationId !== effectiveOrganizationId) {
+      return res.status(403).json({ message: "organizationId зөрүүтэй байна" });
+    }
+
+    const attempt = await prisma.cardPaymentAttempt.create({
+      data: {
+        registerId: registerId || null,
+        organizationId: effectiveOrganizationId || null,
+        initiatedById: actor?.id || null,
+        terminalId,
+        bridgeUrl: bridgeUrl || null,
+        amount,
+        status: PosPaymentStatus.PENDING,
+      },
+    });
+
+    void prisma.auditLog.create({
+      data: {
+        userId: actor?.id || null,
+        action: AuditAction.POS_CARD_AUTHORIZED,
+        ip: req.ip,
+        meta: { attemptId: attempt.id, amount, terminalId, registerId },
+      },
+    });
+
+    if (bridgeUrl) {
+      // Forward to local bridge; bridge translates to terminal native protocol.
+      void (async () => {
+        try {
+          const requestPayload = JSON.stringify({ attemptId: attempt.id, amount, terminalId });
+          const bridgeRes = await fetch(`${bridgeUrl}/charge`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(bridgeSharedSecret
+                ? { "x-mgl-bridge-signature": signPayload(requestPayload, bridgeSharedSecret) }
+                : {}),
+            },
+            body: requestPayload,
+            signal: AbortSignal.timeout(30_000),
+          });
+          const responseText = await bridgeRes.text();
+          if (!bridgeRes.ok) {
+            throw new Error(`Bridge HTTP ${bridgeRes.status}: ${responseText.slice(0, 200)}`);
+          }
+          if (bridgeSharedSecret) {
+            const responseSig = String(getHeaderValue(bridgeRes.headers.get("x-mgl-bridge-signature") || undefined) || "");
+            if (!timingSafeEqualHex(responseSig, signPayload(responseText, bridgeSharedSecret))) {
+              throw new Error("Bridge response signature mismatch");
+            }
+          }
+
+          const bridgeData = JSON.parse(responseText) as {
+            status?: string;
+            transactionId?: string;
+            message?: string;
+          };
+
+          const newStatus = parseBridgeResultStatus(bridgeData.status);
+
+          await prisma.cardPaymentAttempt.update({
+            where: { id: attempt.id },
+            data: {
+              status: newStatus,
+              transactionId: bridgeData.transactionId || null,
+              message: bridgeData.message || null,
+              providerPayload: bridgeData as object,
+            },
+          });
+        } catch (error) {
+          await prisma.cardPaymentAttempt.update({
+            where: { id: attempt.id },
+            data: {
+              status: PosPaymentStatus.FAILED,
+              message: error instanceof Error ? error.message : "Bridge холболт амжилтгүй боллоо",
+            },
+          });
+        }
+      })();
+    } else if (allowPosSimulation) {
+      setTimeout(() => {
+        void prisma.cardPaymentAttempt.update({
+          where: { id: attempt.id },
+          data: {
+            status: PosPaymentStatus.APPROVED,
+            transactionId: `card-txn-${Date.now()}`,
+            message: "Card simulation approval",
+            providerPayload: { mode: "simulation", env: runtimeEnv },
+          },
+        });
+      }, 1800);
+    }
+
+    return res.status(201).json({
+      attemptId: attempt.id,
+      amount: Number(attempt.amount),
+      terminalId: attempt.terminalId,
+      bridgeUrl: attempt.bridgeUrl,
+      status: attempt.status,
+      createdAt: attempt.createdAt.toISOString(),
+      updatedAt: attempt.updatedAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("card authorize error", error);
+    return res.status(500).json({ message: "Card authorize хийхэд алдаа гарлаа" });
+  }
 });
 
 router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
-  const attemptId = String(req.params.attemptId || "");
-  const record = cardAttempts.get(attemptId);
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
 
-  if (!record) {
-    return res.status(404).json({ message: "Card attempt олдсонгүй" });
+  const id = String(req.params.attemptId || "");
+  try {
+    const attempt = await prisma.cardPaymentAttempt.findUnique({ where: { id } });
+    if (!attempt) return res.status(404).json({ message: "Card attempt олдсонгүй" });
+    if (actor.role !== "ADMIN" && actor.organizationId !== attempt.organizationId) {
+      return res.status(403).json({ message: "Өөр байгууллагын card attempt харах боломжгүй" });
+    }
+    return res.json({
+      attemptId: attempt.id,
+      amount: Number(attempt.amount),
+      terminalId: attempt.terminalId,
+      bridgeUrl: attempt.bridgeUrl,
+      status: attempt.status,
+      transactionId: attempt.transactionId,
+      message: attempt.message,
+      createdAt: attempt.createdAt.toISOString(),
+      updatedAt: attempt.updatedAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("card status error", error);
+    return res.status(500).json({ message: "Card статус авахад алдаа гарлаа" });
   }
-
-  return res.json(record);
 });
 
 router.post("/pos/payments/qpay/invoice", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
   const amount = Number(req.body?.amount || 0);
+  const registerId: string | null = req.body?.registerId || null;
+  const bodyOrganizationId: string | null = req.body?.organizationId || null;
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ message: "QPay amount буруу байна" });
   }
 
-  const invoiceId = `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-  const record: QPayInvoiceRecord = {
-    invoiceId,
-    amount,
-    qrText: `qpay://pay?invoice=${invoiceId}&amount=${amount}`,
-    status: "PENDING",
-    expiresAt,
-    createdAt: new Date().toISOString(),
-  };
+  try {
+    let effectiveOrganizationId: string | null = null;
+    if (registerId) {
+      const register = await prisma.posRegister.findUnique({
+        where: { id: registerId },
+        select: {
+          id: true,
+          organizationId: true,
+          activationStatus: true,
+          isActive: true,
+        },
+      });
 
-  qpayInvoices.set(invoiceId, record);
-  return res.status(201).json(record);
+      if (!register) {
+        return res.status(404).json({ message: "POS register олдсонгүй" });
+      }
+      if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
+        return res.status(403).json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
+      }
+      if (actor.role !== "ADMIN" && actor.organizationId !== register.organizationId) {
+        return res.status(403).json({ message: "Өөр байгууллагын register дээр invoice үүсгэх боломжгүй" });
+      }
+
+      effectiveOrganizationId = register.organizationId;
+    }
+
+    if (!effectiveOrganizationId) {
+      effectiveOrganizationId = actor.role === "ADMIN" ? bodyOrganizationId : actor.organizationId;
+    }
+
+    if (actor.role !== "ADMIN" && bodyOrganizationId && bodyOrganizationId !== effectiveOrganizationId) {
+      return res.status(403).json({ message: "organizationId зөрүүтэй байна" });
+    }
+
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const invoice = await prisma.qPayInvoice.create({
+      data: {
+        registerId: registerId || null,
+        organizationId: effectiveOrganizationId || null,
+        initiatedById: actor?.id || null,
+        amount,
+        qrText: "", // placeholder — will be filled after create to include id
+        status: PosQPayStatus.PENDING,
+        expiresAt,
+      },
+    });
+
+    const qrText = `qpay://pay?invoice=${invoice.id}&amount=${amount}`;
+    const updated = await prisma.qPayInvoice.update({
+      where: { id: invoice.id },
+      data: { qrText },
+    });
+
+    void prisma.auditLog.create({
+      data: {
+        userId: actor.id,
+        action: AuditAction.POS_QPAY_INVOICE_CREATED,
+        ip: req.ip,
+        meta: {
+          invoiceId: updated.id,
+          registerId: updated.registerId,
+          organizationId: updated.organizationId,
+          amount: Number(updated.amount),
+        },
+      },
+    });
+
+    return res.status(201).json({
+      invoiceId: updated.id,
+      amount: Number(updated.amount),
+      qrText: updated.qrText,
+      status: updated.status,
+      expiresAt: updated.expiresAt.toISOString(),
+      createdAt: updated.createdAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("qpay invoice create error", error);
+    return res.status(500).json({ message: "QPay invoice үүсгэхэд алдаа гарлаа" });
+  }
 });
 
 router.get("/pos/payments/qpay/status/:invoiceId", async (req, res) => {
-  const invoiceId = String(req.params.invoiceId || "");
-  const record = qpayInvoices.get(invoiceId);
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
 
-  if (!record) {
-    return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+  const id = String(req.params.invoiceId || "");
+  try {
+    const invoice = await prisma.qPayInvoice.findUnique({ where: { id } });
+    if (!invoice) return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+    if (actor.role !== "ADMIN" && actor.organizationId !== invoice.organizationId) {
+      return res.status(403).json({ message: "Өөр байгууллагын QPay invoice харах боломжгүй" });
+    }
+
+    // Auto-expire if past deadline
+    let current = invoice;
+    if (invoice.status === PosQPayStatus.PENDING && invoice.expiresAt <= new Date()) {
+      current = await prisma.qPayInvoice.update({
+        where: { id },
+        data: { status: PosQPayStatus.EXPIRED },
+      });
+    }
+
+    return res.json({
+      invoiceId: current.id,
+      amount: Number(current.amount),
+      qrText: current.qrText,
+      status: current.status,
+      expiresAt: current.expiresAt.toISOString(),
+      paidAt: current.paidAt?.toISOString() ?? null,
+      createdAt: current.createdAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("qpay status error", error);
+    return res.status(500).json({ message: "QPay статус авахад алдаа гарлаа" });
   }
-
-  if (record.status === "PENDING" && new Date(record.expiresAt).getTime() <= Date.now()) {
-    const expired: QPayInvoiceRecord = {
-      ...record,
-      status: "EXPIRED",
-    };
-    qpayInvoices.set(invoiceId, expired);
-    return res.json(expired);
-  }
-
-  return res.json(record);
 });
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * POST /pos/payments/qpay/confirm — manual confirm (dev/test only)
+ * ─────────────────────────────────────────────────────────────────────── */
 router.post("/pos/payments/qpay/confirm", async (req, res) => {
-  const invoiceId = String(req.body?.invoiceId || "");
-  const record = qpayInvoices.get(invoiceId);
-
-  if (!record) {
-    return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+  if (!allowPosSimulation) {
+    return res.status(403).json({ message: "Manual confirm нь зөвхөн dev/test орчинд ажиллана" });
   }
 
-  const updated: QPayInvoiceRecord = {
-    ...record,
-    status: "PAID",
-    paidAt: new Date().toISOString(),
-  };
+  const id = String(req.body?.invoiceId || "");
+  try {
+    const invoice = await prisma.qPayInvoice.findUnique({ where: { id } });
+    if (!invoice) return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+    if (invoice.status !== PosQPayStatus.PENDING) {
+      return res.status(400).json({ message: `Invoice статус нь ${invoice.status} байна` });
+    }
 
-  qpayInvoices.set(invoiceId, updated);
-  return res.json(updated);
+    const updated = await prisma.qPayInvoice.update({
+      where: { id },
+      data: {
+        status: PosQPayStatus.PAID,
+        paidAt: new Date(),
+        paymentId: `dev-${id}`,
+      },
+    });
+
+    return res.json({
+      invoiceId: updated.id,
+      amount: Number(updated.amount),
+      status: updated.status,
+      paidAt: updated.paidAt?.toISOString() ?? null,
+    });
+  } catch (error) {
+    console.error("qpay confirm error", error);
+    return res.status(500).json({ message: "QPay confirm хийхэд алдаа гарлаа" });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * POST /pos/payments/qpay/webhook  — real QPay bank callback
+ * Secured with HMAC-SHA256 when QPAY_WEBHOOK_SECRET is set.
+ * QPay банк payload: { invoiceId, paymentId, amount, status, paidDate }
+ * ─────────────────────────────────────────────────────────────────────── */
+router.post("/pos/payments/qpay/webhook", async (req, res) => {
+  const webhookSecret = process.env.QPAY_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const rawSig = String(req.headers["x-qpay-signature"] || "").trim();
+    if (!rawSig) {
+      return res.status(401).json({ message: "Webhook signature шаардлагатай" });
+    }
+    const bodyStr = JSON.stringify(req.body);
+    const expected = crypto.createHmac("sha256", webhookSecret).update(bodyStr).digest("hex");
+    if (!timingSafeEqualHex(rawSig, expected)) {
+      return res.status(401).json({ message: "Webhook signature хүчингүй байна" });
+    }
+  }
+
+  // Flexible field names: QPay uses both camelCase and snake_case across envs
+  const invoiceId = String(
+    req.body?.invoiceId || req.body?.invoice_id || "",
+  ).trim();
+  const paymentId = String(req.body?.paymentId || req.body?.payment_id || "").trim();
+  const rawAmount = Number(req.body?.amount ?? req.body?.paid_amount ?? 0);
+  const parsedPaidAt = parseOptionalDate(req.body?.paidDate ?? req.body?.paid_date);
+  const payloadRegisterId = String(req.body?.registerId || req.body?.register_id || "").trim();
+  const payloadOrganizationId = String(req.body?.organizationId || req.body?.organization_id || "").trim();
+  if (!invoiceId) {
+    return res.status(400).json({ message: "invoiceId шаардлагатай" });
+  }
+  if (!paymentId) {
+    return res.status(400).json({ message: "paymentId шаардлагатай" });
+  }
+  if (!parseQPaySuccess(req.body?.status)) {
+    return res.status(400).json({ message: "Webhook status нь success/paid биш байна" });
+  }
+  if ((req.body?.paidDate || req.body?.paid_date) && !parsedPaidAt) {
+    return res.status(400).json({ message: "paidDate формат буруу байна" });
+  }
+
+  try {
+    const invoice = await prisma.qPayInvoice.findUnique({
+      where: { id: invoiceId },
+      include: { register: { select: { id: true, organizationId: true } } },
+    });
+    if (!invoice) return res.status(404).json({ message: "Invoice олдсонгүй" });
+
+    if (invoice.status !== PosQPayStatus.PENDING) {
+      if (invoice.status === PosQPayStatus.PAID && invoice.paymentId === paymentId) {
+        return res.json({ ok: true, alreadyPaid: true });
+      }
+      return res.status(409).json({ message: `Invoice статус ${invoice.status} байна` });
+    }
+
+    if (invoice.expiresAt <= new Date()) {
+      return res.status(409).json({ message: "Invoice хугацаа дууссан байна" });
+    }
+
+    if (Number.isFinite(rawAmount) && rawAmount > 0 && !moneyMatches(rawAmount, Number(invoice.amount))) {
+      return res.status(400).json({ message: "Webhook amount invoice amount-тай зөрж байна" });
+    }
+
+    if (payloadRegisterId && invoice.registerId && payloadRegisterId !== invoice.registerId) {
+      return res.status(400).json({ message: "Webhook registerId зөрүүтэй байна" });
+    }
+
+    if (payloadOrganizationId && invoice.organizationId && payloadOrganizationId !== invoice.organizationId) {
+      return res.status(400).json({ message: "Webhook organizationId зөрүүтэй байна" });
+    }
+
+    const duplicatePayment = await prisma.qPayInvoice.findFirst({
+      where: { paymentId, NOT: { id: invoiceId } },
+      select: { id: true },
+    });
+    if (duplicatePayment) {
+      return res.status(409).json({ message: "paymentId давхардсан байна" });
+    }
+
+    await prisma.qPayInvoice.update({
+      where: { id: invoiceId },
+      data: {
+        status: PosQPayStatus.PAID,
+        paymentId,
+        paidAt: parsedPaidAt || new Date(),
+        webhookPayload: req.body as object,
+      },
+    });
+
+    void prisma.auditLog.create({
+      data: {
+        action: AuditAction.POS_QPAY_WEBHOOK_RECEIVED,
+        ip: req.ip,
+        meta: { invoiceId, paymentId, amount: Number(invoice.amount), registerId: invoice.registerId },
+      },
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("qpay webhook error", error);
+    return res.status(500).json({ message: "Webhook боловсруулахад алдаа гарлаа" });
+  }
 });
 
 router.post("/pos/sales", async (req, res) => {
   try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
     const body = req.body as CreateSaleBody;
     const lines = Array.isArray(body.lines) ? body.lines : [];
+    const registerId = String(body.registerId || "").trim() || null;
+    const organizationId = String(body.organizationId || "").trim() || null;
+    const clientSaleId = String(body.clientSaleId || "").trim();
+
+    let idempotencyOrganizationId: string | null = null;
+    if (registerId) {
+      const registerForScope = await prisma.posRegister.findUnique({
+        where: { id: registerId },
+        select: { id: true, organizationId: true },
+      });
+      if (!registerForScope) {
+        return res.status(404).json({ message: "POS register олдсонгүй" });
+      }
+      idempotencyOrganizationId = registerForScope.organizationId;
+    } else {
+      idempotencyOrganizationId = actor.role === "ADMIN" ? organizationId : actor.organizationId;
+    }
+
+    if (!idempotencyOrganizationId) {
+      return res.status(400).json({ message: "idempotency organization тодорхойгүй байна" });
+    }
+
+    if (!clientSaleId) {
+      return res.status(400).json({ message: "clientSaleId шаардлагатай" });
+    }
+
+    const existingSale = await prisma.posSaleIdempotency.findFirst({
+      where: {
+        organizationId: idempotencyOrganizationId,
+        clientSaleId,
+      },
+      select: { response: true },
+    });
+    if (existingSale?.response) {
+      const existingResponse = existingSale.response as Record<string, unknown>;
+      if (existingResponse.pending === true) {
+        return res.status(409).json({ message: "Sale request одоо боловсруулагдаж байна" });
+      }
+      return res.status(200).json(existingSale.response as object);
+    }
 
     if (!body.shiftId || !body.branchId) {
       return res.status(400).json({ message: "shiftId болон branchId шаардлагатай" });
@@ -255,6 +724,34 @@ router.post("/pos/sales", async (req, res) => {
 
     if (lines.length === 0) {
       return res.status(400).json({ message: "Зарах барааны мөрүүд хоосон байна" });
+    }
+
+    const normalizedPayments = Array.isArray(body.paymentBreakdown)
+      ? body.paymentBreakdown.map((item) => ({
+          method: normalizePaymentMethod(item.method),
+          amount: Number(item.amount || 0),
+          attemptId: item.attemptId,
+          transactionId: item.transactionId,
+          invoiceId: item.invoiceId,
+        }))
+      : [];
+
+    if (normalizedPayments.length === 0) {
+      return res.status(400).json({ message: "paymentBreakdown шаардлагатай" });
+    }
+
+    for (const item of normalizedPayments) {
+      if (
+        !item.method ||
+        ![PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.QPAY].some(
+          (allowedMethod) => allowedMethod === item.method,
+        )
+      ) {
+        return res.status(400).json({ message: "paymentBreakdown.method буруу байна" });
+      }
+      if (!Number.isFinite(item.amount) || item.amount <= 0) {
+        return res.status(400).json({ message: "paymentBreakdown.amount 0-оос их тоо байх ёстой" });
+      }
     }
 
     const qtyByProduct = new Map<string, number>();
@@ -268,7 +765,80 @@ router.post("/pos/sales", async (req, res) => {
     const productIds = Array.from(qtyByProduct.keys());
     const receiptNo = `POS-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Date.now().toString().slice(-6)}`;
 
+    const preLineTotals = lines.map((line) => {
+      const qty = Number(line.qty || 0);
+      const unitPrice = Number(line.unitPrice || 0);
+      const discount = Number(line.discountAmount || 0) * qty;
+      const taxable = Math.max(0, unitPrice * qty - discount);
+      const taxAmount = taxable * (Number(line.taxRate || 0) / 100);
+      return { subTotal: unitPrice * qty, taxAmount, discountTotal: discount };
+    });
+    const preSubTotal = preLineTotals.reduce((sum, line) => sum + line.subTotal, 0);
+    const preTaxTotal = preLineTotals.reduce((sum, line) => sum + line.taxAmount, 0);
+    const preDiscountTotal = preLineTotals.reduce((sum, line) => sum + line.discountTotal, 0);
+    const expectedGrandTotal = roundMoney(preSubTotal + preTaxTotal - preDiscountTotal);
+    const paymentTotal = roundMoney(normalizedPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+
+    if (!moneyMatches(paymentTotal, expectedGrandTotal)) {
+      return res.status(400).json({
+        message: `Payment total (${paymentTotal}) нь grandTotal (${expectedGrandTotal})-тай таарахгүй байна`,
+      });
+    }
+
     const result = await prisma.$transaction(async (tx) => {
+      let register:
+        | {
+            id: string;
+            branchId: string;
+            organizationId: string;
+            activationStatus: PosActivationStatus;
+            isActive: boolean;
+          }
+        | null = null;
+
+      if (registerId) {
+        register = await tx.posRegister.findUnique({
+          where: { id: registerId },
+          select: {
+            id: true,
+            branchId: true,
+            organizationId: true,
+            activationStatus: true,
+            isActive: true,
+          },
+        });
+        if (!register) throw toApiError(404, "POS register олдсонгүй");
+        if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
+          throw toApiError(403, "POS register идэвхгүй эсвэл батлагдаагүй байна");
+        }
+        if (register.branchId !== body.branchId) {
+          throw toApiError(400, "Sale branchId нь register branch-тай зөрүүтэй байна");
+        }
+        if (organizationId && register.organizationId !== organizationId) {
+          throw toApiError(400, "Sale organizationId нь register organization-тай зөрүүтэй байна");
+        }
+      }
+
+      const effectiveOrganizationId = register?.organizationId || organizationId || actor.organizationId || null;
+
+      if (!effectiveOrganizationId) {
+        throw toApiError(400, "Sale organizationId тодорхойгүй байна");
+      }
+
+      if (actor.role !== "ADMIN" && actor.organizationId !== effectiveOrganizationId) {
+        throw toApiError(403, "Өөр байгууллагын sale хийх боломжгүй");
+      }
+
+      await tx.posSaleIdempotency.create({
+        data: {
+          clientSaleId,
+          receiptNo,
+          organizationId: effectiveOrganizationId,
+          registerId,
+          response: { pending: true },
+        },
+      });
+
       const products = await tx.product.findMany({
         where: {
           id: { in: productIds },
@@ -285,6 +855,67 @@ router.post("/pos/sales", async (req, res) => {
 
       if (products.length !== productIds.length) {
         throw toApiError(404, "Зарим бараа олдсонгүй");
+      }
+
+      if (register?.organizationId) {
+        for (const product of products) {
+          if (product.organizationId !== register.organizationId) {
+            throw toApiError(400, `"${product.name}" бараа энэ POS register-ийн байгууллагад хамаарахгүй байна`);
+          }
+        }
+      }
+
+      const cardLines = normalizedPayments.filter((item) => item.method === PaymentMethod.CARD);
+      const qpayLines = normalizedPayments.filter((item) => item.method === PaymentMethod.QPAY);
+
+      for (const cardLine of cardLines) {
+        const attemptId = String(cardLine.attemptId || cardLine.transactionId || "").trim();
+        if (!attemptId) {
+          throw toApiError(400, "CARD payment line дээр attemptId шаардлагатай");
+        }
+
+        const attempt = await tx.cardPaymentAttempt.findUnique({ where: { id: attemptId } });
+        if (!attempt) throw toApiError(404, `Card attempt олдсонгүй: ${attemptId}`);
+        if (attempt.status !== PosPaymentStatus.APPROVED) {
+          throw toApiError(409, `Card attempt ${attemptId} approved биш байна`);
+        }
+        if (attempt.saleReference || attempt.consumedAt) {
+          throw toApiError(409, `Card attempt ${attemptId} аль хэдийн ашиглагдсан байна`);
+        }
+        if (!moneyMatches(Number(attempt.amount), cardLine.amount)) {
+          throw toApiError(400, `Card attempt ${attemptId} amount зөрүүтэй байна`);
+        }
+        if (registerId && attempt.registerId && attempt.registerId !== registerId) {
+          throw toApiError(400, `Card attempt ${attemptId} register зөрүүтэй байна`);
+        }
+        if (!attempt.organizationId || attempt.organizationId !== effectiveOrganizationId) {
+          throw toApiError(400, `Card attempt ${attemptId} organization зөрүүтэй байна`);
+        }
+      }
+
+      for (const qpayLine of qpayLines) {
+        const invoiceId = String(qpayLine.invoiceId || "").trim();
+        if (!invoiceId) {
+          throw toApiError(400, "QPAY payment line дээр invoiceId шаардлагатай");
+        }
+
+        const invoice = await tx.qPayInvoice.findUnique({ where: { id: invoiceId } });
+        if (!invoice) throw toApiError(404, `QPay invoice олдсонгүй: ${invoiceId}`);
+        if (invoice.status !== PosQPayStatus.PAID) {
+          throw toApiError(409, `QPay invoice ${invoiceId} paid биш байна`);
+        }
+        if (invoice.saleReference || invoice.consumedAt) {
+          throw toApiError(409, `QPay invoice ${invoiceId} аль хэдийн ашиглагдсан байна`);
+        }
+        if (!moneyMatches(Number(invoice.amount), qpayLine.amount)) {
+          throw toApiError(400, `QPay invoice ${invoiceId} amount зөрүүтэй байна`);
+        }
+        if (registerId && invoice.registerId && invoice.registerId !== registerId) {
+          throw toApiError(400, `QPay invoice ${invoiceId} register зөрүүтэй байна`);
+        }
+        if (!invoice.organizationId || invoice.organizationId !== effectiveOrganizationId) {
+          throw toApiError(400, `QPay invoice ${invoiceId} organization зөрүүтэй байна`);
+        }
       }
 
       for (const product of products) {
@@ -309,69 +940,157 @@ router.post("/pos/sales", async (req, res) => {
             change: -qty,
             reason: InventoryReason.ORDER,
             note: body.note || "POS sale",
+            createdById: actor?.id || null,
             referenceId: receiptNo,
             referenceType: "POS_SALE",
           },
         });
       }
 
-      return { products };
-    });
+      for (const cardLine of cardLines) {
+        const attemptId = String(cardLine.attemptId || cardLine.transactionId || "").trim();
+        await tx.cardPaymentAttempt.update({
+          where: { id: attemptId },
+          data: {
+            saleReference: receiptNo,
+            consumedAt: new Date(),
+          },
+        });
+      }
 
-    const lineDetails = lines.map((line) => {
-      const product = result.products.find((item) => item.id === line.productId);
-      const discount = Number(line.discountAmount || 0);
-      const unitPrice = Number(line.unitPrice || 0);
-      const qty = Number(line.qty || 0);
-      const taxRate = Number(line.taxRate || 0);
-      const subTotal = unitPrice * qty;
-      const discountTotal = discount * qty;
-      const taxable = Math.max(0, subTotal - discountTotal);
-      const taxAmount = taxable * (taxRate / 100);
-      const lineTotal = taxable + taxAmount;
+      for (const qpayLine of qpayLines) {
+        const invoiceId = String(qpayLine.invoiceId || "").trim();
+        await tx.qPayInvoice.update({
+          where: { id: invoiceId },
+          data: {
+            saleReference: receiptNo,
+            consumedAt: new Date(),
+          },
+        });
+      }
 
-      return {
-        productId: line.productId,
-        name: product?.name || line.productId,
-        qty,
-        unitPrice,
-        taxAmount,
-        lineTotal,
+      const lineDetails = lines.map((line) => {
+        const product = products.find((item) => item.id === line.productId);
+        const discount = Number(line.discountAmount || 0);
+        const unitPrice = Number(line.unitPrice || 0);
+        const qty = Number(line.qty || 0);
+        const taxRate = Number(line.taxRate || 0);
+        const subTotal = unitPrice * qty;
+        const discountTotal = discount * qty;
+        const taxable = Math.max(0, subTotal - discountTotal);
+        const taxAmount = taxable * (taxRate / 100);
+        const lineTotal = taxable + taxAmount;
+
+        return {
+          productId: line.productId,
+          name: product?.name || line.productId,
+          qty,
+          unitPrice,
+          taxAmount,
+          lineTotal,
+        };
+      });
+
+      const subTotal = lineDetails.reduce((sum, line) => sum + line.unitPrice * line.qty, 0);
+      const taxTotal = lineDetails.reduce((sum, line) => sum + line.taxAmount, 0);
+      const discountTotal = lines.reduce(
+        (sum, line) => sum + Number(line.discountAmount || 0) * Number(line.qty || 0),
+        0,
+      );
+      const grandTotal = subTotal + taxTotal - discountTotal;
+
+      const saleResponse = {
+        id: `pos-${Date.now()}`,
+        receiptNo,
+        branchName: body.branchId,
+        cashierName: "Vendor Cashier",
+        paymentMethod: body.paymentMethod || "CASH",
+        paymentBreakdown: normalizedPayments,
+        createdAt: new Date().toISOString(),
+        lines: lineDetails,
+        subTotal,
+        taxTotal,
+        discountTotal,
+        grandTotal,
       };
+
+      await tx.posSaleIdempotency.update({
+        where: {
+          organizationId_clientSaleId: {
+            organizationId: effectiveOrganizationId,
+            clientSaleId,
+          },
+        },
+        data: { response: saleResponse as object },
+      });
+
+      return { saleResponse, effectiveOrganizationId, grandTotal };
     });
 
-    const subTotal = lineDetails.reduce((sum, line) => sum + line.unitPrice * line.qty, 0);
-    const taxTotal = lineDetails.reduce((sum, line) => sum + line.taxAmount, 0);
-    const discountTotal = lines.reduce(
-      (sum, line) => sum + Number(line.discountAmount || 0) * Number(line.qty || 0),
-      0,
-    );
-    const grandTotal = subTotal + taxTotal - discountTotal;
+    const paymentMethodSummary = (() => {
+      const methods = Array.from(
+        new Set((result.saleResponse.paymentBreakdown as Array<{ method: string }>).map((item) => item.method)),
+      );
+      return methods.length === 1 ? methods[0] : "MIXED";
+    })();
 
-    const paymentBreakdown = Array.isArray(body.paymentBreakdown)
-      ? body.paymentBreakdown.map((item) => ({
-          method: normalizePaymentMethod(item.method) || item.method,
-          amount: Number(item.amount || 0),
-          transactionId: item.transactionId,
-          invoiceId: item.invoiceId,
-        }))
-      : [];
+    const normalizedSaleResponse = {
+      ...result.saleResponse,
+      paymentMethod: paymentMethodSummary,
+    };
 
-    res.status(201).json({
-      id: `pos-${Date.now()}`,
-      receiptNo,
-      branchName: body.branchId,
-      cashierName: "Vendor Cashier",
-      paymentMethod: body.paymentMethod || "CASH",
-      paymentBreakdown,
-      createdAt: new Date().toISOString(),
-      lines: lineDetails,
-      subTotal,
-      taxTotal,
-      discountTotal,
-      grandTotal,
+    await prisma.posSaleIdempotency.update({
+      where: {
+        organizationId_clientSaleId: {
+          organizationId: result.effectiveOrganizationId,
+          clientSaleId,
+        },
+      },
+      data: { response: normalizedSaleResponse as object },
     });
+
+    void prisma.auditLog.create({
+      data: {
+        userId: actor?.id || null,
+        action: AuditAction.POS_SALE_CREATED,
+        ip: req.ip,
+        meta: {
+          clientSaleId,
+          receiptNo,
+          registerId,
+          branchId: body.branchId,
+          organizationId: result.effectiveOrganizationId,
+          paymentBreakdown: normalizedPayments,
+          grandTotal: result.grandTotal,
+        },
+      },
+    });
+
+    res.status(201).json(normalizedSaleResponse);
   } catch (error) {
+    const maybeKnownError = error as { code?: string };
+    if (maybeKnownError?.code === "P2002") {
+      const body = req.body as CreateSaleBody;
+      const clientSaleId = String(body.clientSaleId || "").trim();
+      const organizationId = String(body.organizationId || "").trim() || null;
+      if (clientSaleId) {
+        const existingSale = await prisma.posSaleIdempotency.findFirst({
+          where: {
+            organizationId: organizationId || undefined,
+            clientSaleId,
+          },
+          select: { response: true },
+        });
+        if (existingSale?.response) {
+          const existingResponse = existingSale.response as Record<string, unknown>;
+          if (existingResponse.pending === true) {
+            return res.status(409).json({ message: "Sale request одоо боловсруулагдаж байна" });
+          }
+          return res.status(200).json(existingSale.response as object);
+        }
+      }
+    }
+
     console.error("create pos sale error", error);
 
     const maybeApiError = error as Partial<ApiError>;
@@ -388,6 +1107,9 @@ router.post("/pos/sales", async (req, res) => {
  * GET /pos/register-config?registerId=<uuid>
  * ─────────────────────────────────────────────────────────────────────── */
 router.get("/pos/register-config", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
   const registerId = String(req.query.registerId || "").trim();
   if (!registerId) {
     return res.status(400).json({ message: "registerId шаардлагатай" });
@@ -408,6 +1130,7 @@ router.get("/pos/register-config", async (req, res) => {
         qpayMerchantId: true,
         qpayTerminalId: true,
         isActive: true,
+        activationStatus: true,
         branchId: true,
         organizationId: true,
         branch: { select: { id: true, name: true } },
@@ -417,8 +1140,11 @@ router.get("/pos/register-config", async (req, res) => {
     if (!register) {
       return res.status(404).json({ message: "POS олдсонгүй" });
     }
-    if (!register.isActive) {
-      return res.status(403).json({ message: "POS идэвхгүй байна" });
+    if (actor.role !== "ADMIN" && actor.organizationId !== register.organizationId) {
+      return res.status(403).json({ message: "Өөр байгууллагын POS config харах боломжгүй" });
+    }
+    if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
+      return res.status(403).json({ message: "POS идэвхгүй эсвэл батлагдаагүй байна" });
     }
 
     return res.json(register);
@@ -429,11 +1155,230 @@ router.get("/pos/register-config", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * Vendor self-service — claim/create POS register without admin dashboard
+ * POST /pos/registers/self-claim
+ * ─────────────────────────────────────────────────────────────────────── */
+router.post("/pos/registers/self-claim", async (req, res) => {
+  const claims = parseAuthClaims(req);
+  if (!claims) {
+    return res.status(401).json({ message: "Нэвтрэлт шаардлагатай" });
+  }
+
+  // Resolve the authenticated user from DB first — organizationId is NEVER
+  // trusted from the request body for non-admin callers.
+  let authUser: {
+    id: string;
+    role: string;
+    isActive: boolean;
+    deletedAt: Date | null;
+    organizationId: string | null;
+  } | null;
+
+  try {
+    authUser = await prisma.user.findUnique({
+      where: { id: claims.userId },
+      select: {
+        id: true,
+        role: true,
+        isActive: true,
+        deletedAt: true,
+        organizationId: true,
+      },
+    });
+  } catch (dbErr) {
+    console.error("self-claim auth lookup error", dbErr);
+    return res.status(500).json({ message: "Хэрэглэгч шалгахад алдаа гарлаа" });
+  }
+
+  if (!authUser || authUser.deletedAt || !authUser.isActive) {
+    return res.status(401).json({ message: "Нэвтэрсэн хэрэглэгч хүчингүй байна" });
+  }
+
+  if (!["ADMIN", "SUPPLIER"].includes(authUser.role)) {
+    return res.status(403).json({ message: "POS claim хийх эрх хүрэлцэхгүй" });
+  }
+
+  // SUPPLIER: always use the org from the verified DB record.
+  // ADMIN:    may supply an explicit organizationId in the body.
+  let organizationId: string;
+  if (authUser.role === "ADMIN") {
+    organizationId = String(req.body?.organizationId || "").trim();
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+  } else {
+    if (!authUser.organizationId) {
+      return res.status(403).json({ message: "Байгууллагагүй хэрэглэгч POS үүсгэх боломжгүй" });
+    }
+    // Silently ignore any organizationId sent in the body — use DB value only.
+    organizationId = authUser.organizationId;
+  }
+
+  const branchId = String(req.body?.branchId || "").trim();
+  const name = normalizeRegisterName(req.body?.name);
+
+  if (!branchId || !name) {
+    return res.status(400).json({ message: "branchId, name шаардлагатай" });
+  }
+
+  try {
+    const branch = await prisma.branch.findUnique({
+      where: { id: branchId },
+      select: { id: true, organizationId: true },
+    });
+
+    if (!branch || branch.organizationId !== organizationId) {
+      return res.status(400).json({ message: "Сонгосон салбар энэ байгууллагад хамаарахгүй байна" });
+    }
+
+    const existing = await prisma.posRegister.findFirst({
+      where: {
+        organizationId,
+        branchId,
+        name,
+      },
+      include: { branch: { select: { id: true, name: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existing) {
+      return res.status(200).json({ ...existing, reused: true });
+    }
+
+    const created = await prisma.posRegister.create({
+      data: {
+        organizationId,
+        branchId,
+        name,
+        isActive: false,
+        activationStatus: PosActivationStatus.PENDING,
+      },
+      include: { branch: { select: { id: true, name: true } } },
+    });
+
+    void prisma.auditLog.create({
+      data: {
+        userId: authUser.id,
+        action: AuditAction.POS_REGISTER_CLAIMED,
+        ip: req.ip,
+        meta: { registerId: created.id, organizationId, branchId, name },
+      },
+    });
+
+    return res.status(201).json({ ...created, reused: false });
+  } catch (error) {
+    const maybePrisma = error as { code?: string; meta?: { target?: unknown } };
+    if (maybePrisma?.code === "P2002") {
+      const target = Array.isArray(maybePrisma.meta?.target)
+        ? maybePrisma.meta?.target.join(",")
+        : String(maybePrisma.meta?.target || "");
+      return res.status(409).json({
+        message: target
+          ? `Давхардсан POS тохиргоо байна (${target})`
+          : "Давхардсан POS тохиргоо байна",
+      });
+    }
+    console.error("self-claim pos-register error", error);
+    return res.status(500).json({ message: "POS бүртгэхэд алдаа гарлаа" });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Admin — Register activation workflow
+ * PATCH /admin/pos-registers/:id/activate  — PENDING → APPROVED
+ * PATCH /admin/pos-registers/:id/reject    — PENDING → REJECTED
+ * ─────────────────────────────────────────────────────────────────────── */
+router.patch("/admin/pos-registers/:id/activate", async (req, res) => {
+  try {
+    const actor = await requireAdminUser(req, res);
+    if (!actor) return;
+
+    const id = String(req.params.id || "").trim();
+    const register = await prisma.posRegister.findUnique({ where: { id } });
+    if (!register) return res.status(404).json({ message: "POS олдсонгүй" });
+    if (register.activationStatus !== PosActivationStatus.PENDING) {
+      return res.status(409).json({ message: `Transition зөвшөөрөгдөхгүй: ${register.activationStatus} → APPROVED` });
+    }
+
+    const updated = await prisma.posRegister.update({
+      where: { id },
+      data: {
+        activationStatus: PosActivationStatus.APPROVED,
+        isActive: true,
+        reviewedById: actor.id,
+        reviewedAt: new Date(),
+        rejectReason: null,
+      },
+      include: { branch: { select: { id: true, name: true } } },
+    });
+
+    void prisma.auditLog.create({
+      data: {
+        userId: actor.id,
+        action: AuditAction.POS_REGISTER_ACTIVATED,
+        ip: req.ip,
+        meta: { registerId: id, organizationId: register.organizationId },
+      },
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error("activate pos-register error", error);
+    return res.status(500).json({ message: "POS идэвхжүүлэхэд алдаа гарлаа" });
+  }
+});
+
+router.patch("/admin/pos-registers/:id/reject", async (req, res) => {
+  try {
+    const actor = await requireAdminUser(req, res);
+    if (!actor) return;
+
+    const id = String(req.params.id || "").trim();
+    const rejectReason = String(req.body?.rejectReason || "").trim() || null;
+
+    const register = await prisma.posRegister.findUnique({ where: { id } });
+    if (!register) return res.status(404).json({ message: "POS олдсонгүй" });
+    if (register.activationStatus !== PosActivationStatus.PENDING) {
+      return res.status(409).json({ message: `Transition зөвшөөрөгдөхгүй: ${register.activationStatus} → REJECTED` });
+    }
+
+    const updated = await prisma.posRegister.update({
+      where: { id },
+      data: {
+        activationStatus: PosActivationStatus.REJECTED,
+        isActive: false,
+        reviewedById: actor.id,
+        reviewedAt: new Date(),
+        rejectReason,
+      },
+      include: { branch: { select: { id: true, name: true } } },
+    });
+
+    void prisma.auditLog.create({
+      data: {
+        userId: actor.id,
+        action: AuditAction.POS_REGISTER_REJECTED,
+        ip: req.ip,
+        meta: { registerId: id, organizationId: register.organizationId, rejectReason },
+      },
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error("reject pos-register error", error);
+    return res.status(500).json({ message: "POS татгаазахад алдаа гарлаа" });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
  * Admin — PosRegister CRUD
  * ─────────────────────────────────────────────────────────────────────── */
 
 // GET /admin/pos-registers?organizationId=<uuid>
 router.get("/admin/pos-registers", async (req, res) => {
+  const actor = await requireAdminUser(req, res);
+  if (!actor) return;
+
   const organizationId = String(req.query.organizationId || "").trim();
   if (!organizationId) {
     return res.status(400).json({ message: "organizationId шаардлагатай" });
@@ -454,6 +1399,9 @@ router.get("/admin/pos-registers", async (req, res) => {
 
 // POST /admin/pos-registers
 router.post("/admin/pos-registers", async (req, res) => {
+  const actor = await requireAdminUser(req, res);
+  if (!actor) return;
+
   const {
     organizationId,
     branchId,
@@ -480,7 +1428,9 @@ router.post("/admin/pos-registers", async (req, res) => {
     qpayTerminalId?: string;
   };
 
-  if (!organizationId || !branchId || !name) {
+  const normalizedName = normalizeRegisterName(name);
+
+  if (!organizationId || !branchId || !normalizedName) {
     return res.status(400).json({ message: "organizationId, branchId, name шаардлагатай" });
   }
 
@@ -496,12 +1446,41 @@ router.post("/admin/pos-registers", async (req, res) => {
     }
   }
 
+  if (cardEnabled === true && (!cardProviderType || !cardTerminalId)) {
+    return res.status(400).json({ message: "cardEnabled=true үед cardProviderType, cardTerminalId шаардлагатай" });
+  }
+
+  if (cardEnabled === false && (cardProviderType || cardTerminalId || terminalBridgeUrl)) {
+    return res.status(400).json({
+      message: "cardEnabled=false үед cardProviderType, cardTerminalId, terminalBridgeUrl хоосон байх ёстой",
+    });
+  }
+
+  if (qpayEnabled === true && (!qpayMerchantId || !qpayTerminalId)) {
+    return res.status(400).json({ message: "qpayEnabled=true үед qpayMerchantId, qpayTerminalId шаардлагатай" });
+  }
+
+  if (qpayEnabled === false && (qpayMerchantId || qpayTerminalId)) {
+    return res.status(400).json({
+      message: "qpayEnabled=false үед qpayMerchantId, qpayTerminalId хоосон байх ёстой",
+    });
+  }
+
   try {
+    const branch = await prisma.branch.findUnique({
+      where: { id: branchId },
+      select: { id: true, organizationId: true },
+    });
+
+    if (!branch || branch.organizationId !== organizationId) {
+      return res.status(400).json({ message: "Сонгосон салбар энэ байгууллагад хамаарахгүй байна" });
+    }
+
     const register = await prisma.posRegister.create({
       data: {
         organizationId,
         branchId,
-        name: String(name).trim(),
+        name: normalizedName,
         label: label ? String(label).trim() : null,
         cardEnabled: Boolean(cardEnabled),
         cardProviderType: cardProviderType || null,
@@ -510,11 +1489,35 @@ router.post("/admin/pos-registers", async (req, res) => {
         qpayEnabled: Boolean(qpayEnabled),
         qpayMerchantId: qpayMerchantId || null,
         qpayTerminalId: qpayTerminalId || null,
+        // Admin-created registers are immediately active and approved
+        isActive: true,
+        activationStatus: PosActivationStatus.APPROVED,
       },
       include: { branch: { select: { id: true, name: true } } },
     });
+
+    void prisma.auditLog.create({
+      data: {
+        userId: actor.id,
+        action: AuditAction.POS_REGISTER_CREATED,
+        ip: req.ip,
+        meta: { registerId: register.id, organizationId, branchId, createdVia: "admin-crud" },
+      },
+    });
+
     return res.status(201).json(register);
   } catch (error) {
+    const maybePrisma = error as { code?: string; meta?: { target?: unknown } };
+    if (maybePrisma?.code === "P2002") {
+      const target = Array.isArray(maybePrisma.meta?.target)
+        ? maybePrisma.meta?.target.join(",")
+        : String(maybePrisma.meta?.target || "");
+      return res.status(409).json({
+        message: target
+          ? `Давхардсан POS тохиргоо байна (${target})`
+          : "Давхардсан POS тохиргоо байна",
+      });
+    }
     console.error("create pos-register error", error);
     return res.status(500).json({ message: "POS үүсгэхэд алдаа гарлаа" });
   }
@@ -522,6 +1525,9 @@ router.post("/admin/pos-registers", async (req, res) => {
 
 // PATCH /admin/pos-registers/:id
 router.patch("/admin/pos-registers/:id", async (req, res) => {
+  const actor = await requireAdminUser(req, res);
+  if (!actor) return;
+
   const id = String(req.params.id || "").trim();
   if (!id) return res.status(400).json({ message: "id шаардлагатай" });
 
@@ -564,24 +1570,87 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     const existing = await prisma.posRegister.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ message: "POS олдсонгүй" });
 
+    const nextCardEnabled = cardEnabled !== undefined ? Boolean(cardEnabled) : existing.cardEnabled;
+    const nextCardProviderType =
+      nextCardEnabled === false
+        ? null
+        : cardProviderType !== undefined
+          ? cardProviderType || null
+          : existing.cardProviderType;
+    const nextCardTerminalId =
+      nextCardEnabled === false
+        ? null
+        : cardTerminalId !== undefined
+          ? cardTerminalId || null
+          : existing.cardTerminalId;
+    const nextTerminalBridgeUrl =
+      nextCardEnabled === false
+        ? null
+        : terminalBridgeUrl !== undefined
+          ? terminalBridgeUrl || null
+          : existing.terminalBridgeUrl;
+
+    if (nextCardEnabled && (!nextCardProviderType || !nextCardTerminalId)) {
+      return res.status(400).json({ message: "Card идэвхтэй үед provider болон terminal заавал байна" });
+    }
+
+    const nextQpayEnabled = qpayEnabled !== undefined ? Boolean(qpayEnabled) : existing.qpayEnabled;
+    const nextQpayMerchantId =
+      nextQpayEnabled === false
+        ? null
+        : qpayMerchantId !== undefined
+          ? qpayMerchantId || null
+          : existing.qpayMerchantId;
+    const nextQpayTerminalId =
+      nextQpayEnabled === false
+        ? null
+        : qpayTerminalId !== undefined
+          ? qpayTerminalId || null
+          : existing.qpayTerminalId;
+
+    if (nextQpayEnabled && (!nextQpayMerchantId || !nextQpayTerminalId)) {
+      return res.status(400).json({ message: "QPay идэвхтэй үед merchant болон terminal заавал байна" });
+    }
+
     const updated = await prisma.posRegister.update({
       where: { id },
       data: {
         ...(name !== undefined && { name: String(name).trim() }),
         ...(label !== undefined && { label: label ? String(label).trim() : null }),
-        ...(cardEnabled !== undefined && { cardEnabled: Boolean(cardEnabled) }),
-        ...(cardProviderType !== undefined && { cardProviderType: cardProviderType || null }),
-        ...(cardTerminalId !== undefined && { cardTerminalId: cardTerminalId || null }),
-        ...(terminalBridgeUrl !== undefined && { terminalBridgeUrl: terminalBridgeUrl || null }),
-        ...(qpayEnabled !== undefined && { qpayEnabled: Boolean(qpayEnabled) }),
-        ...(qpayMerchantId !== undefined && { qpayMerchantId: qpayMerchantId || null }),
-        ...(qpayTerminalId !== undefined && { qpayTerminalId: qpayTerminalId || null }),
+        cardEnabled: nextCardEnabled,
+        cardProviderType: nextCardProviderType,
+        cardTerminalId: nextCardTerminalId,
+        terminalBridgeUrl: nextTerminalBridgeUrl,
+        qpayEnabled: nextQpayEnabled,
+        qpayMerchantId: nextQpayMerchantId,
+        qpayTerminalId: nextQpayTerminalId,
         ...(isActive !== undefined && { isActive: Boolean(isActive) }),
       },
       include: { branch: { select: { id: true, name: true } } },
     });
+
+    void prisma.auditLog.create({
+      data: {
+        userId: actor.id,
+        action: AuditAction.POS_REGISTER_UPDATED,
+        ip: req.ip,
+        meta: { registerId: id, actionType: "update" },
+      },
+    });
+
     return res.json(updated);
   } catch (error) {
+    const maybePrisma = error as { code?: string; meta?: { target?: unknown } };
+    if (maybePrisma?.code === "P2002") {
+      const target = Array.isArray(maybePrisma.meta?.target)
+        ? maybePrisma.meta?.target.join(",")
+        : String(maybePrisma.meta?.target || "");
+      return res.status(409).json({
+        message: target
+          ? `Давхардсан POS тохиргоо байна (${target})`
+          : "Давхардсан POS тохиргоо байна",
+      });
+    }
     console.error("update pos-register error", error);
     return res.status(500).json({ message: "POS засахад алдаа гарлаа" });
   }
@@ -589,6 +1658,9 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
 
 // DELETE /admin/pos-registers/:id
 router.delete("/admin/pos-registers/:id", async (req, res) => {
+  const actor = await requireAdminUser(req, res);
+  if (!actor) return;
+
   const id = String(req.params.id || "").trim();
   if (!id) return res.status(400).json({ message: "id шаардлагатай" });
 
@@ -597,6 +1669,16 @@ router.delete("/admin/pos-registers/:id", async (req, res) => {
     if (!existing) return res.status(404).json({ message: "POS олдсонгүй" });
 
     await prisma.posRegister.delete({ where: { id } });
+
+    void prisma.auditLog.create({
+      data: {
+        userId: actor.id,
+        action: AuditAction.POS_REGISTER_DELETED,
+        ip: req.ip,
+        meta: { registerId: id, actionType: "delete" },
+      },
+    });
+
     return res.json({ ok: true });
   } catch (error) {
     console.error("delete pos-register error", error);

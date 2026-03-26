@@ -19,4 +19,7 @@ export {
   ServiceRequestType,
   ServiceRequestStatus,
   StockRequestStatus,
+  PosActivationStatus,
+  PosPaymentStatus,
+  PosQPayStatus,
 } from "@prisma/client";
