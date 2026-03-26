@@ -50,13 +50,23 @@ type JobApplication = {
   age: number | null;
   gender: string | null;
   address: string | null;
-  jobPosition: string | null;
+  jobPosition:
+    | string
+    | {
+        id?: string;
+        name?: string;
+        slug?: string;
+        isActive?: boolean;
+        createdAt?: string;
+      }
+    | null;
   education: string | null;
   salaryExpect: string | null;
   experience: string | null;
   professionalSkills: string | null;
   personalSkills: string | null;
   languages: string | null;
+  status: string;
   createdAt: string;
 };
 
@@ -85,6 +95,26 @@ const JOB_POSITION_LABELS: Record<string, string> = {
   support: "Хэрэглэгчийн үйлчилгээ",
   admin: "Админ",
 };
+
+function getJobPositionLabel(jobPosition: JobApplication["jobPosition"]) {
+  if (!jobPosition) {
+    return "-";
+  }
+
+  if (typeof jobPosition === "string") {
+    return JOB_POSITION_LABELS[jobPosition] || jobPosition;
+  }
+
+  if (jobPosition.name) {
+    return jobPosition.name;
+  }
+
+  if (jobPosition.slug) {
+    return JOB_POSITION_LABELS[jobPosition.slug] || jobPosition.slug;
+  }
+
+  return "-";
+}
 
 function getStatusLabel(status: string) {
   switch (status) {
@@ -813,10 +843,7 @@ export default function RequestsPage() {
                                   className="text-slate-400"
                                 />
                                 <span>
-                                  {item.jobPosition
-                                    ? JOB_POSITION_LABELS[item.jobPosition] ||
-                                      item.jobPosition
-                                    : "-"}
+                                  {getJobPositionLabel(item.jobPosition)}
                                 </span>
                               </div>
                             </td>
@@ -1037,10 +1064,7 @@ export default function RequestsPage() {
                         </div>
                         <div className="flex items-center gap-1.5">
                           <Briefcase size={12} className="text-slate-400" />
-                          {item.jobPosition
-                            ? JOB_POSITION_LABELS[item.jobPosition] ||
-                              item.jobPosition
-                            : "-"}
+                          {getJobPositionLabel(item.jobPosition)}
                         </div>
                         <div className="flex items-center gap-1.5">
                           <BookOpen size={12} className="text-slate-400" />
