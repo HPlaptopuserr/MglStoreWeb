@@ -1,5 +1,6 @@
 export { AddJobPositionForm } from "./AddJobPositionForm";
 export { DashboardMetrics } from "./DashboardMetrics";
+export { FormBuilderTool } from "./FormBuilderTool";
 export { MobileDashboard } from "./MobileDashboard";
 export { PieChart } from "./PieChart";
 export { QrGeneratorPanel } from "./QrGeneratorPanel";

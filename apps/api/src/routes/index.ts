@@ -21,3 +21,5 @@ export {
 } from "./operations";
 
 export { dashboardRoutes, siteSettingsRoutes } from "./system";
+
+export { formRoutes } from "./forms";

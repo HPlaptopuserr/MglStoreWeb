@@ -50,6 +50,7 @@ model User {
   requestedStockRequests       WarehouseStockRequest[]  @relation("StockRequestsRequested")
   reviewedStockRequests        WarehouseStockRequest[]  @relation("StockRequestsReviewed")
   posts                        Post[]                   @relation("PostAuthor")
+  forms                        Form[]                   @relation("FormCreatedBy")
 
   @@index([organizationId])
   @@index([role])
@@ -1244,4 +1245,38 @@ model PostComment {
   @@index([postId])
   @@index([authorId])
   @@index([createdAt])
+}
+
+// ─── Forms ──────────────────────────────────────────────────────────────────
+
+model Form {
+  id          String         @id @default(uuid())
+  slug        String         @unique
+  title       String
+  description String?        @db.Text
+  fields      Json
+  isActive    Boolean        @default(true)
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  createdBy   User?          @relation("FormCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  responses   FormResponse[]
+
+  @@index([slug])
+  @@index([isActive])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model FormResponse {
+  id          String   @id @default(uuid())
+  formId      String
+  data        Json
+  submittedAt DateTime @default(now())
+
+  form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId])
+  @@index([submittedAt])
 }

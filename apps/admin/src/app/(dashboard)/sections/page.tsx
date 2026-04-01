@@ -8,7 +8,7 @@ import { BannerSection } from "@/components/organisms/sections/banner/BannerSect
 import { CategoriesSection } from "@/components/organisms/sections/categories/CategoriesSection";
 import { BranchesSection } from "@/components/organisms/sections/branches/BranchesSection";
 import { CardsSection } from "@/components/organisms/sections/cards/CardsSection";
-import { QrGeneratorPanel } from "@/components/organisms";
+import { FormBuilderTool, QrGeneratorPanel } from "@/components/organisms";
 import { PosRegistersSection } from "@/components/organisms/sections/pos/PosRegistersSection";
 import { HrSection } from "@/components/organisms/sections/hr/HrSection";
 
@@ -42,23 +42,29 @@ export default function SectionsPage() {
       saving={saving}
       saved={saved}
     >
-      {active === "banner" && (
-        <BannerSection banners={banners} setBanners={setBanners} />
+      {active !== "forms" ? (
+        <div className="flex-1 overflow-y-auto p-8">
+          {active === "banner" && (
+            <BannerSection banners={banners} setBanners={setBanners} />
+          )}
+          {active === "categories" && (
+            <CategoriesSection categories={categories} setCategories={setCategories} />
+          )}
+          {active === "branches" && (
+            <BranchesSection
+              showBranchMapOnWeb={showBranchMapOnWeb}
+              onToggle={toggleBranchMapOnWeb}
+              saving={branchMapVisibilitySaving}
+            />
+          )}
+          {active === "cards" && <CardsSection />}
+          {active === "qr" && <QrGeneratorPanel showHeader={false} />}
+          {active === "pos" && <PosRegistersSection />}
+          {active === "hr" && <HrSection />}
+        </div>
+      ) : (
+        <FormBuilderTool />
       )}
-      {active === "categories" && (
-        <CategoriesSection categories={categories} setCategories={setCategories} />
-      )}
-      {active === "branches" && (
-        <BranchesSection
-          showBranchMapOnWeb={showBranchMapOnWeb}
-          onToggle={toggleBranchMapOnWeb}
-          saving={branchMapVisibilitySaving}
-        />
-      )}
-      {active === "cards" && <CardsSection />}
-      {active === "qr" && <QrGeneratorPanel showHeader={false} />}
-      {active === "pos" && <PosRegistersSection />}
-      {active === "hr" && <HrSection />}
     </SectionsLayout>
   );
 }

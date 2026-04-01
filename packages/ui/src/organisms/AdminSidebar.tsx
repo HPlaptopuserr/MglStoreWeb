@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Tag,
   Package,
+  Wrench,
 } from "lucide-react";
 
 export interface NavItem {

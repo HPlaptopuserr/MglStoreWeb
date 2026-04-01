@@ -6,6 +6,7 @@ import {
   Wrench,
   Monitor,
   Users,
+  ClipboardList,
 } from "lucide-react";
 import type { CardColorScheme } from "@mgl/ui";
 import type { SectionKey } from "./types";
@@ -18,6 +19,7 @@ export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType
   { key: "qr", label: "QR Generator", icon: Wrench },
   { key: "pos", label: "POS Register", icon: Monitor },
   { key: "hr", label: "Хүний нөөц", icon: Users },
+  { key: "forms", label: "Маягт үүсгэгч", icon: ClipboardList },
 ];
 
 export const SCHEME_ORDER: CardColorScheme[] = [

@@ -200,6 +200,7 @@ export default function RequestsPage() {
       const endpoint =
         activeTab === "partners" ? "partner-requests" : "job-applications";
 
+      const token = localStorage.getItem("admin_token");
       const res = await fetch(
         `${API_BASE}/api/${endpoint}?${params.toString()}`,
         {
@@ -207,6 +208,7 @@ export default function RequestsPage() {
           cache: "no-store",
           headers: {
             "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
         },
       );
@@ -281,6 +283,7 @@ export default function RequestsPage() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
+          ...(localStorage.getItem("admin_token") ? { Authorization: `Bearer ${localStorage.getItem("admin_token")}` } : {}),
         },
       });
 
@@ -327,6 +330,7 @@ export default function RequestsPage() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
+          ...(localStorage.getItem("admin_token") ? { Authorization: `Bearer ${localStorage.getItem("admin_token")}` } : {}),
         },
       });
 
