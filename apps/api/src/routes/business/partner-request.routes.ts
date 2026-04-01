@@ -131,7 +131,7 @@ router.get("/partner-requests", requireAuth, requireRole("ADMIN"), async (req, r
 
 router.patch("/partner-requests/:id/approve", requireAuth, requireRole("ADMIN"), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const result = await approvePartnerRequest(id);
 
@@ -151,7 +151,7 @@ router.patch("/partner-requests/:id/approve", requireAuth, requireRole("ADMIN"),
 
 router.patch("/partner-requests/:id/reject", requireAuth, requireRole("ADMIN"), async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
 
     const updatedRequest = await rejectPartnerRequest(id);
 
