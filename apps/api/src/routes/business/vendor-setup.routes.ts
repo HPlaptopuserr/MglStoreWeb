@@ -4,6 +4,7 @@ import {
   setVendorPassword,
   regenerateInviteToken,
 } from "../../services/vendor-setup.service";
+import { requireAuth, requireRole } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
@@ -80,7 +81,7 @@ router.post("/vendor-setup/set-password", async (req, res) => {
  * POST /vendor-setup/regenerate-token
  * Regenerate invite token for a registration request (admin only)
  */
-router.post("/vendor-setup/regenerate-token", async (req, res) => {
+router.post("/vendor-setup/regenerate-token", requireAuth, requireRole("ADMIN"), async (req, res) => {
   try {
     const { requestId } = req.body;
 

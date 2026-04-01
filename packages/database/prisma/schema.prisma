@@ -49,6 +49,7 @@ model User {
   warehouseAssignments         WarehouseOrganization[]  @relation("WarehouseAssignedBy")
   requestedStockRequests       WarehouseStockRequest[]  @relation("StockRequestsRequested")
   reviewedStockRequests        WarehouseStockRequest[]  @relation("StockRequestsReviewed")
+  posts                        Post[]                   @relation("PostAuthor")
 
   @@index([organizationId])
   @@index([role])
@@ -303,6 +304,7 @@ model Organization {
   stockRequests                WarehouseStockRequest[] @relation("OrganizationStockRequests")
   investorProfile              InvestorProfile?
   servicePosts                 ServicePost[]
+  feedPosts                    Post[]                  @relation("OrganizationPosts")
 
   @@index([type])
   @@index([status])
@@ -395,46 +397,46 @@ model Branch {
 }
 
 model PosRegister {
-  id                String       @id @default(uuid())
-  organizationId    String
-  branchId          String
-  name              String
-  label             String?
+  id             String  @id @default(uuid())
+  organizationId String
+  branchId       String
+  name           String
+  label          String?
 
   // Card terminal
-  cardEnabled       Boolean             @default(false)
-  cardProviderType  String?             // e.g. "QPOSLANE" | "GANTIGO" | "IDPAY"
-  cardTerminalId    String?             // hardware S/N or LAN IP
-  terminalBridgeUrl String?             // e.g. "http://localhost:7420"
+  cardEnabled       Boolean @default(false)
+  cardProviderType  String? // e.g. "QPOSLANE" | "GANTIGO" | "IDPAY"
+  cardTerminalId    String? // hardware S/N or LAN IP
+  terminalBridgeUrl String? // e.g. "http://localhost:7420"
 
   // QPay
-  qpayEnabled       Boolean             @default(false)
-  qpayMerchantId    String?
-  qpayTerminalId    String?
+  qpayEnabled    Boolean @default(false)
+  qpayMerchantId String?
+  qpayTerminalId String?
 
   // Activation workflow
-  activationStatus  PosActivationStatus @default(PENDING)
-  reviewedById      String?
-  reviewedAt        DateTime?
-  rejectReason      String?
+  activationStatus PosActivationStatus @default(PENDING)
+  reviewedById     String?
+  reviewedAt       DateTime?
+  rejectReason     String?
 
-  isActive          Boolean             @default(false)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  organization      Organization        @relation(fields: [organizationId], references: [id])
-  branch            Branch              @relation(fields: [branchId], references: [id])
-  reviewedBy        User?               @relation("PosRegisterReviewedBy", fields: [reviewedById], references: [id])
-  cardAttempts      CardPaymentAttempt[]
-  qpayInvoices      QPayInvoice[]
+  organization Organization         @relation(fields: [organizationId], references: [id])
+  branch       Branch               @relation(fields: [branchId], references: [id])
+  reviewedBy   User?                @relation("PosRegisterReviewedBy", fields: [reviewedById], references: [id])
+  cardAttempts CardPaymentAttempt[]
+  qpayInvoices QPayInvoice[]
 
+  @@unique([organizationId, branchId, name])
+  @@unique([cardProviderType, cardTerminalId])
+  @@unique([qpayMerchantId, qpayTerminalId])
   @@index([organizationId])
   @@index([branchId])
   @@index([isActive])
   @@index([activationStatus])
-  @@unique([organizationId, branchId, name])
-  @@unique([cardProviderType, cardTerminalId])
-  @@unique([qpayMerchantId, qpayTerminalId])
 }
 
 model Address {
@@ -1084,23 +1086,23 @@ enum PosQPayStatus {
 }
 
 model CardPaymentAttempt {
-  id             String           @id @default(uuid())
-  registerId     String?
-  organizationId String?
-  initiatedById  String?
-  terminalId     String
-  bridgeUrl      String?
-  amount         Decimal          @db.Decimal(18, 2)
-  status         PosPaymentStatus @default(PENDING)
-  transactionId  String?
-  message        String?
+  id              String           @id @default(uuid())
+  registerId      String?
+  organizationId  String?
+  initiatedById   String?
+  terminalId      String
+  bridgeUrl       String?
+  amount          Decimal          @db.Decimal(18, 2)
+  status          PosPaymentStatus @default(PENDING)
+  transactionId   String?
+  message         String?
   providerPayload Json?
-  saleReference  String?
-  consumedAt     DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  register       PosRegister?     @relation(fields: [registerId], references: [id])
-  initiatedBy    User?            @relation("CardPaymentAttemptInitiatedBy", fields: [initiatedById], references: [id])
+  saleReference   String?
+  consumedAt      DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  register        PosRegister?     @relation(fields: [registerId], references: [id])
+  initiatedBy     User?            @relation("CardPaymentAttemptInitiatedBy", fields: [initiatedById], references: [id])
 
   @@index([registerId])
   @@index([status])
@@ -1136,14 +1138,14 @@ model QPayInvoice {
 }
 
 model PosSaleIdempotency {
-  id            String   @id @default(uuid())
-  clientSaleId  String
-  receiptNo     String   @unique
+  id             String   @id @default(uuid())
+  clientSaleId   String
+  receiptNo      String   @unique
   organizationId String
-  registerId    String?
-  response      Json
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  registerId     String?
+  response       Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([organizationId, clientSaleId])
   @@index([organizationId])
@@ -1175,4 +1177,71 @@ enum StockRequestStatus {
   PROCESSING
   COMPLETED
   CANCELLED
+}
+
+/// ///////////////////////////////////////////////
+/// Feed / Social Posts
+/// ///////////////////////////////////////////////
+
+enum PostType {
+  ANNOUNCEMENT
+  UPDATE
+  ALERT
+  PROMOTION
+  GENERAL
+}
+
+model Post {
+  id             String   @id @default(uuid())
+  authorId       String
+  organizationId String?
+  type           PostType @default(GENERAL)
+  content        String   @db.Text
+  imageUrls      String[] @default([])
+  tags           String[] @default([])
+  viewCount      Int      @default(0)
+  likeCount      Int      @default(0)
+  commentCount   Int      @default(0)
+  isPinned       Boolean  @default(false)
+  isOfficial     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  author       User          @relation("PostAuthor", fields: [authorId], references: [id])
+  organization Organization? @relation("OrganizationPosts", fields: [organizationId], references: [id])
+  likes        PostLike[]
+  comments     PostComment[]
+
+  @@index([authorId])
+  @@index([organizationId])
+  @@index([type])
+  @@index([isPinned])
+  @@index([createdAt])
+}
+
+model PostLike {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([userId])
+}
+
+model PostComment {
+  id        String   @id @default(uuid())
+  postId    String
+  authorId  String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([authorId])
+  @@index([createdAt])
 }

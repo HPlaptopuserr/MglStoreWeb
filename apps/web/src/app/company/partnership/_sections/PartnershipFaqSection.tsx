@@ -390,10 +390,11 @@ export default function FAQSection() {
                   {/* Contact info */}
                   <div className="pt-2 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-400">
                     <span className="flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5" /> 7700-1234
+                      <Phone className="w-3.5 h-3.5" /> 8086 2003
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <Mail className="w-3.5 h-3.5" /> info@mglstore.mn
+                      <Mail className="w-3.5 h-3.5" /> 
+bigservice1316@gmail.com
                     </span>
                   </div>
                 </div>

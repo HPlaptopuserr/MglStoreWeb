@@ -419,6 +419,9 @@ export const Header = () => {
         open={authOpen}
         onClose={closeAuthModal}
         onLogin={async (identifier, password) => {
+          setAuthError("");
+          setAuthLoading(true);
+          try {
           const isEmail = identifier.includes("@");
           const payload = isEmail
             ? { email: identifier.trim(), password: password.trim() }
@@ -445,8 +448,14 @@ export const Header = () => {
           setUser(data.user || null);
           closeAuthModal();
           closeMobile();
+          } finally {
+            setAuthLoading(false);
+          }
         }}
         onRegister={async (fullName, identifier, password) => {
+          setAuthError("");
+          setAuthLoading(true);
+          try {
           const isEmail = identifier.includes("@");
           const payload = isEmail
             ? { email: identifier.trim(), password: password.trim(), fullName: fullName.trim() }
@@ -473,6 +482,9 @@ export const Header = () => {
           setUser(data.user || null);
           closeAuthModal();
           closeMobile();
+          } finally {
+            setAuthLoading(false);
+          }
         }}
         isLoading={authLoading}
         error={authError}

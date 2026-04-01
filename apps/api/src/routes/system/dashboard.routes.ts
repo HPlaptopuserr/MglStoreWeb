@@ -1,5 +1,6 @@
 import { Router, type Router as RouterType } from "express";
 import { prisma } from "@mgl/database";
+import { requireAuth, requireRole } from "../../middleware/auth";
 
 const router: RouterType = Router();
 
@@ -397,6 +398,139 @@ router.get("/vendor/dashboard/stats", async (req, res) => {
   } catch (error) {
     console.error("[vendor dashboard stats error]", error);
     return res.status(500).json({ message: "Серверийн алдаа гарлаа" });
+  }
+});
+
+/* ─── GET /admin/users ─── list all system users ─────── */
+router.get("/admin/users", async (req, res) => {
+  try {
+    const { role, search, isActive } = req.query;
+
+    const where: Record<string, unknown> = { deletedAt: null };
+    if (role && typeof role === "string") where.role = role;
+    if (isActive === "true") where.isActive = true;
+    if (isActive === "false") where.isActive = false;
+    if (search && typeof search === "string") {
+      const q = search.trim();
+      where.OR = [
+        { email: { contains: q, mode: "insensitive" } },
+        { profile: { fullName: { contains: q, mode: "insensitive" } } },
+        { profile: { phoneNumber: { contains: q, mode: "insensitive" } } },
+      ];
+    }
+
+    const users = await prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        isActive: true,
+        emailVerified: true,
+        lastLoginAt: true,
+        organizationId: true,
+        createdAt: true,
+        profile: {
+          select: {
+            fullName: true,
+            phoneNumber: true,
+            avatarUrl: true,
+          },
+        },
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+        organizationMemberships: {
+          select: {
+            role: true,
+            isActive: true,
+            organization: {
+              select: { id: true, name: true },
+            },
+          },
+        },
+      },
+    });
+
+    const result = users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      fullName: u.profile?.fullName || "",
+      phone: u.profile?.phoneNumber || null,
+      avatarUrl: u.profile?.avatarUrl || null,
+      role: u.role,
+      isActive: u.isActive,
+      emailVerified: u.emailVerified,
+      lastLoginAt: u.lastLoginAt,
+      organizationId: u.organizationId,
+      organizationName: u.organization?.name || null,
+      memberships: u.organizationMemberships.map((m) => ({
+        role: m.role,
+        isActive: m.isActive,
+        orgName: m.organization.name,
+      })),
+      createdAt: u.createdAt,
+    }));
+
+    return res.json(result);
+  } catch (error) {
+    console.error("[admin users list error]", error);
+    return res.status(500).json({ message: "Хэрэглэгчдийн жагсаалт ачаалахад алдаа гарлаа" });
+  }
+});
+
+/* ─── PATCH /admin/users/:id/role ─── change user role ── */
+const VALID_ROLES = ["ADMIN", "SUPPLIER", "COURIER", "CUSTOMER", "INDIVIDUAL"] as const;
+
+router.patch("/admin/users/:id/role", requireAuth, requireRole("ADMIN"), async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const { role } = req.body;
+
+    if (!role || !VALID_ROLES.includes(role)) {
+      return res.status(400).json({
+        message: `Зөвшөөрөгдөх role: ${VALID_ROLES.join(", ")}`,
+      });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { id, deletedAt: null },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+    }
+
+    // Prevent removing the last ADMIN
+    if (user.role === "ADMIN" && role !== "ADMIN") {
+      const adminCount = await prisma.user.count({
+        where: { role: "ADMIN", isActive: true, deletedAt: null },
+      });
+      if (adminCount <= 1) {
+        return res.status(400).json({
+          message: "Сүүлийн админы role-ийг солих боломжгүй",
+        });
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { role },
+      select: { id: true, email: true, role: true },
+    });
+
+    return res.json({
+      message: "Хэрэглэгчийн role амжилттай солигдлоо",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("[admin change role error]", error);
+    return res.status(500).json({ message: "Role солиход алдаа гарлаа" });
   }
 });
 

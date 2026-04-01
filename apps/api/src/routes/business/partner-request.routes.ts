@@ -4,6 +4,7 @@ import {
   approvePartnerRequest,
   rejectPartnerRequest,
 } from "../../services/partner-request.service";
+import { requireAuth, requireRole } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
@@ -67,12 +68,11 @@ router.post("/partner-requests", async (req, res) => {
 
     return res.status(500).json({
       message: "Хүсэлт үүсгэхэд алдаа гарлаа",
-      error: error instanceof Error ? error.message : String(error),
     });
   }
 });
 
-router.get("/partner-requests", async (req, res) => {
+router.get("/partner-requests", requireAuth, requireRole("ADMIN"), async (req, res) => {
   try {
     const status = req.query.status as keyof typeof ApprovalStatus | undefined;
     const search = String(req.query.search || "").trim();
@@ -125,12 +125,11 @@ router.get("/partner-requests", async (req, res) => {
 
     return res.status(500).json({
       message: "Хүсэлтүүдийг авахад алдаа гарлаа",
-      error: error instanceof Error ? error.message : String(error),
     });
   }
 });
 
-router.patch("/partner-requests/:id/approve", async (req, res) => {
+router.patch("/partner-requests/:id/approve", requireAuth, requireRole("ADMIN"), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -150,7 +149,7 @@ router.patch("/partner-requests/:id/approve", async (req, res) => {
   }
 });
 
-router.patch("/partner-requests/:id/reject", async (req, res) => {
+router.patch("/partner-requests/:id/reject", requireAuth, requireRole("ADMIN"), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -172,7 +171,7 @@ router.patch("/partner-requests/:id/reject", async (req, res) => {
 
 // One-time sync: copy phoneNumber from RegistrationRequest → User Profile
 // for already-approved vendors that were created before this fix
-router.post("/partner-requests/sync-profiles", async (req, res) => {
+router.post("/partner-requests/sync-profiles", requireAuth, requireRole("ADMIN"), async (req, res) => {
   try {
     const approved = await prisma.registrationRequest.findMany({
       where: {

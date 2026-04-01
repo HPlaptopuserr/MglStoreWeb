@@ -227,14 +227,14 @@ export const Footer = () => {
                   className="flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-white"
                 >
                   <Phone className="h-3.5 w-3.5" />
-                  7700-1234
+                  8086 2003
                 </a>
                 <a
-                  href="mailto:info@mglstore.mn"
+                  href="mailto:bigservice1316@gmail.com"
                   className="flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-white"
                 >
                   <Mail className="h-3.5 w-3.5" />
-                  info@mglstore.mn
+                  bigservice1316@gmail.com
                 </a>
                 <div className="flex items-start gap-2 text-sm text-gray-500">
                   <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />

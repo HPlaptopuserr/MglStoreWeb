@@ -145,11 +145,23 @@ router.post("/login", async (req, res) => {
       data: { lastLoginAt: new Date() },
     });
 
+    // Determine effective role: prefer OrganizationMember role over User.role
+    let effectiveRole: string = user.role;
+    if (user.organizationId) {
+      const membership = await prisma.organizationMember.findFirst({
+        where: { userId: user.id, organizationId: user.organizationId },
+        select: { role: true },
+      });
+      if (membership) {
+        effectiveRole = membership.role;
+      }
+    }
+
     const accessToken = jwt.sign(
       {
         userId: user.id,
         email: user.email,
-        role: user.role,
+        role: effectiveRole,
         organizationId: user.organizationId,
       },
       JWT_SECRET,
@@ -161,7 +173,7 @@ router.post("/login", async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
-        role: user.role,
+        role: effectiveRole,
         fullName: user.profile?.fullName || "",
         organizationId: user.organizationId,
         organizationName: user.organization?.name || "",
@@ -301,17 +313,26 @@ router.post("/web/register", async (req, res) => {
       }
 
       const existingHash = existingUser.passwordHash;
-      const passwordHash = existingHash || (await bcrypt.hash(password, 10));
 
-      if (existingHash) {
-        const isValidPassword = await bcrypt.compare(password, existingHash);
-        if (!isValidPassword) {
-          return res.status(409).json({
-            message:
-              "Энэ и-мэйл/утсаар бүртгэлтэй байна. Нэвтрэхдээ тухайн бүртгэлийн нууц үгийг ашиглана уу.",
-          });
-        }
+      if (!existingHash) {
+        // Account exists but has no password (e.g. vendor pending setup)
+        // Do not allow registration to hijack this account
+        return res.status(409).json({
+          message: isPhone
+            ? "Энэ утасны дугаар бүртгэгдсэн байна"
+            : "Энэ и-мэйл бүртгэгдсэн байна",
+        });
       }
+
+      const isValidPassword = await bcrypt.compare(password, existingHash);
+      if (!isValidPassword) {
+        return res.status(409).json({
+          message:
+            "Энэ и-мэйл/утсаар бүртгэлтэй байна. Нэвтрэхдээ тухайн бүртгэлийн нууц үгийг ашиглана уу.",
+        });
+      }
+
+      const passwordHash = existingHash;
 
       const updatedUser = await prisma.user.update({
         where: { id: existingUser.id },
