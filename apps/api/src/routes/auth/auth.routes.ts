@@ -3,7 +3,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
-import { isAdminRole, ADMIN_ROLE_LABELS, getPlatformPermissions } from "@mgl/types";
+import { isAdminRole, ADMIN_ROLES, ADMIN_ROLE_LABELS, getPlatformPermissions } from "@mgl/types";
 import { resolveOrganization } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
@@ -34,7 +34,8 @@ router.post("/admin/login", async (req, res) => {
     }
 
     if (!isAdminRole(user.role)) {
-      return res.status(403).json({ message: "Admin эрхгүй байна" });
+      console.error(`[admin login] role check failed: role="${user.role}", isAdmin=${isAdminRole(user.role)}, ADMIN_ROLES=${JSON.stringify(ADMIN_ROLES)}`);
+      return res.status(403).json({ message: "Admin эрхгүй байна", debug: { role: user.role } });
     }
 
     if (!user.passwordHash) {
