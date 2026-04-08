@@ -5,6 +5,7 @@ import {
   Headphones,
   Contact,
   FileQuestion,
+  ClipboardList,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -12,7 +13,8 @@ const navItems = [
   { icon: QrCode, label: "APP\nтатах", href: "#" },
   { icon: MessageCircle, label: "Санал\nхүсэлт", href: "#" },
   { icon: Headphones, label: "Admin-тай\nхолбогдох", href: "#" },
-  { icon: Contact, label: "Хамтарч\nажиллах", href: "#" },
+  { icon: Contact, label: "Хамтарч\nажиллах", href: "/company/partnership" },
+  { icon: ClipboardList, label: "Маягт\n& QR", href: "/apply" },
   { icon: FileQuestion, label: "Нийтлэг\nасуулт", href: "#" },
 ];
 

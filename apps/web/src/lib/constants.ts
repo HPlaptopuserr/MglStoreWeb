@@ -82,7 +82,7 @@ export const CATEGORY_COLORS = [
 ];
 
 import type { LucideIcon } from "lucide-react";
-import { Store, Tag, Briefcase, Wrench } from "lucide-react";
+import { Store, Tag, Briefcase, Wrench, QrCode } from "lucide-react";
 
 export interface NavLink {
   href: string;
@@ -120,5 +120,12 @@ export const NAV_LINKS: NavLink[] = [
     desc: "Бизнесээ холбох",
     icon: Briefcase,
     color: "bg-green-50 text-green-600",
+  },
+  {
+    href: "/apply",
+    label: "Маягт & QR",
+    desc: "Маягт бөглөх, QR код",
+    icon: QrCode,
+    color: "bg-rose-50 text-rose-600",
   },
 ];
