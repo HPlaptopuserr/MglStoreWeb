@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Package,
@@ -96,6 +97,16 @@ interface DashboardData {
     totalAmount: number | null;
     paymentStatus: string | null;
     createdAt: string;
+    dispatch: {
+      id: string;
+      dispatchNumber: string;
+      status: string;
+      driverName: string | null;
+      driverPhone: string | null;
+      vehicleNumber: string | null;
+      dispatchedAt: string | null;
+      deliveredAt: string | null;
+    } | null;
   }[];
   recentServiceRequests: {
     id: string;
@@ -107,6 +118,7 @@ interface DashboardData {
 }
 
 export default function Dashboard() {
+  const router = useRouter();
   const [orgName, setOrgName] = useState("Байгууллага");
   const [orgId, setOrgId] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData | null>(null);
@@ -127,18 +139,31 @@ export default function Dashboard() {
   useEffect(() => {
     if (!orgId) return;
     setLoading(true);
-    fetch(`${API_BASE}/api/vendor/dashboard/stats?organizationId=${orgId}`)
+    const token = localStorage.getItem("vendor_token");
+    fetch(`${API_BASE}/api/vendor/dashboard/stats?organizationId=${orgId}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
       .then((r) => {
+        if (r.status === 401) {
+          localStorage.removeItem("vendor_token");
+          localStorage.removeItem("vendor_user");
+          router.replace("/login");
+          return;
+        }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then((d) => {
-        setData(d);
-        setError("");
+        if (d) {
+          setData(d);
+          setError("");
+        }
       })
       .catch(() => setError("Мэдээлэл татахад алдаа гарлаа"))
       .finally(() => setLoading(false));
-  }, [orgId]);
+  }, [orgId, router]);
 
   const activeShipments = data
     ? (data.stockRequests?.pending ?? 0) + (data.stockRequests?.approved ?? 0)
@@ -360,7 +385,7 @@ export default function Dashboard() {
 
           {/* ── Bottom two columns ── */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-            {/* Recent stock requests */}
+            {/* Recent stock requests with dispatch tracking */}
             <div className="lg:col-span-3 rounded-2xl bg-white border border-slate-100 p-6 shadow-sm">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-2">
@@ -389,35 +414,32 @@ export default function Dashboard() {
                   </Link>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {data?.recentStockRequests?.map((r) => (
                     <div
                       key={r.id}
-                      className="flex items-center justify-between rounded-xl border border-slate-100 px-4 py-3 hover:bg-slate-50 transition-colors"
+                      className="rounded-xl border border-slate-100 p-4 hover:bg-slate-50/50 transition-colors"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="hidden shrink-0 sm:flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100">
-                          <Truck size={15} className="text-slate-500" />
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="hidden shrink-0 sm:flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100">
+                            <Truck size={15} className="text-slate-500" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">
+                              #{r.requestNumber}
+                            </p>
+                            <p className="text-xs text-slate-400 truncate">
+                              {r.warehouseName} · {r.itemCount} бүтээгдэхүүн
+                              {r.totalAmount ? ` · ${formatMNT(r.totalAmount)}` : ""}
+                            </p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-slate-800 truncate">
-                            #{r.requestNumber}
-                          </p>
-                          <p className="text-xs text-slate-400 truncate">
-                            {r.warehouseName} · {r.itemCount} бүтээгдэхүүн
-                          </p>
-                        </div>
-                      </div>
-                      <div className="ml-3 flex shrink-0 flex-col items-end gap-1.5">
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${STATUS_COLOR[r.status] || "bg-slate-100 text-slate-500 border-slate-200"}`}
-                        >
-                          {STATUS_LABEL[r.status] || r.status}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] text-slate-400 shrink-0 ml-2">
                           {timeAgo(r.createdAt)}
                         </span>
                       </div>
+                      <DispatchStepper status={r.status} dispatch={r.dispatch} />
                     </div>
                   ))}
                 </div>
@@ -494,6 +516,127 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════
+   4-Level Dispatch Status Stepper
+   ════════════════════════════════════════════ */
+const DISPATCH_STEPS = [
+  { key: "PENDING", label: "Хүлээгдэж буй", icon: Clock },
+  { key: "CONFIRMED", label: "Баталгаажсан", icon: CheckCircle2 },
+  { key: "DISPATCHED", label: "Илгээгдсэн", icon: Truck },
+  { key: "DELIVERED", label: "Хүргэгдсэн", icon: CheckCircle2 },
+] as const;
+
+function getDispatchLevel(
+  requestStatus: string,
+  dispatch: { status: string } | null,
+): number {
+  if (requestStatus === "REJECTED" || requestStatus === "CANCELLED") return -1;
+  if (requestStatus === "PENDING") return 0; // Not yet approved
+  if (!dispatch) return 0;
+  switch (dispatch.status) {
+    case "PENDING":
+      return 1;
+    case "CONFIRMED":
+      return 2;
+    case "DISPATCHED":
+      return 3;
+    case "DELIVERED":
+      return 4;
+    case "CANCELLED":
+      return -1;
+    default:
+      return 0;
+  }
+}
+
+function DispatchStepper({
+  status,
+  dispatch,
+}: {
+  status: string;
+  dispatch: {
+    status: string;
+    driverName: string | null;
+    driverPhone: string | null;
+    vehicleNumber: string | null;
+    dispatchedAt: string | null;
+    deliveredAt: string | null;
+  } | null;
+}) {
+  const level = getDispatchLevel(status, dispatch);
+
+  // Cancelled / rejected — show red badge
+  if (level === -1) {
+    const isCancelled = status === "CANCELLED" || dispatch?.status === "CANCELLED";
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2">
+        <AlertCircle size={14} className="text-red-500" />
+        <span className="text-xs font-bold text-red-600">
+          {isCancelled ? "Цуцлагдсан" : "Татгалзсан"}
+        </span>
+      </div>
+    );
+  }
+
+  // Pending request (not yet approved)
+  if (status === "PENDING") {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2">
+        <Clock size={14} className="text-amber-500 animate-pulse" />
+        <span className="text-xs font-bold text-amber-600">
+          Админ зөвшөөрөлтөө хүлээж байна
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-0">
+      {DISPATCH_STEPS.map((step, idx) => {
+        const stepNum = idx + 1;
+        const isCompleted = level >= stepNum;
+        const isCurrent = level === stepNum;
+        const StepIcon = step.icon;
+        return (
+          <div key={step.key} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center">
+              <div
+                className={`flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all ${
+                  isCompleted
+                    ? "border-emerald-500 bg-emerald-500 text-white"
+                    : isCurrent
+                      ? "border-[#FFAD02] bg-[#FFAD02] text-black animate-pulse"
+                      : "border-slate-200 bg-white text-slate-300"
+                }`}
+              >
+                <StepIcon size={13} />
+              </div>
+              <span
+                className={`mt-1 text-[10px] font-bold text-center leading-tight ${
+                  isCompleted
+                    ? "text-emerald-600"
+                    : isCurrent
+                      ? "text-[#FFAD02]"
+                      : "text-slate-300"
+                }`}
+              >
+                {step.label}
+              </span>
+            </div>
+            {idx < DISPATCH_STEPS.length - 1 && (
+              <div
+                className={`mx-1 h-0.5 flex-1 rounded-full transition-all ${
+                  level > stepNum ? "bg-emerald-400" : "bg-slate-200"
+                }`}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

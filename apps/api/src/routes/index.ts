@@ -5,6 +5,7 @@ export {
   partnerRequestRoutes,
   partnerRoutes,
   vendorSetupRoutes,
+  warehouseSetupRoutes,
 } from "./business";
 
 export { businessCategoriesRoutes, productsRoutes } from "./catalog";

@@ -37,7 +37,8 @@ import {
   Link2,
   Check,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
+import { detectWebBaseUrl } from "@/lib/sections/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -116,12 +117,8 @@ const FIELD_TYPES: { type: FieldType; label: string; icon: ReactNode }[] = [
   },
 ];
 
-const WEB_BASE =
-  process.env.NEXT_PUBLIC_WEB_URL?.replace(/\/$/, "") ||
-  "http://localhost:3000";
-
 function getFormLink(slug: string): string {
-  return `${WEB_BASE}/forms/${slug}`;
+  return `${detectWebBaseUrl()}/forms/${slug}`;
 }
 
 function escapeCSV(val: string): string {
@@ -140,7 +137,7 @@ export function FormBuilderTool() {
 
   const fetchForms = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/admin/forms`);
+      const res = await adminFetch(`${API}/admin/forms`);
       if (res.ok) setForms(await res.json());
     } catch {
       // ignore
@@ -149,7 +146,7 @@ export function FormBuilderTool() {
 
   const fetchResponses = useCallback(async (formId: string) => {
     try {
-      const res = await fetch(`${API}/admin/forms/${formId}`);
+      const res = await adminFetch(`${API}/admin/forms/${formId}`);
       if (res.ok) {
         const data = await res.json();
         setResponses(data.responses || []);
@@ -177,7 +174,7 @@ export function FormBuilderTool() {
 
   const createForm = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/admin/forms`, {
+      const res = await adminFetch(`${API}/admin/forms`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Шинэ маягт", description: "", fields: [] }),
@@ -198,7 +195,7 @@ export function FormBuilderTool() {
       const src = forms.find((f) => f.id === id);
       if (!src) return;
       try {
-        const res = await fetch(`${API}/admin/forms`, {
+        const res = await adminFetch(`${API}/admin/forms`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -220,7 +217,7 @@ export function FormBuilderTool() {
   const deleteForm = useCallback(
     async (id: string) => {
       try {
-        await fetch(`${API}/admin/forms/${id}`, { method: "DELETE" });
+        await adminFetch(`${API}/admin/forms/${id}`, { method: "DELETE" });
         setForms((prev) => prev.filter((f) => f.id !== id));
         if (activeFormId === id) {
           setActiveFormId(null);
@@ -236,7 +233,7 @@ export function FormBuilderTool() {
   const updateForm = useCallback(
     async (updated: Form) => {
       try {
-        const res = await fetch(`${API}/admin/forms/${updated.id}`, {
+        const res = await adminFetch(`${API}/admin/forms/${updated.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -262,7 +259,7 @@ export function FormBuilderTool() {
     async (data: Record<string, string | string[]>) => {
       if (!activeForm?.slug) return;
       try {
-        const res = await fetch(`${API}/forms/${activeForm.slug}/responses`, {
+        const res = await adminFetch(`${API}/forms/${activeForm.slug}/responses`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ data }),
@@ -281,7 +278,7 @@ export function FormBuilderTool() {
   const deleteResponse = useCallback(
     async (id: string) => {
       try {
-        await fetch(`${API}/admin/form-responses/${id}`, { method: "DELETE" });
+        await adminFetch(`${API}/admin/form-responses/${id}`, { method: "DELETE" });
         setResponses((prev) => prev.filter((r) => r.id !== id));
       } catch {
         // ignore

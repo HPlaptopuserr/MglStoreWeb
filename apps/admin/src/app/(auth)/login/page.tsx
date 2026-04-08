@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE } from "@/lib/api";
+import { addSession } from "@/lib/admin-auth";
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
@@ -50,6 +51,7 @@ export default function AdminLoginPage() {
 
       localStorage.setItem("admin_token", data.accessToken);
       localStorage.setItem("admin_user", JSON.stringify(data.user));
+      addSession(data.accessToken, data.user);
 
       router.push("/dashboard");
       router.refresh();

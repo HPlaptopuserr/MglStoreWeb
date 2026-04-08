@@ -27,7 +27,8 @@
   "pnpm": {
     "overrides": {
       "@types/react": "^18",
-      "@types/react-dom": "^18"
+      "@types/react-dom": "^18",
+      "@types/express-serve-static-core": "^4.19.8"
     }
   }
 }

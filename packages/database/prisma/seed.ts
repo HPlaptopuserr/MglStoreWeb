@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import {
   PrismaClient,
-  Role,
+  PlatformRole,
   OrgType,
   OrgStatus,
   OnboardingSource,
@@ -26,9 +26,8 @@ async function main() {
   const admin = await prisma.user.upsert({
     where: { email: "admin@mglstore.mn" },
     update: {
-      role: Role.ADMIN,
+      role: PlatformRole.ADMIN,
       emailVerified: true,
-      organizationId: org.id,
       onboardingSource: OnboardingSource.ADMIN,
       isActive: true,
       passwordHash,
@@ -36,9 +35,8 @@ async function main() {
     create: {
       email: "admin@mglstore.mn",
       passwordHash,
-      role: Role.ADMIN,
+      role: PlatformRole.ADMIN,
       emailVerified: true,
-      organizationId: org.id,
       onboardingSource: OnboardingSource.ADMIN,
       isActive: true,
     },
@@ -54,6 +52,19 @@ async function main() {
       userId: admin.id,
       fullName: "System Admin",
       phoneNumber: "99000000",
+    },
+  });
+
+  // Ensure admin has OWNER membership in the default org
+  await prisma.organizationMember.upsert({
+    where: { userId_organizationId: { userId: admin.id, organizationId: org.id } },
+    update: { role: "OWNER", isPrimary: true, isActive: true },
+    create: {
+      userId: admin.id,
+      organizationId: org.id,
+      role: "OWNER",
+      isPrimary: true,
+      isActive: true,
     },
   });
 

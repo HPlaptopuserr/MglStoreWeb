@@ -1,5 +1,6 @@
 import { Save, Loader2, CheckCircle2 } from "lucide-react";
 import type { SectionKey } from "@/lib/sections/types";
+import { SECTIONS } from "@/lib/sections/constants";
 import { SectionsSidebar } from "./SectionsSidebar";
 
 type Props = {
@@ -9,6 +10,7 @@ type Props = {
   saving: boolean;
   saved: boolean;
   children: React.ReactNode;
+  visibleSections?: typeof SECTIONS;
 };
 
 export function SectionsLayout({
@@ -18,6 +20,7 @@ export function SectionsLayout({
   saving,
   saved,
   children,
+  visibleSections,
 }: Props) {
   const showSave = active === "banner" || active === "categories";
 
@@ -51,7 +54,7 @@ export function SectionsLayout({
 
       {/* Two-panel layout */}
       <div className="flex gap-0 rounded-3xl border border-slate-100 shadow-sm overflow-hidden bg-white" style={{ height: "calc(100vh - 180px)" }}>
-        <SectionsSidebar active={active} onSelect={setActive} />
+        <SectionsSidebar active={active} onSelect={setActive} visibleSections={visibleSections} />
         <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
       </div>
     </div>

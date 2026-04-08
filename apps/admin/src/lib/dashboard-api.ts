@@ -1,4 +1,4 @@
-import { API } from "./api";
+import { API, adminFetch } from "./api";
 
 export interface DashboardStats {
   stats: {
@@ -35,13 +35,7 @@ export interface DashboardStats {
 }
 
 export async function fetchDashboardStats(): Promise<DashboardStats> {
-  const token = localStorage.getItem("admin_token");
-  const res = await fetch(`${API}/admin/dashboard/stats`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  const res = await adminFetch(`${API}/admin/dashboard/stats`);
 
   if (!res.ok) {
     throw new Error(`Dashboard stats failed: ${res.status}`);

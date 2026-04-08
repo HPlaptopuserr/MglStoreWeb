@@ -15,7 +15,7 @@ import {
   Link as LinkIcon,
   ImageIcon,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 // ─── Section config ────────────────────────────────────────────────────────────
 
@@ -175,7 +175,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${API}/site-settings`)
+    adminFetch(`${API}/site-settings`)
       .then((r) => (r.ok ? r.json() : {}))
       .then((data: SettingsMap) => {
         setSiteName(data["site-name"] ?? "");
@@ -241,7 +241,7 @@ export default function SettingsPage() {
     }
 
     try {
-      await fetch(`${API}/site-settings`, {
+      await adminFetch(`${API}/site-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

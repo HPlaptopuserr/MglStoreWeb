@@ -41,8 +41,10 @@ export default function VendorLoginPage() {
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.message || "Нэвтрэх үед алдаа гарлаа");
-      if (data.user.role !== "SUPPLIER")
-        throw new Error("Supplier эрхтэй хэрэглэгч биш байна");
+
+      // Check if user has an org membership (orgRole from login response)
+      if (!data.user.orgRole && !data.user.organizationId)
+        throw new Error("Байгууллагад бүртгэлтэй хэрэглэгч биш байна");
 
       localStorage.setItem("vendor_token", data.accessToken);
       localStorage.setItem("vendor_user", JSON.stringify(data.user));

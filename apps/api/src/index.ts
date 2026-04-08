@@ -8,6 +8,7 @@ import {
   partnerRequestRoutes,
   partnerRoutes,
   vendorSetupRoutes,
+  warehouseSetupRoutes,
   businessCategoriesRoutes,
   productsRoutes,
   servicePostsRoutes,
@@ -72,6 +73,7 @@ app.use("/api", serviceRequestsRoutes);
 app.use("/api", warehousesRoutes);
 app.use("/api", stockRequestsRoutes);
 app.use("/api", vendorSetupRoutes);
+app.use("/api", warehouseSetupRoutes);
 app.use("/api", investorRoutes);
 app.use("/api", siteSettingsRoutes);
 app.use("/api", productsRoutes);

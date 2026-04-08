@@ -1,5 +1,5 @@
 import type { ID } from "../primitives";
-import type { OnboardingSource, Role } from "../enums";
+import type { OnboardingSource, PlatformRole } from "../enums";
 
 export interface LoginRequestDto {
   email: string;
@@ -12,7 +12,7 @@ export interface LoginResponseDto {
   user: {
     id: ID;
     email: string;
-    role: Role;
+    role: PlatformRole;
     organizationId?: ID | null;
   };
 }
@@ -32,7 +32,7 @@ export interface RegisterIndividualDto {
 export interface CreateUserByAdminDto {
   email: string;
   password: string;
-  role: Role;
+  role: PlatformRole;
   fullName: string;
   phoneNumber?: string;
   organizationId?: ID;

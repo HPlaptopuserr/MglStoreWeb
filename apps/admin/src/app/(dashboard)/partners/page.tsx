@@ -25,7 +25,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 type Partner = {
   id: string;
@@ -122,7 +122,7 @@ function CategoryDropdown({
     setOpen(false);
     setSaving(true);
     try {
-      await fetch(`${API}/partners/${partner.id}/category`, {
+      await adminFetch(`${API}/partners/${partner.id}/category`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ businessCategory: value }),
@@ -227,7 +227,7 @@ export default function PartnersPage() {
 
     setDeleting(true);
     try {
-      const res = await fetch(`${API}/partners/${partner.id}`, {
+      const res = await adminFetch(`${API}/partners/${partner.id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -264,7 +264,7 @@ export default function PartnersPage() {
   });
 
   const fetchPartners = async () => {
-    const res = await fetch(`${API}/partners`, {
+    const res = await adminFetch(`${API}/partners`, {
       cache: "no-store",
     });
     const data = await res.json();
@@ -286,7 +286,7 @@ export default function PartnersPage() {
     setCreating(true);
     setCreateError("");
     try {
-      const res = await fetch(`${API}/admin/organizations`, {
+      const res = await adminFetch(`${API}/admin/organizations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -332,7 +332,7 @@ export default function PartnersPage() {
 
   useEffect(() => {
     fetchPartners();
-    fetch(`${API}/business-categories?level=0`)
+    adminFetch(`${API}/business-categories?level=0`)
       .then((r) => r.json())
       .then((data: ApiCategory[]) => setApiCategories(data))
       .catch(console.error);

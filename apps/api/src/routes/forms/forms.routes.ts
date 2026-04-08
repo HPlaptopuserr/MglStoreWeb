@@ -1,6 +1,8 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
+import { Permission } from "@mgl/types";
 import crypto from "crypto";
+import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
@@ -10,7 +12,7 @@ function generateSlug(): string {
 }
 
 // ── Admin: create form ──
-router.post("/admin/forms", async (req, res) => {
+router.post("/admin/forms", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), async (req, res) => {
   try {
     const { title, description, fields, createdById } = req.body;
 
@@ -38,7 +40,7 @@ router.post("/admin/forms", async (req, res) => {
 });
 
 // ── Admin: list all forms ──
-router.get("/admin/forms", async (_req, res) => {
+router.get("/admin/forms", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), async (_req, res) => {
   try {
     const forms = await prisma.form.findMany({
       orderBy: { createdAt: "desc" },
@@ -54,7 +56,7 @@ router.get("/admin/forms", async (_req, res) => {
 });
 
 // ── Admin: get single form with responses ──
-router.get("/admin/forms/:id", async (req, res) => {
+router.get("/admin/forms/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), async (req, res) => {
   try {
     const form = await prisma.form.findUnique({
       where: { id: req.params.id },
@@ -76,7 +78,7 @@ router.get("/admin/forms/:id", async (req, res) => {
 });
 
 // ── Admin: update form ──
-router.put("/admin/forms/:id", async (req, res) => {
+router.put("/admin/forms/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), async (req, res) => {
   try {
     const { title, description, fields, isActive } = req.body;
 
@@ -100,7 +102,7 @@ router.put("/admin/forms/:id", async (req, res) => {
 });
 
 // ── Admin: delete form ──
-router.delete("/admin/forms/:id", async (req, res) => {
+router.delete("/admin/forms/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), async (req, res) => {
   try {
     await prisma.form.delete({ where: { id: req.params.id } });
     res.json({ message: "Маягт устгагдлаа" });
@@ -111,7 +113,7 @@ router.delete("/admin/forms/:id", async (req, res) => {
 });
 
 // ── Admin: delete a single response ──
-router.delete("/admin/form-responses/:id", async (req, res) => {
+router.delete("/admin/form-responses/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), async (req, res) => {
   try {
     await prisma.formResponse.delete({ where: { id: req.params.id } });
     res.json({ message: "Хариулт устгагдлаа" });

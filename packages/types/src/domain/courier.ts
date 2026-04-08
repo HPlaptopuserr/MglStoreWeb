@@ -1,9 +1,9 @@
 import type { User, Profile } from "./user";
 import type { Delivery } from "./order";
-import type { Role } from "../enums/role";
+import type { Capability } from "../enums/role";
 import type { ID, ISODateString } from "../primitives";
 
-export type Courier = Omit<User, "role"> & { role: Role.COURIER };
+export type Courier = User & { capability: Capability.DELIVERY_DRIVER };
 
 export interface CourierWithProfile {
     user: Courier;

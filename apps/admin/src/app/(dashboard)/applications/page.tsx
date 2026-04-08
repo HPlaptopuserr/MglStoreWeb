@@ -28,7 +28,7 @@ import {
   ArrowUpRight,
   Pencil,
 } from "lucide-react";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, adminFetch } from "@/lib/api";
 
 interface JobApplication {
   id: string;
@@ -149,7 +149,7 @@ export default function ApplicationsPage() {
   const fetchJobPositions = useCallback(async () => {
     try {
       setLoadingJobs(true);
-      const res = await fetch(`${API_BASE}/api/job-positions`, {
+      const res = await adminFetch(`${API_BASE}/api/job-positions`, {
         cache: "no-store",
       });
       if (!res.ok) throw new Error("Ажлын байр ачааллах боломжгүй");
@@ -171,7 +171,7 @@ export default function ApplicationsPage() {
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
 
-      const res = await fetch(
+      const res = await adminFetch(
         `${API_BASE}/api/job-applications?${params.toString()}`,
         { cache: "no-store", headers: { "Content-Type": "application/json" } },
       );
@@ -203,7 +203,7 @@ export default function ApplicationsPage() {
       try {
         setActionId(id);
         setError("");
-        const res = await fetch(
+        const res = await adminFetch(
           `${API_BASE}/api/job-applications/${id}/${action}`,
           { method: "PATCH", headers: { "Content-Type": "application/json" } },
         );
@@ -259,7 +259,7 @@ export default function ApplicationsPage() {
       setCreatingJob(true);
       setError("");
 
-      const res = await fetch(`${API_BASE}/api/job-positions`, {
+      const res = await adminFetch(`${API_BASE}/api/job-positions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -289,7 +289,7 @@ export default function ApplicationsPage() {
 
       if (!name.trim()) return;
 
-      const res = await fetch(`${API_BASE}/api/job-positions/${id}`, {
+      const res = await adminFetch(`${API_BASE}/api/job-positions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -321,7 +321,7 @@ export default function ApplicationsPage() {
     try {
       setError("");
       
-      const res = await fetch(`${API_BASE}/api/job-positions/${id}`, {
+      const res = await adminFetch(`${API_BASE}/api/job-positions/${id}`, {
         method: "DELETE",
       });
 

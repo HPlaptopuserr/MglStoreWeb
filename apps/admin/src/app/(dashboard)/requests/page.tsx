@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { API, API_BASE } from "@/lib/api";
+import { API, API_BASE, adminFetch } from "@/lib/api";
+import { useAdminAuth } from "@/lib/admin-auth";
 
 type TabType = "partners" | "careers";
 type SectionType = "partner-career" | "stock" | "service";
@@ -144,15 +145,31 @@ function getStatusClass(status: string) {
 
 export default function RequestsPage() {
   const searchParams = useSearchParams();
-  const [activeSection, setActiveSection] = useState<SectionType>(
-    searchParams.get("section") === "stock"
+  const { hasPermission, isFullAdmin } = useAdminAuth();
+
+  const canSeePartnerRequests = isFullAdmin || hasPermission("MANAGE_REGISTRATIONS");
+  const canSeeJobApps = isFullAdmin || hasPermission("MANAGE_JOB_APPLICATIONS");
+  const canSeeStock = isFullAdmin || hasPermission("MANAGE_STOCK");
+  const canSeeService = isFullAdmin || hasPermission("MANAGE_SERVICES");
+
+  // Determine default section based on permissions
+  const defaultSection: SectionType = canSeePartnerRequests || canSeeJobApps
+    ? "partner-career"
+    : canSeeStock
       ? "stock"
-      : searchParams.get("section") === "service"
+      : "service";
+
+  const defaultTab: TabType = canSeePartnerRequests ? "partners" : "careers";
+
+  const [activeSection, setActiveSection] = useState<SectionType>(
+    searchParams.get("section") === "stock" && canSeeStock
+      ? "stock"
+      : searchParams.get("section") === "service" && canSeeService
         ? "service"
-        : "partner-career",
+        : defaultSection,
   );
   const [activeTab, setActiveTab] = useState<TabType>(
-    searchParams.get("tab") === "jobs" ? "careers" : "partners",
+    searchParams.get("tab") === "jobs" ? "careers" : defaultTab,
   );
   const [requests, setRequests] = useState<PartnerRequest[]>([]);
   const [jobApps, setJobApps] = useState<JobApplication[]>([]);
@@ -183,6 +200,10 @@ export default function RequestsPage() {
   }, [searchTerm]);
 
   const fetchRequests = useCallback(async () => {
+    // Skip fetching if user doesn't have permission for the active tab
+    if (activeTab === "partners" && !canSeePartnerRequests) return;
+    if (activeTab === "careers" && !canSeeJobApps) return;
+
     try {
       setPageLoading(true);
       setError("");
@@ -200,16 +221,11 @@ export default function RequestsPage() {
       const endpoint =
         activeTab === "partners" ? "partner-requests" : "job-applications";
 
-      const token = localStorage.getItem("admin_token");
-      const res = await fetch(
+      const res = await adminFetch(
         `${API_BASE}/api/${endpoint}?${params.toString()}`,
         {
           method: "GET",
           cache: "no-store",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
         },
       );
 
@@ -237,7 +253,7 @@ export default function RequestsPage() {
     } finally {
       setPageLoading(false);
     }
-  }, [debouncedSearch, statusFilter, activeTab]);
+  }, [debouncedSearch, statusFilter, activeTab, canSeePartnerRequests, canSeeJobApps]);
 
   useEffect(() => {
     fetchRequests();
@@ -246,16 +262,16 @@ export default function RequestsPage() {
   useEffect(() => {
     const fetchSectionLists = async () => {
       try {
-        if (activeSection === "stock") {
-          const res = await fetch(`${API}/stock-requests`, { cache: "no-store" });
+        if (activeSection === "stock" && canSeeStock) {
+          const res = await adminFetch(`${API}/stock-requests`, { cache: "no-store" });
           if (res.ok) {
             const data = await res.json();
             setStockRequests(Array.isArray(data) ? data : []);
           }
         }
 
-        if (activeSection === "service") {
-          const res = await fetch(`${API}/service-requests`, { cache: "no-store" });
+        if (activeSection === "service" && canSeeService) {
+          const res = await adminFetch(`${API}/service-requests`, { cache: "no-store" });
           if (res.ok) {
             const data = await res.json();
             setServiceRequests(Array.isArray(data) ? data : []);
@@ -279,12 +295,8 @@ export default function RequestsPage() {
           ? `partner-requests/${id}/approve`
           : `job-applications/${id}/approve`;
 
-      const res = await fetch(`${API_BASE}/api/${endpoint}`, {
+      const res = await adminFetch(`${API_BASE}/api/${endpoint}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(localStorage.getItem("admin_token") ? { Authorization: `Bearer ${localStorage.getItem("admin_token")}` } : {}),
-        },
       });
 
       const data = await res.json().catch(() => null);
@@ -326,12 +338,8 @@ export default function RequestsPage() {
           ? `partner-requests/${id}/reject`
           : `job-applications/${id}/reject`;
 
-      const res = await fetch(`${API_BASE}/api/${endpoint}`, {
+      const res = await adminFetch(`${API_BASE}/api/${endpoint}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(localStorage.getItem("admin_token") ? { Authorization: `Bearer ${localStorage.getItem("admin_token")}` } : {}),
-        },
       });
 
       if (!res.ok) {
@@ -512,7 +520,10 @@ export default function RequestsPage() {
             </div>
           </div>
 
+          {/* Section cards — only show sections the user can access */}
+          {([canSeePartnerRequests || canSeeJobApps, canSeeStock, canSeeService].filter(Boolean).length > 1) && (
           <div className="mb-4 grid gap-3 md:grid-cols-3">
+            {(canSeePartnerRequests || canSeeJobApps) && (
             <button
               type="button"
               onClick={() => setActiveSection("partner-career")}
@@ -530,7 +541,9 @@ export default function RequestsPage() {
                 Энэ хэсэг дотроо түнш хүсэлт болон ажлын анкет ангилагдан харагдана.
               </p>
             </button>
+            )}
 
+            {canSeeStock && (
             <button
               type="button"
               onClick={() => setActiveSection("stock")}
@@ -551,7 +564,9 @@ export default function RequestsPage() {
                 Агуулахын таталтын хүсэлтүүдийг хянах хэсэг
               </p>
             </button>
+            )}
 
+            {canSeeService && (
             <button
               type="button"
               onClick={() => setActiveSection("service")}
@@ -572,11 +587,14 @@ export default function RequestsPage() {
                 Маркетинг, зөвлөгөө зэрэг үйлчилгээний хүсэлтүүд
               </p>
             </button>
+            )}
           </div>
+          )}
 
           {activeSection === "partner-career" && (
             <>
-          {/* Tab pills */}
+          {/* Tab pills — only show when both tabs are available */}
+          {canSeePartnerRequests && canSeeJobApps && (
           <div className="flex gap-2 mb-4">
             <button
               type="button"
@@ -603,6 +621,7 @@ export default function RequestsPage() {
               Ажлын анкет
             </button>
           </div>
+          )}
 
           {error && (
             <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

@@ -1,8 +1,10 @@
 export { prisma } from "./client";
 export type { Prisma } from "@prisma/client";
 export {
-  Role,
+  PlatformRole,
+  OrgRole,
   OrgType,
+  Capability,
   OrgStatus,
   OrderStatus,
   DeliveryStatus,

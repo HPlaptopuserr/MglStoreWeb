@@ -1,5 +1,7 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma, ApprovalStatus } from "@mgl/database";
+import { Permission } from "@mgl/types";
+import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
@@ -63,7 +65,7 @@ router.post("/job-applications", async (req, res) => {
 });
 
 /* GET /job-applications — list with filtering */
-router.get("/job-applications", async (req, res) => {
+router.get("/job-applications", requireAuth, requirePlatformPermission(Permission.MANAGE_JOB_APPLICATIONS), async (req, res) => {
   try {
     const status = req.query.status as string | undefined;
     const search = String(req.query.search || "").trim();
@@ -114,7 +116,7 @@ router.get("/job-applications", async (req, res) => {
 });
 
 /* PATCH /job-applications/:id/approve */
-router.patch("/job-applications/:id/approve", async (req, res) => {
+router.patch("/job-applications/:id/approve", requireAuth, requirePlatformPermission(Permission.MANAGE_JOB_APPLICATIONS), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -141,7 +143,7 @@ router.patch("/job-applications/:id/approve", async (req, res) => {
 });
 
 /* PATCH /job-applications/:id/reject */
-router.patch("/job-applications/:id/reject", async (req, res) => {
+router.patch("/job-applications/:id/reject", requireAuth, requirePlatformPermission(Permission.MANAGE_JOB_APPLICATIONS), async (req, res) => {
   try {
     const { id } = req.params;
 

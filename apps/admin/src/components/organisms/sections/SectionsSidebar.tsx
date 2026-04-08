@@ -4,12 +4,14 @@ import type { SectionKey } from "@/lib/sections/types";
 type Props = {
   active: SectionKey;
   onSelect: (key: SectionKey) => void;
+  visibleSections?: typeof SECTIONS;
 };
 
-export function SectionsSidebar({ active, onSelect }: Props) {
+export function SectionsSidebar({ active, onSelect, visibleSections }: Props) {
+  const items = visibleSections ?? SECTIONS;
   return (
     <aside className="w-56 shrink-0 border-r border-slate-100 bg-slate-50 flex flex-col pt-4 pb-6 gap-1 px-3">
-      {SECTIONS.map(({ key, label, icon: Icon }) => (
+      {items.map(({ key, label, icon: Icon }) => (
         <button
           key={key}
           onClick={() => onSelect(key)}

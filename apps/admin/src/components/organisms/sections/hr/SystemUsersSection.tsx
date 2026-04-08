@@ -9,6 +9,7 @@ import {
   Truck,
   UserCircle,
   UserCog,
+  UserPlus,
   Mail,
   Phone,
   Building2,
@@ -22,8 +23,10 @@ import {
   ChevronRight,
   Filter,
   Clock,
+  X,
+  Lock,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 /* ─── types ────────────────────────────────────────────────────────── */
 type SystemUser = {
@@ -38,26 +41,21 @@ type SystemUser = {
   lastLoginAt: string | null;
   organizationId: string | null;
   organizationName: string | null;
-  memberships: { role: string; isActive: boolean; orgName: string }[];
+  memberships: { role: string; isActive: boolean; isPrimary?: boolean; orgId?: string; orgName: string }[];
   createdAt: string;
 };
 
 /* ─── constants ────────────────────────────────────────────────────── */
-const ROLE_META: Record<string, { label: string; color: string; bg: string; icon: React.ElementType }> = {
-  ADMIN:      { label: "Админ",      color: "text-rose-700",    bg: "bg-rose-50 border-rose-200",    icon: ShieldCheck },
-  SUPPLIER:   { label: "Нийлүүлэгч", color: "text-violet-700",  bg: "bg-violet-50 border-violet-200",icon: Building2 },
-  COURIER:    { label: "Хүргэлтчин", color: "text-sky-700",     bg: "bg-sky-50 border-sky-200",      icon: Truck },
-  CUSTOMER:   { label: "Үйлчлүүлэгч",color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200",icon: UserCircle },
-  INDIVIDUAL: { label: "Хувь хүн",   color: "text-slate-600",   bg: "bg-slate-50 border-slate-200",  icon: UserCog },
+const SYSTEM_ROLE_META: Record<string, { label: string; color: string; bg: string; icon: React.ElementType }> = {
+  ADMIN: { label: "Админ", color: "text-rose-700", bg: "bg-rose-50 border-rose-200", icon: ShieldCheck },
+  USER:  { label: "Хэрэглэгч", color: "text-slate-600", bg: "bg-slate-50 border-slate-200", icon: UserCog },
 };
 
-const MEMBERSHIP_ROLE_LABEL: Record<string, string> = {
-  OWNER: "Эзэмшигч",
-  ADMIN: "Менежер",
-  STAFF: "Ажилтан",
-  CASHIER: "Кассчин",
-  DRIVER: "Жолооч",
-  VIEWER: "Ажиглагч",
+const ORG_ROLE_META: Record<string, { label: string; color: string; bg: string; icon: React.ElementType }> = {
+  OWNER:   { label: "Эзэмшигч", color: "text-violet-700",  bg: "bg-violet-50 border-violet-200", icon: Building2 },
+  ADMIN:   { label: "Менежер",   color: "text-blue-700",    bg: "bg-blue-50 border-blue-200",     icon: ShieldCheck },
+  STAFF:   { label: "Ажилтан",   color: "text-slate-600",   bg: "bg-slate-50 border-slate-200",   icon: UserCog },
+  VIEWER:  { label: "Ажиглагч",  color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200",icon: UserCircle },
 };
 
 const ITEMS_PER_PAGE = 15;
@@ -96,13 +94,7 @@ export function SystemUsersSection() {
     setLoading(true);
     setError("");
     try {
-      const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API}/admin/users`, {
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
+      const res = await adminFetch(`${API}/admin/users`);
       if (!res.ok) throw new Error("Хэрэглэгчдийн мэдээлэл ачаалахад алдаа гарлаа");
       const data = await res.json();
       setUsers(Array.isArray(data) ? data : []);
@@ -149,6 +141,51 @@ export function SystemUsersSection() {
 
   useEffect(() => { setPage(1); }, [search, roleFilter, statusFilter]);
 
+  /* ─── create admin user ──────────────────────────────────────────── */
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createForm, setCreateForm] = useState({ email: "", fullName: "", password: "", role: "ADMIN" });
+
+  const CREATE_ROLES = [
+    { value: "ADMIN", label: "Админ" },
+    { value: "HR_ADMIN", label: "HR Админ" },
+    { value: "CONTENT_ADMIN", label: "Контент Админ" },
+    { value: "PARTNER_ADMIN", label: "Партнер Админ" },
+    { value: "WAREHOUSE_ADMIN", label: "Агуулах Админ" },
+    { value: "FINANCE_ADMIN", label: "Санхүү Админ" },
+    { value: "SERVICE_ADMIN", label: "Үйлчилгээ Админ" },
+  ];
+
+  const handleCreateUser = async () => {
+    const { email, fullName, password, role } = createForm;
+    if (!email.trim() || !fullName.trim() || !password || !role) {
+      setCreateError("Бүх талбарыг бөглөнө үү");
+      return;
+    }
+    if (password.length < 6) {
+      setCreateError("Нууц үг хамгийн багадаа 6 тэмдэгт байх ёстой");
+      return;
+    }
+    setCreating(true);
+    setCreateError("");
+    try {
+      const res = await adminFetch(`${API}/admin/users`, {
+        method: "POST",
+        body: JSON.stringify({ email: email.trim(), fullName: fullName.trim(), password, role }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message || "Хэрэглэгч үүсгэхэд алдаа гарлаа");
+      setShowCreateModal(false);
+      setCreateForm({ email: "", fullName: "", password: "", role: "ADMIN" });
+      loadUsers();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Алдаа гарлаа");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   /* ─── render ─────────────────────────────────────────────────────── */
   return (
     <div className="space-y-6">
@@ -163,15 +200,115 @@ export function SystemUsersSection() {
             <p className="text-xs text-slate-400">Бүх хэрэглэгчдийн мэдээлэл, төрөл, статус</p>
           </div>
         </div>
-        <button
-          onClick={loadUsers}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          Шинэчлэх
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setShowCreateModal(true); setCreateError(""); }}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-violet-700 transition-colors"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Шинэ админ
+          </button>
+          <button
+            onClick={loadUsers}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Шинэчлэх
+          </button>
+        </div>
       </div>
+
+      {/* create admin modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">Шинэ админ хэрэглэгч</h3>
+              <button onClick={() => setShowCreateModal(false)} className="rounded-lg p-1 hover:bg-slate-100">
+                <X className="h-5 w-5 text-slate-400" />
+              </button>
+            </div>
+
+            {createError && (
+              <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">
+                {createError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Бүтэн нэр</label>
+                <div className="relative">
+                  <UserCircle className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={createForm.fullName}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, fullName: e.target.value }))}
+                    placeholder="Нэр оруулна уу"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Имэйл</label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="email"
+                    value={createForm.email}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))}
+                    placeholder="admin@example.com"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Нууц үг</label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="password"
+                    value={createForm.password}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
+                    placeholder="Хамгийн багадаа 6 тэмдэгт"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Role</label>
+                <select
+                  value={createForm.role}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, role: e.target.value }))}
+                  className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+                >
+                  {CREATE_ROLES.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Болих
+              </button>
+              <button
+                onClick={handleCreateUser}
+                disabled={creating}
+                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              >
+                {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                Үүсгэх
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* summary cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -198,7 +335,7 @@ export function SystemUsersSection() {
             </div>
           </div>
         </div>
-        {Object.entries(ROLE_META).map(([key, meta]) => {
+        {Object.entries(SYSTEM_ROLE_META).map(([key, meta]) => {
           const count = roleSummary[key] ?? 0;
           if (!count) return null;
           const Icon = meta.icon;
@@ -241,7 +378,7 @@ export function SystemUsersSection() {
             className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-shadow"
           >
             <option value="">Бүх төрөл</option>
-            {Object.entries(ROLE_META).map(([key, meta]) => (
+            {Object.entries(SYSTEM_ROLE_META).map(([key, meta]) => (
               <option key={key} value={key}>{meta.label}</option>
             ))}
           </select>
@@ -347,7 +484,7 @@ export function SystemUsersSection() {
 
 /* ─── user card ────────────────────────────────────────────────────── */
 function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: () => void }) {
-  const meta = ROLE_META[user.role] ?? ROLE_META.INDIVIDUAL;
+  const meta = SYSTEM_ROLE_META[user.role] ?? SYSTEM_ROLE_META.USER;
   const RoleIcon = meta.icon;
   const initial = user.fullName?.charAt(0)?.toUpperCase() || user.email.charAt(0).toUpperCase();
   const [changingRole, setChangingRole] = useState(false);
@@ -358,13 +495,8 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
     setChangingRole(true);
     setRoleMenuOpen(false);
     try {
-      const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API}/admin/users/${user.id}/role`, {
+      const res = await adminFetch(`${API}/admin/users/${user.id}/role`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
         body: JSON.stringify({ role: newRole }),
       });
       if (!res.ok) {
@@ -448,7 +580,7 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
             <>
               <div className="fixed inset-0 z-40" onClick={() => setRoleMenuOpen(false)} />
               <div className="absolute left-0 top-full z-50 mt-1 w-40 rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-                {Object.entries(ROLE_META).map(([key, rm]) => {
+                {Object.entries(SYSTEM_ROLE_META).map(([key, rm]) => {
                   const Icon = rm.icon;
                   const isActive = key === user.role;
                   return (
@@ -474,15 +606,21 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
         </div>
 
         {/* org membership badges */}
-        {user.memberships.map((m, i) => (
-          <span
-            key={i}
-            className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
-          >
-            <Shield className="h-3 w-3" />
-            {MEMBERSHIP_ROLE_LABEL[m.role] ?? m.role}
-          </span>
-        ))}
+        {user.memberships.map((m, i) => {
+          const orgMeta = ORG_ROLE_META[m.role];
+          return (
+            <span
+              key={i}
+              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[11px] font-semibold ${
+                orgMeta ? `${orgMeta.bg} ${orgMeta.color}` : "border-amber-200 bg-amber-50 text-amber-700"
+              }`}
+            >
+              {orgMeta ? <orgMeta.icon className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
+              {orgMeta?.label ?? m.role}
+              {m.orgName && <span className="opacity-60 ml-0.5">• {m.orgName}</span>}
+            </span>
+          );
+        })}
 
         {/* verified */}
         {user.emailVerified && (

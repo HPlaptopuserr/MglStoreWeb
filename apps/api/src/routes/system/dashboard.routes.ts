@@ -1,11 +1,14 @@
 import { Router, type Router as RouterType } from "express";
 import { prisma } from "@mgl/database";
-import { requireAuth, requireRole } from "../../middleware/auth";
+import { Permission } from "@mgl/types";
+import { requireAuth, requireRole, requireAnyAdmin, requirePlatformPermission } from "../../middleware/auth";
+import { requireOrgPermission } from "../../services/permission.service";
+import bcrypt from "bcryptjs";
 
 const router: RouterType = Router();
 
 /* ─── GET /admin/dashboard/stats ─────────────────────── */
-router.get("/admin/dashboard/stats", async (_req, res) => {
+router.get("/admin/dashboard/stats", requireAuth, requireAnyAdmin, async (_req, res) => {
   try {
     const now = new Date();
     const todayStart = new Date(
@@ -121,23 +124,23 @@ router.get("/admin/dashboard/stats", async (_req, res) => {
     ]);
 
     // Calculate total investment amount
-    const totalInvestmentAmount = investorProfiles.reduce((sum, p) => {
+    const totalInvestmentAmount = investorProfiles.reduce((sum: number, p: (typeof investorProfiles)[number]) => {
       return sum + (p.investmentLevel ? Number(p.investmentLevel) : 0);
     }, 0);
 
     // Build daily user counts for sparkline (last 12 data points)
     const userSparkline = buildDailySparkline(
-      usersLast30Days.map((u) => u.createdAt),
+      usersLast30Days.map((u: (typeof usersLast30Days)[number]) => u.createdAt),
       30,
     );
 
     const orgSparkline = buildDailySparkline(
-      orgsLast30Days.map((o) => o.createdAt),
+      orgsLast30Days.map((o: (typeof orgsLast30Days)[number]) => o.createdAt),
       30,
     );
 
     const jobAppsSparkline = buildDailySparkline(
-      jobAppsLast30Days.map((j) => j.createdAt),
+      jobAppsLast30Days.map((j: (typeof jobAppsLast30Days)[number]) => j.createdAt),
       30,
     );
 
@@ -175,7 +178,7 @@ router.get("/admin/dashboard/stats", async (_req, res) => {
     };
 
     // Format audit logs for recent activity
-    const activity = recentActivity.map((log) => ({
+    const activity = recentActivity.map((log: (typeof recentActivity)[number]) => ({
       id: log.id,
       action: log.action,
       userName: log.user?.profile?.fullName || log.user?.email || "Систем",
@@ -234,7 +237,7 @@ function buildDailySparkline(dates: Date[], days: number): number[] {
 }
 
 /* ─── GET /vendor/dashboard/stats?organizationId=xxx ─── */
-router.get("/vendor/dashboard/stats", async (req, res) => {
+router.get("/vendor/dashboard/stats", requireAuth, requireOrgPermission({ from: "query" }, Permission.VIEW_ORG_DASHBOARD), async (req, res) => {
   try {
     const { organizationId } = req.query;
     if (!organizationId || typeof organizationId !== "string") {
@@ -310,6 +313,18 @@ router.get("/vendor/dashboard/stats", async (req, res) => {
           warehouse: { select: { name: true } },
           items: { select: { id: true } },
           payment: { select: { totalAmount: true, status: true } },
+          dispatch: {
+            select: {
+              id: true,
+              dispatchNumber: true,
+              status: true,
+              driverName: true,
+              driverPhone: true,
+              vehicleNumber: true,
+              dispatchedAt: true,
+              deliveredAt: true,
+            },
+          },
         },
       }),
 
@@ -350,7 +365,7 @@ router.get("/vendor/dashboard/stats", async (req, res) => {
       completed: srMap["COMPLETED"] || 0,
       rejected: srMap["REJECTED"] || 0,
       cancelled: srMap["CANCELLED"] || 0,
-      total: stockRequestsByStatus.reduce((a, b) => a + b._count.id, 0),
+      total: stockRequestsByStatus.reduce((a: number, b: (typeof stockRequestsByStatus)[number]) => a + b._count.id, 0),
     };
 
     return res.json({
@@ -377,7 +392,7 @@ router.get("/vendor/dashboard/stats", async (req, res) => {
         count: pendingPayments._count.id,
         totalAmount: Number(pendingPayments._sum.totalAmount || 0),
       },
-      recentStockRequests: recentStockRequests.map((r) => ({
+      recentStockRequests: recentStockRequests.map((r: (typeof recentStockRequests)[number]) => ({
         id: r.id,
         requestNumber: r.requestNumber,
         status: r.status,
@@ -386,8 +401,20 @@ router.get("/vendor/dashboard/stats", async (req, res) => {
         totalAmount: r.payment ? Number(r.payment.totalAmount) : null,
         paymentStatus: r.payment?.status || null,
         createdAt: r.createdAt,
+        dispatch: r.dispatch
+          ? {
+              id: r.dispatch.id,
+              dispatchNumber: r.dispatch.dispatchNumber,
+              status: r.dispatch.status,
+              driverName: r.dispatch.driverName,
+              driverPhone: r.dispatch.driverPhone,
+              vehicleNumber: r.dispatch.vehicleNumber,
+              dispatchedAt: r.dispatch.dispatchedAt,
+              deliveredAt: r.dispatch.deliveredAt,
+            }
+          : null,
       })),
-      recentServiceRequests: recentServiceRequests.map((r) => ({
+      recentServiceRequests: recentServiceRequests.map((r: (typeof recentServiceRequests)[number]) => ({
         id: r.id,
         title: r.title,
         type: r.type,
@@ -402,7 +429,7 @@ router.get("/vendor/dashboard/stats", async (req, res) => {
 });
 
 /* ─── GET /admin/users ─── list all system users ─────── */
-router.get("/admin/users", async (req, res) => {
+router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MANAGE_USERS), async (req, res) => {
   try {
     const { role, search, isActive } = req.query;
 
@@ -429,7 +456,6 @@ router.get("/admin/users", async (req, res) => {
         isActive: true,
         emailVerified: true,
         lastLoginAt: true,
-        organizationId: true,
         createdAt: true,
         profile: {
           select: {
@@ -438,17 +464,12 @@ router.get("/admin/users", async (req, res) => {
             avatarUrl: true,
           },
         },
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-        },
         organizationMemberships: {
+          where: { isActive: true },
           select: {
             role: true,
             isActive: true,
+            isPrimary: true,
             organization: {
               select: { id: true, name: true },
             },
@@ -457,25 +478,30 @@ router.get("/admin/users", async (req, res) => {
       },
     });
 
-    const result = users.map((u) => ({
-      id: u.id,
-      email: u.email,
-      fullName: u.profile?.fullName || "",
-      phone: u.profile?.phoneNumber || null,
-      avatarUrl: u.profile?.avatarUrl || null,
-      role: u.role,
-      isActive: u.isActive,
-      emailVerified: u.emailVerified,
-      lastLoginAt: u.lastLoginAt,
-      organizationId: u.organizationId,
-      organizationName: u.organization?.name || null,
-      memberships: u.organizationMemberships.map((m) => ({
-        role: m.role,
-        isActive: m.isActive,
-        orgName: m.organization.name,
-      })),
-      createdAt: u.createdAt,
-    }));
+    const result = users.map((u: (typeof users)[number]) => {
+      const primary = u.organizationMemberships.find((m: (typeof u.organizationMemberships)[number]) => m.isPrimary) || u.organizationMemberships[0] || null;
+      return {
+        id: u.id,
+        email: u.email,
+        fullName: u.profile?.fullName || "",
+        phone: u.profile?.phoneNumber || null,
+        avatarUrl: u.profile?.avatarUrl || null,
+        role: u.role,
+        isActive: u.isActive,
+        emailVerified: u.emailVerified,
+        lastLoginAt: u.lastLoginAt,
+        organizationId: primary?.organization.id || null,
+        organizationName: primary?.organization.name || null,
+        memberships: u.organizationMemberships.map((m: (typeof u.organizationMemberships)[number]) => ({
+          role: m.role,
+          isActive: m.isActive,
+          isPrimary: m.isPrimary,
+          orgId: m.organization.id,
+          orgName: m.organization.name,
+        })),
+        createdAt: u.createdAt,
+      };
+    });
 
     return res.json(result);
   } catch (error) {
@@ -484,10 +510,11 @@ router.get("/admin/users", async (req, res) => {
   }
 });
 
-/* ─── PATCH /admin/users/:id/role ─── change user role ── */
-const VALID_ROLES = ["ADMIN", "SUPPLIER", "COURIER", "CUSTOMER", "INDIVIDUAL"] as const;
+/* ─── PATCH /admin/users/:id/role ─── change user system role ── */
+import { ADMIN_ROLES } from "@mgl/types";
+const VALID_ROLES = ["SUPER_ADMIN", "ADMIN", "HR_ADMIN", "CONTENT_ADMIN", "PARTNER_ADMIN", "WAREHOUSE_ADMIN", "FINANCE_ADMIN", "SERVICE_ADMIN", "USER"] as const;
 
-router.patch("/admin/users/:id/role", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.patch("/admin/users/:id/role", requireAuth, requirePlatformPermission(Permission.MANAGE_ADMIN_STAFF), async (req, res) => {
   try {
     const id = req.params.id as string;
     const { role } = req.body;
@@ -506,14 +533,14 @@ router.patch("/admin/users/:id/role", requireAuth, requireRole("ADMIN"), async (
       return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
     }
 
-    // Prevent removing the last ADMIN
-    if (user.role === "ADMIN" && role !== "ADMIN") {
-      const adminCount = await prisma.user.count({
-        where: { role: "ADMIN", isActive: true, deletedAt: null },
+    // Prevent removing the last full admin (SUPER_ADMIN or ADMIN)
+    if ((user.role === "ADMIN" || user.role === "SUPER_ADMIN") && role !== "ADMIN" && role !== "SUPER_ADMIN") {
+      const fullAdminCount = await prisma.user.count({
+        where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true, deletedAt: null },
       });
-      if (adminCount <= 1) {
+      if (fullAdminCount <= 1) {
         return res.status(400).json({
-          message: "Сүүлийн админы role-ийг солих боломжгүй",
+          message: "Сүүлийн ерөнхий админы role-ийг солих боломжгүй",
         });
       }
     }
@@ -531,6 +558,62 @@ router.patch("/admin/users/:id/role", requireAuth, requireRole("ADMIN"), async (
   } catch (error) {
     console.error("[admin change role error]", error);
     return res.status(500).json({ message: "Role солиход алдаа гарлаа" });
+  }
+});
+
+/* ─── POST /admin/users ─── create admin user (SUPER_ADMIN only) ── */
+const ASSIGNABLE_ROLES = ["ADMIN", "HR_ADMIN", "CONTENT_ADMIN", "PARTNER_ADMIN", "WAREHOUSE_ADMIN", "FINANCE_ADMIN", "SERVICE_ADMIN"] as const;
+
+router.post("/admin/users", requireAuth, requirePlatformPermission(Permission.MANAGE_ADMIN_STAFF), async (req, res) => {
+  try {
+    const { email, fullName, password, role } = req.body;
+
+    if (!email || !fullName || !password || !role) {
+      return res.status(400).json({ message: "email, fullName, password, role бүгд шаардлагатай" });
+    }
+
+    if (!ASSIGNABLE_ROLES.includes(role)) {
+      return res.status(400).json({
+        message: `Зөвшөөрөгдөх role: ${ASSIGNABLE_ROLES.join(", ")}`,
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Нууц үг хамгийн багадаа 6 тэмдэгт байх ёстой" });
+    }
+
+    const existing = await prisma.user.findFirst({
+      where: { email: email.toLowerCase().trim(), deletedAt: null },
+    });
+
+    if (existing) {
+      return res.status(409).json({ message: "Энэ имэйлтэй хэрэглэгч бүртгэлтэй байна" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const user = await prisma.user.create({
+      data: {
+        email: email.toLowerCase().trim(),
+        passwordHash: hashedPassword,
+        role,
+        isActive: true,
+        profile: {
+          create: {
+            fullName: fullName.trim(),
+          },
+        },
+      },
+      select: { id: true, email: true, role: true },
+    });
+
+    return res.status(201).json({
+      message: "Админ хэрэглэгч амжилттай үүсгэгдлээ",
+      data: user,
+    });
+  } catch (error) {
+    console.error("[admin create user error]", error);
+    return res.status(500).json({ message: "Хэрэглэгч үүсгэхэд алдаа гарлаа" });
   }
 });
 

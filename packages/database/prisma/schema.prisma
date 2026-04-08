@@ -11,12 +11,11 @@ model User {
   id                           String                   @id @default(uuid())
   email                        String                   @unique
   registerNumber               String?                  @unique
-  role                         Role                     @default(INDIVIDUAL)
+  role                         PlatformRole             @default(USER)
   isActive                     Boolean                  @default(true)
   emailVerified                Boolean                  @default(false)
   lastLoginAt                  DateTime?
   onboardingSource             OnboardingSource         @default(ADMIN)
-  organizationId               String?
   createdAt                    DateTime                 @default(now())
   updatedAt                    DateTime                 @updatedAt
   deletedAt                    DateTime?
@@ -42,9 +41,10 @@ model User {
   initiatedCardAttempts        CardPaymentAttempt[]     @relation("CardPaymentAttemptInitiatedBy")
   initiatedQPayInvoices        QPayInvoice[]            @relation("QPayInvoiceInitiatedBy")
   confirmedPayments            StockRequestPayment[]    @relation("PaymentConfirmations")
-  organization                 Organization?            @relation(fields: [organizationId], references: [id])
   sessions                     UserSession[]
   vendorSetupTokens            VendorSetupToken[]       @relation("UserVendorSetupTokens")
+  warehouseSetupTokens         WarehouseSetupToken[]    @relation("UserWarehouseSetupTokens")
+  driverDispatches             StockDispatch[]          @relation("DriverDispatches")
   createdWarehouses            Warehouse[]              @relation("WarehouseCreatedBy")
   warehouseAssignments         WarehouseOrganization[]  @relation("WarehouseAssignedBy")
   requestedStockRequests       WarehouseStockRequest[]  @relation("StockRequestsRequested")
@@ -52,7 +52,6 @@ model User {
   posts                        Post[]                   @relation("PostAuthor")
   forms                        Form[]                   @relation("FormCreatedBy")
 
-  @@index([organizationId])
   @@index([role])
   @@index([isActive])
   @@index([deletedAt])
@@ -117,6 +116,23 @@ model VendorSetupToken {
   @@index([expiresAt])
 }
 
+model WarehouseSetupToken {
+  id          String    @id @default(uuid())
+  userId      String
+  warehouseId String
+  token       String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation("UserWarehouseSetupTokens", fields: [userId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse @relation("WarehouseSetupTokens", fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([warehouseId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
 model AuditLog {
   id        String      @id @default(uuid())
   userId    String?
@@ -135,7 +151,7 @@ model AuditLog {
 model RegistrationRequest {
   id                   String           @id @default(uuid())
   email                String
-  requestedRole        Role
+  requestedOrgType     OrgType          @default(SUPPLIER)
   source               OnboardingSource @default(SELF_SERVICE)
   status               ApprovalStatus   @default(PENDING)
   fullName             String?
@@ -167,17 +183,17 @@ model RegistrationRequest {
   @@index([email])
   @@index([inviteToken])
   @@index([status])
-  @@index([requestedRole])
+  @@index([requestedOrgType])
   @@index([source])
   @@index([reviewedById])
   @@index([createdAt])
 }
 
 model OrganizationInvite {
-  id             String                 @id @default(uuid())
+  id             String   @id @default(uuid())
   email          String
   organizationId String
-  role           OrganizationMemberRole @default(OWNER)
+  role           OrgRole  @default(OWNER)
   tokenHash      String                 @unique
   expiresAt      DateTime
   usedAt         DateTime?
@@ -300,7 +316,7 @@ model Organization {
   productRequests              ProductRequest[]
   serviceRequests              ServiceRequest[]
   stockRequestPayments         StockRequestPayment[]   @relation("OrganizationStockPayments")
-  users                        User[]
+  stockDispatches              StockDispatch[]         @relation("OrganizationDispatches")
   warehouseAssignments         WarehouseOrganization[]
   stockRequests                WarehouseStockRequest[] @relation("OrganizationStockRequests")
   investorProfile              InvestorProfile?
@@ -363,15 +379,17 @@ model InvestorProfile {
 }
 
 model OrganizationMember {
-  id             String                 @id @default(uuid())
+  id             String       @id @default(uuid())
   userId         String
   organizationId String
-  role           OrganizationMemberRole @default(STAFF)
-  isActive       Boolean                @default(true)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           OrgRole      @default(STAFF)
+  isPrimary      Boolean      @default(false)
+  capabilities   Capability[] @default([])
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, organizationId])
   @@index([userId])
@@ -487,6 +505,9 @@ model Product {
   sku                  String?
   price                Decimal                     @db.Decimal(18, 2)
   costPrice            Decimal?                    @db.Decimal(18, 2)
+  /// Denormalized cache. Canonical stock lives in WarehouseInventory.quantity.
+  /// Updated by POS sales and inventory operations. Do not treat as source of truth
+  /// when warehouse management is active for this product.
   stock                Int                         @default(0)
   isActive             Boolean                     @default(true)
   categoryId           String?
@@ -793,7 +814,9 @@ model Warehouse {
   createdBy     User?                   @relation("WarehouseCreatedBy", fields: [createdById], references: [id])
   inventories   WarehouseInventory[]
   organizations WarehouseOrganization[]
+  setupTokens   WarehouseSetupToken[]    @relation("WarehouseSetupTokens")
   stockRequests WarehouseStockRequest[] @relation("WarehouseStockRequests")
+  dispatches    StockDispatch[]         @relation("WarehouseDispatches")
 
   @@index([createdById])
   @@index([isActive])
@@ -859,6 +882,7 @@ model WarehouseStockRequest {
   createdAt       DateTime                    @default(now())
   updatedAt       DateTime                    @updatedAt
   payment         StockRequestPayment?
+  dispatch        StockDispatch?
   organization    Organization                @relation("OrganizationStockRequests", fields: [organizationId], references: [id])
   requestedBy     User                        @relation("StockRequestsRequested", fields: [requestedById], references: [id])
   reviewedBy      User?                       @relation("StockRequestsReviewed", fields: [reviewedById], references: [id])
@@ -917,15 +941,44 @@ model StockRequestPayment {
   @@index([createdAt])
 }
 
+/// Dispatch order created when admin approves a stock request.
+/// Warehouse operator sees this and confirms dispatch → inventory deducted.
+model StockDispatch {
+  id              String              @id @default(uuid())
+  dispatchNumber  String              @unique
+  requestId       String              @unique
+  warehouseId     String
+  organizationId  String
+  status          DispatchStatus      @default(PENDING)
+  driverId        String?
+  driverName      String?
+  driverPhone     String?
+  vehicleNumber   String?
+  dispatchedAt    DateTime?
+  deliveredAt     DateTime?
+  note            String?
+  padaanUrl       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  request         WarehouseStockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  warehouse       Warehouse             @relation("WarehouseDispatches", fields: [warehouseId], references: [id])
+  organization    Organization          @relation("OrganizationDispatches", fields: [organizationId], references: [id])
+  driver          User?                 @relation("DriverDispatches", fields: [driverId], references: [id])
+
+  @@index([warehouseId])
+  @@index([organizationId])
+  @@index([status])
+  @@index([driverId])
+  @@index([createdAt])
+}
+
 /// ///////////////////////////////////////////////
 /// ///////////////////////////////////////////////
-enum OrganizationMemberRole {
+enum OrgRole {
   OWNER
   ADMIN
   STAFF
   VIEWER
-  CASHIER
-  DRIVER
 }
 
 enum ProductRequestType {
@@ -933,15 +986,29 @@ enum ProductRequestType {
   UPDATE
 }
 
-enum Role {
+/// Operational capabilities assigned to organization members.
+/// Used for fine-grained permission checks beyond the structural OrgRole.
+enum Capability {
+  POS_CASHIER
+  DELIVERY_DRIVER
+  STOCK_MANAGER
+  ORDER_PROCESSOR
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
   ADMIN
-  SUPPLIER
-  COURIER
-  CUSTOMER
-  INDIVIDUAL
+  HR_ADMIN
+  CONTENT_ADMIN
+  PARTNER_ADMIN
+  WAREHOUSE_ADMIN
+  FINANCE_ADMIN
+  SERVICE_ADMIN
+  USER
 }
 
 enum OrgType {
+  VENDOR
   SUPPLIER
   BUSINESS_CUSTOMER
 }
@@ -1177,6 +1244,14 @@ enum StockRequestStatus {
   REJECTED
   PROCESSING
   COMPLETED
+  CANCELLED
+}
+
+enum DispatchStatus {
+  PENDING
+  CONFIRMED
+  DISPATCHED
+  DELIVERED
   CANCELLED
 }
 

@@ -101,9 +101,9 @@ export type RegistrationRequestWithReviewer =
 // ORGANIZATION
 //////////////////////////////////////////////////
 
-export type OrganizationWithUsers = Prisma.OrganizationGetPayload<{
+export type OrganizationWithMembers = Prisma.OrganizationGetPayload<{
   include: {
-    users: true;
+    members: true;
   };
 }>;
 

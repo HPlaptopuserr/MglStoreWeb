@@ -2,6 +2,7 @@ export * from "./primitives";
 export * from "./common";
 export * from "./prisma";
 export * from "./enums";
+export * from "./rbac";
 
 export * from "./ui/companyCard";
 export * from "./ui/productCard";

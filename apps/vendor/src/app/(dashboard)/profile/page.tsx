@@ -33,7 +33,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, authFetch } from "@/lib/api";
 
 type BusinessCategory = {
   id: string;
@@ -104,8 +104,8 @@ export default function ProfilePage() {
         const userEmail = storedUser.email;
 
         const [partnersRes, catsRes] = await Promise.all([
-          fetch(`${API}/partners`, { cache: "no-store" }),
-          fetch(`${API}/business-categories`),
+          authFetch(`${API}/partners`, { cache: "no-store" }),
+          authFetch(`${API}/business-categories`),
         ]);
 
         if (catsRes.ok) setCategories(await catsRes.json());
@@ -153,7 +153,7 @@ export default function ProfilePage() {
     setSaving(true);
     setSaved(false);
     try {
-      const res = await fetch(`${API}/partners/${partner.id}/category`, {
+      const res = await authFetch(`${API}/partners/${partner.id}/category`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ businessCategory: value }),
@@ -176,7 +176,7 @@ export default function ProfilePage() {
     setSaving(true);
     setSaved(false);
     try {
-      const res = await fetch(`${API}/partners/${partner.id}/category`, {
+      const res = await authFetch(`${API}/partners/${partner.id}/category`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ businessCategory: null }),
@@ -198,7 +198,7 @@ export default function ProfilePage() {
     setProfileSaving(true);
     setProfileSaved(false);
     try {
-      const res = await fetch(`${API}/partners/${partner.id}/profile`, {
+      const res = await authFetch(`${API}/partners/${partner.id}/profile`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),

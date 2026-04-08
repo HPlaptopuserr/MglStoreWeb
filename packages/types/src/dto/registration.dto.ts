@@ -1,10 +1,10 @@
 import type { ID } from "../primitives";
-import type { ApprovalStatus, OnboardingSource, OrgType, Role } from "../enums";
+import type { ApprovalStatus, OnboardingSource, OrgType, PlatformRole } from "../enums";
 
 export interface CreateRegistrationRequestDto {
   email: string;
   password?: string;
-  requestedRole: Role;
+  requestedRole: PlatformRole;
   source?: OnboardingSource;
 
   fullName?: string;

@@ -5,8 +5,9 @@ import {
   OnboardingSource,
   OrgStatus,
   OrgType,
-  Role,
+  PlatformRole,
 } from "@mgl/database";
+import type { Prisma } from "@mgl/database";
 
 type ApprovePartnerRequestResult = {
   organization: {
@@ -18,8 +19,7 @@ type ApprovePartnerRequestResult = {
   user: {
     id: string;
     email: string;
-    role: Role;
-    organizationId: string | null;
+    role: PlatformRole;
   };
   request: {
     id: string;
@@ -112,7 +112,7 @@ export async function approvePartnerRequest(
     throw new Error("Хүсэлт олдсонгүй");
   }
 
-  if (existingRequest.requestedRole !== Role.SUPPLIER) {
+  if (existingRequest.requestedOrgType !== OrgType.SUPPLIER) {
     throw new Error("Энэ хүсэлт supplier бүртгэл биш байна");
   }
 
@@ -134,24 +134,22 @@ export async function approvePartnerRequest(
         where: { email: normalizedEmail },
         select: {
           id: true,
-          organizationId: true,
           passwordHash: true,
         },
       })
     : null;
 
-  // If user exists and already has an organization, we can't approve
-  if (existingUser?.organizationId) {
-    throw new Error(
-      "Энэ email дээр user аль хэдийн өөр байгууллагад бүртгэлтэй байна",
-    );
-  }
-
-  // If user exists with password but no org, they might be from another system
-  if (existingUser?.passwordHash) {
-    throw new Error(
-      "Энэ email дээр user аль хэдийн бүртгэлтэй байна. Өөр email ашиглана уу.",
-    );
+  // If user exists and already has an active org membership, we can't approve
+  if (existingUser) {
+    const hasOrg = await prisma.organizationMember.findFirst({
+      where: { userId: existingUser.id, isActive: true },
+      select: { id: true },
+    });
+    if (hasOrg) {
+      throw new Error(
+        "Энэ email дээр user аль хэдийн өөр байгууллагад бүртгэлтэй байна",
+      );
+    }
   }
 
   // If existingUser exists but has no org and no password, we'll reuse it
@@ -168,7 +166,7 @@ export async function approvePartnerRequest(
   const inviteToken = generateInviteToken();
   const inviteTokenExpiresAt = getInviteTokenExpiry();
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const newOrganization = await tx.organization.create({
       data: {
         name: existingRequest.organizationName!,
@@ -197,17 +195,15 @@ export async function approvePartnerRequest(
       finalUser = await tx.user.update({
         where: { id: existingUser.id },
         data: {
-          role: Role.SUPPLIER,
+          role: PlatformRole.USER,
           isActive: true,
           emailVerified: true,
           onboardingSource: OnboardingSource.ADMIN,
-          organizationId: newOrganization.id,
         },
         select: {
           id: true,
           email: true,
           role: true,
-          organizationId: true,
         },
       });
     } else {
@@ -216,17 +212,15 @@ export async function approvePartnerRequest(
         data: {
           email: resolvedUserEmail,
           // passwordHash is null - vendor needs to set password via invite link
-          role: Role.SUPPLIER,
+          role: PlatformRole.USER,
           isActive: true,
           emailVerified: true,
           onboardingSource: OnboardingSource.ADMIN,
-          organizationId: newOrganization.id,
         },
         select: {
           id: true,
           email: true,
           role: true,
-          organizationId: true,
         },
       });
     }
@@ -260,6 +254,7 @@ export async function approvePartnerRequest(
         userId: finalUser.id,
         organizationId: newOrganization.id,
         role: "OWNER",
+        isPrimary: true,
         isActive: true,
       },
     });

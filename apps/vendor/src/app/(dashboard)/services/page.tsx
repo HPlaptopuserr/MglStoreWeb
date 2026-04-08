@@ -20,7 +20,7 @@ import {
   Megaphone,
   HelpCircle,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, authFetch } from "@/lib/api";
 
 type ServiceRequestType =
   | "POSTER_DESIGN"
@@ -174,7 +174,7 @@ export default function VendorServicesPage() {
         return;
       }
 
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/service-requests/organization/${storedUser.organizationId}`
       );
       if (response.ok) {
@@ -197,7 +197,7 @@ export default function VendorServicesPage() {
         localStorage.getItem("vendor_user") || "{}"
       );
 
-      const response = await fetch(`${API}/service-requests`, {
+      const response = await authFetch(`${API}/service-requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

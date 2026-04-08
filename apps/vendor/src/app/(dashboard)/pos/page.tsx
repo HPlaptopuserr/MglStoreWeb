@@ -39,7 +39,7 @@ import {
   fetchRegisterConfig,
   type RegisterConfig,
 } from "@/features/pos";
-import { API } from "@/lib/api";
+import { API, authFetch } from "@/lib/api";
 
 type PosView = "register" | "checkout";
 
@@ -203,7 +203,7 @@ export default function PosDemoPage() {
   // Load branches whenever setup panel opens
   useEffect(() => {
     if (!showSetupPanel || !organizationId) return;
-    fetch(`${API}/admin/branches?organizationId=${organizationId}`)
+    authFetch(`${API}/admin/branches?organizationId=${organizationId}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data: { id: string; name: string }[]) => {
         setSetupBranches(Array.isArray(data) ? data : []);

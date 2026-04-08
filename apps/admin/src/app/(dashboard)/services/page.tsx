@@ -22,7 +22,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 type ServiceRequest = {
   id: string;
@@ -118,7 +118,7 @@ export default function ServiceRequestsPage() {
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (typeFilter !== "ALL") params.set("type", typeFilter);
 
-      const res = await fetch(`${API}/service-requests?${params.toString()}`, {
+      const res = await adminFetch(`${API}/service-requests?${params.toString()}`, {
         cache: "no-store",
       });
 
@@ -141,7 +141,7 @@ export default function ServiceRequestsPage() {
   const updateStatus = async (id: string, status: string) => {
     try {
       setActionLoading(id);
-      const res = await fetch(`${API}/service-requests/${id}`, {
+      const res = await adminFetch(`${API}/service-requests/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),

@@ -1,8 +1,11 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
+import { Permission } from "@mgl/types";
+import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
+// GET is public (used by job application form)
 router.get("/job-positions", async (_req, res) => {
   try {
     const positions = await prisma.jobPosition.findMany({
@@ -19,7 +22,7 @@ router.get("/job-positions", async (_req, res) => {
   }
 });
 
-router.post("/job-positions", async (req, res) => {
+router.post("/job-positions", requireAuth, requirePlatformPermission(Permission.MANAGE_JOB_POSITIONS), async (req, res) => {
   try {
     const { name } = req.body;
 
@@ -66,7 +69,7 @@ router.post("/job-positions", async (req, res) => {
   }
 });
 
-router.patch("/job-positions/:id", async (req, res) => {
+router.patch("/job-positions/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_JOB_POSITIONS), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, isActive } = req.body;
@@ -101,7 +104,7 @@ router.patch("/job-positions/:id", async (req, res) => {
   }
 });
 
-router.delete("/job-positions/:id", async (req, res) => {
+router.delete("/job-positions/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_JOB_POSITIONS), async (req, res) => {
   try {
     const { id } = req.params;
 

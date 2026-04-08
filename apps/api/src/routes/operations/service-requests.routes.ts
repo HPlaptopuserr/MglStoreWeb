@@ -1,5 +1,8 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
+import { Permission } from "@mgl/types";
+import { requireAuth } from "../../middleware/auth";
+import { requireOrgPermission } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
 
@@ -89,7 +92,7 @@ router.get("/service-requests", async (req, res) => {
       },
     });
 
-    const result = requests.map((r) => ({
+    const result = requests.map((r: (typeof requests)[number]) => ({
       ...r,
       typeLabel: SERVICE_TYPE_LABELS[r.type] || r.type,
       statusLabel: STATUS_LABELS[r.status] || r.status,
@@ -107,7 +110,7 @@ router.get("/service-requests", async (req, res) => {
 });
 
 // Get service requests for vendor (by organizationId)
-router.get("/service-requests/organization/:orgId", async (req, res) => {
+router.get("/service-requests/organization/:orgId", requireAuth, requireOrgPermission({ from: "params", field: "orgId" }, Permission.VIEW_ORG_DASHBOARD), async (req, res) => {
   try {
     const { orgId } = req.params;
     const { status } = req.query;
@@ -151,7 +154,7 @@ router.get("/service-requests/organization/:orgId", async (req, res) => {
       },
     });
 
-    const result = requests.map((r) => ({
+    const result = requests.map((r: (typeof requests)[number]) => ({
       ...r,
       typeLabel: SERVICE_TYPE_LABELS[r.type] || r.type,
       statusLabel: STATUS_LABELS[r.status] || r.status,
@@ -169,7 +172,7 @@ router.get("/service-requests/organization/:orgId", async (req, res) => {
 });
 
 // Create service request (Vendor)
-router.post("/service-requests", async (req, res) => {
+router.post("/service-requests", requireAuth, requireOrgPermission({ from: "body" }, Permission.MANAGE_SERVICES), async (req, res) => {
   try {
     const { organizationId, requestedById, type, title, description } = req.body;
 

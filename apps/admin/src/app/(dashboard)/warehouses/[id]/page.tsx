@@ -18,7 +18,7 @@ import {
   Search,
   ExternalLink,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 interface InventoryItem {
   id: string;
@@ -84,7 +84,7 @@ export default function WarehouseDetailPage() {
   useEffect(() => {
     const fetchWarehouse = async () => {
       try {
-        const res = await fetch(`${API}/warehouses/${params.id}/detail`);
+        const res = await adminFetch(`${API}/warehouses/${params.id}/detail`);
         if (!res.ok) throw new Error("Failed to fetch warehouse");
         const data = await res.json();
         setWarehouse(data);

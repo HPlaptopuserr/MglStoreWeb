@@ -11,15 +11,15 @@ import {
 import type { CardColorScheme } from "@mgl/ui";
 import type { SectionKey } from "./types";
 
-export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType }[] = [
+export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; requires?: string }[] = [
   { key: "banner", label: "Промо баннер", icon: ImagePlus },
   { key: "categories", label: "Ангилалууд", icon: Tag },
   { key: "branches", label: "Салбар байршил", icon: MapPin },
   { key: "cards", label: "Карт хэвлэх", icon: CreditCard },
   { key: "qr", label: "QR Generator", icon: Wrench },
-  { key: "pos", label: "POS Register", icon: Monitor },
-  { key: "hr", label: "Хүний нөөц", icon: Users },
-  { key: "forms", label: "Маягт үүсгэгч", icon: ClipboardList },
+  { key: "pos", label: "POS Register", icon: Monitor, requires: "MANAGE_POS" },
+  { key: "hr", label: "Хүний нөөц", icon: Users, requires: "MANAGE_USERS" },
+  { key: "forms", label: "Маягт үүсгэгч", icon: ClipboardList, requires: "MANAGE_FORMS" },
 ];
 
 export const SCHEME_ORDER: CardColorScheme[] = [

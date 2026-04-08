@@ -1,5 +1,7 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
+import { Permission } from "@mgl/types";
+import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
@@ -21,6 +23,7 @@ router.get("/business-categories", async (req, res) => {
         sortOrder: true,
         parentId: true,
         level: true,
+        _count: { select: { products: true } },
       },
     });
     // Return flat list — frontend builds tree if needed
@@ -49,14 +52,14 @@ router.get("/business-categories/tree", async (_req, res) => {
     });
 
     // Build tree: level 0 → level 1 → level 2
-    const roots = all.filter((c) => !c.parentId);
+    const roots = all.filter((c: (typeof all)[number]) => !c.parentId);
     const buildTree = (parentId: string): any[] => {
       return all
-        .filter((c) => c.parentId === parentId)
-        .map((c) => ({ ...c, children: buildTree(c.id) }));
+        .filter((c: (typeof all)[number]) => c.parentId === parentId)
+        .map((c: (typeof all)[number]) => ({ ...c, children: buildTree(c.id) }));
     };
 
-    const tree = roots.map((r) => ({ ...r, children: buildTree(r.id) }));
+    const tree = roots.map((r: (typeof all)[number]) => ({ ...r, children: buildTree(r.id) }));
     res.json(tree);
   } catch (error) {
     console.error("get business-categories tree error", error);
@@ -65,7 +68,7 @@ router.get("/business-categories/tree", async (_req, res) => {
 });
 
 // Admin: get ALL categories (including inactive) as flat list
-router.get("/admin/business-categories-all", async (_req, res) => {
+router.get("/admin/business-categories-all", requireAuth, requirePlatformPermission(Permission.MANAGE_CATEGORIES), async (_req, res) => {
   try {
     const categories = await prisma.businessCategory.findMany({
       orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
@@ -78,7 +81,7 @@ router.get("/admin/business-categories-all", async (_req, res) => {
 });
 
 // Admin: create category
-router.post("/admin/business-categories", async (req, res) => {
+router.post("/admin/business-categories", requireAuth, requirePlatformPermission(Permission.MANAGE_CATEGORIES), async (req, res) => {
   try {
     const { slug, name, icon, sortOrder, parentId } = req.body;
 
@@ -131,7 +134,7 @@ router.post("/admin/business-categories", async (req, res) => {
 });
 
 // Admin: update category
-router.patch("/admin/business-categories/:id", async (req, res) => {
+router.patch("/admin/business-categories/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_CATEGORIES), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, icon, sortOrder, isActive, parentId } = req.body;
@@ -180,7 +183,7 @@ router.patch("/admin/business-categories/:id", async (req, res) => {
 });
 
 // Admin: soft delete
-router.delete("/admin/business-categories/:id", async (req, res) => {
+router.delete("/admin/business-categories/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_CATEGORIES), async (req, res) => {
   try {
     const { id } = req.params;
 

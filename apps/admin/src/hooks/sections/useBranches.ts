@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 import { haversineDistanceMeters, normalizeText } from "@/lib/sections/utils";
 import { MIN_BRANCH_DISTANCE_METERS } from "@/lib/sections/constants";
 import type { BranchMapItem, BranchFormState, CardPartner } from "@/lib/sections/types";
@@ -25,10 +25,10 @@ export function useBranches(enabled: boolean) {
 
     setBranchLoading(true);
     Promise.all([
-      fetch(`${API}/partners`)
+      adminFetch(`${API}/partners`)
         .then((r) => (r.ok ? r.json() : []))
         .catch(() => []),
-      fetch(`${API}/branches/map`)
+      adminFetch(`${API}/branches/map`)
         .then((r) => (r.ok ? r.json() : []))
         .catch(() => []),
     ])
@@ -149,7 +149,7 @@ export function useBranches(enabled: boolean) {
 
     setBranchSaving(true);
     try {
-      const res = await fetch(`${API}/partners/${branchOrgId}/branches`, {
+      const res = await adminFetch(`${API}/partners/${branchOrgId}/branches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@mgl/database";
+import type { Prisma } from "@mgl/database";
 
 export type ValidateTokenResult = {
   valid: boolean;
@@ -33,10 +34,10 @@ export async function validateVendorSetupToken(
           id: true,
           email: true,
           passwordHash: true,
-          organization: {
-            select: {
-              name: true,
-            },
+          organizationMemberships: {
+            where: { isActive: true, isPrimary: true },
+            select: { organization: { select: { name: true } } },
+            take: 1,
           },
         },
       },
@@ -65,7 +66,7 @@ export async function validateVendorSetupToken(
   return {
     valid: true,
     email: setupToken.user.email,
-    organizationName: setupToken.user.organization?.name || undefined,
+    organizationName: setupToken.user.organizationMemberships[0]?.organization?.name || undefined,
   };
 }
  
@@ -121,7 +122,7 @@ export async function setVendorPassword(
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     // Update user password
     await tx.user.update({
       where: { id: setupToken.user.id },
@@ -174,7 +175,7 @@ export async function regenerateInviteToken(
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + 24);
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     // Invalidate old tokens
     await tx.vendorSetupToken.updateMany({
       where: {

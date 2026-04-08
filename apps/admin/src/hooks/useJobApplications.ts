@@ -1,19 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE } from "../lib/api";
+import { adminFetch, API_BASE } from "../lib/api";
 import type { JobApplication } from "../lib/types";
 
-export function useJobApplications() {
+export function useJobApplications(enabled = true) {
   const [jobApps, setJobApps] = useState<JobApplication[]>([]);
   const [jobAppsLoading, setJobAppsLoading] = useState(true);
 
   const loadJobApps = useCallback(async () => {
+    if (!enabled) {
+      setJobAppsLoading(false);
+      return;
+    }
     try {
       setJobAppsLoading(true);
-      const res = await fetch(`${API_BASE}/api/job-applications`, {
+      const res = await adminFetch(`${API_BASE}/api/job-applications`, {
         cache: "no-store",
-        headers: { "Content-Type": "application/json" },
       });
 
       if (!res.ok) throw new Error("Failed to fetch");
@@ -25,7 +28,7 @@ export function useJobApplications() {
     } finally {
       setJobAppsLoading(false);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     loadJobApps();

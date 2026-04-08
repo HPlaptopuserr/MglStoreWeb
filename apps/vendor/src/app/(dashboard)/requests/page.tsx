@@ -14,7 +14,7 @@ import {
   Truck,
   Wrench,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, authFetch } from "@/lib/api";
 
 type StockRequestStatus =
   | "PENDING"
@@ -88,8 +88,8 @@ export default function RequestsHubPage() {
         }
 
         const [stockRes, serviceRes] = await Promise.all([
-          fetch(`${API}/stock-requests?organizationId=${storedUser.organizationId}`),
-          fetch(`${API}/service-requests/organization/${storedUser.organizationId}`),
+          authFetch(`${API}/stock-requests?organizationId=${storedUser.organizationId}`),
+          authFetch(`${API}/service-requests/organization/${storedUser.organizationId}`),
         ]);
 
         if (stockRes.ok) {

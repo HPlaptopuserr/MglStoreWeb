@@ -1,10 +1,11 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, Role, OnboardingSource, ApprovalStatus } from "@mgl/database";
+import { prisma, OrgType, OnboardingSource, ApprovalStatus } from "@mgl/database";
 import {
   approvePartnerRequest,
   rejectPartnerRequest,
 } from "../../services/partner-request.service";
-import { requireAuth, requireRole } from "../../middleware/auth";
+import { requireAuth, requireAnyAdmin, requirePlatformPermission } from "../../middleware/auth";
+import { Permission } from "@mgl/types";
 
 const router: ExpressRouter = Router();
 
@@ -56,7 +57,7 @@ router.post("/partner-requests", async (req, res) => {
         organizationAddress,
         fullName,
         note,
-        requestedRole: Role.SUPPLIER,
+        requestedOrgType: OrgType.SUPPLIER,
         source: OnboardingSource.SELF_SERVICE,
         status: ApprovalStatus.PENDING,
       },
@@ -72,14 +73,14 @@ router.post("/partner-requests", async (req, res) => {
   }
 });
 
-router.get("/partner-requests", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.get("/partner-requests", requireAuth, requirePlatformPermission(Permission.MANAGE_REGISTRATIONS), async (req, res) => {
   try {
     const status = req.query.status as keyof typeof ApprovalStatus | undefined;
     const search = String(req.query.search || "").trim();
 
     const requests = await prisma.registrationRequest.findMany({
       where: {
-        requestedRole: Role.SUPPLIER,
+        requestedOrgType: OrgType.SUPPLIER,
         ...(status && ApprovalStatus[status]
           ? { status: ApprovalStatus[status] }
           : {}),
@@ -129,7 +130,7 @@ router.get("/partner-requests", requireAuth, requireRole("ADMIN"), async (req, r
   }
 });
 
-router.patch("/partner-requests/:id/approve", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.patch("/partner-requests/:id/approve", requireAuth, requirePlatformPermission(Permission.MANAGE_REGISTRATIONS), async (req, res) => {
   try {
     const id = String(req.params.id);
 
@@ -149,7 +150,7 @@ router.patch("/partner-requests/:id/approve", requireAuth, requireRole("ADMIN"),
   }
 });
 
-router.patch("/partner-requests/:id/reject", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.patch("/partner-requests/:id/reject", requireAuth, requirePlatformPermission(Permission.MANAGE_REGISTRATIONS), async (req, res) => {
   try {
     const id = String(req.params.id);
 
@@ -171,7 +172,7 @@ router.patch("/partner-requests/:id/reject", requireAuth, requireRole("ADMIN"), 
 
 // One-time sync: copy phoneNumber from RegistrationRequest → User Profile
 // for already-approved vendors that were created before this fix
-router.post("/partner-requests/sync-profiles", requireAuth, requireRole("ADMIN"), async (req, res) => {
+router.post("/partner-requests/sync-profiles", requireAuth, requirePlatformPermission(Permission.MANAGE_REGISTRATIONS), async (req, res) => {
   try {
     const approved = await prisma.registrationRequest.findMany({
       where: {

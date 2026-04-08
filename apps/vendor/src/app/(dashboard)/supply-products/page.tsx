@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Boxes,
   FolderTree,
@@ -71,6 +71,7 @@ type CatalogResponse = {
 
 export default function SupplyProductsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [data, setData] = useState<CatalogResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -90,9 +91,22 @@ export default function SupplyProductsPage() {
           return;
         }
 
+        const token = localStorage.getItem("vendor_token");
         const res = await fetch(
           `${API}/stock-requests/catalog/organization/${storedUser.organizationId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          },
         );
+        if (res.status === 401) {
+          localStorage.removeItem("vendor_token");
+          localStorage.removeItem("vendor_user");
+          router.replace("/login");
+          return;
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         setData(json);

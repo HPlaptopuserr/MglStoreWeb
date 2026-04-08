@@ -15,6 +15,7 @@ import {
   ScanLine,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
 } from "lucide-react";
 
 function cn(...classes: Array<string | false | undefined>) {
@@ -29,6 +30,7 @@ const navigation = [
   { name: "Үйлчилгээний постууд", href: "/service-posts", icon: Megaphone },
   { name: "Түгээгчийн мэдээлэл", href: "/drivers", icon: Users },
   { name: "Хүсэлтүүд", href: "/requests", icon: ClipboardList },
+  { name: "Төлбөр", href: "/payments", icon: CreditCard },
 ];
 
 export interface VendorSidebarProps {

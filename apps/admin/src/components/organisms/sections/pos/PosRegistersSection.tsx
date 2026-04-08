@@ -15,7 +15,7 @@ import {
   Save,
   ChevronDown,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 /* ─── types ──────────────────────────────────────────────────────────── */
 type Org = { id: string; name: string; slug: string };
@@ -69,20 +69,6 @@ const CARD_PROVIDERS = ["QPOSLANE", "GANTIGO", "IDPAY"];
 const getPosVisibilityKey = (organizationId: string) =>
   `pos-enabled-${organizationId}`;
 
-const getAuthHeaders = (): HeadersInit => {
-  const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
-const adminFetch = (input: RequestInfo | URL, init?: RequestInit) => {
-  return fetch(input, {
-    ...init,
-    headers: {
-      ...getAuthHeaders(),
-      ...(init?.headers || {}),
-    },
-  });
-};
 
 /* ─── component ──────────────────────────────────────────────────────── */
 export function PosRegistersSection() {
@@ -111,7 +97,7 @@ export function PosRegistersSection() {
 
   /* fetch orgs on mount */
   useEffect(() => {
-    fetch(`${API}/partners?status=APPROVED&limit=1000`)
+    adminFetch(`${API}/partners?status=APPROVED&limit=1000`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const list = Array.isArray(data) ? data : data?.partners || [];

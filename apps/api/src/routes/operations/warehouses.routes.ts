@@ -1,5 +1,22 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
+import { Permission } from "@mgl/types";
+import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
+
+/**
+ * Helper: recalculate Product.stock from SUM of all WarehouseInventory.
+ * Call after any warehouse inventory change.
+ */
+async function syncProductStock(productId: string) {
+  const result = await prisma.warehouseInventory.aggregate({
+    where: { productId },
+    _sum: { quantity: true },
+  });
+  await prisma.product.update({
+    where: { id: productId },
+    data: { stock: result._sum.quantity ?? 0 },
+  });
+}
 
 const router: ExpressRouter = Router();
 
@@ -57,9 +74,9 @@ router.get("/warehouses", async (req, res) => {
     });
 
     // Transform to include organizations array
-    const result = warehouses.map((w) => ({
+    const result = warehouses.map((w: (typeof warehouses)[number]) => ({
       ...w,
-      organizations: w.organizations.map((wo) => wo.organization),
+      organizations: w.organizations.map((wo: (typeof w.organizations)[number]) => wo.organization),
     }));
 
     res.json(result);
@@ -114,7 +131,7 @@ router.get("/warehouses/organization/:orgId", async (req, res) => {
 });
 
 // Create warehouse (Admin creates)
-router.post("/warehouses", async (req, res) => {
+router.post("/warehouses", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
   try {
     const {
       name,
@@ -173,7 +190,7 @@ router.post("/warehouses", async (req, res) => {
 
     res.status(201).json({
       ...warehouse,
-      organizations: warehouse.organizations.map((wo) => wo.organization),
+      organizations: warehouse.organizations.map((wo: (typeof warehouse.organizations)[number]) => wo.organization),
     });
   } catch (error) {
     console.error("create warehouse error", error);
@@ -184,7 +201,7 @@ router.post("/warehouses", async (req, res) => {
 });
 
 // Update warehouse
-router.patch("/warehouses/:id", async (req, res) => {
+router.patch("/warehouses/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -231,7 +248,7 @@ router.patch("/warehouses/:id", async (req, res) => {
 
     res.json({
       ...updated,
-      organizations: updated.organizations.map((wo) => wo.organization),
+      organizations: updated.organizations.map((wo: (typeof updated.organizations)[number]) => wo.organization),
     });
   } catch (error) {
     console.error("update warehouse error", error);
@@ -242,7 +259,7 @@ router.patch("/warehouses/:id", async (req, res) => {
 });
 
 // Assign/update organizations for a warehouse (Admin)
-router.post("/warehouses/:id/assign", async (req, res) => {
+router.post("/warehouses/:id/assign", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
   try {
     const { id } = req.params;
     const { organizationIds, assignedById } = req.body;
@@ -290,7 +307,7 @@ router.post("/warehouses/:id/assign", async (req, res) => {
 
     res.json({
       ...updated,
-      organizations: updated.organizations.map((wo) => wo.organization),
+      organizations: updated.organizations.map((wo: (typeof updated.organizations)[number]) => wo.organization),
     });
   } catch (error) {
     console.error("assign warehouse error", error);
@@ -301,7 +318,7 @@ router.post("/warehouses/:id/assign", async (req, res) => {
 });
 
 // Delete warehouse (soft delete)
-router.delete("/warehouses/:id", async (req, res) => {
+router.delete("/warehouses/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -392,16 +409,16 @@ router.get("/warehouses/:id/detail", async (req, res) => {
     // Calculate summary stats
     const totalProducts = warehouse.inventories.length;
     const totalQuantity = warehouse.inventories.reduce(
-      (sum, inv) => sum + inv.quantity,
+      (sum: number, inv: (typeof warehouse.inventories)[number]) => sum + inv.quantity,
       0,
     );
     const lowStockItems = warehouse.inventories.filter(
-      (inv) => inv.quantity <= inv.minQuantity,
+      (inv: (typeof warehouse.inventories)[number]) => inv.quantity <= inv.minQuantity,
     ).length;
 
     res.json({
       ...warehouse,
-      organizations: warehouse.organizations.map((wo) => wo.organization),
+      organizations: warehouse.organizations.map((wo: (typeof warehouse.organizations)[number]) => wo.organization),
       summary: {
         totalProducts,
         totalQuantity,
@@ -497,6 +514,9 @@ router.post("/warehouses/:id/inventory", async (req, res) => {
       },
     });
 
+    // Sync Product.stock cache
+    await syncProductStock(productId);
+
     res.status(201).json(inventory);
   } catch (error) {
     console.error("add warehouse inventory error", error);
@@ -553,6 +573,9 @@ router.patch(
       });
 
       res.json(inventory);
+
+      // Sync Product.stock cache (fire after response for speed, but safe since same event loop tick)
+      syncProductStock(productId).catch((e) => console.error("sync product stock error", e));
     } catch (error) {
       console.error("update warehouse inventory error", error);
       res.status(500).json({
@@ -578,6 +601,9 @@ router.delete(
         },
       });
 
+      // Sync Product.stock cache (will be 0 or sum of remaining warehouses)
+      await syncProductStock(productId);
+
       res.json({ message: "Агуулахийн бүртгэл устгагдлаа" });
     } catch (error) {
       console.error("delete warehouse inventory error", error);
@@ -587,5 +613,312 @@ router.delete(
     }
   },
 );
+
+// ─── Inventory Ledger (Stock Movements) ───────────────────────────
+router.get("/inventory-ledger", async (req, res) => {
+  try {
+    const {
+      warehouseId,
+      productId,
+      reason,
+      page = "1",
+      limit = "50",
+      from,
+      to,
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const skip = (pageNum - 1) * limitNum;
+
+    const where: any = {};
+
+    if (productId) {
+      where.productId = productId as string;
+    }
+
+    if (reason) {
+      where.reason = reason as string;
+    }
+
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from as string);
+      if (to) where.createdAt.lte = new Date(to as string);
+    }
+
+    // If warehouseId is provided, only include products that belong to that warehouse
+    if (warehouseId) {
+      const warehouseProducts = await prisma.warehouseInventory.findMany({
+        where: { warehouseId: warehouseId as string },
+        select: { productId: true },
+      });
+      where.productId = { in: warehouseProducts.map((wp: (typeof warehouseProducts)[number]) => wp.productId) };
+    }
+
+    const [entries, total] = await Promise.all([
+      prisma.inventoryLedger.findMany({
+        where,
+        include: {
+          product: { select: { id: true, name: true, sku: true } },
+          createdBy: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limitNum,
+      }),
+      prisma.inventoryLedger.count({ where }),
+    ]);
+
+    res.json({
+      entries,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error("get inventory ledger error", error);
+    res.status(500).json({ message: "Inventory ledger татахад алдаа гарлаа" });
+  }
+});
+
+/* ─── GET /warehouses/:id/sku-lookup?prefix=MLK-APD ─────────────────
+ * Returns existing products whose SKU starts with the given prefix,
+ * scoped to the warehouse's organization. Used by the SKU generator
+ * to offer existing type numbers for selection.
+ * ──────────────────────────────────────────────────────────────────── */
+router.get("/warehouses/:id/sku-lookup", async (req, res) => {
+  try {
+    const warehouseId = req.params.id;
+    const prefix = (req.query.prefix as string || "").trim().toUpperCase();
+
+    if (!prefix || prefix.length < 3) {
+      return res.json([]);
+    }
+
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: warehouseId, deletedAt: null },
+      include: { organizations: { select: { organizationId: true }, take: 1 } },
+    });
+
+    if (!warehouse) return res.status(404).json({ message: "Агуулах олдсонгүй" });
+
+    const organizationId = warehouse.organizations[0]?.organizationId;
+    if (!organizationId) return res.json([]);
+
+    const products = await prisma.product.findMany({
+      where: {
+        organizationId,
+        sku: { startsWith: prefix, mode: "insensitive" },
+        deletedAt: null,
+      },
+      select: { id: true, name: true, sku: true },
+      orderBy: { sku: "asc" },
+      take: 50,
+    });
+
+    return res.json(products);
+  } catch (error) {
+    console.error("sku-lookup error", error);
+    res.status(500).json({ message: "SKU хайхад алдаа гарлаа" });
+  }
+});
+
+/* ─── POST /warehouses/:id/products ─────────────────────────────────── *
+ * Warehouse operator creates a NEW product and adds it to inventory.
+ * No organization permission required — product is created under the
+ * warehouse's first assigned organization.
+ * ──────────────────────────────────────────────────────────────────── */
+router.post("/warehouses/:id/products", async (req, res) => {
+  try {
+    const warehouseId = req.params.id;
+    const {
+      name,
+      description,
+      sku,
+      price,
+      costPrice,
+      businessCategoryId,
+      images,  // string[] of URLs
+      quantity,
+      minQuantity,
+      location,
+      batchNumber,
+      expiryDate,
+      note,
+    } = req.body;
+
+    if (!name || price === undefined) {
+      return res.status(400).json({ message: "Барааны нэр, үнэ шаардлагатай" });
+    }
+
+    // Check warehouse exists
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: warehouseId, deletedAt: null },
+      include: {
+        organizations: {
+          select: { organizationId: true },
+          take: 1,
+        },
+      },
+    });
+    if (!warehouse) {
+      return res.status(404).json({ message: "Агуулах олдсонгүй" });
+    }
+
+    const organizationId = warehouse.organizations[0]?.organizationId;
+    if (!organizationId) {
+      return res.status(400).json({ message: "Агуулахад байгууллага хуваарилагдаагүй байна" });
+    }
+
+    const priceNum = parseFloat(String(price));
+    if (isNaN(priceNum) || priceNum < 0) {
+      return res.status(400).json({ message: "Үнэ буруу байна" });
+    }
+
+    const costPriceNum = costPrice != null && costPrice !== ""
+      ? parseFloat(String(costPrice))
+      : null;
+    if (costPriceNum !== null && (isNaN(costPriceNum) || costPriceNum < 0)) {
+      return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
+    }
+
+    const normalizedSku = sku ? String(sku).trim() : null;
+    if (normalizedSku) {
+      const existingSku = await prisma.product.findFirst({
+        where: { organizationId, sku: normalizedSku, deletedAt: null },
+        select: { id: true },
+      });
+      if (existingSku) {
+        return res.status(409).json({ message: "Ижил SKU-тэй бараа бүртгэлтэй байна" });
+      }
+    }
+
+    if (businessCategoryId) {
+      const cat = await prisma.businessCategory.findUnique({
+        where: { id: String(businessCategoryId) },
+        select: { id: true },
+      });
+      if (!cat) {
+        return res.status(400).json({ message: "Ангилал олдсонгүй" });
+      }
+    }
+
+    const imageUrls: string[] = Array.isArray(images) ? images.slice(0, 5) : [];
+    const qty = Math.max(0, parseInt(String(quantity)) || 0);
+
+    // Create product + inventory + ledger in one transaction
+    const product = await prisma.$transaction(async (tx) => {
+      const newProduct = await tx.product.create({
+        data: {
+          organizationId,
+          name: String(name).trim(),
+          description: description ? String(description).trim() : null,
+          sku: normalizedSku,
+          price: priceNum,
+          costPrice: costPriceNum,
+          stock: qty,
+          businessCategoryId: businessCategoryId || null,
+          isActive: true,
+          images: {
+            create: imageUrls.map((url: string) => ({ url })),
+          },
+        },
+        include: {
+          images: { select: { id: true, url: true } },
+          businessCategory: { select: { id: true, name: true } },
+        },
+      });
+
+      // Also add to warehouse inventory if quantity > 0
+      if (qty > 0) {
+        await tx.warehouseInventory.create({
+          data: {
+            warehouseId,
+            productId: newProduct.id,
+            quantity: qty,
+            minQuantity: minQuantity ? parseInt(String(minQuantity)) : 0,
+            location: location || null,
+            batchNumber: batchNumber || null,
+            expiryDate: expiryDate ? new Date(expiryDate) : null,
+            note: note || null,
+            lastRestockedAt: new Date(),
+          },
+        });
+
+        // Ledger entry
+        await tx.inventoryLedger.create({
+          data: {
+            productId: newProduct.id,
+            change: qty,
+            reason: "INITIAL_STOCK",
+            note: note || "Шинэ бараа бүртгэл — агуулахаас нэмсэн",
+          },
+        });
+      }
+
+      return newProduct;
+    });
+
+    return res.status(201).json(product);
+  } catch (error: any) {
+    if (error?.code === "P2002") {
+      return res.status(409).json({ message: "Давхардсан SKU эсвэл бараа байна" });
+    }
+    console.error("create warehouse product error", error);
+    return res.status(500).json({ message: "Бараа үүсгэхэд алдаа гарлаа" });
+  }
+});
+
+/* ─── POST /warehouses/categories ───────────────────────────────────── *
+ * Quick category creation from WMS — operator creates a new category.
+ * ──────────────────────────────────────────────────────────────────── */
+router.post("/warehouses/categories", async (req, res) => {
+  try {
+    const { name, parentId } = req.body;
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ message: "Ангилалын нэр шаардлагатай" });
+    }
+
+    const slug = String(name).trim().toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9\u0400-\u04ff-]/g, "")
+      + "-" + Date.now().toString(36);
+
+    let level = 0;
+    if (parentId) {
+      const parent = await prisma.businessCategory.findUnique({
+        where: { id: parentId },
+        select: { level: true },
+      });
+      if (!parent) {
+        return res.status(400).json({ message: "Эцэг ангилал олдсонгүй" });
+      }
+      level = parent.level + 1;
+      if (level > 2) {
+        return res.status(400).json({ message: "Хамгийн ихдээ 3 түвшин (0,1,2)" });
+      }
+    }
+
+    const category = await prisma.businessCategory.create({
+      data: {
+        slug,
+        name: String(name).trim(),
+        parentId: parentId || null,
+        level,
+        isActive: true,
+      },
+    });
+
+    return res.status(201).json(category);
+  } catch (error) {
+    console.error("create warehouse category error", error);
+    return res.status(500).json({ message: "Ангилал үүсгэхэд алдаа гарлаа" });
+  }
+});
 
 export default router;

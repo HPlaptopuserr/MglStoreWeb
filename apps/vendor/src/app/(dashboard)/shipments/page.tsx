@@ -26,7 +26,7 @@ import {
   CreditCard,
   Printer,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, authFetch } from "@/lib/api";
 
 type StockRequestStatus =
   | "PENDING"
@@ -245,8 +245,8 @@ export default function StockRequestsPage() {
     try {
       setLoading(true);
       const [requestsRes, warehousesRes] = await Promise.all([
-        fetch(`${API}/stock-requests?organizationId=${user?.organizationId}`),
-        fetch(`${API}/warehouses/organization/${user?.organizationId}`),
+        authFetch(`${API}/stock-requests?organizationId=${user?.organizationId}`),
+        authFetch(`${API}/warehouses/organization/${user?.organizationId}`),
       ]);
       if (requestsRes.ok) setRequests((await requestsRes.json()) || []);
       if (warehousesRes.ok) setWarehouses((await warehousesRes.json()) || []);
@@ -261,7 +261,7 @@ export default function StockRequestsPage() {
     if (!user?.organizationId) return;
     try {
       setLoadingPayments(true);
-      const res = await fetch(
+      const res = await authFetch(
         `${API}/stock-requests/payments/organization/${user.organizationId}`,
       );
       if (res.ok) setPaymentHistory((await res.json()) || []);
@@ -276,7 +276,7 @@ export default function StockRequestsPage() {
     setLoadingPaymentDetail(true);
     setShowPaymentModal(true);
     try {
-      const res = await fetch(`${API}/stock-requests/payments/${paymentId}`);
+      const res = await authFetch(`${API}/stock-requests/payments/${paymentId}`);
       if (res.ok) {
         const data = await res.json();
         setSelectedPayment(data);
@@ -303,7 +303,7 @@ export default function StockRequestsPage() {
     setProductsLoading(true);
     setViewMode("browse");
     try {
-      const res = await fetch(
+      const res = await authFetch(
         `${API}/stock-requests/warehouse/${warehouse.id}/products`,
       );
       if (res.ok) setWarehouseProducts((await res.json()) || []);
@@ -382,7 +382,7 @@ export default function StockRequestsPage() {
     }
     setIsSubmitting(true);
     try {
-      const response = await fetch(`${API}/stock-requests`, {
+      const response = await authFetch(`${API}/stock-requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -415,7 +415,7 @@ export default function StockRequestsPage() {
   const handleCancel = async (requestId: string) => {
     if (!confirm("Хүсэлтийг цуцлах уу?")) return;
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/stock-requests/${requestId}/cancel`,
         { method: "PATCH" },
       );

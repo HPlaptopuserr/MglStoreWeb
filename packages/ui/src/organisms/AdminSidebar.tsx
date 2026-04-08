@@ -37,6 +37,8 @@ export interface SidebarProps {
   userInitials?: string;
   onSignOut?: () => void;
   navItems?: NavItem[];
+  /** Optional slot rendered above the user card (e.g. account switcher) */
+  bottomSlot?: React.ReactNode;
 }
 
 export function AdminSidebar({
@@ -45,6 +47,7 @@ export function AdminSidebar({
   userInitials = "AD",
   onSignOut,
   navItems,
+  bottomSlot,
 }: SidebarProps) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -226,6 +229,9 @@ export function AdminSidebar({
         </nav>
 
         <div className="mt-6 border-t border-slate-100 pt-4">
+          {bottomSlot && !isCollapsed && (
+            <div className="mb-3">{bottomSlot}</div>
+          )}
           <div
             className={`rounded-2xl bg-slate-50 ${
               isCollapsed ? "p-2" : "p-4"

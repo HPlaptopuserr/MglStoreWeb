@@ -17,7 +17,7 @@ import {
   Phone,
   CheckCircle2,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 /* ─── types ──────────────────────────────────────────────────────────── */
 type Org = { id: string; name: string; slug: string };
@@ -45,16 +45,12 @@ type SystemUser = {
 };
 
 const ROLES = [
-  { value: "CASHIER", label: "Кассчин" },
-  { value: "DRIVER", label: "Жолооч" },
   { value: "STAFF", label: "Ажилтан" },
   { value: "ADMIN", label: "Менежер" },
   { value: "VIEWER", label: "Ажиглагч" },
 ];
 
 const ROLE_COLORS: Record<string, string> = {
-  CASHIER: "bg-violet-100 text-violet-700",
-  DRIVER: "bg-sky-100 text-sky-700",
   STAFF: "bg-slate-100 text-slate-700",
   ADMIN: "bg-amber-100 text-amber-700",
   VIEWER: "bg-green-100 text-green-700",
@@ -72,7 +68,7 @@ export function OrgStaffTab() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
-  const [staffRole, setStaffRole] = useState("CASHIER");
+  const [staffRole, setStaffRole] = useState("STAFF");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -88,13 +84,7 @@ export function OrgStaffTab() {
   const loadSystemUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
-      const token = localStorage.getItem("admin_token");
-      const res = await fetch(`${API}/admin/users`, {
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
+      const res = await adminFetch(`${API}/admin/users`);
       if (!res.ok) return;
       const data = await res.json();
       setAllUsers(Array.isArray(data) ? data : []);
@@ -123,7 +113,7 @@ export function OrgStaffTab() {
 
   /* load orgs */
   useEffect(() => {
-    fetch(`${API}/partners?status=APPROVED`)
+    adminFetch(`${API}/partners?status=APPROVED`)
       .then((r) => r.json())
       .then((data) => setOrgs(Array.isArray(data) ? data : []))
       .catch(() => setOrgs([]))
@@ -134,7 +124,7 @@ export function OrgStaffTab() {
   const loadMembers = useCallback((orgId: string) => {
     if (!orgId) return;
     setLoadingMembers(true);
-    fetch(`${API}/admin/organizations/${orgId}/staff`)
+    adminFetch(`${API}/admin/organizations/${orgId}/staff`)
       .then((r) => r.json())
       .then((data) => setMembers(Array.isArray(data) ? data : []))
       .catch(() => setMembers([]))
@@ -155,7 +145,7 @@ export function OrgStaffTab() {
     setSaving(true);
     setFormError("");
     try {
-      const res = await fetch(`${API}/admin/organizations/${selectedOrgId}/staff`, {
+      const res = await adminFetch(`${API}/admin/organizations/${selectedOrgId}/staff`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -182,7 +172,7 @@ export function OrgStaffTab() {
   /* toggle active */
   const handleToggle = async (memberId: string) => {
     try {
-      const res = await fetch(
+      const res = await adminFetch(
         `${API}/admin/organizations/${selectedOrgId}/staff/${memberId}/toggle`,
         { method: "PATCH" },
       );
@@ -199,7 +189,7 @@ export function OrgStaffTab() {
   /* delete member */
   const handleDelete = async (memberId: string) => {
     try {
-      const res = await fetch(
+      const res = await adminFetch(
         `${API}/admin/organizations/${selectedOrgId}/staff/${memberId}`,
         { method: "DELETE" },
       );

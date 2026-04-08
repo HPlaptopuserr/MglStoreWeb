@@ -1,5 +1,8 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
+import { Permission } from "@mgl/types";
+import { requireAuth } from "../../middleware/auth";
+import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
 
@@ -64,7 +67,7 @@ router.get("/products/:id", async (req, res) => {
 });
 
 /* ─── POST /products ────────────────────────────────────────────────── */
-router.post("/products", async (req, res) => {
+router.post("/products", requireAuth, requireOrgPermission({ from: "body" }, Permission.MANAGE_PRODUCTS), async (req, res) => {
   try {
     const {
       organizationId,
@@ -174,9 +177,9 @@ router.post("/products", async (req, res) => {
 });
 
 /* ─── PATCH /products/:id ───────────────────────────────────────────── */
-router.patch("/products/:id", async (req, res) => {
+router.patch("/products/:id", requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const {
       name,
       description,
@@ -191,6 +194,9 @@ router.patch("/products/:id", async (req, res) => {
 
     const existing = await prisma.product.findUnique({ where: { id, deletedAt: null } });
     if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
+
+    const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_PRODUCTS);
+    if (!perm) return;
 
     const data: Record<string, unknown> = {};
     if (name !== undefined) data.name = String(name).trim();
@@ -234,13 +240,17 @@ router.patch("/products/:id", async (req, res) => {
 });
 
 /* ─── DELETE /products/:id ──────────────────────────────────────────── */
-router.delete("/products/:id", async (req, res) => {
+router.delete("/products/:id", requireAuth, async (req, res) => {
   try {
-    const existing = await prisma.product.findUnique({ where: { id: req.params.id, deletedAt: null } });
+    const id = req.params.id as string;
+    const existing = await prisma.product.findUnique({ where: { id, deletedAt: null } });
     if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
 
+    const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_PRODUCTS);
+    if (!perm) return;
+
     await prisma.product.update({
-      where: { id: req.params.id },
+      where: { id },
       data: { deletedAt: new Date(), isActive: false },
     });
 

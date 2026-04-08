@@ -20,7 +20,7 @@ import {
   Layers,
   Package,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 /* ── Types ── */
 type Category = {
@@ -276,7 +276,7 @@ export default function CategoriesPage() {
 
   const fetchAll = async () => {
     try {
-      const res = await fetch(`${API}/admin/business-categories-all`);
+      const res = await adminFetch(`${API}/admin/business-categories-all`);
       if (!res.ok) throw new Error("fetch failed");
       const data: Category[] = await res.json();
       setCategories(data);
@@ -288,7 +288,7 @@ export default function CategoriesPage() {
         setExpanded(rootIds);
       }
     } catch {
-      const res = await fetch(`${API}/business-categories`);
+      const res = await adminFetch(`${API}/business-categories`);
       if (res.ok) setCategories(await res.json());
     } finally {
       setLoading(false);
@@ -401,7 +401,7 @@ export default function CategoriesPage() {
         ? `${API}/admin/business-categories/${editTarget.id}`
         : `${API}/admin/business-categories`;
       const method = editTarget ? "PATCH" : "POST";
-      const res = await fetch(endpoint, {
+      const res = await adminFetch(endpoint, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -432,7 +432,7 @@ export default function CategoriesPage() {
 
   const toggleActive = async (cat: Category) => {
     try {
-      await fetch(`${API}/admin/business-categories/${cat.id}`, {
+      await adminFetch(`${API}/admin/business-categories/${cat.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !cat.isActive }),

@@ -1,6 +1,6 @@
 import type { BaseEntity, SoftDelete } from "../common";
 import type { ID, ISODateString, URLString } from "../primitives";
-import type { AuditAction, Gender, OnboardingSource, Role } from "../enums";
+import type { AuditAction, Gender, OnboardingSource, PlatformRole } from "../enums";
 import type { JsonValue } from "../primitives";
 
 export interface User extends BaseEntity, SoftDelete {
@@ -9,14 +9,12 @@ export interface User extends BaseEntity, SoftDelete {
   password: string;
 
   registerNumber?: string | null;
-  role: Role;
+  role: PlatformRole;
   isActive: boolean;
   emailVerified: boolean;
   lastLoginAt?: ISODateString | null;
 
   onboardingSource: OnboardingSource;
-
-  organizationId?: ID | null;
 }
 
 export interface Profile {

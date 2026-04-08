@@ -1,5 +1,7 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
+import { Permission } from "@mgl/types";
+import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
@@ -41,15 +43,15 @@ router.get("/investors", async (req, res) => {
     });
 
     // Re-sort: TOP > STRATEGIC > INVESTOR
-    const tierOrder = { TOP: 0, STRATEGIC: 1, INVESTOR: 2 };
-    investors.sort((a, b) => {
+    const tierOrder: Record<string, number> = { TOP: 0, STRATEGIC: 1, INVESTOR: 2 };
+    investors.sort((a: (typeof investors)[number], b: (typeof investors)[number]) => {
       const tierDiff =
         (tierOrder[a.tier] ?? 2) - (tierOrder[b.tier] ?? 2);
       if (tierDiff !== 0) return tierDiff;
       return b.priority - a.priority;
     });
 
-    const result = investors.map((inv) => ({
+    const result = investors.map((inv: (typeof investors)[number]) => ({
       id: inv.id,
       organizationId: inv.organization.id,
       name: inv.organization.name,
@@ -100,15 +102,15 @@ router.get("/investors/featured", async (req, res) => {
       },
     });
 
-    const tierOrder = { TOP: 0, STRATEGIC: 1, INVESTOR: 2 };
-    investors.sort((a, b) => {
+    const tierOrder: Record<string, number> = { TOP: 0, STRATEGIC: 1, INVESTOR: 2 };
+    investors.sort((a: (typeof investors)[number], b: (typeof investors)[number]) => {
       const tierDiff =
         (tierOrder[a.tier] ?? 2) - (tierOrder[b.tier] ?? 2);
       if (tierDiff !== 0) return tierDiff;
       return b.priority - a.priority;
     });
 
-    const result = investors.map((inv) => ({
+    const result = investors.map((inv: (typeof investors)[number]) => ({
       id: inv.id,
       organizationId: inv.organization.id,
       name: inv.organization.name,
@@ -133,7 +135,7 @@ router.get("/investors/featured", async (req, res) => {
 });
 
 // Admin: Get all investor profiles (including private)
-router.get("/investors/all", async (req, res) => {
+router.get("/investors/all", requireAuth, requirePlatformPermission(Permission.MANAGE_INVESTORS), async (req, res) => {
   try {
     const investors = await prisma.investorProfile.findMany({
       orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
@@ -159,7 +161,7 @@ router.get("/investors/all", async (req, res) => {
 });
 
 // Admin: Add investor role to an organization
-router.post("/investors", async (req, res) => {
+router.post("/investors", requireAuth, requirePlatformPermission(Permission.MANAGE_INVESTORS), async (req, res) => {
   try {
     const {
       organizationId,
@@ -227,7 +229,7 @@ router.post("/investors", async (req, res) => {
 });
 
 // Admin: Update investor profile
-router.patch("/investors/:id", async (req, res) => {
+router.patch("/investors/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_INVESTORS), async (req, res) => {
   try {
     const { id } = req.params;
     const { tier, featured, priority, publiclyVisible, investmentLevel, description } =
@@ -267,7 +269,7 @@ router.patch("/investors/:id", async (req, res) => {
 });
 
 // Admin: Remove investor role
-router.delete("/investors/:id", async (req, res) => {
+router.delete("/investors/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_INVESTORS), async (req, res) => {
   try {
     const { id } = req.params;
 

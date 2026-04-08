@@ -23,7 +23,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 export default function PartnerDetailsPage() {
   const params = useParams();
@@ -43,7 +43,7 @@ export default function PartnerDetailsPage() {
   useEffect(() => {
     const fetchPartner = async () => {
       try {
-        const res = await fetch(`${API}/partners/${params.id}`, {
+        const res = await adminFetch(`${API}/partners/${params.id}`, {
           cache: "no-store",
         });
 
@@ -75,7 +75,7 @@ export default function PartnerDetailsPage() {
     }
     setInvestorSaving(true);
     try {
-      const res = await fetch(`${API}/partners/${partner.id}/investor`, {
+      const res = await adminFetch(`${API}/partners/${partner.id}/investor`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -110,7 +110,7 @@ export default function PartnerDetailsPage() {
     }
     setInvestorSaving(true);
     try {
-      const res = await fetch(`${API}/partners/${partner.id}/investor`, {
+      const res = await adminFetch(`${API}/partners/${partner.id}/investor`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -142,7 +142,7 @@ export default function PartnerDetailsPage() {
     if (!confirm("Энэ хэрэглэгчийн нууц үгийг шинэчлэхдээ итгэлтэй байна уу?")) return;
     setResettingUserId(userId);
     try {
-      const res = await fetch(`${API}/partners/${partner.id}/members/${userId}/reset-password`, {
+      const res = await adminFetch(`${API}/partners/${partner.id}/members/${userId}/reset-password`, {
         method: "POST",
       });
       if (!res.ok) throw new Error();

@@ -14,7 +14,7 @@ import {
   ChevronDown,
   Check,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 interface Organization {
   id: string;
@@ -70,7 +70,7 @@ export default function InvestorsPage() {
 
   const fetchInvestors = async () => {
     try {
-      const res = await fetch(`${API}/investors/all`);
+      const res = await adminFetch(`${API}/investors/all`);
       if (res.ok) {
         const data = await res.json();
         setInvestors(data);
@@ -84,7 +84,7 @@ export default function InvestorsPage() {
 
   const fetchPartners = async () => {
     try {
-      const res = await fetch(`${API}/partners`);
+      const res = await adminFetch(`${API}/partners`);
       if (res.ok) {
         const data = await res.json();
         setPartners(
@@ -117,7 +117,7 @@ export default function InvestorsPage() {
     if (!selectedOrgId) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API}/investors`, {
+      const res = await adminFetch(`${API}/investors`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -150,7 +150,7 @@ export default function InvestorsPage() {
     updates: Partial<InvestorProfile>,
   ) => {
     try {
-      await fetch(`${API}/investors/${id}`, {
+      await adminFetch(`${API}/investors/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -164,7 +164,7 @@ export default function InvestorsPage() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`"${name}" хөрөнгө оруулагч эрхийг устгах уу?`)) return;
     try {
-      await fetch(`${API}/investors/${id}`, { method: "DELETE" });
+      await adminFetch(`${API}/investors/${id}`, { method: "DELETE" });
       fetchInvestors();
     } catch (e) {
       console.error("Delete failed:", e);

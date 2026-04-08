@@ -1,5 +1,8 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
+import { Permission } from "@mgl/types";
+import { requireAuth } from "../../middleware/auth";
+import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
 
@@ -62,7 +65,7 @@ router.get("/service-posts/:id", async (req, res) => {
 });
 
 // ── POST /service-posts — create (vendor)
-router.post("/service-posts", async (req, res) => {
+router.post("/service-posts", requireAuth, requireOrgPermission({ from: "body" }, Permission.MANAGE_SERVICES), async (req, res) => {
   try {
     const { organizationId, title, description, priceText, tags, images, isActive } = req.body;
 
@@ -101,16 +104,19 @@ router.post("/service-posts", async (req, res) => {
 });
 
 // ── PATCH /service-posts/:id — update (vendor)
-router.patch("/service-posts/:id", async (req, res) => {
+router.patch("/service-posts/:id", requireAuth, async (req, res) => {
   try {
     const { title, description, priceText, tags, images, isActive } = req.body;
 
     const existing = await prisma.servicePost.findFirst({
-      where: { id: req.params.id, deletedAt: null },
+      where: { id: req.params.id as string, deletedAt: null },
     });
     if (!existing) {
       return res.status(404).json({ message: "Пост олдсонгүй" });
     }
+
+    const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_SERVICES);
+    if (!perm) return;
 
     if (title !== undefined) {
       if (typeof title !== "string" || title.trim().length === 0) {
@@ -149,14 +155,17 @@ router.patch("/service-posts/:id", async (req, res) => {
 });
 
 // ── DELETE /service-posts/:id — soft delete (vendor)
-router.delete("/service-posts/:id", async (req, res) => {
+router.delete("/service-posts/:id", requireAuth, async (req, res) => {
   try {
     const existing = await prisma.servicePost.findFirst({
-      where: { id: req.params.id, deletedAt: null },
+      where: { id: req.params.id as string, deletedAt: null },
     });
     if (!existing) {
       return res.status(404).json({ message: "Пост олдсонгүй" });
     }
+
+    const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_SERVICES);
+    if (!perm) return;
 
     await prisma.servicePost.update({
       where: { id: existing.id },

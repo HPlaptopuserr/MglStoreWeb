@@ -21,7 +21,7 @@ import {
   BarChart2,
   Layers,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, authFetch } from "@/lib/api";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
 interface ProductImage {
@@ -363,7 +363,7 @@ export default function ProductsPage() {
     if (!orgId) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API}/products?organizationId=${orgId}`);
+      const res = await authFetch(`${API}/products?organizationId=${orgId}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
       setProducts(Array.isArray(data) ? data : []);
@@ -376,7 +376,7 @@ export default function ProductsPage() {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/business-categories/tree`);
+      const res = await authFetch(`${API}/business-categories/tree`);
       if (!res.ok) throw new Error();
       const data = await res.json();
       setCategories(Array.isArray(data) ? data : []);
@@ -443,7 +443,7 @@ export default function ProductsPage() {
       const url = editingId ? `${API}/products/${editingId}` : `${API}/products`;
       const method = editingId ? "PATCH" : "POST";
 
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -468,7 +468,7 @@ export default function ProductsPage() {
     if (!confirm("Энэ барааг устгахдаа итгэлтэй байна уу?")) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`${API}/products/${id}`, { method: "DELETE" });
+      const res = await authFetch(`${API}/products/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       showToast("success", "Бараа устгагдлаа");
       setSelectedProduct(null);
@@ -482,7 +482,7 @@ export default function ProductsPage() {
 
   const handleToggleActive = async (p: Product) => {
     try {
-      const res = await fetch(`${API}/products/${p.id}`, {
+      const res = await authFetch(`${API}/products/${p.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !p.isActive }),

@@ -10,6 +10,9 @@ import {
   PosQPayStatus,
   PosActivationStatus,
 } from "@mgl/database";
+import type { Prisma } from "@mgl/database";
+import { adjustStock, resolveOrgWarehouse } from "../../services/inventory.service";
+import { hasOrgMembership } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
 
@@ -66,6 +69,7 @@ type AuthUser = {
   isActive: boolean;
   deletedAt: Date | null;
   organizationId: string | null;
+  orgRole: string | null;
 };
 
 const toApiError = (status: number, message: string): ApiError => ({ status, message });
@@ -154,16 +158,39 @@ const getAuthUser = async (req: Request): Promise<AuthUser | null> => {
   const claims = parseAuthClaims(req);
   if (!claims) return null;
 
-  return prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: claims.userId },
     select: {
       id: true,
       role: true,
       isActive: true,
       deletedAt: true,
-      organizationId: true,
     },
   });
+  if (!user) return null;
+
+  // Resolve organization from membership
+  const membership = await prisma.organizationMember.findFirst({
+    where: { userId: user.id, isActive: true, isPrimary: true },
+    select: { organizationId: true, role: true },
+  });
+  const fallback = !membership
+    ? await prisma.organizationMember.findFirst({
+        where: { userId: user.id, isActive: true },
+        orderBy: { createdAt: "asc" },
+        select: { organizationId: true, role: true },
+      })
+    : null;
+  const org = membership || fallback;
+
+  return {
+    id: user.id,
+    role: user.role,
+    isActive: user.isActive,
+    deletedAt: user.deletedAt,
+    organizationId: org?.organizationId || null,
+    orgRole: org?.role || null,
+  };
 };
 
 const requireAdminUser = async (req: Request, res: Response) => {
@@ -188,7 +215,8 @@ const requirePosUser = async (req: Request, res: Response) => {
     return null;
   }
 
-  if (!["ADMIN", "SUPPLIER"].includes(actor.role)) {
+  // ADMIN always allowed; others need an active org membership
+  if (actor.role !== "ADMIN" && !actor.organizationId) {
     res.status(403).json({ message: "POS ашиглах эрх хүрэлцэхгүй" });
     return null;
   }
@@ -253,7 +281,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
         return res.status(403).json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
       }
-      if (actor.role !== "ADMIN" && actor.organizationId !== register.organizationId) {
+      if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, register.organizationId))) {
         return res.status(403).json({ message: "Өөр байгууллагын register дээр authorize хийх боломжгүй" });
       }
 
@@ -380,7 +408,7 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
   try {
     const attempt = await prisma.cardPaymentAttempt.findUnique({ where: { id } });
     if (!attempt) return res.status(404).json({ message: "Card attempt олдсонгүй" });
-    if (actor.role !== "ADMIN" && actor.organizationId !== attempt.organizationId) {
+    if (actor.role !== "ADMIN" && attempt.organizationId && !(await hasOrgMembership(actor.id, attempt.organizationId))) {
       return res.status(403).json({ message: "Өөр байгууллагын card attempt харах боломжгүй" });
     }
     return res.json({
@@ -431,7 +459,7 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
       if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
         return res.status(403).json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
       }
-      if (actor.role !== "ADMIN" && actor.organizationId !== register.organizationId) {
+      if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, register.organizationId))) {
         return res.status(403).json({ message: "Өөр байгууллагын register дээр invoice үүсгэх боломжгүй" });
       }
 
@@ -501,7 +529,7 @@ router.get("/pos/payments/qpay/status/:invoiceId", async (req, res) => {
   try {
     const invoice = await prisma.qPayInvoice.findUnique({ where: { id } });
     if (!invoice) return res.status(404).json({ message: "QPay invoice олдсонгүй" });
-    if (actor.role !== "ADMIN" && actor.organizationId !== invoice.organizationId) {
+    if (actor.role !== "ADMIN" && invoice.organizationId && !(await hasOrgMembership(actor.id, invoice.organizationId))) {
       return res.status(403).json({ message: "Өөр байгууллагын QPay invoice харах боломжгүй" });
     }
 
@@ -785,7 +813,7 @@ router.post("/pos/sales", async (req, res) => {
       });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       let register:
         | {
             id: string;
@@ -825,8 +853,14 @@ router.post("/pos/sales", async (req, res) => {
         throw toApiError(400, "Sale organizationId тодорхойгүй байна");
       }
 
-      if (actor.role !== "ADMIN" && actor.organizationId !== effectiveOrganizationId) {
-        throw toApiError(403, "Өөр байгууллагын sale хийх боломжгүй");
+      if (actor.role !== "ADMIN") {
+        const saleMembership = await tx.organizationMember.findFirst({
+          where: { userId: actor.id, organizationId: effectiveOrganizationId, isActive: true },
+          select: { id: true },
+        });
+        if (!saleMembership) {
+          throw toApiError(403, "Өөр байгууллагын sale хийх боломжгүй");
+        }
       }
 
       await tx.posSaleIdempotency.create({
@@ -929,21 +963,17 @@ router.post("/pos/sales", async (req, res) => {
       }
 
       for (const [productId, qty] of qtyByProduct) {
-        await tx.product.update({
-          where: { id: productId },
-          data: { stock: { decrement: qty } },
-        });
+        const warehouseId = await resolveOrgWarehouse(tx, effectiveOrganizationId, productId);
 
-        await tx.inventoryLedger.create({
-          data: {
-            productId,
-            change: -qty,
-            reason: InventoryReason.ORDER,
-            note: body.note || "POS sale",
-            createdById: actor?.id || null,
-            referenceId: receiptNo,
-            referenceType: "POS_SALE",
-          },
+        await adjustStock(tx, {
+          productId,
+          warehouseId: warehouseId ?? undefined,
+          change: -qty,
+          reason: InventoryReason.ORDER,
+          note: body.note || "POS sale",
+          createdById: actor?.id || null,
+          referenceId: receiptNo,
+          referenceType: "POS_SALE",
         });
       }
 
@@ -970,7 +1000,7 @@ router.post("/pos/sales", async (req, res) => {
       }
 
       const lineDetails = lines.map((line) => {
-        const product = products.find((item) => item.id === line.productId);
+        const product = products.find((item: (typeof products)[number]) => item.id === line.productId);
         const discount = Number(line.discountAmount || 0);
         const unitPrice = Number(line.unitPrice || 0);
         const qty = Number(line.qty || 0);
@@ -1140,7 +1170,7 @@ router.get("/pos/register-config", async (req, res) => {
     if (!register) {
       return res.status(404).json({ message: "POS олдсонгүй" });
     }
-    if (actor.role !== "ADMIN" && actor.organizationId !== register.organizationId) {
+    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, register.organizationId))) {
       return res.status(403).json({ message: "Өөр байгууллагын POS config харах боломжгүй" });
     }
     if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
@@ -1175,16 +1205,35 @@ router.post("/pos/registers/self-claim", async (req, res) => {
   } | null;
 
   try {
-    authUser = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: claims.userId },
       select: {
         id: true,
         role: true,
         isActive: true,
         deletedAt: true,
-        organizationId: true,
       },
     });
+    if (!user) {
+      authUser = null;
+    } else {
+      // Resolve org from membership
+      const membership = await prisma.organizationMember.findFirst({
+        where: { userId: user.id, isActive: true, isPrimary: true },
+        select: { organizationId: true },
+      });
+      const fallback = !membership
+        ? await prisma.organizationMember.findFirst({
+            where: { userId: user.id, isActive: true },
+            orderBy: { createdAt: "asc" },
+            select: { organizationId: true },
+          })
+        : null;
+      authUser = {
+        ...user,
+        organizationId: (membership || fallback)?.organizationId || null,
+      };
+    }
   } catch (dbErr) {
     console.error("self-claim auth lookup error", dbErr);
     return res.status(500).json({ message: "Хэрэглэгч шалгахад алдаа гарлаа" });
@@ -1194,12 +1243,13 @@ router.post("/pos/registers/self-claim", async (req, res) => {
     return res.status(401).json({ message: "Нэвтэрсэн хэрэглэгч хүчингүй байна" });
   }
 
-  if (!["ADMIN", "SUPPLIER"].includes(authUser.role)) {
+  // Platform ADMIN or user with org membership can claim POS
+  if (authUser.role !== "ADMIN" && !authUser.organizationId) {
     return res.status(403).json({ message: "POS claim хийх эрх хүрэлцэхгүй" });
   }
 
-  // SUPPLIER: always use the org from the verified DB record.
-  // ADMIN:    may supply an explicit organizationId in the body.
+  // ADMIN: may supply an explicit organizationId in the body.
+  // Others: always use org from membership.
   let organizationId: string;
   if (authUser.role === "ADMIN") {
     organizationId = String(req.body?.organizationId || "").trim();
@@ -1207,11 +1257,8 @@ router.post("/pos/registers/self-claim", async (req, res) => {
       return res.status(400).json({ message: "organizationId шаардлагатай" });
     }
   } else {
-    if (!authUser.organizationId) {
-      return res.status(403).json({ message: "Байгууллагагүй хэрэглэгч POS үүсгэх боломжгүй" });
-    }
-    // Silently ignore any organizationId sent in the body — use DB value only.
-    organizationId = authUser.organizationId;
+    // Silently ignore any organizationId sent in the body — use membership value only.
+    organizationId = authUser.organizationId!;
   }
 
   const branchId = String(req.body?.branchId || "").trim();

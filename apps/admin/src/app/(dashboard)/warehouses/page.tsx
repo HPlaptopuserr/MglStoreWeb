@@ -20,7 +20,7 @@ import {
   Check,
   Eye,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 interface Organization {
   id: string;
@@ -78,8 +78,8 @@ export default function AdminWarehousesPage() {
   const fetchData = async () => {
     try {
       const [warehouseRes, orgRes] = await Promise.all([
-        fetch(`${API}/warehouses`),
-        fetch(`${API}/partners?status=APPROVED&limit=1000`),
+        adminFetch(`${API}/warehouses`),
+        adminFetch(`${API}/partners?status=APPROVED&limit=1000`),
       ]);
 
       if (warehouseRes.ok) {
@@ -112,7 +112,7 @@ export default function AdminWarehousesPage() {
     setIsSubmitting(true);
     try {
       const storedUser = JSON.parse(localStorage.getItem("admin_user") || "{}");
-      const response = await fetch(`${API}/warehouses`, {
+      const response = await adminFetch(`${API}/warehouses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -140,7 +140,7 @@ export default function AdminWarehousesPage() {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch(
+      const response = await adminFetch(
         `${API}/warehouses/${selectedWarehouse.id}`,
         {
           method: "PATCH",
@@ -168,7 +168,7 @@ export default function AdminWarehousesPage() {
     setIsSubmitting(true);
     try {
       const storedUser = JSON.parse(localStorage.getItem("admin_user") || "{}");
-      const response = await fetch(
+      const response = await adminFetch(
         `${API}/warehouses/${selectedWarehouse.id}/assign`,
         {
           method: "POST",
@@ -198,7 +198,7 @@ export default function AdminWarehousesPage() {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch(
+      const response = await adminFetch(
         `${API}/warehouses/${selectedWarehouse.id}`,
         {
           method: "DELETE",
@@ -280,13 +280,22 @@ export default function AdminWarehousesPage() {
             Агуулахуудыг удирдах, vendor-уудад хуваарилах
           </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#5B4CFF] px-5 py-3 text-sm font-bold text-white transition-all hover:bg-[#5B4CFF]/90 hover:shadow-lg"
-        >
-          <Plus className="h-5 w-5" />
-          Шинэ агуулах
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push("/warehouses/operators")}
+            className="inline-flex items-center gap-2 rounded-xl border border-[#5B4CFF]/30 px-5 py-3 text-sm font-bold text-[#5B4CFF] transition-all hover:bg-[#5B4CFF]/5"
+          >
+            <User className="h-5 w-5" />
+            Оператор бүртгэл
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#5B4CFF] px-5 py-3 text-sm font-bold text-white transition-all hover:bg-[#5B4CFF]/90 hover:shadow-lg"
+          >
+            <Plus className="h-5 w-5" />
+            Шинэ агуулах
+          </button>
+        </div>
       </div>
 
       {/* Search */}

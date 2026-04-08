@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@source "../../../../packages/ui/src";
+
+:root {
+  --wms-navy: #0f172a;
+  --wms-navy-light: #1e293b;
+  --wms-blue: #2563eb;
+  --wms-blue-light: #3b82f6;
+  --wms-accent: #06b6d4;
+}
+
+@theme inline {
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: #f1f5f9;
+  color: #0f172a;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Scrollbar styling for WMS tables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

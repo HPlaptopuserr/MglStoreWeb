@@ -5,9 +5,12 @@ import {
   OnboardingSource,
   OrgStatus,
   OrgType,
-  Role,
+  PlatformRole,
 } from "@mgl/database";
+import type { Prisma } from "@mgl/database";
 import bcrypt from "bcryptjs";
+import { Permission } from "@mgl/types";
+import { requireAuth, requirePlatformPermission, requireAnyPlatformPermission } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
@@ -101,7 +104,7 @@ function haversineDistanceMeters(
 }
 
 // Grouped by businessCategory (must be before /partners to avoid Express matching issues)
-router.post("/admin/organizations", async (req, res) => {
+router.post("/admin/organizations", requireAuth, requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS), async (req, res) => {
   try {
     const {
       name,
@@ -136,15 +139,20 @@ router.post("/admin/organizations", async (req, res) => {
       where: { email: normalizedEmail },
       select: {
         id: true,
-        organizationId: true,
         passwordHash: true,
       },
     });
 
-    if (existingUser?.organizationId) {
-      return res.status(409).json({
-        message: "Энэ email дээр user аль хэдийн өөр байгууллагад бүртгэлтэй байна",
+    if (existingUser) {
+      const hasOrg = await prisma.organizationMember.findFirst({
+        where: { userId: existingUser.id, isActive: true },
+        select: { id: true },
       });
+      if (hasOrg) {
+        return res.status(409).json({
+          message: "Энэ email дээр user аль хэдийн өөр байгууллагад бүртгэлтэй байна",
+        });
+      }
     }
 
     if (existingUser?.passwordHash) {
@@ -158,7 +166,7 @@ router.post("/admin/organizations", async (req, res) => {
     const inviteToken = generateInviteToken();
     const inviteTokenExpiresAt = getInviteTokenExpiry();
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const organization = await tx.organization.create({
         data: {
           name: name.trim(),
@@ -187,33 +195,29 @@ router.post("/admin/organizations", async (req, res) => {
         ? await tx.user.update({
             where: { id: existingUser.id },
             data: {
-              role: Role.SUPPLIER,
+              role: PlatformRole.USER,
               isActive: true,
               emailVerified: true,
               onboardingSource: OnboardingSource.ADMIN,
-              organizationId: organization.id,
             },
             select: {
               id: true,
               email: true,
               role: true,
-              organizationId: true,
             },
           })
         : await tx.user.create({
             data: {
               email: normalizedEmail,
-              role: Role.SUPPLIER,
+              role: PlatformRole.USER,
               isActive: true,
               emailVerified: true,
               onboardingSource: OnboardingSource.ADMIN,
-              organizationId: organization.id,
             },
             select: {
               id: true,
               email: true,
               role: true,
-              organizationId: true,
             },
           });
 
@@ -243,6 +247,7 @@ router.post("/admin/organizations", async (req, res) => {
           userId: user.id,
           organizationId: organization.id,
           role: "OWNER",
+          isPrimary: true,
           isActive: true,
         },
       });
@@ -286,7 +291,7 @@ router.get("/partners/grouped", async (req, res) => {
       where: { isActive: true },
     });
 
-    const categoryMap = new Map(activeCategories.map((c) => [c.slug, c.name]));
+    const categoryMap = new Map(activeCategories.map((c: (typeof activeCategories)[number]) => [c.slug, c.name]));
 
     const grouped: Record<
       string,
@@ -333,7 +338,7 @@ router.get("/partners/grouped", async (req, res) => {
 });
 
 // Toggle investor role for a partner
-router.patch("/partners/:id/investor", async (req, res) => {
+router.patch("/partners/:id/investor", requireAuth, requirePlatformPermission(Permission.MANAGE_INVESTORS), async (req, res) => {
   try {
     const { id } = req.params;
     const { isInvestor, investmentAmount, addAmount } = req.body;
@@ -382,7 +387,7 @@ router.patch("/partners/:id/investor", async (req, res) => {
       where: { id },
       include: {
         investorProfile: true,
-        _count: { select: { users: true, products: true, branches: true, orders: true } },
+        _count: { select: { members: true, products: true, branches: true, orders: true } },
       },
     });
 
@@ -410,7 +415,7 @@ router.get("/partners", async (req, res) => {
       include: {
         _count: {
           select: {
-            users: true,
+            members: true,
             products: true,
             branches: true,
             orders: true,
@@ -467,7 +472,7 @@ router.get("/partners", async (req, res) => {
       investorTier: partner.investorProfile?.tier || null,
       investmentAmount: partner.investorProfile?.investmentLevel ? Number(partner.investorProfile.investmentLevel) : null,
       stats: {
-        users: partner._count.users,
+        users: partner._count.members,
         products: partner._count.products,
         branches: partner._count.branches,
         orders: partner._count.orders,
@@ -507,7 +512,7 @@ router.get("/partners", async (req, res) => {
 
 // ─── HR / Staff endpoints ────────────────────────────────────────────────────
 
-const VALID_STAFF_ROLES = ["OWNER", "ADMIN", "STAFF", "VIEWER", "CASHIER", "DRIVER"] as const;
+const VALID_STAFF_ROLES = ["OWNER", "ADMIN", "STAFF", "VIEWER"] as const;
 type StaffRole = (typeof VALID_STAFF_ROLES)[number];
 
 const ROLE_LABEL: Record<StaffRole, string> = {
@@ -515,12 +520,10 @@ const ROLE_LABEL: Record<StaffRole, string> = {
   ADMIN: "Менежер",
   STAFF: "Ажилтан",
   VIEWER: "Ажиглагч",
-  CASHIER: "Кассчин",
-  DRIVER: "Жолооч",
 };
 
 // GET /admin/organizations/:id/staff
-router.get("/admin/organizations/:id/staff", async (req, res) => {
+router.get("/admin/organizations/:id/staff", requireAuth, requireAnyPlatformPermission(Permission.MANAGE_ORGANIZATIONS, Permission.MANAGE_USERS), async (req, res) => {
   const { id: organizationId } = req.params;
   try {
     const members = await prisma.organizationMember.findMany({
@@ -541,7 +544,7 @@ router.get("/admin/organizations/:id/staff", async (req, res) => {
       },
     });
     return res.json(
-      members.map((m) => ({
+      members.map((m: (typeof members)[number]) => ({
         id: m.id,
         userId: m.user.id,
         email: m.user.email,
@@ -560,7 +563,7 @@ router.get("/admin/organizations/:id/staff", async (req, res) => {
 });
 
 // POST /admin/organizations/:id/staff — create a new staff member
-router.post("/admin/organizations/:id/staff", async (req, res) => {
+router.post("/admin/organizations/:id/staff", requireAuth, requireAnyPlatformPermission(Permission.MANAGE_ORGANIZATIONS, Permission.MANAGE_USERS), async (req, res) => {
   const { id: organizationId } = req.params;
   const { fullName, email, phone, password, role } = req.body as {
     fullName?: string;
@@ -590,7 +593,7 @@ router.post("/admin/organizations/:id/staff", async (req, res) => {
 
     const existingUser = await prisma.user.findUnique({
       where: { email: normalizedEmail },
-      select: { id: true, organizationId: true },
+      select: { id: true },
     });
 
     if (existingUser) {
@@ -606,17 +609,16 @@ router.post("/admin/organizations/:id/staff", async (req, res) => {
       ? await bcrypt.hash(password.trim(), 10)
       : null;
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const user = existingUser
         ? existingUser
         : await tx.user.create({
             data: {
               email: normalizedEmail,
-              role: memberRole === "DRIVER" ? "COURIER" : "SUPPLIER",
+              role: PlatformRole.USER,
               isActive: true,
               emailVerified: true,
               onboardingSource: OnboardingSource.ADMIN,
-              organizationId,
               ...(passwordHash ? { passwordHash } : {}),
             },
             select: { id: true },
@@ -662,7 +664,7 @@ router.post("/admin/organizations/:id/staff", async (req, res) => {
 });
 
 // PATCH /admin/organizations/:id/staff/:memberId/toggle — toggle active
-router.patch("/admin/organizations/:id/staff/:memberId/toggle", async (req, res) => {
+router.patch("/admin/organizations/:id/staff/:memberId/toggle", requireAuth, requireAnyPlatformPermission(Permission.MANAGE_ORGANIZATIONS, Permission.MANAGE_USERS), async (req, res) => {
   const { memberId } = req.params;
   try {
     const member = await prisma.organizationMember.findUnique({ where: { id: memberId } });
@@ -680,7 +682,7 @@ router.patch("/admin/organizations/:id/staff/:memberId/toggle", async (req, res)
 });
 
 // DELETE /admin/organizations/:id/staff/:memberId
-router.delete("/admin/organizations/:id/staff/:memberId", async (req, res) => {
+router.delete("/admin/organizations/:id/staff/:memberId", requireAuth, requireAnyPlatformPermission(Permission.MANAGE_ORGANIZATIONS, Permission.MANAGE_USERS), async (req, res) => {
   const { memberId } = req.params;
   try {
     await prisma.organizationMember.delete({ where: { id: memberId } });
@@ -748,7 +750,7 @@ router.get("/branches/map", async (_req, res) => {
   }
 });
 
-router.post("/partners/:id/branches", async (req, res) => {
+router.post("/partners/:id/branches", requireAuth, requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, address, lat, lng } = req.body as {
@@ -882,7 +884,7 @@ router.get("/partners/:slugOrId", async (req, res) => {
       include: {
         _count: {
           select: {
-            users: true,
+            members: true,
             products: true,
             branches: true,
             orders: true,
@@ -975,7 +977,7 @@ router.get("/partners/:slugOrId", async (req, res) => {
       investorTier: partner.investorProfile?.tier || null,
       investmentAmount: partner.investorProfile?.investmentLevel ? Number(partner.investorProfile.investmentLevel) : null,
       stats: {
-        users: partner._count.users,
+        users: partner._count.members,
         products: partner._count.products,
         branches: partner._count.branches,
         orders: partner._count.orders,
@@ -1022,7 +1024,7 @@ router.get("/partners/:slugOrId", async (req, res) => {
 });
 
 /* ─── POST /partners/:id/members/:userId/reset-password ─────────────── */
-router.post("/partners/:id/members/:userId/reset-password", async (req, res) => {
+router.post("/partners/:id/members/:userId/reset-password", requireAuth, requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS), async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -1048,7 +1050,7 @@ router.post("/partners/:id/members/:userId/reset-password", async (req, res) => 
   }
 });
 
-router.patch("/partners/:id/category", async (req, res) => {
+router.patch("/partners/:id/category", requireAuth, requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS), async (req, res) => {
   try {
     const { id } = req.params;
     const { businessCategory } = req.body;
@@ -1069,7 +1071,7 @@ router.patch("/partners/:id/category", async (req, res) => {
 });
 
 // Update partner profile
-router.patch("/partners/:id/profile", async (req, res) => {
+router.patch("/partners/:id/profile", requireAuth, requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS), async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -1153,7 +1155,7 @@ router.get("/partners/deleted/list", async (req, res) => {
         scheduledPermanentDeletionAt: true,
         _count: {
           select: {
-            users: true,
+            members: true,
             products: true,
             orders: true,
           },
@@ -1171,7 +1173,7 @@ router.get("/partners/deleted/list", async (req, res) => {
 });
 
 // Delete organization (soft delete with reason, 30 days retention)
-router.delete("/partners/:id", async (req, res) => {
+router.delete("/partners/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS), async (req, res) => {
   try {
     const { id } = req.params;
     const { reason, deletedBy } = req.body;
@@ -1190,7 +1192,7 @@ router.delete("/partners/:id", async (req, res) => {
           select: {
             orders: true,
             products: true,
-            users: true,
+            members: true,
           },
         },
       },
@@ -1218,11 +1220,11 @@ router.delete("/partners/:id", async (req, res) => {
       },
     });
 
-    // Also deactivate all users of this organization
-    await prisma.user.updateMany({
+    // Also deactivate all members of this organization
+    await prisma.organizationMember.updateMany({
       where: { organizationId: id },
       data: {
-        deletedAt: new Date(),
+        isActive: false,
       },
     });
 
@@ -1243,7 +1245,7 @@ router.delete("/partners/:id", async (req, res) => {
 });
 
 // Restore deleted organization
-router.post("/partners/:id/restore", async (req, res) => {
+router.post("/partners/:id/restore", requireAuth, requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1273,11 +1275,11 @@ router.post("/partners/:id/restore", async (req, res) => {
       },
     });
 
-    // Restore users
-    await prisma.user.updateMany({
+    // Restore members
+    await prisma.organizationMember.updateMany({
       where: { organizationId: id },
       data: {
-        deletedAt: null,
+        isActive: true,
       },
     });
 
@@ -1296,7 +1298,7 @@ router.post("/partners/:id/restore", async (req, res) => {
 });
 
 // Permanently delete organization (only after 30 days or by force)
-router.delete("/partners/:id/permanent", async (req, res) => {
+router.delete("/partners/:id/permanent", requireAuth, requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS), async (req, res) => {
   try {
     const { id } = req.params;
     const { force } = req.body;

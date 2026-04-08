@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 export function useSiteSettings() {
   const [banners, setBanners] = useState<string[]>([]);
@@ -12,7 +12,7 @@ export function useSiteSettings() {
   const [branchMapVisibilitySaving, setBranchMapVisibilitySaving] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/site-settings`)
+    adminFetch(`${API}/site-settings`)
       .then((r) => (r.ok ? r.json() : {}))
       .then((data: Record<string, string>) => {
         if (data["promo-banners"]) {
@@ -42,7 +42,7 @@ export function useSiteSettings() {
   const saveBanners = async (currentBanners: string[]) => {
     setSaving(true);
     try {
-      await fetch(`${API}/site-settings`, {
+      await adminFetch(`${API}/site-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ "promo-banners": JSON.stringify(currentBanners) }),
@@ -56,7 +56,7 @@ export function useSiteSettings() {
   const saveCategories = async (currentCategories: string[]) => {
     setSaving(true);
     try {
-      await fetch(`${API}/site-settings`, {
+      await adminFetch(`${API}/site-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ "home-categories": JSON.stringify(currentCategories) }),
@@ -72,7 +72,7 @@ export function useSiteSettings() {
     setShowBranchMapOnWeb(nextValue);
     setBranchMapVisibilitySaving(true);
     try {
-      const res = await fetch(`${API}/site-settings/show-branch-map`, {
+      const res = await adminFetch(`${API}/site-settings/show-branch-map`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: nextValue ? "true" : "false" }),

@@ -1,7 +1,10 @@
 import { Router, type Router as ExpressRouter } from "express";
+import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
+import { isAdminRole, ADMIN_ROLE_LABELS, getPlatformPermissions } from "@mgl/types";
+import { resolveOrganization } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
@@ -30,7 +33,7 @@ router.post("/admin/login", async (req, res) => {
       return res.status(403).json({ message: "Хэрэглэгч идэвхгүй байна" });
     }
 
-    if (user.role !== "ADMIN") {
+    if (!isAdminRole(user.role)) {
       return res.status(403).json({ message: "Admin эрхгүй байна" });
     }
 
@@ -63,7 +66,9 @@ router.post("/admin/login", async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
+        roleLabel: ADMIN_ROLE_LABELS[user.role] || user.role,
         fullName: user.profile?.fullName || "",
+        permissions: getPlatformPermissions(user.role),
       },
     });
   } catch (error) {
@@ -92,7 +97,7 @@ router.post("/login", async (req, res) => {
       // 1. Profile.phoneNumber-аар хай
       user = await prisma.user.findFirst({
         where: { profile: { phoneNumber: phone } },
-        include: { profile: true, organization: true },
+        include: { profile: true },
       });
 
       // 2. Fallback: хуучин vendor-уудын хувьд RegistrationRequest-аас хай
@@ -108,14 +113,14 @@ router.post("/login", async (req, res) => {
         if (regReq?.approvedUserId) {
           user = await prisma.user.findUnique({
             where: { id: regReq.approvedUserId },
-            include: { profile: true, organization: true },
+            include: { profile: true },
           });
         }
       }
     } else {
       user = await prisma.user.findUnique({
         where: { email: identifier.trim().toLowerCase() },
-        include: { profile: true, organization: true },
+        include: { profile: true },
       });
     }
 
@@ -145,24 +150,26 @@ router.post("/login", async (req, res) => {
       data: { lastLoginAt: new Date() },
     });
 
-    // Determine effective role: prefer OrganizationMember role over User.role
-    let effectiveRole: string = user.role;
-    if (user.organizationId) {
-      const membership = await prisma.organizationMember.findFirst({
-        where: { userId: user.id, organizationId: user.organizationId },
-        select: { role: true },
+    // Determine effective role from OrganizationMember
+    const orgInfo = await resolveOrganization(user.id);
+
+    // Resolve org name
+    let organizationName = "";
+    if (orgInfo?.organizationId) {
+      const org = await prisma.organization.findUnique({
+        where: { id: orgInfo.organizationId },
+        select: { name: true },
       });
-      if (membership) {
-        effectiveRole = membership.role;
-      }
+      organizationName = org?.name || "";
     }
 
     const accessToken = jwt.sign(
       {
         userId: user.id,
         email: user.email,
-        role: effectiveRole,
-        organizationId: user.organizationId,
+        role: user.role,
+        organizationId: orgInfo?.organizationId || null,
+        orgRole: orgInfo?.orgRole || null,
       },
       JWT_SECRET,
       { expiresIn: "1d" },
@@ -173,10 +180,11 @@ router.post("/login", async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
-        role: effectiveRole,
+        role: user.role,
+        orgRole: orgInfo?.orgRole || null,
         fullName: user.profile?.fullName || "",
-        organizationId: user.organizationId,
-        organizationName: user.organization?.name || "",
+        organizationId: orgInfo?.organizationId || null,
+        organizationName,
       },
     });
   } catch (error) {
@@ -204,12 +212,12 @@ router.post("/web/login", async (req, res) => {
     if (isPhone) {
       user = await prisma.user.findFirst({
         where: { profile: { phoneNumber: identifier.trim() } },
-        include: { profile: true, organization: true },
+        include: { profile: true },
       });
     } else {
       user = await prisma.user.findUnique({
         where: { email: identifier.trim().toLowerCase() },
-        include: { profile: true, organization: true },
+        include: { profile: true },
       });
     }
 
@@ -221,9 +229,10 @@ router.post("/web/login", async (req, res) => {
       return res.status(403).json({ message: "Хэрэглэгч идэвхгүй байна" });
     }
 
-    if (!["SUPPLIER", "CUSTOMER", "INDIVIDUAL"].includes(user.role)) {
+    // Only block platform ADMIN from web login (they use /admin/login)
+    if (isAdminRole(user.role)) {
       return res.status(403).json({
-        message: "Энэ эрхтэй хэрэглэгч web нэвтрэлт ашиглах боломжгүй.",
+        message: "Admin хэрэглэгч web нэвтрэлт ашиглах боломжгүй. Admin panel ашиглана уу.",
       });
     }
 
@@ -243,12 +252,15 @@ router.post("/web/login", async (req, res) => {
       data: { lastLoginAt: new Date() },
     });
 
+    const orgInfo = await resolveOrganization(user.id);
+
     const accessToken = jwt.sign(
       {
         userId: user.id,
         email: user.email,
         role: user.role,
-        organizationId: user.organizationId,
+        organizationId: orgInfo?.organizationId || null,
+        orgRole: orgInfo?.orgRole || null,
       },
       JWT_SECRET,
       { expiresIn: "1d" },
@@ -260,7 +272,9 @@ router.post("/web/login", async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
+        orgRole: orgInfo?.orgRole || null,
         fullName: user.profile?.fullName || "",
+        organizationId: orgInfo?.organizationId || null,
       },
     });
   } catch (error) {
@@ -304,7 +318,7 @@ router.post("/web/register", async (req, res) => {
     }
 
     if (existingUser) {
-      if (existingUser.role === "ADMIN") {
+      if (isAdminRole(existingUser.role)) {
         return res.status(409).json({
           message: isPhone
             ? "Энэ утасны дугаар бүртгэгдсэн байна"
@@ -385,7 +399,7 @@ router.post("/web/register", async (req, res) => {
       data: {
         email: email ? email.trim().toLowerCase() : `${Date.now()}@temp.local`,
         passwordHash,
-        role: "CUSTOMER",
+        role: "USER",
         isActive: true,
         lastLoginAt: new Date(),
         profile: {
@@ -419,6 +433,164 @@ router.post("/web/register", async (req, res) => {
     });
   } catch (error) {
     console.error("[web register error]", error);
+    return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
+
+// ─── Forgot Password ───────────────────────────────────────────────────
+
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email, phone } = req.body;
+    const identifier: string | undefined = email || phone;
+
+    if (!identifier) {
+      return res.status(400).json({
+        message: "И-мэйл эсвэл утасны дугаар шаардлагатай",
+      });
+    }
+
+    const isPhone =
+      /^[0-9+\-\s()]{7,15}$/.test(identifier.trim()) &&
+      !identifier.includes("@");
+
+    let user;
+    if (isPhone) {
+      user = await prisma.user.findFirst({
+        where: { profile: { phoneNumber: identifier.trim() } },
+        include: { profile: true },
+      });
+    } else {
+      user = await prisma.user.findUnique({
+        where: { email: identifier.trim().toLowerCase() },
+        include: { profile: true },
+      });
+    }
+
+    if (!user) {
+      // Don't reveal whether user exists
+      return res.json({ message: "Баталгаажуулах код илгээлээ" });
+    }
+
+    // Generate 4-digit code
+/*     const code = crypto.randomInt(1000, 9999).toString(); */
+    const code = "1234";
+    const tokenHash = crypto.createHash("sha256").update(code).digest("hex");
+
+    // Expire old tokens
+    await prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    // Save hashed token
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+      },
+    });
+
+    // ── DEV: Print code to terminal + return in response ──
+    console.log(`\n[DEV] Password reset → ${isPhone ? 'phone: ' + identifier.trim() : 'email: ' + identifier.trim()} | code: ${code}\n`);
+
+    return res.json({
+      message: "Баталгаажуулах код илгээлээ",
+      devCode: code, // DEV ONLY — production-д устгах
+    });
+  } catch (error) {
+    console.error("[forgot-password error]", error);
+    return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
+
+router.post("/verify-reset-code", async (req, res) => {
+  try {
+    const { code } = req.body;
+
+    if (!code) {
+      return res.status(400).json({ message: "Код шаардлагатай" });
+    }
+
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(code.toString().trim())
+      .digest("hex");
+
+    const resetToken = await prisma.passwordResetToken.findFirst({
+      where: {
+        tokenHash,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!resetToken) {
+      return res.status(400).json({
+        message: "Код буруу эсвэл хугацаа дууссан байна",
+      });
+    }
+
+    return res.json({ message: "Код баталгаажлаа", valid: true });
+  } catch (error) {
+    console.error("[verify-reset-code error]", error);
+    return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
+
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { code, password } = req.body;
+
+    if (!code || !password) {
+      return res.status(400).json({
+        message: "Баталгаажуулах код болон шинэ нууц үг шаардлагатай",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        message: "Нууц үг дор хаяж 6 тэмдэгт байх ёстой",
+      });
+    }
+
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(code.toString().trim())
+      .digest("hex");
+
+    const resetToken = await prisma.passwordResetToken.findFirst({
+      where: {
+        tokenHash,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      include: { user: true },
+    });
+
+    if (!resetToken) {
+      return res.status(400).json({
+        message: "Код буруу эсвэл хугацаа дууссан байна",
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: resetToken.userId },
+        data: { passwordHash },
+      }),
+      prisma.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    return res.json({ message: "Нууц үг амжилттай шинэчлэгдлээ" });
+  } catch (error) {
+    console.error("[reset-password error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
   }
 });

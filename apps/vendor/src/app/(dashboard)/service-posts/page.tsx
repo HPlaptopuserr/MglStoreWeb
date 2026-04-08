@@ -18,7 +18,7 @@ import {
   Eye,
   DollarSign,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, authFetch } from "@/lib/api";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
 interface ServicePostImage {
@@ -213,7 +213,7 @@ export default function ServicePostsPage() {
     if (!orgId) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API}/service-posts?organizationId=${orgId}`);
+      const res = await authFetch(`${API}/service-posts?organizationId=${orgId}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
       setPosts(Array.isArray(data) ? data : []);
@@ -286,7 +286,7 @@ export default function ServicePostsPage() {
     try {
       const url = editingId ? `${API}/service-posts/${editingId}` : `${API}/service-posts`;
       const method = editingId ? "PATCH" : "POST";
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -309,7 +309,7 @@ export default function ServicePostsPage() {
     if (!confirm("Энэ постыг устгах уу?")) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`${API}/service-posts/${id}`, { method: "DELETE" });
+      const res = await authFetch(`${API}/service-posts/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       showToast("success", "Пост устгагдлаа");
       setPosts((prev) => prev.filter((p) => p.id !== id));
@@ -323,7 +323,7 @@ export default function ServicePostsPage() {
 
   const handleToggleActive = async (post: ServicePost) => {
     try {
-      const res = await fetch(`${API}/service-posts/${post.id}`, {
+      const res = await authFetch(`${API}/service-posts/${post.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !post.isActive }),

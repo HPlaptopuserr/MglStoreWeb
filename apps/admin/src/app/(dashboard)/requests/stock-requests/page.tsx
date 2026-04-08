@@ -23,7 +23,7 @@ import {
   Receipt,
   Ban,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, adminFetch } from "@/lib/api";
 
 type StockRequestStatus =
   | "PENDING"
@@ -168,7 +168,7 @@ export default function AdminStockRequestsPage() {
       setLoading(true);
       const params = new URLSearchParams();
       if (statusFilter !== "ALL") params.set("status", statusFilter);
-      const res = await fetch(`${API}/stock-requests?${params.toString()}`);
+      const res = await adminFetch(`${API}/stock-requests?${params.toString()}`);
       if (res.ok) setRequests((await res.json()) || []);
     } catch (error) {
       console.error("Failed to fetch requests:", error);
@@ -199,7 +199,7 @@ export default function AdminStockRequestsPage() {
   ) => {
     setLoadingPayments(true);
     try {
-      const res = await fetch(
+      const res = await adminFetch(
         `${API}/stock-requests/payments/organization/${organizationId}`,
       );
       if (res.ok) {
@@ -224,7 +224,7 @@ export default function AdminStockRequestsPage() {
     if (!confirm("Төлбөр төлөгдсөн гэж баталгаажуулах уу?")) return;
     setIsProcessing(true);
     try {
-      const response = await fetch(
+      const response = await adminFetch(
         `${API}/stock-requests/payments/${paymentId}/confirm`,
         {
           method: "PATCH",
@@ -266,7 +266,7 @@ export default function AdminStockRequestsPage() {
         approvedQuantity: itemQuantities[item.id] || 0,
       }));
 
-      const response = await fetch(
+      const response = await adminFetch(
         `${API}/stock-requests/${selectedRequest.id}/approve`,
         {
           method: "PATCH",
@@ -305,7 +305,7 @@ export default function AdminStockRequestsPage() {
     }
     setIsProcessing(true);
     try {
-      const response = await fetch(
+      const response = await adminFetch(
         `${API}/stock-requests/${selectedRequest.id}/reject`,
         {
           method: "PATCH",
@@ -328,7 +328,7 @@ export default function AdminStockRequestsPage() {
 
   const handleProcess = async (requestId: string) => {
     try {
-      const response = await fetch(
+      const response = await adminFetch(
         `${API}/stock-requests/${requestId}/process`,
         {
           method: "PATCH",
@@ -344,7 +344,7 @@ export default function AdminStockRequestsPage() {
   const handleComplete = async (requestId: string) => {
     if (!confirm("Хүсэлтийг дуусгах уу? Агуулахаас бараа татагдана.")) return;
     try {
-      const response = await fetch(
+      const response = await adminFetch(
         `${API}/stock-requests/${requestId}/complete`,
         {
           method: "PATCH",
