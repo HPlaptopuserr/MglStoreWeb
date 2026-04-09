@@ -194,13 +194,13 @@ export function ExcelImportModal({
                 </div>
                 <div className="divide-y divide-slate-50">
                   {[
+                    { col: "Зураг", req: false, desc: "Зургаа нүдэнд шууд оруулна (Insert > Image)" },
                     { col: "Нэр (name)", req: true, desc: "Барааны нэр" },
                     { col: "SKU (sku)", req: false, desc: "Барааны код / SKU" },
                     { col: "Үнэ (price)", req: true, desc: "Зарах үнэ (тоо)" },
                     { col: "Өртөг (costPrice)", req: false, desc: "Өртөг үнэ (тоо)" },
                     { col: "Нөөц (stock)", req: false, desc: "Нөөцийн тоо (0 анхдагч)" },
                     { col: "Тайлбар (description)", req: false, desc: "Барааны тайлбар" },
-                    { col: "Зураг URL (images)", req: false, desc: "Зургийн URL (таслалаар тусгаарлана, 5 хүртэл)" },
                   ].map(({ col, req, desc }) => (
                     <div key={col} className="flex items-center justify-between px-4 py-2.5 text-sm">
                       <div className="flex items-center gap-2">

@@ -80,29 +80,31 @@ router.get("/products/import-template", (_req, res) => {
   try {
     const templateData = [
       {
+        "Зураг": "(зургаа энд оруулна)",
         "Нэр (name)": "Жишээ бараа 1",
         "SKU (sku)": "SKU-001",
         "Үнэ (price)": 25000,
         "Өртөг (costPrice)": 15000,
         "Нөөц (stock)": 100,
         "Тайлбар (description)": "Барааны тайлбар энд бичнэ",
-        "Зураг URL (images)": "https://example.com/img1.jpg, https://example.com/img2.jpg",
       },
       {
+        "Зураг": "(зургаа энд оруулна)",
         "Нэр (name)": "Жишээ бараа 2",
         "SKU (sku)": "SKU-002",
         "Үнэ (price)": 50000,
         "Өртөг (costPrice)": 30000,
         "Нөөц (stock)": 50,
         "Тайлбар (description)": "",
-        "Зураг URL (images)": "",
       },
     ];
 
     const ws = XLSX.utils.json_to_sheet(templateData);
     ws["!cols"] = [
-      { wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 35 }, { wch: 50 },
+      { wch: 18 }, { wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 35 },
     ];
+    // Make image column rows taller for pasting images
+    ws["!rows"] = [{ hpt: 20 }, { hpt: 60 }, { hpt: 60 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Бараа");
 
@@ -122,41 +124,46 @@ async function extractExcelImages(buffer: Buffer): Promise<Map<number, Buffer[]>
   const rowImages = new Map<number, Buffer[]>();
   try {
     const zip = await JSZip.loadAsync(buffer);
+    const allFiles = Object.keys(zip.files);
+    const mediaFiles = allFiles.filter((f) => f.startsWith("xl/media/"));
+    console.log("[excel-images] Total files:", allFiles.length, "Media files:", mediaFiles.length);
 
-    // 1. Find drawing rels to map rId → media file path
+    if (mediaFiles.length === 0) {
+      console.log("[excel-images] No media files found in xlsx");
+      return rowImages;
+    }
+
+    // Strategy 1: Try drawing-based extraction (floating images / "Place over Cells")
     const relsMap = new Map<string, string>();
-    const drawingRelsFiles = Object.keys(zip.files).filter(
-      (f) => f.match(/xl\/drawings\/_rels\/drawing\d+\.xml\.rels/)
+    const drawingRelsFiles = allFiles.filter(
+      (f) => /xl\/drawings\/_rels\/drawing\d+\.xml\.rels/.test(f)
     );
+
     for (const relsFile of drawingRelsFiles) {
       const relsXml = await zip.file(relsFile)!.async("text");
       const relMatches = relsXml.matchAll(/Id="(rId\d+)"[^>]*Target="([^"]+)"/g);
       for (const m of relMatches) {
-        relsMap.set(m[1], m[2].replace("../", "xl/"));
+        const target = m[2].startsWith("../") ? m[2].replace("../", "xl/") : `xl/drawings/${m[2]}`;
+        relsMap.set(m[1], target);
       }
     }
 
-    // 2. Parse drawing XML to map images → rows
-    const drawingFiles = Object.keys(zip.files).filter(
-      (f) => f.match(/xl\/drawings\/drawing\d+\.xml$/)
+    const drawingFiles = allFiles.filter(
+      (f) => /xl\/drawings\/drawing\d+\.xml$/.test(f)
     );
+
+    let drawingImagesFound = false;
     for (const drawingFile of drawingFiles) {
       const xml = await zip.file(drawingFile)!.async("text");
-
-      // Match twoCellAnchor or oneCellAnchor blocks
       const anchorBlocks = xml.matchAll(/<xdr:(?:twoCellAnchor|oneCellAnchor)[^>]*>([\s\S]*?)<\/xdr:(?:twoCellAnchor|oneCellAnchor)>/g);
       for (const block of anchorBlocks) {
         const content = block[1];
-        // Get row from <xdr:from><xdr:row>N</xdr:row>
         const rowMatch = content.match(/<xdr:from>[\s\S]*?<xdr:row>(\d+)<\/xdr:row>/);
-        // Get image reference r:embed="rIdN"
         const embedMatch = content.match(/r:embed="(rId\d+)"/);
 
         if (rowMatch && embedMatch) {
-          const row = parseInt(rowMatch[1]); // 0-based row (row 0 = header)
-          const rId = embedMatch[1];
-          const mediaPath = relsMap.get(rId);
-
+          const row = parseInt(rowMatch[1]);
+          const mediaPath = relsMap.get(embedMatch[1]);
           if (mediaPath) {
             const mediaFile = zip.file(mediaPath);
             if (mediaFile) {
@@ -164,10 +171,54 @@ async function extractExcelImages(buffer: Buffer): Promise<Map<number, Buffer[]>
               const existing = rowImages.get(row) || [];
               existing.push(imgBuffer);
               rowImages.set(row, existing);
+              drawingImagesFound = true;
             }
           }
         }
       }
+    }
+
+    if (drawingImagesFound) {
+      console.log("[excel-images] Drawing strategy: found images for rows:", [...rowImages.keys()]);
+      return rowImages;
+    }
+
+    // Strategy 2: If no drawing images found, try sequential assignment
+    // (images are in xl/media/ but placed in cells or as "Place in Cell")
+    // Sort media files by name (image1, image2, ...) and assign to rows sequentially
+    console.log("[excel-images] No drawing-placed images. Trying sequential media assignment...");
+    const sortedMedia = mediaFiles.sort((a, b) => {
+      const numA = parseInt(a.match(/\d+/)?.[0] || "0");
+      const numB = parseInt(b.match(/\d+/)?.[0] || "0");
+      return numA - numB;
+    });
+
+    // Read the sheet to find how many data rows exist
+    const workbook = XLSX.read(buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const rows = sheetName ? XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) : [];
+    const dataRowCount = rows.length;
+
+    console.log("[excel-images] Media files:", sortedMedia.length, "Data rows:", dataRowCount);
+
+    // Assign images to rows 1..N (row 0 is header)
+    // If image count matches data row count, assign 1:1
+    if (sortedMedia.length > 0 && sortedMedia.length <= dataRowCount * 5) {
+      const imagesPerRow = Math.ceil(sortedMedia.length / dataRowCount);
+      for (let i = 0; i < sortedMedia.length; i++) {
+        const mediaFile = zip.file(sortedMedia[i]);
+        if (mediaFile) {
+          const imgBuffer = Buffer.from(await mediaFile.async("arraybuffer"));
+          // row index: 0-based, row 0 = header, row 1 = first data row
+          const rowIdx = Math.floor(i / imagesPerRow) + 1;
+          const existing = rowImages.get(rowIdx) || [];
+          if (existing.length < 5) {
+            existing.push(imgBuffer);
+            rowImages.set(rowIdx, existing);
+          }
+        }
+      }
+      console.log("[excel-images] Sequential strategy: assigned images to rows:", [...rowImages.keys()]);
     }
   } catch (err) {
     console.error("extractExcelImages error:", err);
@@ -253,6 +304,7 @@ router.post(
 
       // Extract embedded images from xlsx (row → image buffers)
       const embeddedImages = await extractExcelImages(req.file.buffer);
+      console.log("[import] Embedded images map has", embeddedImages.size, "rows with images");
 
       // Column name mapping — supports both Mongolian & English headers
       const colMap = {
