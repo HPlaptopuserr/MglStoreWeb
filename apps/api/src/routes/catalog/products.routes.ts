@@ -127,13 +127,121 @@ async function extractExcelImages(buffer: Buffer): Promise<Map<number, Buffer[]>
     const allFiles = Object.keys(zip.files);
     const mediaFiles = allFiles.filter((f) => f.startsWith("xl/media/"));
     console.log("[excel-images] Total files:", allFiles.length, "Media files:", mediaFiles.length);
+    console.log("[excel-images] All zip entries:", allFiles.filter(f => f.startsWith("xl/")).join(", "));
 
     if (mediaFiles.length === 0) {
       console.log("[excel-images] No media files found in xlsx");
       return rowImages;
     }
 
-    // Strategy 1: Try drawing-based extraction (floating images / "Place over Cells")
+    // Strategy 1: "Place in Cell" — Excel 365+ richData system
+    const richValueRelFile = zip.file("xl/richData/richValueRel.xml");
+    const richValueRelRelsFile = zip.file("xl/richData/_rels/richValueRel.xml.rels");
+    if (richValueRelFile && richValueRelRelsFile) {
+      console.log("[excel-images] Found richData files — trying Place-in-Cell strategy");
+
+      // 1a. Parse richValueRel.xml.rels → rId to media path mapping
+      const relsXml = await richValueRelRelsFile.async("text");
+      const rIdToMedia = new Map<string, string>();
+      for (const m of relsXml.matchAll(/Id="(rId\d+)"[^>]*Target="([^"]+)"/g)) {
+        const target = m[2].startsWith("../") ? m[2].replace("../", "xl/") : `xl/richData/${m[2]}`;
+        rIdToMedia.set(m[1], target);
+      }
+
+      // 1b. Parse richValueRel.xml → ordered list of rIds (index → rId)
+      const relXml = await richValueRelFile.async("text");
+      const orderedRIds: string[] = [];
+      for (const m of relXml.matchAll(/<rel\s[^>]*r:id="(rId\d+)"/g)) {
+        orderedRIds.push(m[1]);
+      }
+      console.log("[excel-images] richValueRel rIds:", orderedRIds.length);
+
+      // 1c. Parse rdrichvalue.xml → each rv's first <v> = index into richValueRel
+      const rdRichValueFile = zip.file("xl/richData/rdrichvalue.xml");
+      const rvToRelIndex: number[] = []; // rvIndex → relIndex
+      if (rdRichValueFile) {
+        const rvXml = await rdRichValueFile.async("text");
+        const rvBlocks = rvXml.matchAll(/<rv\s[^>]*>([\s\S]*?)<\/rv>/g);
+        for (const block of rvBlocks) {
+          const firstV = block[1].match(/<v>(\d+)<\/v>/);
+          rvToRelIndex.push(firstV ? parseInt(firstV[1]) : -1);
+        }
+      }
+      console.log("[excel-images] rdrichvalue rv count:", rvToRelIndex.length);
+
+      // 1d. Parse metadata.xml → vm value (1-based) → rv index
+      const metadataFile = zip.file("xl/metadata.xml");
+      const vmToRvIndex = new Map<number, number>(); // vm (1-based) → rvIndex
+      if (metadataFile) {
+        const metaXml = await metadataFile.async("text");
+        // Extract futureMetadata rvb indices
+        const rvbIndices: number[] = [];
+        for (const m of metaXml.matchAll(/<xlrd:rvb\s+i="(\d+)"/g)) {
+          rvbIndices.push(parseInt(m[1]));
+        }
+        // valueMetadata entries <bk><rc t="1" v="N"/></bk> — v maps to futureMetadata index
+        const vmEntries = metaXml.match(/<valueMetadata[\s\S]*?<\/valueMetadata>/);
+        if (vmEntries) {
+          const rcMatches = vmEntries[0].matchAll(/<rc\s+t="\d+"\s+v="(\d+)"/g);
+          let vmIdx = 1; // vm is 1-based
+          for (const rc of rcMatches) {
+            const futureIdx = parseInt(rc[1]);
+            if (futureIdx < rvbIndices.length) {
+              vmToRvIndex.set(vmIdx, rvbIndices[futureIdx]);
+            }
+            vmIdx++;
+          }
+        }
+      }
+      console.log("[excel-images] vm→rv mappings:", vmToRvIndex.size);
+
+      // 1e. Parse sheet XML to find cells with vm attribute
+      // Find the first sheet path
+      const sheetFile = zip.file("xl/worksheets/sheet1.xml") || 
+        allFiles.filter(f => /xl\/worksheets\/sheet\d+\.xml$/.test(f)).sort()[0]
+          ? zip.file(allFiles.filter(f => /xl\/worksheets\/sheet\d+\.xml$/.test(f)).sort()[0])
+          : null;
+
+      if (sheetFile) {
+        const sheetXml = await sheetFile.async("text");
+        // Find cells with vm attribute: <c r="A2" ... vm="1">
+        const cellMatches = sheetXml.matchAll(/<c\s+r="([A-Z]+)(\d+)"[^>]*\bvm="(\d+)"[^>]*>/g);
+        for (const cm of cellMatches) {
+          const row = parseInt(cm[2]) - 1; // Convert to 0-based (row 0 = Excel row 1 = header)
+          const vm = parseInt(cm[3]);
+
+          const rvIdx = vmToRvIndex.get(vm);
+          if (rvIdx === undefined) continue;
+
+          const relIdx = rvToRelIndex[rvIdx];
+          if (relIdx === undefined || relIdx < 0) continue;
+
+          const rId = orderedRIds[relIdx];
+          if (!rId) continue;
+
+          const mediaPath = rIdToMedia.get(rId);
+          if (!mediaPath) continue;
+
+          const mediaFileEntry = zip.file(mediaPath);
+          if (!mediaFileEntry) continue;
+
+          const imgBuffer = Buffer.from(await mediaFileEntry.async("arraybuffer"));
+          const existing = rowImages.get(row) || [];
+          if (existing.length < 5) {
+            existing.push(imgBuffer);
+            rowImages.set(row, existing);
+          }
+        }
+      }
+
+      if (rowImages.size > 0) {
+        console.log("[excel-images] Place-in-Cell strategy: found images for rows:", [...rowImages.keys()]);
+        return rowImages;
+      }
+      console.log("[excel-images] Place-in-Cell: no cell→image mapping found");
+    }
+
+    // Strategy 2: "Place over Cells" — drawing-based floating images
     const relsMap = new Map<string, string>();
     const drawingRelsFiles = allFiles.filter(
       (f) => /xl\/drawings\/_rels\/drawing\d+\.xml\.rels/.test(f)
@@ -183,17 +291,14 @@ async function extractExcelImages(buffer: Buffer): Promise<Map<number, Buffer[]>
       return rowImages;
     }
 
-    // Strategy 2: If no drawing images found, try sequential assignment
-    // (images are in xl/media/ but placed in cells or as "Place in Cell")
-    // Sort media files by name (image1, image2, ...) and assign to rows sequentially
-    console.log("[excel-images] No drawing-placed images. Trying sequential media assignment...");
+    // Strategy 3: Sequential fallback — assign media files to data rows in order
+    console.log("[excel-images] No placed images found. Trying sequential media assignment...");
     const sortedMedia = mediaFiles.sort((a, b) => {
       const numA = parseInt(a.match(/\d+/)?.[0] || "0");
       const numB = parseInt(b.match(/\d+/)?.[0] || "0");
       return numA - numB;
     });
 
-    // Read the sheet to find how many data rows exist
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const rows = sheetName ? XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) : [];
@@ -201,15 +306,12 @@ async function extractExcelImages(buffer: Buffer): Promise<Map<number, Buffer[]>
 
     console.log("[excel-images] Media files:", sortedMedia.length, "Data rows:", dataRowCount);
 
-    // Assign images to rows 1..N (row 0 is header)
-    // If image count matches data row count, assign 1:1
     if (sortedMedia.length > 0 && sortedMedia.length <= dataRowCount * 5) {
       const imagesPerRow = Math.ceil(sortedMedia.length / dataRowCount);
       for (let i = 0; i < sortedMedia.length; i++) {
         const mediaFile = zip.file(sortedMedia[i]);
         if (mediaFile) {
           const imgBuffer = Buffer.from(await mediaFile.async("arraybuffer"));
-          // row index: 0-based, row 0 = header, row 1 = first data row
           const rowIdx = Math.floor(i / imagesPerRow) + 1;
           const existing = rowImages.get(rowIdx) || [];
           if (existing.length < 5) {
@@ -306,11 +408,16 @@ router.post(
       const embeddedImages = await extractExcelImages(req.file.buffer);
       console.log("[import] Embedded images map has", embeddedImages.size, "rows with images");
 
-      // Count media files for debug
+      // Count media files and detect structure for debug
       let mediaFileCount = 0;
+      let hasRichData = false;
+      let hasDrawings = false;
       try {
         const z = await JSZip.loadAsync(req.file.buffer);
-        mediaFileCount = Object.keys(z.files).filter((f) => f.startsWith("xl/media/")).length;
+        const files = Object.keys(z.files);
+        mediaFileCount = files.filter((f) => f.startsWith("xl/media/")).length;
+        hasRichData = files.some((f) => f.includes("richData/richValueRel.xml"));
+        hasDrawings = files.some((f) => /xl\/drawings\/drawing\d+\.xml$/.test(f));
       } catch { /* ignore */ }
 
       // Column name mapping — supports both Mongolian & English headers
@@ -459,7 +566,7 @@ router.post(
         message: `${results.created} бараа амжилттай бүртгэгдлээ`,
         total: rows.length,
         ...results,
-        _debug: { embeddedImageRows: embeddedImages.size, mediaFiles: mediaFileCount },
+        _debug: { embeddedImageRows: embeddedImages.size, mediaFiles: mediaFileCount, hasRichData, hasDrawings },
       });
     } catch (error) {
       console.error("import products error", error);
