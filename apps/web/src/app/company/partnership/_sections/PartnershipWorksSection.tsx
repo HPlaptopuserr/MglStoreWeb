@@ -176,7 +176,7 @@ export const PartnershipWorksSection: React.FC = () => {
         <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             {
-              value: "500+",
+              value: "3000+",
               label: "Түнш байгууллага",
               color: "text-[#FFB700]",
             },

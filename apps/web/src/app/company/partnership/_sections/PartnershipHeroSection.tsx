@@ -14,7 +14,7 @@ import {
 
 const stats = [
   {
-    value: "500+",
+    value: "3000+",
     label: "Түнш байгууллага",
     icon: Users,
     color: "from-blue-500/20 to-blue-600/10",
@@ -106,7 +106,7 @@ export const PartnershipHeroSection: React.FC = () => {
                   </div>
                 ))}
               </div>
-              <span>500+ байгууллага итгэж ажиллаж байна</span>
+              <span>3000+ байгууллага хамтран ажиллаж байна</span>
             </div>
 
             <div className="flex flex-wrap gap-4 pt-2">

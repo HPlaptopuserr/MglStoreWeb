@@ -128,8 +128,8 @@ router.post(
         return res.status(400).json({ message: "Excel файлд мэдээлэл олдсонгүй" });
       }
 
-      if (rows.length > 500) {
-        return res.status(400).json({ message: "Нэг удаад 500-аас олон бараа оруулах боломжгүй" });
+      if (rows.length > 1000) {
+        return res.status(400).json({ message: "Нэг удаад 1000-аас олон бараа оруулах боломжгүй" });
       }
 
       // Column name mapping — supports both Mongolian & English headers

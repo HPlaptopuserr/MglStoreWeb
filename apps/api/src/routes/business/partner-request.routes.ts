@@ -38,6 +38,12 @@ router.post("/partner-requests", async (req, res) => {
       });
     }
 
+    if (email && !email.toLowerCase().endsWith("@gmail.com")) {
+      return res.status(400).json({
+        message: "И-мэйл хаяг @gmail.com байх шаардлагатай",
+      });
+    }
+
     const request = await prisma.registrationRequest.create({
       data: {
         email,

@@ -48,6 +48,8 @@ export function PartnershipForm() {
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState<"success" | "error">("error");
+  const [submitted, setSubmitted] = useState(false);
 
   const [categories, setCategories] = useState<BusinessCategory[]>([]);
   const [catOpen, setCatOpen] = useState(false);
@@ -86,6 +88,12 @@ export function PartnershipForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage("");
+    setMessageType("error");
+
+    if (form.email && !form.email.toLowerCase().endsWith("@gmail.com")) {
+      setMessage("И-мэйл хаяг @gmail.com байх шаардлагатай");
+      return;
+    }
 
     try {
       setLoading(true);
@@ -112,7 +120,9 @@ export function PartnershipForm() {
         throw new Error(data.message || "Хүсэлт илгээж чадсангүй");
       }
 
-      setMessage("Хүсэлт амжилттай илгээгдлээ.");
+      setMessageType("success");
+      setMessage("Хүсэлт илгээгдсэн, админ зөвшөөрсөнөөр бүртгэл идэвхжинэ.");
+      setSubmitted(true);
 
       setForm({
         organizationName: "",
@@ -122,6 +132,7 @@ export function PartnershipForm() {
         phoneNumber: "",
       });
     } catch (error) {
+      setMessageType("error");
       setMessage(error instanceof Error ? error.message : "Алдаа гарлаа");
     } finally {
       setLoading(false);
@@ -133,6 +144,25 @@ export function PartnershipForm() {
       <div className="absolute -inset-1 bg-white/30 rounded-4xl blur-sm transition duration-500 group-hover:bg-white/40"></div>
 
       <div className="relative bg-white rounded-[1.75rem] p-8 md:p-10 shadow-2xl flex flex-col">
+        {submitted ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center space-y-4">
+            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+              <Check className="h-8 w-8 text-green-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Хүсэлт амжилттай илгээгдлээ!</h3>
+            <p className="text-sm text-gray-600 max-w-sm">
+              Таны хүсэлтийг хүлээн авлаа. Админ зөвшөөрсөнөөр бүртгэл идэвхжиж, таны и-мэйл рүү мэдэгдэл очно.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setSubmitted(false); setMessage(""); }}
+              className="mt-2 text-sm font-semibold text-[#FFB700] hover:text-[#e6a600] transition-colors"
+            >
+              Дахин хүсэлт илгээх
+            </button>
+          </div>
+        ) : (
+        <>
         <div className="flex items-center justify-between mb-8">
           <h3 className="text-2xl font-bold text-gray-900">Хамтран ажиллах</h3>
           <div className="flex items-center gap-2 text-green-600 bg-green-50 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
@@ -320,8 +350,19 @@ export function PartnershipForm() {
             </div>
           </div>
 
-          {message && (
-            <div className="text-sm font-medium text-gray-700">{message}</div>
+          {message && !submitted && (
+            <div className={`flex items-center gap-2 p-3 rounded-xl text-sm font-medium ${
+              messageType === "error"
+                ? "bg-red-50 border border-red-200 text-red-700"
+                : "bg-green-50 border border-green-200 text-green-700"
+            }`}>
+              {messageType === "error" ? (
+                <span className="shrink-0 text-red-500">⚠</span>
+              ) : (
+                <Check className="h-4 w-4 shrink-0 text-green-500" />
+              )}
+              {message}
+            </div>
           )}
 
           <Button
@@ -335,6 +376,8 @@ export function PartnershipForm() {
             <ArrowRight className="h-5 w-5" />
           </Button>
         </form>
+        </>
+        )}
       </div>
     </div>
   );

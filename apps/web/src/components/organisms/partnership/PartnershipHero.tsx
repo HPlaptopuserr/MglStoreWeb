@@ -55,7 +55,7 @@ export function PartnershipHero() {
         </p>
         <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto lg:mx-0">
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/10 text-center">
-            <div className="text-2xl font-bold">500+</div>
+            <div className="text-2xl font-bold">3000+</div>
             <div className="text-xs text-white/70">Харилцагч</div>
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/10 text-center">

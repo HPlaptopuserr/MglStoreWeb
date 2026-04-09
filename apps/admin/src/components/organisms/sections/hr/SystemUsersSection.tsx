@@ -116,8 +116,7 @@ export function SystemUsersSection() {
         (u) =>
           u.email.toLowerCase().includes(q) ||
           u.fullName.toLowerCase().includes(q) ||
-          (u.phone?.includes(q) ?? false) ||
-          (u.organizationName?.toLowerCase().includes(q) ?? false),
+          (u.phone?.includes(q) ?? false),
       );
     }
     if (roleFilter) list = list.filter((u) => u.role === roleFilter);
@@ -605,23 +604,6 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
           )}
         </div>
 
-        {/* org membership badges */}
-        {user.memberships.map((m, i) => {
-          const orgMeta = ORG_ROLE_META[m.role];
-          return (
-            <span
-              key={i}
-              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[11px] font-semibold ${
-                orgMeta ? `${orgMeta.bg} ${orgMeta.color}` : "border-amber-200 bg-amber-50 text-amber-700"
-              }`}
-            >
-              {orgMeta ? <orgMeta.icon className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
-              {orgMeta?.label ?? m.role}
-              {m.orgName && <span className="opacity-60 ml-0.5">• {m.orgName}</span>}
-            </span>
-          );
-        })}
-
         {/* verified */}
         {user.emailVerified && (
           <span className="inline-flex items-center gap-0.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
@@ -632,16 +614,7 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
       </div>
 
       {/* bottom row */}
-      <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
-        {user.organizationName ? (
-          <span className="flex items-center gap-1 truncate">
-            <Building2 className="h-3 w-3 shrink-0" />
-            {user.organizationName}
-          </span>
-        ) : (
-          <span className="text-slate-300">Байгууллагагүй</span>
-        )}
-
+      <div className="mt-3 flex items-center justify-end text-[11px] text-slate-400">
         <span className="flex items-center gap-1 shrink-0">
           {user.lastLoginAt ? (
             <>
