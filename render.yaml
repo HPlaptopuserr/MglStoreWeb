@@ -32,6 +32,18 @@ services:
         value: production
 
   - type: web
+    name: mgl-warehouse
+    rootDir: .
+    runtime: node
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/warehouse
+    startCommand: cd apps/warehouse && pnpm exec next start -H 0.0.0.0 -p $PORT
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+
+  - type: web
     name: mgl-api
     rootDir: .
     runtime: node
