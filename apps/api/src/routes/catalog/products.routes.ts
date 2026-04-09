@@ -306,6 +306,13 @@ router.post(
       const embeddedImages = await extractExcelImages(req.file.buffer);
       console.log("[import] Embedded images map has", embeddedImages.size, "rows with images");
 
+      // Count media files for debug
+      let mediaFileCount = 0;
+      try {
+        const z = await JSZip.loadAsync(req.file.buffer);
+        mediaFileCount = Object.keys(z.files).filter((f) => f.startsWith("xl/media/")).length;
+      } catch { /* ignore */ }
+
       // Column name mapping — supports both Mongolian & English headers
       const colMap = {
         name:        ["name", "Нэр", "нэр", "Нэр (name)", "Барааны нэр"],
@@ -329,6 +336,7 @@ router.post(
         skipped: number;
         errors: string[];
         products: Array<{ id: string; name: string; sku: string | null; price: number; stock: number }>;
+        _debug?: { embeddedImageRows: number; mediaFiles: number };
       } = { created: 0, skipped: 0, errors: [], products: [] };
 
       // Collect all SKUs in advance for batch duplicate check
@@ -407,10 +415,12 @@ router.post(
           // Row index in drawing is 0-based: row 0 = header, row 1 = first data row (i=0)
           if (imageUrls.length === 0) {
             const rowBuffers = embeddedImages.get(i + 1); // i+1 because row 0 is header
+            console.log(`[import] Row ${i+1}: embedded buffers = ${rowBuffers?.length ?? 0}`);
             if (rowBuffers && rowBuffers.length > 0) {
               const uploadPromises = rowBuffers.slice(0, 5).map((buf) => uploadBufferToSupabase(buf));
               const uploaded = await Promise.all(uploadPromises);
               imageUrls = uploaded.filter((u): u is string => u !== null);
+              console.log(`[import] Row ${i+1}: uploaded ${imageUrls.length} images`);
             }
           }
 
@@ -449,6 +459,7 @@ router.post(
         message: `${results.created} бараа амжилттай бүртгэгдлээ`,
         total: rows.length,
         ...results,
+        _debug: { embeddedImageRows: embeddedImages.size, mediaFiles: mediaFileCount },
       });
     } catch (error) {
       console.error("import products error", error);
