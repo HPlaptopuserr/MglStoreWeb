@@ -17,8 +17,11 @@ export function adminFetch(
       ? localStorage.getItem("admin_token")
       : null;
 
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    // Only set Content-Type for non-FormData bodies — FormData sets its own boundary
+    ...(!isFormData ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 

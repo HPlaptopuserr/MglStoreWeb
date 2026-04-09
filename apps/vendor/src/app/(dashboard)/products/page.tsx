@@ -20,8 +20,10 @@ import {
   Banknote,
   BarChart2,
   Layers,
+  FileSpreadsheet,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
+import { ExcelImportModal } from "@/features/products";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
 interface ProductImage {
@@ -343,6 +345,7 @@ export default function ProductsPage() {
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const getOrgId = () => {
     try {
@@ -540,6 +543,13 @@ export default function ProductsPage() {
             />
           </div>
           <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-2 h-10 px-5 rounded-xl bg-emerald-600 text-white text-sm font-bold shadow-lg shadow-emerald-500/25 hover:bg-emerald-700 transition-colors whitespace-nowrap"
+          >
+            <FileSpreadsheet size={16} />
+            Excel импорт
+          </button>
+          <button
             onClick={openAdd}
             className="flex items-center gap-2 h-10 px-5 rounded-xl bg-amber-600 text-white text-sm font-bold shadow-lg shadow-amber-500/25 hover:bg-amber-700 transition-colors whitespace-nowrap"
           >
@@ -568,6 +578,15 @@ export default function ProductsPage() {
           </div>
         ))}
       </div>
+
+      {/* Excel Import Modal */}
+      {importOpen && (
+        <ExcelImportModal
+          organizationId={getOrgId() || ""}
+          onClose={() => setImportOpen(false)}
+          onSuccess={fetchProducts}
+        />
+      )}
 
       {/* Add/Edit Form Modal */}
       {formOpen && (

@@ -11,6 +11,7 @@ export async function authFetch(input: string | URL | Request, init?: RequestIni
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  // Only set Content-Type for string bodies — FormData sets its own boundary
   if (!headers.has("Content-Type") && init?.body && typeof init.body === "string") {
     headers.set("Content-Type", "application/json");
   }

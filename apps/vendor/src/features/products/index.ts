@@ -4,3 +4,5 @@ export type VendorProductSummary = {
   sku: string;
   price: number;
 };
+
+export { ExcelImportModal } from "./ExcelImportModal";

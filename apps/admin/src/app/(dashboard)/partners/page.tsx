@@ -23,9 +23,11 @@ import {
   Plus,
   Copy,
   CheckCircle2,
+  FileSpreadsheet,
 } from "lucide-react";
 import Link from "next/link";
 import { API, adminFetch } from "@/lib/api";
+import { OrganizationImportModal } from "@/components/organisms";
 
 type Partner = {
   id: string;
@@ -218,6 +220,7 @@ export default function PartnersPage() {
     inviteLink: string;
   } | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const handleDelete = async (partner: Partner) => {
     if (!deleteReason.trim() || deleteReason.trim().length < 5) {
@@ -550,6 +553,13 @@ export default function PartnersPage() {
 
           <div className="flex w-full max-w-full flex-col gap-3 lg:w-auto lg:flex-row lg:items-center">
             <button
+              onClick={() => setImportOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              <FileSpreadsheet size={16} />
+              Excel импорт
+            </button>
+            <button
               onClick={() => {
                 setCreateModalOpen(true);
                 setCreateError("");
@@ -839,6 +849,13 @@ export default function PartnersPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {importOpen && (
+        <OrganizationImportModal
+          onClose={() => setImportOpen(false)}
+          onSuccess={fetchPartners}
+        />
       )}
     </div>
   );

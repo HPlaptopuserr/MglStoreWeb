@@ -1,5 +1,7 @@
 import { Router, type Router as ExpressRouter } from "express";
 import crypto from "crypto";
+import multer from "multer";
+import * as XLSX from "xlsx";
 import {
   prisma,
   OnboardingSource,
@@ -13,6 +15,21 @@ import { Permission } from "@mgl/types";
 import { requireAuth, requirePlatformPermission, requireAnyPlatformPermission } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
+
+const orgImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+      "application/vnd.oasis.opendocument.spreadsheet",
+      "text/csv",
+    ];
+    const ext = file.originalname.toLowerCase();
+    cb(null, allowed.includes(file.mimetype) || ext.endsWith(".xlsx") || ext.endsWith(".xls") || ext.endsWith(".ods") || ext.endsWith(".csv"));
+  },
+});
 
 const categoryLabels: Record<string, string> = {
   retail: "Худалдаа",
@@ -1348,5 +1365,374 @@ router.delete("/partners/:id/permanent", requireAuth, requirePlatformPermission(
       .json({ message: "Байгууллага бүрмөсөн устгахад алдаа гарлаа" });
   }
 });
+
+/* ─── GET /admin/organizations/import-template ──────────────────────── */
+router.get(
+  "/admin/organizations/import-template",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  (_req, res) => {
+    try {
+      const templateData = [
+        {
+          "Овог, нэр": "Ванчигийн Даваабаатар",
+          "Байгууллагын нэр (name)": "Зандан хүрэн тэмээт хоршоо",
+          "Байгууллагын регистрийн дугаар": "3262804",
+          "Байгууллагын төрөл (Олон сонголттой)": "Үйлдвэрлэгч, Хүнсний дэлгүүр / жижиглэн худалдаа",
+          "Хаяг (аймаг/дүүрэг, хороо)": "Говь Алтай аймаг Төгрөг сум",
+          "Утасны дугаар": "99042553",
+          "И-мэйл хаяг": "davaa5482@gmail.com",
+        },
+        {
+          "Овог, нэр": "Батын Болд",
+          "Байгууллагын нэр (name)": "Монгол Органик ХХК",
+          "Байгууллагын регистрийн дугаар": "1234567",
+          "Байгууллагын төрөл (Олон сонголттой)": "Үйлдвэрлэгч",
+          "Хаяг (аймаг/дүүрэг, хороо)": "Улаанбаатар, Баянзүрх дүүрэг",
+          "Утасны дугаар": "88001122",
+          "И-мэйл хаяг": "bold@example.mn",
+        },
+      ];
+
+      const ws = XLSX.utils.json_to_sheet(templateData);
+      ws["!cols"] = [
+        { wch: 24 }, { wch: 30 }, { wch: 26 }, { wch: 38 },
+        { wch: 28 }, { wch: 14 }, { wch: 24 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Байгууллагууд");
+
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+      res.setHeader("Content-Disposition", 'attachment; filename="organization_import_template.xlsx"');
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      return res.send(Buffer.from(buf));
+    } catch (error) {
+      console.error("org template download error", error);
+      return res.status(500).json({ message: "Template татахад алдаа гарлаа" });
+    }
+  },
+);
+
+/* ─── POST /admin/organizations/import ─────────────────────────────── */
+router.post(
+  "/admin/organizations/import",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  orgImportUpload.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Excel/ODS файл шаардлагатай" });
+      }
+
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        return res.status(400).json({ message: "Файл хоосон байна" });
+      }
+
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName]);
+      if (!rows.length) {
+        return res.status(400).json({ message: "Файлд мэдээлэл олдсонгүй" });
+      }
+
+      if (rows.length > 200) {
+        return res.status(400).json({ message: "Нэг удаад 200-аас олон байгууллага оруулах боломжгүй" });
+      }
+
+      // Column name mapping — exact match to the ODS template
+      const colMap = {
+        ownerFullName:    ["Овог, нэр", "ownerFullName", "Овог нэр"],
+        name:             ["Байгууллагын нэр (name)", "name", "Нэр", "нэр", "Байгууллагын нэр", "Компаний нэр"],
+        taxId:            ["Байгууллагын регистрийн дугаар", "taxId", "Татварын дугаар", "РД", "Регистрийн дугаар"],
+        type:             ["Байгууллагын төрөл (Олон сонголттой)", "type", "Төрөл", "төрөл"],
+        address:          ["Хаяг (аймаг/дүүрэг, хороо)", "address", "Хаяг", "хаяг"],
+        phone:            ["Утасны дугаар", "phone", "Утас", "утас"],
+        ownerEmail:       ["И-мэйл хаяг", "ownerEmail", "email", "Email", "И-мэйл"],
+      };
+
+      const resolveCol = (row: Record<string, unknown>, keys: string[]): unknown => {
+        for (const key of keys) {
+          if (row[key] !== undefined && row[key] !== null && row[key] !== "") return row[key];
+        }
+        return undefined;
+      };
+
+      const results: {
+        created: number;
+        skipped: number;
+        errors: Array<{ row: number; name: string; reason: string }>;
+        organizations: Array<{ id: string; name: string; email: string; inviteLink: string }>;
+      } = { created: 0, skipped: 0, errors: [], organizations: [] };
+
+      // Pre-check for duplicates within the file
+      const emailsInFile = new Map<string, number>();
+      const namesInFile = new Map<string, number>();
+      for (let i = 0; i < rows.length; i++) {
+        const email = resolveCol(rows[i], colMap.ownerEmail);
+        const name = resolveCol(rows[i], colMap.name);
+        if (email) {
+          const normalized = String(email).trim().toLowerCase();
+          if (emailsInFile.has(normalized)) {
+            results.errors.push({
+              row: i + 2,
+              name: name ? String(name).trim() : "(нэргүй)",
+              reason: `Email "${normalized}" файл дотор давхардсан (мөр ${emailsInFile.get(normalized)})`,
+            });
+            results.skipped++;
+          } else {
+            emailsInFile.set(normalized, i + 2);
+          }
+        }
+        if (name) {
+          const normalized = String(name).trim().toLowerCase();
+          if (namesInFile.has(normalized)) {
+            // Allow duplicate names within file but warn
+          }
+          namesInFile.set(normalized, i + 2);
+        }
+      }
+
+      // Track emails already processed in this batch to skip in-file duplicates
+      const processedEmails = new Set<string>();
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowNum = i + 2;
+
+        const name = resolveCol(row, colMap.name);
+        const ownerEmail = resolveCol(row, colMap.ownerEmail);
+        const ownerFullName = resolveCol(row, colMap.ownerFullName);
+        const phone = resolveCol(row, colMap.phone);
+        const address = resolveCol(row, colMap.address);
+        const type = resolveCol(row, colMap.type);
+        const taxId = resolveCol(row, colMap.taxId);
+
+        const orgName = name ? String(name).trim() : "";
+        const emailStr = ownerEmail ? String(ownerEmail).trim().toLowerCase() : "";
+
+        // Validation
+        if (!orgName) {
+          results.errors.push({ row: rowNum, name: "(хоосон)", reason: "Байгууллагын нэр заавал шаардлагатай" });
+          results.skipped++;
+          continue;
+        }
+
+        if (!emailStr || !emailStr.includes("@")) {
+          results.errors.push({ row: rowNum, name: orgName, reason: "Owner email буруу эсвэл хоосон" });
+          results.skipped++;
+          continue;
+        }
+
+        // Skip if already processed in this batch (in-file duplicate)
+        if (processedEmails.has(emailStr)) {
+          continue; // Already reported as duplicate
+        }
+        processedEmails.add(emailStr);
+
+        // Check existing user with active org
+        const existingUser = await prisma.user.findUnique({
+          where: { email: emailStr },
+          select: { id: true, passwordHash: true },
+        });
+
+        if (existingUser?.passwordHash) {
+          results.errors.push({
+            row: rowNum,
+            name: orgName,
+            reason: `Email "${emailStr}" дээр нууц үгтэй хэрэглэгч бүртгэлтэй байна`,
+          });
+          results.skipped++;
+          continue;
+        }
+
+        if (existingUser) {
+          const hasOrg = await prisma.organizationMember.findFirst({
+            where: { userId: existingUser.id, isActive: true },
+            select: { id: true },
+          });
+          if (hasOrg) {
+            results.errors.push({
+              row: rowNum,
+              name: orgName,
+              reason: `Email "${emailStr}" дээр аль хэдийн өөр байгууллагад бүртгэлтэй`,
+            });
+            results.skipped++;
+            continue;
+          }
+        }
+
+        // Check duplicate organization by name
+        const existingOrg = await prisma.organization.findFirst({
+          where: { name: { equals: orgName, mode: "insensitive" }, deletedAt: null },
+          select: { id: true, name: true },
+        });
+        if (existingOrg) {
+          results.errors.push({
+            row: rowNum,
+            name: orgName,
+            reason: `"${existingOrg.name}" нэртэй байгууллага аль хэдийн бүртгэлтэй`,
+          });
+          results.skipped++;
+          continue;
+        }
+
+        // Check duplicate by taxId
+        const resolvedTaxId = taxId ? String(taxId).trim() : null;
+        if (resolvedTaxId) {
+          const existingTax = await prisma.organization.findFirst({
+            where: { taxId: resolvedTaxId, deletedAt: null },
+            select: { id: true, name: true },
+          });
+          if (existingTax) {
+            results.errors.push({
+              row: rowNum,
+              name: orgName,
+              reason: `Татварын дугаар "${resolvedTaxId}" "${existingTax.name}" байгууллагад бүртгэлтэй`,
+            });
+            results.skipped++;
+            continue;
+          }
+        }
+
+        // Create organization + user + invite
+        try {
+          const slug = await generateUniqueOrganizationSlug(orgName);
+          const finalTaxId = resolvedTaxId || await generateUniqueTaxId("TEMP");
+          const inviteToken = generateInviteToken();
+          const inviteTokenExpiresAt = getInviteTokenExpiry();
+
+          const orgType =
+            type && Object.values(OrgType).includes(String(type).trim() as OrgType)
+              ? (String(type).trim() as OrgType)
+              : (() => {
+                  // Map Mongolian type names to enum
+                  const typeStr = type ? String(type).toLowerCase() : "";
+                  if (typeStr.includes("үйлдвэрлэгч")) return OrgType.SUPPLIER;
+                  if (typeStr.includes("дэлгүүр") || typeStr.includes("худалдаа")) return OrgType.VENDOR;
+                  if (typeStr.includes("бизнес") || typeStr.includes("customer")) return OrgType.BUSINESS_CUSTOMER;
+                  return OrgType.SUPPLIER;
+                })();
+
+          const resolvedOwnerName = ownerFullName
+            ? String(ownerFullName).trim()
+            : orgName;
+
+          const resolvedPhone = phone
+            ? String(phone).trim()
+            : null;
+
+          const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const organization = await tx.organization.create({
+              data: {
+                name: orgName,
+                slug,
+                taxId: finalTaxId,
+                type: orgType,
+                status: OrgStatus.ACTIVE,
+                email: emailStr,
+                phone: resolvedPhone,
+                address: address ? String(address).trim() : null,
+                isVerified: false,
+              },
+              select: { id: true, name: true },
+            });
+
+            const user = existingUser
+              ? await tx.user.update({
+                  where: { id: existingUser.id },
+                  data: {
+                    role: PlatformRole.USER,
+                    isActive: true,
+                    emailVerified: true,
+                    onboardingSource: OnboardingSource.ADMIN,
+                  },
+                  select: { id: true, email: true },
+                })
+              : await tx.user.create({
+                  data: {
+                    email: emailStr,
+                    role: PlatformRole.USER,
+                    isActive: true,
+                    emailVerified: true,
+                    onboardingSource: OnboardingSource.ADMIN,
+                  },
+                  select: { id: true, email: true },
+                });
+
+            await tx.profile.upsert({
+              where: { userId: user.id },
+              update: {
+                fullName: resolvedOwnerName,
+                phoneNumber: resolvedPhone,
+              },
+              create: {
+                userId: user.id,
+                fullName: resolvedOwnerName,
+                phoneNumber: resolvedPhone,
+              },
+            });
+
+            await tx.vendorSetupToken.create({
+              data: {
+                userId: user.id,
+                token: inviteToken,
+                expiresAt: inviteTokenExpiresAt,
+              },
+            });
+
+            await tx.organizationMember.create({
+              data: {
+                userId: user.id,
+                organizationId: organization.id,
+                role: "OWNER",
+                isPrimary: true,
+                isActive: true,
+              },
+            });
+
+            return { organization, user };
+          });
+
+          results.organizations.push({
+            id: result.organization.id,
+            name: result.organization.name,
+            email: result.user.email,
+            inviteLink: `${VENDOR_APP_URL}/set-password?token=${inviteToken}`,
+          });
+          results.created++;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const maybePrisma = err as { code?: string; meta?: { target?: unknown } };
+          let reason = msg;
+          if (maybePrisma?.code === "P2002") {
+            const target = Array.isArray(maybePrisma.meta?.target)
+              ? maybePrisma.meta?.target.join(",")
+              : String(maybePrisma.meta?.target || "");
+            reason = target.includes("taxId")
+              ? "Татварын дугаар давхардсан"
+              : target.includes("slug")
+                ? "Байгууллагын нэр давхардсан"
+                : target.includes("email")
+                  ? "Email давхардсан"
+                  : `Давхардсан утга (${target})`;
+          }
+          results.errors.push({ row: rowNum, name: orgName, reason });
+          results.skipped++;
+        }
+      }
+
+      return res.json({
+        message: `${results.created} байгууллага амжилттай бүртгэгдлээ`,
+        total: rows.length,
+        ...results,
+      });
+    } catch (error) {
+      console.error("import organizations error", error);
+      return res.status(500).json({ message: "Импорт хийхэд алдаа гарлаа", error: String(error) });
+    }
+  },
+);
 
 export default router;
