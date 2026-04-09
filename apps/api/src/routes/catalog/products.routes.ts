@@ -12,6 +12,15 @@ import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 
 const router: ExpressRouter = Router();
 
+/* ─── GET /products/health — check env config ───────────────────────── */
+router.get("/products/health", (_req, res) => {
+  return res.json({
+    supabaseUrl: process.env.SUPABASE_URL ? "set" : "MISSING",
+    supabaseKey: process.env.SUPABASE_SERVICE_KEY ? "set" : "MISSING",
+    nodeEnv: process.env.NODE_ENV || "not set",
+  });
+});
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -814,9 +823,23 @@ router.post("/products/upload-image", requireAuth, imageUpload.single("image"), 
       return res.status(400).json({ message: "Зураг файл шаардлагатай" });
     }
 
+    // Check env vars before attempting upload
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      console.error("upload-image: Missing SUPABASE env vars!", {
+        hasUrl: !!process.env.SUPABASE_URL,
+        hasKey: !!process.env.SUPABASE_SERVICE_KEY,
+      });
+      return res.status(500).json({
+        message: "Supabase тохиргоо хийгдээгүй байна",
+        debug: { hasUrl: !!process.env.SUPABASE_URL, hasKey: !!process.env.SUPABASE_SERVICE_KEY },
+      });
+    }
+
     const ext = path.extname(req.file.originalname).toLowerCase() || ".jpg";
     const fileName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
     const filePath = `products/${fileName}`;
+
+    console.log("upload-image: uploading", filePath, "size:", req.file.size, "type:", req.file.mimetype);
 
     const { error } = await getSupabase().storage
       .from(PRODUCT_IMAGES_BUCKET)
@@ -834,6 +857,7 @@ router.post("/products/upload-image", requireAuth, imageUpload.single("image"), 
       .from(PRODUCT_IMAGES_BUCKET)
       .getPublicUrl(filePath);
 
+    console.log("upload-image: success", publicUrlData.publicUrl);
     return res.json({ url: publicUrlData.publicUrl });
   } catch (error) {
     console.error("upload image error", error);
