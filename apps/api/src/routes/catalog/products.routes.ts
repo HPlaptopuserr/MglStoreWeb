@@ -1,10 +1,14 @@
 import { Router, type Router as ExpressRouter } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import crypto from "crypto";
+import path from "path";
+import JSZip from "jszip";
 import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import { requireAuth } from "../../middleware/auth";
 import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
+import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 
 const router: ExpressRouter = Router();
 
@@ -18,6 +22,19 @@ const upload = multer({
       "text/csv",
     ];
     cb(null, allowed.includes(file.mimetype) || file.originalname.endsWith(".xlsx") || file.originalname.endsWith(".xls"));
+  },
+});
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per image
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Зөвхөн JPG, PNG, WebP, GIF зурагнууд зөвшөөрөгдөнө"));
+    }
   },
 });
 
@@ -69,6 +86,7 @@ router.get("/products/import-template", (_req, res) => {
         "Өртөг (costPrice)": 15000,
         "Нөөц (stock)": 100,
         "Тайлбар (description)": "Барааны тайлбар энд бичнэ",
+        "Зураг URL (images)": "https://example.com/img1.jpg, https://example.com/img2.jpg",
       },
       {
         "Нэр (name)": "Жишээ бараа 2",
@@ -77,12 +95,13 @@ router.get("/products/import-template", (_req, res) => {
         "Өртөг (costPrice)": 30000,
         "Нөөц (stock)": 50,
         "Тайлбар (description)": "",
+        "Зураг URL (images)": "",
       },
     ];
 
     const ws = XLSX.utils.json_to_sheet(templateData);
     ws["!cols"] = [
-      { wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 35 },
+      { wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 35 }, { wch: 50 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Бараа");
@@ -97,6 +116,106 @@ router.get("/products/import-template", (_req, res) => {
     return res.status(500).json({ message: "Template татахад алдаа гарлаа" });
   }
 });
+
+/* ─── Extract embedded images from xlsx ──────────────────────────────── */
+async function extractExcelImages(buffer: Buffer): Promise<Map<number, Buffer[]>> {
+  const rowImages = new Map<number, Buffer[]>();
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+
+    // 1. Find drawing rels to map rId → media file path
+    const relsMap = new Map<string, string>();
+    const drawingRelsFiles = Object.keys(zip.files).filter(
+      (f) => f.match(/xl\/drawings\/_rels\/drawing\d+\.xml\.rels/)
+    );
+    for (const relsFile of drawingRelsFiles) {
+      const relsXml = await zip.file(relsFile)!.async("text");
+      const relMatches = relsXml.matchAll(/Id="(rId\d+)"[^>]*Target="([^"]+)"/g);
+      for (const m of relMatches) {
+        relsMap.set(m[1], m[2].replace("../", "xl/"));
+      }
+    }
+
+    // 2. Parse drawing XML to map images → rows
+    const drawingFiles = Object.keys(zip.files).filter(
+      (f) => f.match(/xl\/drawings\/drawing\d+\.xml$/)
+    );
+    for (const drawingFile of drawingFiles) {
+      const xml = await zip.file(drawingFile)!.async("text");
+
+      // Match twoCellAnchor or oneCellAnchor blocks
+      const anchorBlocks = xml.matchAll(/<xdr:(?:twoCellAnchor|oneCellAnchor)[^>]*>([\s\S]*?)<\/xdr:(?:twoCellAnchor|oneCellAnchor)>/g);
+      for (const block of anchorBlocks) {
+        const content = block[1];
+        // Get row from <xdr:from><xdr:row>N</xdr:row>
+        const rowMatch = content.match(/<xdr:from>[\s\S]*?<xdr:row>(\d+)<\/xdr:row>/);
+        // Get image reference r:embed="rIdN"
+        const embedMatch = content.match(/r:embed="(rId\d+)"/);
+
+        if (rowMatch && embedMatch) {
+          const row = parseInt(rowMatch[1]); // 0-based row (row 0 = header)
+          const rId = embedMatch[1];
+          const mediaPath = relsMap.get(rId);
+
+          if (mediaPath) {
+            const mediaFile = zip.file(mediaPath);
+            if (mediaFile) {
+              const imgBuffer = Buffer.from(await mediaFile.async("arraybuffer"));
+              const existing = rowImages.get(row) || [];
+              existing.push(imgBuffer);
+              rowImages.set(row, existing);
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("extractExcelImages error:", err);
+  }
+  return rowImages;
+}
+
+function getImageMimeType(buf: Buffer): string {
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return "image/jpeg";
+  if (buf[0] === 0x89 && buf[1] === 0x50) return "image/png";
+  if (buf[0] === 0x47 && buf[1] === 0x49) return "image/gif";
+  if (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") return "image/webp";
+  return "image/png"; // fallback
+}
+
+function getImageExt(mime: string): string {
+  const map: Record<string, string> = {
+    "image/jpeg": ".jpg", "image/png": ".png",
+    "image/gif": ".gif", "image/webp": ".webp",
+  };
+  return map[mime] || ".png";
+}
+
+async function uploadBufferToSupabase(buf: Buffer): Promise<string | null> {
+  try {
+    const mime = getImageMimeType(buf);
+    const ext = getImageExt(mime);
+    const fileName = `products/${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
+
+    const { error } = await getSupabase().storage
+      .from(PRODUCT_IMAGES_BUCKET)
+      .upload(fileName, buf, { contentType: mime, upsert: false });
+
+    if (error) {
+      console.error("supabase upload error", error);
+      return null;
+    }
+
+    const { data } = getSupabase().storage
+      .from(PRODUCT_IMAGES_BUCKET)
+      .getPublicUrl(fileName);
+
+    return data.publicUrl;
+  } catch (err) {
+    console.error("uploadBufferToSupabase error", err);
+    return null;
+  }
+}
 
 /* ─── POST /products/import ─────────────────────────────────────────── */
 router.post(
@@ -132,14 +251,18 @@ router.post(
         return res.status(400).json({ message: "Нэг удаад 1000-аас олон бараа оруулах боломжгүй" });
       }
 
+      // Extract embedded images from xlsx (row → image buffers)
+      const embeddedImages = await extractExcelImages(req.file.buffer);
+
       // Column name mapping — supports both Mongolian & English headers
       const colMap = {
         name:        ["name", "Нэр", "нэр", "Нэр (name)", "Барааны нэр"],
-        sku:         ["sku", "SKU", "Код", "код", "SKU (sku)"],
-        price:       ["price", "Үнэ", "үнэ", "Үнэ (price)"],
+        sku:         ["sku", "SKU", "Код", "код", "SKU (sku)", "№"],
+        price:       ["price", "Үнэ", "үнэ", "Үнэ (price)", "Ф50", "Ф100"],
         costPrice:   ["costPrice", "Өртөг", "өртөг", "Өртөг (costPrice)", "Өртөг үнэ"],
         stock:       ["stock", "Нөөц", "нөөц", "Нөөц (stock)", "Тоо ширхэг"],
         description: ["description", "Тайлбар", "тайлбар", "Тайлбар (description)"],
+        images:      ["images", "Зураг", "зураг", "Зураг URL", "Зураг URL (images)", "Image", "image"],
       };
 
       const resolveCol = (row: Record<string, unknown>, keys: string[]): unknown => {
@@ -180,6 +303,7 @@ router.post(
         const costPrice = resolveCol(row, colMap.costPrice);
         const stock = resolveCol(row, colMap.stock);
         const description = resolveCol(row, colMap.description);
+        const imagesRaw = resolveCol(row, colMap.images);
 
         if (!name || price === undefined) {
           results.errors.push(`Мөр ${rowNum}: Нэр болон үнэ заавал шаардлагатай`);
@@ -222,6 +346,22 @@ router.post(
         }
 
         try {
+          // Parse image URLs (comma-separated) from text column
+          let imageUrls: string[] = imagesRaw
+            ? String(imagesRaw).split(",").map((u) => u.trim()).filter((u) => u.startsWith("http")).slice(0, 5)
+            : [];
+
+          // If no URL images, check for embedded images in this row
+          // Row index in drawing is 0-based: row 0 = header, row 1 = first data row (i=0)
+          if (imageUrls.length === 0) {
+            const rowBuffers = embeddedImages.get(i + 1); // i+1 because row 0 is header
+            if (rowBuffers && rowBuffers.length > 0) {
+              const uploadPromises = rowBuffers.slice(0, 5).map((buf) => uploadBufferToSupabase(buf));
+              const uploaded = await Promise.all(uploadPromises);
+              imageUrls = uploaded.filter((u): u is string => u !== null);
+            }
+          }
+
           const product = await prisma.product.create({
             data: {
               organizationId,
@@ -232,6 +372,9 @@ router.post(
               costPrice: costPriceNum,
               stock: stockNum,
               isActive: true,
+              ...(imageUrls.length > 0 && {
+                images: { create: imageUrls.map((url) => ({ url })) },
+              }),
             },
             select: { id: true, name: true, sku: true, price: true, stock: true },
           });
@@ -491,6 +634,40 @@ router.patch("/products/:id/images", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("update product images error", error);
     return res.status(500).json({ message: "Зураг шинэчлэхэд алдаа гарлаа", error: String(error) });
+  }
+});
+
+/* ─── POST /products/upload-image ────────────────────────────────────── */
+router.post("/products/upload-image", requireAuth, imageUpload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "Зураг файл шаардлагатай" });
+    }
+
+    const ext = path.extname(req.file.originalname).toLowerCase() || ".jpg";
+    const fileName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
+    const filePath = `products/${fileName}`;
+
+    const { error } = await getSupabase().storage
+      .from(PRODUCT_IMAGES_BUCKET)
+      .upload(filePath, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false,
+      });
+
+    if (error) {
+      console.error("supabase upload error", error);
+      return res.status(500).json({ message: "Зураг upload хийхэд алдаа гарлаа", error: error.message });
+    }
+
+    const { data: publicUrlData } = getSupabase().storage
+      .from(PRODUCT_IMAGES_BUCKET)
+      .getPublicUrl(filePath);
+
+    return res.json({ url: publicUrlData.publicUrl });
+  } catch (error) {
+    console.error("upload image error", error);
+    return res.status(500).json({ message: "Зураг upload хийхэд алдаа гарлаа", error: String(error) });
   }
 });
 

@@ -39,7 +39,7 @@ export type SalePaymentLine = {
   transactionId?: string;
   invoiceId?: string;
 };
-
+  
 export type SalePayload = {
   shiftId: string;
   branchId: string;

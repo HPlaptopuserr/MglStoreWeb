@@ -200,6 +200,7 @@ export function ExcelImportModal({
                     { col: "Өртөг (costPrice)", req: false, desc: "Өртөг үнэ (тоо)" },
                     { col: "Нөөц (stock)", req: false, desc: "Нөөцийн тоо (0 анхдагч)" },
                     { col: "Тайлбар (description)", req: false, desc: "Барааны тайлбар" },
+                    { col: "Зураг URL (images)", req: false, desc: "Зургийн URL (таслалаар тусгаарлана, 5 хүртэл)" },
                   ].map(({ col, req, desc }) => (
                     <div key={col} className="flex items-center justify-between px-4 py-2.5 text-sm">
                       <div className="flex items-center gap-2">
@@ -348,24 +349,39 @@ function ImportResults({
   const [productImages, setProductImages] = useState<Record<string, string[]>>({});
   const [savingImages, setSavingImages] = useState<string | null>(null);
   const [savedImages, setSavedImages] = useState<Set<string>>(new Set());
+  const [uploadingProduct, setUploadingProduct] = useState<string | null>(null);
 
-  const handleImageFiles = (productId: string, files: FileList | null) => {
+  const uploadToServer = async (file: File): Promise<string | null> => {
+    const formData = new FormData();
+    formData.append("image", file);
+    try {
+      const res = await authFetch(`${API}/products/upload-image`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.url as string;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleImageFiles = async (productId: string, files: FileList | null) => {
     if (!files) return;
     const current = productImages[productId] || [];
     const remaining = MAX_IMAGES_PER_PRODUCT - current.length;
     const toProcess = Array.from(files).slice(0, remaining);
 
-    toProcess.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProductImages((prev) => {
-          const imgs = prev[productId] || [];
-          if (imgs.length >= MAX_IMAGES_PER_PRODUCT) return prev;
-          return { ...prev, [productId]: [...imgs, reader.result as string] };
-        });
-      };
-      reader.readAsDataURL(file);
-    });
+    setUploadingProduct(productId);
+    const uploaded = [...current];
+    for (const file of toProcess) {
+      if (uploaded.length >= MAX_IMAGES_PER_PRODUCT) break;
+      const url = await uploadToServer(file);
+      if (url) uploaded.push(url);
+    }
+    setProductImages((prev) => ({ ...prev, [productId]: uploaded }));
+    setUploadingProduct(null);
   };
 
   const removeImage = (productId: string, idx: number) => {
@@ -534,15 +550,26 @@ function ImportResults({
                           </div>
                         ))}
                         {!isSaved && images.length < MAX_IMAGES_PER_PRODUCT && (
-                          <label className="w-16 h-16 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-colors">
-                            <ImageIcon size={14} className="text-slate-400" />
-                            <span className="text-[8px] font-bold text-slate-400 mt-0.5">Нэмэх</span>
+                          <label className={`w-16 h-16 rounded-lg border-2 border-dashed flex flex-col items-center justify-center transition-colors ${
+                            uploadingProduct === product.id
+                              ? "border-emerald-300 bg-emerald-50"
+                              : "border-slate-300 cursor-pointer hover:border-emerald-400 hover:bg-emerald-50"
+                          }`}>
+                            {uploadingProduct === product.id ? (
+                              <Loader2 size={14} className="text-emerald-500 animate-spin" />
+                            ) : (
+                              <>
+                                <ImageIcon size={14} className="text-slate-400" />
+                                <span className="text-[8px] font-bold text-slate-400 mt-0.5">Нэмэх</span>
+                              </>
+                            )}
                             <input
                               type="file"
-                              accept="image/*"
+                              accept="image/jpeg,image/png,image/webp,image/gif"
                               multiple
                               className="hidden"
-                              onChange={(e) => handleImageFiles(product.id, e.target.files)}
+                              disabled={uploadingProduct === product.id}
+                              onChange={(e) => { handleImageFiles(product.id, e.target.files); e.target.value = ""; }}
                             />
                           </label>
                         )}

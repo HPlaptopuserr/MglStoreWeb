@@ -204,29 +204,38 @@ function ImageUploadGrid({
   onChange: (images: string[]) => void;
 }) {
   const [dragging, setDragging] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  const handleFile = (file: File, current: string[]) => {
-    if (current.length >= MAX_IMAGES) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      onChange([...current, reader.result as string]);
-    };
-    reader.readAsDataURL(file);
+  const uploadToServer = async (file: File): Promise<string | null> => {
+    const formData = new FormData();
+    formData.append("image", file);
+    try {
+      const res = await authFetch(`${API}/products/upload-image`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.url as string;
+    } catch {
+      return null;
+    }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    let current = [...images];
+    if (!files.length) return;
+    e.target.value = "";
+
+    setUploading(true);
+    const current = [...images];
     for (const file of files) {
       if (current.length >= MAX_IMAGES) break;
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        current = [...current, reader.result as string];
-        onChange(current.slice(0, MAX_IMAGES));
-      };
-      reader.readAsDataURL(file);
+      const url = await uploadToServer(file);
+      if (url) current.push(url);
     }
-    e.target.value = "";
+    onChange(current.slice(0, MAX_IMAGES));
+    setUploading(false);
   };
 
   const removeImage = (idx: number) => {
@@ -296,23 +305,31 @@ function ImageUploadGrid({
             );
           }
 
-          const canAdd = idx === images.length;
+          const canAdd = idx === images.length && !uploading;
+          const isUploadingSlot = idx === images.length && uploading;
           return (
             <label
               key={idx}
               className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-colors ${
                 canAdd
                   ? "border-slate-300 hover:border-amber-400 hover:bg-amber-50 cursor-pointer"
-                  : "border-slate-100 bg-slate-50/50 cursor-not-allowed"
+                  : isUploadingSlot
+                    ? "border-amber-300 bg-amber-50"
+                    : "border-slate-100 bg-slate-50/50 cursor-not-allowed"
               }`}
             >
-              {canAdd ? (
+              {isUploadingSlot ? (
+                <>
+                  <Loader2 size={18} className="text-amber-500 animate-spin mb-1" />
+                  <span className="text-[10px] font-bold text-amber-500">Хуулж байна...</span>
+                </>
+              ) : canAdd ? (
                 <>
                   <ImageIcon size={18} className="text-slate-300 mb-1" />
                   <span className="text-[10px] font-bold text-slate-400">Нэмэх</span>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
                     multiple
                     className="hidden"
                     onChange={handleInputChange}

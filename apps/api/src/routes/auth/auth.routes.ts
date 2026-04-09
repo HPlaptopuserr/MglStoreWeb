@@ -266,14 +266,17 @@ router.post("/web/login", async (req, res) => {
       { expiresIn: "1d" },
     );
 
+    const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
+
     return res.json({
       accessToken,
       user: {
         id: user.id,
-        email: user.email,
+        email: safeEmail,
         role: user.role,
         orgRole: orgInfo?.orgRole || null,
         fullName: user.profile?.fullName || "",
+        phone: user.profile?.phoneNumber || null,
         organizationId: orgInfo?.organizationId || null,
       },
     });
@@ -382,13 +385,16 @@ router.post("/web/register", async (req, res) => {
         { expiresIn: "1d" },
       );
 
+      const safeEmail = updatedUser.email?.endsWith("@temp.local") ? null : updatedUser.email;
+
       return res.status(200).json({
         accessToken,
         user: {
           id: updatedUser.id,
-          email: updatedUser.email,
+          email: safeEmail,
           role: updatedUser.role,
           fullName: updatedUser.profile?.fullName || "",
+          phone: updatedUser.profile?.phoneNumber || null,
         },
       });
     }
@@ -422,13 +428,16 @@ router.post("/web/register", async (req, res) => {
       { expiresIn: "1d" },
     );
 
+    const safeEmail = newUser.email?.endsWith("@temp.local") ? null : newUser.email;
+
     return res.status(201).json({
       accessToken,
       user: {
         id: newUser.id,
-        email: newUser.email,
+        email: safeEmail,
         role: newUser.role,
         fullName: newUser.profile?.fullName || "",
+        phone: newUser.profile?.phoneNumber || null,
       },
     });
   } catch (error) {
