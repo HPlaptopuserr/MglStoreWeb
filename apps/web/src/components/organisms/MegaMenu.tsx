@@ -49,10 +49,10 @@ function apiTreeToMega(tree: ApiTreeNode[]): MegaCategory[] {
   }));
 }
 
-const buildProductUrl = (categorySlug: string, subSlug?: string) => {
+const buildProductUrl = (categoryId: string, subName?: string) => {
   const params = new URLSearchParams();
-  params.set("category", categorySlug);
-  if (subSlug) params.set("sub", subSlug);
+  params.set("category", categoryId);
+  if (subName) params.set("sub", subName);
   return `/products?${params.toString()}`;
 };
 
@@ -296,7 +296,7 @@ export const MegaMenu = () => {
                     {activeCategory.name}
                   </h2>
                   <Link
-                    href={buildProductUrl(activeCategory.slug)}
+                    href={buildProductUrl(activeCategory.id)}
                     onClick={closeMenu}
                     className="text-sm font-medium text-[#ffad02] hover:underline transition-colors shrink-0"
                   >
@@ -318,7 +318,7 @@ export const MegaMenu = () => {
                                 <li key={item.id}>
                                   <Link
                                     href={buildProductUrl(
-                                      activeCategory.slug,
+                                      activeCategory.id,
                                       item.name,
                                     )}
                                     onClick={closeMenu}
@@ -335,7 +335,7 @@ export const MegaMenu = () => {
                             </p>
                           )}
                           <Link
-                            href={buildProductUrl(activeCategory.slug)}
+                            href={buildProductUrl(activeCategory.id)}
                             onClick={closeMenu}
                             className="text-[13px] font-semibold text-[#ffad02] group flex items-center gap-1 mt-auto shrink-0 w-fit"
                           >

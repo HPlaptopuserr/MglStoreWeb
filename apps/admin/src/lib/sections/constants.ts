@@ -7,6 +7,7 @@ import {
   Monitor,
   Users,
   ClipboardList,
+  Settings2,
 } from "lucide-react";
 import type { CardColorScheme } from "@mgl/ui";
 import type { SectionKey } from "./types";
@@ -18,6 +19,7 @@ export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType
   { key: "cards", label: "Карт хэвлэх", icon: CreditCard },
   { key: "qr", label: "QR Generator", icon: Wrench },
   { key: "pos", label: "POS Register", icon: Monitor, requires: "MANAGE_POS" },
+  { key: "vendor-features", label: "Vendor тохиргоо", icon: Settings2, requires: "MANAGE_SITE_SETTINGS" },
   { key: "hr", label: "Хүний нөөц", icon: Users, requires: "MANAGE_USERS" },
   { key: "forms", label: "Маягт үүсгэгч", icon: ClipboardList, requires: "MANAGE_FORMS" },
 ];

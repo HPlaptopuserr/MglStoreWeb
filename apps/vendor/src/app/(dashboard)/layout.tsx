@@ -14,6 +14,8 @@ export default function VendorDashboardLayout({
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
   const [showPos, setShowPos] = useState(false);
+  const [showSupplyProducts, setShowSupplyProducts] = useState(false);
+  const [showServicePosts, setShowServicePosts] = useState(false);
   const [userData, setUserData] = useState({
     name: "Vendor",
     email: "vendor@mglstore.mn",
@@ -65,10 +67,20 @@ export default function VendorDashboardLayout({
             : {};
           const raw = settings[`pos-enabled-${organizationId}`];
           const posEnabled =
-            raw == null || raw === "" || raw === "1" || raw === "true" || raw === "on";
+            raw === "1" || raw === "true" || raw === "on";
           setShowPos(posEnabled);
+
+          const rawSupply = settings[`supply-products-enabled-${organizationId}`];
+          setShowSupplyProducts(rawSupply === "1" || rawSupply === "true" || rawSupply === "on");
+
+          const rawService = settings[`service-posts-enabled-${organizationId}`];
+          setShowServicePosts(rawService === "1" || rawService === "true" || rawService === "on");
         })
-        .catch(() => setShowPos(false));
+        .catch(() => {
+          setShowPos(false);
+          setShowSupplyProducts(false);
+          setShowServicePosts(false);
+        });
     }
 
     setIsReady(true);
@@ -92,6 +104,8 @@ export default function VendorDashboardLayout({
       userInitials={userData.initials}
       organizationName={userData.organizationName}
       showPos={showPos}
+      showSupplyProducts={showSupplyProducts}
+      showServicePosts={showServicePosts}
     >
       {children}
     </DashboardLayout>

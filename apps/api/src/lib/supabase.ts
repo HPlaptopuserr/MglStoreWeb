@@ -13,3 +13,4 @@ export function getSupabase(): SupabaseClient {
 }
 
 export const PRODUCT_IMAGES_BUCKET = "product-images";
+export const ORG_IMAGES_BUCKET = "product-images"; // org images stored under org/ prefix in same bucket

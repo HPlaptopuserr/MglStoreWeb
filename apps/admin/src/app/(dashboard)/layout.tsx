@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Headphones,
   UserCog,
+  Smartphone,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
 import { MobileDashboard } from "@/components/organisms";
@@ -91,6 +92,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     icon: Tag,
     href: "/categories",
     requires: ["MANAGE_CATEGORIES"],
+  },
+  {
+    id: "app-control",
+    label: "App Control",
+    icon: Smartphone,
+    href: "/app-control",
+    requires: ["MANAGE_SITE_SETTINGS"],
   },
   {
     id: "settings",

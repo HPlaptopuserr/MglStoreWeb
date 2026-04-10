@@ -1,12 +1,11 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   ShoppingBasket,
   Loader2,
   ChevronLeft,
   ChevronRight,
   ArrowRight,
-  Star,
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -14,6 +13,7 @@ import { API } from "@/lib/api";
 import Link from "next/link";
 import Image from "next/image";
 
+/* ─── Types ─────────────────────────────────────────────────── */
 interface Category {
   id: string;
   slug: string;
@@ -32,25 +32,166 @@ interface GroupedCategory {
   }[];
 }
 
+/* ─── Color palette (soft pastel pairs) ─────────────────────── */
+const PALETTE = [
+  { bg: "bg-violet-50", text: "text-violet-500", ring: "ring-violet-200", badge: "bg-violet-100 text-violet-600" },
+  { bg: "bg-sky-50", text: "text-sky-500", ring: "ring-sky-200", badge: "bg-sky-100 text-sky-600" },
+  { bg: "bg-emerald-50", text: "text-emerald-500", ring: "ring-emerald-200", badge: "bg-emerald-100 text-emerald-600" },
+  { bg: "bg-amber-50", text: "text-amber-500", ring: "ring-amber-200", badge: "bg-amber-100 text-amber-600" },
+  { bg: "bg-rose-50", text: "text-rose-500", ring: "ring-rose-200", badge: "bg-rose-100 text-rose-600" },
+  { bg: "bg-teal-50", text: "text-teal-500", ring: "ring-teal-200", badge: "bg-teal-100 text-teal-600" },
+  { bg: "bg-fuchsia-50", text: "text-fuchsia-500", ring: "ring-fuchsia-200", badge: "bg-fuchsia-100 text-fuchsia-600" },
+  { bg: "bg-cyan-50", text: "text-cyan-500", ring: "ring-cyan-200", badge: "bg-cyan-100 text-cyan-600" },
+  { bg: "bg-orange-50", text: "text-orange-500", ring: "ring-orange-200", badge: "bg-orange-100 text-orange-600" },
+  { bg: "bg-indigo-50", text: "text-indigo-500", ring: "ring-indigo-200", badge: "bg-indigo-100 text-indigo-600" },
+];
+
+/* ─── CategoryIcon ──────────────────────────────────────────── */
+function CatIcon({ icon, name, size = 28 }: { icon?: string; name: string; size?: number }) {
+  if (!icon) return <ShoppingBasket size={size} />;
+  if (icon.startsWith("data:image") || icon.startsWith("http")) {
+    return <img src={icon} alt={name} className="object-contain" style={{ width: size, height: size }} />;
+  }
+  return <span style={{ fontSize: size * 0.85 }} className="leading-none">{icon}</span>;
+}
+
+/* ─── PartnerCard ───────────────────────────────────────────── */
+function PartnerCard({ partner, index }: { partner: GroupedCategory["partners"][0]; index: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.03, duration: 0.25 }}
+    >
+      <Link
+        href={`/organizations/${partner.slug}`}
+        className="group flex items-center gap-3.5 rounded-2xl border border-gray-100 bg-white p-3.5 transition-all duration-200 hover:border-amber-200 hover:shadow-lg hover:shadow-amber-100/40 hover:-translate-y-0.5"
+      >
+        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-gray-50 border border-gray-100">
+          {partner.logoUrl ? (
+            <Image src={partner.logoUrl} alt={partner.name} width={48} height={48} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500">
+              <span className="text-lg font-black text-white">{partner.name.charAt(0)}</span>
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h4 className="truncate text-sm font-semibold text-gray-900 group-hover:text-amber-600 transition-colors">
+            {partner.name}
+          </h4>
+          <span className="flex items-center gap-1 text-[11px] font-medium text-gray-400 group-hover:text-amber-500 transition-colors">
+            Дэлгүүр үзэх <ArrowRight size={10} />
+          </span>
+        </div>
+      </Link>
+    </motion.div>
+  );
+}
+
+/* ─── CategoryPill ──────────────────────────────────────────── */
+function CategoryPill({
+  cat,
+  index,
+  isActive,
+  partnerCount,
+  onClick,
+}: {
+  cat: Category;
+  index: number;
+  isActive: boolean;
+  partnerCount: number;
+  onClick: () => void;
+}) {
+  const p = PALETTE[index % PALETTE.length];
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ delay: index * 0.04, duration: 0.35 }}
+      onClick={onClick}
+      className={`group relative flex shrink-0 flex-col items-center snap-center cursor-pointer rounded-2xl px-4 py-5 transition-all duration-300 ${
+        isActive
+          ? `bg-white shadow-lg shadow-gray-200/60 ring-2 ${p.ring} -translate-y-1`
+          : "bg-white/60 hover:bg-white hover:shadow-md hover:shadow-gray-100 hover:-translate-y-0.5"
+      }`}
+      style={{ width: 112 }}
+    >
+      {/* Icon circle */}
+      <div
+        className={`flex h-14 w-14 items-center justify-center rounded-xl transition-all duration-300 ${
+          isActive ? `${p.bg} ${p.text} scale-110` : `bg-gray-50 text-gray-400 group-hover:${p.bg} group-hover:${p.text}`
+        }`}
+      >
+        <CatIcon icon={cat.icon} name={cat.name} size={26} />
+      </div>
+
+      {/* Name */}
+      <span
+        className={`mt-3 text-center text-[13px] font-semibold leading-tight transition-colors line-clamp-2 ${
+          isActive ? "text-gray-900" : "text-gray-600 group-hover:text-gray-900"
+        }`}
+      >
+        {cat.name}
+      </span>
+
+      {/* Count badge */}
+      {partnerCount > 0 && (
+        <span
+          className={`mt-2 inline-flex h-5 items-center justify-center rounded-full px-2 text-[10px] font-bold transition-colors ${
+            isActive ? p.badge : "bg-gray-100 text-gray-400"
+          }`}
+        >
+          {partnerCount}
+        </span>
+      )}
+
+      {/* Active dot */}
+      {isActive && (
+        <motion.div
+          layoutId="activeDot"
+          className={`absolute -bottom-1.5 left-1/2 h-1.5 w-6 -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-400 to-orange-500`}
+        />
+      )}
+    </motion.button>
+  );
+}
+
+/* ─── Main Component ────────────────────────────────────────── */
 export default function Categories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [grouped, setGrouped] = useState<GroupedCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
 
-  const scroll = (direction: "left" | "right") => {
-    if (scrollContainerRef.current) {
-      const scrollAmount = 400;
-      scrollContainerRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-    }
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanLeft(el.scrollLeft > 4);
+    setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    checkScroll();
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", checkScroll); ro.disconnect(); };
+  }, [checkScroll, categories]);
+
+  const scroll = (dir: "left" | "right") => {
+    scrollRef.current?.scrollBy({ left: dir === "left" ? -320 : 320, behavior: "smooth" });
   };
 
   useEffect(() => {
-    const loadData = async () => {
+    (async () => {
       try {
         const [catsRes, groupedRes] = await Promise.all([
           fetch(`${API}/business-categories`),
@@ -58,36 +199,11 @@ export default function Categories() {
         ]);
         if (catsRes.ok) setCategories(await catsRes.json());
         if (groupedRes.ok) setGrouped(await groupedRes.json());
-      } catch (error) {
-        console.error("Failed to load categories", error);
-      } finally {
+      } catch { /* silently fail */ } finally {
         setIsLoading(false);
       }
-    };
-    loadData();
+    })();
   }, []);
-
-  const bgColors = [
-    "bg-green-50 text-green-600",
-    "bg-blue-50 text-blue-600",
-    "bg-yellow-50 text-yellow-600",
-    "bg-orange-50 text-orange-600",
-    "bg-red-50 text-red-600",
-    "bg-teal-50 text-teal-600",
-    "bg-pink-50 text-pink-600",
-    "bg-purple-50 text-purple-600",
-  ];
-
-  const activeBgColors = [
-    "bg-green-600 text-white",
-    "bg-blue-600 text-white",
-    "bg-yellow-500 text-white",
-    "bg-orange-500 text-white",
-    "bg-red-500 text-white",
-    "bg-teal-500 text-white",
-    "bg-pink-500 text-white",
-    "bg-purple-500 text-white",
-  ];
 
   const activePartners = activeSlug
     ? grouped.find((g) => g.category === activeSlug)?.partners ?? []
@@ -95,129 +211,76 @@ export default function Categories() {
 
   const activeCatName = activeSlug
     ? categories.find((c) => c.slug === activeSlug)?.name ??
-      grouped.find((g) => g.category === activeSlug)?.label ??
-      activeSlug
+      grouped.find((g) => g.category === activeSlug)?.label ?? ""
     : "";
 
-  const handleCategoryClick = (slug: string) => {
-    setActiveSlug((prev) => (prev === slug ? null : slug));
-  };
-
   return (
-    <div className="py-16 sm:py-24 bg-white">
-      <div className="container mx-auto px-4 lg:px-8 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-end justify-between mb-10 sm:mb-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-left"
-          >
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 sm:mb-4 tracking-tight">
+    <section className="bg-gradient-to-b from-gray-50/80 to-white py-16 sm:py-20">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="mb-10 flex items-end justify-between">
+          <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-600 ring-1 ring-amber-200/60">
+              <ShoppingBasket size={13} />
+              АНГИЛАЛУУД
+            </div>
+            <h2 className="text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl">
               Ангиллаар дэлгүүр хэсэх
             </h2>
-            <p className="text-sm sm:text-lg text-gray-500">
-              Ангилал дээр дарж тухайн ангилалд хамаарах байгууллагуудыг харна уу
+            <p className="mt-2 text-sm text-gray-500 sm:text-base">
+              Ангилал дээр дарж байгууллагуудыг харна уу
             </p>
           </motion.div>
 
-          <div className="hidden md:flex items-center gap-2">
+          {/* Scroll arrows */}
+          <div className="hidden items-center gap-2 md:flex">
             <button
               onClick={() => scroll("left")}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50"
+              disabled={!canLeft}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-all hover:border-gray-300 hover:shadow-sm disabled:opacity-30"
             >
-              <ChevronLeft size={18} />
+              <ChevronLeft size={16} />
             </button>
             <button
               onClick={() => scroll("right")}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50"
+              disabled={!canRight}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-all hover:border-gray-300 hover:shadow-sm disabled:opacity-30"
             >
-              <ChevronRight size={18} />
+              <ChevronRight size={16} />
             </button>
           </div>
         </div>
 
+        {/* Content */}
         {isLoading ? (
-          <div className="flex justify-center items-center h-40">
-            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+          <div className="flex h-40 items-center justify-center">
+            <Loader2 className="h-7 w-7 animate-spin text-amber-500" />
           </div>
         ) : categories.length === 0 ? (
-          <div className="text-center text-slate-500 py-10 border border-dashed rounded-2xl">
+          <div className="rounded-2xl border-2 border-dashed border-gray-200 py-16 text-center text-gray-400">
             Ангилал олдсонгүй
           </div>
         ) : (
           <>
-            {/* Category pills */}
+            {/* Category rail */}
             <div
-              ref={scrollContainerRef}
-              className="flex overflow-x-auto pb-4 gap-4 sm:gap-6 snap-x snap-mandatory scrollbar-hide"
+              ref={scrollRef}
+              className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
-              {categories.map((cat, index) => {
-                const isActive = activeSlug === cat.slug;
-                const colorClass = isActive
-                  ? activeBgColors[index % activeBgColors.length]
-                  : bgColors[index % bgColors.length];
-                const partnerCount =
-                  grouped.find((g) => g.category === cat.slug)?.partners
-                    .length ?? 0;
-
-                return (
-                  <motion.button
-                    key={cat.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    whileInView={{ opacity: 1, scale: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: index * 0.05, duration: 0.4 }}
-                    className={`shrink-0 w-32 sm:w-36 flex flex-col items-center justify-center p-6 rounded-3xl transition-all group border snap-center cursor-pointer ${
-                      isActive
-                        ? "bg-white shadow-xl shadow-gray-200/50 -translate-y-1 border-orange-200 ring-2 ring-orange-100"
-                        : "bg-gray-50 hover:bg-white hover:shadow-xl hover:shadow-gray-200/50 hover:-translate-y-1 border-transparent hover:border-gray-100"
-                    }`}
-                    onClick={() => handleCategoryClick(cat.slug)}
-                  >
-                    <div
-                      className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-colors duration-300 ${colorClass}`}
-                    >
-                      {cat.icon ? (
-                        cat.icon.startsWith("data:image") ||
-                        cat.icon.startsWith("http") ? (
-                          <img
-                            src={cat.icon}
-                            alt={cat.name}
-                            className="w-8 h-8 object-contain"
-                          />
-                        ) : (
-                          <span className="text-3xl">{cat.icon}</span>
-                        )
-                      ) : (
-                        <ShoppingBasket className="w-7 h-7" />
-                      )}
-                    </div>
-                    <span
-                      className={`text-sm font-semibold text-center transition-colors ${
-                        isActive ? "text-orange-600" : "text-gray-700 group-hover:text-gray-900"
-                      }`}
-                    >
-                      {cat.name}
-                    </span>
-                    {partnerCount > 0 && (
-                      <span
-                        className={`mt-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          isActive
-                            ? "bg-orange-100 text-orange-600"
-                            : "bg-gray-100 text-gray-400"
-                        }`}
-                      >
-                        {partnerCount}
-                      </span>
-                    )}
-                  </motion.button>
-                );
-              })}
+              {categories.map((cat, i) => (
+                <CategoryPill
+                  key={cat.id}
+                  cat={cat}
+                  index={i}
+                  isActive={activeSlug === cat.slug}
+                  partnerCount={grouped.find((g) => g.category === cat.slug)?.partners.length ?? 0}
+                  onClick={() => setActiveSlug((prev) => (prev === cat.slug ? null : cat.slug))}
+                />
+              ))}
             </div>
 
-            {/* Expanded category organizations */}
+            {/* Expanded panel */}
             <AnimatePresence>
               {activeSlug && (
                 <motion.div
@@ -228,74 +291,35 @@ export default function Categories() {
                   transition={{ duration: 0.3, ease: "easeInOut" }}
                   className="overflow-hidden"
                 >
-                  <div className="pt-8 sm:pt-10">
-                    <div className="flex items-center justify-between mb-6">
+                  <div className="mt-8 rounded-3xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8">
+                    {/* Panel header */}
+                    <div className="mb-6 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
-                          {activeCatName}
-                        </h3>
-                        <span className="text-sm font-medium text-gray-400">
-                          ({activePartners.length} байгууллага)
-                        </span>
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${PALETTE[categories.findIndex((c) => c.slug === activeSlug) % PALETTE.length]?.bg} ${PALETTE[categories.findIndex((c) => c.slug === activeSlug) % PALETTE.length]?.text}`}>
+                          <CatIcon icon={categories.find((c) => c.slug === activeSlug)?.icon} name={activeCatName} size={20} />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900">{activeCatName}</h3>
+                          <p className="text-xs text-gray-400">{activePartners.length} байгууллага</p>
+                        </div>
                       </div>
                       <button
                         onClick={() => setActiveSlug(null)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-500 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600"
                       >
                         <X size={14} />
-                        Хаах
                       </button>
                     </div>
 
+                    {/* Partner grid */}
                     {activePartners.length === 0 ? (
-                      <div className="text-center py-10 border border-dashed border-gray-200 rounded-2xl">
-                        <p className="text-sm text-gray-400">
-                          Энэ ангилалд байгууллага олдсонгүй
-                        </p>
+                      <div className="rounded-2xl border-2 border-dashed border-gray-100 py-12 text-center text-sm text-gray-400">
+                        Энэ ангилалд байгууллага олдсонгүй
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {activePartners.map((partner, idx) => (
-                          <motion.div
-                            key={partner.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{
-                              delay: idx * 0.04,
-                              duration: 0.3,
-                            }}
-                          >
-                            <Link
-                              href={`/organizations/${partner.slug}`}
-                              className="group flex flex-col items-center p-4 sm:p-5 bg-white border border-gray-100 rounded-2xl hover:shadow-lg hover:border-orange-200 hover:-translate-y-0.5 transition-all duration-300"
-                            >
-                              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gray-50 border border-gray-100 overflow-hidden mb-3 sm:mb-4 shrink-0">
-                                {partner.logoUrl ? (
-                                  <div className="relative w-full h-full">
-                                    <Image
-                                      src={partner.logoUrl}
-                                      alt={partner.name}
-                                      fill
-                                      className="object-cover"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-400 to-amber-500">
-                                    <span className="text-white text-xl sm:text-2xl font-black">
-                                      {partner.name.charAt(0).toUpperCase()}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                              <h4 className="text-sm font-bold text-gray-900 text-center line-clamp-2 group-hover:text-orange-600 transition-colors mb-1">
-                                {partner.name}
-                              </h4>
-                              <span className="text-[11px] font-medium text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                                Дэлгүүр орох
-                                <ArrowRight size={10} />
-                              </span>
-                            </Link>
-                          </motion.div>
+                          <PartnerCard key={partner.id} partner={partner} index={idx} />
                         ))}
                       </div>
                     )}
@@ -304,10 +328,10 @@ export default function Categories() {
                       <div className="mt-6 text-center">
                         <Link
                           href="/organizations"
-                          className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-bold text-orange-600 bg-orange-50 rounded-full hover:bg-orange-100 transition-colors"
+                          className="inline-flex items-center gap-2 rounded-full bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-800"
                         >
                           Бүх байгууллагуудыг харах
-                          <ArrowRight size={16} />
+                          <ArrowRight size={14} />
                         </Link>
                       </div>
                     )}
@@ -318,6 +342,6 @@ export default function Categories() {
           </>
         )}
       </div>
-    </div>
+    </section>
   );
 }

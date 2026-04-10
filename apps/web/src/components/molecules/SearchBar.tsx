@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Search,
   ChevronDown,
@@ -30,6 +31,7 @@ const contextOptions = [
 ];
 
 export const SearchBar = () => {
+  const router = useRouter();
   const [searchContext, setSearchContext] = useState("Бүгд");
   const [searchQuery, setSearchQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -119,7 +121,7 @@ export const SearchBar = () => {
   const handleSearchSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!searchQuery.trim()) return;
-    alert(`Хайж буй утга: ${searchQuery} \nАнгилал: ${searchContext}`);
+    router.push(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
     closeSearch();
   };
 
@@ -260,7 +262,10 @@ export const SearchBar = () => {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-2">
-                      <div className="p-4 hover:bg-slate-50 rounded-2xl cursor-pointer flex items-center justify-between group transition-colors">
+                      <div
+                        onClick={() => handleSearchSubmit()}
+                        className="p-4 hover:bg-slate-50 rounded-2xl cursor-pointer flex items-center justify-between group transition-colors"
+                      >
                         <div className="flex items-center gap-4">
                           <div className="p-3 bg-orange-50 text-orange-500 rounded-xl">
                             <Search size={20} />
@@ -317,6 +322,10 @@ export const SearchBar = () => {
                         filteredCategories.map((cat) => (
                           <button
                             key={cat.id}
+                            onClick={() => {
+                              router.push(`/products?category=${cat.id}`);
+                              closeSearch();
+                            }}
                             className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
                           >
                             <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center group-hover:border-orange-200 overflow-hidden">
@@ -355,6 +364,10 @@ export const SearchBar = () => {
                         filteredBrands.map((brand) => (
                           <button
                             key={brand.id}
+                            onClick={() => {
+                              router.push(`/organizations/${brand.id}`);
+                              closeSearch();
+                            }}
                             className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"
                           >
                             <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center text-[10px] font-black group-hover:bg-orange-500 shrink-0">
@@ -382,7 +395,10 @@ export const SearchBar = () => {
                 ENTER - Хайх
               </span>
             </div>
-            <div className="text-[10px] text-orange-500 font-black flex items-center gap-1 cursor-pointer hover:underline">
+            <div
+              onClick={() => { router.push("/organizations"); closeSearch(); }}
+              className="text-[10px] text-orange-500 font-black flex items-center gap-1 cursor-pointer hover:underline"
+            >
               БҮХ БРЭНДҮҮД <ArrowRight size={10} strokeWidth={3} />
             </div>
           </div>

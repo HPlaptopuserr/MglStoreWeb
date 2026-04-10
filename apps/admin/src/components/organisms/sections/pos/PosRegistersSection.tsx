@@ -76,7 +76,7 @@ export function PosRegistersSection() {
   const [selectedOrgId, setSelectedOrgId] = useState("");
   const [branches, setBranches] = useState<Branch[]>([]);
   const [registers, setRegisters] = useState<PosRegister[]>([]);
-  const [posVisible, setPosVisible] = useState(true);
+  const [posVisible, setPosVisible] = useState(false);
   const [loadingPosVisibility, setLoadingPosVisibility] = useState(false);
   const [savingPosVisibility, setSavingPosVisibility] = useState(false);
 
@@ -125,14 +125,14 @@ export function PosRegistersSection() {
         const settings = (await settingRes.json()) as Record<string, string>;
         const raw = settings[getPosVisibilityKey(orgId)];
         const enabled =
-          raw == null || raw === "" || raw === "1" || raw === "true" || raw === "on";
+          raw === "1" || raw === "true" || raw === "on";
         setPosVisible(enabled);
       } else {
-        setPosVisible(true);
+        setPosVisible(false);
       }
     } catch {
       setError("Мэдээлэл авахад алдаа гарлаа.");
-      setPosVisible(true);
+      setPosVisible(false);
     } finally {
       setLoadingRegs(false);
       setLoadingPosVisibility(false);

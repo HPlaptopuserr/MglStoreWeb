@@ -394,6 +394,20 @@ router.post(
       const perm = await assertOrgPermission(req, res, organizationId, Permission.MANAGE_PRODUCTS);
       if (!perm) return;
 
+      // Auto-resolve businessCategoryId from organization's businessCategory string
+      let orgBusinessCategoryId: string | null = null;
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { businessCategory: true },
+      });
+      if (org?.businessCategory) {
+        const matched = await prisma.businessCategory.findFirst({
+          where: { slug: { equals: org.businessCategory, mode: "insensitive" } },
+          select: { id: true },
+        });
+        if (matched) orgBusinessCategoryId = matched.id;
+      }
+
       if (!req.file) {
         return res.status(400).json({ message: "Excel файл шаардлагатай (.xlsx, .xls)" });
       }
@@ -509,17 +523,6 @@ router.post(
         }
 
         const normalizedSku = sku ? String(sku).trim() : null;
-        if (normalizedSku) {
-          const existing = await prisma.product.findFirst({
-            where: { organizationId, sku: normalizedSku, deletedAt: null },
-            select: { id: true },
-          });
-          if (existing) {
-            results.errors.push(`Мөр ${rowNum}: SKU "${normalizedSku}" аль хэдийн бүртгэлтэй`);
-            results.skipped++;
-            continue;
-          }
-        }
 
         try {
           // Parse image URLs (comma-separated) from text column
@@ -540,22 +543,53 @@ router.post(
             }
           }
 
-          const product = await prisma.product.create({
-            data: {
-              organizationId,
+          const productData = {
               name: String(name).trim(),
               description: description ? String(description).trim() : null,
-              sku: normalizedSku,
               price: priceNum,
               costPrice: costPriceNum,
               stock: stockNum,
+              businessCategoryId: orgBusinessCategoryId,
               isActive: true,
-              ...(imageUrls.length > 0 && {
-                images: { create: imageUrls.map((url) => ({ url })) },
-              }),
-            },
-            select: { id: true, name: true, sku: true, price: true, stock: true },
-          });
+          };
+
+          let product;
+          if (normalizedSku) {
+            // Upsert: update if SKU exists, create if not
+            product = await prisma.product.upsert({
+              where: {
+                organizationId_sku: { organizationId, sku: normalizedSku },
+              },
+              update: {
+                ...productData,
+                deletedAt: null,
+                ...(imageUrls.length > 0 && {
+                  images: { deleteMany: {}, create: imageUrls.map((url) => ({ url })) },
+                }),
+              },
+              create: {
+                organizationId,
+                sku: normalizedSku,
+                ...productData,
+                ...(imageUrls.length > 0 && {
+                  images: { create: imageUrls.map((url) => ({ url })) },
+                }),
+              },
+              select: { id: true, name: true, sku: true, price: true, stock: true },
+            });
+          } else {
+            product = await prisma.product.create({
+              data: {
+                organizationId,
+                sku: null,
+                ...productData,
+                ...(imageUrls.length > 0 && {
+                  images: { create: imageUrls.map((url) => ({ url })) },
+                }),
+              },
+              select: { id: true, name: true, sku: true, price: true, stock: true },
+            });
+          }
           results.products.push({
             id: product.id,
             name: product.name,
@@ -618,12 +652,29 @@ router.post("/products", requireAuth, requireOrgPermission({ from: "body" }, Per
       price,
       costPrice,
       stock,
-      businessCategoryId,
+      businessCategoryId: inputCategoryId,
       images, // string[] — base64 or URL
     } = req.body;
 
+    let businessCategoryId = inputCategoryId;
+
     if (!organizationId || !name || price === undefined) {
       return res.status(400).json({ message: "organizationId, name, price шаардлагатай" });
+    }
+
+    // Auto-resolve businessCategoryId from organization if not provided
+    if (!businessCategoryId) {
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { businessCategory: true },
+      });
+      if (org?.businessCategory) {
+        const matched = await prisma.businessCategory.findFirst({
+          where: { slug: { equals: org.businessCategory, mode: "insensitive" } },
+          select: { id: true },
+        });
+        if (matched) businessCategoryId = matched.id;
+      }
     }
 
     const priceNum = parseFloat(String(price));

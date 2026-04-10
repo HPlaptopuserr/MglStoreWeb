@@ -36,12 +36,17 @@ const navigation = [
 export interface VendorSidebarProps {
   onSignOut?: () => void;
   showPos?: boolean;
+  showSupplyProducts?: boolean;
+  showServicePosts?: boolean;
 }
 
-export function VendorSidebar({ onSignOut, showPos = false }: VendorSidebarProps) {
-  const filteredNavigation = navigation.filter(
-    (item) => item.href !== "/pos" || showPos,
-  );
+export function VendorSidebar({ onSignOut, showPos = false, showSupplyProducts = false, showServicePosts = false }: VendorSidebarProps) {
+  const filteredNavigation = navigation.filter((item) => {
+    if (item.href === "/pos") return showPos;
+    if (item.href === "/supply-products") return showSupplyProducts;
+    if (item.href === "/service-posts") return showServicePosts;
+    return true;
+  });
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
 

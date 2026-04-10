@@ -11,6 +11,7 @@ import { BranchesSection } from "@/components/organisms/sections/branches/Branch
 import { CardsSection } from "@/components/organisms/sections/cards/CardsSection";
 import { FormBuilderTool, QrGeneratorPanel } from "@/components/organisms";
 import { PosRegistersSection } from "@/components/organisms/sections/pos/PosRegistersSection";
+import { VendorFeaturesSection } from "@/components/organisms/sections/vendor-features/VendorFeaturesSection";
 import { HrSection } from "@/components/organisms/sections/hr/HrSection";
 import { useAdminAuth } from "@/lib/admin-auth";
 
@@ -71,6 +72,7 @@ export default function SectionsPage() {
           {active === "cards" && <CardsSection />}
           {active === "qr" && <QrGeneratorPanel showHeader={false} />}
           {active === "pos" && <PosRegistersSection />}
+          {active === "vendor-features" && <VendorFeaturesSection />}
           {active === "hr" && <HrSection />}
         </div>
       ) : (

@@ -16,6 +16,8 @@ export interface DashboardLayoutProps extends Partial<SidebarProps> {
   organizationName?: string;
   onSignOut?: () => void;
   showPos?: boolean;
+  showSupplyProducts?: boolean;
+  showServicePosts?: boolean;
 }
 
 export function DashboardLayout({
@@ -27,6 +29,8 @@ export function DashboardLayout({
   organizationName,
   onSignOut,
   showPos,
+  showSupplyProducts,
+  showServicePosts,
   ...sidebarProps
 }: DashboardLayoutProps) {
   const pathname = usePathname();
@@ -46,7 +50,7 @@ export function DashboardLayout({
         />
       )}
 
-      {isVendor && <VendorSidebar onSignOut={onSignOut} showPos={showPos} />}
+      {isVendor && <VendorSidebar onSignOut={onSignOut} showPos={showPos} showSupplyProducts={showSupplyProducts} showServicePosts={showServicePosts} />}
 
       <div className="flex flex-1 flex-col bg-slate-50 min-h-screen">
         {isVendor && <VendorHeader userName={organizationName || userName} />}

@@ -60,6 +60,8 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [profilePreview, setProfilePreview] = useState<string | null>(null);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [profileUploading, setProfileUploading] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const profileInputRef = useRef<HTMLInputElement>(null);
 
@@ -85,14 +87,72 @@ export default function ProfilePage() {
     operatingYears: 1,
   });
 
-  const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) setCoverPreview(URL.createObjectURL(file));
+  const uploadOrgImage = async (file: File): Promise<string | null> => {
+    const fd = new FormData();
+    fd.append("image", file);
+    try {
+      const res = await authFetch(`${API}/partners/upload-image`, {
+        method: "POST",
+        body: fd,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.url;
+      }
+      console.error("Upload failed", await res.text());
+      return null;
+    } catch (e) {
+      console.error("Upload error", e);
+      return null;
+    }
   };
 
-  const handleProfileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) setProfilePreview(URL.createObjectURL(file));
+    if (!file || !partner?.id) return;
+    setCoverPreview(URL.createObjectURL(file));
+    setCoverUploading(true);
+    try {
+      const url = await uploadOrgImage(file);
+      if (url) {
+        const res = await authFetch(`${API}/partners/${partner.id}/profile`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bannerUrl: url }),
+        });
+        if (res.ok) {
+          setPartner((prev: any) => ({ ...prev, bannerUrl: url }));
+          setCoverPreview(null);
+        }
+      }
+    } finally {
+      setCoverUploading(false);
+      if (coverInputRef.current) coverInputRef.current.value = "";
+    }
+  };
+
+  const handleProfileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !partner?.id) return;
+    setProfilePreview(URL.createObjectURL(file));
+    setProfileUploading(true);
+    try {
+      const url = await uploadOrgImage(file);
+      if (url) {
+        const res = await authFetch(`${API}/partners/${partner.id}/profile`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ logoUrl: url }),
+        });
+        if (res.ok) {
+          setPartner((prev: any) => ({ ...prev, logoUrl: url }));
+          setProfilePreview(null);
+        }
+      }
+    } finally {
+      setProfileUploading(false);
+      if (profileInputRef.current) profileInputRef.current.value = "";
+    }
   };
 
   useEffect(() => {
@@ -328,14 +388,19 @@ export default function ProfilePage() {
       {/* Cover + Avatar card */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="relative h-52 bg-linear-to-br from-slate-100 to-slate-200 group/cover">
-          {coverPreview ? (
+          {(coverPreview || partner.bannerUrl) ? (
             <img
-              src={coverPreview}
+              src={coverPreview || partner.bannerUrl}
               alt="Cover"
               className="absolute inset-0 w-full h-full object-cover"
             />
           ) : (
             <div className="absolute inset-0 bg-linear-to-br from-[#FFAD02]/10 via-amber-50 to-slate-100" />
+          )}
+          {coverUploading && (
+            <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-10">
+              <Loader2 size={32} className="text-white animate-spin" />
+            </div>
           )}
           <input
             ref={coverInputRef}
@@ -346,7 +411,8 @@ export default function ProfilePage() {
           />
           <button
             onClick={() => coverInputRef.current?.click()}
-            className="absolute top-4 right-4 z-10 flex items-center gap-2 rounded-xl bg-white/80 backdrop-blur-sm px-4 py-2 text-slate-600 text-sm font-semibold opacity-0 group-hover/cover:opacity-100 transition-all hover:bg-white shadow-sm border border-slate-200/50"
+            disabled={coverUploading}
+            className="absolute top-4 right-4 z-10 flex items-center gap-2 rounded-xl bg-white/80 backdrop-blur-sm px-4 py-2 text-slate-600 text-sm font-semibold opacity-0 group-hover/cover:opacity-100 transition-all hover:bg-white shadow-sm border border-slate-200/50 disabled:opacity-50"
           >
             <ImagePlus size={16} />
             Ковер зураг
@@ -357,15 +423,9 @@ export default function ProfilePage() {
           <div className="absolute -top-14 left-8">
             <div className="relative group/avatar">
               <div className="w-28 h-28 rounded-2xl bg-white border-4 border-white shadow-lg overflow-hidden flex items-center justify-center">
-                {profilePreview ? (
+                {(profilePreview || partner.logoUrl) ? (
                   <img
-                    src={profilePreview}
-                    alt={partner.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : partner.logoUrl ? (
-                  <img
-                    src={partner.logoUrl}
+                    src={profilePreview || partner.logoUrl}
                     alt={partner.name}
                     className="w-full h-full object-cover"
                   />
@@ -374,6 +434,11 @@ export default function ProfilePage() {
                     <span className="text-white text-4xl font-black">
                       {partner.name?.charAt(0).toUpperCase() || "V"}
                     </span>
+                  </div>
+                )}
+                {profileUploading && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-2xl">
+                    <Loader2 size={22} className="text-white animate-spin" />
                   </div>
                 )}
                 <input
@@ -385,7 +450,8 @@ export default function ProfilePage() {
                 />
                 <button
                   onClick={() => profileInputRef.current?.click()}
-                  className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover/avatar:opacity-100 transition-opacity rounded-2xl"
+                  disabled={profileUploading}
+                  className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover/avatar:opacity-100 transition-opacity rounded-2xl disabled:opacity-50"
                 >
                   <Camera size={22} className="text-white" />
                 </button>

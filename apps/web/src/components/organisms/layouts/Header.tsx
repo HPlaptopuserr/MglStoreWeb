@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ShoppingCart,
   User,
@@ -9,6 +9,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  ChevronLeft,
   Flame,
   LogOut,
   Loader2,
@@ -49,6 +50,35 @@ export const Header = () => {
   const { categories } = useBusinessCategories();
   const router = useRouter();
   const pathname = usePathname();
+
+  // Desktop category scroll
+  const catScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkCatScroll = useCallback(() => {
+    const el = catScrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    checkCatScroll();
+    const el = catScrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkCatScroll, { passive: true });
+    const ro = new ResizeObserver(checkCatScroll);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", checkCatScroll);
+      ro.disconnect();
+    };
+  }, [categories, checkCatScroll]);
+
+  const scrollCats = (dir: "left" | "right") => {
+    catScrollRef.current?.scrollBy({ left: dir === "left" ? -260 : 260, behavior: "smooth" });
+  };
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -254,20 +284,39 @@ export const Header = () => {
           </div>
 
           {categories.length > 0 && (
-            <div
-              className="flex items-center gap-1 overflow-x-auto ml-2"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
-              {categories.map((cat) => (
-                <Link
-                  key={cat.id}
-                  href={`/products?category=${cat.id}`}
-                  className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-orange-50 hover:text-orange-600"
+            <div className="relative flex-1 min-w-0">
+              {canScrollLeft && (
+                <button
+                  onClick={() => scrollCats("left")}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
                 >
-                  <CategoryIcon category={cat} size={14} />
-                  {cat.name}
-                </Link>
-              ))}
+                  <ChevronLeft size={16} />
+                </button>
+              )}
+              <div
+                ref={catScrollRef}
+                className="flex items-center gap-1 overflow-x-auto px-8"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+              >
+                {categories.map((cat) => (
+                  <Link
+                    key={cat.id}
+                    href={`/products?category=${cat.id}`}
+                    className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-orange-50 hover:text-orange-600"
+                  >
+                    <CategoryIcon category={cat} size={14} />
+                    {cat.name}
+                  </Link>
+                ))}
+              </div>
+              {canScrollRight && (
+                <button
+                  onClick={() => scrollCats("right")}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              )}
             </div>
           )}
         </div>

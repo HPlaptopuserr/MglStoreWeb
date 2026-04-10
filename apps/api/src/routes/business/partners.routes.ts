@@ -1,5 +1,6 @@
 import { Router, type Router as ExpressRouter } from "express";
 import crypto from "crypto";
+import path from "path";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import {
@@ -12,7 +13,8 @@ import {
 import type { Prisma } from "@mgl/database";
 import bcrypt from "bcryptjs";
 import { Permission } from "@mgl/types";
-import { requireAuth, requirePlatformPermission, requireAnyPlatformPermission } from "../../middleware/auth";
+import { requireAuth, requirePlatformPermission, requireAnyPlatformPermission, type AuthPayload } from "../../middleware/auth";
+import { getSupabase, ORG_IMAGES_BUCKET } from "../../lib/supabase";
 
 const router: ExpressRouter = Router();
 
@@ -28,6 +30,15 @@ const orgImportUpload = multer({
     ];
     const ext = file.originalname.toLowerCase();
     cb(null, allowed.includes(file.mimetype) || ext.endsWith(".xlsx") || ext.endsWith(".xls") || ext.endsWith(".ods") || ext.endsWith(".csv"));
+  },
+});
+
+const orgImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    cb(null, allowed.includes(file.mimetype));
   },
 });
 
@@ -1087,10 +1098,63 @@ router.patch("/partners/:id/category", requireAuth, requirePlatformPermission(Pe
   }
 });
 
-// Update partner profile
-router.patch("/partners/:id/profile", requireAuth, requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS), async (req, res) => {
+// Upload organization image (logo or cover)
+router.post("/partners/upload-image", requireAuth, orgImageUpload.single("image"), async (req, res) => {
+  try {
+    const user = (req as any).user as AuthPayload;
+    if (!req.file) {
+      return res.status(400).json({ message: "Зураг файл шаардлагатай" });
+    }
+
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      return res.status(500).json({ message: "Supabase тохиргоо хийгдээгүй байна" });
+    }
+
+    const ext = path.extname(req.file.originalname).toLowerCase() || ".jpg";
+    const fileName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
+    const filePath = `organizations/${fileName}`;
+
+    const { error } = await getSupabase().storage
+      .from(ORG_IMAGES_BUCKET)
+      .upload(filePath, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false,
+      });
+
+    if (error) {
+      console.error("org image upload error", error);
+      return res.status(500).json({ message: "Зураг upload хийхэд алдаа гарлаа", error: error.message });
+    }
+
+    const { data: publicUrlData } = getSupabase().storage
+      .from(ORG_IMAGES_BUCKET)
+      .getPublicUrl(filePath);
+
+    return res.json({ url: publicUrlData.publicUrl });
+  } catch (error) {
+    console.error("org image upload error", error);
+    return res.status(500).json({ message: "Зураг upload хийхэд алдаа гарлаа", error: String(error) });
+  }
+});
+
+// Update partner profile (vendor can update own org, admin can update any)
+router.patch("/partners/:id/profile", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
+    const user = (req as any).user as AuthPayload;
+
+    // Allow if admin OR if user belongs to this organization
+    const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
+    if (!isAdmin) {
+      const membership = await prisma.organizationMember.findFirst({
+        where: { userId: user.userId, organizationId: id },
+        select: { id: true },
+      });
+      if (!membership) {
+        return res.status(403).json({ message: "Энэ байгууллагын мэдээллийг засах эрхгүй байна" });
+      }
+    }
+
     const {
       name,
       phone,

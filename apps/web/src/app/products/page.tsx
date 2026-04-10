@@ -1,8 +1,9 @@
 "use client";
 
-import React, { Suspense, useState, useEffect, useMemo, useRef } from "react";
+import React, { Suspense, useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ProductCard } from "@mgl/ui";
 import { API } from "@/lib/api";
 
@@ -78,6 +79,35 @@ function ProductsContent() {
     if (filterPanelOpen) document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [filterPanelOpen]);
+
+  // Category tabs scroll
+  const tabsScrollRef = useRef<HTMLDivElement>(null);
+  const [tabsCanLeft, setTabsCanLeft] = useState(false);
+  const [tabsCanRight, setTabsCanRight] = useState(false);
+
+  const checkTabsScroll = useCallback(() => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    setTabsCanLeft(el.scrollLeft > 2);
+    setTabsCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    checkTabsScroll();
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkTabsScroll, { passive: true });
+    const ro = new ResizeObserver(checkTabsScroll);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", checkTabsScroll);
+      ro.disconnect();
+    };
+  }, [apiCategories, checkTabsScroll]);
+
+  const scrollTabs = (dir: "left" | "right") => {
+    tabsScrollRef.current?.scrollBy({ left: dir === "left" ? -260 : 260, behavior: "smooth" });
+  };
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -238,28 +268,49 @@ function ProductsContent() {
 
         {/* Category tabs + filter button row */}
         <div className="flex items-center justify-between border-b border-gray-200 mb-0">
-          <div className="flex items-center gap-0 overflow-x-auto scrollbar-hide -mb-px">
-            <button
-              onClick={() => handleCategoryClick(null)}
-              className={`relative px-4 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap transition-colors ${
-                !activeCategory ? "text-black" : "text-gray-400 hover:text-black"
-              }`}
-            >
-              Бүгд
-              {!activeCategory && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFAD02]" />}
-            </button>
-            {apiCategories.map((cat) => (
+          <div className="relative flex-1 min-w-0">
+            {tabsCanLeft && (
               <button
-                key={cat.id}
-                onClick={() => handleCategoryClick(cat.id)}
+                onClick={() => scrollTabs("left")}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
+              >
+                <ChevronLeft size={16} />
+              </button>
+            )}
+            <div
+              ref={tabsScrollRef}
+              className="flex items-center gap-0 overflow-x-auto scrollbar-hide -mb-px px-8"
+            >
+              <button
+                onClick={() => handleCategoryClick(null)}
                 className={`relative px-4 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap transition-colors ${
-                  activeCategory === cat.id ? "text-black" : "text-gray-400 hover:text-black"
+                  !activeCategory ? "text-black" : "text-gray-400 hover:text-black"
                 }`}
               >
-                {cat.name}
-                {activeCategory === cat.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFAD02]" />}
+                Бүгд
+                {!activeCategory && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFAD02]" />}
               </button>
-            ))}
+              {apiCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => handleCategoryClick(cat.id)}
+                  className={`relative px-4 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap transition-colors ${
+                    activeCategory === cat.id ? "text-black" : "text-gray-400 hover:text-black"
+                  }`}
+                >
+                  {cat.name}
+                  {activeCategory === cat.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFAD02]" />}
+                </button>
+              ))}
+            </div>
+            {tabsCanRight && (
+              <button
+                onClick={() => scrollTabs("right")}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
+              >
+                <ChevronRight size={16} />
+              </button>
+            )}
           </div>
 
           {/* Filter trigger button */}
