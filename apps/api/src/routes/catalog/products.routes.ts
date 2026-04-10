@@ -463,20 +463,24 @@ router.post(
 
       const results: {
         created: number;
+        updated: number;
         skipped: number;
         errors: string[];
         products: Array<{ id: string; name: string; sku: string | null; price: number; stock: number }>;
         _debug?: { embeddedImageRows: number; mediaFiles: number };
-      } = { created: 0, skipped: 0, errors: [], products: [] };
+      } = { created: 0, updated: 0, skipped: 0, errors: [], products: [] };
 
-      // Collect all SKUs in advance for batch duplicate check
+      // Pre-scan: detect duplicate SKUs within the file
       const skusInFile = new Map<string, number>();
+      const duplicateSkuRows = new Set<number>();
       for (let i = 0; i < rows.length; i++) {
         const sku = resolveCol(rows[i], colMap.sku);
         if (sku) {
           const normalized = String(sku).trim().toLowerCase();
           if (skusInFile.has(normalized)) {
             results.errors.push(`Мөр ${i + 2}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalized)})`);
+            results.skipped++;
+            duplicateSkuRows.add(i);
           } else {
             skusInFile.set(normalized, i + 2);
           }
@@ -484,6 +488,9 @@ router.post(
       }
 
       for (let i = 0; i < rows.length; i++) {
+        // Skip rows already flagged as duplicates in pre-scan
+        if (duplicateSkuRows.has(i)) continue;
+
         const row = rows[i];
         const rowNum = i + 2;
 
@@ -554,7 +561,19 @@ router.post(
           };
 
           let product;
+          let wasUpdate = false;
           if (normalizedSku) {
+            // Free up SKU from any soft-deleted product first
+            await prisma.product.updateMany({
+              where: { organizationId, sku: normalizedSku, deletedAt: { not: null } },
+              data: { sku: null },
+            });
+            // Check if active product with this SKU already exists
+            const existing = await prisma.product.findUnique({
+              where: { organizationId_sku: { organizationId, sku: normalizedSku } },
+              select: { id: true },
+            });
+            wasUpdate = !!existing;
             // Upsert: update if SKU exists, create if not
             product = await prisma.product.upsert({
               where: {
@@ -597,7 +616,11 @@ router.post(
             price: Number(product.price),
             stock: product.stock,
           });
-          results.created++;
+          if (wasUpdate) {
+            results.updated++;
+          } else {
+            results.created++;
+          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           results.errors.push(`Мөр ${rowNum}: ${msg}`);
@@ -606,7 +629,7 @@ router.post(
       }
 
       return res.json({
-        message: `${results.created} бараа амжилттай бүртгэгдлээ`,
+        message: `${results.created} бараа шинээр, ${results.updated} бараа шинэчлэгдлээ${results.skipped > 0 ? `, ${results.skipped} алгасав` : ""}`,
         total: rows.length,
         ...results,
         _debug: { embeddedImageRows: embeddedImages.size, mediaFiles: mediaFileCount, hasRichData, hasDrawings },
@@ -928,7 +951,7 @@ router.delete("/products/:id", requireAuth, async (req, res) => {
 
     await prisma.product.update({
       where: { id },
-      data: { deletedAt: new Date(), isActive: false },
+      data: { deletedAt: new Date(), isActive: false, sku: null },
     });
 
     return res.json({ message: "Бараа устгагдлаа" });

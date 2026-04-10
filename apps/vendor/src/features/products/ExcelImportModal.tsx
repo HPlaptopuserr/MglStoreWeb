@@ -29,6 +29,7 @@ interface ImportResult {
   message: string;
   total: number;
   created: number;
+  updated: number;
   skipped: number;
   errors: string[];
   products: ImportedProduct[];
@@ -120,7 +121,7 @@ export function ExcelImportModal({
       }
       setResult(data);
       setStep("results");
-      if (data.created > 0) onSuccess();
+      if (data.created > 0 || data.updated > 0) onSuccess();
     } catch {
       setError("Сүлжээний алдаа гарлаа");
       setStep("upload");
@@ -429,14 +430,22 @@ function ImportResults({
   return (
     <div className="space-y-5">
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4 text-center">
           <div className="text-2xl font-black text-slate-800">{result.total}</div>
           <div className="text-xs font-medium text-slate-500 mt-0.5">Нийт мөр</div>
         </div>
         <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4 text-center">
           <div className="text-2xl font-black text-emerald-600">{result.created}</div>
-          <div className="text-xs font-medium text-emerald-600 mt-0.5">Амжилттай</div>
+          <div className="text-xs font-medium text-emerald-600 mt-0.5">Шинээр</div>
+        </div>
+        <div className={`rounded-2xl p-4 text-center ${result.updated > 0 ? "bg-blue-50 border border-blue-100" : "bg-slate-50 border border-slate-100"}`}>
+          <div className={`text-2xl font-black ${result.updated > 0 ? "text-blue-600" : "text-slate-400"}`}>
+            {result.updated}
+          </div>
+          <div className={`text-xs font-medium mt-0.5 ${result.updated > 0 ? "text-blue-600" : "text-slate-400"}`}>
+            Шинэчилсэн
+          </div>
         </div>
         <div className={`rounded-2xl p-4 text-center ${result.skipped > 0 ? "bg-amber-50 border border-amber-100" : "bg-slate-50 border border-slate-100"}`}>
           <div className={`text-2xl font-black ${result.skipped > 0 ? "text-amber-600" : "text-slate-400"}`}>
