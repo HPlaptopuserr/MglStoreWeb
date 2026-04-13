@@ -7,8 +7,8 @@
     "declarationMap": true,
     "sourceMap": true,
     "noEmit": false,
-    "module": "commonjs",
-    "moduleResolution": "node"
+    "module": "node16",
+    "moduleResolution": "node16"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

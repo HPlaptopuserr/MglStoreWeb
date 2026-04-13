@@ -4,11 +4,42 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
 import { isAdminRole, ADMIN_ROLE_LABELS, getPlatformPermissions } from "@mgl/types";
-import { resolveOrganization } from "../../middleware/auth";
+import { resolveOrganization, requireAuth, type AuthPayload } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
+
+// ── GET /auth/me — Return current user profile from token ──────────────
+router.get("/me", requireAuth, async (req, res) => {
+  try {
+    const { userId } = (req as any).user as AuthPayload;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+    }
+
+    const orgInfo = await resolveOrganization(user.id);
+    const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
+
+    return res.json({
+      id: user.id,
+      email: safeEmail,
+      role: user.role,
+      orgRole: orgInfo?.orgRole || null,
+      fullName: user.profile?.fullName || "",
+      phone: user.profile?.phoneNumber || null,
+      organizationId: orgInfo?.organizationId || null,
+    });
+  } catch (error) {
+    console.error("[auth/me error]", error);
+    return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
 
 router.post("/admin/login", async (req, res) => {
   try {
@@ -600,6 +631,114 @@ router.post("/reset-password", async (req, res) => {
     return res.json({ message: "Нууц үг амжилттай шинэчлэгдлээ" });
   } catch (error) {
     console.error("[reset-password error]", error);
+    return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
+
+// ── PUT /auth/web/profile — Update current user profile ────────────────
+router.put("/web/profile", requireAuth, async (req, res) => {
+  try {
+    const { userId } = (req as any).user as AuthPayload;
+    const { fullName, phone, email } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+    }
+
+    // Validate email uniqueness if changed
+    if (email && email !== user.email && !email.endsWith("@temp.local")) {
+      const existing = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+      if (existing && existing.id !== userId) {
+        return res.status(409).json({ message: "Энэ и-мэйл бүртгэгдсэн байна" });
+      }
+    }
+
+    // Validate phone uniqueness if changed
+    if (phone && phone !== user.profile?.phoneNumber) {
+      const existing = await prisma.user.findFirst({
+        where: { profile: { phoneNumber: phone.trim() }, id: { not: userId } },
+      });
+      if (existing) {
+        return res.status(409).json({ message: "Энэ утасны дугаар бүртгэгдсэн байна" });
+      }
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(email && !email.endsWith("@temp.local") ? { email: email.trim().toLowerCase() } : {}),
+        profile: {
+          upsert: {
+            create: {
+              fullName: fullName?.trim() || "",
+              phoneNumber: phone?.trim() || "",
+            },
+            update: {
+              ...(fullName !== undefined ? { fullName: fullName.trim() } : {}),
+              ...(phone !== undefined ? { phoneNumber: phone.trim() } : {}),
+            },
+          },
+        },
+      },
+      include: { profile: true },
+    });
+
+    const orgInfo = await resolveOrganization(userId);
+    const safeEmail = updatedUser.email?.endsWith("@temp.local") ? null : updatedUser.email;
+
+    return res.json({
+      id: updatedUser.id,
+      email: safeEmail,
+      role: updatedUser.role,
+      orgRole: orgInfo?.orgRole || null,
+      fullName: updatedUser.profile?.fullName || "",
+      phone: updatedUser.profile?.phoneNumber || null,
+      organizationId: orgInfo?.organizationId || null,
+    });
+  } catch (error) {
+    console.error("[web/profile update error]", error);
+    return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
+
+// ── PUT /auth/web/change-password — Change password for current user ───
+router.put("/web/change-password", requireAuth, async (req, res) => {
+  try {
+    const { userId } = (req as any).user as AuthPayload;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Одоогийн болон шинэ нууц үгээ оруулна уу" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Шинэ нууц үг дор хаяж 6 тэмдэгт байх ёстой" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.passwordHash) {
+      return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isValid) {
+      return res.status(401).json({ message: "Одоогийн нууц үг буруу байна" });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    return res.json({ message: "Нууц үг амжилттай солигдлоо" });
+  } catch (error) {
+    console.error("[web/change-password error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
   }
 });

@@ -13,6 +13,7 @@ import {
   Flame,
   LogOut,
   Loader2,
+  Settings,
 } from "lucide-react";
 import Image from "next/image";
 import { SearchBar } from "../../molecules/SearchBar";
@@ -25,18 +26,7 @@ import { CATEGORY_COLORS, NAV_LINKS } from "@/lib/constants";
 import { useRouter, usePathname } from "next/navigation";
 import { useCart } from "@/hooks/useCart";
 import { CartDrawer } from "@/components/organisms/CartDrawer";
-import { API_BASE } from "@/lib/api";
-
-type AuthUser = {
-  id: string;
-  email: string;
-  role: string;
-  fullName?: string;
-  organizationName?: string;
-};
-
-const AUTH_TOKEN_KEY = "mgl_web_access_token";
-const AUTH_USER_KEY = "mgl_web_user";
+import { useAuth } from "@/lib/auth-context";
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -45,7 +35,9 @@ export const Header = () => {
   const [authOpen, setAuthOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { user, login, register, logout } = useAuth();
   const { count, total } = useCart();
   const { categories } = useBusinessCategories();
   const router = useRouter();
@@ -95,20 +87,15 @@ export const Header = () => {
     };
   }, [mobileMenuOpen]);
 
+  // Close dropdown on outside click
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const raw = localStorage.getItem(AUTH_USER_KEY);
-    if (!raw) return;
-
-    try {
-      const parsed = JSON.parse(raw) as AuthUser;
-      if (parsed?.id) {
-        setUser(parsed);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setUserDropdownOpen(false);
       }
-    } catch {
-      localStorage.removeItem(AUTH_USER_KEY);
-      localStorage.removeItem(AUTH_TOKEN_KEY);
-    }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -143,12 +130,9 @@ export const Header = () => {
   };
 
   const handleLogout = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
-      localStorage.removeItem(AUTH_USER_KEY);
-    }
-    setUser(null);
+    logout();
     closeAuthModal();
+    setUserDropdownOpen(false);
   };
 
   return (
@@ -195,17 +179,51 @@ export const Header = () => {
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-6">
             {user ? (
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="hidden items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 sm:flex"
-              >
-                <User size={18} />
-                <span className="max-w-[180px] truncate">
-                  {user.fullName?.trim() || user.email}
-                </span>
-                <LogOut size={16} className="text-slate-400" />
-              </button>
+              <div className="relative hidden sm:block" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setUserDropdownOpen((v) => !v)}
+                  className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+                >
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-xs font-bold text-white">
+                    {user.fullName?.trim()?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <span className="max-w-[140px] truncate">
+                    {user.fullName?.trim() || user.email}
+                  </span>
+                </button>
+
+                {userDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-64 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl z-50">
+                    <div className="border-b border-gray-100 px-4 py-3">
+                      <p className="text-sm font-bold text-gray-900 truncate">
+                        {user.fullName?.trim() || 'Хэрэглэгч'}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {user.email || user.phone || ''}
+                      </p>
+                    </div>
+                    <div className="py-1">
+                      <Link
+                        href="/profile"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                      >
+                        <Settings size={16} className="text-gray-400" />
+                        Миний профайл
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50"
+                      >
+                        <LogOut size={16} />
+                        Гарах
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               <button
                 type="button"
@@ -219,10 +237,13 @@ export const Header = () => {
 
             <button
               type="button"
-              onClick={user ? handleLogout : openAuthModal}
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50 text-gray-600 transition-colors active:bg-gray-100 sm:hidden"
+              onClick={user ? () => router.push("/profile") : openAuthModal}
+              className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50 text-gray-600 transition-colors active:bg-gray-100 sm:hidden"
             >
               <User size={18} />
+              {user && (
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-white" />
+              )}
             </button>
 
             <button
@@ -441,14 +462,35 @@ export const Header = () => {
 
         <div className="border-t border-gray-100 px-5 py-4">
           {user ? (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors active:bg-slate-200"
-            >
-              <LogOut size={16} />
-              Гарах ({user.fullName?.trim() || user.email})
-            </button>
+            <div className="space-y-3">
+              <Link
+                href="/profile"
+                onClick={closeMobile}
+                className="flex items-center gap-3 rounded-xl bg-green-50 px-4 py-3"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white font-bold text-sm">
+                  {user.fullName?.trim()?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">
+                    {user.fullName?.trim() || user.email || 'Хэрэглэгч'}
+                  </p>
+                  <p className="text-xs text-green-600 font-medium">● Нэвтэрсэн</p>
+                </div>
+                <ChevronRight size={16} className="text-gray-400" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  const confirmed = window.confirm('Гарах уу?');
+                  if (confirmed) handleLogout();
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-600 transition-colors active:bg-slate-200"
+              >
+                <LogOut size={16} />
+                Гарах
+              </button>
+            </div>
           ) : (
             <button
               type="button"
@@ -471,32 +513,12 @@ export const Header = () => {
           setAuthError("");
           setAuthLoading(true);
           try {
-          const isEmail = identifier.includes("@");
-          const payload = isEmail
-            ? { email: identifier.trim(), password: password.trim() }
-            : { phone: identifier.trim(), password: password.trim() };
-
-          const res = await fetch(`${API_BASE}/auth/web/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-
-          const data = await res.json();
-
-          if (!res.ok) {
-            setAuthError(data?.message || "Нэвтрэхэд алдаа гарлаа.");
-            throw new Error(data?.message || "Login failed");
-          }
-
-          if (typeof window !== "undefined") {
-            localStorage.setItem(AUTH_TOKEN_KEY, data.accessToken || "");
-            localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user || {}));
-          }
-
-          setUser(data.user || null);
-          closeAuthModal();
-          closeMobile();
+            await login(identifier, password);
+            closeAuthModal();
+            closeMobile();
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Нэвтрэхэд алдаа гарлаа.";
+            setAuthError(msg);
           } finally {
             setAuthLoading(false);
           }
@@ -505,32 +527,12 @@ export const Header = () => {
           setAuthError("");
           setAuthLoading(true);
           try {
-          const isEmail = identifier.includes("@");
-          const payload = isEmail
-            ? { email: identifier.trim(), password: password.trim(), fullName: fullName.trim() }
-            : { phone: identifier.trim(), password: password.trim(), fullName: fullName.trim() };
-
-          const res = await fetch(`${API_BASE}/auth/web/register`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-
-          const data = await res.json();
-
-          if (!res.ok) {
-            setAuthError(data?.message || "Бүртгүүлэхэд алдаа гарлаа.");
-            throw new Error(data?.message || "Register failed");
-          }
-
-          if (typeof window !== "undefined") {
-            localStorage.setItem(AUTH_TOKEN_KEY, data.accessToken || "");
-            localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user || {}));
-          }
-
-          setUser(data.user || null);
-          closeAuthModal();
-          closeMobile();
+            await register(fullName, identifier, password);
+            closeAuthModal();
+            closeMobile();
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Бүртгүүлэхэд алдаа гарлаа.";
+            setAuthError(msg);
           } finally {
             setAuthLoading(false);
           }

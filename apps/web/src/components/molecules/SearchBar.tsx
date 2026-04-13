@@ -330,11 +330,15 @@ export const SearchBar = () => {
                           >
                             <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center group-hover:border-orange-200 overflow-hidden">
                               {cat.icon ? (
-                                <img
-                                  src={cat.icon}
-                                  alt={cat.name}
-                                  className="w-5 h-5 object-contain"
-                                />
+                                cat.icon.startsWith("data:image") || cat.icon.startsWith("http") ? (
+                                  <img
+                                    src={cat.icon}
+                                    alt={cat.name}
+                                    className="w-5 h-5 object-contain"
+                                  />
+                                ) : (
+                                  <span className="text-sm">{cat.icon}</span>
+                                )
                               ) : (
                                 <Tag
                                   size={14}

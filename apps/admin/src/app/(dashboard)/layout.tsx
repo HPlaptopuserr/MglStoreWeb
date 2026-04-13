@@ -13,6 +13,7 @@ import {
   Headphones,
   UserCog,
   Smartphone,
+  MessageSquare,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
 import { MobileDashboard } from "@/components/organisms";
@@ -78,6 +79,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     icon: Headphones,
     href: "/services",
     requires: ["MANAGE_SERVICES"],
+  },
+  {
+    id: "chat",
+    label: "Чат удирдлага",
+    icon: MessageSquare,
+    href: "/chat",
+    requires: ["MANAGE_CHAT"],
   },
   {
     id: "sections",

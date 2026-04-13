@@ -51,6 +51,8 @@ model User {
   reviewedStockRequests        WarehouseStockRequest[]  @relation("StockRequestsReviewed")
   posts                        Post[]                   @relation("PostAuthor")
   forms                        Form[]                   @relation("FormCreatedBy")
+  attendanceRecords            AttendanceRecord[]       @relation("AttendanceRecordUser")
+  chatSessions                 ChatSession[]            @relation("UserChatSessions")
 
   @@index([role])
   @@index([isActive])
@@ -322,6 +324,8 @@ model Organization {
   investorProfile              InvestorProfile?
   servicePosts                 ServicePost[]
   feedPosts                    Post[]                  @relation("OrganizationPosts")
+  attendanceZones              AttendanceZone[]
+  attendanceRecords            AttendanceRecord[]      @relation("OrgAttendanceRecords")
 
   @@index([type])
   @@index([status])
@@ -410,6 +414,7 @@ model Branch {
   deletedAt      DateTime?
   organization   Organization  @relation(fields: [organizationId], references: [id])
   posRegisters   PosRegister[]
+  attendanceZones AttendanceZone[]
 
   @@index([organizationId])
   @@index([deletedAt])
@@ -1354,4 +1359,113 @@ model FormResponse {
 
   @@index([formId])
   @@index([submittedAt])
+}
+
+/// ///////////////////////////////////////////////
+/// Attendance / Time Tracking
+/// ///////////////////////////////////////////////
+
+model AttendanceZone {
+  id             String   @id @default(uuid())
+  organizationId String
+  branchId       String?
+  name           String
+  lat            Float
+  lng            Float
+  radiusMeters   Int      @default(500)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  branch       Branch?            @relation(fields: [branchId], references: [id])
+  records      AttendanceRecord[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([isActive])
+}
+
+model AttendanceRecord {
+  id             String           @id @default(uuid())
+  userId         String
+  organizationId String
+  zoneId         String
+  clockIn        DateTime
+  clockInLat     Float
+  clockInLng     Float
+  clockInMethod  AttendanceAuth
+  clockOut       DateTime?
+  clockOutLat    Float?
+  clockOutLng    Float?
+  clockOutMethod AttendanceAuth?
+  totalMinutes   Int?
+  note           String?
+  status         AttendanceStatus @default(PRESENT)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user         User         @relation("AttendanceRecordUser", fields: [userId], references: [id])
+  organization Organization @relation("OrgAttendanceRecords", fields: [organizationId], references: [id])
+  zone         AttendanceZone @relation(fields: [zoneId], references: [id])
+
+  @@index([userId, clockIn])
+  @@index([organizationId, clockIn])
+  @@index([zoneId])
+}
+
+enum AttendanceAuth {
+  FINGERPRINT
+  FACE
+  PIN
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  EARLY_LEAVE
+  ABSENT
+}
+
+// ─── Chat Support ───────────────────────────────────────────────────────
+
+model ChatSession {
+  id          String            @id @default(cuid())
+  visitorId   String            // Anonymous UUID stored in client localStorage
+  userId      String?           // Linked when user is logged in
+  displayName String?           // User's name or "Зочин"
+  status      ChatSessionStatus @default(OPEN)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  user     User?         @relation("UserChatSessions", fields: [userId], references: [id])
+  messages ChatMessage[]
+
+  @@index([visitorId])
+  @@index([userId])
+  @@index([status, updatedAt])
+}
+
+model ChatMessage {
+  id        String            @id @default(cuid())
+  sessionId String
+  sender    ChatMessageSender
+  senderId  String?           // userId for USER/ADMIN, null for BOT
+  text      String
+  createdAt DateTime          @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+enum ChatSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum ChatMessageSender {
+  VISITOR
+  BOT
+  ADMIN
 }

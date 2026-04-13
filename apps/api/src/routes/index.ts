@@ -24,3 +24,7 @@ export {
 export { dashboardRoutes, siteSettingsRoutes } from "./system";
 
 export { formRoutes } from "./forms";
+
+export { attendanceRoutes } from "./attendance";
+
+export { chatRoutes } from "./chat";

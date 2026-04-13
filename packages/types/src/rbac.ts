@@ -26,6 +26,7 @@ export const PLATFORM_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     Permission.MANAGE_SITE_SETTINGS,
     Permission.MANAGE_CATEGORIES,
     Permission.MANAGE_FORMS,
+    Permission.MANAGE_CHAT,
   ],
 
   [PlatformRole.PARTNER_ADMIN]: [

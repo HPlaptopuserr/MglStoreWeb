@@ -230,11 +230,15 @@ export function PartnershipForm() {
                 {selectedCat ? (
                   <span className="flex items-center gap-2">
                     {selectedCat.icon && (
-                      <img
-                        src={selectedCat.icon}
-                        alt=""
-                        className="h-4 w-4 rounded object-cover"
-                      />
+                      selectedCat.icon.startsWith("data:image") || selectedCat.icon.startsWith("http") ? (
+                        <img
+                          src={selectedCat.icon}
+                          alt=""
+                          className="h-4 w-4 rounded object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm">{selectedCat.icon}</span>
+                      )
                     )}
                     {selectedCat.name}
                   </span>
@@ -272,11 +276,15 @@ export function PartnershipForm() {
                           }`}
                         >
                           {cat.icon ? (
-                            <img
-                              src={cat.icon}
-                              alt=""
-                              className="h-5 w-5 rounded object-cover"
-                            />
+                            cat.icon.startsWith("data:image") || cat.icon.startsWith("http") ? (
+                              <img
+                                src={cat.icon}
+                                alt=""
+                                className="h-5 w-5 rounded object-cover"
+                              />
+                            ) : (
+                              <span className="text-base">{cat.icon}</span>
+                            )
                           ) : (
                             <Briefcase className="h-4 w-4 text-gray-400 shrink-0" />
                           )}

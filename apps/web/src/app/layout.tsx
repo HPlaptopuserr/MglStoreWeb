@@ -5,6 +5,8 @@ import { FloatingSideNav } from "@/components/organisms/layouts/FloatingSideNav"
 import { Header } from "@/components/organisms/layouts/Header";
 import { Footer } from "@/components/organisms/layouts/Footer";
 import { SmoothScrollProvider } from "@/components/organisms/layouts/SmoothScrollProvider";
+import { AuthProvider } from "@/lib/auth-context";
+import { ChatBot } from "@/components/organisms/ChatBot";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -37,12 +39,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         className={`${inter.variable} ${manrope.variable} ${marckScript.variable} bg-white antialiased min-h-screen flex flex-col`}
         suppressHydrationWarning
       >
+        <AuthProvider>
         <SmoothScrollProvider>
           <Header />
           <main className="grow pt-40 md:pt-32">{children}</main>
           <FloatingSideNav />
+          <ChatBot />
           <Footer />
         </SmoothScrollProvider>
+        </AuthProvider>
       </body>
     </html>
   );

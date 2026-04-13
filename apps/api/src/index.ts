@@ -21,6 +21,8 @@ import {
   dashboardRoutes,
   siteSettingsRoutes,
   formRoutes,
+  attendanceRoutes,
+  chatRoutes,
 } from "./routes";
 
 // Resolve .env from monorepo root (../../.. from src/, ../../../ from dist/)
@@ -79,6 +81,8 @@ app.use("/api", siteSettingsRoutes);
 app.use("/api", productsRoutes);
 app.use("/api", servicePostsRoutes);
 app.use("/api", formRoutes);
+app.use("/api", attendanceRoutes);
+app.use("/api", chatRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");
