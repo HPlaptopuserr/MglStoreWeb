@@ -21,38 +21,41 @@ model User {
   deletedAt                    DateTime?
   passwordHash                 String?
   addresses                    Address[]
+  attendanceRecords            AttendanceRecord[]       @relation("AttendanceRecordUser")
   auditLogs                    AuditLog[]
+  initiatedCardAttempts        CardPaymentAttempt[]     @relation("CardPaymentAttemptInitiatedBy")
+  chatSessions                 ChatSession[]            @relation("UserChatSessions")
   courierLocationHistories     CourierLocationHistory[] @relation("CourierLocationHistoryUser")
   deliveries                   Delivery[]               @relation("CourierDeliveries")
+  forms                        Form[]                   @relation("FormCreatedBy")
   inventoryLedgers             InventoryLedger[]        @relation("InventoryLedgerCreatedBy")
   orders                       Order[]                  @relation("CustomerOrders")
   changedOrderHistories        OrderHistory[]           @relation("OrderHistoryChangedBy")
   organizationMemberships      OrganizationMember[]
   passwordResetTokens          PasswordResetToken[]     @relation("UserPasswordResetTokens")
+  reviewedPosRegisters         PosRegister[]            @relation("PosRegisterReviewedBy")
+  posts                        Post[]                   @relation("PostAuthor")
   reviewedProductRequests      ProductRequest[]         @relation("ReviewedProductRequests")
   submittedProductRequests     ProductRequest[]         @relation("SubmittedProductRequests")
   profile                      Profile?
+  initiatedQPayInvoices        QPayInvoice[]            @relation("QPayInvoiceInitiatedBy")
   approvedFromRequest          RegistrationRequest?     @relation("ApprovedUserRegistrationRequest")
   reviewedRegistrationRequests RegistrationRequest[]    @relation("ReviewedRegistrationRequests")
   resolvedReturnRequests       ReturnRequest[]          @relation("ReturnRequestResolvedBy")
   assignedServiceRequests      ServiceRequest[]         @relation("ServiceRequestAssignedTo")
   requestedServiceRequests     ServiceRequest[]         @relation("ServiceRequestRequestedBy")
-  reviewedPosRegisters         PosRegister[]            @relation("PosRegisterReviewedBy")
-  initiatedCardAttempts        CardPaymentAttempt[]     @relation("CardPaymentAttemptInitiatedBy")
-  initiatedQPayInvoices        QPayInvoice[]            @relation("QPayInvoiceInitiatedBy")
+  driverDispatches             StockDispatch[]          @relation("DriverDispatches")
   confirmedPayments            StockRequestPayment[]    @relation("PaymentConfirmations")
   sessions                     UserSession[]
   vendorSetupTokens            VendorSetupToken[]       @relation("UserVendorSetupTokens")
-  warehouseSetupTokens         WarehouseSetupToken[]    @relation("UserWarehouseSetupTokens")
-  driverDispatches             StockDispatch[]          @relation("DriverDispatches")
   createdWarehouses            Warehouse[]              @relation("WarehouseCreatedBy")
   warehouseAssignments         WarehouseOrganization[]  @relation("WarehouseAssignedBy")
+  warehouseSetupTokens         WarehouseSetupToken[]    @relation("UserWarehouseSetupTokens")
   requestedStockRequests       WarehouseStockRequest[]  @relation("StockRequestsRequested")
   reviewedStockRequests        WarehouseStockRequest[]  @relation("StockRequestsReviewed")
-  posts                        Post[]                   @relation("PostAuthor")
-  forms                        Form[]                   @relation("FormCreatedBy")
-  attendanceRecords            AttendanceRecord[]       @relation("AttendanceRecordUser")
-  chatSessions                 ChatSession[]            @relation("UserChatSessions")
+  orgJoinRequests              OrgJoinRequest[]         @relation("UserOrgJoinRequests")
+  conversationParticipants     ConversationParticipant[]
+  sentDirectMessages           DirectMessage[]          @relation("DirectMessageSender")
 
   @@index([role])
   @@index([isActive])
@@ -153,7 +156,6 @@ model AuditLog {
 model RegistrationRequest {
   id                   String           @id @default(uuid())
   email                String
-  requestedOrgType     OrgType          @default(SUPPLIER)
   source               OnboardingSource @default(SELF_SERVICE)
   status               ApprovalStatus   @default(PENDING)
   fullName             String?
@@ -179,6 +181,7 @@ model RegistrationRequest {
   operatingYears       Int?
   inviteToken          String?          @unique
   inviteTokenExpiresAt DateTime?
+  requestedOrgType     OrgType          @default(SUPPLIER)
   approvedUser         User?            @relation("ApprovedUserRegistrationRequest", fields: [approvedUserId], references: [id])
   reviewedBy           User?            @relation("ReviewedRegistrationRequests", fields: [reviewedById], references: [id])
 
@@ -192,15 +195,15 @@ model RegistrationRequest {
 }
 
 model OrganizationInvite {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   email          String
   organizationId String
-  role           OrgRole  @default(OWNER)
-  tokenHash      String                 @unique
+  role           OrgRole      @default(OWNER)
+  tokenHash      String       @unique
   expiresAt      DateTime
   usedAt         DateTime?
-  createdAt      DateTime               @default(now())
-  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([email])
@@ -259,20 +262,19 @@ model JobApplication {
 }
 
 model BusinessCategory {
-  id        String   @id @default(uuid())
-  slug      String   @unique
+  id        String             @id @default(uuid())
+  slug      String             @unique
   name      String
   icon      String?
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
+  sortOrder Int                @default(0)
+  isActive  Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  level     Int                @default(0)
   parentId  String?
-  level     Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  parent   BusinessCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children BusinessCategory[] @relation("CategoryHierarchy")
-  products Product[]
+  parent    BusinessCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  BusinessCategory[] @relation("CategoryHierarchy")
+  products  Product[]
 
   @@index([isActive])
   @@index([sortOrder])
@@ -309,23 +311,25 @@ model Organization {
   deletedBy                    String?
   deletionReason               String?
   scheduledPermanentDeletionAt DateTime?
+  maxMembers                   Int                     @default(5)
+  attendanceRecords            AttendanceRecord[]      @relation("OrgAttendanceRecords")
+  attendanceZones              AttendanceZone[]
   branches                     Branch[]
-  posRegisters                 PosRegister[]
+  investorProfile              InvestorProfile?
   orders                       Order[]
   invites                      OrganizationInvite[]
   members                      OrganizationMember[]
+  posRegisters                 PosRegister[]
+  feedPosts                    Post[]                  @relation("OrganizationPosts")
   products                     Product[]
   productRequests              ProductRequest[]
+  servicePosts                 ServicePost[]
   serviceRequests              ServiceRequest[]
-  stockRequestPayments         StockRequestPayment[]   @relation("OrganizationStockPayments")
   stockDispatches              StockDispatch[]         @relation("OrganizationDispatches")
+  stockRequestPayments         StockRequestPayment[]   @relation("OrganizationStockPayments")
   warehouseAssignments         WarehouseOrganization[]
   stockRequests                WarehouseStockRequest[] @relation("OrganizationStockRequests")
-  investorProfile              InvestorProfile?
-  servicePosts                 ServicePost[]
-  feedPosts                    Post[]                  @relation("OrganizationPosts")
-  attendanceZones              AttendanceZone[]
-  attendanceRecords            AttendanceRecord[]      @relation("OrgAttendanceRecords")
+  joinRequests                 OrgJoinRequest[]        @relation("OrgJoinRequests")
 
   @@index([type])
   @@index([status])
@@ -387,11 +391,11 @@ model OrganizationMember {
   userId         String
   organizationId String
   role           OrgRole      @default(STAFF)
-  isPrimary      Boolean      @default(false)
-  capabilities   Capability[] @default([])
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  isPrimary      Boolean      @default(false)
+  capabilities   Capability[] @default([])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -402,57 +406,75 @@ model OrganizationMember {
   @@index([isActive])
 }
 
-model Branch {
-  id             String        @id @default(uuid())
+/// A request from a user to join an organization.
+/// OWNER/ADMIN of the org can approve or reject.
+model OrgJoinRequest {
+  id             String           @id @default(uuid())
+  userId         String
   organizationId String
-  name           String
-  address        String
-  lat            Float?
-  lng            Float?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  deletedAt      DateTime?
-  organization   Organization  @relation(fields: [organizationId], references: [id])
-  posRegisters   PosRegister[]
+  status         JoinRequestStatus @default(PENDING)
+  message        String?
+  rejectedReason String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  user           User             @relation("UserOrgJoinRequests", fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation("OrgJoinRequests", fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([status])
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Branch {
+  id              String           @id @default(uuid())
+  organizationId  String
+  name            String
+  address         String
+  lat             Float?
+  lng             Float?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
   attendanceZones AttendanceZone[]
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  posRegisters    PosRegister[]
 
   @@index([organizationId])
   @@index([deletedAt])
 }
 
 model PosRegister {
-  id             String  @id @default(uuid())
-  organizationId String
-  branchId       String
-  name           String
-  label          String?
-
-  // Card terminal
-  cardEnabled       Boolean @default(false)
-  cardProviderType  String? // e.g. "QPOSLANE" | "GANTIGO" | "IDPAY"
-  cardTerminalId    String? // hardware S/N or LAN IP
-  terminalBridgeUrl String? // e.g. "http://localhost:7420"
-
-  // QPay
-  qpayEnabled    Boolean @default(false)
-  qpayMerchantId String?
-  qpayTerminalId String?
-
-  // Activation workflow
-  activationStatus PosActivationStatus @default(PENDING)
-  reviewedById     String?
-  reviewedAt       DateTime?
-  rejectReason     String?
-
-  isActive  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  organization Organization         @relation(fields: [organizationId], references: [id])
-  branch       Branch               @relation(fields: [branchId], references: [id])
-  reviewedBy   User?                @relation("PosRegisterReviewedBy", fields: [reviewedById], references: [id])
-  cardAttempts CardPaymentAttempt[]
-  qpayInvoices QPayInvoice[]
+  id                String               @id @default(uuid())
+  organizationId    String
+  branchId          String
+  name              String
+  label             String?
+  cardEnabled       Boolean              @default(false)
+  cardProviderType  String?
+  cardTerminalId    String?
+  terminalBridgeUrl String?
+  qpayEnabled       Boolean              @default(false)
+  qpayMerchantId    String?
+  qpayTerminalId    String?
+  isActive          Boolean              @default(false)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  activationStatus  PosActivationStatus  @default(PENDING)
+  rejectReason      String?
+  reviewedAt        DateTime?
+  reviewedById      String?
+  cardAttempts      CardPaymentAttempt[]
+  branch            Branch               @relation(fields: [branchId], references: [id])
+  organization      Organization         @relation(fields: [organizationId], references: [id])
+  reviewedBy        User?                @relation("PosRegisterReviewedBy", fields: [reviewedById], references: [id])
+  qpayInvoices      QPayInvoice[]
 
   @@unique([organizationId, branchId, name])
   @@unique([cardProviderType, cardTerminalId])
@@ -516,15 +538,15 @@ model Product {
   stock                Int                         @default(0)
   isActive             Boolean                     @default(true)
   categoryId           String?
-  businessCategoryId   String?
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
   deletedAt            DateTime?
+  businessCategoryId   String?
   discounts            Discount[]
   inventoryLogs        InventoryLedger[]
   orderItems           OrderItem[]
-  category             Category?                   @relation(fields: [categoryId], references: [id])
   businessCategory     BusinessCategory?           @relation(fields: [businessCategoryId], references: [id])
+  category             Category?                   @relation(fields: [categoryId], references: [id])
   organization         Organization                @relation(fields: [organizationId], references: [id])
   images               ProductImage[]
   productRequests      ProductRequest[]
@@ -816,12 +838,12 @@ model Warehouse {
   city          String                  @default("")
   district      String                  @default("")
   phone         String?
+  dispatches    StockDispatch[]         @relation("WarehouseDispatches")
   createdBy     User?                   @relation("WarehouseCreatedBy", fields: [createdById], references: [id])
   inventories   WarehouseInventory[]
   organizations WarehouseOrganization[]
-  setupTokens   WarehouseSetupToken[]    @relation("WarehouseSetupTokens")
+  setupTokens   WarehouseSetupToken[]   @relation("WarehouseSetupTokens")
   stockRequests WarehouseStockRequest[] @relation("WarehouseStockRequests")
-  dispatches    StockDispatch[]         @relation("WarehouseDispatches")
 
   @@index([createdById])
   @@index([isActive])
@@ -886,8 +908,8 @@ model WarehouseStockRequest {
   completedAt     DateTime?
   createdAt       DateTime                    @default(now())
   updatedAt       DateTime                    @updatedAt
-  payment         StockRequestPayment?
   dispatch        StockDispatch?
+  payment         StockRequestPayment?
   organization    Organization                @relation("OrganizationStockRequests", fields: [organizationId], references: [id])
   requestedBy     User                        @relation("StockRequestsRequested", fields: [requestedById], references: [id])
   reviewedBy      User?                       @relation("StockRequestsReviewed", fields: [reviewedById], references: [id])
@@ -949,32 +971,257 @@ model StockRequestPayment {
 /// Dispatch order created when admin approves a stock request.
 /// Warehouse operator sees this and confirms dispatch → inventory deducted.
 model StockDispatch {
-  id              String              @id @default(uuid())
-  dispatchNumber  String              @unique
-  requestId       String              @unique
-  warehouseId     String
-  organizationId  String
-  status          DispatchStatus      @default(PENDING)
-  driverId        String?
-  driverName      String?
-  driverPhone     String?
-  vehicleNumber   String?
-  dispatchedAt    DateTime?
-  deliveredAt     DateTime?
-  note            String?
-  padaanUrl       String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  request         WarehouseStockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  warehouse       Warehouse             @relation("WarehouseDispatches", fields: [warehouseId], references: [id])
-  organization    Organization          @relation("OrganizationDispatches", fields: [organizationId], references: [id])
-  driver          User?                 @relation("DriverDispatches", fields: [driverId], references: [id])
+  id             String                @id @default(uuid())
+  dispatchNumber String                @unique
+  requestId      String                @unique
+  warehouseId    String
+  organizationId String
+  status         DispatchStatus        @default(PENDING)
+  driverId       String?
+  driverName     String?
+  driverPhone    String?
+  vehicleNumber  String?
+  dispatchedAt   DateTime?
+  deliveredAt    DateTime?
+  note           String?
+  padaanUrl      String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  driver         User?                 @relation("DriverDispatches", fields: [driverId], references: [id])
+  organization   Organization          @relation("OrganizationDispatches", fields: [organizationId], references: [id])
+  request        WarehouseStockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  warehouse      Warehouse             @relation("WarehouseDispatches", fields: [warehouseId], references: [id])
 
   @@index([warehouseId])
   @@index([organizationId])
   @@index([status])
   @@index([driverId])
   @@index([createdAt])
+}
+
+model CardPaymentAttempt {
+  id              String           @id @default(uuid())
+  registerId      String?
+  organizationId  String?
+  terminalId      String
+  bridgeUrl       String?
+  amount          Decimal          @db.Decimal(18, 2)
+  status          PosPaymentStatus @default(PENDING)
+  transactionId   String?
+  message         String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  consumedAt      DateTime?
+  initiatedById   String?
+  providerPayload Json?
+  saleReference   String?
+  initiatedBy     User?            @relation("CardPaymentAttemptInitiatedBy", fields: [initiatedById], references: [id])
+  register        PosRegister?     @relation(fields: [registerId], references: [id])
+
+  @@index([registerId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([initiatedById])
+  @@index([saleReference])
+}
+
+model QPayInvoice {
+  id             String        @id @default(uuid())
+  registerId     String?
+  organizationId String?
+  amount         Decimal       @db.Decimal(18, 2)
+  qrText         String
+  status         PosQPayStatus @default(PENDING)
+  expiresAt      DateTime
+  paidAt         DateTime?
+  webhookPayload Json?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  consumedAt     DateTime?
+  initiatedById  String?
+  paymentId      String?       @unique
+  saleReference  String?
+  initiatedBy    User?         @relation("QPayInvoiceInitiatedBy", fields: [initiatedById], references: [id])
+  register       PosRegister?  @relation(fields: [registerId], references: [id])
+
+  @@index([registerId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([initiatedById])
+  @@index([saleReference])
+}
+
+model PosSaleIdempotency {
+  id             String   @id @default(uuid())
+  clientSaleId   String
+  receiptNo      String   @unique
+  organizationId String
+  registerId     String?
+  response       Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, clientSaleId])
+  @@index([organizationId])
+  @@index([registerId])
+  @@index([createdAt])
+}
+
+model Post {
+  id             String        @id @default(uuid())
+  authorId       String
+  organizationId String?
+  type           PostType      @default(GENERAL)
+  content        String
+  imageUrls      String[]      @default([])
+  tags           String[]      @default([])
+  viewCount      Int           @default(0)
+  likeCount      Int           @default(0)
+  commentCount   Int           @default(0)
+  isPinned       Boolean       @default(false)
+  isOfficial     Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  author         User          @relation("PostAuthor", fields: [authorId], references: [id])
+  organization   Organization? @relation("OrganizationPosts", fields: [organizationId], references: [id])
+  comments       PostComment[]
+  likes          PostLike[]
+
+  @@index([authorId])
+  @@index([organizationId])
+  @@index([type])
+  @@index([isPinned])
+  @@index([createdAt])
+}
+
+model PostLike {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([userId])
+}
+
+model PostComment {
+  id        String   @id @default(uuid())
+  postId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model Form {
+  id          String         @id @default(uuid())
+  slug        String         @unique
+  title       String
+  description String?
+  fields      Json
+  isActive    Boolean        @default(true)
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  createdBy   User?          @relation("FormCreatedBy", fields: [createdById], references: [id])
+  responses   FormResponse[]
+
+  @@index([slug])
+  @@index([isActive])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model FormResponse {
+  id          String   @id @default(uuid())
+  formId      String
+  data        Json
+  submittedAt DateTime @default(now())
+  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId])
+  @@index([submittedAt])
+}
+
+model AttendanceZone {
+  id             String             @id @default(uuid())
+  organizationId String
+  branchId       String?
+  name           String
+  lat            Float
+  lng            Float
+  radiusMeters   Int                @default(500)
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  records        AttendanceRecord[]
+  branch         Branch?            @relation(fields: [branchId], references: [id])
+  organization   Organization       @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([isActive])
+}
+
+model AttendanceRecord {
+  id             String           @id @default(uuid())
+  userId         String
+  organizationId String
+  zoneId         String
+  clockIn        DateTime
+  clockInLat     Float
+  clockInLng     Float
+  clockInMethod  AttendanceAuth
+  clockOut       DateTime?
+  clockOutLat    Float?
+  clockOutLng    Float?
+  clockOutMethod AttendanceAuth?
+  totalMinutes   Int?
+  note           String?
+  status         AttendanceStatus @default(PRESENT)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organization   Organization     @relation("OrgAttendanceRecords", fields: [organizationId], references: [id])
+  user           User             @relation("AttendanceRecordUser", fields: [userId], references: [id])
+  zone           AttendanceZone   @relation(fields: [zoneId], references: [id])
+
+  @@index([userId, clockIn])
+  @@index([organizationId, clockIn])
+  @@index([zoneId])
+}
+
+model ChatSession {
+  id          String            @id @default(cuid())
+  visitorId   String
+  userId      String?
+  displayName String?
+  status      ChatSessionStatus @default(OPEN)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  messages    ChatMessage[]
+  user        User?             @relation("UserChatSessions", fields: [userId], references: [id])
+
+  @@index([visitorId])
+  @@index([userId])
+  @@index([status, updatedAt])
+}
+
+model ChatMessage {
+  id        String            @id @default(cuid())
+  sessionId String
+  sender    ChatMessageSender
+  senderId  String?
+  text      String
+  createdAt DateTime          @default(now())
+  session   ChatSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
 }
 
 /// ///////////////////////////////////////////////
@@ -1001,21 +1248,21 @@ enum Capability {
 }
 
 enum PlatformRole {
-  SUPER_ADMIN
   ADMIN
+  USER
+  SUPER_ADMIN
   HR_ADMIN
   CONTENT_ADMIN
   PARTNER_ADMIN
   WAREHOUSE_ADMIN
   FINANCE_ADMIN
   SERVICE_ADMIN
-  USER
 }
 
 enum OrgType {
-  VENDOR
   SUPPLIER
   BUSINESS_CUSTOMER
+  VENDOR
 }
 
 enum OrgStatus {
@@ -1126,17 +1373,17 @@ enum AuditAction {
   PRODUCT_REQUEST_REJECTED
   PRODUCT_REQUEST_CHANGES_REQUESTED
   PRODUCT_PUBLISHED
-  POS_REGISTER_CREATED
   POS_REGISTER_CLAIMED
   POS_REGISTER_ACTIVATED
   POS_REGISTER_REJECTED
-  POS_REGISTER_UPDATED
-  POS_REGISTER_DELETED
   POS_CARD_AUTHORIZED
-  POS_QPAY_INVOICE_CREATED
   POS_QPAY_PAID
   POS_QPAY_WEBHOOK_RECEIVED
+  POS_REGISTER_UPDATED
+  POS_REGISTER_DELETED
   POS_SALE_CREATED
+  POS_REGISTER_CREATED
+  POS_QPAY_INVOICE_CREATED
 }
 
 enum PosActivationStatus {
@@ -1156,74 +1403,6 @@ enum PosQPayStatus {
   PENDING
   PAID
   EXPIRED
-}
-
-model CardPaymentAttempt {
-  id              String           @id @default(uuid())
-  registerId      String?
-  organizationId  String?
-  initiatedById   String?
-  terminalId      String
-  bridgeUrl       String?
-  amount          Decimal          @db.Decimal(18, 2)
-  status          PosPaymentStatus @default(PENDING)
-  transactionId   String?
-  message         String?
-  providerPayload Json?
-  saleReference   String?
-  consumedAt      DateTime?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  register        PosRegister?     @relation(fields: [registerId], references: [id])
-  initiatedBy     User?            @relation("CardPaymentAttemptInitiatedBy", fields: [initiatedById], references: [id])
-
-  @@index([registerId])
-  @@index([status])
-  @@index([createdAt])
-  @@index([initiatedById])
-  @@index([saleReference])
-}
-
-model QPayInvoice {
-  id             String        @id @default(uuid())
-  registerId     String?
-  organizationId String?
-  initiatedById  String?
-  amount         Decimal       @db.Decimal(18, 2)
-  qrText         String
-  status         PosQPayStatus @default(PENDING)
-  paymentId      String?       @unique
-  expiresAt      DateTime
-  paidAt         DateTime?
-  webhookPayload Json?
-  saleReference  String?
-  consumedAt     DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  register       PosRegister?  @relation(fields: [registerId], references: [id])
-  initiatedBy    User?         @relation("QPayInvoiceInitiatedBy", fields: [initiatedById], references: [id])
-
-  @@index([registerId])
-  @@index([status])
-  @@index([expiresAt])
-  @@index([initiatedById])
-  @@index([saleReference])
-}
-
-model PosSaleIdempotency {
-  id             String   @id @default(uuid())
-  clientSaleId   String
-  receiptNo      String   @unique
-  organizationId String
-  registerId     String?
-  response       Json
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@unique([organizationId, clientSaleId])
-  @@index([organizationId])
-  @@index([registerId])
-  @@index([createdAt])
 }
 
 enum ServiceRequestType {
@@ -1260,158 +1439,12 @@ enum DispatchStatus {
   CANCELLED
 }
 
-/// ///////////////////////////////////////////////
-/// Feed / Social Posts
-/// ///////////////////////////////////////////////
-
 enum PostType {
   ANNOUNCEMENT
   UPDATE
   ALERT
   PROMOTION
   GENERAL
-}
-
-model Post {
-  id             String   @id @default(uuid())
-  authorId       String
-  organizationId String?
-  type           PostType @default(GENERAL)
-  content        String   @db.Text
-  imageUrls      String[] @default([])
-  tags           String[] @default([])
-  viewCount      Int      @default(0)
-  likeCount      Int      @default(0)
-  commentCount   Int      @default(0)
-  isPinned       Boolean  @default(false)
-  isOfficial     Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  author       User          @relation("PostAuthor", fields: [authorId], references: [id])
-  organization Organization? @relation("OrganizationPosts", fields: [organizationId], references: [id])
-  likes        PostLike[]
-  comments     PostComment[]
-
-  @@index([authorId])
-  @@index([organizationId])
-  @@index([type])
-  @@index([isPinned])
-  @@index([createdAt])
-}
-
-model PostLike {
-  id        String   @id @default(uuid())
-  postId    String
-  userId    String
-  createdAt DateTime @default(now())
-
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@unique([postId, userId])
-  @@index([userId])
-}
-
-model PostComment {
-  id        String   @id @default(uuid())
-  postId    String
-  authorId  String
-  content   String   @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@index([postId])
-  @@index([authorId])
-  @@index([createdAt])
-}
-
-// ─── Forms ──────────────────────────────────────────────────────────────────
-
-model Form {
-  id          String         @id @default(uuid())
-  slug        String         @unique
-  title       String
-  description String?        @db.Text
-  fields      Json
-  isActive    Boolean        @default(true)
-  createdById String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-
-  createdBy   User?          @relation("FormCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  responses   FormResponse[]
-
-  @@index([slug])
-  @@index([isActive])
-  @@index([createdById])
-  @@index([createdAt])
-}
-
-model FormResponse {
-  id          String   @id @default(uuid())
-  formId      String
-  data        Json
-  submittedAt DateTime @default(now())
-
-  form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
-
-  @@index([formId])
-  @@index([submittedAt])
-}
-
-/// ///////////////////////////////////////////////
-/// Attendance / Time Tracking
-/// ///////////////////////////////////////////////
-
-model AttendanceZone {
-  id             String   @id @default(uuid())
-  organizationId String
-  branchId       String?
-  name           String
-  lat            Float
-  lng            Float
-  radiusMeters   Int      @default(500)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization Organization       @relation(fields: [organizationId], references: [id])
-  branch       Branch?            @relation(fields: [branchId], references: [id])
-  records      AttendanceRecord[]
-
-  @@index([organizationId])
-  @@index([branchId])
-  @@index([isActive])
-}
-
-model AttendanceRecord {
-  id             String           @id @default(uuid())
-  userId         String
-  organizationId String
-  zoneId         String
-  clockIn        DateTime
-  clockInLat     Float
-  clockInLng     Float
-  clockInMethod  AttendanceAuth
-  clockOut       DateTime?
-  clockOutLat    Float?
-  clockOutLng    Float?
-  clockOutMethod AttendanceAuth?
-  totalMinutes   Int?
-  note           String?
-  status         AttendanceStatus @default(PRESENT)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-
-  user         User         @relation("AttendanceRecordUser", fields: [userId], references: [id])
-  organization Organization @relation("OrgAttendanceRecords", fields: [organizationId], references: [id])
-  zone         AttendanceZone @relation(fields: [zoneId], references: [id])
-
-  @@index([userId, clockIn])
-  @@index([organizationId, clockIn])
-  @@index([zoneId])
 }
 
 enum AttendanceAuth {
@@ -1427,38 +1460,6 @@ enum AttendanceStatus {
   ABSENT
 }
 
-// ─── Chat Support ───────────────────────────────────────────────────────
-
-model ChatSession {
-  id          String            @id @default(cuid())
-  visitorId   String            // Anonymous UUID stored in client localStorage
-  userId      String?           // Linked when user is logged in
-  displayName String?           // User's name or "Зочин"
-  status      ChatSessionStatus @default(OPEN)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-
-  user     User?         @relation("UserChatSessions", fields: [userId], references: [id])
-  messages ChatMessage[]
-
-  @@index([visitorId])
-  @@index([userId])
-  @@index([status, updatedAt])
-}
-
-model ChatMessage {
-  id        String            @id @default(cuid())
-  sessionId String
-  sender    ChatMessageSender
-  senderId  String?           // userId for USER/ADMIN, null for BOT
-  text      String
-  createdAt DateTime          @default(now())
-
-  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@index([sessionId, createdAt])
-}
-
 enum ChatSessionStatus {
   OPEN
   CLOSED
@@ -1468,4 +1469,62 @@ enum ChatMessageSender {
   VISITOR
   BOT
   ADMIN
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Direct Messaging (Messenger-like peer-to-peer chat)
+// ─────────────────────────────────────────────────────────────────────────
+model Conversation {
+  id           String                    @id @default(cuid())
+  type         ConversationType          @default(DIRECT)
+  name         String?
+  avatarUrl    String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  participants ConversationParticipant[]
+  messages     DirectMessage[]
+
+  @@index([updatedAt])
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  lastReadAt     DateTime?
+  joinedAt       DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model DirectMessage {
+  id             String        @id @default(cuid())
+  conversationId String
+  senderId       String
+  type           DmType        @default(TEXT)
+  content        String
+  fileName       String?
+  fileSize       Int?
+  duration       Int?
+  createdAt      DateTime      @default(now())
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User          @relation("DirectMessageSender", fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+enum DmType {
+  TEXT
+  VOICE
+  IMAGE
+  FILE
 }

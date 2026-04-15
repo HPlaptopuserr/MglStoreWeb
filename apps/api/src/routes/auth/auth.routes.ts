@@ -517,10 +517,9 @@ router.post("/forgot-password", async (req, res) => {
     const code = "1234";
     const tokenHash = crypto.createHash("sha256").update(code).digest("hex");
 
-    // Expire old tokens
-    await prisma.passwordResetToken.updateMany({
-      where: { userId: user.id, usedAt: null },
-      data: { usedAt: new Date() },
+    // Delete old tokens for this user + any with the same hash (dev: hardcoded code)
+    await prisma.passwordResetToken.deleteMany({
+      where: { OR: [{ userId: user.id }, { tokenHash }] },
     });
 
     // Save hashed token

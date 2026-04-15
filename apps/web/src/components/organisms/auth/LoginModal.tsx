@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
-import { User, Loader2, Mail, Phone, Lock, Eye, EyeOff } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { User, Loader2, Mail, Phone, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck } from "lucide-react";
+import { API_BASE } from "@/lib/api";
 
 type AuthTab = "login" | "register";
+type ForgotStep = "identifier" | "code" | "newPassword" | "done";
 
 interface LoginModalProps {
   open: boolean;
@@ -32,11 +34,135 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [rememberMe, setRememberMe] = useState(false);
   const [localError, setLocalError] = useState("");
 
+  // Forgot password state
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotStep, setForgotStep] = useState<ForgotStep>("identifier");
+  const [forgotIdentifier, setForgotIdentifier] = useState("");
+  const [forgotCode, setForgotCode] = useState(["", "", "", ""]);
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showForgotConfirm, setShowForgotConfirm] = useState(false);
+  const codeRefs = useRef<(HTMLInputElement | null)[]>([]);
+
   if (!open) return null;
 
   const handleTabChange = (newTab: AuthTab) => {
     setTab(newTab);
     setLocalError("");
+  };
+
+  const openForgot = () => {
+    setShowForgot(true);
+    setForgotStep("identifier");
+    setForgotIdentifier("");
+    setForgotCode(["", "", "", ""]);
+    setForgotNewPassword("");
+    setForgotConfirmPassword("");
+    setForgotError("");
+    setForgotLoading(false);
+  };
+
+  const closeForgot = () => {
+    setShowForgot(false);
+    setForgotError("");
+  };
+
+  const handleForgotSendCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError("");
+    if (!forgotIdentifier.trim()) {
+      setForgotError("И-мэйл эсвэл утасны дугаараа оруулна уу");
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const isPhone = /^[0-9+\-\s()]{7,15}$/.test(forgotIdentifier.trim()) && !forgotIdentifier.includes("@");
+      const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isPhone ? { phone: forgotIdentifier.trim() } : { email: forgotIdentifier.trim().toLowerCase() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Алдаа гарлаа");
+      setForgotStep("code");
+    } catch (err) {
+      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleCodeChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newCode = [...forgotCode];
+    newCode[index] = value.slice(-1);
+    setForgotCode(newCode);
+    if (value && index < 3) {
+      codeRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleCodeKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === "Backspace" && !forgotCode[index] && index > 0) {
+      codeRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleForgotVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError("");
+    const code = forgotCode.join("");
+    if (code.length < 4) {
+      setForgotError("4 оронтой кодыг бүрэн оруулна уу");
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/verify-reset-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Код буруу байна");
+      setForgotStep("newPassword");
+    } catch (err) {
+      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleForgotResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError("");
+    if (forgotNewPassword.length < 6) {
+      setForgotError("Нууц үг дор хаяж 6 тэмдэгт байх ёстой");
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError("Нууц үгүүд таарахгүй байна");
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const code = forgotCode.join("");
+      const res = await fetch(`${API_BASE}/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, password: forgotNewPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Алдаа гарлаа");
+      setForgotStep("done");
+    } catch (err) {
+      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа");
+    } finally {
+      setForgotLoading(false);
+    }
   };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -100,6 +226,179 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       <div className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl shadow-2xl">
         <div className="grid md:grid-cols-2 bg-white">
           <div className="p-6 sm:p-8 flex flex-col justify-center">
+            {showForgot ? (
+              /* ── Forgot Password Flow ─────────────────────────── */
+              <div>
+                <button
+                  type="button"
+                  onClick={forgotStep === "done" ? closeForgot : forgotStep === "identifier" ? closeForgot : () => setForgotStep(forgotStep === "code" ? "identifier" : forgotStep === "newPassword" ? "code" : "identifier")}
+                  className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-6 transition-colors"
+                >
+                  <ArrowLeft size={16} />
+                  {forgotStep === "identifier" || forgotStep === "done" ? "Нэвтрэх рүү буцах" : "Буцах"}
+                </button>
+
+                {forgotStep === "identifier" && (
+                  <form onSubmit={handleForgotSendCode} className="space-y-4">
+                    <div className="text-center mb-2">
+                      <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-4">
+                        <KeyRound size={28} className="text-amber-500" />
+                      </div>
+                      <h2 className="text-xl font-black text-gray-900">Нууц үг сэргээх</h2>
+                      <p className="text-sm text-gray-500 mt-1">Бүртгэлтэй и-мэйл эсвэл утасны дугаараа оруулна уу</p>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                        И-мэйл эсвэл утас
+                      </label>
+                      <input
+                        type="text"
+                        value={forgotIdentifier}
+                        onChange={(e) => setForgotIdentifier(e.target.value)}
+                        placeholder="name@mail.com эсвэл 99112233"
+                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                        autoFocus
+                      />
+                    </div>
+                    {forgotError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                        {forgotError}
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={forgotLoading}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
+                    >
+                      {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                      {forgotLoading ? "Илгээж байна..." : "Код илгээх"}
+                    </button>
+                  </form>
+                )}
+
+                {forgotStep === "code" && (
+                  <form onSubmit={handleForgotVerifyCode} className="space-y-4">
+                    <div className="text-center mb-2">
+                      <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
+                        <ShieldCheck size={28} className="text-blue-500" />
+                      </div>
+                      <h2 className="text-xl font-black text-gray-900">Баталгаажуулах код</h2>
+                      <p className="text-sm text-gray-500 mt-1">
+                        <span className="font-medium text-gray-700">{forgotIdentifier}</span> руу илгээсэн 4 оронтой кодыг оруулна уу
+                      </p>
+                    </div>
+                    <div className="flex justify-center gap-3">
+                      {forgotCode.map((digit, i) => (
+                        <input
+                          key={i}
+                          ref={(el) => { codeRefs.current[i] = el; }}
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={1}
+                          value={digit}
+                          onChange={(e) => handleCodeChange(i, e.target.value)}
+                          onKeyDown={(e) => handleCodeKeyDown(i, e)}
+                          className="w-14 h-14 text-center text-2xl font-bold rounded-xl border border-gray-200 bg-gray-50 outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                          autoFocus={i === 0}
+                        />
+                      ))}
+                    </div>
+                    {forgotError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                        {forgotError}
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={forgotLoading}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
+                    >
+                      {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      {forgotLoading ? "Шалгаж байна..." : "Баталгаажуулах"}
+                    </button>
+                  </form>
+                )}
+
+                {forgotStep === "newPassword" && (
+                  <form onSubmit={handleForgotResetPassword} className="space-y-4">
+                    <div className="text-center mb-2">
+                      <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                        <Lock size={28} className="text-emerald-500" />
+                      </div>
+                      <h2 className="text-xl font-black text-gray-900">Шинэ нууц үг</h2>
+                      <p className="text-sm text-gray-500 mt-1">Шинэ нууц үгээ оруулна уу</p>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                        Шинэ нууц үг
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showForgotPassword ? "text" : "password"}
+                          value={forgotNewPassword}
+                          onChange={(e) => setForgotNewPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                          autoFocus
+                        />
+                        <button type="button" onClick={() => setShowForgotPassword(!showForgotPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showForgotPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                        Нууц үг давтах
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showForgotConfirm ? "text" : "password"}
+                          value={forgotConfirmPassword}
+                          onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                        />
+                        <button type="button" onClick={() => setShowForgotConfirm(!showForgotConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showForgotConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                    {forgotError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                        {forgotError}
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={forgotLoading}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
+                    >
+                      {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                      {forgotLoading ? "Хадгалж байна..." : "Нууц үг шинэчлэх"}
+                    </button>
+                  </form>
+                )}
+
+                {forgotStep === "done" && (
+                  <div className="text-center space-y-4 py-4">
+                    <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto">
+                      <CheckCircle2 size={36} className="text-emerald-500" />
+                    </div>
+                    <h2 className="text-xl font-black text-gray-900">Амжилттай!</h2>
+                    <p className="text-sm text-gray-500">Нууц үг амжилттай шинэчлэгдлээ. Одоо шинэ нууц үгээрээ нэвтрэх боломжтой.</p>
+                    <button
+                      type="button"
+                      onClick={closeForgot}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700"
+                    >
+                      Нэвтрэх рүү буцах
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ── Login / Register Tabs ─────────────────────────── */
+              <>
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
@@ -175,17 +474,26 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="remember"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300 text-amber-500 cursor-pointer"
-                  />
-                  <label htmlFor="remember" className="ml-2 text-sm text-gray-700 cursor-pointer">
-                    Намайг санах
-                  </label>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="remember"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-amber-500 cursor-pointer"
+                    />
+                    <label htmlFor="remember" className="ml-2 text-sm text-gray-700 cursor-pointer">
+                      Намайг санах
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openForgot}
+                    className="text-sm font-medium text-amber-600 hover:text-amber-500 transition-colors"
+                  >
+                    Нууц үгээ мартсан?
+                  </button>
                 </div>
 
                 {displayError && (
@@ -331,6 +639,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   {isLoading ? "Бүртгүүлж байна..." : "Бүртгүүлэх"}
                 </button>
               </form>
+            )}
+              </>
             )}
           </div>
 

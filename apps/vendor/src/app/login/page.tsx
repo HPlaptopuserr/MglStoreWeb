@@ -159,7 +159,7 @@ export default function VendorLoginPage() {
                     Нууц үг
                   </label>
                   <a
-                    href="#"
+                    href="/forgot-password"
                     className="text-sm text-amber-600 hover:text-amber-500 font-medium transition-colors"
                   >
                     Нууц үгээ мартсан?

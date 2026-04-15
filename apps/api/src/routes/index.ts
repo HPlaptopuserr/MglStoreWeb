@@ -2,6 +2,8 @@ export { authRoutes } from "./auth";
 
 export {
   investorRoutes,
+  orgJoinRoutes,
+  orgMemberRoutes,
   partnerRequestRoutes,
   partnerRoutes,
   vendorSetupRoutes,
@@ -27,4 +29,4 @@ export { formRoutes } from "./forms";
 
 export { attendanceRoutes } from "./attendance";
 
-export { chatRoutes } from "./chat";
+export { chatRoutes, dmRoutes } from "./chat";

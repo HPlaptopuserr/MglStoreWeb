@@ -20,6 +20,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
 
   - type: web
     name: mgl-vendor
@@ -30,6 +32,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
 
   - type: web
     name: mgl-warehouse

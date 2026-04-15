@@ -5,6 +5,8 @@ import path from "path";
 import {
   authRoutes,
   investorRoutes,
+  orgJoinRoutes,
+  orgMemberRoutes,
   partnerRequestRoutes,
   partnerRoutes,
   vendorSetupRoutes,
@@ -23,6 +25,7 @@ import {
   formRoutes,
   attendanceRoutes,
   chatRoutes,
+  dmRoutes,
 } from "./routes";
 
 // Resolve .env from monorepo root (../../.. from src/, ../../../ from dist/)
@@ -66,6 +69,8 @@ app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 app.use("/api", partnerRequestRoutes);
 app.use("/api", partnerRoutes);
+app.use("/api", orgJoinRoutes);
+app.use("/api", orgMemberRoutes);
 app.use("/api", businessCategoriesRoutes);
 app.use("/api", dashboardRoutes);
 app.use("/api", jobApplicationRoutes);
@@ -83,6 +88,7 @@ app.use("/api", servicePostsRoutes);
 app.use("/api", formRoutes);
 app.use("/api", attendanceRoutes);
 app.use("/api", chatRoutes);
+app.use("/api", dmRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");
