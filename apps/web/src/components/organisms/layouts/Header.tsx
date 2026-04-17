@@ -14,6 +14,7 @@ import {
   LogOut,
   Loader2,
   Settings,
+  Package,
 } from "lucide-react";
 import Image from "next/image";
 import { SearchBar } from "../../molecules/SearchBar";
@@ -27,6 +28,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useCart } from "@/hooks/useCart";
 import { CartDrawer } from "@/components/organisms/CartDrawer";
 import { useAuth } from "@/lib/auth-context";
+import { MobileBottomNav } from "@/components/organisms/layouts/MobileBottomNav";
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -204,6 +206,14 @@ export const Header = () => {
                       </p>
                     </div>
                     <div className="py-1">
+                      <Link
+                        href="/orders"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                      >
+                        <Package size={16} className="text-gray-400" />
+                        Миний захиалгууд
+                      </Link>
                       <Link
                         href="/profile"
                         onClick={() => setUserDropdownOpen(false)}
@@ -543,6 +553,7 @@ export const Header = () => {
     )}
 
     <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
+    <MobileBottomNav onCartOpen={() => setCartOpen(true)} onAuthOpen={openAuthModal} />
     </>
   );
 };

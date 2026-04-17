@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  ShoppingCart,
 } from "lucide-react";
 
 function cn(...classes: Array<string | false | undefined>) {
@@ -24,6 +25,7 @@ function cn(...classes: Array<string | false | undefined>) {
 
 const navigation = [
   { name: "Хяналтын самбар", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Захиалгууд", href: "/orders", icon: ShoppingCart },
   { name: "POS касс", href: "/pos", icon: ScanLine },
   { name: "Өөрийн бүтээгдэхүүн", href: "/products", icon: Package },
   { name: "Нэгдсэн бараа", href: "/supply-products", icon: Boxes },

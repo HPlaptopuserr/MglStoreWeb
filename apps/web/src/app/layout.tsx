@@ -32,6 +32,12 @@ export const metadata = {
   },
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="mn">
@@ -42,7 +48,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <AuthProvider>
         <SmoothScrollProvider>
           <Header />
-          <main className="grow pt-40 md:pt-32">{children}</main>
+          <main className="grow pt-40 pb-20 md:pt-32 md:pb-0">{children}</main>
           <FloatingSideNav />
           <ChatBot />
           <Footer />

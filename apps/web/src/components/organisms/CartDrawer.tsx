@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { X, Trash2, ShoppingCart, Plus, Minus } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 
@@ -12,6 +13,7 @@ interface CartDrawerProps {
 export function CartDrawer({ open, onClose }: CartDrawerProps) {
   const { items, total, removeFromCart, updateQuantity, clearCart } = useCart();
   const drawerRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   // Close on Escape
   useEffect(() => {
@@ -154,7 +156,10 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
                 ₮{total.toLocaleString()}
               </span>
             </div>
-            <button className="w-full h-12 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors active:scale-[0.99] text-sm">
+            <button
+              onClick={() => { onClose(); router.push("/checkout"); }}
+              className="w-full h-12 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors active:scale-[0.99] text-sm"
+            >
               Захиалга өгөх
             </button>
             <button

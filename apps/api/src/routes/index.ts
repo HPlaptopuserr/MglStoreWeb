@@ -30,3 +30,6 @@ export { formRoutes } from "./forms";
 export { attendanceRoutes } from "./attendance";
 
 export { chatRoutes, dmRoutes } from "./chat";
+
+export { storeCheckoutRoutes } from "./store";
+export { vendorOrderRoutes } from "./store";

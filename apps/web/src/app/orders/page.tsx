@@ -1,0 +1,366 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Package,
+  Loader2,
+  ShoppingCart,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  Truck,
+  ChefHat,
+  KeyRound,
+  Copy,
+  Check,
+  RefreshCw,
+} from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { API } from "@/lib/api";
+
+interface OrderItem {
+  name: string;
+  qty: number;
+  price: number;
+  subtotal: number;
+}
+
+interface Order {
+  id: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  total: number;
+  subtotal: number;
+  deliveryCode: string | null;
+  createdAt: string;
+  items: OrderItem[];
+}
+
+/* ── Status config ───────────────────────────────────── */
+const STATUS_STEPS = ["CONFIRMED", "PREPARED", "SHIPPING", "COMPLETED"] as const;
+const STEP_LABELS = ["Баталгаажсан", "Бэлтгэсэн", "Хүргэлтэнд", "Хүлээн авсан"];
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: typeof Clock }> = {
+  PENDING:   { label: "Төлбөр хүлээгдэж буй", color: "text-amber-600",  bg: "bg-amber-50 border-amber-200",  icon: Clock },
+  CONFIRMED: { label: "Баталгаажсан",          color: "text-blue-600",   bg: "bg-blue-50 border-blue-200",    icon: CheckCircle2 },
+  PREPARED:  { label: "Бэлтгэгдсэн",          color: "text-purple-600", bg: "bg-purple-50 border-purple-200", icon: ChefHat },
+  SHIPPING:  { label: "Хүргэлтэнд гарсан",    color: "text-indigo-600", bg: "bg-indigo-50 border-indigo-200", icon: Truck },
+  COMPLETED: { label: "Хүлээн авсан",          color: "text-green-600",  bg: "bg-green-50 border-green-200",  icon: CheckCircle2 },
+  CANCELLED: { label: "Цуцалсан",              color: "text-red-600",    bg: "bg-red-50 border-red-200",      icon: XCircle },
+};
+
+/* ── Minimal status stepper ──────────────────────────── */
+function StatusStepper({ status }: { status: string }) {
+  if (status === "PENDING" || status === "CANCELLED") return null;
+  const currentIdx = STATUS_STEPS.indexOf(status as (typeof STATUS_STEPS)[number]);
+
+  return (
+    <div className="px-4 py-4">
+      {/* Progress bar */}
+      <div className="relative flex items-center justify-between mb-2">
+        {/* Background line */}
+        <div className="absolute left-3 right-3 top-1/2 -translate-y-1/2 h-[3px] bg-gray-100 rounded-full" />
+        {/* Filled line */}
+        <div
+          className="absolute left-3 top-1/2 -translate-y-1/2 h-[3px] bg-gradient-to-r from-green-400 to-green-500 rounded-full transition-all duration-500"
+          style={{ width: `${(currentIdx / (STATUS_STEPS.length - 1)) * 100}%` }}
+        />
+        {/* Dots */}
+        {STATUS_STEPS.map((step, i) => {
+          const isDone = i <= currentIdx;
+          const isCurrent = i === currentIdx;
+          return (
+            <div key={step} className="relative z-10 flex flex-col items-center">
+              <div
+                className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all ${
+                  isDone
+                    ? isCurrent
+                      ? "border-amber-400 bg-amber-500 text-white scale-110 shadow-md shadow-amber-500/30"
+                      : "border-green-400 bg-green-500 text-white"
+                    : "border-gray-200 bg-white text-gray-300"
+                }`}
+              >
+                {isDone && !isCurrent ? (
+                  <Check size={12} strokeWidth={3} />
+                ) : (
+                  <span className="text-[9px] font-black">{i + 1}</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {/* Labels */}
+      <div className="flex items-start justify-between">
+        {STATUS_STEPS.map((step, i) => {
+          const isDone = i <= currentIdx;
+          return (
+            <span
+              key={step}
+              className={`w-[60px] text-center text-[10px] leading-tight ${
+                isDone ? "font-bold text-gray-800" : "font-medium text-gray-400"
+              }`}
+            >
+              {STEP_LABELS[i]}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Delivery code display ───────────────────────────── */
+function DeliveryCodeCard({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="mx-4 mb-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100">
+          <KeyRound size={16} className="text-amber-600" />
+        </div>
+        <div>
+          <p className="text-xs font-bold text-amber-800">Хүргэлтийн код</p>
+          <p className="text-[10px] text-amber-600">Хүргэгчид энэ кодыг хэлнэ үү</p>
+        </div>
+      </div>
+      <div className="flex items-center justify-between rounded-xl bg-white p-3 border border-amber-100">
+        <span className="font-mono text-2xl font-black tracking-[0.25em] text-gray-900 pl-1">
+          {code}
+        </span>
+        <button
+          onClick={handleCopy}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+            copied
+              ? "bg-green-100 text-green-700"
+              : "bg-amber-100 text-amber-700 hover:bg-amber-200 active:scale-95"
+          }`}
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? "Хуулсан" : "Хуулах"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Delivery confirm form ───────────────────────────── */
+function DeliveryConfirmForm({ orderId, onConfirmed }: { orderId: string; onConfirmed: () => void }) {
+  const { authFetch } = useAuth();
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (code.length !== 6) { setError("6 оронтой код оруулна уу"); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await authFetch(`${API}/vendor/orders/${orderId}/deliver`, {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message || "Алдаа гарлаа"); setLoading(false); return; }
+      onConfirmed();
+    } catch {
+      setError("Сүлжээний алдаа");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="mx-4 mb-3 rounded-2xl bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100">
+          <KeyRound size={16} className="text-green-600" />
+        </div>
+        <div>
+          <p className="text-xs font-bold text-green-800">Хүлээн авсныг баталгаажуулах</p>
+          <p className="text-[10px] text-green-600">Хүргэгчээс авсан 6 оронтой код</p>
+        </div>
+      </div>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="text"
+          inputMode="numeric"
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          placeholder="000000"
+          maxLength={6}
+          className="flex-1 rounded-xl border border-green-200 bg-white px-4 py-3 text-center font-mono text-xl font-black tracking-[0.3em] text-gray-900 outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100"
+        />
+        <button
+          type="submit"
+          disabled={loading || code.length !== 6}
+          className="rounded-xl bg-green-600 px-6 py-3 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-40 transition-all active:scale-[0.98]"
+        >
+          {loading ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Баталгаажуулах"}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-xs font-medium text-red-600">{error}</p>}
+    </form>
+  );
+}
+
+/* ── Helper: relative time ───────────────────────────── */
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  const month = d.toLocaleDateString("mn-MN", { month: "short", day: "numeric" });
+  const time = d.toLocaleTimeString("mn-MN", { hour: "2-digit", minute: "2-digit" });
+  return `${month}, ${time}`;
+}
+
+/* ── Main page ───────────────────────────────────────── */
+export default function OrdersPage() {
+  const router = useRouter();
+  const { user, authFetch, loading: authLoading } = useAuth();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const fetchOrders = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await authFetch(`${API}/store/orders`);
+      if (res.status === 401) { router.push("/"); return; }
+      const data = await res.json();
+      if (!res.ok) { setError(data.message || "Захиалгууд ачаалахад алдаа гарлаа"); return; }
+      setOrders(data.orders || []);
+    } catch {
+      setError("Сүлжээний алдаа гарлаа");
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch, router]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) { router.push("/"); return; }
+    fetchOrders();
+  }, [user, authLoading, router, fetchOrders]);
+
+  if (authLoading || loading) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-32">
+        <Loader2 size={28} className="animate-spin text-amber-500" />
+        <p className="text-sm text-gray-400">Ачааллаж байна...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto max-w-2xl px-4 py-5 sm:py-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5 sm:mb-8">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-gray-900">Миний захиалгууд</h1>
+          <p className="text-xs text-gray-400 mt-0.5">{orders.length > 0 ? `${orders.length} захиалга` : ""}</p>
+        </div>
+        {orders.length > 0 && (
+          <button
+            onClick={fetchOrders}
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors active:scale-95"
+          >
+            <RefreshCw size={16} />
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div className="mb-5 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-600">{error}</div>
+      )}
+
+      {orders.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-5 py-16">
+          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gray-50">
+            <Package size={36} className="text-gray-300" />
+          </div>
+          <div className="text-center">
+            <p className="text-base font-bold text-gray-700">Захиалга байхгүй</p>
+            <p className="text-sm text-gray-400 mt-1">Та дэлгүүрээс бараа захиалаарай</p>
+          </div>
+          <button
+            onClick={() => router.push("/products")}
+            className="flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-amber-600 transition-colors active:scale-[0.98]"
+          >
+            <ShoppingCart size={16} />
+            Дэлгүүр хэсэх
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {orders.map((order) => {
+            const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.PENDING;
+            const StatusIcon = cfg.icon;
+
+            return (
+              <div
+                key={order.id}
+                className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden"
+              >
+                {/* Card header — order number + status badge */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+                  <div className="min-w-0">
+                    <span className="font-mono text-[11px] font-bold text-gray-900 tracking-wide">
+                      {order.orderNumber}
+                    </span>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{formatDate(order.createdAt)}</p>
+                  </div>
+                  <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold ${cfg.bg} ${cfg.color}`}>
+                    <StatusIcon size={11} />
+                    {cfg.label}
+                  </span>
+                </div>
+
+                {/* Status stepper */}
+                <StatusStepper status={order.status} />
+
+                {/* Delivery code — when SHIPPING */}
+                {order.status === "SHIPPING" && order.deliveryCode && (
+                  <DeliveryCodeCard code={order.deliveryCode} />
+                )}
+
+                {/* Items list */}
+                <div className="px-4 py-3 space-y-2">
+                  {order.items.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-[10px] font-bold text-gray-400">
+                          ×{item.qty}
+                        </div>
+                        <span className="text-sm text-gray-700 truncate">{item.name}</span>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-900 tabular-nums shrink-0 ml-3">
+                        ₮{item.subtotal.toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Total */}
+                <div className="flex items-center justify-between px-4 py-3 bg-gray-50/80 border-t border-gray-100">
+                  <span className="text-xs font-medium text-gray-500">Нийт дүн</span>
+                  <span className="text-base font-black text-gray-900 tabular-nums">
+                    ₮{order.total.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

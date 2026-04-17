@@ -56,6 +56,8 @@ model User {
   orgJoinRequests              OrgJoinRequest[]         @relation("UserOrgJoinRequests")
   conversationParticipants     ConversationParticipant[]
   sentDirectMessages           DirectMessage[]          @relation("DirectMessageSender")
+  posShifts                    PosShift[]               @relation("PosShiftCashier")
+  posSales                     PosSale[]                @relation("PosSaleCashier")
 
   @@index([role])
   @@index([isActive])
@@ -330,6 +332,8 @@ model Organization {
   warehouseAssignments         WarehouseOrganization[]
   stockRequests                WarehouseStockRequest[] @relation("OrganizationStockRequests")
   joinRequests                 OrgJoinRequest[]        @relation("OrgJoinRequests")
+  posShifts                    PosShift[]
+  posSales                     PosSale[]
 
   @@index([type])
   @@index([status])
@@ -445,6 +449,8 @@ model Branch {
   attendanceZones AttendanceZone[]
   organization    Organization     @relation(fields: [organizationId], references: [id])
   posRegisters    PosRegister[]
+  posShifts       PosShift[]
+  posSales        PosSale[]
 
   @@index([organizationId])
   @@index([deletedAt])
@@ -475,6 +481,8 @@ model PosRegister {
   organization      Organization         @relation(fields: [organizationId], references: [id])
   reviewedBy        User?                @relation("PosRegisterReviewedBy", fields: [reviewedById], references: [id])
   qpayInvoices      QPayInvoice[]
+  posShifts         PosShift[]
+  posSales          PosSale[]
 
   @@unique([organizationId, branchId, name])
   @@unique([cardProviderType, cardTerminalId])
@@ -552,6 +560,7 @@ model Product {
   productRequests      ProductRequest[]
   warehouseInventories WarehouseInventory[]
   stockRequestItems    WarehouseStockRequestItem[] @relation("StockRequestProducts")
+  posSaleLines         PosSaleLine[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
@@ -666,6 +675,7 @@ model Order {
   phone              String
   note               String?
   shippingAddressId  String?
+  deliveryCode       String?
   subtotal           Decimal          @db.Decimal(18, 2)
   discountAmount     Decimal          @default(0) @db.Decimal(18, 2)
   deliveryFee        Decimal          @default(0) @db.Decimal(18, 2)
@@ -1527,4 +1537,104 @@ enum DmType {
   VOICE
   IMAGE
   FILE
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// POS Shift & Structured Sales
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Cashier shift — tracks opening/closing cash and links sales.
+model PosShift {
+  id             String       @id @default(uuid())
+  organizationId String
+  branchId       String
+  registerId     String?
+  cashierId      String
+  status         ShiftStatus  @default(OPEN)
+  openingCash    Decimal      @db.Decimal(18, 2)
+  closingCash    Decimal?     @db.Decimal(18, 2)
+  expectedCash   Decimal?     @db.Decimal(18, 2)
+  cashDifference Decimal?     @db.Decimal(18, 2)
+  note           String?
+  openedAt       DateTime     @default(now())
+  closedAt       DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  branch         Branch       @relation(fields: [branchId], references: [id])
+  register       PosRegister? @relation(fields: [registerId], references: [id])
+  cashier        User         @relation("PosShiftCashier", fields: [cashierId], references: [id])
+  sales          PosSale[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([cashierId])
+  @@index([status])
+  @@index([openedAt])
+}
+
+/// Structured POS sale record.
+model PosSale {
+  id             String        @id @default(uuid())
+  receiptNo      String        @unique
+  organizationId String
+  branchId       String
+  registerId     String?
+  shiftId        String
+  cashierId      String
+  status         PosSaleStatus @default(COMPLETED)
+  paymentMethod  String
+  subtotal       Decimal       @db.Decimal(18, 2)
+  taxTotal       Decimal       @db.Decimal(18, 2)
+  discountTotal  Decimal       @db.Decimal(18, 2)
+  grandTotal     Decimal       @db.Decimal(18, 2)
+  note           String?
+  voidedAt       DateTime?
+  voidReason     String?
+  voidedById     String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  branch         Branch        @relation(fields: [branchId], references: [id])
+  register       PosRegister?  @relation(fields: [registerId], references: [id])
+  shift          PosShift      @relation(fields: [shiftId], references: [id])
+  cashier        User          @relation("PosSaleCashier", fields: [cashierId], references: [id])
+  lines          PosSaleLine[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([shiftId])
+  @@index([cashierId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// Individual line item within a POS sale.
+model PosSaleLine {
+  id          String  @id @default(uuid())
+  saleId      String
+  productId   String
+  productName String
+  productSku  String?
+  qty         Int
+  unitPrice   Decimal @db.Decimal(18, 2)
+  taxAmount   Decimal @db.Decimal(18, 2)
+  discount    Decimal @db.Decimal(18, 2)
+  lineTotal   Decimal @db.Decimal(18, 2)
+  sale        PosSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+enum PosSaleStatus {
+  COMPLETED
+  VOIDED
+  REFUNDED
 }
