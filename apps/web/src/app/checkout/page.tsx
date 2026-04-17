@@ -9,6 +9,13 @@ import { API } from "@/lib/api";
 import { LoginModal } from "@/components/organisms/auth/LoginModal";
 import { QPayModal } from "@/components/organisms/checkout/QPayModal";
 
+interface DeepLink {
+  name: string;
+  description: string;
+  logo: string;
+  link: string;
+}
+
 interface CheckoutResult {
   orderId: string;
   orderNumber: string;
@@ -16,6 +23,9 @@ interface CheckoutResult {
   subtotal: number;
   paymentId: string;
   qrText: string;
+  qrImage: string;
+  qpayInvoiceId: string;
+  deepLinks: DeepLink[];
   expiresIn: number;
 }
 
@@ -252,7 +262,8 @@ export default function CheckoutPage() {
           orderId={checkoutResult.orderId}
           orderNumber={checkoutResult.orderNumber}
           total={checkoutResult.total}
-          qrText={checkoutResult.qrText}
+          qrImage={checkoutResult.qrImage}
+          deepLinks={checkoutResult.deepLinks}
           onSuccess={handlePaymentSuccess}
           onClose={() => setCheckoutResult(null)}
         />

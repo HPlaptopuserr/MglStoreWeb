@@ -6,6 +6,7 @@ import {
   PaymentStatus,
   PaymentMethod,
 } from "@mgl/database";
+import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
@@ -176,8 +177,29 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       return ord;
     });
 
-    // Build mock QPay QR text
-    const qrText = `qpay://pay?order=${order.id}&amount=${total}`;
+    // Create real QPay V2 invoice
+    let qpayData;
+    try {
+      qpayData = await createQPayInvoice({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: Number(order.total),
+      });
+    } catch (err) {
+      console.error("QPay invoice creation failed:", err);
+      return res.status(502).json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
+    }
+
+    // Store QPay invoice_id in PaymentAttempt.providerRef
+    if (order.payments[0]) {
+      await prisma.paymentAttempt.update({
+        where: { id: order.payments[0].id },
+        data: {
+          providerRef: qpayData.invoice_id,
+          rawPayload: JSON.parse(JSON.stringify(qpayData)),
+        },
+      });
+    }
 
     return res.status(201).json({
       orderId: order.id,
@@ -185,8 +207,11 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       total: Number(order.total),
       subtotal: Number(order.subtotal),
       paymentId: order.payments[0]?.id,
-      qrText,
-      expiresIn: 120, // seconds
+      qrText: qpayData.qr_text,
+      qrImage: qpayData.qr_image,
+      qpayInvoiceId: qpayData.invoice_id,
+      deepLinks: qpayData.urls,
+      expiresIn: 300, // 5 minutes
       items: order.items.map((i) => ({
         productId: i.productId,
         name: i.productName,
@@ -203,7 +228,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
 
 /* ══════════════════════════════════════════════════════════
    POST /store/checkout/:orderId/confirm
-   Mock payment confirmation (dev mode).
+   Check QPay payment status and confirm if paid.
    ══════════════════════════════════════════════════════════ */
 router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Response) => {
   try {
@@ -223,6 +248,7 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
         paymentStatus: true,
         orderNumber: true,
         total: true,
+        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, status: true } },
       },
     });
 
@@ -243,11 +269,32 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
       });
     }
 
-    // Mark payment as paid
+    // Check QPay payment via invoiceId
+    const payment = order.payments[0];
+    if (!payment?.providerRef) {
+      return res.status(400).json({ message: "QPay нэхэмжлэх олдсонгүй" });
+    }
+
+    const qpayCheck = await checkQPayPayment(payment.providerRef);
+
+    if (qpayCheck.count === 0) {
+      return res.json({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        status: "PENDING",
+        message: "Төлбөр хүлээгдэж байна",
+      });
+    }
+
+    // Payment confirmed — update records
     await prisma.$transaction(async (tx) => {
-      await tx.paymentAttempt.updateMany({
-        where: { orderId: order.id, status: PaymentStatus.PENDING },
-        data: { status: PaymentStatus.PAID, paidAt: new Date() },
+      await tx.paymentAttempt.update({
+        where: { id: payment.id },
+        data: {
+          status: PaymentStatus.PAID,
+          paidAt: new Date(),
+          rawPayload: JSON.parse(JSON.stringify(qpayCheck)),
+        },
       });
 
       await tx.order.update({
@@ -264,7 +311,7 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
           fromStatus: OrderStatus.PENDING,
           toStatus: OrderStatus.CONFIRMED,
           changedById: customer.id,
-          note: "QPay төлбөр амжилттай (mock)",
+          note: "QPay төлбөр амжилттай",
         },
       });
     });
@@ -278,6 +325,168 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
   } catch (error) {
     console.error("store confirm error", error);
     return res.status(500).json({ message: "Төлбөр баталгаажуулахад алдаа гарлаа" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   GET /store/checkout/:orderId/payment-status
+   Polling endpoint — check QPay payment status.
+   ══════════════════════════════════════════════════════════ */
+router.get("/store/checkout/:orderId/payment-status", async (req: Request, res: Response) => {
+  try {
+    const customer = await getCustomer(req);
+    if (!customer || !customer.isActive || customer.deletedAt) {
+      return res.status(401).json({ message: "Нэвтэрнэ үү" });
+    }
+
+    const { orderId } = req.params;
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        customerId: true,
+        paymentStatus: true,
+        orderNumber: true,
+        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, status: true } },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Захиалга олдсонгүй" });
+    }
+    if (order.customerId !== customer.id) {
+      return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
+    }
+
+    // Already paid
+    if (order.paymentStatus === "PAID") {
+      return res.json({ status: "PAID" });
+    }
+
+    const payment = order.payments[0];
+    if (!payment?.providerRef) {
+      return res.json({ status: "PENDING" });
+    }
+
+    const qpayCheck = await checkQPayPayment(payment.providerRef);
+
+    if (qpayCheck.count === 0) {
+      return res.json({ status: "PENDING" });
+    }
+
+    // Payment found — mark as paid
+    await prisma.$transaction(async (tx) => {
+      await tx.paymentAttempt.update({
+        where: { id: payment.id },
+        data: {
+          status: PaymentStatus.PAID,
+          paidAt: new Date(),
+          rawPayload: JSON.parse(JSON.stringify(qpayCheck)),
+        },
+      });
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          paymentStatus: PaymentStatus.PAID,
+          status: OrderStatus.CONFIRMED,
+        },
+      });
+
+      await tx.orderHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus: OrderStatus.PENDING,
+          toStatus: OrderStatus.CONFIRMED,
+          changedById: customer.id,
+          note: "QPay төлбөр амжилттай (auto-poll)",
+        },
+      });
+    });
+
+    return res.json({ status: "PAID" });
+  } catch (error) {
+    console.error("payment-status error", error);
+    return res.status(500).json({ message: "Төлбөр шалгахад алдаа гарлаа" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   POST /store/qpay/callback
+   QPay webhook callback — called by QPay when payment succeeds.
+   Query: ?orderId=xxx
+   ══════════════════════════════════════════════════════════ */
+router.post("/store/qpay/callback", async (req: Request, res: Response) => {
+  try {
+    const orderId = req.query.orderId as string;
+    if (!orderId) {
+      return res.status(400).json({ message: "orderId required" });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        customerId: true,
+        paymentStatus: true,
+        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, status: true } },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.paymentStatus === "PAID") {
+      return res.json({ message: "already paid" });
+    }
+
+    const payment = order.payments[0];
+    if (!payment?.providerRef) {
+      return res.status(400).json({ message: "no provider ref" });
+    }
+
+    // Verify with QPay
+    const qpayCheck = await checkQPayPayment(payment.providerRef);
+
+    if (qpayCheck.count === 0) {
+      return res.json({ message: "not yet paid" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.paymentAttempt.update({
+        where: { id: payment.id },
+        data: {
+          status: PaymentStatus.PAID,
+          paidAt: new Date(),
+          rawPayload: JSON.parse(JSON.stringify(qpayCheck)),
+        },
+      });
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          paymentStatus: PaymentStatus.PAID,
+          status: OrderStatus.CONFIRMED,
+        },
+      });
+
+      await tx.orderHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus: OrderStatus.PENDING,
+          toStatus: OrderStatus.CONFIRMED,
+          changedById: order.customerId,
+          note: "QPay callback — төлбөр амжилттай",
+        },
+      });
+    });
+
+    return res.json({ message: "success" });
+  } catch (error) {
+    console.error("qpay callback error", error);
+    return res.status(500).json({ message: "callback error" });
   }
 });
 

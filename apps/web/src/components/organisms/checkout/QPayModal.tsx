@@ -1,25 +1,62 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { X, CheckCircle2, Loader2, QrCode, Smartphone } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { API } from "@/lib/api";
+
+interface DeepLink {
+  name: string;
+  description: string;
+  logo: string;
+  link: string;
+}
 
 interface QPayModalProps {
   orderId: string;
   orderNumber: string;
   total: number;
-  qrText: string;
+  qrImage: string;
+  deepLinks: DeepLink[];
   onSuccess: () => void;
   onClose: () => void;
 }
 
-export function QPayModal({ orderId, orderNumber, total, qrText, onSuccess, onClose }: QPayModalProps) {
+export function QPayModal({ orderId, orderNumber, total, qrImage, deepLinks, onSuccess, onClose }: QPayModalProps) {
   const { authFetch } = useAuth();
-  const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
-  const [countdown, setCountdown] = useState(120);
+  const [countdown, setCountdown] = useState(300);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Check payment status
+  const checkPayment = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API}/store/checkout/${orderId}/payment-status`);
+      const data = await res.json();
+      if (data.status === "PAID") {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setConfirmed(true);
+        setTimeout(onSuccess, 2000);
+        return true;
+      }
+    } catch {
+      // silent — retry on next poll
+    }
+    return false;
+  }, [authFetch, orderId, onSuccess]);
+
+  // Auto-poll every 3 seconds
+  useEffect(() => {
+    if (confirmed) return;
+    pollRef.current = setInterval(() => {
+      checkPayment();
+    }, 3000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [confirmed, checkPayment]);
 
   // Countdown timer
   useEffect(() => {
@@ -28,6 +65,7 @@ export function QPayModal({ orderId, orderNumber, total, qrText, onSuccess, onCl
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(t);
+          if (pollRef.current) clearInterval(pollRef.current);
           return 0;
         }
         return prev - 1;
@@ -42,26 +80,16 @@ export function QPayModal({ orderId, orderNumber, total, qrText, onSuccess, onCl
     return () => { document.body.style.overflow = ""; };
   }, []);
 
-  const handleConfirm = useCallback(async () => {
-    setConfirming(true);
+  // Manual check
+  const handleManualCheck = async () => {
+    setChecking(true);
     setError("");
-    try {
-      const res = await authFetch(`${API}/store/checkout/${orderId}/confirm`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.message || "Төлбөр баталгаажуулахад алдаа гарлаа");
-        setConfirming(false);
-        return;
-      }
-      setConfirmed(true);
-      setTimeout(onSuccess, 2000);
-    } catch {
-      setError("Сүлжээний алдаа гарлаа");
-      setConfirming(false);
+    const paid = await checkPayment();
+    if (!paid) {
+      setError("Төлбөр хүлээгдэж байна. QPay аппаар төлбөрөө төлнө үү.");
     }
-  }, [authFetch, orderId, onSuccess]);
+    setChecking(false);
+  };
 
   const minutes = Math.floor(countdown / 60);
   const seconds = countdown % 60;
@@ -72,7 +100,7 @@ export function QPayModal({ orderId, orderNumber, total, qrText, onSuccess, onCl
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={confirmed ? undefined : onClose} />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-md mx-4 rounded-2xl bg-white shadow-2xl overflow-hidden">
+      <div className="relative z-10 w-full max-w-md mx-4 rounded-2xl bg-white shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <div className="flex items-center gap-2">
@@ -120,19 +148,47 @@ export function QPayModal({ orderId, orderNumber, total, qrText, onSuccess, onCl
                 </div>
               </div>
 
-              {/* QR Code area */}
+              {/* QR Code — real base64 image */}
               <div className="flex flex-col items-center gap-3">
-                <div className="flex h-48 w-48 items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50">
-                  <div className="text-center">
-                    <QrCode size={64} className="mx-auto text-gray-300" />
-                    <p className="mt-2 text-xs text-gray-400 font-mono break-all px-2">{qrText}</p>
-                  </div>
+                <div className="rounded-2xl border-2 border-gray-200 bg-white p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`data:image/png;base64,${qrImage}`}
+                    alt="QPay QR Code"
+                    className="h-52 w-52 rounded-xl"
+                  />
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Smartphone size={14} />
                   <span>QPay аппликейшнээр уншуулна уу</span>
                 </div>
               </div>
+
+              {/* Bank deeplinks */}
+              {deepLinks.length > 0 && (
+                <div>
+                  <p className="mb-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Банкны апп-аар төлөх
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {deepLinks.map((dl) => (
+                      <a
+                        key={dl.name}
+                        href={dl.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex flex-col items-center gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-2.5 hover:bg-gray-100 transition-colors"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={dl.logo} alt={dl.name} className="h-8 w-8 rounded-lg object-contain" />
+                        <span className="text-[10px] font-medium text-gray-600 text-center leading-tight line-clamp-2">
+                          {dl.description}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Countdown */}
               {countdown > 0 ? (
@@ -149,32 +205,32 @@ export function QPayModal({ orderId, orderNumber, total, qrText, onSuccess, onCl
               )}
 
               {error && (
-                <p className="rounded-xl bg-red-50 px-4 py-2 text-center text-sm text-red-600">
+                <p className="rounded-xl bg-amber-50 px-4 py-2 text-center text-sm text-amber-700">
                   {error}
                 </p>
               )}
 
-              {/* Mock confirm button */}
+              {/* Manual check button */}
               <button
-                onClick={handleConfirm}
-                disabled={confirming || countdown === 0}
+                onClick={handleManualCheck}
+                disabled={checking || countdown === 0}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 py-3.5 text-sm font-bold text-white transition-colors hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {confirming ? (
+                {checking ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Баталгаажуулж байна...
+                    Шалгаж байна...
                   </>
                 ) : (
                   <>
                     <CheckCircle2 size={18} />
-                    Төлбөр төлсөн (Demo)
+                    Төлбөр шалгах
                   </>
                 )}
               </button>
 
               <p className="text-center text-xs text-gray-400">
-                Энэ нь туршилтын горим юм. &quot;Төлбөр төлсөн&quot; дарж баталгаажуулна уу.
+                Төлбөр автоматаар шалгагдана. Эсвэл &quot;Төлбөр шалгах&quot; товч дарна уу.
               </p>
             </>
           )}
