@@ -234,6 +234,9 @@ function TrustBadges({ stats }: { stats: OrganizationDetailData["stats"] }) {
 function ExpandableDescription({ text }: { text: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  const escapeHtml = (str: string) =>
+    str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
   const highlightKeywords = (content: string) => {
     const keywords = [
       "органик",
@@ -241,9 +244,9 @@ function ExpandableDescription({ text }: { text: string }) {
       "түргэн шуурхай хүргэх",
       "хүнсний аюулгүй байдлыг",
     ];
-    let highlightedText = content;
+    let highlightedText = escapeHtml(content);
     keywords.forEach((keyword) => {
-      const regex = new RegExp(`(${keyword})`, "gi");
+      const regex = new RegExp(`(${escapeHtml(keyword)})`, "gi");
       highlightedText = highlightedText.replace(
         regex,
         '<span class="text-emerald-600 font-semibold bg-emerald-50 px-1 rounded">$1</span>'

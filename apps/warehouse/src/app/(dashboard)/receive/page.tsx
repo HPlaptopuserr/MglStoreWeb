@@ -14,15 +14,19 @@ import {
   Upload,
   Image as ImageIcon,
   FolderPlus,
+  FileSpreadsheet,
 } from "lucide-react";
 import SkuGenerator from "@/components/SkuGenerator";
+import { ExcelImportModal } from "@/components/ExcelImportModal";
 import { API, wmsFetch } from "@/lib/api";
 
 type Product = {
   id: string;
   name: string;
   sku: string | null;
+  barcode: string | null;
   price: string;
+  stock: number;
   images?: { url: string }[];
 };
 
@@ -49,6 +53,8 @@ type NewProductForm = {
   name: string;
   description: string;
   sku: string;
+  barcode: string;
+  unit: string;
   price: string;
   costPrice: string;
   businessCategoryId: string;
@@ -59,12 +65,15 @@ type NewProductForm = {
   expiryDate: string;
   note: string;
   images: string[]; // URLs
+  orgRegister: string;
 };
 
 const emptyProductForm: NewProductForm = {
   name: "",
   description: "",
   sku: "",
+  barcode: "",
+  unit: "",
   price: "",
   costPrice: "",
   businessCategoryId: "",
@@ -75,6 +84,7 @@ const emptyProductForm: NewProductForm = {
   expiryDate: "",
   note: "",
   images: [],
+  orgRegister: "",
 };
 
 export default function ReceivePage() {
@@ -100,6 +110,7 @@ export default function ReceivePage() {
 
   // Categories
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categorySearch, setCategorySearch] = useState("");
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryParentId, setNewCategoryParentId] = useState("");
@@ -108,6 +119,9 @@ export default function ReceivePage() {
   // Image upload
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Excel import modal
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Load warehouses + organization name
   useEffect(() => {
@@ -313,6 +327,8 @@ export default function ReceivePage() {
             name: productForm.name.trim(),
             description: productForm.description.trim() || null,
             sku: productForm.sku.trim() || null,
+            barcode: productForm.barcode.trim() || null,
+            unit: productForm.unit.trim() || null,
             price: parseFloat(productForm.price),
             costPrice: productForm.costPrice ? parseFloat(productForm.costPrice) : null,
             businessCategoryId: productForm.businessCategoryId || null,
@@ -476,6 +492,14 @@ export default function ReceivePage() {
                 <Plus className="h-3.5 w-3.5" />
                 Шинэ бараа үүсгэх
               </button>
+              <button
+                onClick={() => setShowImportModal(true)}
+                disabled={!selectedWarehouseId}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Excel импорт
+              </button>
             </div>
 
             {/* Search */}
@@ -504,7 +528,8 @@ export default function ReceivePage() {
                       <div>
                         <p className="font-medium text-slate-900">{p.name}</p>
                         <p className="text-xs text-slate-500">
-                          {p.sku || "SKU байхгүй"} · {Number(p.price).toLocaleString()}₮
+                          {p.sku || p.barcode || "SKU байхгүй"} · {Number(p.price).toLocaleString()}₮
+                          {typeof p.stock === "number" && <span className="ml-1 text-slate-400">· Үлдэгдэл: {p.stock}</span>}
                         </p>
                       </div>
                       {items.some((i) => i.productId === p.id) ? (
@@ -720,17 +745,34 @@ export default function ReceivePage() {
                 />
               </div>
 
-              {/* Organization name */}
-              <div>
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Байгууллагын нэр
-                </label>
-                <input
-                  value={organizationName}
-                  onChange={(e) => setOrganizationName(e.target.value)}
-                  placeholder="Жишээ: Apu Dari"
-                  className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
+              {/* Organization name + Register */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Байгууллагын нэр
+                  </label>
+                  <input
+                    value={organizationName}
+                    onChange={(e) => setOrganizationName(e.target.value)}
+                    placeholder="Жишээ: Apu Dari"
+                    className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Регистрийн дугаар
+                  </label>
+                  <input
+                    value={productForm.orgRegister}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "").slice(0, 7);
+                      setProductForm({ ...productForm, orgRegister: val });
+                    }}
+                    placeholder="7 оронтой (жишээ: 1234567)"
+                    maxLength={7}
+                    className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm font-mono outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
               </div>
 
               {/* SKU Generator */}
@@ -741,6 +783,53 @@ export default function ReceivePage() {
                 value={productForm.sku}
                 onChange={(sku) => setProductForm((prev) => ({ ...prev, sku }))}
               />
+
+              {/* Barcode */}
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Баркод
+                </label>
+                <input
+                  value={productForm.barcode}
+                  onChange={(e) => setProductForm({ ...productForm, barcode: e.target.value })}
+                  placeholder="Баркод уншуулах эсвэл гараар оруулна уу"
+                  className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm font-mono outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Баркод эсвэл SKU кодын алийг нь ч уншуулж бараа хайж болно
+                </p>
+              </div>
+
+              {/* Unit */}
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Хэмжих нэгж
+                </label>
+                <div className="relative">
+                  <select
+                    value={productForm.unit}
+                    onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })}
+                    className="h-11 w-full appearance-none rounded-lg border border-slate-300 bg-white px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">— Сонгох —</option>
+                    <option value="ш">ш (ширхэг)</option>
+                    <option value="кг">кг (килограмм)</option>
+                    <option value="г">г (грамм)</option>
+                    <option value="т">т (тонн)</option>
+                    <option value="л">л (литр)</option>
+                    <option value="мл">мл (миллилитр)</option>
+                    <option value="м">м (метр)</option>
+                    <option value="см">см (сантиметр)</option>
+                    <option value="м²">м² (квадрат метр)</option>
+                    <option value="м³">м³ (шоо метр)</option>
+                    <option value="хайрцаг">хайрцаг</option>
+                    <option value="уут">уут</option>
+                    <option value="багц">багц</option>
+                    <option value="дүүжин">дүүжин</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                </div>
+              </div>
 
               {/* Description */}
               <div>
@@ -754,8 +843,20 @@ export default function ReceivePage() {
                 />
               </div>
 
-              {/* Price + Cost */}
+              {/* Price: Авах үнэ (costPrice) first, then Зарах үнэ (price) */}
               <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Авах үнэ (₮)
+                  </label>
+                  <input
+                    type="number"
+                    value={productForm.costPrice}
+                    onChange={(e) => setProductForm({ ...productForm, costPrice: e.target.value })}
+                    placeholder="0"
+                    className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                     Зарах үнэ (₮) <span className="text-red-500">*</span>
@@ -768,19 +869,9 @@ export default function ReceivePage() {
                     className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">Өртөг үнэ (₮)</label>
-                  <input
-                    type="number"
-                    value={productForm.costPrice}
-                    onChange={(e) => setProductForm({ ...productForm, costPrice: e.target.value })}
-                    placeholder="0"
-                    className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
               </div>
 
-              {/* Category */}
+              {/* Category — searchable */}
               <div>
                 <label className="mb-1.5 flex items-center justify-between text-sm font-semibold text-slate-700">
                   <span>Ангилал</span>
@@ -832,18 +923,54 @@ export default function ReceivePage() {
                   </div>
                 )}
 
-                <select
-                  value={productForm.businessCategoryId}
-                  onChange={(e) => setProductForm({ ...productForm, businessCategoryId: e.target.value })}
-                  className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="">Ангилал сонгоно уу (заавал биш)</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {"—".repeat(c.level)} {c.name}
-                    </option>
-                  ))}
-                </select>
+                {/* Search input for categories */}
+                <div className="relative mb-1">
+                  <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={categorySearch}
+                    onChange={(e) => setCategorySearch(e.target.value)}
+                    placeholder="Ангилал хайх..."
+                    className="h-9 w-full rounded-lg border border-slate-300 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                  />
+                </div>
+
+                {/* Category list */}
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-50">
+                  {categories
+                    .filter((c) => !categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                    .map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setProductForm({ ...productForm, businessCategoryId: c.id });
+                          setCategorySearch("");
+                        }}
+                        className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-blue-50 ${
+                          productForm.businessCategoryId === c.id
+                            ? "bg-blue-50 font-semibold text-blue-700"
+                            : "text-slate-700"
+                        }`}
+                      >
+                        <span>{"—".repeat(c.level)} {c.name}</span>
+                        {productForm.businessCategoryId === c.id && (
+                          <Check className="h-3.5 w-3.5 text-blue-600" />
+                        )}
+                      </button>
+                    ))}
+                  {categories.filter((c) => !categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase())).length === 0 && (
+                    <div className="px-3 py-3 text-center text-xs text-slate-400">Ангилал олдсонгүй</div>
+                  )}
+                </div>
+                {productForm.businessCategoryId && (
+                  <button
+                    type="button"
+                    onClick={() => setProductForm({ ...productForm, businessCategoryId: "" })}
+                    className="mt-1 text-xs text-red-500 hover:text-red-600"
+                  >
+                    Ангилал цуцлах
+                  </button>
+                )}
               </div>
 
               {/* Images */}
@@ -897,6 +1024,13 @@ export default function ReceivePage() {
               {/* Inventory info */}
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-4">
                 <h3 className="text-sm font-bold text-slate-700">Агуулахын мэдээлэл</h3>
+
+                {/* Previous stock display (informational) */}
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-amber-700">Өмнөх үлдэгдэл</span>
+                  <span className="text-sm font-bold text-amber-800">0 ш</span>
+                </div>
+
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-slate-600">Тоо ширхэг</label>
@@ -928,11 +1062,11 @@ export default function ReceivePage() {
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-600">Багцын дугаар</label>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">Нэхэмжлэлийн дугаар</label>
                     <input
                       value={productForm.batchNumber}
                       onChange={(e) => setProductForm({ ...productForm, batchNumber: e.target.value })}
-                      placeholder="BATCH-001"
+                      placeholder="INV-001"
                       className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
                     />
                   </div>
@@ -978,6 +1112,20 @@ export default function ReceivePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Excel Import Modal */}
+      {showImportModal && selectedWarehouseId && (
+        <ExcelImportModal
+          warehouseId={selectedWarehouseId}
+          onClose={() => setShowImportModal(false)}
+          onSuccess={() => {
+            // Refresh search if there's an active search
+            if (productSearch.trim()) {
+              setProductSearch((prev) => prev); // trigger re-render
+            }
+          }}
+        />
       )}
     </div>
   );

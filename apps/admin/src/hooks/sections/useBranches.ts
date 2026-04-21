@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { API, adminFetch } from "@/lib/api";
-import { haversineDistanceMeters, normalizeText } from "@/lib/sections/utils";
-import { MIN_BRANCH_DISTANCE_METERS } from "@/lib/sections/constants";
+import { normalizeText } from "@/lib/sections/utils";
 import type { BranchMapItem, BranchFormState, CardPartner } from "@/lib/sections/types";
 
 const EMPTY_FORM: BranchFormState = { name: "", address: "", lat: "", lng: "" };
@@ -87,23 +86,7 @@ export function useBranches(enabled: boolean) {
     branchItems[0] ||
     null;
 
-  const draftNearbyBranches = isBranchCoordsValid
-    ? branchItems
-        .filter((item) => item.lat !== null && item.lng !== null)
-        .map((item) => ({
-          item,
-          distanceMeters: haversineDistanceMeters(
-            parsedBranchLat,
-            parsedBranchLng,
-            item.lat as number,
-            item.lng as number,
-          ),
-        }))
-        .filter(({ distanceMeters }) => distanceMeters < MIN_BRANCH_DISTANCE_METERS)
-        .sort((a, b) => a.distanceMeters - b.distanceMeters)
-    : [];
 
-  const nearestDraftConflict = draftNearbyBranches[0] || null;
 
   const previewLat = isBranchCoordsValid
     ? parsedBranchLat
@@ -139,11 +122,6 @@ export function useBranches(enabled: boolean) {
       !Number.isFinite(parsedLng)
     ) {
       alert("Lat/Lng координатыг зөв оруулна уу");
-      return;
-    }
-
-    if (nearestDraftConflict) {
-      alert("500м радиус дотор өөр салбар байна. Илүү хол байршил сонгоно уу.");
       return;
     }
 
@@ -214,7 +192,6 @@ export function useBranches(enabled: boolean) {
     isBranchCoordsValid,
     filteredRegisteredBranchItems,
     selectedRegisteredBranch,
-    nearestDraftConflict,
     previewLat,
     previewLng,
     hasMapPreview,

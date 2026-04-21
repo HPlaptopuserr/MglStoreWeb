@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
 import path from "path";
 import {
@@ -35,6 +37,20 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 dotenv.config(); // fallback: local .env if present
 
 const app = express();
+const isProduction = process.env.NODE_ENV === "production";
+
+app.use(helmet());
+
+// Global rate limiter: 200 req / 15 min per IP
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Хэт олон хүсэлт илгээлээ. Түр хүлээнэ үү." },
+  }),
+);
 
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",")
@@ -58,8 +74,8 @@ app.use(
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, Postman, etc.)
       if (!origin) return callback(null, true);
-      // Allow all localhost ports (Flutter web uses dynamic ports)
-      if (origin.startsWith("http://localhost:")) return callback(null, true);
+      // Allow localhost only in development
+      if (!isProduction && origin.startsWith("http://localhost:")) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
       callback(new Error("Not allowed by CORS"));
     },
@@ -98,7 +114,15 @@ app.get("/", (_req, res) => {
   res.send("API is running...");
 });
 
-app.use("/auth", authRoutes);
+// Stricter rate limit for auth endpoints: 15 req / 15 min per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Хэт олон нэвтрэх оролдлого. Түр хүлээнэ үү." },
+});
+app.use("/auth", authLimiter, authRoutes);
 
 const port = process.env.PORT || 4000;
 

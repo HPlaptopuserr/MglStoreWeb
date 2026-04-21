@@ -5,11 +5,13 @@ import {
   OrderStatus,
   PaymentStatus,
   PaymentMethod,
+  InventoryReason,
 } from "@mgl/database";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
+import { adjustStock, resolveOrgWarehouse } from "../../services/inventory.service";
 
 const router: ExpressRouter = Router();
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("FATAL: JWT_SECRET not set"); })() : "dev-secret-change-me");
 
 /* ── Auth helper ──────────────────────────────────────── */
 const getCustomer = async (req: Request) => {
@@ -130,11 +132,17 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
 
     // Create order + items + payment attempt in a transaction
     const order = await prisma.$transaction(async (tx) => {
-      // Decrement stock
+      // Decrement stock through unified adjustStock (warehouse-aware + ledger)
       for (const item of orderItemsData) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
+        const warehouseId = await resolveOrgWarehouse(tx, orgIds[0], item.productId);
+        await adjustStock(tx, {
+          productId: item.productId,
+          warehouseId: warehouseId ?? undefined,
+          change: -item.quantity,
+          reason: InventoryReason.ORDER,
+          note: "Онлайн захиалга",
+          createdById: customer.id,
+          referenceType: "ORDER",
         });
       }
 
@@ -540,6 +548,75 @@ router.get("/store/orders", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("store orders error", error);
     return res.status(500).json({ message: "Захиалгын жагсаалт авахад алдаа гарлаа" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   GET /store/orders/track?orderNumber=ORD-XXXXXXXX-XXXXXX
+   Public order lookup by order number (no auth required).
+   Returns limited info for chatbot / guest tracking.
+   ══════════════════════════════════════════════════════════ */
+router.get("/store/orders/track", async (req: Request, res: Response) => {
+  try {
+    const { orderNumber } = req.query;
+    if (!orderNumber || typeof orderNumber !== "string" || orderNumber.trim().length < 5) {
+      return res.status(400).json({ message: "Захиалгын дугаар оруулна уу" });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: {
+        orderNumber: orderNumber.trim().toUpperCase(),
+        deletedAt: null,
+      },
+      include: {
+        items: {
+          select: {
+            productName: true,
+            quantity: true,
+            price: true,
+            subtotal: true,
+          },
+        },
+        organization: { select: { name: true } },
+        delivery: {
+          select: {
+            status: true,
+            deliveredAt: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Захиалга олдсонгүй" });
+    }
+
+    return res.json({
+      orderNumber: order.orderNumber,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      total: Number(order.total),
+      subtotal: Number(order.subtotal),
+      deliveryFee: Number(order.deliveryFee),
+      deliveryCode: order.deliveryCode,
+      organizationName: order.organization.name,
+      createdAt: order.createdAt.toISOString(),
+      items: order.items.map((i: { productName: string; quantity: number; price: any; subtotal: any }) => ({
+        name: i.productName,
+        qty: i.quantity,
+        price: Number(i.price),
+        subtotal: Number(i.subtotal),
+      })),
+      delivery: order.delivery
+        ? {
+            status: order.delivery.status,
+            deliveredAt: order.delivery.deliveredAt?.toISOString() || null,
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error("order track error", error);
+    return res.status(500).json({ message: "Захиалга хайхад алдаа гарлаа" });
   }
 });
 

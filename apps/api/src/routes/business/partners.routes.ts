@@ -722,7 +722,7 @@ router.delete("/admin/organizations/:id/staff/:memberId", requireAuth, requireAn
 });
 
 // GET /admin/branches?organizationId= — list branches for a given org
-router.get("/admin/branches", async (req, res) => {
+router.get("/admin/branches", requireAuth, async (req, res) => {
   const organizationId = String(req.query.organizationId || "").trim();
   if (!organizationId) {
     return res.status(400).json({ message: "organizationId шаардлагатай" });

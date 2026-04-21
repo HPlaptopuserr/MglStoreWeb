@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   title: "MGL Store | Монголын худалдааны нэгдсэн сүлжээ",
   description:
     "Монголын бизнесүүдийг орчин үеийн жижиглэн худалдааны нэг экосистемд холбох.",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({

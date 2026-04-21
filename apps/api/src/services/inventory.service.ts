@@ -105,3 +105,21 @@ export async function resolveOrgWarehouse(
 
   return assignment?.warehouseId ?? null;
 }
+
+/**
+ * Recalculate Product.stock = SUM(WarehouseInventory.quantity).
+ * Works both inside and outside a transaction.
+ */
+export async function syncProductStock(
+  txOrPrisma: Tx,
+  productId: string,
+): Promise<void> {
+  const result = await txOrPrisma.warehouseInventory.aggregate({
+    where: { productId },
+    _sum: { quantity: true },
+  });
+  await txOrPrisma.product.update({
+    where: { id: productId },
+    data: { stock: result._sum.quantity ?? 0 },
+  });
+}

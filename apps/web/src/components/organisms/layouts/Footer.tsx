@@ -71,7 +71,7 @@ export const Footer = () => {
       </div>
 
       {/* ── Newsletter CTA ── */}
-      <div className="bg-gray-900">
+{/*       <div className="bg-gray-900">
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
           <div className="flex flex-col items-center gap-6 text-center md:flex-row md:justify-between md:text-left">
             <div className="max-w-lg">
@@ -106,7 +106,7 @@ export const Footer = () => {
           </div>
         </div>
       </div>
-
+ */}
       {/* ── Main Footer Links ── */}
       <div className="bg-gray-950 px-4 pt-12 pb-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">

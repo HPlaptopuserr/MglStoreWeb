@@ -53,6 +53,7 @@ model User {
   warehouseSetupTokens         WarehouseSetupToken[]    @relation("UserWarehouseSetupTokens")
   requestedStockRequests       WarehouseStockRequest[]  @relation("StockRequestsRequested")
   reviewedStockRequests        WarehouseStockRequest[]  @relation("StockRequestsReviewed")
+  returnApprovals              DispatchReturn[]         @relation("ReturnApprovals")
   orgJoinRequests              OrgJoinRequest[]         @relation("UserOrgJoinRequests")
   conversationParticipants     ConversationParticipant[]
   sentDirectMessages           DirectMessage[]          @relation("DirectMessageSender")
@@ -331,6 +332,7 @@ model Organization {
   stockRequestPayments         StockRequestPayment[]   @relation("OrganizationStockPayments")
   warehouseAssignments         WarehouseOrganization[]
   stockRequests                WarehouseStockRequest[] @relation("OrganizationStockRequests")
+  dispatchReturns              DispatchReturn[]        @relation("OrganizationReturns")
   joinRequests                 OrgJoinRequest[]        @relation("OrgJoinRequests")
   posShifts                    PosShift[]
   posSales                     PosSale[]
@@ -398,6 +400,7 @@ model OrganizationMember {
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
   isPrimary      Boolean      @default(false)
   capabilities   Capability[] @default([])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -408,6 +411,7 @@ model OrganizationMember {
   @@index([organizationId])
   @@index([role])
   @@index([isActive])
+  @@index([deletedAt])
 }
 
 /// A request from a user to join an organization.
@@ -472,6 +476,7 @@ model PosRegister {
   isActive          Boolean              @default(false)
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
+  deletedAt         DateTime?
   activationStatus  PosActivationStatus  @default(PENDING)
   rejectReason      String?
   reviewedAt        DateTime?
@@ -491,6 +496,7 @@ model PosRegister {
   @@index([branchId])
   @@index([isActive])
   @@index([activationStatus])
+  @@index([deletedAt])
 }
 
 model Address {
@@ -538,6 +544,8 @@ model Product {
   name                 String
   description          String?
   sku                  String?
+  barcode              String?
+  unit                 String?
   price                Decimal                     @db.Decimal(18, 2)
   costPrice            Decimal?                    @db.Decimal(18, 2)
   /// Denormalized cache. Canonical stock lives in WarehouseInventory.quantity.
@@ -561,6 +569,7 @@ model Product {
   warehouseInventories WarehouseInventory[]
   stockRequestItems    WarehouseStockRequestItem[] @relation("StockRequestProducts")
   posSaleLines         PosSaleLine[]
+  returnItems          DispatchReturnItem[] @relation("ReturnProducts")
 
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
@@ -568,6 +577,7 @@ model Product {
   @@index([businessCategoryId])
   @@index([deletedAt])
   @@index([name])
+  @@index([barcode])
 }
 
 model ProductRequest {
@@ -854,6 +864,7 @@ model Warehouse {
   organizations WarehouseOrganization[]
   setupTokens   WarehouseSetupToken[]   @relation("WarehouseSetupTokens")
   stockRequests WarehouseStockRequest[] @relation("WarehouseStockRequests")
+  dispatchReturns DispatchReturn[]     @relation("WarehouseReturns")
 
   @@index([createdById])
   @@index([isActive])
@@ -956,8 +967,8 @@ model StockRequestPayment {
   invoiceNumber  String                @unique
   requestId      String                @unique
   organizationId String
-  totalAmount    Decimal               @db.Decimal(12, 2)
-  paidAmount     Decimal               @default(0) @db.Decimal(12, 2)
+  totalAmount    Decimal               @db.Decimal(18, 2)
+  paidAmount     Decimal               @default(0) @db.Decimal(18, 2)
   status         PaymentStatus         @default(PENDING)
   paymentMethod  PaymentMethod?
   paidAt         DateTime?
@@ -1001,12 +1012,62 @@ model StockDispatch {
   organization   Organization          @relation("OrganizationDispatches", fields: [organizationId], references: [id])
   request        WarehouseStockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   warehouse      Warehouse             @relation("WarehouseDispatches", fields: [warehouseId], references: [id])
+  returns        DispatchReturn[]
 
   @@index([warehouseId])
   @@index([organizationId])
   @@index([status])
   @@index([driverId])
   @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Dispatch Returns — goods returned after delivery
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Return request for defective/wrong goods from a delivered dispatch.
+/// Warehouse admin manually approves; approved returns restore inventory.
+model DispatchReturn {
+  id             String                @id @default(uuid())
+  returnNumber   String                @unique
+  dispatchId     String
+  warehouseId    String
+  organizationId String
+  status         ReturnStatus          @default(PENDING)
+  reason         String?
+  note           String?
+  rejectReason   String?
+  requestedAt    DateTime              @default(now())
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  approvedById   String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  dispatch       StockDispatch         @relation(fields: [dispatchId], references: [id])
+  warehouse      Warehouse             @relation("WarehouseReturns", fields: [warehouseId], references: [id])
+  organization   Organization          @relation("OrganizationReturns", fields: [organizationId], references: [id])
+  approvedBy     User?                 @relation("ReturnApprovals", fields: [approvedById], references: [id])
+  items          DispatchReturnItem[]
+
+  @@index([dispatchId])
+  @@index([warehouseId])
+  @@index([organizationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DispatchReturnItem {
+  id        String         @id @default(uuid())
+  returnId  String
+  productId String
+  quantity  Int
+  reason    String?
+  return    DispatchReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  product   Product        @relation("ReturnProducts", fields: [productId], references: [id])
+
+  @@unique([returnId, productId])
+  @@index([returnId])
+  @@index([productId])
 }
 
 model CardPaymentAttempt {

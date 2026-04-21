@@ -10,6 +10,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "MGL WMS | Агуулахын удирдлагын систем",
   description: "Warehouse Management System — MGL Store Platform",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({

@@ -3,7 +3,14 @@ import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
 import { Permission, isAdminRole, isFullAdmin, hasPlatformPermission } from "@mgl/types";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("FATAL: JWT_SECRET environment variable is not set");
+  }
+  console.warn("[WARN] JWT_SECRET not set — using insecure dev fallback");
+}
+const jwtSecret = JWT_SECRET || "dev-secret-change-me";
 
 export interface AuthPayload {
   userId: string;
@@ -30,7 +37,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const decoded = jwt.verify(token, jwtSecret) as AuthPayload;
     (req as any).user = decoded;
     next();
   } catch {

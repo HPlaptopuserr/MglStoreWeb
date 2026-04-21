@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { prisma, OrderStatus } from "@mgl/database";
 
 const router: ExpressRouter = Router();
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("FATAL: JWT_SECRET not set"); })() : "dev-secret-change-me");
 
 /* ── Auth helper — vendor or admin with org ─────────── */
 const getVendorUser = async (req: Request) => {

@@ -7,7 +7,6 @@ import { BranchForm } from "@/components/molecules/sections/branches/BranchForm"
 import { BranchPreviewPanel } from "@/components/molecules/sections/branches/BranchPreviewPanel";
 import { getLeafletLib } from "@/lib/sections/utils";
 import {
-  MIN_BRANCH_DISTANCE_METERS,
   BRANCH_MAP_ATTRIBUTION,
   UB_CENTER,
 } from "@/lib/sections/constants";
@@ -28,7 +27,6 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
   const mapPickerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markerInstanceRef = useRef<any>(null);
-  const radiusCircleRef = useRef<any>(null);
 
   // ── Preview map refs ─────────────────────────────────────────────────────
   const previewMapRef = useRef<HTMLDivElement>(null);
@@ -82,7 +80,6 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
         markerInstanceRef.current = null;
-        radiusCircleRef.current = null;
       }
     };
   }, []);
@@ -94,14 +91,11 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
     if (!branches.isBranchCoordsValid) {
       markerInstanceRef.current?.remove();
       markerInstanceRef.current = null;
-      radiusCircleRef.current?.remove();
-      radiusCircleRef.current = null;
       return;
     }
 
     const map = mapInstanceRef.current;
     const nextLatLng: [number, number] = [branches.parsedBranchLat, branches.parsedBranchLng];
-    const hasConflict = !!branches.nearestDraftConflict;
 
     const sync = async () => {
       const L = await getLeafletLib();
@@ -109,33 +103,13 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
 
       if (markerInstanceRef.current) {
         markerInstanceRef.current.setLatLng(nextLatLng);
-        markerInstanceRef.current.setStyle({
-          color: hasConflict ? "#dc2626" : "#7c3aed",
-          fillColor: hasConflict ? "#fca5a5" : "#a78bfa",
-        });
       } else {
         markerInstanceRef.current = L.circleMarker(nextLatLng, {
           radius: 8,
-          color: hasConflict ? "#dc2626" : "#7c3aed",
+          color: "#7c3aed",
           weight: 2,
-          fillColor: hasConflict ? "#fca5a5" : "#a78bfa",
+          fillColor: "#a78bfa",
           fillOpacity: 0.8,
-        }).addTo(map);
-      }
-
-      if (radiusCircleRef.current) {
-        radiusCircleRef.current.setLatLng(nextLatLng);
-        radiusCircleRef.current.setStyle({
-          color: hasConflict ? "#ef4444" : "#7c3aed",
-          fillColor: hasConflict ? "#fca5a5" : "#c4b5fd",
-        });
-      } else {
-        radiusCircleRef.current = L.circle(nextLatLng, {
-          radius: MIN_BRANCH_DISTANCE_METERS,
-          color: hasConflict ? "#ef4444" : "#7c3aed",
-          weight: 2,
-          fillColor: hasConflict ? "#fca5a5" : "#c4b5fd",
-          fillOpacity: 0.18,
         }).addTo(map);
       }
 
@@ -151,7 +125,6 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
     branches.isBranchCoordsValid,
     branches.parsedBranchLat,
     branches.parsedBranchLng,
-    branches.nearestDraftConflict,
   ]);
 
   // ── Preview map init ─────────────────────────────────────────────────────
@@ -229,14 +202,6 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
         marker.bindTooltip(item.name, { direction: "top", offset: [0, -8] });
         marker.on("click", () => branches.setSelectedRegisteredBranchId(item.id));
         marker.addTo(layer);
-
-        L.circle(latLng, {
-          radius: MIN_BRANCH_DISTANCE_METERS,
-          color: isActive ? "#7c3aed" : "#64748b",
-          weight: 1,
-          fillColor: isActive ? "#c4b5fd" : "#cbd5e1",
-          fillOpacity: isActive ? 0.12 : 0.06,
-        }).addTo(layer);
 
         bounds.extend(latLng);
       });
@@ -325,7 +290,6 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
             form={branches.branchForm}
             setForm={branches.setBranchForm}
             branchSaving={branches.branchSaving}
-            nearestDraftConflict={branches.nearestDraftConflict}
             branchMapError={branchMapError}
             mapPickerRef={mapPickerRef}
             onSubmit={branches.handleCreateBranch}

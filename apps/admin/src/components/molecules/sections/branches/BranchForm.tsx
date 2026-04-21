@@ -2,11 +2,6 @@ import type { RefObject } from "react";
 import { Building2, Loader2, MapPin, Plus, Tag } from "lucide-react";
 import type { CardPartner, BranchFormState } from "@/lib/sections/types";
 
-type NearestConflict = {
-  item: { name: string };
-  distanceMeters: number;
-} | null;
-
 type Props = {
   partners: CardPartner[];
   orgId: string;
@@ -15,7 +10,6 @@ type Props = {
   form: BranchFormState;
   setForm: React.Dispatch<React.SetStateAction<BranchFormState>>;
   branchSaving: boolean;
-  nearestDraftConflict: NearestConflict;
   branchMapError: string;
   mapPickerRef: RefObject<HTMLDivElement>;
   onSubmit: () => void;
@@ -29,7 +23,6 @@ export function BranchForm({
   form,
   setForm,
   branchSaving,
-  nearestDraftConflict,
   branchMapError,
   mapPickerRef,
   onSubmit,
@@ -155,7 +148,7 @@ export function BranchForm({
           <div ref={mapPickerRef} className="h-64 w-full" />
           <div className="px-3 py-2 border-t border-slate-200 bg-slate-50">
             <p className="text-[11px] text-slate-500">
-              Map дээр дарахад координат автоматаар бөглөгдөнө. 500м радиус дотор давхцал шалгана.
+              Map дээр дарахад координат автоматаар бөглөгдөнө.
             </p>
           </div>
           {branchMapError && (
@@ -166,19 +159,9 @@ export function BranchForm({
         </div>
       </div>
 
-      {nearestDraftConflict && (
-        <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5">
-          <span className="mt-0.5 text-rose-500">⚠</span>
-          <p className="text-xs text-rose-700">
-            500м дотор <span className="font-semibold">&quot;{nearestDraftConflict.item.name}&quot;</span> салбар байна (
-            {Math.round(nearestDraftConflict.distanceMeters)}м). Өөр цэг сонгоно уу.
-          </p>
-        </div>
-      )}
-
       <button
         onClick={onSubmit}
-        disabled={branchSaving || !orgId || !!nearestDraftConflict}
+        disabled={branchSaving || !orgId}
         className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-violet-200 transition-all hover:bg-violet-700 hover:shadow-md hover:shadow-violet-200 disabled:opacity-60 disabled:shadow-none"
       >
         {branchSaving ? (

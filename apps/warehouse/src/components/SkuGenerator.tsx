@@ -1,16 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Tag, ChevronDown, Plus, Loader2 } from "lucide-react";
+import { Tag, Loader2, PlusCircle, CheckCircle2 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 
 /**
  * SKU Format: XXX-YYY-NNN
  *   XXX = Product name abbreviation (3 chars, auto)
  *   YYY = Organization name abbreviation (3 chars, auto)
- *   NNN = Product type number (operator enters manually OR selected from existing)
- *
- * Mongolian (Cyrillic) text is transliterated to Latin automatically.
+ *   NNN = Product type number (selected from dropdown or new)
  */
 
 const CYRILLIC_MAP: Record<string, string> = {
@@ -32,10 +30,7 @@ function isCyrillic(text: string): boolean {
 
 function transliterate(text: string): string {
   if (!isCyrillic(text)) return text;
-  return text
-    .split("")
-    .map((ch) => CYRILLIC_MAP[ch] ?? ch)
-    .join("");
+  return text.split("").map((ch) => CYRILLIC_MAP[ch] ?? ch).join("");
 }
 
 function abbreviate(text: string): string {
@@ -64,6 +59,17 @@ function removeVowels(str: string): string {
   return str.replace(/[aeiouAEIOU]/g, "");
 }
 
+function nextNum(skus: ExistingSku[]): string {
+  if (skus.length === 0) return "001";
+  const nums = skus.map((s) => {
+    const parts = (s.sku || "").split("-");
+    return parts.length === 3 ? parseInt(parts[2]) || 0 : 0;
+  }).sort((a, b) => a - b);
+  return (nums[nums.length - 1] + 1).toString().padStart(3, "0");
+}
+
+const NEW_TYPE_VALUE = "__new__";
+
 type ExistingSku = { id: string; name: string; sku: string };
 
 type SkuGeneratorProps = {
@@ -85,10 +91,8 @@ export default function SkuGenerator({
   const [productAbbr, setProductAbbr] = useState("XXX");
   const [orgAbbr, setOrgAbbr] = useState("XXX");
 
-  // Existing SKU lookup
   const [existingSkus, setExistingSkus] = useState<ExistingSku[]>([]);
   const [lookupLoading, setLookupLoading] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
   const [isNewType, setIsNewType] = useState(true);
 
   // Parse existing value on mount
@@ -99,60 +103,33 @@ export default function SkuGenerator({
         setProductAbbr(parts[0]);
         setOrgAbbr(parts[1]);
         setTypeNumber(parts[2]);
-        return;
       }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-generate abbreviations from names
-  useEffect(() => {
-    setProductAbbr(abbreviate(productName));
-  }, [productName]);
-
-  useEffect(() => {
-    setOrgAbbr(abbreviate(organizationName));
-  }, [organizationName]);
+  useEffect(() => { setProductAbbr(abbreviate(productName)); }, [productName]);
+  useEffect(() => { setOrgAbbr(abbreviate(organizationName)); }, [organizationName]);
 
   // Emit full SKU whenever parts change
   useEffect(() => {
-    const sku = `${productAbbr}-${orgAbbr}-${typeNumber || "000"}`;
-    onChange(sku);
+    onChange(`${productAbbr}-${orgAbbr}-${typeNumber || "000"}`);
   }, [productAbbr, orgAbbr, typeNumber]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Lookup existing SKUs when prefix changes
   const lookupSkus = useCallback(async (prefix: string) => {
-    if (!warehouseId || prefix.length < 3) {
-      setExistingSkus([]);
-      return;
-    }
+    if (!warehouseId || prefix.length < 3) { setExistingSkus([]); return; }
     setLookupLoading(true);
     try {
-      const res = await wmsFetch(
-        `${API}/warehouses/${warehouseId}/sku-lookup?prefix=${encodeURIComponent(prefix)}`
-      );
+      const res = await wmsFetch(`${API}/warehouses/${warehouseId}/sku-lookup?prefix=${encodeURIComponent(prefix)}`);
       if (res.ok) {
         const data: ExistingSku[] = await res.json();
         setExistingSkus(data);
-        // Auto-suggest next type number
         if (data.length > 0 && isNewType) {
-          const nums = data
-            .map((p) => {
-              const parts = (p.sku || "").split("-");
-              return parts.length === 3 ? parseInt(parts[2]) || 0 : 0;
-            })
-            .sort((a, b) => a - b);
-          const next = (nums[nums.length - 1] + 1).toString().padStart(3, "0");
-          setTypeNumber(next);
+          setTypeNumber(nextNum(data));
         }
       }
-    } catch {
-      /* ignore */
-    } finally {
-      setLookupLoading(false);
-    }
+    } catch { /* ignore */ } finally { setLookupLoading(false); }
   }, [warehouseId, isNewType]);
 
-  // Debounced prefix lookup
   useEffect(() => {
     if (productAbbr === "XXX" || orgAbbr === "XXX") return;
     const prefix = `${productAbbr}-${orgAbbr}`;
@@ -160,35 +137,22 @@ export default function SkuGenerator({
     return () => clearTimeout(timer);
   }, [productAbbr, orgAbbr, lookupSkus]);
 
-  const handleTypeChange = (val: string) => {
-    const cleaned = val.replace(/\D/g, "").slice(0, 3);
-    setTypeNumber(cleaned);
-    setIsNewType(true);
+  const handleDropdownChange = (val: string) => {
+    if (val === NEW_TYPE_VALUE) {
+      setTypeNumber(nextNum(existingSkus));
+      setIsNewType(true);
+    } else {
+      const found = existingSkus.find((s) => (s.sku.split("-")[2] || "") === val);
+      if (found) {
+        setTypeNumber(val);
+        setIsNewType(false);
+      }
+    }
   };
 
-  const selectExisting = (sku: ExistingSku) => {
-    const parts = (sku.sku || "").split("-");
-    if (parts.length === 3) {
-      setTypeNumber(parts[2]);
-      setIsNewType(false);
-    }
-    setShowDropdown(false);
-  };
-
-  const selectNewType = () => {
-    if (existingSkus.length > 0) {
-      const nums = existingSkus
-        .map((p) => {
-          const parts = (p.sku || "").split("-");
-          return parts.length === 3 ? parseInt(parts[2]) || 0 : 0;
-        })
-        .sort((a, b) => a - b);
-      const next = (nums[nums.length - 1] + 1).toString().padStart(3, "0");
-      setTypeNumber(next);
-    }
-    setIsNewType(true);
-    setShowDropdown(false);
-  };
+  const selectedExisting = !isNewType
+    ? existingSkus.find((s) => (s.sku.split("-")[2] || "") === typeNumber)
+    : null;
 
   return (
     <div>
@@ -199,7 +163,7 @@ export default function SkuGenerator({
       </label>
 
       {/* Preview */}
-      <div className="mb-2 flex items-center gap-1 rounded-lg bg-slate-50 px-3 py-2 font-mono text-lg font-bold tracking-wider">
+      <div className="mb-3 flex items-center gap-1 rounded-lg bg-slate-50 px-3 py-2 font-mono text-lg font-bold tracking-wider">
         <span className="text-blue-600">{productAbbr}</span>
         <span className="text-slate-300">-</span>
         <span className="text-emerald-600">{orgAbbr}</span>
@@ -207,97 +171,93 @@ export default function SkuGenerator({
         <span className="text-amber-600">{typeNumber || "000"}</span>
       </div>
 
-      {/* Existing SKUs banner */}
-      {existingSkus.length > 0 && (
-        <div className="mb-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
-          <p className="text-xs font-semibold text-blue-700">
-            {existingSkus.length} бүртгэлтэй бараа олдлоо ({productAbbr}-{orgAbbr} угтвартай)
-          </p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {existingSkus.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => selectExisting(s)}
-                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${
-                  !isNewType && value === s.sku
-                    ? "border-blue-500 bg-blue-100 text-blue-800"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50"
-                }`}
-              >
-                <span className="font-mono font-bold">{s.sku}</span>
-                <span className="text-slate-400">·</span>
-                <span className="max-w-[120px] truncate">{s.name}</span>
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={selectNewType}
-              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
-                isNewType
-                  ? "border-emerald-500 bg-emerald-100 text-emerald-800"
-                  : "border-dashed border-slate-300 text-slate-500 hover:border-emerald-400 hover:bg-emerald-50"
-              }`}
-            >
-              <Plus className="h-3 w-3" />
-              Шинэ төрөл
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Inputs */}
-      <div className="grid grid-cols-3 gap-2">
-        {/* Product abbreviation */}
+      {/* Abbreviation inputs */}
+      <div className="mb-3 grid grid-cols-2 gap-2">
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             Бүтээгдэхүүн
           </label>
           <input
             value={productAbbr}
-            onChange={(e) => {
-              const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3);
-              setProductAbbr(val);
-            }}
+            onChange={(e) => setProductAbbr(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3))}
             maxLength={3}
             placeholder="XXX"
             className="h-9 w-full rounded-md border border-slate-300 px-2 text-center font-mono text-sm font-semibold uppercase outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
           />
           <p className="mt-0.5 text-[9px] text-slate-400">Нэрнээс автомат</p>
         </div>
-
-        {/* Organization abbreviation (auto, editable) */}
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             Байгууллага
           </label>
           <input
             value={orgAbbr}
-            onChange={(e) => {
-              const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3);
-              setOrgAbbr(val);
-            }}
+            onChange={(e) => setOrgAbbr(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3))}
             maxLength={3}
             placeholder="XXX"
             className="h-9 w-full rounded-md border border-slate-300 px-2 text-center font-mono text-sm font-semibold uppercase outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
           />
           <p className="mt-0.5 text-[9px] text-slate-400">Байг. нэрнээс</p>
         </div>
+      </div>
 
-        {/* Type number (manual) */}
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Төрөл №
-          </label>
-          <input
-            value={typeNumber}
-            onChange={(e) => handleTypeChange(e.target.value)}
-            maxLength={3}
-            placeholder="001"
-            className="h-9 w-full rounded-md border border-amber-300 bg-amber-50 px-2 text-center font-mono text-sm font-bold outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200"
-          />
-          <p className="mt-0.5 text-[9px] text-amber-600 font-medium">Гараар оруулна</p>
-        </div>
+      {/* Type number — dropdown if existing types found, plain input otherwise */}
+      <div>
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Төрөл №
+        </label>
+
+        {existingSkus.length > 0 ? (
+          <>
+            <div className="relative">
+              <select
+                value={isNewType ? NEW_TYPE_VALUE : typeNumber}
+                onChange={(e) => handleDropdownChange(e.target.value)}
+                className="h-10 w-full appearance-none rounded-md border border-amber-300 bg-amber-50 pl-3 pr-8 font-mono text-sm font-semibold outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200"
+              >
+                {existingSkus.map((s) => {
+                  const num = s.sku.split("-")[2] || "";
+                  return (
+                    <option key={s.id} value={num}>
+                      {num} · {s.name}
+                    </option>
+                  );
+                })}
+                <option value={NEW_TYPE_VALUE}>
+                  + Шинэ төрөл ({nextNum(existingSkus)})
+                </option>
+              </select>
+              <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-500">▾</span>
+            </div>
+
+            {/* Status line below dropdown */}
+            {isNewType ? (
+              <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                <PlusCircle className="h-3 w-3" />
+                Шинэ төрөл {typeNumber} үүсгэнэ
+              </p>
+            ) : selectedExisting ? (
+              <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-blue-600">
+                <CheckCircle2 className="h-3 w-3" />
+                Бүртгэлтэй бараатай нийлэх: {selectedExisting.name}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <input
+              value={typeNumber}
+              onChange={(e) => {
+                setTypeNumber(e.target.value.replace(/\D/g, "").slice(0, 3));
+                setIsNewType(true);
+              }}
+              maxLength={3}
+              placeholder="001"
+              className="h-9 w-full rounded-md border border-amber-300 bg-amber-50 px-2 text-center font-mono text-sm font-bold outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-200"
+            />
+            <p className="mt-0.5 text-[9px] font-medium text-amber-600">Гараар оруулна</p>
+          </>
+        )}
       </div>
     </div>
   );

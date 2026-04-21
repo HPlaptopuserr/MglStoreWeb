@@ -2,9 +2,9 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { MessageCircle, X, Send, Bot, Package, Truck, Handshake, Phone, HelpCircle } from "lucide-react";
+import { MessageCircle, X, Send, Bot, Package, Truck, Handshake, Phone, HelpCircle, Search, ArrowLeft, Loader2 } from "lucide-react";
 import { API } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, getToken } from "@/lib/auth-context";
 
 interface Message {
   id: string;
@@ -34,16 +34,53 @@ const QUICK_REPLY_TEXT: Record<string, string> = {
 };
 
 const BOT_RESPONSES: Record<string, string> = {
-  "Миний захиалга":
-    "Захиалгынхаа мэдээллийг харахын тулд:\n\n1. Дэлгэцийн баруун дээд буланд байгаа хүний дүрс дээр дарна уу\n2. \"Миний профайл\" хэсэг рүү орно уу\n3. Тэндээс захиалгуудаа харах боломжтой\n\nНэвтрээгүй бол эхлээд нэвтрэх шаардлагатай.",
   "Хүргэлт хаана явж байна?":
     "Хүргэлтийн мэдээллийг шалгахын тулд:\n\n1. Профайл хэсэг рүү орно уу\n2. Захиалгуудаа харна уу\n3. Тухайн захиалга дээр дарахад хүргэлтийн төлөв харагдана\n\nАсуулт байвал доор бичнэ үү.",
   "Хамтран ажиллах":
     "Бидэнтэй хамтран ажиллахыг хүсвэл:\n\n1. Доорх холбоос дээр дарна уу\n/apply/partnership\n\n2. Маягтыг бөглөнө үү\n3. Бид тантай 1–2 ажлын өдөрт холбогдоно",
   "Холбоо барих":
-    "Бидэнтэй холбогдох:\n\nУтас: 7700-1234\nИ-мэйл: info@mglstore.mn\nАжлын цаг: Даваа–Баасан 09:00–18:00\n\nЭсвэл энэ чатаар шууд бичнэ үү.",
+    "Бидэнтэй холбогдох:\n\nУтас: 91601316\nИ-мэйл: bigservice@gmail.com\nАжлын цаг: Даваа–Баасан 09:00–18:00\n\nЭсвэл энэ чатаар шууд бичнэ үү.",
   "Бусад асуулт":
     "Асуултаа доорх талбарт бичээд илгээнэ үү. Бид аль болох хурдан хариулна.",
+};
+
+const ORDER_STATUS_MAP: Record<string, { label: string; color: string }> = {
+  PENDING: { label: "Хүлээгдэж буй", color: "text-amber-600" },
+  CONFIRMED: { label: "Баталгаажсан", color: "text-blue-600" },
+  PREPARED: { label: "Бэлтгэгдсэн", color: "text-indigo-600" },
+  SHIPPING: { label: "Хүргэлтэнд гарсан", color: "text-purple-600" },
+  COMPLETED: { label: "Хүргэгдсэн", color: "text-emerald-600" },
+  CANCELLED: { label: "Цуцлагдсан", color: "text-red-600" },
+};
+
+const PAYMENT_STATUS_MAP: Record<string, string> = {
+  PENDING: "Төлөгдөөгүй",
+  PAID: "Төлөгдсөн",
+  FAILED: "Амжилтгүй",
+  REFUNDED: "Буцаагдсан",
+};
+
+type TrackedOrder = {
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  total: number;
+  subtotal: number;
+  deliveryFee: number;
+  deliveryCode: string | null;
+  organizationName: string;
+  createdAt: string;
+  items: { name: string; qty: number; price: number; subtotal: number }[];
+  delivery: { status: string; deliveredAt: string | null } | null;
+};
+
+type MyOrderSummary = {
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  total: number;
+  organizationName: string;
+  createdAt: string;
 };
 
 const WELCOME_TEXT =
@@ -55,12 +92,18 @@ function getNow() {
 
 function getVisitorId(): string {
   if (typeof window === "undefined") return "";
-  let id = localStorage.getItem(VISITOR_ID_KEY);
+  let id = sessionStorage.getItem(VISITOR_ID_KEY);
   if (!id) {
     id = crypto.randomUUID();
-    localStorage.setItem(VISITOR_ID_KEY, id);
+    sessionStorage.setItem(VISITOR_ID_KEY, id);
   }
   return id;
+}
+
+function getGuestDisplayName(): string {
+  const id = getVisitorId();
+  const num = parseInt(id.replace(/-/g, "").slice(-4), 16) % 9000 + 1000;
+  return `Хэрэглэгч ${num}`;
 }
 
 function formatTime(dateStr?: string) {
@@ -79,6 +122,27 @@ export function ChatBot() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastMsgTimeRef = useRef<string | null>(null);
+
+  // Order tracking state
+  const [trackingMode, setTrackingMode] = useState(false);
+  const [trackInput, setTrackInput] = useState("");
+  const [trackLoading, setTrackLoading] = useState(false);
+  const [trackedOrder, setTrackedOrder] = useState<TrackedOrder | null>(null);
+  const [trackError, setTrackError] = useState("");
+
+  // My orders (logged-in user)
+  const [myOrders, setMyOrders] = useState<MyOrderSummary[]>([]);
+  const [myOrdersLoading, setMyOrdersLoading] = useState(false);
+
+  // Prevent background scroll when chat is open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
 
   // Auto-dismiss greeting after 8s
   useEffect(() => {
@@ -102,13 +166,13 @@ export function ChatBot() {
         body: JSON.stringify({
           visitorId,
           userId: user?.id || null,
-          displayName: user?.fullName || null,
+          displayName: user?.fullName || getGuestDisplayName(),
         }),
       });
       if (!res.ok) return;
       const session = await res.json();
       setSessionId(session.id);
-      localStorage.setItem(SESSION_ID_KEY, session.id);
+      sessionStorage.setItem(SESSION_ID_KEY, session.id);
 
       // Load existing messages
       if (session.messages?.length > 0) {
@@ -215,9 +279,81 @@ export function ChatBot() {
     }
   };
 
+  const fetchMyOrders = async () => {
+    const token = getToken();
+    if (!token) return;
+    setMyOrdersLoading(true);
+    try {
+      const res = await fetch(`${API}/store/orders`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMyOrders(
+          (data.orders || []).map((o: any) => ({
+            orderNumber: o.orderNumber,
+            status: o.status,
+            paymentStatus: o.paymentStatus,
+            total: o.total,
+            organizationName: o.organizationName,
+            createdAt: o.createdAt,
+          })),
+        );
+      }
+    } catch {
+      // silent
+    } finally {
+      setMyOrdersLoading(false);
+    }
+  };
+
+  const trackOrder = async (orderNumber: string) => {
+    const num = orderNumber.trim().toUpperCase();
+    if (!num) return;
+    setTrackLoading(true);
+    setTrackError("");
+    setTrackedOrder(null);
+    try {
+      const res = await fetch(`${API}/store/orders/track?orderNumber=${encodeURIComponent(num)}`);
+      if (res.ok) {
+        const data: TrackedOrder = await res.json();
+        setTrackedOrder(data);
+      } else {
+        const err = await res.json().catch(() => ({ message: "Захиалга олдсонгүй" }));
+        setTrackError(err.message || "Захиалга олдсонгүй");
+      }
+    } catch {
+      setTrackError("Сервертэй холбогдож чадсангүй");
+    } finally {
+      setTrackLoading(false);
+    }
+  };
+
+  const exitTrackingMode = () => {
+    setTrackingMode(false);
+    setTrackedOrder(null);
+    setTrackError("");
+    setTrackInput("");
+    setMyOrders([]);
+  };
+
   const handleSend = async (text?: string) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
+
+    // Intercept "Миний захиалга" → open tracking mode
+    if (msg === "Миний захиалга") {
+      setTrackingMode(true);
+      setTrackedOrder(null);
+      setTrackError("");
+      setTrackInput("");
+      setInput("");
+      // Logged-in: auto-fetch orders
+      if (user) {
+        fetchMyOrders();
+      }
+      return;
+    }
 
     setLoading(true);
     setInput("");
@@ -340,12 +476,255 @@ export function ChatBot() {
             </button>
           </div>
 
-          {/* Messages */}
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5"
-            style={{ maxHeight: 320, scrollbarWidth: "thin" }}
-          >
+          {/* Content — tracking mode or chat */}
+          {trackingMode ? (
+            /* ── Order Tracking Panel ── */
+            <div className="flex-1 overflow-y-auto" style={{ maxHeight: 380, scrollbarWidth: "thin", overscrollBehavior: "contain" }}>
+              {/* Back button */}
+              <div className="border-b border-gray-100 px-3 py-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={trackedOrder && user ? () => { setTrackedOrder(null); setTrackError(""); } : exitTrackingMode}
+                  className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-orange-600 transition-colors"
+                >
+                  <ArrowLeft size={14} />
+                  {trackedOrder && user ? "Жагсаалт руу" : "Чат руу буцах"}
+                </button>
+              </div>
+
+              <div className="px-3 py-3 space-y-3">
+                {/* My orders (logged-in) */}
+                {user && !trackedOrder && (
+                  <div>
+                    <p className="text-[13px] font-semibold text-gray-700 mb-1.5">Миний захиалгууд</p>
+                    {myOrdersLoading ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 size={18} className="animate-spin text-orange-500" />
+                      </div>
+                    ) : myOrders.length > 0 ? (
+                      <div className="space-y-1.5 max-h-[200px] overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
+                        {myOrders.map((o) => (
+                          <button
+                            key={o.orderNumber}
+                            type="button"
+                            onClick={() => trackOrder(o.orderNumber)}
+                            className="w-full text-left rounded-lg bg-gray-50 px-3 py-2 ring-1 ring-gray-100 hover:ring-orange-200 hover:bg-orange-50 transition-all"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono text-[11px] font-bold text-gray-800">{o.orderNumber}</span>
+                              <span className={`text-[10px] font-semibold ${ORDER_STATUS_MAP[o.status]?.color || "text-gray-500"}`}>
+                                {ORDER_STATUS_MAP[o.status]?.label || o.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between mt-0.5 text-[10px] text-gray-400">
+                              <span>{o.organizationName}</span>
+                              <span>₮{o.total.toLocaleString()}</span>
+                            </div>
+                            <div className="text-[9px] text-gray-300 mt-0.5">
+                              {new Date(o.createdAt).toLocaleDateString("mn-MN")}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[12px] text-gray-400 text-center py-2">Захиалга байхгүй байна</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Search bar (always for guest, secondary for logged-in) */}
+                {(!user || trackedOrder) ? null : (
+                  <div className="border-t border-gray-100 pt-2">
+                    <p className="text-[11px] text-gray-400 mb-1">Дугаараар хайх</p>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        trackOrder(trackInput);
+                      }}
+                      className="flex gap-2"
+                    >
+                      <input
+                        type="text"
+                        value={trackInput}
+                        onChange={(e) => setTrackInput(e.target.value)}
+                        placeholder="ORD-20260420-123456"
+                        className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[13px] font-mono outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-200"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!trackInput.trim() || trackLoading}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-30 transition-colors"
+                      >
+                        {trackLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* Guest search bar */}
+                {!user && (
+                  <div>
+                    <p className="text-[13px] font-semibold text-gray-700 mb-1.5">Захиалга шалгах</p>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        trackOrder(trackInput);
+                      }}
+                      className="flex gap-2"
+                    >
+                      <input
+                        type="text"
+                        value={trackInput}
+                        onChange={(e) => setTrackInput(e.target.value)}
+                        placeholder="ORD-20260420-123456"
+                        className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[13px] font-mono outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-200"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!trackInput.trim() || trackLoading}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-30 transition-colors"
+                      >
+                        {trackLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* Error */}
+                {trackError && (
+                  <div className="rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-600 ring-1 ring-red-100">
+                    {trackError}
+                  </div>
+                )}
+
+                {/* Order result */}
+                {trackedOrder && (
+                  <div className="space-y-2.5">
+                    {/* Header card */}
+                    <div className="rounded-xl bg-gradient-to-br from-gray-50 to-white p-3 ring-1 ring-gray-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="font-mono text-[12px] font-bold text-gray-800">{trackedOrder.orderNumber}</p>
+                        <span className={`text-[11px] font-semibold ${ORDER_STATUS_MAP[trackedOrder.status]?.color || "text-gray-500"}`}>
+                          {ORDER_STATUS_MAP[trackedOrder.status]?.label || trackedOrder.status}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                        <div>
+                          <span className="text-gray-400">Төлбөр:</span>{" "}
+                          <span className="font-medium text-gray-700">{PAYMENT_STATUS_MAP[trackedOrder.paymentStatus] || trackedOrder.paymentStatus}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Дүн:</span>{" "}
+                          <span className="font-bold text-gray-800">₮{trackedOrder.total.toLocaleString()}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Дэлгүүр:</span>{" "}
+                          <span className="font-medium text-gray-700">{trackedOrder.organizationName}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Огноо:</span>{" "}
+                          <span className="font-medium text-gray-700">
+                            {new Date(trackedOrder.createdAt).toLocaleDateString("mn-MN")}
+                          </span>
+                        </div>
+                        {trackedOrder.deliveryCode && (
+                          <div className="col-span-2">
+                            <span className="text-gray-400">Хүргэлтийн код:</span>{" "}
+                            <span className="font-mono font-bold text-orange-600">{trackedOrder.deliveryCode}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Status timeline */}
+                    <div className="rounded-xl bg-white p-3 ring-1 ring-gray-100">
+                      <p className="text-[11px] font-semibold text-gray-500 uppercase mb-2">Төлөв</p>
+                      <div className="flex items-center gap-1">
+                        {["PENDING", "CONFIRMED", "PREPARED", "SHIPPING", "COMPLETED"].map((step, i) => {
+                          const steps = ["PENDING", "CONFIRMED", "PREPARED", "SHIPPING", "COMPLETED"];
+                          const currentIdx = steps.indexOf(trackedOrder.status);
+                          const isCancelled = trackedOrder.status === "CANCELLED";
+                          const isActive = !isCancelled && i <= currentIdx;
+                          return (
+                            <React.Fragment key={step}>
+                              <div
+                                className={`h-2 flex-1 rounded-full ${
+                                  isCancelled
+                                    ? "bg-red-200"
+                                    : isActive
+                                      ? "bg-orange-500"
+                                      : "bg-gray-100"
+                                }`}
+                              />
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
+                      <div className="flex justify-between mt-1">
+                        <span className="text-[9px] text-gray-400">Хүлээгдэж</span>
+                        <span className="text-[9px] text-gray-400">Хүргэгдсэн</span>
+                      </div>
+                    </div>
+
+                    {/* Items */}
+                    <div className="rounded-xl bg-white p-3 ring-1 ring-gray-100">
+                      <p className="text-[11px] font-semibold text-gray-500 uppercase mb-1.5">Бараанууд</p>
+                      <div className="space-y-1">
+                        {trackedOrder.items.map((item, i) => (
+                          <div key={i} className="flex items-center justify-between text-[12px]">
+                            <span className="text-gray-700 truncate flex-1 mr-2">{item.name}</span>
+                            <span className="text-gray-400 shrink-0">{item.qty}ш</span>
+                            <span className="font-medium text-gray-700 ml-2 shrink-0">₮{item.subtotal.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 border-t border-gray-100 pt-1.5 flex justify-between text-[12px]">
+                        <span className="text-gray-500">Нийт:</span>
+                        <span className="font-bold text-gray-800">₮{trackedOrder.total.toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    {/* Delivery info */}
+                    {trackedOrder.delivery && (
+                      <div className="rounded-xl bg-blue-50 p-3 ring-1 ring-blue-100">
+                        <p className="text-[11px] font-semibold text-blue-600 mb-1">Хүргэлт</p>
+                        <p className="text-[12px] text-blue-800">
+                          {trackedOrder.delivery.status === "COMPLETED"
+                            ? `Хүргэгдсэн: ${new Date(trackedOrder.delivery.deliveredAt || "").toLocaleDateString("mn-MN")}`
+                            : trackedOrder.delivery.status === "DELIVERING"
+                              ? "Хүргэлтэнд гарсан"
+                              : trackedOrder.delivery.status === "PICKING"
+                                ? "Бэлтгэж байна"
+                                : "Хүлээгдэж байна"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Empty state (guest only) */}
+                {!user && !trackedOrder && !trackError && !trackLoading && (
+                  <div className="text-center py-4">
+                    <Package size={28} className="mx-auto text-gray-300 mb-2" />
+                    <p className="text-[12px] text-gray-400">
+                      Захиалгын дугаараа оруулаад хайна уу
+                    </p>
+                    <p className="text-[10px] text-gray-300 mt-1">
+                      Жишээ: ORD-20260420-123456
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* ── Normal Chat ── */
+            <>
+              {/* Messages */}
+              <div
+                ref={scrollRef}
+                className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5"
+                style={{ maxHeight: 320, scrollbarWidth: "thin", overscrollBehavior: "contain" }}
+              >
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -420,6 +799,8 @@ export function ChatBot() {
               <Send size={14} />
             </button>
           </form>
+            </>
+          )}
         </div>
       )}
 

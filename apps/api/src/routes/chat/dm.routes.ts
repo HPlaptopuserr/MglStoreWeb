@@ -13,6 +13,13 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+const ALLOWED_DM_MIMES = [
+  "image/jpeg", "image/png", "image/gif", "image/webp",
+  "audio/webm", "audio/ogg", "audio/mpeg", "audio/mp4",
+  "video/mp4", "video/webm",
+  "application/pdf",
+];
+
 const dmUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -22,6 +29,9 @@ const dmUpload = multer({
     },
   }),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    cb(null, ALLOWED_DM_MIMES.includes(file.mimetype));
+  },
 });
 
 // ── Serve uploaded files ─────────────────────────────────────────────────

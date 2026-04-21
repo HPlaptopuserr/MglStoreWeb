@@ -1,22 +1,17 @@
 import { Router, type Router as ExpressRouter } from "express";
+import multer from "multer";
+import * as XLSX from "xlsx";
+import JSZip from "jszip";
 import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
-
-/**
- * Helper: recalculate Product.stock from SUM of all WarehouseInventory.
- * Call after any warehouse inventory change.
- */
-async function syncProductStock(productId: string) {
-  const result = await prisma.warehouseInventory.aggregate({
-    where: { productId },
-    _sum: { quantity: true },
-  });
-  await prisma.product.update({
-    where: { id: productId },
-    data: { stock: result._sum.quantity ?? 0 },
-  });
-}
+import {
+  extractExcelImages,
+  uploadBufferToSupabase,
+  PRODUCT_COL_MAP,
+  resolveCol,
+} from "../../lib/excel-import";
+import { adjustStock, resolveOrgWarehouse, syncProductStock } from "../../services/inventory.service";
 
 const router: ExpressRouter = Router();
 
@@ -467,55 +462,79 @@ router.post("/warehouses/:id/inventory", async (req, res) => {
       return res.status(404).json({ message: "Агуулах олдсонгүй" });
     }
 
-    // Upsert inventory
-    const inventory = await prisma.warehouseInventory.upsert({
-      where: {
-        warehouseId_productId: {
-          warehouseId: id,
-          productId,
-        },
-      },
-      create: {
-        warehouseId: id,
-        productId,
-        quantity,
-        minQuantity: minQuantity || 0,
-        maxQuantity: maxQuantity || null,
-        location: location || null,
-        batchNumber: batchNumber || null,
-        expiryDate: expiryDate ? new Date(expiryDate) : null,
-        note: note || null,
-        lastRestockedAt: new Date(),
-      },
-      update: {
-        quantity,
-        minQuantity: minQuantity !== undefined ? minQuantity : undefined,
-        maxQuantity: maxQuantity !== undefined ? maxQuantity : undefined,
-        location: location !== undefined ? location : undefined,
-        batchNumber: batchNumber !== undefined ? batchNumber : undefined,
-        expiryDate:
-          expiryDate !== undefined
-            ? expiryDate
-              ? new Date(expiryDate)
-              : null
-            : undefined,
-        note: note !== undefined ? note : undefined,
-        lastRestockedAt: new Date(),
-      },
-      include: {
-        product: {
-          select: {
-            id: true,
-            name: true,
-            sku: true,
-            price: true,
+    const inventory = await prisma.$transaction(async (tx) => {
+      // Get old quantity for ledger diff
+      const existing = await tx.warehouseInventory.findUnique({
+        where: { warehouseId_productId: { warehouseId: id, productId } },
+        select: { quantity: true },
+      });
+      const oldQty = existing?.quantity ?? 0;
+
+      // Upsert inventory
+      const inv = await tx.warehouseInventory.upsert({
+        where: {
+          warehouseId_productId: {
+            warehouseId: id,
+            productId,
           },
         },
-      },
-    });
+        create: {
+          warehouseId: id,
+          productId,
+          quantity,
+          minQuantity: minQuantity || 0,
+          maxQuantity: maxQuantity || null,
+          location: location || null,
+          batchNumber: batchNumber || null,
+          expiryDate: expiryDate ? new Date(expiryDate) : null,
+          note: note || null,
+          lastRestockedAt: new Date(),
+        },
+        update: {
+          quantity,
+          minQuantity: minQuantity !== undefined ? minQuantity : undefined,
+          maxQuantity: maxQuantity !== undefined ? maxQuantity : undefined,
+          location: location !== undefined ? location : undefined,
+          batchNumber: batchNumber !== undefined ? batchNumber : undefined,
+          expiryDate:
+            expiryDate !== undefined
+              ? expiryDate
+                ? new Date(expiryDate)
+                : null
+              : undefined,
+          note: note !== undefined ? note : undefined,
+          lastRestockedAt: new Date(),
+        },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              price: true,
+            },
+          },
+        },
+      });
 
-    // Sync Product.stock cache
-    await syncProductStock(productId);
+      // Ledger entry for the stock change
+      const diff = quantity - oldQty;
+      if (diff !== 0) {
+        await tx.inventoryLedger.create({
+          data: {
+            productId,
+            change: diff,
+            reason: existing ? "RESTOCK" : "INITIAL_STOCK",
+            note: `Агуулахийн бүртгэл ${existing ? "шинэчилсэн" : "нэмсэн"}`,
+          },
+        });
+      }
+
+      // Sync Product.stock inside same tx
+      await syncProductStock(tx, productId);
+
+      return inv;
+    });
 
     res.status(201).json(inventory);
   } catch (error) {
@@ -552,30 +571,55 @@ router.patch(
         updateData.expiryDate = expiryDate ? new Date(expiryDate) : null;
       if (note !== undefined) updateData.note = note;
 
-      const inventory = await prisma.warehouseInventory.update({
-        where: {
-          warehouseId_productId: {
-            warehouseId,
-            productId,
-          },
-        },
-        data: updateData,
-        include: {
-          product: {
-            select: {
-              id: true,
-              name: true,
-              sku: true,
-              price: true,
+      const inventory = await prisma.$transaction(async (tx) => {
+        // Get old quantity for ledger
+        const oldInv = quantity !== undefined
+          ? await tx.warehouseInventory.findUnique({
+              where: { warehouseId_productId: { warehouseId, productId } },
+              select: { quantity: true },
+            })
+          : null;
+
+        const inv = await tx.warehouseInventory.update({
+          where: {
+            warehouseId_productId: {
+              warehouseId,
+              productId,
             },
           },
-        },
+          data: updateData,
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                price: true,
+              },
+            },
+          },
+        });
+
+        // Ledger + sync only when quantity changed
+        if (quantity !== undefined && oldInv) {
+          const diff = quantity - oldInv.quantity;
+          if (diff !== 0) {
+            await tx.inventoryLedger.create({
+              data: {
+                productId,
+                change: diff,
+                reason: "MANUAL_ADJUST",
+                note: "Агуулахийн тоо хэмжээ шинэчилсэн",
+              },
+            });
+          }
+          await syncProductStock(tx, productId);
+        }
+
+        return inv;
       });
 
       res.json(inventory);
-
-      // Sync Product.stock cache (fire after response for speed, but safe since same event loop tick)
-      syncProductStock(productId).catch((e) => console.error("sync product stock error", e));
     } catch (error) {
       console.error("update warehouse inventory error", error);
       res.status(500).json({
@@ -592,17 +636,36 @@ router.delete(
     try {
       const { warehouseId, productId } = req.params;
 
-      await prisma.warehouseInventory.delete({
-        where: {
-          warehouseId_productId: {
-            warehouseId,
-            productId,
-          },
-        },
-      });
+      await prisma.$transaction(async (tx) => {
+        // Get quantity before delete for ledger
+        const existing = await tx.warehouseInventory.findUnique({
+          where: { warehouseId_productId: { warehouseId, productId } },
+          select: { quantity: true },
+        });
 
-      // Sync Product.stock cache (will be 0 or sum of remaining warehouses)
-      await syncProductStock(productId);
+        await tx.warehouseInventory.delete({
+          where: {
+            warehouseId_productId: {
+              warehouseId,
+              productId,
+            },
+          },
+        });
+
+        if (existing && existing.quantity !== 0) {
+          await tx.inventoryLedger.create({
+            data: {
+              productId,
+              change: -existing.quantity,
+              reason: "MANUAL_ADJUST",
+              note: "Агуулахийн бүртгэл устгасан",
+            },
+          });
+        }
+
+        // Sync Product.stock inside tx
+        await syncProductStock(tx, productId);
+      });
 
       res.json({ message: "Агуулахийн бүртгэл устгагдлаа" });
     } catch (error) {
@@ -727,6 +790,316 @@ router.get("/warehouses/:id/sku-lookup", async (req, res) => {
   }
 });
 
+/* ─── Multer config for Excel file upload ────────────────────────────── */
+const excelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+      "text/csv",
+    ];
+    cb(null, allowed.includes(file.mimetype) || file.originalname.endsWith(".xlsx") || file.originalname.endsWith(".xls"));
+  },
+});
+
+/* ─── POST /warehouses/:id/products/import ──────────────────────────── *
+ * Bulk import products from Excel into a warehouse.
+ * Creates Product + WarehouseInventory + InventoryLedger per row.
+ * Organisation resolved from warehouse's WarehouseOrganization link.
+ * ──────────────────────────────────────────────────────────────────── */
+router.post(
+  "/warehouses/:id/products/import",
+  excelUpload.single("file"),
+  async (req, res) => {
+    try {
+      const warehouseId = req.params.id;
+
+      // Verify warehouse exists and get its organization
+      const warehouse = await prisma.warehouse.findUnique({
+        where: { id: warehouseId, deletedAt: null },
+        include: { organizations: { select: { organizationId: true }, take: 1 } },
+      });
+      if (!warehouse) {
+        return res.status(404).json({ message: "Агуулах олдсонгүй" });
+      }
+
+      const organizationId = warehouse.organizations[0]?.organizationId;
+      if (!organizationId) {
+        return res.status(400).json({ message: "Агуулахад байгууллага хуваарилагдаагүй байна" });
+      }
+
+      // Resolve businessCategoryId from organization
+      let orgBusinessCategoryId: string | null = null;
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { businessCategory: true },
+      });
+      if (org?.businessCategory) {
+        const matched = await prisma.businessCategory.findFirst({
+          where: { slug: { equals: org.businessCategory, mode: "insensitive" } },
+          select: { id: true },
+        });
+        if (matched) orgBusinessCategoryId = matched.id;
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: "Excel файл шаардлагатай (.xlsx, .xls)" });
+      }
+
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        return res.status(400).json({ message: "Excel файл хоосон байна" });
+      }
+
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName]);
+      if (!rows.length) {
+        return res.status(400).json({ message: "Excel файлд мэдээлэл олдсонгүй" });
+      }
+      if (rows.length > 1000) {
+        return res.status(400).json({ message: "Нэг удаад 1000-аас олон бараа оруулах боломжгүй" });
+      }
+
+      // Extract embedded images
+      const embeddedImages = await extractExcelImages(req.file.buffer);
+
+      // Debug info
+      let mediaFileCount = 0;
+      let hasRichData = false;
+      let hasDrawings = false;
+      try {
+        const z = await JSZip.loadAsync(req.file.buffer);
+        const files = Object.keys(z.files);
+        mediaFileCount = files.filter((f) => f.startsWith("xl/media/")).length;
+        hasRichData = files.some((f) => f.includes("richData/richValueRel.xml"));
+        hasDrawings = files.some((f) => /xl\/drawings\/drawing\d+\.xml$/.test(f));
+      } catch { /* ignore */ }
+
+      const colMap = PRODUCT_COL_MAP;
+
+      const results: {
+        created: number;
+        updated: number;
+        skipped: number;
+        errors: string[];
+        products: Array<{ id: string; name: string; sku: string | null; price: number; stock: number }>;
+      } = { created: 0, updated: 0, skipped: 0, errors: [], products: [] };
+
+      // Pre-scan: detect duplicate SKUs within the file
+      const skusInFile = new Map<string, number>();
+      const duplicateSkuRows = new Set<number>();
+      for (let i = 0; i < rows.length; i++) {
+        const sku = resolveCol(rows[i], colMap.sku);
+        if (sku) {
+          const normalized = String(sku).trim().toLowerCase();
+          if (skusInFile.has(normalized)) {
+            results.errors.push(`Мөр ${i + 2}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalized)})`);
+            results.skipped++;
+            duplicateSkuRows.add(i);
+          } else {
+            skusInFile.set(normalized, i + 2);
+          }
+        }
+      }
+
+      for (let i = 0; i < rows.length; i++) {
+        if (duplicateSkuRows.has(i)) continue;
+
+        const row = rows[i];
+        const rowNum = i + 2;
+
+        const name = resolveCol(row, colMap.name);
+        const sku = resolveCol(row, colMap.sku);
+        const price = resolveCol(row, colMap.price);
+        const costPrice = resolveCol(row, colMap.costPrice);
+        const stock = resolveCol(row, colMap.stock);
+        const description = resolveCol(row, colMap.description);
+        const imagesRaw = resolveCol(row, colMap.images);
+
+        if (!name || price === undefined) {
+          results.errors.push(`Мөр ${rowNum}: Нэр болон үнэ заавал шаардлагатай`);
+          results.skipped++;
+          continue;
+        }
+
+        const priceNum = parseFloat(String(price));
+        if (isNaN(priceNum) || priceNum < 0) {
+          results.errors.push(`Мөр ${rowNum}: Үнэ буруу — "${price}"`);
+          results.skipped++;
+          continue;
+        }
+
+        const costPriceNum = costPrice !== undefined ? parseFloat(String(costPrice)) : null;
+        if (costPriceNum !== null && (isNaN(costPriceNum) || costPriceNum < 0)) {
+          results.errors.push(`Мөр ${rowNum}: Өртөг үнэ буруу — "${costPrice}"`);
+          results.skipped++;
+          continue;
+        }
+
+        const stockNum = stock !== undefined ? parseInt(String(stock)) : 0;
+        if (isNaN(stockNum) || stockNum < 0 || stockNum > 2_147_483_647) {
+          results.errors.push(`Мөр ${rowNum}: Нөөц буруу — "${stock}"`);
+          results.skipped++;
+          continue;
+        }
+
+        const normalizedSku = sku ? String(sku).trim() : null;
+
+        try {
+          // Parse image URLs from text column
+          let imageUrls: string[] = imagesRaw
+            ? String(imagesRaw).split(",").map((u) => u.trim()).filter((u) => u.startsWith("http")).slice(0, 5)
+            : [];
+
+          // Check for embedded images
+          if (imageUrls.length === 0) {
+            const rowBuffers = embeddedImages.get(i + 1);
+            if (rowBuffers && rowBuffers.length > 0) {
+              const uploadPromises = rowBuffers.slice(0, 5).map((buf) => uploadBufferToSupabase(buf));
+              const uploaded = await Promise.all(uploadPromises);
+              imageUrls = uploaded.filter((u): u is string => u !== null);
+            }
+          }
+
+          const productData = {
+            name: String(name).trim(),
+            description: description ? String(description).trim() : null,
+            price: priceNum,
+            costPrice: costPriceNum,
+            stock: stockNum,
+            businessCategoryId: orgBusinessCategoryId,
+            isActive: true,
+          };
+
+          // Create or update product + warehouse inventory in a transaction
+          const result = await prisma.$transaction(async (tx) => {
+            let product;
+            let wasUpdate = false;
+
+            if (normalizedSku) {
+              // Free up SKU from any soft-deleted product
+              await tx.product.updateMany({
+                where: { organizationId, sku: normalizedSku, deletedAt: { not: null } },
+                data: { sku: null },
+              });
+
+              const existing = await tx.product.findUnique({
+                where: { organizationId_sku: { organizationId, sku: normalizedSku } },
+                select: { id: true },
+              });
+              wasUpdate = !!existing;
+
+              product = await tx.product.upsert({
+                where: { organizationId_sku: { organizationId, sku: normalizedSku } },
+                update: {
+                  ...productData,
+                  deletedAt: null,
+                  ...(imageUrls.length > 0 && {
+                    images: { deleteMany: {}, create: imageUrls.map((url) => ({ url })) },
+                  }),
+                },
+                create: {
+                  organizationId,
+                  sku: normalizedSku,
+                  ...productData,
+                  ...(imageUrls.length > 0 && {
+                    images: { create: imageUrls.map((url) => ({ url })) },
+                  }),
+                },
+                select: { id: true, name: true, sku: true, price: true, stock: true },
+              });
+            } else {
+              product = await tx.product.create({
+                data: {
+                  organizationId,
+                  sku: null,
+                  ...productData,
+                  ...(imageUrls.length > 0 && {
+                    images: { create: imageUrls.map((url) => ({ url })) },
+                  }),
+                },
+                select: { id: true, name: true, sku: true, price: true, stock: true },
+              });
+            }
+
+            // Create or update warehouse inventory
+            if (stockNum > 0) {
+              const existingInv = await tx.warehouseInventory.findUnique({
+                where: { warehouseId_productId: { warehouseId, productId: product.id } },
+              });
+
+              if (existingInv) {
+                await tx.warehouseInventory.update({
+                  where: { warehouseId_productId: { warehouseId, productId: product.id } },
+                  data: {
+                    quantity: stockNum,
+                    lastRestockedAt: new Date(),
+                  },
+                });
+              } else {
+                await tx.warehouseInventory.create({
+                  data: {
+                    warehouseId,
+                    productId: product.id,
+                    quantity: stockNum,
+                    minQuantity: 0,
+                    lastRestockedAt: new Date(),
+                  },
+                });
+              }
+
+              // Ledger entry
+              await tx.inventoryLedger.create({
+                data: {
+                  productId: product.id,
+                  change: stockNum,
+                  reason: wasUpdate ? "RESTOCK" : "INITIAL_STOCK",
+                  note: "Excel импортоор нэмсэн",
+                },
+              });
+            }
+
+            // Sync product stock inside the same transaction
+            await syncProductStock(tx, product.id);
+
+            return { product, wasUpdate };
+          });
+
+          results.products.push({
+            id: result.product.id,
+            name: result.product.name,
+            sku: result.product.sku,
+            price: Number(result.product.price),
+            stock: result.product.stock,
+          });
+
+          if (result.wasUpdate) {
+            results.updated++;
+          } else {
+            results.created++;
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          results.errors.push(`Мөр ${rowNum}: ${msg}`);
+          results.skipped++;
+        }
+      }
+
+      return res.json({
+        message: `${results.created} бараа шинээр, ${results.updated} бараа шинэчлэгдлээ${results.skipped > 0 ? `, ${results.skipped} алгасав` : ""}`,
+        total: rows.length,
+        ...results,
+        _debug: { embeddedImageRows: embeddedImages.size, mediaFiles: mediaFileCount, hasRichData, hasDrawings },
+      });
+    } catch (error) {
+      console.error("warehouse import products error", error);
+      return res.status(500).json({ message: "Excel импорт хийхэд алдаа гарлаа", error: String(error) });
+    }
+  }
+);
+
 /* ─── POST /warehouses/:id/products ─────────────────────────────────── *
  * Warehouse operator creates a NEW product and adds it to inventory.
  * No organization permission required — product is created under the
@@ -739,6 +1112,8 @@ router.post("/warehouses/:id/products", async (req, res) => {
       name,
       description,
       sku,
+      barcode,
+      unit,
       price,
       costPrice,
       businessCategoryId,
@@ -818,6 +1193,8 @@ router.post("/warehouses/:id/products", async (req, res) => {
           name: String(name).trim(),
           description: description ? String(description).trim() : null,
           sku: normalizedSku,
+          barcode: barcode ? String(barcode).trim() : null,
+          unit: unit ? String(unit).trim() : null,
           price: priceNum,
           costPrice: costPriceNum,
           stock: qty,
