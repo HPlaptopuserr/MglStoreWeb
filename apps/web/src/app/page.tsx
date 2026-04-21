@@ -18,16 +18,12 @@ export default function HomePage() {
           <PromoBanner />
         </div>
       </div>
-
       <BrandTicker />
       <FeaturedStoresSection />
       <Categories />
       <ProductGrid />
       <ServiceGrid />
-
-      <div className="container mx-auto px-4 md:px-6">
         <InvestorSection />
-      </div>
 
       <div className="container mx-auto px-4 lg:px-8">
         <PartnershipContact />

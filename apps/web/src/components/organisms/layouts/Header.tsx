@@ -163,8 +163,9 @@ export const Header = () => {
             <Image
               src="/logo.png"
               alt="MglStore Logo"
-              width={70}
-              height={50}
+              width={140}
+              height={52}
+              className="h-auto w-[160px] object-contain"
               priority
             />
             <div className="hidden items-center gap-8 sm:flex py-3">
@@ -374,7 +375,13 @@ export const Header = () => {
             onClick={closeMobile}
             className="flex items-center gap-2.5"
           >
-            <Image src="/logo.png" alt="MglStore" width={44} height={32} />
+            <Image
+              src="/logo.png"
+              alt="MglStore"
+              width={96}
+              height={34}
+              className="h-auto w-[90px] object-contain"
+            />
             <span className="text-base font-bold text-gray-900">MGL Store</span>
           </Link>
           <button

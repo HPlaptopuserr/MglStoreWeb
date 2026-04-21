@@ -216,7 +216,7 @@ export default function Categories() {
 
   return (
     <section className="bg-gradient-to-b from-gray-50/80 to-white py-16 sm:py-20">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 ">
         {/* Header */}
         <div className="mb-10 flex items-end justify-between">
           <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
