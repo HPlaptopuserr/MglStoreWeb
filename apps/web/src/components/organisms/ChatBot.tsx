@@ -2,7 +2,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { MessageCircle, X, Send, Bot, Package, Truck, Handshake, Phone, HelpCircle, Search, ArrowLeft, Loader2 } from "lucide-react";
+import { MessageCircle, X, Send, Bot, Package, Truck, Handshake, Phone, Search, ArrowLeft, Loader2, Info, MapPin, CalendarDays, UserPlus, Globe } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { API } from "@/lib/api";
 import { useAuth, getToken } from "@/lib/auth-context";
 
@@ -18,30 +19,61 @@ const VISITOR_ID_KEY = "mgl_chat_visitor_id";
 const SESSION_ID_KEY = "mgl_chat_session_id";
 
 const QUICK_REPLIES = [
-  { key: "order", label: "Захиалга", icon: Package },
-  { key: "delivery", label: "Хүргэлт", icon: Truck },
-  { key: "partner", label: "Хамтрах", icon: Handshake },
-  { key: "contact", label: "Холбоо барих", icon: Phone },
-  { key: "other", label: "Бусад", icon: HelpCircle },
+  { key: "general", label: "Ерөнхий мэдээлэл", icon: Info },
+  { key: "location", label: "Тодорхой байршил", icon: MapPin },
+  { key: "meeting", label: "Уулзалт, Сургалт", icon: CalendarDays },
+  { key: "member", label: "Гишүүнээр элсэх", icon: UserPlus },
+  { key: "partner", label: "Хамтарч ажиллах", icon: Handshake },
+  { key: "supply", label: "Бараа нийлүүлэх", icon: Package },
+  { key: "phone", label: "Дугаар", icon: Phone },
+  { key: "website", label: "Вебсайт", icon: Globe },
 ] as const;
 
-const QUICK_REPLY_TEXT: Record<string, string> = {
-  order: "Миний захиалга",
-  delivery: "Хүргэлт хаана явж байна?",
-  partner: "Хамтран ажиллах",
-  contact: "Холбоо барих",
-  other: "Бусад асуулт",
+type QuickReplyKey = (typeof QUICK_REPLIES)[number]["key"];
+
+const QUICK_REPLY_TEXT: Record<QuickReplyKey, string> = {
+  general: "Ерөнхий мэдээлэл",
+  location: "Тодорхой байршил",
+  meeting: "Уулзалт, Сургалт",
+  member: "Гишүүнээр элсэх",
+  partner: "Хамтарч ажиллах",
+  supply: "Бараа бүтээгдэхүүн нийлүүлэх",
+  phone: "Дугаар",
+  website: "Вебсайт",
+};
+
+const QUICK_REPLY_BY_NUMBER: Record<string, QuickReplyKey> = {
+  "1": "general",
+  "2": "location",
+  "3": "meeting",
+  "4": "member",
+  "5": "partner",
+  "6": "supply",
+  "7": "phone",
+  "8": "website",
 };
 
 const BOT_RESPONSES: Record<string, string> = {
+  "Ерөнхий мэдээлэл":
+    "Манай үйлчилгээний ерөнхий мэдээлэл:\n\n1. Онлайн худалдаа\n2. POS болон кассын шийдэл\n3. Бизнесийн хамтын ажиллагаа\n4. Гишүүнчлэл, сургалтын хөтөлбөр\n\nСонирхсон сэдвийнхээ дугаарыг (1-8) бичиж болно.",
+  "Тодорхой байршил":
+    "Манай байршил:\n\nМонгол улс, Улаанбаатар хот, Хан-Уул дүүрэг\n(Салбарын байршлыг газрын зураг дээр шалгах боломжтой.)\n\n/view-source:hint\n\nИлүү тодорхой байршил хэрэгтэй бол дүүрэг/салбарын нэрээ бичээрэй.",
+  "Уулзалт, Сургалт":
+    "Уулзалт болон сургалтад бүртгүүлэх бол:\n\n1. Нэр, байгууллага\n2. Утас\n3. Сонирхож буй сэдэв\n4. Боломжит огноо\n\nэдгээрийг энэ чат руу явуулаарай. Манай баг эргээд холбогдоно.",
+  "Гишүүнээр элсэх":
+    "Гишүүнээр элсэх алхам:\n\n1. Доорх холбоосоор хүсэлт илгээх\n/apply/partnership\n\n2. Байгууллагын мэдээллээ бөглөх\n3. Баталгаажуулалтын дараа холбогдоно",
+  "Хамтарч ажиллах":
+    "Хамтын ажиллагааны хүсэлт илгээх:\n\n1. Доорх холбоосыг нээнэ\n/apply/partnership\n\n2. Хамтын ажиллагааны төрлөө сонгоно\n3. Бид 1–2 ажлын өдөрт холбогдоно",
+  "Бараа бүтээгдэхүүн нийлүүлэх":
+    "Бараа нийлүүлэх хүсэлт өгөхдөө:\n\n1. Барааны ангилал\n2. Нэгж үнэ ба бөөний үнэ\n3. Нийлүүлэх давтамж\n4. Холбоо барих мэдээлэл\n\nгэсэн мэдээллээ чат руу үлдээнэ үү.",
+  "Дугаар":
+    "Холбоо барих дугаар:\n\nУтас: 91601316\nАжлын цаг: Даваа–Баасан 09:00–18:00",
+  "Вебсайт":
+    "Манай вэбсайт:\n\nhttps://mglstore.mn\n\nМөн фэйсбүүк пэйжийн линк хэрэгтэй бол бичээрэй.",
+  "Миний захиалга":
+    "Захиалгын төлөв шалгахын тулд захиалгын дугаараа оруулна уу. Жишээ: ORD-20260420-123456",
   "Хүргэлт хаана явж байна?":
     "Хүргэлтийн мэдээллийг шалгахын тулд:\n\n1. Профайл хэсэг рүү орно уу\n2. Захиалгуудаа харна уу\n3. Тухайн захиалга дээр дарахад хүргэлтийн төлөв харагдана\n\nАсуулт байвал доор бичнэ үү.",
-  "Хамтран ажиллах":
-    "Бидэнтэй хамтран ажиллахыг хүсвэл:\n\n1. Доорх холбоос дээр дарна уу\n/apply/partnership\n\n2. Маягтыг бөглөнө үү\n3. Бид тантай 1–2 ажлын өдөрт холбогдоно",
-  "Холбоо барих":
-    "Бидэнтэй холбогдох:\n\nУтас: 91601316\nИ-мэйл: bigservice@gmail.com\nАжлын цаг: Даваа–Баасан 09:00–18:00\n\nЭсвэл энэ чатаар шууд бичнэ үү.",
-  "Бусад асуулт":
-    "Асуултаа доорх талбарт бичээд илгээнэ үү. Бид аль болох хурдан хариулна.",
 };
 
 const ORDER_STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -119,6 +151,8 @@ export function ChatBot() {
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [botTyping, setBotTyping] = useState(false);
+  const [activeQuickKey, setActiveQuickKey] = useState<QuickReplyKey | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastMsgTimeRef = useRef<string | null>(null);
@@ -338,8 +372,14 @@ export function ChatBot() {
   };
 
   const handleSend = async (text?: string) => {
-    const msg = (text || input).trim();
-    if (!msg || loading) return;
+    const raw = (text || input).trim();
+    if (!raw || loading) return;
+
+    const numericQuickKey = QUICK_REPLY_BY_NUMBER[raw];
+    const msg = numericQuickKey ? QUICK_REPLY_TEXT[numericQuickKey] : raw;
+
+    const clickedQuick = QUICK_REPLIES.find((q) => QUICK_REPLY_TEXT[q.key] === msg);
+    setActiveQuickKey(clickedQuick?.key || numericQuickKey || null);
 
     // Intercept "Миний захиалга" → open tracking mode
     if (msg === "Миний захиалга") {
@@ -385,6 +425,7 @@ export function ChatBot() {
       BOT_RESPONSES[msg] ||
       "Таны хүсэлтийг хүлээн авлаа. Удахгүй холбогдох болно.";
 
+    setBotTyping(true);
     setTimeout(async () => {
       const botSaved = await sendToServer(reply, "BOT");
       const botMessage: Message = {
@@ -395,6 +436,7 @@ export function ChatBot() {
         createdAt: botSaved?.createdAt,
       };
       setMessages((prev) => [...prev, botMessage]);
+      setBotTyping(false);
       setLoading(false);
     }, 600);
   };
@@ -725,36 +767,73 @@ export function ChatBot() {
                 className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5"
                 style={{ maxHeight: 320, scrollbarWidth: "thin", overscrollBehavior: "contain" }}
               >
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.sender === "VISITOR" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] px-3.5 py-2.5 text-[13px] leading-relaxed ${
-                    msg.sender === "ADMIN"
-                      ? "rounded-2xl rounded-bl-md bg-indigo-50 text-indigo-900 ring-1 ring-indigo-100"
-                      : msg.sender === "BOT"
-                        ? "rounded-2xl rounded-bl-md bg-gray-50 text-gray-700 ring-1 ring-gray-100"
-                        : "rounded-2xl rounded-br-md bg-orange-500 text-white"
-                  }`}
-                >
-                  {msg.sender === "ADMIN" && (
-                    <p className="text-[10px] font-medium text-indigo-400 mb-0.5">Оператор</p>
+                <AnimatePresence initial={false}>
+                  {messages.map((msg) => (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className={`flex ${msg.sender === "VISITOR" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[80%] px-3.5 py-2.5 text-[13px] leading-relaxed ${
+                          msg.sender === "ADMIN"
+                            ? "rounded-2xl rounded-bl-md bg-indigo-50 text-indigo-900 ring-1 ring-indigo-100"
+                            : msg.sender === "BOT"
+                              ? "rounded-2xl rounded-bl-md bg-gray-50 text-gray-700 ring-1 ring-gray-100"
+                              : "rounded-2xl rounded-br-md bg-orange-500 text-white"
+                        }`}
+                      >
+                        {msg.sender === "ADMIN" && (
+                          <p className="text-[10px] font-medium text-indigo-400 mb-0.5">Оператор</p>
+                        )}
+                        <p className="whitespace-pre-line">
+                          {renderMessageText(msg.text, msg.sender !== "VISITOR")}
+                        </p>
+                        <p
+                          className={`mt-1 text-[9px] text-right ${
+                            msg.sender === "VISITOR" ? "text-white/60" : "text-gray-400"
+                          }`}
+                        >
+                          {msg.time}
+                        </p>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {botTyping && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      className="flex justify-start"
+                    >
+                      <div className="rounded-2xl rounded-bl-md bg-gray-50 text-gray-700 ring-1 ring-gray-100 px-3.5 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <motion.span
+                            className="h-1.5 w-1.5 rounded-full bg-gray-400"
+                            animate={{ y: [0, -3, 0] }}
+                            transition={{ repeat: Infinity, duration: 0.7, delay: 0 }}
+                          />
+                          <motion.span
+                            className="h-1.5 w-1.5 rounded-full bg-gray-400"
+                            animate={{ y: [0, -3, 0] }}
+                            transition={{ repeat: Infinity, duration: 0.7, delay: 0.12 }}
+                          />
+                          <motion.span
+                            className="h-1.5 w-1.5 rounded-full bg-gray-400"
+                            animate={{ y: [0, -3, 0] }}
+                            transition={{ repeat: Infinity, duration: 0.7, delay: 0.24 }}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
                   )}
-                  <p className="whitespace-pre-line">
-                    {renderMessageText(msg.text, msg.sender !== "VISITOR")}
-                  </p>
-                  <p
-                    className={`mt-1 text-[9px] text-right ${
-                      msg.sender === "VISITOR" ? "text-white/60" : "text-gray-400"
-                    }`}
-                  >
-                    {msg.time}
-                  </p>
-                </div>
-              </div>
-            ))}
+                </AnimatePresence>
           </div>
 
           {/* Quick replies — compact row */}
@@ -767,7 +846,11 @@ export function ChatBot() {
                   type="button"
                   onClick={() => handleSend(QUICK_REPLY_TEXT[q.key])}
                   disabled={loading}
-                  className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-all hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 active:scale-95 disabled:opacity-40"
+                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-all active:scale-95 disabled:opacity-40 ${
+                    activeQuickKey === q.key
+                      ? "border-orange-300 bg-orange-50 text-orange-700"
+                      : "border-gray-200 bg-white text-gray-600 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
+                  }`}
                 >
                   <Icon size={13} className="shrink-0" />
                   {q.label}
