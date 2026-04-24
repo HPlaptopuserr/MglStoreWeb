@@ -8,6 +8,7 @@ import { FeaturedStoresSection } from "@/components/organisms/home/FeaturedStore
 import { InvestorSection } from "@/components/organisms/home/InvestorSection";
 import { PromoBanner } from "@/components/organisms/home/PromoBanner";
 import { BranchMapSection } from "@/components/organisms/home/BranchMapSection";
+import { LegalInfoQrSection } from "@/components/organisms/home/LegalInfoQrSection";
 
 export default function HomePage() {
   return (
@@ -29,6 +30,7 @@ export default function HomePage() {
         <PartnershipContact />
       </div>
 
+      <LegalInfoQrSection />
       <BranchMapSection />
     </main>
   );
