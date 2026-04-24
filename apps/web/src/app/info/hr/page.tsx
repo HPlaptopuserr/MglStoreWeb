@@ -122,18 +122,18 @@ export default function HrInfoPage() {
   return (
     <InfoDetailPage
       accent={{
-        pageBg: "bg-[#fbf7ff]",
-        border: "border-fuchsia-100",
-        heroBg: "bg-gradient-to-br from-slate-950 via-fuchsia-950 to-rose-950",
-        cardBg: "bg-fuchsia-50/70",
-        glowPrimary: "bg-fuchsia-400/25",
-        glowSecondary: "bg-rose-400/20",
-        eyebrow: "text-fuchsia-300",
-        panelBg: "bg-fuchsia-50",
-        chipBg: "bg-fuchsia-100",
-        chipText: "text-fuchsia-800",
-        marker: "bg-fuchsia-500",
-        highlightBg: "bg-gradient-to-br from-fuchsia-900 to-rose-950",
+        pageBg: "bg-[#f8f4ec]",
+        border: "border-amber-100",
+        heroBg: "bg-gradient-to-br from-stone-950 via-amber-950 to-slate-950",
+        cardBg: "bg-amber-50/50",
+        glowPrimary: "bg-amber-400/25",
+        glowSecondary: "bg-orange-500/20",
+        eyebrow: "text-amber-300",
+        panelBg: "bg-amber-50",
+        chipBg: "bg-amber-100",
+        chipText: "text-amber-800",
+        marker: "bg-amber-500",
+        highlightBg: "bg-gradient-to-br from-amber-900 to-slate-950",
       }}
       eyebrow="HR зөвлөгөө"
       title="Хүний нөөцийн зөвлөгөөний үнийн хөлс болон задаргаа"

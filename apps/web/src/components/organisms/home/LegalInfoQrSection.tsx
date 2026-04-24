@@ -11,16 +11,16 @@ const qrItems = [
   {
     title: "Нягтлан, татвар",
     url: "https://mglstore.mn/info/accounting",
-    cardClass: "border-sky-100 bg-sky-50/80",
-    titleClass: "text-sky-900",
-    qrColor: "#075985",
+    cardClass: "border-amber-100 bg-amber-50/70",
+    titleClass: "text-amber-900",
+    qrColor: "#92400e",
   },
   {
     title: "Хүний нөөц",
     url: "https://mglstore.mn/info/hr",
-    cardClass: "border-fuchsia-100 bg-fuchsia-50/80",
-    titleClass: "text-fuchsia-900",
-    qrColor: "#86198f",
+    cardClass: "border-amber-100 bg-amber-50/70",
+    titleClass: "text-amber-900",
+    qrColor: "#92400e",
   },
 ];
 

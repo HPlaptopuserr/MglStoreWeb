@@ -8,42 +8,42 @@ import {
 const cards: InfoCard[] = [
   {
     title: "Санхүүгийн тайлан",
-    price: "30,000 төгрөг",
+    price: "40,000 төгрөг",
     description:
       "Санхүүгийн тайлан гаргах, тайлангийн бүтэц болон шаардлагын талаар зөвлөгөө өгнө.",
     points: ["Байгууллагын дундаж үнэ: 50,000-аас 100,000 төгрөг"],
   },
   {
     title: "Нийгмийн даатгалын тайлан",
-    price: "30,000 төгрөг",
+    price: "40,000 төгрөг",
     description:
       "Нийгмийн даатгалын тайлан гаргах, холбогдох мэдээллийг цэгцлэх зөвлөгөө.",
     points: ["Байгууллагын дундаж үнэ: 50,000-аас 100,000 төгрөг"],
   },
   {
     title: "Санхүүгийн баримт цэгцлэх",
-    price: "30,000 төгрөг",
+    price: "40,000 төгрөг",
     description:
       "Компанийн санхүүгийн баримтуудыг үдэх, ангилах, цэгцлэх зөвлөгөө.",
     points: ["Байгууллагын дундаж үнэ: 50,000-аас 100,000 төгрөг"],
   },
   {
     title: "Татварын эрсдэл",
-    price: "30,000 төгрөг",
+    price: "40,000 төгрөг",
     description:
       "Татварын эрсдэлийг тодорхойлох, урьдчилан сэргийлэх зөвлөмж өгнө.",
     points: ["Байгууллагын дундаж үнэ: 50,000-аас 100,000 төгрөг"],
   },
   {
     title: "Тайлан нэвтрүүлэх",
-    price: "30,000 төгрөг",
+    price: "40,000 төгрөг",
     description:
       "Санхүү болон татварын тайлан нэвтрүүлэх үйлчилгээний зөвлөгөө.",
     points: ["Байгууллагын дундаж үнэ: 50,000-аас 100,000 төгрөг"],
   },
   {
     title: "Х-тайлан",
-    price: "30,000 төгрөг",
+    price: "40,000 төгрөг",
     description: "Санхүү болон татварын тайлангийн Х-тайлантай холбоотой зөвлөгөө.",
     points: ["Байгууллагын дундаж үнэ: 50,000-аас 100,000 төгрөг"],
   },
@@ -86,18 +86,18 @@ export default function AccountingInfoPage() {
   return (
     <InfoDetailPage
       accent={{
-        pageBg: "bg-[#f5f7fb]",
-        border: "border-sky-100",
-        heroBg: "bg-gradient-to-br from-slate-950 via-sky-950 to-emerald-950",
-        cardBg: "bg-sky-50/70",
-        glowPrimary: "bg-sky-400/25",
-        glowSecondary: "bg-emerald-400/20",
-        eyebrow: "text-sky-300",
-        panelBg: "bg-sky-50",
-        chipBg: "bg-sky-100",
-        chipText: "text-sky-800",
-        marker: "bg-sky-500",
-        highlightBg: "bg-gradient-to-br from-sky-900 to-emerald-950",
+        pageBg: "bg-[#f8f4ec]",
+        border: "border-amber-100",
+        heroBg: "bg-gradient-to-br from-stone-950 via-amber-950 to-slate-950",
+        cardBg: "bg-amber-50/50",
+        glowPrimary: "bg-amber-400/25",
+        glowSecondary: "bg-orange-500/20",
+        eyebrow: "text-amber-300",
+        panelBg: "bg-amber-50",
+        chipBg: "bg-amber-100",
+        chipText: "text-amber-800",
+        marker: "bg-amber-500",
+        highlightBg: "bg-gradient-to-br from-amber-900 to-slate-950",
       }}
       eyebrow="Үнэ цэнэтэй зөвлөгөө"
       title="Гэрээт нягтлан болон байгууллагын дундаж үнийн санал"
@@ -109,7 +109,7 @@ export default function AccountingInfoPage() {
       servicesTitle="Татварын тайлан гаргах багц"
       services={services}
       packagesEyebrow="Үнийн санал"
-      packagesTitle="Гэрээт нягтлан болон тайлангийн багц"
+      packagesTitle="Гэрээт нягтлан болон тайлангийн байгууллагын дундаж багц"
       packages={packages}
       highlights={[
         {
