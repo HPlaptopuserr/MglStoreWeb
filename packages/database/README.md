@@ -15,6 +15,11 @@ pnpm db:migrate
 pnpm db:studio
 ```
 
+## Notes
+
+- Database scripts load environment variables from the monorepo root `.env`.
+- On Windows, stop any running API/dev server before `pnpm db:generate`, or Prisma may fail with an `EPERM` rename error while replacing the query engine binary.
+
 ## Planned Structure
 
 ```

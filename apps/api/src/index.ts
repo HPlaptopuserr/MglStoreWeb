@@ -38,6 +38,8 @@ dotenv.config(); // fallback: local .env if present
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
+const isLocalRequest = (ip?: string) =>
+  ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
 
 app.use(helmet());
 
@@ -46,6 +48,7 @@ app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 200,
+    skip: (req) => !isProduction && isLocalRequest(req.ip),
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: "Хэт олон хүсэлт илгээлээ. Түр хүлээнэ үү." },

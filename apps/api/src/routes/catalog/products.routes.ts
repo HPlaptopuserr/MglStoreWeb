@@ -56,7 +56,8 @@ const imageUpload = multer({
 /* ─── GET /products ─────────────────────────────────────────────────── */
 router.get("/products", async (req, res) => {
   try {
-    const { organizationId, businessCategoryId, search } = req.query as Record<string, string>;
+    const { organizationId, businessCategoryId } = req.query as Record<string, string>;
+    const search = String(req.query.search ?? req.query.q ?? "").trim();
 
     const where: Record<string, unknown> = { deletedAt: null };
     if (organizationId) where.organizationId = organizationId;
@@ -64,8 +65,20 @@ router.get("/products", async (req, res) => {
     if (search) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
         { sku: { contains: search, mode: "insensitive" } },
         { barcode: { contains: search, mode: "insensitive" } },
+        { organization: { is: { name: { contains: search, mode: "insensitive" } } } },
+        {
+          businessCategory: {
+            is: {
+              OR: [
+                { name: { contains: search, mode: "insensitive" } },
+                { slug: { contains: search, mode: "insensitive" } },
+              ],
+            },
+          },
+        },
       ];
     }
 

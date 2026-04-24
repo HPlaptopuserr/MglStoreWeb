@@ -14,17 +14,21 @@ type SortKey = "newest" | "price_asc" | "price_desc" | "discount";
 interface ApiCategory {
   id: string;
   name: string;
+  slug?: string;
 }
 
 interface ApiProduct {
   id: string;
   name: string;
+  description?: string | null;
+  sku?: string | null;
+  barcode?: string | null;
   price: number;
   images: { id: string; url: string }[];
   organization: { id: string; name: string } | null;
   discounts: { percent: number }[];
   businessCategoryId: string | null;
-  businessCategory: { id: string; name: string } | null;
+  businessCategory: { id: string; name: string; slug?: string } | null;
   createdAt: string;
 }
 
@@ -34,6 +38,15 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "price_desc", label: "Үнэ: Их → Бага" },
   { key: "discount", label: "Хямдралтай эхэнд" },
 ];
+
+function buildProductsUrl(categoryId: string | null, search: string) {
+  const params = new URLSearchParams();
+  if (categoryId) params.set("category", categoryId);
+  const query = search.trim();
+  if (query) params.set("search", query);
+  const qs = params.toString();
+  return qs ? `/products?${qs}` : "/products";
+}
 
 export default function ProductsPage() {
   return (
@@ -53,6 +66,7 @@ function ProductsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const categoryParam = searchParams.get("category");
+  const searchParam = (searchParams.get("search") ?? searchParams.get("q") ?? "").trim();
 
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([]);
@@ -66,8 +80,15 @@ function ProductsContent() {
   const [discountOnly, setDiscountOnly] = useState(false);
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(searchParam);
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParam);
   const filterPanelRef = useRef<HTMLDivElement>(null);
+
+  const resolvedCategoryParam = useMemo(() => {
+    if (!categoryParam) return null;
+    const category = apiCategories.find((c) => c.id === categoryParam || c.slug === categoryParam);
+    return category?.id ?? categoryParam;
+  }, [apiCategories, categoryParam]);
 
   // Close filter panel on outside click
   useEffect(() => {
@@ -123,9 +144,11 @@ function ProductsContent() {
     const loadProducts = async () => {
       setProductsLoading(true);
       try {
-        const url = activeCategory
-          ? `${API}/products?businessCategoryId=${activeCategory}`
-          : `${API}/products`;
+        const params = new URLSearchParams();
+        if (activeCategory) params.set("businessCategoryId", activeCategory);
+        if (debouncedSearch) params.set("search", debouncedSearch);
+        const query = params.toString();
+        const url = `${API}/products${query ? `?${query}` : ""}`;
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
@@ -135,16 +158,30 @@ function ProductsContent() {
       finally { setProductsLoading(false); }
     };
     loadProducts();
-  }, [activeCategory]);
+  }, [activeCategory, debouncedSearch]);
 
   useEffect(() => {
-    setActiveCategory(categoryParam);
-  }, [categoryParam]);
+    setActiveCategory(resolvedCategoryParam);
+    setSearchQuery(searchParam);
+    setDebouncedSearch(searchParam);
+    setShowMore(false);
+  }, [resolvedCategoryParam, searchParam]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, 300);
+    return () => window.clearTimeout(id);
+  }, [searchQuery]);
 
   const handleCategoryClick = (catId: string | null) => {
     setActiveCategory(catId);
     setShowMore(false);
-    router.push(catId ? `/products?category=${catId}` : "/products", { scroll: false });
+    router.push(buildProductsUrl(catId, searchQuery), { scroll: false });
+  };
+
+  const submitSearch = () => {
+    router.replace(buildProductsUrl(activeCategory, searchQuery), { scroll: false });
   };
 
   const clearFilters = () => {
@@ -152,7 +189,10 @@ function ProductsContent() {
     setPriceMin("");
     setPriceMax("");
     setSearchQuery("");
+    setDebouncedSearch("");
     setSortKey("newest");
+    setShowMore(false);
+    router.replace(buildProductsUrl(activeCategory, ""), { scroll: false });
   };
 
   const activeFilterCount = [
@@ -172,9 +212,15 @@ function ProductsContent() {
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.organization?.name.toLowerCase().includes(q) ||
-          p.businessCategory?.name.toLowerCase().includes(q)
+          [
+            p.name,
+            p.description,
+            p.sku,
+            p.barcode,
+            p.organization?.name,
+            p.businessCategory?.name,
+            p.businessCategory?.slug,
+          ].some((value) => value?.toLowerCase().includes(q))
       );
     }
 
@@ -252,11 +298,19 @@ function ProductsContent() {
             placeholder="Бараа хайх..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setShowMore(false); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitSearch();
+            }}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-200 text-sm focus:outline-none focus:border-black transition-colors bg-gray-50 focus:bg-white"
           />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery("")}
+              onClick={() => {
+                setSearchQuery("");
+                setDebouncedSearch("");
+                setShowMore(false);
+                router.replace(buildProductsUrl(activeCategory, ""), { scroll: false });
+              }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -475,7 +529,17 @@ function ProductsContent() {
             {searchQuery && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
                 "{searchQuery}"
-                <button onClick={() => setSearchQuery("")} className="ml-1 text-gray-400 hover:text-black">×</button>
+                <button
+                  onClick={() => {
+                    setSearchQuery("");
+                    setDebouncedSearch("");
+                    setShowMore(false);
+                    router.replace(buildProductsUrl(activeCategory, ""), { scroll: false });
+                  }}
+                  className="ml-1 text-gray-400 hover:text-black"
+                >
+                  ×
+                </button>
               </span>
             )}
             <button onClick={clearFilters} className="text-[11px] text-gray-400 hover:text-black underline ml-1">

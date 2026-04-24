@@ -6,12 +6,12 @@
   "types": "dist/src/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio",
-    "db:seed": "ts-node prisma/seed.ts",
-    "db:validate": "prisma validate",
-    "db:format": "prisma format"
+    "db:generate": "node scripts/with-root-env.cjs prisma generate",
+    "db:migrate": "node scripts/with-root-env.cjs prisma migrate dev",
+    "db:studio": "node scripts/with-root-env.cjs prisma studio",
+    "db:seed": "node scripts/with-root-env.cjs ts-node prisma/seed.ts",
+    "db:validate": "node scripts/with-root-env.cjs prisma validate",
+    "db:format": "node scripts/with-root-env.cjs prisma format"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

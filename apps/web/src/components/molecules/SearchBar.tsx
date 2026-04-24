@@ -88,6 +88,8 @@ export const SearchBar = () => {
     [searchQuery, apiBrands],
   );
 
+  const trimmedSearchQuery = searchQuery.trim();
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -120,8 +122,10 @@ export const SearchBar = () => {
 
   const handleSearchSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!searchQuery.trim()) return;
-    router.push(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
+    if (!trimmedSearchQuery) return;
+    const params = new URLSearchParams();
+    params.set("search", trimmedSearchQuery);
+    router.push(`/products?${params.toString()}`);
     closeSearch();
   };
 
@@ -250,8 +254,7 @@ export const SearchBar = () => {
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">
                     Хайлтын үр дүн
                   </h3>
-                  {filteredCategories.length === 0 &&
-                  filteredBrands.length === 0 ? (
+                  {trimmedSearchQuery.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-48 text-slate-400">
                       <Search
                         size={48}

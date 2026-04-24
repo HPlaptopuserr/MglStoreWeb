@@ -114,9 +114,11 @@ export const Header = () => {
 
   const handleMobileSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mobileSearch.trim()) return;
+    const query = mobileSearch.trim();
+    if (!query) return;
     setMobileMenuOpen(false);
-    router.push(`/products?q=${encodeURIComponent(mobileSearch.trim())}`);
+    setMobileSearch("");
+    router.push(`/products?search=${encodeURIComponent(query)}`);
   };
 
   const closeMobile = () => setMobileMenuOpen(false);

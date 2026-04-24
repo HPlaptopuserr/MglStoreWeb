@@ -2,7 +2,7 @@
   "name": "mgl-store",
   "private": true,
   "scripts": {
-    "dev": "turbo dev --filter='!@mgl/types'",
+    "dev": "turbo dev --filter=!@mgl/types",
     "build": "turbo build",
     "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""

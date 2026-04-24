@@ -55,11 +55,15 @@ BEGIN
     'INSERT INTO "OrganizationMember" (id, "userId", "organizationId", role, "isPrimary", "isActive", capabilities, "createdAt", "updatedAt")
      SELECT gen_random_uuid(), u.id, u.%I,
        (CASE u.role::text
-         WHEN ''COURIER'' THEN ''DRIVER''
          WHEN ''SUPPLIER'' THEN ''OWNER''
          ELSE ''STAFF''
        END)::"OrganizationMemberRole",
-       true, true, ''{}''::text[], NOW(), NOW()
+       true, true,
+       (CASE u.role::text
+         WHEN ''COURIER'' THEN ARRAY[''DELIVERY_DRIVER'']
+         ELSE ''{}''::text[]
+       END),
+       NOW(), NOW()
      FROM "User" u
      WHERE u.%I IS NOT NULL
        AND NOT EXISTS (
@@ -75,11 +79,11 @@ END $$;
 
 UPDATE "OrganizationMember"
 SET capabilities = ARRAY['POS_CASHIER'], role = 'STAFF'
-WHERE role = 'CASHIER';
+WHERE role::text = 'CASHIER';
 
 UPDATE "OrganizationMember"
 SET capabilities = ARRAY['DELIVERY_DRIVER'], role = 'STAFF'
-WHERE role = 'DRIVER';
+WHERE role::text = 'DRIVER';
 
 -- ────────────────────────────────────────────────
 -- Phase 5: Migrate RegistrationRequest.requestedRole → requestedOrgType
@@ -132,9 +136,7 @@ END $$;
 -- Phase 7: Add USER to Role enum, then simplify values
 -- ────────────────────────────────────────────────
 
-ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'USER';
-
-UPDATE "User" SET role = 'USER'::"Role" WHERE role::text NOT IN ('ADMIN', 'USER');
+-- Legacy Role values are normalized during the PlatformRole cast below.
 
 -- ────────────────────────────────────────────────
 -- Phase 8: Recreate Role enum as PlatformRole
@@ -143,7 +145,13 @@ UPDATE "User" SET role = 'USER'::"Role" WHERE role::text NOT IN ('ADMIN', 'USER'
 ALTER TYPE "Role" RENAME TO "Role_old";
 CREATE TYPE "PlatformRole" AS ENUM ('ADMIN', 'USER');
 ALTER TABLE "User" ALTER COLUMN role DROP DEFAULT;
-ALTER TABLE "User" ALTER COLUMN role TYPE "PlatformRole" USING role::text::"PlatformRole";
+ALTER TABLE "User" ALTER COLUMN role TYPE "PlatformRole"
+  USING (
+    CASE
+      WHEN role::text = 'ADMIN' THEN 'ADMIN'
+      ELSE 'USER'
+    END
+  )::"PlatformRole";
 ALTER TABLE "User" ALTER COLUMN role SET DEFAULT 'USER'::"PlatformRole";
 DROP TYPE "Role_old";
 
