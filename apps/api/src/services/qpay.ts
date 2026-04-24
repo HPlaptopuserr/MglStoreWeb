@@ -6,6 +6,8 @@
  * in index.ts has time to run before values are captured.
  */
 
+import type { QPayCallbackConfig, QPayMerchantContext } from "./qpay.types";
+
 const env = () => ({
   baseUrl: process.env.QPAY_BASE_URL || "https://merchant.qpay.mn/v2",
   clientId: process.env.QPAY_CLIENT_ID || "",
@@ -15,17 +17,45 @@ const env = () => ({
 });
 
 /* ── Token cache ──────────────────────────────────────── */
-let cachedToken: string | null = null;
-let tokenExpiresAt = 0; // epoch ms
+type TokenCacheEntry = {
+  token: string;
+  expiresAt: number;
+};
 
-async function getAccessToken(): Promise<string> {
-  // Return cached token if still valid (60 s buffer)
-  if (cachedToken && Date.now() < tokenExpiresAt - 60_000) {
-    return cachedToken;
+const tokenCache = new Map<string, TokenCacheEntry>();
+
+function getContextIdentity(context?: QPayMerchantContext): {
+  cacheKey: string;
+  username: string;
+  password: string;
+  terminalId?: string;
+} {
+  const { clientId, clientSecret } = env();
+  const username = (context?.username || clientId || "").trim();
+  const password = (context?.password || clientSecret || "").trim();
+  const terminalId = (context?.terminalId || "").trim() || undefined;
+  const cacheKey =
+    context?.merchantKey || `default:${username}:${terminalId || "no-terminal"}`;
+
+  if (!username || !password) {
+    throw new Error("QPay credentials are not configured");
   }
 
-  const { baseUrl, clientId, clientSecret } = env();
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  return { cacheKey, username, password, terminalId };
+}
+
+async function getAccessToken(context?: QPayMerchantContext): Promise<string> {
+  const { baseUrl } = env();
+  const { cacheKey, username, password, terminalId } = getContextIdentity(context);
+  const cached = tokenCache.get(cacheKey);
+
+  // Return cached token if still valid (60 s buffer)
+  if (cached && Date.now() < cached.expiresAt - 60_000) {
+    return cached.token;
+  }
+
+  const credentials = Buffer.from(`${username}:${password}`).toString("base64");
+  const body = terminalId ? JSON.stringify({ terminal_id: terminalId }) : undefined;
 
   const res = await fetch(`${baseUrl}/auth/token`, {
     method: "POST",
@@ -33,6 +63,7 @@ async function getAccessToken(): Promise<string> {
       Authorization: `Basic ${credentials}`,
       "Content-Type": "application/json",
     },
+    body,
   });
 
   if (!res.ok) {
@@ -48,9 +79,12 @@ async function getAccessToken(): Promise<string> {
     refresh_token: string;
   };
 
-  cachedToken = data.access_token;
-  tokenExpiresAt = Date.now() + data.expires_in * 1000;
-  return cachedToken;
+  const token = data.access_token;
+  tokenCache.set(cacheKey, {
+    token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  });
+  return token;
 }
 
 /* ── Create invoice ───────────────────────────────────── */
@@ -73,11 +107,28 @@ export async function createQPayInvoice(params: {
   orderNumber: string;
   amount: number;
   description?: string;
+  merchantContext?: QPayMerchantContext;
+  callbackConfig?: QPayCallbackConfig;
 }): Promise<QPayInvoiceResponse> {
-  const token = await getAccessToken();
-  const { baseUrl, invoiceCode, publicUrl } = env();
+  const token = await getAccessToken(params.merchantContext);
+  const { baseUrl, invoiceCode: defaultInvoiceCode, publicUrl } = env();
 
-  const callbackUrl = `${publicUrl}/api/store/qpay/callback?orderId=${params.orderId}`;
+  const callbackPath = params.callbackConfig?.path || "/api/store/qpay/callback";
+  const callbackQuery = new URLSearchParams({ orderId: params.orderId });
+
+  for (const [key, value] of Object.entries(params.callbackConfig?.query || {})) {
+    if (value !== null && value !== undefined) {
+      callbackQuery.set(key, String(value));
+    }
+  }
+
+  const callbackUrl = `${publicUrl}${callbackPath}?${callbackQuery.toString()}`;
+  const invoiceCode =
+    (params.merchantContext?.invoiceCode || "").trim() || defaultInvoiceCode;
+
+  if (!invoiceCode) {
+    throw new Error("QPay invoice code is not configured");
+  }
 
   const body = {
     invoice_code: invoiceCode,
@@ -119,8 +170,11 @@ export interface QPayPaymentCheckResponse {
   }[];
 }
 
-export async function checkQPayPayment(invoiceId: string): Promise<QPayPaymentCheckResponse> {
-  const token = await getAccessToken();
+export async function checkQPayPayment(
+  invoiceId: string,
+  merchantContext?: QPayMerchantContext,
+): Promise<QPayPaymentCheckResponse> {
+  const token = await getAccessToken(merchantContext);
 
   const { baseUrl } = env();
 
