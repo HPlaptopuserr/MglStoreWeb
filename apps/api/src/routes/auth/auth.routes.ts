@@ -97,7 +97,17 @@ async function createVerifyMnSession(phone: string): Promise<VerifyMnSessionResp
 }
 
 async function getVerifyMnSessionStatus(sessionId: string): Promise<VerifyMnStatusResponse> {
-  const res = await fetch(`${VERIFY_MN_API_BASE}/sessions/${encodeURIComponent(sessionId)}`);
+  const apiKey = process.env.VERIFY_MN_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("VERIFY_MN_API_KEY is not configured");
+  }
+
+  const res = await fetch(`${VERIFY_MN_API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data?.message || `Verify.mn status failed with ${res.status}`);
@@ -421,7 +431,8 @@ router.post("/web/verify-mn/complete", async (req, res) => {
     }
 
     const status = await getVerifyMnSessionStatus(sessionId);
-    if (status.phone.replace(/[^\d]/g, "") !== identifier) {
+    const statusPhone = status.phone?.replace(/[^\d]/g, "");
+    if (statusPhone && statusPhone !== identifier) {
       return res.status(400).json({ message: "Баталгаажуулсан дугаар таарахгүй байна." });
     }
 
