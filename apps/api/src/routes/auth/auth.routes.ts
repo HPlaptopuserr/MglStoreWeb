@@ -30,6 +30,25 @@ type VerifyMnStatusResponse = {
   expiresAt: string;
 };
 
+async function createPasswordResetToken(userId: string) {
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
+
+  await prisma.passwordResetToken.deleteMany({
+    where: { userId },
+  });
+
+  await prisma.passwordResetToken.create({
+    data: {
+      userId,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    },
+  });
+
+  return resetToken;
+}
+
 function normalizeWebIdentifier(email?: string, phone?: string) {
   const identifier = (email || phone || "").trim();
   const isPhone = /^[0-9+\-\s()]{7,16}$/.test(identifier) && !identifier.includes("@");
@@ -42,6 +61,11 @@ function normalizeWebIdentifier(email?: string, phone?: string) {
         : identifier.toLowerCase(),
     isPhone,
   };
+}
+
+function normalizePhoneDigits(phone?: string | null) {
+  const digits = (phone || "").replace(/[^\d]/g, "");
+  return digits.startsWith("976") && digits.length === 11 ? digits.slice(3) : digits;
 }
 
 async function findWebUserByIdentifier(identifier: string, isPhone: boolean) {
@@ -431,7 +455,7 @@ router.post("/web/verify-mn/complete", async (req, res) => {
     }
 
     const status = await getVerifyMnSessionStatus(sessionId);
-    const statusPhone = status.phone?.replace(/[^\d]/g, "");
+    const statusPhone = normalizePhoneDigits(status.phone);
     if (statusPhone && statusPhone !== identifier) {
       return res.status(400).json({ message: "Баталгаажуулсан дугаар таарахгүй байна." });
     }
@@ -533,19 +557,15 @@ router.post("/web/login", async (req, res) => {
       });
     }
 
-    const isPhone =
-      /^[0-9+\-\s()]{7,15}$/.test(identifier.trim()) &&
-      !identifier.includes("@");
+    const normalized = normalizeWebIdentifier(email, phone);
+    const isPhone = normalized.isPhone;
 
     let user;
     if (isPhone) {
-      user = await prisma.user.findFirst({
-        where: { profile: { phoneNumber: identifier.trim() } },
-        include: { profile: true },
-      });
+      user = await findWebUserByIdentifier(normalized.identifier, true);
     } else {
       user = await prisma.user.findUnique({
-        where: { email: identifier.trim().toLowerCase() },
+        where: { email: normalized.identifier },
         include: { profile: true },
       });
     }
@@ -788,25 +808,30 @@ router.post("/forgot-password", async (req, res) => {
       });
     }
 
-    const isPhone =
-      /^[0-9+\-\s()]{7,15}$/.test(identifier.trim()) &&
-      !identifier.includes("@");
+    const normalized = normalizeWebIdentifier(email, phone);
+    const isPhone = normalized.isPhone;
 
     let user;
     if (isPhone) {
-      user = await prisma.user.findFirst({
-        where: { profile: { phoneNumber: identifier.trim() } },
-        include: { profile: true },
-      });
+      user = await findWebUserByIdentifier(normalized.identifier, true);
     } else {
       user = await prisma.user.findUnique({
-        where: { email: identifier.trim().toLowerCase() },
+        where: { email: normalized.identifier },
         include: { profile: true },
       });
     }
 
     if (!user) {
       return res.status(404).json({ message: "Бүртгэлгүй хэрэглэгч байна" });
+    }
+
+    if (isPhone) {
+      const session = await createVerifyMnSession(normalized.identifier);
+      return res.json({
+        message: "Verify.mn баталгаажуулалт эхэллээ",
+        channel: "verifyMn",
+        session,
+      });
     }
 
     // Generate 4-digit code
@@ -838,6 +863,48 @@ router.post("/forgot-password", async (req, res) => {
   } catch (error) {
     console.error("[forgot-password error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
+
+router.post("/forgot-password/verify-mn/complete", async (req, res) => {
+  try {
+    const { phone, sessionId } = req.body;
+    const { identifier, isPhone } = normalizeWebIdentifier(undefined, phone);
+
+    if (!isPhone || !identifier || !sessionId) {
+      return res.status(400).json({ message: "Утасны дугаар болон sessionId шаардлагатай." });
+    }
+
+    const user = await findWebUserByIdentifier(identifier, true);
+    if (!user) {
+      return res.status(404).json({ message: "Бүртгэлгүй хэрэглэгч байна" });
+    }
+
+    const status = await getVerifyMnSessionStatus(sessionId);
+    const statusPhone = normalizePhoneDigits(status.phone);
+    if (statusPhone && statusPhone !== identifier) {
+      return res.status(400).json({ message: "Баталгаажуулсан дугаар таарахгүй байна." });
+    }
+
+    if (status.sessionStatus !== "VERIFIED") {
+      return res.status(400).json({
+        message: status.sessionStatus === "EXPIRED"
+          ? "Баталгаажуулах хугацаа дууссан байна."
+          : "SMS баталгаажуулалт хараахан ирээгүй байна.",
+        status: status.sessionStatus,
+      });
+    }
+
+    const resetToken = await createPasswordResetToken(user.id);
+    return res.json({
+      message: "Утас баталгаажлаа",
+      resetToken,
+    });
+  } catch (error) {
+    console.error("[forgot-password verify.mn complete error]", error);
+    return res.status(500).json({
+      message: error instanceof Error ? error.message : "Verify.mn баталгаажуулахад алдаа гарлаа",
+    });
   }
 });
 
@@ -877,9 +944,10 @@ router.post("/verify-reset-code", async (req, res) => {
 
 router.post("/reset-password", async (req, res) => {
   try {
-    const { code, password } = req.body;
+    const { code, resetToken: resetTokenValue, password } = req.body;
+    const token = resetTokenValue || code;
 
-    if (!code || !password) {
+    if (!token || !password) {
       return res.status(400).json({
         message: "Баталгаажуулах код болон шинэ нууц үг шаардлагатай",
       });
@@ -893,7 +961,7 @@ router.post("/reset-password", async (req, res) => {
 
     const tokenHash = crypto
       .createHash("sha256")
-      .update(code.toString().trim())
+      .update(token.toString().trim())
       .digest("hex");
 
     const resetToken = await prisma.passwordResetToken.findFirst({

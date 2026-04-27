@@ -6,7 +6,7 @@ import { API_BASE } from "@/lib/api";
 
 type AuthTab = "login" | "register";
 type AuthStep = "form" | "verifyMn";
-type ForgotStep = "identifier" | "code" | "newPassword" | "done";
+type ForgotStep = "identifier" | "verifyMn" | "code" | "newPassword" | "done";
 
 type VerifyMnSession = {
   sessionId: string;
@@ -65,6 +65,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [forgotCode, setForgotCode] = useState(["", "", "", ""]);
   const [forgotNewPassword, setForgotNewPassword] = useState("");
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
+  const [forgotResetToken, setForgotResetToken] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState("");
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -72,7 +73,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const codeRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
-    if (authStep !== "verifyMn" || !verifyMnSession) return;
+    if (!verifyMnSession) return;
 
     setVerifyMnNow(Date.now());
     const timer = window.setInterval(() => {
@@ -109,13 +110,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setForgotCode(["", "", "", ""]);
     setForgotNewPassword("");
     setForgotConfirmPassword("");
+    setForgotResetToken("");
     setForgotError("");
     setForgotLoading(false);
+    setVerifyMnSession(null);
   };
 
   const closeForgot = () => {
     setShowForgot(false);
     setForgotError("");
+    setVerifyMnSession(null);
+    setForgotResetToken("");
   };
 
   const handleForgotSendCode = async (e: React.FormEvent) => {
@@ -135,7 +140,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Алдаа гарлаа");
-      setForgotStep("code");
+      if (isPhone && data?.channel === "verifyMn" && data?.session) {
+        setVerifyMnSession(data.session);
+        setVerifyMnNow(Date.now());
+        setForgotStep("verifyMn");
+      } else {
+        setForgotStep("code");
+      }
     } catch (err) {
       setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа");
     } finally {
@@ -184,6 +195,35 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
   };
 
+  const handleForgotVerifyMnComplete = async () => {
+    setForgotError("");
+    if (!verifyMnSession) {
+      setForgotError("Verify.mn баталгаажуулалт эхлээгүй байна.");
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/forgot-password/verify-mn/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: forgotIdentifier.trim(),
+          sessionId: verifyMnSession.sessionId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Verify.mn баталгаажуулахад алдаа гарлаа");
+      setForgotResetToken(data.resetToken || "");
+      setVerifyMnSession(null);
+      setForgotStep("newPassword");
+    } catch (err) {
+      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   const handleForgotResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotError("");
@@ -201,7 +241,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       const res = await fetch(`${API_BASE}/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, password: forgotNewPassword }),
+        body: JSON.stringify({
+          code: forgotResetToken ? undefined : code,
+          resetToken: forgotResetToken || undefined,
+          password: forgotNewPassword,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Алдаа гарлаа");
@@ -223,15 +267,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
 
     try {
-      const isPhone = /^[0-9+\-\s()]{7,16}$/.test(identifier.trim()) && !identifier.includes("@");
-      if (isPhone && onStartVerifyMn && onCompleteVerifyMn) {
-        const session = await onStartVerifyMn("login", identifier, password);
-        setVerifyMnSession(session);
-        setVerifyMnSnapshot({ mode: "login", identifier, password, fullName: "" });
-        setAuthStep("verifyMn");
-        return;
-      }
-
       await onLogin(identifier, password);
       setIdentifier("");
       setPassword("");
@@ -260,15 +295,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
 
     try {
-      const isPhone = /^[0-9+\-\s()]{7,16}$/.test(identifier.trim()) && !identifier.includes("@");
-      if (isPhone && onStartVerifyMn && onCompleteVerifyMn) {
-        const session = await onStartVerifyMn("register", identifier, password, fullName);
-        setVerifyMnSession(session);
-        setVerifyMnSnapshot({ mode: "register", identifier, password, fullName });
-        setAuthStep("verifyMn");
-        return;
-      }
-
       await onRegister(fullName, identifier, password);
       setIdentifier("");
       setPassword("");
@@ -366,6 +392,73 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                       {forgotLoading ? "Илгээж байна..." : "Код илгээх"}
                     </button>
                   </form>
+                )}
+
+                {forgotStep === "verifyMn" && verifyMnSession && (
+                  <div className="space-y-4">
+                    <div className="text-center mb-2">
+                      <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
+                        <ShieldCheck size={28} className="text-blue-500" />
+                      </div>
+                      <h2 className="text-xl font-black text-gray-900">Утас баталгаажуулах</h2>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Доорх SMS-г илгээсний дараа шалгах товчийг дарна уу.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                      <div className="mb-4 flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                        <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Үлдсэн хугацаа</span>
+                        <span className={`text-sm font-black ${verifyMnRemainingSeconds > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                          {verifyMnRemainingSeconds > 0 ? verifyMnTimeText : "Дууссан"}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Илгээх дугаар</p>
+                      <p className="mt-1 text-2xl font-black text-gray-900">{verifyMnSession.shortcode}</p>
+                      <p className="mt-4 text-xs font-bold uppercase tracking-wide text-amber-700">SMS текст</p>
+                      <p className="mt-1 rounded-lg bg-white px-3 py-2 text-base font-bold text-gray-900">
+                        {verifyMnSession.text}
+                      </p>
+                    </div>
+
+                    {verifyMnRemainingSeconds > 0 ? (
+                      <a
+                        href={verifyMnSession.smsUri}
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-bold text-white transition-all hover:bg-gray-800"
+                      >
+                        <Phone className="h-4 w-4" />
+                        SMS илгээх
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForgotStep("identifier");
+                          setVerifyMnSession(null);
+                          setForgotError("");
+                        }}
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-bold text-white transition-all hover:bg-gray-800"
+                      >
+                        Дахин эхлүүлэх
+                      </button>
+                    )}
+
+                    {forgotError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                        {forgotError}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleForgotVerifyMnComplete}
+                      disabled={forgotLoading || verifyMnRemainingSeconds <= 0}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
+                    >
+                      {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                      {forgotLoading ? "Шалгаж байна..." : "Баталгаажуулалт шалгах"}
+                    </button>
+                  </div>
                 )}
 
                 {forgotStep === "code" && (

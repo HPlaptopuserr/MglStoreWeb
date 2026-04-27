@@ -39,7 +39,7 @@ export const Header = () => {
   const [authError, setAuthError] = useState("");
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { user, login, register, startVerifyMn, completeVerifyMn, logout } = useAuth();
+  const { user, login, register, logout } = useAuth();
   const { count, total } = useCart();
   const { categories } = useBusinessCategories();
   const router = useRouter();
@@ -552,34 +552,6 @@ export const Header = () => {
           } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : "Бүртгүүлэхэд алдаа гарлаа.";
             setAuthError(msg);
-          } finally {
-            setAuthLoading(false);
-          }
-        }}
-        onStartVerifyMn={async (mode, identifier, password, fullName) => {
-          setAuthError("");
-          setAuthLoading(true);
-          try {
-            return await startVerifyMn(mode, identifier, password, fullName);
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.";
-            setAuthError(msg);
-            throw err;
-          } finally {
-            setAuthLoading(false);
-          }
-        }}
-        onCompleteVerifyMn={async (mode, identifier, password, sessionId, fullName) => {
-          setAuthError("");
-          setAuthLoading(true);
-          try {
-            await completeVerifyMn(mode, identifier, password, sessionId, fullName);
-            closeAuthModal();
-            closeMobile();
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : "Verify.mn баталгаажуулахад алдаа гарлаа.";
-            setAuthError(msg);
-            throw err;
           } finally {
             setAuthLoading(false);
           }

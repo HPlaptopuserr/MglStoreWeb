@@ -32,7 +32,7 @@ interface CheckoutResult {
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, total, clearCart } = useCart();
-  const { user, authFetch, login, register, startVerifyMn, completeVerifyMn } = useAuth();
+  const { user, authFetch, login, register } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -247,31 +247,6 @@ export default function CheckoutPage() {
               setAuthOpen(false);
             } catch (err: unknown) {
               setAuthError(err instanceof Error ? err.message : "Бүртгүүлэхэд алдаа гарлаа.");
-            } finally {
-              setAuthLoading(false);
-            }
-          }}
-          onStartVerifyMn={async (mode, identifier, password, fullName) => {
-            setAuthError("");
-            setAuthLoading(true);
-            try {
-              return await startVerifyMn(mode, identifier, password, fullName);
-            } catch (err: unknown) {
-              setAuthError(err instanceof Error ? err.message : "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
-              throw err;
-            } finally {
-              setAuthLoading(false);
-            }
-          }}
-          onCompleteVerifyMn={async (mode, identifier, password, sessionId, fullName) => {
-            setAuthError("");
-            setAuthLoading(true);
-            try {
-              await completeVerifyMn(mode, identifier, password, sessionId, fullName);
-              setAuthOpen(false);
-            } catch (err: unknown) {
-              setAuthError(err instanceof Error ? err.message : "Verify.mn баталгаажуулахад алдаа гарлаа.");
-              throw err;
             } finally {
               setAuthLoading(false);
             }
