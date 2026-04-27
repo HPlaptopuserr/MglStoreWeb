@@ -124,6 +124,7 @@ app.get("/", (_req, res) => {
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 15,
+  skip: (req) => !isProduction && isLocalRequest(req.ip),
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Хэт олон нэвтрэх оролдлого. Түр хүлээнэ үү." },

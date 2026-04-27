@@ -9,6 +9,133 @@ import { resolveOrganization, requireAuth, type AuthPayload } from "../../middle
 const router: ExpressRouter = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("FATAL: JWT_SECRET not set"); })() : "dev-secret-change-me");
+const VERIFY_MN_API_BASE = "https://api.verify.mn";
+
+type VerifyMnSessionResponse = {
+  sessionId: string;
+  phone: string;
+  shortcode: string;
+  text: string;
+  smsUri: string;
+  displayInstruction: string;
+  expiresAt: string;
+};
+
+type VerifyMnStatusResponse = {
+  sessionId: string;
+  phone: string;
+  sessionStatus: "PENDING" | "VERIFIED" | "EXPIRED";
+  callbackStatus?: "PENDING" | "SENT" | "FAILED";
+  verifiedAt?: string | null;
+  expiresAt: string;
+};
+
+function normalizeWebIdentifier(email?: string, phone?: string) {
+  const identifier = (email || phone || "").trim();
+  const isPhone = /^[0-9+\-\s()]{7,16}$/.test(identifier) && !identifier.includes("@");
+  const digits = identifier.replace(/[^\d]/g, "");
+  return {
+    identifier: isPhone && digits.startsWith("976") && digits.length === 11
+      ? digits.slice(3)
+      : isPhone
+        ? digits
+        : identifier.toLowerCase(),
+    isPhone,
+  };
+}
+
+async function findWebUserByIdentifier(identifier: string, isPhone: boolean) {
+  if (isPhone) {
+    return prisma.user.findFirst({
+      where: { profile: { phoneNumber: identifier } },
+      include: { profile: true },
+    });
+  }
+
+  return prisma.user.findUnique({
+    where: { email: identifier.toLowerCase() },
+    include: { profile: true },
+  });
+}
+
+async function createVerifyMnSession(phone: string): Promise<VerifyMnSessionResponse> {
+  const apiKey = process.env.VERIFY_MN_API_KEY;
+  const callback =
+    process.env.VERIFY_MN_CALLBACK_URL ||
+    (process.env.API_PUBLIC_URL
+      ? `${process.env.API_PUBLIC_URL.replace(/\/$/, "")}/auth/web/verify-mn/callback`
+      : "");
+
+  if (!apiKey) {
+    throw new Error("VERIFY_MN_API_KEY is not configured");
+  }
+
+  if (!callback) {
+    throw new Error("VERIFY_MN_CALLBACK_URL is not configured");
+  }
+
+  const nonce = crypto.randomInt(100000, 999999).toString();
+  const res = await fetch(`${VERIFY_MN_API_BASE}/sessions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      phone,
+      text: `MGL ${nonce}`,
+      callback,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.message || `Verify.mn session failed with ${res.status}`);
+  }
+
+  return data as VerifyMnSessionResponse;
+}
+
+async function getVerifyMnSessionStatus(sessionId: string): Promise<VerifyMnStatusResponse> {
+  const res = await fetch(`${VERIFY_MN_API_BASE}/sessions/${encodeURIComponent(sessionId)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.message || `Verify.mn status failed with ${res.status}`);
+  }
+
+  return data as VerifyMnStatusResponse;
+}
+
+function createWebAccessToken(user: any, orgInfo?: Awaited<ReturnType<typeof resolveOrganization>>) {
+  return jwt.sign(
+    {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      organizationId: orgInfo?.organizationId || null,
+      orgRole: orgInfo?.orgRole || null,
+    },
+    JWT_SECRET,
+    { expiresIn: "1d" },
+  );
+}
+
+function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Awaited<ReturnType<typeof resolveOrganization>>) {
+  const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
+
+  return {
+    accessToken,
+    user: {
+      id: user.id,
+      email: safeEmail,
+      role: user.role,
+      orgRole: orgInfo?.orgRole || null,
+      fullName: user.profile?.fullName || "",
+      phone: user.profile?.phoneNumber || null,
+      organizationId: orgInfo?.organizationId || null,
+    },
+  };
+}
 
 // ── GET /auth/me — Return current user profile from token ──────────────
 router.get("/me", requireAuth, async (req, res) => {
@@ -222,6 +349,166 @@ router.post("/login", async (req, res) => {
     console.error("[login error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
   }
+});
+
+router.post("/web/verify-mn/start", async (req, res) => {
+  try {
+    const { email, phone, password, fullName, mode } = req.body;
+    const { identifier, isPhone } = normalizeWebIdentifier(email, phone);
+
+    if (!isPhone || !identifier) {
+      return res.status(400).json({ message: "Verify.mn баталгаажуулалт утасны дугаараар хийгдэнэ." });
+    }
+
+    if (mode === "register") {
+      if (!password || !fullName) {
+        return res.status(400).json({ message: "Нэр болон нууц үг шаардлагатай." });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ message: "Нууц үг дор хаяж 6 тэмдэгт байх ёстой." });
+      }
+
+      const existingUser = await findWebUserByIdentifier(identifier, true);
+      if (existingUser) {
+        return res.status(409).json({ message: "Энэ утасны дугаар бүртгэгдсэн байна." });
+      }
+    } else {
+      if (!password) {
+        return res.status(400).json({ message: "Нууц үг шаардлагатай." });
+      }
+
+      const user = await findWebUserByIdentifier(identifier, true);
+      if (!user) {
+        return res.status(401).json({ message: "Хэрэглэгч олдсонгүй" });
+      }
+
+      if (!user.isActive) {
+        return res.status(403).json({ message: "Хэрэглэгч идэвхгүй байна" });
+      }
+
+      if (isAdminRole(user.role)) {
+        return res.status(403).json({ message: "Admin хэрэглэгч web нэвтрэлт ашиглах боломжгүй." });
+      }
+
+      if (!user.passwordHash) {
+        return res.status(401).json({ message: "Нууц үг тохируулаагүй байна." });
+      }
+
+      const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Нууц үг буруу байна" });
+      }
+    }
+
+    const session = await createVerifyMnSession(identifier);
+    return res.json(session);
+  } catch (error) {
+    console.error("[verify.mn start error]", error);
+    return res.status(500).json({
+      message: error instanceof Error ? error.message : "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа",
+    });
+  }
+});
+
+router.post("/web/verify-mn/complete", async (req, res) => {
+  try {
+    const { email, phone, password, fullName, mode, sessionId } = req.body;
+    const { identifier, isPhone } = normalizeWebIdentifier(email, phone);
+
+    if (!isPhone || !identifier || !sessionId) {
+      return res.status(400).json({ message: "Утасны дугаар болон sessionId шаардлагатай." });
+    }
+
+    const status = await getVerifyMnSessionStatus(sessionId);
+    if (status.phone.replace(/[^\d]/g, "") !== identifier) {
+      return res.status(400).json({ message: "Баталгаажуулсан дугаар таарахгүй байна." });
+    }
+
+    if (status.sessionStatus !== "VERIFIED") {
+      return res.status(400).json({
+        message: status.sessionStatus === "EXPIRED"
+          ? "Баталгаажуулах хугацаа дууссан байна."
+          : "SMS баталгаажуулалт хараахан ирээгүй байна.",
+        status: status.sessionStatus,
+      });
+    }
+
+    if (mode === "register") {
+      if (!password || !fullName) {
+        return res.status(400).json({ message: "Нэр болон нууц үг шаардлагатай." });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ message: "Нууц үг дор хаяж 6 тэмдэгт байх ёстой." });
+      }
+
+      const existingUser = await findWebUserByIdentifier(identifier, true);
+      if (existingUser) {
+        return res.status(409).json({ message: "Энэ утасны дугаар бүртгэгдсэн байна." });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const newUser = await prisma.user.create({
+        data: {
+          email: `${Date.now()}@temp.local`,
+          passwordHash,
+          role: "USER",
+          isActive: true,
+          lastLoginAt: new Date(),
+          profile: {
+            create: {
+              fullName: fullName.trim(),
+              phoneNumber: identifier,
+            },
+          },
+        },
+        include: { profile: true },
+      });
+
+      return res.status(201).json(toWebAuthResponse(newUser, createWebAccessToken(newUser)));
+    }
+
+    if (!password) {
+      return res.status(400).json({ message: "Нууц үг шаардлагатай." });
+    }
+
+    const user = await findWebUserByIdentifier(identifier, true);
+    if (!user || !user.passwordHash) {
+      return res.status(401).json({ message: "Хэрэглэгч олдсонгүй" });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ message: "Хэрэглэгч идэвхгүй байна" });
+    }
+
+    if (isAdminRole(user.role)) {
+      return res.status(403).json({ message: "Admin хэрэглэгч web нэвтрэлт ашиглах боломжгүй." });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!isValidPassword) {
+      return res.status(401).json({ message: "Нууц үг буруу байна" });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    const orgInfo = await resolveOrganization(user.id);
+    return res.json(toWebAuthResponse(user, createWebAccessToken(user, orgInfo), orgInfo));
+  } catch (error) {
+    console.error("[verify.mn complete error]", error);
+    return res.status(500).json({
+      message: error instanceof Error ? error.message : "Verify.mn баталгаажуулахад алдаа гарлаа",
+    });
+  }
+});
+
+router.get("/web/verify-mn/callback", (req, res) => {
+  console.log("[verify.mn callback]", req.query);
+  return res.sendStatus(200);
 });
 
 router.post("/web/login", async (req, res) => {

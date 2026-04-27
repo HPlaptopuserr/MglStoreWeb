@@ -13,11 +13,25 @@ export type AuthUser = {
   organizationId?: string | null;
 };
 
+export type VerifyMnMode = "login" | "register";
+
+export type VerifyMnSession = {
+  sessionId: string;
+  phone: string;
+  shortcode: string;
+  text: string;
+  smsUri: string;
+  displayInstruction: string;
+  expiresAt: string;
+};
+
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (identifier: string, password: string) => Promise<void>;
   register: (fullName: string, identifier: string, password: string) => Promise<void>;
+  startVerifyMn: (mode: VerifyMnMode, identifier: string, password: string, fullName?: string) => Promise<VerifyMnSession>;
+  completeVerifyMn: (mode: VerifyMnMode, identifier: string, password: string, sessionId: string, fullName?: string) => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<AuthUser>) => void;
   refreshUser: () => Promise<void>;
@@ -119,6 +133,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user || null);
   }, []);
 
+  const startVerifyMn = useCallback(
+    async (mode: VerifyMnMode, identifier: string, password: string, fullName?: string): Promise<VerifyMnSession> => {
+      const payload = {
+        mode,
+        phone: identifier.trim(),
+        password: password.trim(),
+        fullName: fullName?.trim(),
+      };
+
+      const res = await fetch(`${API_BASE}/auth/web/verify-mn/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
+      return data;
+    },
+    [],
+  );
+
+  const completeVerifyMn = useCallback(
+    async (mode: VerifyMnMode, identifier: string, password: string, sessionId: string, fullName?: string) => {
+      const res = await fetch(`${API_BASE}/auth/web/verify-mn/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          phone: identifier.trim(),
+          password: password.trim(),
+          fullName: fullName?.trim(),
+          sessionId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Verify.mn баталгаажуулахад алдаа гарлаа.");
+
+      localStorage.setItem(AUTH_TOKEN_KEY, data.accessToken || "");
+      setUser(data.user || null);
+    },
+    [],
+  );
+
   const logout = useCallback(() => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(AUTH_USER_KEY);
@@ -146,7 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, refreshUser, authFetch }}>
+    <AuthContext.Provider value={{ user, loading, login, register, startVerifyMn, completeVerifyMn, logout, updateUser, refreshUser, authFetch }}>
       {children}
     </AuthContext.Provider>
   );
