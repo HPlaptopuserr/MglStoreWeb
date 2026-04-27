@@ -40,6 +40,11 @@ dotenv.config(); // fallback: local .env if present
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
+
+// Render sits behind a reverse proxy — trust it so rate-limit can see real IPs
+if (isProduction) {
+  app.set("trust proxy", 1);
+}
 const isLocalRequest = (ip?: string) =>
   ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
 

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /home/guser/Documents/Projects/MglStoreWeb diff --stat)",
+      "Bash(git -C /home/guser/Documents/Projects/MglStoreWeb status)",
+      "Bash(git -C /home/guser/Documents/Projects/MglStoreWeb add apps/admin/next.config.ts render.yaml)",
+      "Bash(git -C /home/guser/Documents/Projects/MglStoreWeb commit -m ' *)",
+      "Bash(git -C /home/guser/Documents/Projects/MglStoreWeb push origin main)",
+      "Bash(git -C /home/guser/Documents/Projects/MglStoreWeb remote -v)",
+      "Read(//home/guser/.ssh/**)"
+    ]
+  }
+}
