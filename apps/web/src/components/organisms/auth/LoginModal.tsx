@@ -1,30 +1,18 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { User, Loader2, Mail, Phone, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck } from "lucide-react";
+import { User, Loader2, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck } from "lucide-react";
 import { API_BASE } from "@/lib/api";
+import { VerifyMnPanel, type VerifyMnSession } from "./VerifyMnPanel";
 
 type AuthTab = "login" | "register";
-type AuthStep = "form" | "verifyMn";
 type ForgotStep = "identifier" | "verifyMn" | "code" | "newPassword" | "done";
-
-type VerifyMnSession = {
-  sessionId: string;
-  phone: string;
-  shortcode: string;
-  text: string;
-  smsUri: string;
-  displayInstruction: string;
-  expiresAt: string;
-};
 
 interface LoginModalProps {
   open: boolean;
   onClose: () => void;
   onLogin: (identifier: string, password: string) => Promise<void>;
   onRegister: (fullName: string, identifier: string, password: string) => Promise<void>;
-  onStartVerifyMn?: (mode: AuthTab, identifier: string, password: string, fullName?: string) => Promise<VerifyMnSession>;
-  onCompleteVerifyMn?: (mode: AuthTab, identifier: string, password: string, sessionId: string, fullName?: string) => Promise<void>;
   isLoading: boolean;
   error: string;
 }
@@ -34,13 +22,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onClose,
   onLogin,
   onRegister,
-  onStartVerifyMn,
-  onCompleteVerifyMn,
   isLoading,
   error,
 }) => {
   const [tab, setTab] = useState<AuthTab>("login");
-  const [authStep, setAuthStep] = useState<AuthStep>("form");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -50,12 +35,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [rememberMe, setRememberMe] = useState(false);
   const [localError, setLocalError] = useState("");
   const [verifyMnSession, setVerifyMnSession] = useState<VerifyMnSession | null>(null);
-  const [verifyMnSnapshot, setVerifyMnSnapshot] = useState({
-    mode: "login" as AuthTab,
-    identifier: "",
-    password: "",
-    fullName: "",
-  });
   const [verifyMnNow, setVerifyMnNow] = useState(() => Date.now());
 
   // Forgot password state
@@ -81,7 +60,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [authStep, verifyMnSession]);
+  }, [verifyMnSession]);
 
   const verifyMnRemainingSeconds = useMemo(() => {
     if (!verifyMnSession) return 0;
@@ -98,7 +77,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
   const handleTabChange = (newTab: AuthTab) => {
     setTab(newTab);
-    setAuthStep("form");
     setVerifyMnSession(null);
     setLocalError("");
   };
@@ -304,32 +282,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
   };
 
-  const handleVerifyMnComplete = async () => {
-    setLocalError("");
-    if (!verifyMnSession || !onCompleteVerifyMn) {
-      setLocalError("Verify.mn баталгаажуулалт эхлээгүй байна.");
-      return;
-    }
-
-    try {
-      await onCompleteVerifyMn(
-        verifyMnSnapshot.mode,
-        verifyMnSnapshot.identifier,
-        verifyMnSnapshot.password,
-        verifyMnSession.sessionId,
-        verifyMnSnapshot.fullName,
-      );
-      setIdentifier("");
-      setPassword("");
-      setConfirmPassword("");
-      setFullName("");
-      setRememberMe(false);
-      setVerifyMnSession(null);
-      setAuthStep("form");
-    } catch {
-    }
-  };
-
   const displayError = localError || error;
 
   return (
@@ -395,70 +347,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 )}
 
                 {forgotStep === "verifyMn" && verifyMnSession && (
-                  <div className="space-y-4">
-                    <div className="text-center mb-2">
-                      <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
-                        <ShieldCheck size={28} className="text-blue-500" />
-                      </div>
-                      <h2 className="text-xl font-black text-gray-900">Утас баталгаажуулах</h2>
-                      <p className="text-sm text-gray-500 mt-1">
-                        Доорх SMS-г илгээсний дараа шалгах товчийг дарна уу.
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                      <div className="mb-4 flex items-center justify-between rounded-lg bg-white px-3 py-2">
-                        <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Үлдсэн хугацаа</span>
-                        <span className={`text-sm font-black ${verifyMnRemainingSeconds > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                          {verifyMnRemainingSeconds > 0 ? verifyMnTimeText : "Дууссан"}
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Илгээх дугаар</p>
-                      <p className="mt-1 text-2xl font-black text-gray-900">{verifyMnSession.shortcode}</p>
-                      <p className="mt-4 text-xs font-bold uppercase tracking-wide text-amber-700">SMS текст</p>
-                      <p className="mt-1 rounded-lg bg-white px-3 py-2 text-base font-bold text-gray-900">
-                        {verifyMnSession.text}
-                      </p>
-                    </div>
-
-                    {verifyMnRemainingSeconds > 0 ? (
-                      <a
-                        href={verifyMnSession.smsUri}
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-bold text-white transition-all hover:bg-gray-800"
-                      >
-                        <Phone className="h-4 w-4" />
-                        SMS илгээх
-                      </a>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setForgotStep("identifier");
-                          setVerifyMnSession(null);
-                          setForgotError("");
-                        }}
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-bold text-white transition-all hover:bg-gray-800"
-                      >
-                        Дахин эхлүүлэх
-                      </button>
-                    )}
-
-                    {forgotError && (
-                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                        {forgotError}
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleForgotVerifyMnComplete}
-                      disabled={forgotLoading || verifyMnRemainingSeconds <= 0}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
-                    >
-                      {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                      {forgotLoading ? "Шалгаж байна..." : "Баталгаажуулалт шалгах"}
-                    </button>
-                  </div>
+                  <VerifyMnPanel
+                    session={verifyMnSession}
+                    remainingSeconds={verifyMnRemainingSeconds}
+                    timeText={verifyMnTimeText}
+                    loading={forgotLoading}
+                    error={forgotError}
+                    onRestart={() => {
+                      setForgotStep("identifier");
+                      setVerifyMnSession(null);
+                      setForgotError("");
+                    }}
+                    onVerify={handleForgotVerifyMnComplete}
+                  />
                 )}
 
                 {forgotStep === "code" && (
@@ -583,86 +484,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               </div>
             ) : (
               /* ── Login / Register Tabs ─────────────────────────── */
-              <>
-            {authStep === "verifyMn" && verifyMnSession ? (
-              <div className="space-y-5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthStep("form");
-                    setVerifyMnSession(null);
-                    setLocalError("");
-                  }}
-                  className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-                >
-                  <ArrowLeft size={16} />
-                  Буцах
-                </button>
-
-                <div className="text-center">
-                  <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
-                    <ShieldCheck size={28} className="text-blue-500" />
-                  </div>
-                  <h2 className="text-xl font-black text-gray-900">Утас баталгаажуулах</h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Доорх SMS-г илгээсний дараа шалгах товчийг дарна уу.
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                  <div className="mb-4 flex items-center justify-between rounded-lg bg-white px-3 py-2">
-                    <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Үлдсэн хугацаа</span>
-                    <span className={`text-sm font-black ${verifyMnRemainingSeconds > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                      {verifyMnRemainingSeconds > 0 ? verifyMnTimeText : "Дууссан"}
-                    </span>
-                  </div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Илгээх дугаар</p>
-                  <p className="mt-1 text-2xl font-black text-gray-900">{verifyMnSession.shortcode}</p>
-                  <p className="mt-4 text-xs font-bold uppercase tracking-wide text-amber-700">SMS текст</p>
-                  <p className="mt-1 rounded-lg bg-white px-3 py-2 text-base font-bold text-gray-900">
-                    {verifyMnSession.text}
-                  </p>
-                </div>
-
-                {verifyMnRemainingSeconds > 0 ? (
-                  <a
-                    href={verifyMnSession.smsUri}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-bold text-white transition-all hover:bg-gray-800"
-                  >
-                    <Phone className="h-4 w-4" />
-                    SMS илгээх
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthStep("form");
-                      setVerifyMnSession(null);
-                      setLocalError("");
-                    }}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-bold text-white transition-all hover:bg-gray-800"
-                  >
-                    Дахин эхлүүлэх
-                  </button>
-                )}
-
-                {displayError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                    {displayError}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleVerifyMnComplete}
-                  disabled={isLoading || verifyMnRemainingSeconds <= 0}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
-                >
-                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                  {isLoading ? "Шалгаж байна..." : "Баталгаажуулалт шалгах"}
-                </button>
-              </div>
-            ) : (
               <>
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-4">
@@ -904,8 +725,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   {isLoading ? "Бүртгүүлж байна..." : "Бүртгүүлэх"}
                 </button>
               </form>
-            )}
-              </>
             )}
               </>
             )}
