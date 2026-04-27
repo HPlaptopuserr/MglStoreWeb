@@ -508,8 +508,7 @@ router.post("/forgot-password", async (req, res) => {
     }
 
     if (!user) {
-      // Don't reveal whether user exists
-      return res.json({ message: "Баталгаажуулах код илгээлээ" });
+      return res.status(404).json({ message: "Бүртгэлгүй хэрэглэгч байна" });
     }
 
     // Generate 4-digit code

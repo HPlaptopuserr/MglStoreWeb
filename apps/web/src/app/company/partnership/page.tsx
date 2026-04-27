@@ -11,6 +11,7 @@ export default function PartnershipPage() {
     <div className="w-full">
       <PartnershipHeroSection />
       <PartnershipWorksSection />
+      <PartnershipServiceSection />
       <PartnershipFormSection />
       <div className="w-full flex flex-col gap-12 py-12">
         <PartnershipFaqSection />

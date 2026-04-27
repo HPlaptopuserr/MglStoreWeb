@@ -30,6 +30,8 @@ import {
   dmRoutes,
   storeCheckoutRoutes,
   vendorOrderRoutes,
+  vendorMerchantRoutes,
+  vendorUpgradeRoutes,
 } from "./routes";
 
 // Resolve .env from monorepo root (../../.. from src/, ../../../ from dist/)
@@ -115,6 +117,8 @@ app.use("/api", chatRoutes);
 app.use("/api", dmRoutes);
 app.use("/api", storeCheckoutRoutes);
 app.use("/api", vendorOrderRoutes);
+app.use("/api", vendorMerchantRoutes);
+app.use("/api", vendorUpgradeRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");

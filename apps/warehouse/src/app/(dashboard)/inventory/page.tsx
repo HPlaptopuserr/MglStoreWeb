@@ -9,6 +9,10 @@ import {
   AlertTriangle,
   XCircle,
   Filter,
+  X,
+  Calendar,
+  Barcode,
+  MapPin,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 
@@ -43,6 +47,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockStatus>("all");
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
 
   // Load warehouses
   useEffect(() => {
@@ -123,6 +128,17 @@ export default function InventoryPage() {
     const out = inventory.filter((i) => getStatus(i) === "out").length;
     return { healthy, low, out, total: inventory.length };
   }, [inventory]);
+
+  const getStatusLabel = (item: InventoryItem) => {
+    const status = getStatus(item);
+    if (status === "out") {
+      return { label: "Дууссан", color: "bg-red-100 text-red-700" };
+    } else if (status === "low") {
+      return { label: "Дутагдал", color: "bg-amber-100 text-amber-700" };
+    } else {
+      return { label: "Хэвийн", color: "bg-emerald-100 text-emerald-700" };
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -247,7 +263,8 @@ export default function InventoryPage() {
                   return (
                     <tr
                       key={item.id}
-                      className="border-b border-slate-50 transition-colors last:border-0 hover:bg-slate-50/50"
+                      onClick={() => setSelectedItem(item)}
+                      className="border-b border-slate-50 cursor-pointer transition-colors last:border-0 hover:bg-blue-50"
                     >
                       <td className="px-4 py-3">
                         {status === "out" ? (
@@ -308,6 +325,152 @@ export default function InventoryPage() {
           </div>
         )}
       </div>
+
+      {/* Detail Modal */}
+      {selectedItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-2xl rounded-xl bg-white shadow-2xl">
+            {/* Close button */}
+            <button
+              onClick={() => setSelectedItem(null)}
+              className="absolute right-4 top-4 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Modal content */}
+            <div className="space-y-6 p-8">
+              {/* Header */}
+              <div className="space-y-2 border-b border-slate-100 pb-6">
+                <h2 className="text-2xl font-bold text-slate-900">
+                  {selectedItem.product.name}
+                </h2>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+                      getStatusLabel(selectedItem).color
+                    }`}
+                  >
+                    {getStatusLabel(selectedItem).label}
+                  </span>
+                </div>
+              </div>
+
+              {/* Main Grid */}
+              <div className="grid grid-cols-2 gap-6">
+                {/* Left column */}
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      SKU
+                    </p>
+                    <p className="mt-1 font-mono text-base text-slate-900">
+                      {selectedItem.product.sku || "—"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Barcode
+                    </p>
+                    <p className="mt-1 flex items-center gap-2 font-mono text-sm text-slate-700">
+                      <Barcode className="h-4 w-4 text-slate-400" />
+                      {selectedItem.product.barcode || "—"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Үнэ
+                    </p>
+                    <p className="mt-1 text-lg font-bold text-slate-900">
+                      {Number(selectedItem.product.price).toLocaleString()}₮
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Байрлал
+                    </p>
+                    <p className="mt-1 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 font-mono text-sm text-slate-700">
+                      <MapPin className="h-4 w-4 text-slate-400" />
+                      {selectedItem.location || "Тодорхойгүй"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right column */}
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-blue-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Гар дээрх тоо
+                    </p>
+                    <p className="mt-2 text-3xl font-bold text-blue-900">
+                      {selectedItem.quantity.toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Хамгийн бага тоо
+                      </p>
+                      <p className="mt-1 text-lg font-bold text-slate-900">
+                        {selectedItem.minQuantity}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Хамгийн их тоо
+                      </p>
+                      <p className="mt-1 text-lg font-bold text-slate-900">
+                        {selectedItem.maxQuantity || "Хязгаарлалт байхгүй"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Info */}
+              <div className="space-y-4 border-t border-slate-100 pt-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Batch Number
+                    </p>
+                    <p className="mt-1 font-mono text-sm text-slate-700">
+                      {selectedItem.batchNumber || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Хүчинтэй болох хугацаа
+                    </p>
+                    <p className="mt-1 flex items-center gap-2 text-sm text-slate-700">
+                      <Calendar className="h-4 w-4 text-slate-400" />
+                      {selectedItem.expiryDate
+                        ? new Date(selectedItem.expiryDate).toLocaleDateString(
+                            "mn-MN",
+                          )
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex gap-3 border-t border-slate-100 pt-6">
+                <button
+                  onClick={() => setSelectedItem(null)}
+                  className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Хаах
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

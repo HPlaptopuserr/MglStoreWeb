@@ -266,105 +266,102 @@ export default function SupplyProductsPage() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredItems.map((item) => {
-            const isLowStock = item.quantity <= item.alertThreshold;
-            const isOwnProduct = item.source === "own";
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1100px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 font-semibold">Бараа</th>
+                  <th className="px-4 py-3 font-semibold">SKU</th>
+                  <th className="px-4 py-3 font-semibold">Ангилал</th>
+                  <th className="px-4 py-3 font-semibold">Агуулах</th>
+                  <th className="px-4 py-3 text-right font-semibold">Үлдэгдэл</th>
+                  <th className="px-4 py-3 text-right font-semibold">Босго</th>
+                  <th className="px-4 py-3 text-right font-semibold">Үнэ</th>
+                  <th className="px-4 py-3 font-semibold">Төлөв</th>
+                  <th className="px-4 py-3 text-right font-semibold">Дэлгэрэнгүй</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.map((item) => {
+                  const isLowStock = item.quantity <= item.alertThreshold;
+                  const isOwnProduct = item.source === "own";
 
-            return (
-            <div
-              key={item.id}
-              className={`rounded-3xl p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
-                isLowStock
-                  ? "border-2 border-red-400 bg-gradient-to-b from-red-50 to-white shadow-red-100 md:scale-[1.02]"
-                  : "border border-slate-100 bg-white"
-              }`}
-            >
-              {isLowStock && (
-                <div className="mb-4 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-100 px-3 py-2">
-                  <AlertTriangle size={16} className="text-red-600" />
-                  <p className="text-xs font-black uppercase tracking-wide text-red-700">
-                    Анхааруулга: Үлдэгдэл багассан
-                  </p>
-                </div>
-              )}
-
-              <div className="mb-4 flex items-start gap-3">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
-                  {item.product.images[0]?.url ? (
-                    <img
-                      src={item.product.images[0].url}
-                      alt={item.product.name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <Package size={24} className="text-slate-300" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-sm font-bold text-slate-900">
-                    {item.product.name}
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-amber-700">
-                    {item.product.categoryName}
-                  </p>
-                  {item.product.sku && (
-                    <p className="mt-1 text-[11px] font-mono text-slate-400">
-                      SKU: {item.product.sku}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className={`rounded-2xl p-3 ${isLowStock ? "bg-red-50" : "bg-slate-50"}`}>
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                    Үлдэгдэл
-                  </p>
-                  <p className={`mt-1 text-lg font-black ${isLowStock ? "text-red-700" : "text-slate-900"}`}>
-                    {item.quantity}
-                  </p>
-                  <p className={`mt-1 text-[11px] font-bold ${isLowStock ? "text-red-600" : "text-slate-400"}`}>
-                    Анхааруулах босго: {item.alertThreshold}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-amber-50 p-3">
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
-                    Үнэ
-                  </p>
-                  <p className="mt-1 text-lg font-black text-slate-900">
-                    ₮{Number(item.product.price).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                  <Warehouse size={14} className={isLowStock ? "text-red-600" : "text-amber-600"} />
-                  {item.warehouse.name}
-                </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  {item.warehouse.city}, {item.warehouse.district}
-                </p>
-                {item.location && (
-                  <p className="mt-1 text-xs text-slate-400">
-                    Байршил: {item.location}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-                <span>{isOwnProduct ? "Өөрийн бараа" : "Татагдсан бараа"}</span>
-                <Link
-                  href={`/shipments?warehouseId=${encodeURIComponent(item.warehouse.id)}&productId=${encodeURIComponent(item.product.id)}`}
-                  className={`inline-flex items-center gap-1 font-bold hover:underline ${isLowStock ? "text-red-700" : "text-amber-700"}`}
-                >
-                  Таталтын түүх <ChevronRight size={12} />
-                </Link>
-              </div>
-            </div>
-          );
-          })}
+                  return (
+                    <tr
+                      key={item.id}
+                      className={`border-b border-slate-50 transition-colors last:border-0 hover:bg-slate-50 ${
+                        isLowStock ? "bg-red-50/40" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+                            {item.product.images[0]?.url ? (
+                              <img
+                                src={item.product.images[0].url}
+                                alt={item.product.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <Package size={16} className="text-slate-300" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-900">{item.product.name}</p>
+                            <p className="text-xs text-slate-400">
+                              {isOwnProduct ? "Өөрийн бараа" : "Татагдсан бараа"}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                        {item.product.sku || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{item.product.categoryName}</td>
+                      <td className="px-4 py-3">
+                        <div className="text-slate-700">
+                          <p className="font-medium">{item.warehouse.name}</p>
+                          <p className="text-xs text-slate-400">
+                            {item.warehouse.city}, {item.warehouse.district}
+                          </p>
+                        </div>
+                      </td>
+                      <td className={`px-4 py-3 text-right font-semibold ${isLowStock ? "text-red-700" : "text-slate-800"}`}>
+                        {item.quantity}
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-500">{item.alertThreshold}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                        ₮{Number(item.product.price).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isLowStock ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+                            <AlertTriangle size={12} />
+                            Дутагдал
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                            Хэвийн
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          href={`/shipments?warehouseId=${encodeURIComponent(item.warehouse.id)}&productId=${encodeURIComponent(item.product.id)}`}
+                          className={`inline-flex items-center gap-1 text-xs font-semibold hover:underline ${
+                            isLowStock ? "text-red-700" : "text-amber-700"
+                          }`}
+                        >
+                          Түүх <ChevronRight size={12} />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

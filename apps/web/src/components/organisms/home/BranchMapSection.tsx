@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { MapPin, Building2, Navigation } from "lucide-react";
+import "leaflet/dist/leaflet.css";
 import { API } from "@/lib/api";
 
 type BranchPoint = {
@@ -44,11 +45,14 @@ export function BranchMapSection() {
       .then((res) => (res.ok ? res.json() : {}))
       .then((data: Record<string, string>) => {
         const raw = data["show-branch-map"];
-        const enabled = raw === "true" || raw === "1" || raw === "on";
+        // Branch map enabled by default (unless explicitly disabled)
+        const disabled = raw === "false" || raw === "0" || raw === "off";
+        const enabled = !disabled;
         setIsMapEnabled(enabled);
       })
       .catch(() => {
-        setIsMapEnabled(false);
+        // Enable branch map by default if settings cannot be fetched
+        setIsMapEnabled(true);
       })
       .finally(() => setIsVisibilityLoaded(true));
   }, []);
