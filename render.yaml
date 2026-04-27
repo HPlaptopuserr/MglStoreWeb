@@ -16,7 +16,7 @@ services:
     rootDir: .
     runtime: node
     buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/admin
-    startCommand: cd apps/admin && pnpm exec next start -H 0.0.0.0 -p $PORT
+    startCommand: HOST=0.0.0.0 PORT=$PORT node apps/admin/.next/standalone/apps/admin/server.js
     envVars:
       - key: NODE_ENV
         value: production
