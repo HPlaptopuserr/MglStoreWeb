@@ -174,10 +174,10 @@ export default function Dashboard() {
       {/* ── Header ── */}
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-1">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Хяналтын самбар
           </p>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
             {orgName}
           </h1>
         </div>
@@ -226,7 +226,7 @@ export default function Dashboard() {
             {/* Active shipments - hero yellow */}
             <Link
               href="/shipments"
-              className="group col-span-2 relative overflow-hidden rounded-3xl bg-[#FFAD02] p-7 shadow-lg shadow-amber-200/60 hover:shadow-amber-200/80 transition-all hover:-translate-y-0.5"
+              className="group col-span-2 relative overflow-hidden rounded-2xl bg-[#FFAD02] p-6 shadow-lg shadow-amber-200/60 transition-all hover:-translate-y-0.5 hover:shadow-amber-200/80"
             >
               <div className="relative z-10 flex flex-col h-full min-h-[130px] justify-between">
                 <div className="flex items-start justify-between">
@@ -239,35 +239,35 @@ export default function Dashboard() {
                   </span>
                 </div>
                 <div>
-                  <p className="text-6xl font-black tracking-tighter text-black leading-none mb-1">
+                  <p className="mb-1 text-4xl font-bold leading-none text-black">
                     {activeShipments}
                   </p>
-                  <p className="font-bold text-black/60 text-sm">
+                  <p className="text-sm font-medium text-black/60">
                     Нийлүүлэлтийн хүсэлт —{" "}
-                    <span className="text-black/80">
+                    <span className="font-semibold text-black/80">
                       {data?.stockRequests.pending ?? 0} хүлээгдэж,{" "}
                       {data?.stockRequests.approved ?? 0} зөвшөөрсөн
                     </span>
                   </p>
                 </div>
               </div>
-              <div className="absolute -bottom-12 -right-12 h-48 w-48 rounded-full bg-white/15 blur-2xl group-hover:scale-110 transition-transform duration-500" />
+              <div className="absolute -bottom-12 -right-12 h-40 w-40 rounded-full bg-white/15 blur-2xl group-hover:scale-110 transition-transform duration-500" />
             </Link>
 
             {/* Completed */}
             <Link
               href="/shipments"
-              className="group relative overflow-hidden rounded-3xl bg-slate-900 p-7 shadow-lg hover:-translate-y-0.5 transition-all"
+              className="group relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
             >
               <div className="relative z-10 flex flex-col h-full min-h-[130px] justify-between">
                 <div className="rounded-2xl bg-white/10 p-3 w-fit">
                   <CheckCircle2 className="h-5 w-5 text-[#FFAD02]" />
                 </div>
                 <div>
-                  <p className="text-5xl font-black tracking-tighter text-white leading-none mb-1">
+                  <p className="mb-1 text-4xl font-bold leading-none text-white">
                     {data?.stockRequests.completed ?? 0}
                   </p>
-                  <p className="font-bold text-slate-400 text-sm">Хүргэгдсэн</p>
+                  <p className="text-sm font-medium text-slate-300">Хүргэгдсэн</p>
                 </div>
               </div>
               <div className="absolute -bottom-10 -right-10 h-36 w-36 rounded-full bg-[#FFAD02]/10 blur-2xl" />
@@ -276,19 +276,19 @@ export default function Dashboard() {
             {/* Pending payment */}
             <Link
               href="/shipments"
-              className="group rounded-3xl bg-white p-7 shadow-sm border border-slate-100 hover:-translate-y-0.5 transition-all hover:shadow-md"
+              className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
             >
               <div className="flex flex-col h-full min-h-[130px] justify-between">
                 <div className="rounded-2xl bg-rose-50 p-3 w-fit">
                   <CreditCard className="h-5 w-5 text-rose-600" />
                 </div>
                 <div>
-                  <p className="text-3xl font-black tracking-tight text-slate-900 leading-none mb-1">
+                  <p className="mb-1 text-2xl font-bold leading-none text-slate-900">
                     {data?.pendingPayments.totalAmount
                       ? formatMNT(data.pendingPayments.totalAmount)
                       : "0₮"}
                   </p>
-                  <p className="font-bold text-slate-400 text-sm">Төлөх дүн</p>
+                  <p className="text-sm font-medium text-slate-500">Төлөх дүн</p>
                 </div>
               </div>
             </Link>
@@ -331,8 +331,8 @@ export default function Dashboard() {
                   <s.icon size={18} />
                 </div>
                 <div>
-                  <p className="text-2xl font-black text-slate-900">{s.value}</p>
-                  <p className="text-xs font-bold text-slate-500 mt-0.5">{s.label}</p>
+                  <p className="text-xl font-bold text-slate-900">{s.value}</p>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-500">{s.label}</p>
                   <p className="text-[11px] text-slate-400 mt-0.5">{s.sub}</p>
                 </div>
               </Link>
@@ -346,7 +346,7 @@ export default function Dashboard() {
                 <div className="rounded-lg bg-slate-100 p-2">
                   <Boxes size={16} className="text-slate-700" />
                 </div>
-                <h2 className="font-black text-slate-900">Нийлүүлэлтийн хүсэлтийн байдал</h2>
+                <h2 className="text-base font-semibold text-slate-900">Нийлүүлэлтийн хүсэлтийн байдал</h2>
               </div>
               <Link
                 href="/shipments"
@@ -369,8 +369,8 @@ export default function Dashboard() {
                   : 0;
                 return (
                   <div key={s.label} className={`rounded-xl p-4 ${s.color}`}>
-                    <p className="text-2xl font-black">{s.value}</p>
-                    <p className="text-xs font-bold mt-1 opacity-80">{s.label}</p>
+                    <p className="text-xl font-bold">{s.value}</p>
+                    <p className="mt-1 text-xs font-semibold opacity-80">{s.label}</p>
                     <div className="mt-2 h-1.5 rounded-full bg-black/10 overflow-hidden">
                       <div
                         className={`h-full rounded-full ${s.bar} opacity-70`}
@@ -392,7 +392,7 @@ export default function Dashboard() {
                   <div className="rounded-lg bg-slate-100 p-2">
                     <ShoppingCart size={16} className="text-slate-700" />
                   </div>
-                  <h2 className="font-black text-slate-900">Сүүлийн хүсэлтүүд</h2>
+                  <h2 className="text-base font-semibold text-slate-900">Сүүлийн хүсэлтүүд</h2>
                 </div>
                 <Link
                   href="/shipments"
@@ -454,7 +454,7 @@ export default function Dashboard() {
                   <div className="rounded-lg bg-slate-100 p-2">
                     <Zap size={16} className="text-slate-700" />
                   </div>
-                  <h2 className="font-black text-slate-900">Хурдан үйлдэл</h2>
+                  <h2 className="text-base font-semibold text-slate-900">Хурдан үйлдэл</h2>
                 </div>
                 <div className="space-y-2">
                   {[
@@ -473,7 +473,7 @@ export default function Dashboard() {
                           <a.icon size={16} className={a.textColor} />
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-slate-800">{a.label}</p>
+                          <p className="text-sm font-semibold text-slate-800">{a.label}</p>
                           <p className="text-[11px] text-slate-400">{a.desc}</p>
                         </div>
                       </div>
@@ -491,7 +491,7 @@ export default function Dashboard() {
                       <div className="rounded-lg bg-slate-100 p-2">
                         <Wrench size={16} className="text-slate-700" />
                       </div>
-                      <h2 className="font-black text-slate-900 text-sm">Сүүлийн үйлчилгээ</h2>
+                      <h2 className="text-sm font-semibold text-slate-900">Сүүлийн үйлчилгээ</h2>
                     </div>
                     <Link href="/services" className="text-[10px] font-bold text-slate-400 hover:text-slate-600">
                       Бүгд →

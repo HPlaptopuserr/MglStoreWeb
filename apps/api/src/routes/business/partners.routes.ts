@@ -49,7 +49,7 @@ const categoryLabels: Record<string, string> = {
   other: "Бусад",
 };
 
-const MIN_BRANCH_DISTANCE_METERS = 500;
+// 500m radius validation removed - branches can now be located at any distance
 const VENDOR_APP_URL =
   process.env.VENDOR_APP_URL || "https://vendor.mglstore.mn";
 
@@ -431,6 +431,47 @@ router.patch("/partners/:id/investor", requireAuth, requirePlatformPermission(Pe
   }
 });
 
+// PATCH /admin/partners/:id/subdomain — admin manually toggle subdomain
+router.patch(
+  "/admin/partners/:id/subdomain",
+  requireAuth,
+  requireAnyPlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { enabled } = req.body as { enabled: boolean };
+
+      const org = await (prisma.organization.findUnique as any)({
+        where: { id },
+        select: { id: true, slug: true, subdomainEnabled: true },
+      });
+      if (!org) return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+
+      const now = new Date();
+      const expiresAt = enabled ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) : null;
+
+      await (prisma.organization.update as any)({
+        where: { id },
+        data: {
+          subdomainEnabled: enabled,
+          planActivatedAt: enabled ? now : null,
+          planExpiresAt: expiresAt,
+        },
+      });
+
+      return res.json({
+        success: true,
+        subdomainEnabled: enabled,
+        subdomain: `${org.slug}.mglstore.mn`,
+        planExpiresAt: expiresAt,
+      });
+    } catch (error) {
+      console.error("subdomain toggle error", error);
+      return res.status(500).json({ message: "Subdomain өөрчлөхөд алдаа гарлаа" });
+    }
+  },
+);
+
 router.get("/partners", async (req, res) => {
   try {
     const partners = await prisma.organization.findMany({
@@ -499,6 +540,9 @@ router.get("/partners", async (req, res) => {
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
       investmentAmount: partner.investorProfile?.investmentLevel ? Number(partner.investorProfile.investmentLevel) : null,
+      subdomainEnabled: partner.subdomainEnabled,
+      planActivatedAt: partner.planActivatedAt,
+      planExpiresAt: partner.planExpiresAt,
       stats: {
         users: partner._count.members,
         products: partner._count.products,
@@ -811,68 +855,7 @@ router.post("/partners/:id/branches", requireAuth, requirePlatformPermission(Per
       return res.status(400).json({ message: "Өргөрөг/уртраг зөв тоо байх ёстой" });
     }
 
-    if (parsedLat !== null && parsedLng !== null) {
-      const existingBranches = await prisma.branch.findMany({
-        where: {
-          deletedAt: null,
-          lat: { not: null },
-          lng: { not: null },
-        },
-        select: {
-          id: true,
-          name: true,
-          address: true,
-          lat: true,
-          lng: true,
-          organization: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
-      });
-
-      let nearestConflict: {
-        id: string;
-        name: string;
-        address: string;
-        distanceMeters: number;
-        organization: { id: string; name: string };
-      } | null = null;
-
-      for (const branch of existingBranches) {
-        if (branch.lat === null || branch.lng === null) continue;
-
-        const distanceMeters = haversineDistanceMeters(
-          parsedLat,
-          parsedLng,
-          branch.lat,
-          branch.lng,
-        );
-
-        if (distanceMeters < MIN_BRANCH_DISTANCE_METERS) {
-          if (!nearestConflict || distanceMeters < nearestConflict.distanceMeters) {
-            nearestConflict = {
-              id: branch.id,
-              name: branch.name,
-              address: branch.address,
-              distanceMeters,
-              organization: branch.organization,
-            };
-          }
-        }
-      }
-
-      if (nearestConflict) {
-        return res.status(409).json({
-          message:
-            "500м радиус дотор өөр салбар байна. 500м-ээс хол байршил сонгоно уу.",
-          conflict: nearestConflict,
-          minimumDistanceMeters: MIN_BRANCH_DISTANCE_METERS,
-        });
-      }
-    }
+    // 500m radius validation removed - branches can now be located at any distance
 
     const created = await prisma.branch.create({
       data: {
@@ -1004,6 +987,9 @@ router.get("/partners/:slugOrId", async (req, res) => {
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
       investmentAmount: partner.investorProfile?.investmentLevel ? Number(partner.investorProfile.investmentLevel) : null,
+      subdomainEnabled: partner.subdomainEnabled,
+      planActivatedAt: partner.planActivatedAt,
+      planExpiresAt: partner.planExpiresAt,
       stats: {
         users: partner._count.members,
         products: partner._count.products,

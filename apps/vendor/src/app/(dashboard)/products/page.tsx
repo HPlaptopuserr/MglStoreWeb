@@ -361,6 +361,7 @@ export default function ProductsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -517,11 +518,19 @@ export default function ProductsPage() {
     }
   };
 
-  const filtered = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.sku || "").toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  const filtered = products.filter((p) => {
+    const query = searchQuery.toLowerCase();
+    const matchSearch =
+      p.name.toLowerCase().includes(query) ||
+      (p.sku || "").toLowerCase().includes(query);
+
+    const matchStatus =
+      statusFilter === "all" ||
+      (statusFilter === "active" && p.isActive) ||
+      (statusFilter === "inactive" && !p.isActive);
+
+    return matchSearch && matchStatus;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 md:p-6 space-y-6">
@@ -832,14 +841,44 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Product Grid */}
+      {/* Product List */}
       <div>
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-1 h-6 rounded-full bg-amber-600" />
-          <h2 className="text-base font-black text-slate-900">Миний бараа</h2>
-          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-500">
-            {filtered.length}
-          </span>
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-slate-900">Миний бараа</h2>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+              {filtered.length}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+            {[
+              { key: "all", label: "Бүгд", count: products.length },
+              {
+                key: "active",
+                label: "Идэвхтэй",
+                count: products.filter((p) => p.isActive).length,
+              },
+              {
+                key: "inactive",
+                label: "Идэвхгүй",
+                count: products.filter((p) => !p.isActive).length,
+              },
+            ].map((btn) => (
+              <button
+                key={btn.key}
+                onClick={() => setStatusFilter(btn.key as "all" | "active" | "inactive")}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  statusFilter === btn.key
+                    ? "bg-amber-500 text-black"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {btn.label}
+                <span className="ml-1 opacity-70">{btn.count}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
@@ -847,11 +886,11 @@ export default function ProductsPage() {
             <Loader2 size={32} className="animate-spin text-amber-400" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white py-24 text-center">
-            <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
+          <div className="rounded-xl border border-slate-200 bg-white py-24 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-50">
               <Package size={28} className="text-slate-300" />
             </div>
-            <h3 className="text-base font-bold text-slate-800">
+            <h3 className="text-base font-semibold text-slate-800">
               {searchQuery ? "Хайлтад тохирох бараа олдсонгүй" : "Бараа байхгүй байна"}
             </h3>
             {!searchQuery && (
@@ -865,70 +904,115 @@ export default function ProductsPage() {
             )}
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((product) => (
-              <div
-                key={product.id}
-                onClick={() => setSelectedProduct(product)}
-                className="group relative bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-amber-200 transition-all cursor-pointer overflow-hidden"
-              >
-                <div className="relative h-44 bg-slate-50">
-                  {product.images.length > 0 ? (
-                    <img
-                      src={product.images[0].url}
-                      alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Package size={36} className="text-slate-200" />
-                    </div>
-                  )}
-                  <div className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${product.isActive ? "bg-amber-500 text-white" : "bg-slate-300 text-white"}`}>
-                    {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
-                  </div>
-                  {product.images.length > 1 && (
-                    <div className="absolute bottom-2 right-2 bg-black/50 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-sm">
-                      +{product.images.length - 1}
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-4">
-                  <h3 className="font-bold text-slate-900 text-sm leading-tight line-clamp-2">{product.name}</h3>
-                  {product.businessCategory && (
-                    <div className="flex items-center gap-1 mt-1.5">
-                      <Tag size={10} className="text-amber-400" />
-                      <span className="text-[11px] text-amber-600 font-medium">{product.businessCategory.name}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between mt-3">
-                    <span className="text-base font-black text-slate-900">₮{Number(product.price).toLocaleString()}</span>
-                    <span className="text-xs text-slate-400 font-medium">{product.stock} ш</span>
-                  </div>
-                  {product.sku && (
-                    <p className="text-[10px] font-mono text-slate-300 mt-1">{product.sku}</p>
-                  )}
-                </div>
-
-                <div className="absolute inset-x-0 bottom-0 flex opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openEdit(product); }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors"
-                  >
-                    <Pencil size={12} />
-                    Засах
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(product.id); }}
-                    disabled={deletingId === product.id}
-                    className="w-12 flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
-                  >
-                    {deletingId === product.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                  </button>
-                </div>
-              </div>
-            ))}
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-3 font-semibold">Бараа</th>
+                    <th className="px-4 py-3 font-semibold">SKU</th>
+                    <th className="px-4 py-3 font-semibold">Ангилал</th>
+                    <th className="px-4 py-3 text-right font-semibold">Үнэ</th>
+                    <th className="px-4 py-3 text-right font-semibold">Нөөц</th>
+                    <th className="px-4 py-3 font-semibold">Төлөв</th>
+                    <th className="px-4 py-3 text-right font-semibold">Үйлдэл</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((product) => (
+                    <tr
+                      key={product.id}
+                      className="cursor-pointer border-b border-slate-50 transition-colors last:border-0 hover:bg-amber-50/40"
+                      onClick={() => setSelectedProduct(product)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+                            {product.images.length > 0 ? (
+                              <img
+                                src={product.images[0].url}
+                                alt={product.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <Package size={16} className="text-slate-300" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-900">{product.name}</p>
+                            {product.description && (
+                              <p className="truncate text-xs text-slate-400">{product.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                        {product.sku || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {product.businessCategory?.name || "Ангилалгүй"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                        ₮{Number(product.price).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-700">
+                        {product.stock}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            product.isActive
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-slate-100 text-slate-500"
+                          }`}
+                        >
+                          {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEdit(product);
+                            }}
+                            className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                            aria-label="Засах"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleActive(product);
+                            }}
+                            className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                            aria-label="Төлөв өөрчлөх"
+                          >
+                            {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(product.id);
+                            }}
+                            disabled={deletingId === product.id}
+                            className="rounded-md p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            aria-label="Устгах"
+                          >
+                            {deletingId === product.id ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

@@ -33,3 +33,5 @@ export { chatRoutes, dmRoutes } from "./chat";
 
 export { storeCheckoutRoutes } from "./store";
 export { vendorOrderRoutes } from "./store";
+export { default as vendorMerchantRoutes } from "./vendor/vendor-merchant.routes";
+export { default as vendorUpgradeRoutes } from "./vendor/vendor-upgrade.routes";

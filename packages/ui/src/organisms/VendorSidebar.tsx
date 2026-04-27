@@ -17,6 +17,7 @@ import {
   ChevronRight,
   CreditCard,
   ShoppingCart,
+  Crown,
 } from "lucide-react";
 
 function cn(...classes: Array<string | false | undefined>) {
@@ -33,6 +34,7 @@ const navigation = [
   { name: "Түгээгчийн мэдээлэл", href: "/drivers", icon: Users },
   { name: "Хүсэлтүүд", href: "/requests", icon: ClipboardList },
   { name: "Төлбөр", href: "/payments", icon: CreditCard },
+  { name: "Pro Upgrade", href: "/upgrade", icon: Crown },
 ];
 
 export interface VendorSidebarProps {
@@ -49,14 +51,22 @@ export function VendorSidebar({ onSignOut, showPos = false, showSupplyProducts =
     if (item.href === "/service-posts") return showServicePosts;
     return true;
   });
+
+  const regularNav = filteredNavigation.filter((item) => item.href !== "/upgrade");
+  const upgradeNav = filteredNavigation.filter((item) => item.href === "/upgrade");
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
+    <>
+    <div
+      className={`${isCollapsed ? "w-[84px]" : "w-[252px]"} shrink-0 transition-all duration-300 hidden md:block`}
+      style={{ width: isCollapsed ? 84 : 252 }}
+    />
     <aside
       className={`${
-        isCollapsed ? "w-[88px]" : "w-64"
-      } sticky top-0 flex h-screen shrink-0 flex-col border-r border-white/10 bg-black text-white shadow-2xl transition-all duration-300`}
+        isCollapsed ? "w-[84px]" : "w-[252px]"
+      } fixed left-0 top-0 z-40 flex h-screen shrink-0 flex-col border-r border-white/10 bg-black text-white transition-all duration-300 hidden md:flex`}
     >
       <button
         type="button"
@@ -71,18 +81,18 @@ export function VendorSidebar({ onSignOut, showPos = false, showSupplyProducts =
         )}
       </button>
 
-      <div className={`flex h-24 items-center ${isCollapsed ? "justify-center px-2" : "px-8"}`}>
+      <div className={`flex h-16 items-center border-b border-white/10 ${isCollapsed ? "justify-center px-2" : "px-4"}`}>
         <div className={`flex items-center ${isCollapsed ? "" : "space-x-3"}`}>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FFAD02] shadow-[0_0_15px_rgba(255,173,2,0.4)]">
-            <Truck className="h-6 w-6 text-black" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FFAD02] shadow-[0_0_15px_rgba(255,173,2,0.4)]">
+            <Truck className="h-5 w-5 text-black" />
           </div>
 
           {!isCollapsed && (
             <div>
-              <h1 className="text-xl font-black tracking-tighter text-white">
+              <h1 className="text-lg font-bold tracking-tight text-white">
                 MGL<span className="text-[#FFAD02]">Store</span>
               </h1>
-              <p className="text-[10px] font-medium uppercase tracking-widest text-white/40">
+              <p className="text-[11px] font-medium text-white/40">
                 Marrow
               </p>
             </div>
@@ -90,15 +100,15 @@ export function VendorSidebar({ onSignOut, showPos = false, showSupplyProducts =
         </div>
       </div>
 
-      <div className={`flex-1 overflow-y-auto py-6 ${isCollapsed ? "px-2" : "px-4"}`}>
+      <div className={`flex-1 overflow-y-auto py-4 ${isCollapsed ? "px-2" : "px-3"}`}>
         <nav className="space-y-2">
           {!isCollapsed && (
-            <p className="mb-4 px-4 text-xs font-bold uppercase tracking-wider text-white/30">
+            <p className="mb-3 px-2 text-[11px] font-semibold uppercase tracking-wide text-white/30">
               Цэс
             </p>
           )}
 
-          {filteredNavigation.map((item) => {
+          {regularNav.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + "/");
             const isPosActive = isActive && item.href === "/pos";
@@ -109,8 +119,8 @@ export function VendorSidebar({ onSignOut, showPos = false, showSupplyProducts =
                 href={item.href}
                 title={isCollapsed ? item.name : undefined}
                 className={cn(
-                  "group flex items-center rounded-2xl text-sm font-bold transition-all duration-300",
-                  isCollapsed ? "justify-center px-0 py-3.5" : "px-4 py-3.5",
+                  "group flex items-center rounded-lg text-sm font-medium transition-all duration-200",
+                  isCollapsed ? "justify-center px-0 py-2.5" : "px-3 py-2.5",
                   isPosActive
                     ? "bg-emerald-500 text-white shadow-[0_0_22px_rgba(16,185,129,0.35)] ring-2 ring-emerald-300/40"
                     : isActive
@@ -120,7 +130,7 @@ export function VendorSidebar({ onSignOut, showPos = false, showSupplyProducts =
               >
                 <item.icon
                   className={cn(
-                    "h-5 w-5 shrink-0",
+                    "h-4.5 w-4.5 shrink-0",
                     !isCollapsed && "mr-3",
                     isPosActive
                       ? "text-white"
@@ -136,15 +146,41 @@ export function VendorSidebar({ onSignOut, showPos = false, showSupplyProducts =
         </nav>
       </div>
 
-      <div className={`border-t border-white/10 ${isCollapsed ? "p-3" : "p-6"}`}>
+      <div className={`border-t border-white/10 ${isCollapsed ? "p-3" : "p-4"} space-y-2`}>
+        {upgradeNav.map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              title={isCollapsed ? item.name : undefined}
+              className={cn(
+                "group flex items-center rounded-lg text-sm font-bold transition-all duration-200",
+                isCollapsed ? "justify-center px-0 py-2.5" : "px-3 py-2.5",
+                isActive
+                  ? "bg-[#FFAD02] text-black shadow-[0_0_20px_rgba(255,173,2,0.25)]"
+                  : "bg-[#FFAD02]/15 text-[#FFAD02] hover:bg-[#FFAD02]/25",
+              )}
+            >
+              <item.icon
+                className={cn(
+                  "h-4.5 w-4.5 shrink-0",
+                  !isCollapsed && "mr-3",
+                  isActive ? "text-black" : "text-[#FFAD02]",
+                )}
+              />
+              {!isCollapsed && item.name}
+            </Link>
+          );
+        })}
         <button
           onClick={onSignOut}
           title={isCollapsed ? "Гарах" : undefined}
-          className="group flex w-full items-center justify-center rounded-2xl px-4 py-4 text-sm font-bold text-white/60 transition-all duration-300 hover:bg-red-500/20 hover:text-red-400"
+          className="group flex w-full items-center justify-center rounded-lg px-3 py-2.5 text-sm font-semibold text-white/60 transition-all duration-200 hover:bg-red-500/20 hover:text-red-400"
         >
           <LogOut
             className={cn(
-              "h-5 w-5 transition-transform group-hover:scale-110",
+              "h-4.5 w-4.5 transition-transform group-hover:scale-110",
               !isCollapsed && "mr-3",
             )}
           />
@@ -152,5 +188,6 @@ export function VendorSidebar({ onSignOut, showPos = false, showSupplyProducts =
         </button>
       </div>
     </aside>
+    </>
   );
 }

@@ -22,6 +22,8 @@ import {
   EyeOff,
   Copy,
   Check,
+  Globe,
+  Crown,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 
@@ -39,6 +41,7 @@ export default function PartnerDetailsPage() {
   const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [subdomainSaving, setSubdomainSaving] = useState(false);
 
   useEffect(() => {
     const fetchPartner = async () => {
@@ -161,6 +164,33 @@ export default function PartnerDetailsPage() {
       setCopiedId(userId);
       setTimeout(() => setCopiedId(null), 2000);
     });
+  };
+
+  const handleSubdomainToggle = async (enable: boolean) => {
+    if (!partner) return;
+    const msg = enable
+      ? `${partner.slug}.mglstore.mn субдомайн идэвхжүүлэхдээ итгэлтэй байна уу?`
+      : "Субдомайн идэвхгүй болгохдоо итгэлтэй байна уу?";
+    if (!confirm(msg)) return;
+    setSubdomainSaving(true);
+    try {
+      const res = await adminFetch(`${API}/admin/partners/${partner.id}/subdomain`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: enable }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setPartner((prev: any) => ({
+        ...prev,
+        subdomainEnabled: data.subdomainEnabled,
+        planExpiresAt: data.planExpiresAt,
+      }));
+    } catch {
+      alert("Субдомайн өөрчлөхөд алдаа гарлаа");
+    } finally {
+      setSubdomainSaving(false);
+    }
   };
 
   if (isLoading) {
@@ -455,6 +485,62 @@ export default function PartnerDetailsPage() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Subdomain Section */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <Globe size={20} className="text-indigo-500" />
+              Веб субдомайн
+            </h3>
+
+            <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <p className="text-xs font-semibold text-slate-400 mb-1">Хаяг</p>
+              <p className="text-sm font-bold font-mono text-slate-800 break-all">
+                {partner.slug}.mglstore.mn
+              </p>
+            </div>
+
+            {partner.subdomainEnabled ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <CheckCircle2 size={16} className="text-emerald-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800">Идэвхтэй</p>
+                    {partner.planExpiresAt && (
+                      <p className="text-xs text-emerald-600">
+                        Дуусах: {new Date(partner.planExpiresAt).toLocaleDateString("mn-MN")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleSubdomainToggle(false)}
+                  disabled={subdomainSaving}
+                  className="w-full px-4 py-2.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-600 text-sm font-medium rounded-xl transition-colors"
+                >
+                  {subdomainSaving ? "Боловсруулж байна..." : "Идэвхгүй болгох"}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-500">
+                  Энэ түншид субдомайн идэвхжүүлэх (1 сар).
+                </p>
+                <button
+                  onClick={() => handleSubdomainToggle(true)}
+                  disabled={subdomainSaving}
+                  className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  {subdomainSaving ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Crown size={16} />
+                  )}
+                  {subdomainSaving ? "Боловсруулж байна..." : "Субдомайн идэвхжүүлэх"}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Investor Section */}

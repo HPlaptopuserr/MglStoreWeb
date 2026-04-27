@@ -315,6 +315,15 @@ model Organization {
   deletionReason               String?
   scheduledPermanentDeletionAt DateTime?
   maxMembers                   Int                     @default(5)
+  qpayMerchantId               String?                 @unique
+  qpayMerchantKey              String?
+  qpayEnabled                  Boolean                 @default(false)
+  qpayConnectedAt              DateTime?
+  subdomainEnabled             Boolean                 @default(false)
+  planType                     String?
+  planActivatedAt              DateTime?
+  planExpiresAt                DateTime?
+  trialUsed                    Boolean                 @default(false)
   attendanceRecords            AttendanceRecord[]      @relation("OrgAttendanceRecords")
   attendanceZones              AttendanceZone[]
   branches                     Branch[]
@@ -337,10 +346,34 @@ model Organization {
   posShifts                    PosShift[]
   posSales                     PosSale[]
 
+  upgradePlans                 OrgUpgradePlan[]
+
   @@index([type])
   @@index([status])
   @@index([deletedAt])
   @@index([scheduledPermanentDeletionAt])
+  @@index([subdomainEnabled])
+}
+
+model OrgUpgradePlan {
+  id             String            @id @default(uuid())
+  organizationId String
+  planType       String
+  invoiceId      String            @unique
+  invoiceNo      String            @unique
+  qrText         String
+  amount         Decimal           @db.Decimal(18, 2)
+  status         PlanPaymentStatus @default(PENDING)
+  paidAt         DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([invoiceId])
+  @@index([createdAt])
 }
 
 model ServicePost {
@@ -1474,6 +1507,13 @@ enum PosQPayStatus {
   PENDING
   PAID
   EXPIRED
+}
+
+enum PlanPaymentStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
 }
 
 enum ServiceRequestType {

@@ -34,6 +34,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
+import { MerchantSettingsSection } from "./merchant-settings";
 
 type BusinessCategory = {
   id: string;
@@ -86,6 +87,9 @@ export default function ProfilePage() {
     deliveryPrice: "",
     operatingYears: 1,
   });
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<"profile" | "merchant">("profile");
 
   const uploadOrgImage = async (file: File): Promise<string | null> => {
     const fd = new FormData();
@@ -162,6 +166,7 @@ export default function ProfilePage() {
           localStorage.getItem("vendor_user") || "{}",
         );
         const userEmail = storedUser.email;
+        const orgId = storedUser.organizationId;
 
         const [partnersRes, catsRes] = await Promise.all([
           authFetch(`${API}/partners`, { cache: "no-store" }),
@@ -170,9 +175,9 @@ export default function ProfilePage() {
 
         if (catsRes.ok) setCategories(await catsRes.json());
 
-        if (partnersRes.ok && userEmail) {
+        if (partnersRes.ok && (userEmail || orgId)) {
           const data = await partnersRes.json();
-          const found = data.find((p: any) => p.email === userEmail);
+          const found = data.find((p: any) => p.id === orgId || p.email === userEmail);
           if (found) {
             setPartner(found);
             // Initialize form data
