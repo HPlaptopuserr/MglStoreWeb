@@ -1,6 +1,7 @@
 "use client";
 
-import { Loader2, Phone, ShieldCheck } from "lucide-react";
+import { Check, Copy, Loader2, ShieldCheck } from "lucide-react";
+import { useState } from "react";
 
 export type VerifyMnSession = {
   sessionId: string;
@@ -32,6 +33,17 @@ export function VerifyMnPanel({
   onVerify,
 }: VerifyMnPanelProps) {
   const isExpired = remainingSeconds <= 0;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopySmsText = async () => {
+    try {
+      await navigator.clipboard.writeText(session.text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -69,13 +81,14 @@ export function VerifyMnPanel({
           Дахин эхлүүлэх
         </button>
       ) : (
-        <a
-          href={session.smsUri}
+        <button
+          type="button"
+          onClick={handleCopySmsText}
           className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-bold text-white transition-all hover:bg-gray-800"
         >
-          <Phone className="h-4 w-4" />
-          SMS илгээх
-        </a>
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          {copied ? "Хуулагдлаа" : "SMS текст хуулах"}
+        </button>
       )}
 
       {error && (
