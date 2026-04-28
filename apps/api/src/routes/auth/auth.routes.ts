@@ -107,7 +107,7 @@ async function createVerifyMnSession(phone: string): Promise<VerifyMnSessionResp
     },
     body: JSON.stringify({
       phone,
-      text: `MGL ${nonce}`,
+      text: nonce,
       callback,
     }),
   });
