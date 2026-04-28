@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useRef } from "react";
-import { User, Loader2, Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { User, Loader2, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2 } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 import { VerifyMnPanel, type VerifyMnSession } from "./VerifyMnPanel";
 
 type AuthTab = "login" | "register";
-type ForgotStep = "identifier" | "verifyMn" | "code" | "newPassword" | "done";
+type ForgotStep = "identifier" | "verifyMn" | "newPassword" | "done";
 
 interface LoginModalProps {
   open: boolean;
@@ -15,6 +15,25 @@ interface LoginModalProps {
   onRegister: (fullName: string, identifier: string, password: string) => Promise<void>;
   isLoading: boolean;
   error: string;
+}
+
+type ApiPayload = {
+  message?: string;
+  channel?: string;
+  session?: VerifyMnSession;
+  resetToken?: string;
+};
+
+const FRIENDLY_API_ERROR = "Серверээс буруу хариу ирлээ. API тохиргоогоо шалгаад дахин оролдоно уу.";
+
+async function readApiPayload(res: Response): Promise<ApiPayload> {
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return res.json().catch(() => ({}));
+  }
+
+  await res.text().catch(() => "");
+  return { message: FRIENDLY_API_ERROR };
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({
@@ -37,11 +56,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [verifyMnSession, setVerifyMnSession] = useState<VerifyMnSession | null>(null);
   const [verifyMnNow, setVerifyMnNow] = useState(() => Date.now());
 
-  // Forgot password state
   const [showForgot, setShowForgot] = useState(false);
   const [forgotStep, setForgotStep] = useState<ForgotStep>("identifier");
   const [forgotIdentifier, setForgotIdentifier] = useState("");
-  const [forgotCode, setForgotCode] = useState(["", "", "", ""]);
   const [forgotNewPassword, setForgotNewPassword] = useState("");
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
   const [forgotResetToken, setForgotResetToken] = useState("");
@@ -49,7 +66,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [forgotError, setForgotError] = useState("");
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showForgotConfirm, setShowForgotConfirm] = useState(false);
-  const codeRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
     if (!verifyMnSession) return;
@@ -85,13 +101,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setShowForgot(true);
     setForgotStep("identifier");
     setForgotIdentifier("");
-    setForgotCode(["", "", "", ""]);
     setForgotNewPassword("");
     setForgotConfirmPassword("");
     setForgotResetToken("");
     setForgotError("");
     setForgotLoading(false);
     setVerifyMnSession(null);
+    setShowForgotPassword(false);
+    setShowForgotConfirm(false);
   };
 
   const closeForgot = () => {
@@ -101,73 +118,45 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setForgotResetToken("");
   };
 
+  const backFromForgot = () => {
+    if (forgotStep === "identifier" || forgotStep === "done") {
+      closeForgot();
+      return;
+    }
+
+    setForgotStep("identifier");
+    setVerifyMnSession(null);
+    setForgotResetToken("");
+    setForgotError("");
+  };
+
   const handleForgotSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotError("");
-    if (!forgotIdentifier.trim()) {
-      setForgotError("И-мэйл эсвэл утасны дугаараа оруулна уу");
+
+    const phone = forgotIdentifier.trim();
+    const isPhone = /^[0-9+\-\s()]{7,16}$/.test(phone) && !phone.includes("@");
+    if (!isPhone) {
+      setForgotError("Нууц үг сэргээхэд бүртгэлтэй утасны дугаараа оруулна уу.");
       return;
     }
+
     setForgotLoading(true);
     try {
-      const isPhone = /^[0-9+\-\s()]{7,15}$/.test(forgotIdentifier.trim()) && !forgotIdentifier.includes("@");
       const res = await fetch(`${API_BASE}/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isPhone ? { phone: forgotIdentifier.trim() } : { email: forgotIdentifier.trim().toLowerCase() }),
+        body: JSON.stringify({ phone }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Алдаа гарлаа");
-      if (isPhone && data?.channel === "verifyMn" && data?.session) {
-        setVerifyMnSession(data.session);
-        setVerifyMnNow(Date.now());
-        setForgotStep("verifyMn");
-      } else {
-        setForgotStep("code");
-      }
+      const data = await readApiPayload(res);
+      if (!res.ok) throw new Error(data.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
+      if (!data.session) throw new Error(data.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
+
+      setVerifyMnSession(data.session);
+      setVerifyMnNow(Date.now());
+      setForgotStep("verifyMn");
     } catch (err) {
-      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа");
-    } finally {
-      setForgotLoading(false);
-    }
-  };
-
-  const handleCodeChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-    const newCode = [...forgotCode];
-    newCode[index] = value.slice(-1);
-    setForgotCode(newCode);
-    if (value && index < 3) {
-      codeRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleCodeKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === "Backspace" && !forgotCode[index] && index > 0) {
-      codeRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handleForgotVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setForgotError("");
-    const code = forgotCode.join("");
-    if (code.length < 4) {
-      setForgotError("4 оронтой кодыг бүрэн оруулна уу");
-      return;
-    }
-    setForgotLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/auth/verify-reset-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Код буруу байна");
-      setForgotStep("newPassword");
-    } catch (err) {
-      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа");
+      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа.");
     } finally {
       setForgotLoading(false);
     }
@@ -190,13 +179,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           sessionId: verifyMnSession.sessionId,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Verify.mn баталгаажуулахад алдаа гарлаа");
-      setForgotResetToken(data.resetToken || "");
+      const data = await readApiPayload(res);
+      if (!res.ok) throw new Error(data.message || "Verify.mn баталгаажуулахад алдаа гарлаа.");
+      if (!data.resetToken) throw new Error("Нууц үг шинэчлэх эрх үүссэнгүй. Дахин оролдоно уу.");
+
+      setForgotResetToken(data.resetToken);
       setVerifyMnSession(null);
       setForgotStep("newPassword");
     } catch (err) {
-      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа");
+      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа.");
     } finally {
       setForgotLoading(false);
     }
@@ -206,30 +197,34 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     e.preventDefault();
     setForgotError("");
     if (forgotNewPassword.length < 6) {
-      setForgotError("Нууц үг дор хаяж 6 тэмдэгт байх ёстой");
+      setForgotError("Нууц үг дор хаяж 6 тэмдэгт байх ёстой.");
       return;
     }
     if (forgotNewPassword !== forgotConfirmPassword) {
-      setForgotError("Нууц үгүүд таарахгүй байна");
+      setForgotError("Нууц үгүүд таарахгүй байна.");
       return;
     }
+    if (!forgotResetToken) {
+      setForgotError("Баталгаажуулалт дууссангүй. Утасны баталгаажуулалтаа дахин хийнэ үү.");
+      return;
+    }
+
     setForgotLoading(true);
     try {
-      const code = forgotCode.join("");
       const res = await fetch(`${API_BASE}/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          code: forgotResetToken ? undefined : code,
-          resetToken: forgotResetToken || undefined,
+          resetToken: forgotResetToken,
           password: forgotNewPassword,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Алдаа гарлаа");
+      const data = await readApiPayload(res);
+      if (!res.ok) throw new Error(data.message || "Нууц үг шинэчлэхэд алдаа гарлаа.");
+
       setForgotStep("done");
     } catch (err) {
-      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа");
+      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа.");
     } finally {
       setForgotLoading(false);
     }
@@ -290,19 +285,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         type="button"
         onClick={onClose}
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        aria-label="Close login modal"
+        aria-label="Нэвтрэх цонх хаах"
       />
 
       <div className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl shadow-2xl">
-        <div className="grid md:grid-cols-2 bg-white">
-          <div className="p-6 sm:p-8 flex flex-col justify-center">
+        <div className="grid bg-white md:grid-cols-2">
+          <div className="flex flex-col justify-center p-6 sm:p-8">
             {showForgot ? (
-              /* ── Forgot Password Flow ─────────────────────────── */
               <div>
                 <button
                   type="button"
-                  onClick={forgotStep === "done" ? closeForgot : forgotStep === "identifier" ? closeForgot : () => setForgotStep(forgotStep === "code" ? "identifier" : forgotStep === "newPassword" ? "code" : "identifier")}
-                  className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-6 transition-colors"
+                  onClick={backFromForgot}
+                  className="mb-6 inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-gray-700"
                 >
                   <ArrowLeft size={16} />
                   {forgotStep === "identifier" || forgotStep === "done" ? "Нэвтрэх рүү буцах" : "Буцах"}
@@ -310,22 +304,22 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
                 {forgotStep === "identifier" && (
                   <form onSubmit={handleForgotSendCode} className="space-y-4">
-                    <div className="text-center mb-2">
-                      <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-4">
+                    <div className="mb-2 text-center">
+                      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50">
                         <KeyRound size={28} className="text-amber-500" />
                       </div>
                       <h2 className="text-xl font-black text-gray-900">Нууц үг сэргээх</h2>
-                      <p className="text-sm text-gray-500 mt-1">Бүртгэлтэй и-мэйл эсвэл утасны дугаараа оруулна уу</p>
+                      <p className="mt-1 text-sm text-gray-500">Бүртгэлтэй утасны дугаараа оруулна уу.</p>
                     </div>
                     <div>
                       <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                        И-мэйл эсвэл утас
+                        Утасны дугаар
                       </label>
                       <input
                         type="text"
                         value={forgotIdentifier}
                         onChange={(e) => setForgotIdentifier(e.target.value)}
-                        placeholder="name@mail.com эсвэл 99112233"
+                        placeholder="99112233"
                         className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
                         autoFocus
                       />
@@ -338,10 +332,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     <button
                       type="submit"
                       disabled={forgotLoading}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-lg disabled:opacity-70"
                     >
-                      {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                      {forgotLoading ? "Илгээж байна..." : "Код илгээх"}
+                      {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                      {forgotLoading ? "Эхлүүлж байна..." : "Баталгаажуулалт эхлүүлэх"}
                     </button>
                   </form>
                 )}
@@ -362,57 +356,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   />
                 )}
 
-                {forgotStep === "code" && (
-                  <form onSubmit={handleForgotVerifyCode} className="space-y-4">
-                    <div className="text-center mb-2">
-                      <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
-                        <ShieldCheck size={28} className="text-blue-500" />
-                      </div>
-                      <h2 className="text-xl font-black text-gray-900">Баталгаажуулах код</h2>
-                      <p className="text-sm text-gray-500 mt-1">
-                        <span className="font-medium text-gray-700">{forgotIdentifier}</span> руу илгээсэн 4 оронтой кодыг оруулна уу
-                      </p>
-                    </div>
-                    <div className="flex justify-center gap-3">
-                      {forgotCode.map((digit, i) => (
-                        <input
-                          key={i}
-                          ref={(el) => { codeRefs.current[i] = el; }}
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={1}
-                          value={digit}
-                          onChange={(e) => handleCodeChange(i, e.target.value)}
-                          onKeyDown={(e) => handleCodeKeyDown(i, e)}
-                          className="w-14 h-14 text-center text-2xl font-bold rounded-xl border border-gray-200 bg-gray-50 outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                          autoFocus={i === 0}
-                        />
-                      ))}
-                    </div>
-                    {forgotError && (
-                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                        {forgotError}
-                      </div>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={forgotLoading}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
-                    >
-                      {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      {forgotLoading ? "Шалгаж байна..." : "Баталгаажуулах"}
-                    </button>
-                  </form>
-                )}
-
                 {forgotStep === "newPassword" && (
                   <form onSubmit={handleForgotResetPassword} className="space-y-4">
-                    <div className="text-center mb-2">
-                      <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                    <div className="mb-2 text-center">
+                      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50">
                         <Lock size={28} className="text-emerald-500" />
                       </div>
                       <h2 className="text-xl font-black text-gray-900">Шинэ нууц үг</h2>
-                      <p className="text-sm text-gray-500 mt-1">Шинэ нууц үгээ оруулна уу</p>
+                      <p className="mt-1 text-sm text-gray-500">Шинэ нууц үгээ оруулна уу.</p>
                     </div>
                     <div>
                       <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
@@ -425,9 +376,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                           onChange={(e) => setForgotNewPassword(e.target.value)}
                           placeholder="••••••••"
                           className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                          autoFocus
                         />
-                        <button type="button" onClick={() => setShowForgotPassword(!showForgotPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        <button
+                          type="button"
+                          onClick={() => setShowForgotPassword(!showForgotPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          aria-label={showForgotPassword ? "Нууц үг нуух" : "Нууц үг харах"}
+                        >
                           {showForgotPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
                       </div>
@@ -444,7 +399,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                           placeholder="••••••••"
                           className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
                         />
-                        <button type="button" onClick={() => setShowForgotConfirm(!showForgotConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        <button
+                          type="button"
+                          onClick={() => setShowForgotConfirm(!showForgotConfirm)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          aria-label={showForgotConfirm ? "Нууц үг нуух" : "Нууц үг харах"}
+                        >
                           {showForgotConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
                       </div>
@@ -457,7 +417,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     <button
                       type="submit"
                       disabled={forgotLoading}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-lg disabled:opacity-70"
                     >
                       {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
                       {forgotLoading ? "Хадгалж байна..." : "Нууц үг шинэчлэх"}
@@ -466,16 +426,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 )}
 
                 {forgotStep === "done" && (
-                  <div className="text-center space-y-4 py-4">
-                    <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto">
+                  <div className="space-y-4 py-4 text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
                       <CheckCircle2 size={36} className="text-emerald-500" />
                     </div>
                     <h2 className="text-xl font-black text-gray-900">Амжилттай!</h2>
-                    <p className="text-sm text-gray-500">Нууц үг амжилттай шинэчлэгдлээ. Одоо шинэ нууц үгээрээ нэвтрэх боломжтой.</p>
+                    <p className="text-sm text-gray-500">
+                      Нууц үг амжилттай шинэчлэгдлээ. Одоо шинэ нууц үгээрээ нэвтрэх боломжтой.
+                    </p>
                     <button
                       type="button"
                       onClick={closeForgot}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-lg"
                     >
                       Нэвтрэх рүү буцах
                     </button>
@@ -483,290 +445,264 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 )}
               </div>
             ) : (
-              /* ── Login / Register Tabs ─────────────────────────── */
               <>
-            <div className="mb-8">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">//</span>
-                </div>
-                <span className="text-xs font-bold uppercase tracking-widest text-gray-600">
-                  MGL Store
-                </span>
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-black text-gray-900">
-                {tab === "login" ? "Нэвтрэх" : "Шинэ бүртгүүлээ"}
-              </h2>
-            </div>
-
-            <div className="flex gap-2 mb-6 border-b border-gray-200">
-              <button
-                onClick={() => handleTabChange("login")}
-                className={`pb-3 px-4 text-sm font-bold transition-colors ${
-                  tab === "login"
-                    ? "border-b-2 border-amber-500 text-amber-600"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                Нэвтрэх
-              </button>
-              <button
-                onClick={() => handleTabChange("register")}
-                className={`pb-3 px-4 text-sm font-bold transition-colors ${
-                  tab === "register"
-                    ? "border-b-2 border-amber-500 text-amber-600"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                Бүртгүүлэх
-              </button>
-            </div>
-
-            {/* Forms */}
-            {tab === "login" ? (
-              <form onSubmit={handleLoginSubmit} className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                    И-мэйл эсвэл утас
-                  </label>
-                  <input
-                    type="text"
-                    value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="name@mail.com эсвэл 99112233"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                    Нууц үг
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
+                <div className="mb-8">
+                  <div className="mb-4 flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-600">
+                      <span className="text-sm font-bold text-white">//</span>
+                    </div>
+                    <span className="text-xs font-bold uppercase tracking-widest text-gray-600">MGL Store</span>
                   </div>
+                  <h2 className="text-2xl font-black text-gray-900 sm:text-3xl">
+                    {tab === "login" ? "Нэвтрэх" : "Шинэ бүртгэл"}
+                  </h2>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="remember"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-amber-500 cursor-pointer"
-                    />
-                    <label htmlFor="remember" className="ml-2 text-sm text-gray-700 cursor-pointer">
-                      Намайг санах
-                    </label>
-                  </div>
+                <div className="mb-6 flex gap-2 border-b border-gray-200">
                   <button
                     type="button"
-                    onClick={openForgot}
-                    className="text-sm font-medium text-amber-600 hover:text-amber-500 transition-colors"
+                    onClick={() => handleTabChange("login")}
+                    className={`px-4 pb-3 text-sm font-bold transition-colors ${
+                      tab === "login" ? "border-b-2 border-amber-500 text-amber-600" : "text-gray-600 hover:text-gray-900"
+                    }`}
                   >
-                    Нууц үгээ мартсан?
+                    Нэвтрэх
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange("register")}
+                    className={`px-4 pb-3 text-sm font-bold transition-colors ${
+                      tab === "register" ? "border-b-2 border-amber-500 text-amber-600" : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Бүртгүүлэх
                   </button>
                 </div>
 
-                {displayError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                    {displayError}
-                  </div>
+                {tab === "login" ? (
+                  <form onSubmit={handleLoginSubmit} className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                        И-мэйл эсвэл утас
+                      </label>
+                      <input
+                        type="text"
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
+                        placeholder="name@mail.com эсвэл 99112233"
+                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                        Нууц үг
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          aria-label={showPassword ? "Нууц үг нуух" : "Нууц үг харах"}
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="remember"
+                          checked={rememberMe}
+                          onChange={(e) => setRememberMe(e.target.checked)}
+                          className="h-4 w-4 cursor-pointer rounded border-gray-300 text-amber-500"
+                        />
+                        <label htmlFor="remember" className="ml-2 cursor-pointer text-sm text-gray-700">
+                          Намайг санах
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={openForgot}
+                        className="text-sm font-medium text-amber-600 transition-colors hover:text-amber-500"
+                      >
+                        Нууц үгээ мартсан?
+                      </button>
+                    </div>
+
+                    {displayError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                        {displayError}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-lg disabled:opacity-70"
+                    >
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
+                      {isLoading ? "Шалгаж байна..." : "Нэвтрэх"}
+                    </button>
+
+                    <div className="flex items-center gap-3">
+                      <div className="h-px flex-1 bg-gray-200" />
+                      <span className="text-xs text-gray-500">эсвэл</span>
+                      <div className="h-px flex-1 bg-gray-200" />
+                    </div>
+
+                    <div className="flex gap-3">
+                      {["○", "●", "●"].map((label, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                          aria-label={`Нэвтрэх сонголт ${index + 1}`}
+                        >
+                          <span className="text-base leading-none">{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </form>
+                ) : (
+                  <form onSubmit={handleRegisterSubmit} className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                        Нэр
+                      </label>
+                      <input
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="Таны нэрийг оруулна уу"
+                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                        И-мэйл эсвэл утас
+                      </label>
+                      <input
+                        type="text"
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
+                        placeholder="name@mail.com эсвэл 99112233"
+                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                        Нууц үг
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          aria-label={showPassword ? "Нууц үг нуух" : "Нууц үг харах"}
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                        Нууц үг давтах
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showConfirmPassword ? "text" : "password"}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          aria-label={showConfirmPassword ? "Нууц үг нуух" : "Нууц үг харах"}
+                        >
+                          {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {displayError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                        {displayError}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-lg disabled:opacity-70"
+                    >
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
+                      {isLoading ? "Бүртгүүлж байна..." : "Бүртгүүлэх"}
+                    </button>
+                  </form>
                 )}
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <User className="h-4 w-4" />
-                  )}
-                  {isLoading ? "Шалгаж байна..." : "Нэвтрэх"}
-                </button>
-
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-px bg-gray-200" />
-                  <span className="text-xs text-gray-500">эсвэл</span>
-                  <div className="flex-1 h-px bg-gray-200" />
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 0C5.372 0 0 5.373 0 12s5.372 12 12 12 12-5.373 12-12S18.628 0 12 0zm0 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0z" />
-                    </svg>
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <form onSubmit={handleRegisterSubmit} className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                    Нэр
-                  </label>
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Таны нэрийг оруулна уу"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                    И-мэйл эсвэл утас
-                  </label>
-                  <input
-                    type="text"
-                    value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="name@mail.com эсвэл 99112233"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                    Нууц үг
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                    Нууц үгээ баталгаажуулна уу
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showConfirmPassword ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                {displayError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                    {displayError}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:shadow-lg hover:from-amber-600 hover:to-orange-700 disabled:opacity-70"
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <User className="h-4 w-4" />
-                  )}
-                  {isLoading ? "Бүртгүүлж байна..." : "Бүртгүүлэх"}
-                </button>
-              </form>
-            )}
               </>
             )}
           </div>
 
-          <div className="hidden md:flex flex-col justify-center items-center p-8 bg-gradient-to-br from-amber-600 via-orange-500 to-red-500 text-white relative overflow-hidden">
+          <div className="relative hidden flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-amber-600 via-orange-500 to-red-500 p-8 text-white md:flex">
             <div className="absolute inset-0 opacity-10">
-              <div className="absolute top-10 right-10 w-40 h-40 rounded-full border border-white/20" />
-              <div className="absolute bottom-10 left-10 w-32 h-32 rounded-full border border-white/20" />
+              <div className="absolute right-10 top-10 h-40 w-40 rounded-full border border-white/20" />
+              <div className="absolute bottom-10 left-10 h-32 w-32 rounded-full border border-white/20" />
             </div>
 
             <div className="relative z-10 text-center">
-              <h3 className="text-2xl font-black mb-4">
-                Хэрэглэгчид юу хэлдэг вэ?
-              </h3>
+              <h3 className="mb-4 text-2xl font-black">Хэрэглэгчид юу хэлдэг вэ?</h3>
 
               <div className="mb-6 text-lg leading-relaxed">
-                <p className="text-white/90 mb-4">
-                  "Энэ платформ маш сайхан, энгийн интерфейс байна. Миний бизнесийн нүүхээ асар сайн өгсөн."
+                <p className="mb-4 text-white/90">
+                  "Энэ платформ маш ойлгомжтой, энгийн интерфейстэй. Миний бизнесийн онлайн борлуулалтад их тус болсон."
                 </p>
-                <p className="font-semibold">— Мөнх Баатар</p>
-                <p className="text-sm text-white/70">MGL Store-ын дүрслэлтэнэр</p>
+                <p className="font-semibold">Мөнх Баатар</p>
+                <p className="text-sm text-white/70">MGL Store хэрэглэгч</p>
               </div>
 
               <div className="flex items-center justify-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-white/60" />
-                <div className="w-2 h-2 rounded-full bg-white" />
-                <div className="w-2 h-2 rounded-full bg-white/60" />
+                <div className="h-2 w-2 rounded-full bg-white/60" />
+                <div className="h-2 w-2 rounded-full bg-white" />
+                <div className="h-2 w-2 rounded-full bg-white/60" />
               </div>
 
-              <div className="mt-8 pt-8 border-t border-white/20">
-                <p className="text-sm text-white/80 mb-4">Бидэнтэй нийтлэгдэх</p>
+              <div className="mt-8 border-t border-white/20 pt-8">
+                <p className="mb-4 text-sm text-white/80">Бидэнтэй нэгдэх</p>
                 <div className="flex justify-center gap-4">
-                  <button className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center">
-                    <span className="text-xs font-bold">f</span>
-                  </button>
-                  <button className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center">
-                    <span className="text-xs font-bold">𝕏</span>
-                  </button>
-                  <button className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center">
-                    <span className="text-xs font-bold">in</span>
-                  </button>
+                  {["f", "X", "in"].map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30"
+                      aria-label={`${label} холбоос`}
+                    >
+                      <span className="text-xs font-bold">{label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -775,11 +711,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       </div>
 
       <button
+        type="button"
         onClick={onClose}
-        className="absolute top-4 right-4 md:top-8 md:right-8 text-gray-500 hover:text-gray-700 z-[80] md:hidden"
-        aria-label="Close"
+        className="absolute right-4 top-4 z-[80] text-gray-500 hover:text-gray-700 md:right-8 md:top-8 md:hidden"
+        aria-label="Хаах"
       >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>

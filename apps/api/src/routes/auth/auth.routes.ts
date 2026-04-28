@@ -811,54 +811,23 @@ router.post("/forgot-password", async (req, res) => {
     const normalized = normalizeWebIdentifier(email, phone);
     const isPhone = normalized.isPhone;
 
-    let user;
-    if (isPhone) {
-      user = await findWebUserByIdentifier(normalized.identifier, true);
-    } else {
-      user = await prisma.user.findUnique({
-        where: { email: normalized.identifier },
-        include: { profile: true },
+    if (!isPhone) {
+      return res.status(400).json({
+        message: "Нууц үг сэргээхэд зөвхөн бүртгэлтэй утасны дугаар ашиглана уу.",
       });
     }
+
+    const user = await findWebUserByIdentifier(normalized.identifier, true);
 
     if (!user) {
       return res.status(404).json({ message: "Бүртгэлгүй хэрэглэгч байна" });
     }
 
-    if (isPhone) {
-      const session = await createVerifyMnSession(normalized.identifier);
-      return res.json({
-        message: "Verify.mn баталгаажуулалт эхэллээ",
-        channel: "verifyMn",
-        session,
-      });
-    }
-
-    // Generate 4-digit code
-/*     const code = crypto.randomInt(1000, 9999).toString(); */
-    const code = "1234";
-    const tokenHash = crypto.createHash("sha256").update(code).digest("hex");
-
-    // Delete old tokens for this user + any with the same hash (dev: hardcoded code)
-    await prisma.passwordResetToken.deleteMany({
-      where: { OR: [{ userId: user.id }, { tokenHash }] },
-    });
-
-    // Save hashed token
-    await prisma.passwordResetToken.create({
-      data: {
-        userId: user.id,
-        tokenHash,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
-      },
-    });
-
-    // ── DEV: Print code to terminal + return in response ──
-    console.log(`\n[DEV] Password reset → ${isPhone ? 'phone: ' + identifier.trim() : 'email: ' + identifier.trim()} | code: ${code}\n`);
-
+    const session = await createVerifyMnSession(normalized.identifier);
     return res.json({
-      message: "Баталгаажуулах код илгээлээ",
-      devCode: code, // DEV ONLY — production-д устгах
+      message: "Verify.mn баталгаажуулалт эхэллээ",
+      channel: "verifyMn",
+      session,
     });
   } catch (error) {
     console.error("[forgot-password error]", error);

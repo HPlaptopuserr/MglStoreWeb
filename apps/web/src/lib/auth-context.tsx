@@ -13,6 +13,12 @@ export type AuthUser = {
   organizationId?: string | null;
 };
 
+type AuthResponsePayload = {
+  message?: string;
+  accessToken?: string;
+  user?: AuthUser;
+};
+
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
@@ -28,6 +34,17 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const AUTH_TOKEN_KEY = "mgl_web_access_token";
 const AUTH_USER_KEY = "mgl_web_user";
+const FRIENDLY_AUTH_ERROR = "Серверээс буруу хариу ирлээ. API тохиргоогоо шалгаад дахин оролдоно уу.";
+
+async function readAuthPayload(res: Response): Promise<AuthResponsePayload> {
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return res.json().catch(() => ({}));
+  }
+
+  await res.text().catch(() => "");
+  return { message: FRIENDLY_AUTH_ERROR };
+}
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -93,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
+    const data = await readAuthPayload(res);
     if (!res.ok) throw new Error(data?.message || "Нэвтрэхэд алдаа гарлаа.");
 
     localStorage.setItem(AUTH_TOKEN_KEY, data.accessToken || "");
@@ -112,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
+    const data = await readAuthPayload(res);
     if (!res.ok) throw new Error(data?.message || "Бүртгүүлэхэд алдаа гарлаа.");
 
     localStorage.setItem(AUTH_TOKEN_KEY, data.accessToken || "");
@@ -136,7 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch(`${API_BASE}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
+      if (res.ok && (res.headers.get("content-type") || "").includes("application/json")) {
         const data = await res.json();
         setUser(data);
       }
