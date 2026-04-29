@@ -21,5 +21,7 @@ export interface ProductCardProps {
   colorCount?: number;
   tags?: string[];
   isPrime?: boolean;
+  wishlistActive?: boolean;
+  onWishlistToggle?: (active: boolean) => void;
   onAddToCart?: () => void;
 }

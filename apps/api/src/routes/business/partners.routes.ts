@@ -1502,9 +1502,14 @@ router.post(
         ownerEmail:       ["И-мэйл хаяг", "ownerEmail", "email", "Email", "И-мэйл"],
       };
 
+      const normalizeHeader = (value: string) =>
+        value.trim().replace(/\s+/g, " ").toLowerCase();
+
       const resolveCol = (row: Record<string, unknown>, keys: string[]): unknown => {
-        for (const key of keys) {
-          if (row[key] !== undefined && row[key] !== null && row[key] !== "") return row[key];
+        const normalizedKeys = new Set(keys.map(normalizeHeader));
+        for (const [rawKey, value] of Object.entries(row)) {
+          if (!normalizedKeys.has(normalizeHeader(rawKey))) continue;
+          if (value !== undefined && value !== null && String(value).trim() !== "") return value;
         }
         return undefined;
       };
@@ -1519,6 +1524,7 @@ router.post(
       // Pre-check for duplicates within the file
       const emailsInFile = new Map<string, number>();
       const namesInFile = new Map<string, number>();
+      const duplicateRowIndexes = new Set<number>();
       for (let i = 0; i < rows.length; i++) {
         const email = resolveCol(rows[i], colMap.ownerEmail);
         const name = resolveCol(rows[i], colMap.name);
@@ -1530,7 +1536,7 @@ router.post(
               name: name ? String(name).trim() : "(нэргүй)",
               reason: `Email "${normalized}" файл дотор давхардсан (мөр ${emailsInFile.get(normalized)})`,
             });
-            results.skipped++;
+            duplicateRowIndexes.add(i);
           } else {
             emailsInFile.set(normalized, i + 2);
           }
@@ -1561,6 +1567,11 @@ router.post(
 
         const orgName = name ? String(name).trim() : "";
         const emailStr = ownerEmail ? String(ownerEmail).trim().toLowerCase() : "";
+
+        if (duplicateRowIndexes.has(i)) {
+          results.skipped++;
+          continue;
+        }
 
         // Validation
         if (!orgName) {
@@ -1628,18 +1639,20 @@ router.post(
           continue;
         }
 
-        // Check duplicate by taxId
+        // Check duplicate by taxId. taxId is globally unique, including soft-deleted organizations.
         const resolvedTaxId = taxId ? String(taxId).trim() : null;
         if (resolvedTaxId) {
           const existingTax = await prisma.organization.findFirst({
-            where: { taxId: resolvedTaxId, deletedAt: null },
-            select: { id: true, name: true },
+            where: { taxId: resolvedTaxId },
+            select: { id: true, name: true, deletedAt: true },
           });
           if (existingTax) {
             results.errors.push({
               row: rowNum,
               name: orgName,
-              reason: `Татварын дугаар "${resolvedTaxId}" "${existingTax.name}" байгууллагад бүртгэлтэй`,
+              reason: existingTax.deletedAt
+                ? `Татварын дугаар "${resolvedTaxId}" устгагдсан "${existingTax.name}" байгууллагад бүртгэлтэй байна. Сэргээх эсвэл бүрмөсөн устгаад дахин импорт хийнэ үү.`
+                : `Татварын дугаар "${resolvedTaxId}" "${existingTax.name}" байгууллагад бүртгэлтэй`,
             });
             results.skipped++;
             continue;

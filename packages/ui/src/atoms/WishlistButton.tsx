@@ -13,7 +13,7 @@ export function WishlistButton({
   return (
     <button
       type="button"
-      aria-label="Add to wishlist"
+      aria-label={active ? "Хадгалснаас хасах" : "Хадгалах"}
       className={`absolute right-3 top-3 z-20 grid h-9 w-9 place-items-center rounded-full 
       bg-white text-black shadow-md hover:shadow-lg transition-shadow
       ${className}`}

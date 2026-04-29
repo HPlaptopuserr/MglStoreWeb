@@ -580,7 +580,8 @@ function ProductsContent() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
             {displayProducts.map((product) => {
               const discount = product.discounts?.[0]?.percent;
-              const originalPrice = discount ? Math.round(product.price / (1 - discount / 100)) : undefined;
+              const originalPrice = discount ? product.price : undefined;
+              const finalPrice = discount ? Math.round(product.price * (1 - discount / 100)) : product.price;
               return (
                 <div
                   key={product.id}
@@ -588,7 +589,7 @@ function ProductsContent() {
                   <ProductCard
                     href={`/products/${product.id}`}
                     image={product.images?.[0]?.url}
-                    price={product.price}
+                    price={finalPrice}
                     name={product.name}
                     category={product.businessCategory?.name}
                     originalPrice={originalPrice}

@@ -13,13 +13,8 @@ export const ProductCarouselItem = ({ product, idx, onClick }: Props) => {
   const discount = product.discounts?.[0]?.percent;
   const mainImage = product.images?.[0]?.url;
 
-  const originalPrice = discount
-    ? product.price / (1 - discount / 100)
-    : undefined;
-
-  const finalPrice = discount
-    ? Math.round(product.price * (1 - discount / 100))
-    : product.price;
+  const originalPrice = discount ? product.price : undefined;
+  const finalPrice = discount ? Math.round(product.price * (1 - discount / 100)) : product.price;
 
   return (
     <div
@@ -28,7 +23,7 @@ export const ProductCarouselItem = ({ product, idx, onClick }: Props) => {
     >
       <ProductCard
         image={mainImage}
-        price={product.price}
+        price={finalPrice}
         name={product.name}
         category={
           product.businessCategory?.name ??
