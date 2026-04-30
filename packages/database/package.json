@@ -5,7 +5,7 @@
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "pnpm db:generate && tsc -p tsconfig.json",
     "db:generate": "node scripts/with-root-env.cjs prisma generate",
     "db:migrate": "node scripts/with-root-env.cjs prisma migrate dev",
     "db:studio": "node scripts/with-root-env.cjs prisma studio",

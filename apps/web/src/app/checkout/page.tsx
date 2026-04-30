@@ -227,11 +227,12 @@ export default function CheckoutPage() {
         <LoginModal
           open={authOpen}
           onClose={() => { setAuthOpen(false); setAuthError(""); }}
-          onLogin={async (identifier, password) => {
+          onLogin={async (identifier, password, options) => {
             setAuthError("");
             setAuthLoading(true);
             try {
-              await login(identifier, password);
+              const result = await login(identifier, password, options);
+              if (result?.requiresEmailOtp) return result;
               setAuthOpen(false);
             } catch (err: unknown) {
               setAuthError(err instanceof Error ? err.message : "Нэвтрэхэд алдаа гарлаа.");
