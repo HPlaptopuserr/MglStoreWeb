@@ -1,9 +1,9 @@
+import "./config/env";
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import dotenv from "dotenv";
-import path from "path";
 import {
   authRoutes,
   investorRoutes,
@@ -33,10 +33,6 @@ import {
   vendorMerchantRoutes,
   vendorUpgradeRoutes,
 } from "./routes";
-
-// Resolve .env from monorepo root (../../.. from src/, ../../../ from dist/)
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
-dotenv.config(); // fallback: local .env if present
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
