@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
 import { isAdminRole, ADMIN_ROLE_LABELS, getPlatformPermissions } from "@mgl/types";
 import { resolveOrganization, requireAuth, type AuthPayload } from "../../middleware/auth";
+import { isSmtpConfigured, sendSmtpMail } from "../../lib/smtp";
 
 const router: ExpressRouter = Router();
 
@@ -30,6 +31,15 @@ type VerifyMnStatusResponse = {
   expiresAt: string;
 };
 
+type WebEmailOtpPurpose = "web-email-login" | "web-password-reset";
+
+type WebEmailOtpChallenge = {
+  purpose: WebEmailOtpPurpose;
+  userId: string;
+  email: string;
+  codeHash: string;
+};
+
 async function createPasswordResetToken(userId: string) {
   const resetToken = crypto.randomBytes(32).toString("hex");
   const tokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
@@ -47,6 +57,93 @@ async function createPasswordResetToken(userId: string) {
   });
 
   return resetToken;
+}
+
+function hashEmailOtp(code: string, userId: string) {
+  return crypto
+    .createHash("sha256")
+    .update(`${code}.${userId}.${JWT_SECRET}`)
+    .digest("hex");
+}
+
+function createEmailOtpChallenge(
+  user: { id: string; email: string },
+  purpose: WebEmailOtpPurpose = "web-email-login",
+) {
+  const code = crypto.randomInt(100000, 999999).toString();
+  const challengeToken = jwt.sign(
+    {
+      purpose,
+      userId: user.id,
+      email: user.email,
+      codeHash: hashEmailOtp(code, user.id),
+    } satisfies WebEmailOtpChallenge,
+    JWT_SECRET,
+    { expiresIn: "10m" },
+  );
+
+  return { code, challengeToken, expiresIn: 10 * 60 };
+}
+
+function verifyEmailOtpChallenge(
+  otpCode: unknown,
+  challengeToken: unknown,
+  purpose: WebEmailOtpPurpose,
+) {
+  if (!otpCode || !challengeToken) {
+    throw new Error("EMAIL_OTP_REQUIRED");
+  }
+
+  let challenge: WebEmailOtpChallenge;
+  try {
+    challenge = jwt.verify(String(challengeToken), JWT_SECRET) as WebEmailOtpChallenge;
+  } catch {
+    throw new Error("EMAIL_OTP_EXPIRED");
+  }
+
+  if (challenge.purpose !== purpose) {
+    throw new Error("EMAIL_OTP_INVALID_PURPOSE");
+  }
+
+  const expectedHash = hashEmailOtp(String(otpCode).trim(), challenge.userId);
+  if (expectedHash !== challenge.codeHash) {
+    throw new Error("EMAIL_OTP_INVALID_CODE");
+  }
+
+  return challenge;
+}
+
+function maskEmail(email: string) {
+  const [name, domain] = email.split("@");
+  if (!name || !domain) return email;
+  const visible = name.slice(0, Math.min(2, name.length));
+  return `${visible}${"*".repeat(Math.max(2, name.length - visible.length))}@${domain}`;
+}
+
+async function sendWebLoginOtpEmail(email: string, code: string) {
+  await sendSmtpMail({
+    to: email,
+    subject: "MGL Store нэвтрэх баталгаажуулах код",
+    text: [
+      `Таны MGL Store нэвтрэх баталгаажуулах код: ${code}`,
+      "",
+      "Энэ код 10 минут хүчинтэй.",
+      "Хэрэв та нэвтрэх гэж оролдоогүй бол энэ имэйлийг үл тооно уу.",
+    ].join("\n"),
+  });
+}
+
+async function sendPasswordResetOtpEmail(email: string, code: string) {
+  await sendSmtpMail({
+    to: email,
+    subject: "MGL Store нууц үг сэргээх код",
+    text: [
+      `Таны MGL Store нууц үг сэргээх код: ${code}`,
+      "",
+      "Энэ код 10 минут хүчинтэй.",
+      "Хэрэв та нууц үг сэргээх хүсэлт илгээгээгүй бол энэ имэйлийг үл тооно уу.",
+    ].join("\n"),
+  });
 }
 
 function normalizeWebIdentifier(email?: string, phone?: string) {
@@ -548,8 +645,47 @@ router.get("/web/verify-mn/callback", (req, res) => {
 
 router.post("/web/login", async (req, res) => {
   try {
-    const { email, phone, password } = req.body;
+    const { email, phone, password, otpCode, challengeToken } = req.body;
     const identifier: string | undefined = email || phone;
+
+    if (otpCode || challengeToken) {
+      if (!otpCode || !challengeToken) {
+        return res.status(400).json({ message: "Баталгаажуулах код шаардлагатай" });
+      }
+
+      let challenge: WebEmailOtpChallenge;
+      try {
+        challenge = jwt.verify(challengeToken, JWT_SECRET) as WebEmailOtpChallenge;
+      } catch {
+        return res.status(400).json({ message: "Баталгаажуулах кодын хугацаа дууссан байна" });
+      }
+
+      if (challenge.purpose !== "web-email-login") {
+        return res.status(400).json({ message: "Баталгаажуулах хүсэлт буруу байна" });
+      }
+
+      const expectedHash = hashEmailOtp(String(otpCode).trim(), challenge.userId);
+      if (expectedHash !== challenge.codeHash) {
+        return res.status(400).json({ message: "Баталгаажуулах код буруу байна" });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: challenge.userId },
+        include: { profile: true },
+      });
+
+      if (!user || !user.isActive || isAdminRole(user.role)) {
+        return res.status(401).json({ message: "Нэвтрэх эрх баталгаажсангүй" });
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date(), emailVerified: true },
+      });
+
+      const orgInfo = await resolveOrganization(user.id);
+      return res.json(toWebAuthResponse(user, createWebAccessToken(user, orgInfo), orgInfo));
+    }
 
     if (!identifier || !password) {
       return res.status(400).json({
@@ -594,6 +730,23 @@ router.post("/web/login", async (req, res) => {
     const isValidPassword = await bcrypt.compare(password, user.passwordHash);
     if (!isValidPassword) {
       return res.status(401).json({ message: "Нууц үг буруу байна" });
+    }
+
+    if (!isPhone) {
+      if (!isSmtpConfigured()) {
+        return res.status(500).json({ message: "SMTP тохиргоо хийгдээгүй байна" });
+      }
+
+      const challenge = createEmailOtpChallenge({ id: user.id, email: user.email });
+      await sendWebLoginOtpEmail(user.email, challenge.code);
+
+      return res.json({
+        requiresEmailOtp: true,
+        challengeToken: challenge.challengeToken,
+        emailMasked: maskEmail(user.email),
+        expiresIn: challenge.expiresIn,
+        message: "Баталгаажуулах код имэйл рүү илгээгдлээ",
+      });
     }
 
     await prisma.user.update({
@@ -812,8 +965,27 @@ router.post("/forgot-password", async (req, res) => {
     const isPhone = normalized.isPhone;
 
     if (!isPhone) {
-      return res.status(400).json({
-        message: "Нууц үг сэргээхэд зөвхөн бүртгэлтэй утасны дугаар ашиглана уу.",
+      const user = await findWebUserByIdentifier(normalized.identifier, false);
+      if (!user) {
+        return res.status(404).json({ message: "Бүртгэлгүй хэрэглэгч байна" });
+      }
+
+      if (!isSmtpConfigured()) {
+        return res.status(500).json({ message: "SMTP тохиргоо хийгдээгүй байна" });
+      }
+
+      const challenge = createEmailOtpChallenge(
+        { id: user.id, email: user.email },
+        "web-password-reset",
+      );
+      await sendPasswordResetOtpEmail(user.email, challenge.code);
+
+      return res.json({
+        message: "Нууц үг сэргээх код имэйл рүү илгээгдлээ",
+        channel: "emailOtp",
+        challengeToken: challenge.challengeToken,
+        emailMasked: maskEmail(user.email),
+        expiresIn: challenge.expiresIn,
       });
     }
 
@@ -874,6 +1046,46 @@ router.post("/forgot-password/verify-mn/complete", async (req, res) => {
     return res.status(500).json({
       message: error instanceof Error ? error.message : "Verify.mn баталгаажуулахад алдаа гарлаа",
     });
+  }
+});
+
+router.post("/forgot-password/email/complete", async (req, res) => {
+  try {
+    const { otpCode, challengeToken } = req.body;
+
+    let challenge: WebEmailOtpChallenge;
+    try {
+      challenge = verifyEmailOtpChallenge(otpCode, challengeToken, "web-password-reset");
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (code === "EMAIL_OTP_REQUIRED") {
+        return res.status(400).json({ message: "Баталгаажуулах код шаардлагатай" });
+      }
+      if (code === "EMAIL_OTP_EXPIRED") {
+        return res.status(400).json({ message: "Баталгаажуулах кодын хугацаа дууссан байна" });
+      }
+      if (code === "EMAIL_OTP_INVALID_CODE") {
+        return res.status(400).json({ message: "Баталгаажуулах код буруу байна" });
+      }
+      return res.status(400).json({ message: "Баталгаажуулах хүсэлт буруу байна" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: challenge.userId },
+    });
+
+    if (!user || !user.isActive || user.email !== challenge.email) {
+      return res.status(401).json({ message: "Нууц үг сэргээх эрх баталгаажаагүй байна" });
+    }
+
+    const resetToken = await createPasswordResetToken(user.id);
+    return res.json({
+      message: "Имэйл баталгаажлаа",
+      resetToken,
+    });
+  } catch (error) {
+    console.error("[forgot-password email complete error]", error);
+    return res.status(500).json({ message: "Имэйл код баталгаажуулахад алдаа гарлаа" });
   }
 });
 

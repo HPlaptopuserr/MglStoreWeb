@@ -1,17 +1,27 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { User, Loader2, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2 } from "lucide-react";
+import { User, Loader2, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 import { VerifyMnPanel, type VerifyMnSession } from "./VerifyMnPanel";
 
 type AuthTab = "login" | "register";
-type ForgotStep = "identifier" | "verifyMn" | "newPassword" | "done";
+type ForgotStep = "identifier" | "verifyMn" | "emailOtp" | "newPassword" | "done";
+type LoginResult = {
+  requiresEmailOtp?: boolean;
+  challengeToken?: string;
+  emailMasked?: string;
+  expiresIn?: number;
+};
 
 interface LoginModalProps {
   open: boolean;
   onClose: () => void;
-  onLogin: (identifier: string, password: string) => Promise<void>;
+  onLogin: (
+    identifier: string,
+    password: string,
+    options?: { otpCode?: string; challengeToken?: string },
+  ) => Promise<LoginResult | void>;
   onRegister: (fullName: string, identifier: string, password: string) => Promise<void>;
   isLoading: boolean;
   error: string;
@@ -22,6 +32,9 @@ type ApiPayload = {
   channel?: string;
   session?: VerifyMnSession;
   resetToken?: string;
+  challengeToken?: string;
+  emailMasked?: string;
+  expiresIn?: number;
 };
 
 const FRIENDLY_API_ERROR = "Серверээс буруу хариу ирлээ. API тохиргоогоо шалгаад дахин оролдоно уу.";
@@ -53,6 +66,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [loginOtpChallenge, setLoginOtpChallenge] = useState<LoginResult | null>(null);
+  const [loginOtpCode, setLoginOtpCode] = useState("");
+  const [loginOtpExpiresAt, setLoginOtpExpiresAt] = useState(0);
+  const [loginOtpNow, setLoginOtpNow] = useState(() => Date.now());
   const [verifyMnSession, setVerifyMnSession] = useState<VerifyMnSession | null>(null);
   const [verifyMnNow, setVerifyMnNow] = useState(() => Date.now());
 
@@ -62,6 +79,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [forgotNewPassword, setForgotNewPassword] = useState("");
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
   const [forgotResetToken, setForgotResetToken] = useState("");
+  const [forgotEmailOtpChallenge, setForgotEmailOtpChallenge] = useState<ApiPayload | null>(null);
+  const [forgotEmailOtpCode, setForgotEmailOtpCode] = useState("");
+  const [forgotEmailOtpExpiresAt, setForgotEmailOtpExpiresAt] = useState(0);
+  const [forgotEmailOtpNow, setForgotEmailOtpNow] = useState(() => Date.now());
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState("");
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -78,6 +99,28 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     return () => window.clearInterval(timer);
   }, [verifyMnSession]);
 
+  useEffect(() => {
+    if (!loginOtpChallenge) return;
+
+    setLoginOtpNow(Date.now());
+    const timer = window.setInterval(() => {
+      setLoginOtpNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loginOtpChallenge]);
+
+  useEffect(() => {
+    if (!forgotEmailOtpChallenge) return;
+
+    setForgotEmailOtpNow(Date.now());
+    const timer = window.setInterval(() => {
+      setForgotEmailOtpNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [forgotEmailOtpChallenge]);
+
   const verifyMnRemainingSeconds = useMemo(() => {
     if (!verifyMnSession) return 0;
     return Math.max(0, Math.ceil((new Date(verifyMnSession.expiresAt).getTime() - verifyMnNow) / 1000));
@@ -89,11 +132,36 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }, [verifyMnRemainingSeconds]);
 
+  const loginOtpRemainingSeconds = useMemo(() => {
+    if (!loginOtpChallenge || !loginOtpExpiresAt) return 0;
+    return Math.max(0, Math.ceil((loginOtpExpiresAt - loginOtpNow) / 1000));
+  }, [loginOtpChallenge, loginOtpExpiresAt, loginOtpNow]);
+
+  const loginOtpTimeText = useMemo(() => {
+    const minutes = Math.floor(loginOtpRemainingSeconds / 60);
+    const seconds = loginOtpRemainingSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }, [loginOtpRemainingSeconds]);
+
+  const forgotEmailOtpRemainingSeconds = useMemo(() => {
+    if (!forgotEmailOtpChallenge || !forgotEmailOtpExpiresAt) return 0;
+    return Math.max(0, Math.ceil((forgotEmailOtpExpiresAt - forgotEmailOtpNow) / 1000));
+  }, [forgotEmailOtpChallenge, forgotEmailOtpExpiresAt, forgotEmailOtpNow]);
+
+  const forgotEmailOtpTimeText = useMemo(() => {
+    const minutes = Math.floor(forgotEmailOtpRemainingSeconds / 60);
+    const seconds = forgotEmailOtpRemainingSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }, [forgotEmailOtpRemainingSeconds]);
+
   if (!open) return null;
 
   const handleTabChange = (newTab: AuthTab) => {
     setTab(newTab);
     setVerifyMnSession(null);
+    setLoginOtpChallenge(null);
+    setLoginOtpCode("");
+    setLoginOtpExpiresAt(0);
     setLocalError("");
   };
 
@@ -104,6 +172,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setForgotNewPassword("");
     setForgotConfirmPassword("");
     setForgotResetToken("");
+    setForgotEmailOtpChallenge(null);
+    setForgotEmailOtpCode("");
+    setForgotEmailOtpExpiresAt(0);
     setForgotError("");
     setForgotLoading(false);
     setVerifyMnSession(null);
@@ -116,6 +187,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setForgotError("");
     setVerifyMnSession(null);
     setForgotResetToken("");
+    setForgotEmailOtpChallenge(null);
+    setForgotEmailOtpCode("");
+    setForgotEmailOtpExpiresAt(0);
   };
 
   const backFromForgot = () => {
@@ -127,6 +201,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setForgotStep("identifier");
     setVerifyMnSession(null);
     setForgotResetToken("");
+    setForgotEmailOtpChallenge(null);
+    setForgotEmailOtpCode("");
+    setForgotEmailOtpExpiresAt(0);
     setForgotError("");
   };
 
@@ -134,9 +211,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     e.preventDefault();
     setForgotError("");
 
-    const phone = forgotIdentifier.trim();
-    const isPhone = /^[0-9+\-\s()]{7,16}$/.test(phone) && !phone.includes("@");
-    if (!isPhone) {
+    const value = forgotIdentifier.trim();
+    const isPhone = /^[0-9+\-\s()]{7,16}$/.test(value) && !value.includes("@");
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    if (!isPhone && !isEmail) {
       setForgotError("Нууц үг сэргээхэд бүртгэлтэй утасны дугаараа оруулна уу.");
       return;
     }
@@ -146,9 +224,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       const res = await fetch(`${API_BASE}/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify(isPhone ? { phone: value } : { email: value.toLowerCase() }),
       });
       const data = await readApiPayload(res);
+      if (res.ok && data.channel === "emailOtp" && data.challengeToken) {
+        setForgotEmailOtpChallenge(data);
+        setForgotEmailOtpCode("");
+        setForgotEmailOtpExpiresAt(Date.now() + (data.expiresIn || 600) * 1000);
+        setForgotEmailOtpNow(Date.now());
+        setForgotStep("emailOtp");
+        return;
+      }
       if (!res.ok) throw new Error(data.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
       if (!data.session) throw new Error(data.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
 
@@ -185,6 +271,46 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
       setForgotResetToken(data.resetToken);
       setVerifyMnSession(null);
+      setForgotStep("newPassword");
+    } catch (err) {
+      setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа.");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleForgotEmailOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError("");
+
+    if (!forgotEmailOtpChallenge?.challengeToken) {
+      setForgotError("Баталгаажуулах хүсэлт олдсонгүй. Дахин оролдоно уу.");
+      return;
+    }
+
+    if (!/^\d{6}$/.test(forgotEmailOtpCode.trim())) {
+      setForgotError("6 оронтой баталгаажуулах кодоо оруулна уу.");
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/forgot-password/email/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          otpCode: forgotEmailOtpCode.trim(),
+          challengeToken: forgotEmailOtpChallenge.challengeToken,
+        }),
+      });
+      const data = await readApiPayload(res);
+      if (!res.ok) throw new Error(data.message || "Имэйл код баталгаажуулахад алдаа гарлаа.");
+      if (!data.resetToken) throw new Error("Нууц үг шинэчлэх эрх үүссэнгүй. Дахин оролдоно уу.");
+
+      setForgotResetToken(data.resetToken);
+      setForgotEmailOtpChallenge(null);
+      setForgotEmailOtpCode("");
+      setForgotEmailOtpExpiresAt(0);
       setForgotStep("newPassword");
     } catch (err) {
       setForgotError(err instanceof Error ? err.message : "Алдаа гарлаа.");
@@ -233,6 +359,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError("");
+    setLoginOtpChallenge(null);
+    setLoginOtpCode("");
 
     if (!identifier.trim() || !password.trim()) {
       setLocalError("Утас/и-мэйл болон нууц үгээ оруулна уу.");
@@ -240,9 +368,45 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
 
     try {
-      await onLogin(identifier, password);
+      const result = await onLogin(identifier, password);
+      if (result?.requiresEmailOtp) {
+        setLoginOtpChallenge(result);
+        setLoginOtpCode("");
+        setLoginOtpExpiresAt(Date.now() + (result.expiresIn || 600) * 1000);
+        setLoginOtpNow(Date.now());
+        return;
+      }
       setIdentifier("");
       setPassword("");
+      setRememberMe(false);
+    } catch {
+    }
+  };
+
+  const handleLoginOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalError("");
+
+    if (!loginOtpChallenge?.challengeToken) {
+      setLocalError("Баталгаажуулах хүсэлт олдсонгүй. Дахин нэвтэрнэ үү.");
+      return;
+    }
+
+    if (!/^\d{6}$/.test(loginOtpCode.trim())) {
+      setLocalError("6 оронтой баталгаажуулах кодоо оруулна уу.");
+      return;
+    }
+
+    try {
+      await onLogin(identifier, password, {
+        otpCode: loginOtpCode.trim(),
+        challengeToken: loginOtpChallenge.challengeToken,
+      });
+      setIdentifier("");
+      setPassword("");
+      setLoginOtpCode("");
+      setLoginOtpChallenge(null);
+      setLoginOtpExpiresAt(0);
       setRememberMe(false);
     } catch {
     }
@@ -354,6 +518,55 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     }}
                     onVerify={handleForgotVerifyMnComplete}
                   />
+                )}
+
+                {forgotStep === "emailOtp" && forgotEmailOtpChallenge && (
+                  <form onSubmit={handleForgotEmailOtpSubmit} className="space-y-4">
+                    <div className="mb-2 text-center">
+                      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50">
+                        <ShieldCheck size={28} className="text-amber-500" />
+                      </div>
+                      <h2 className="text-xl font-black text-gray-900">Имэйл баталгаажуулах</h2>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {forgotEmailOtpChallenge.emailMasked || forgotIdentifier} хаяг руу илгээсэн 6 оронтой кодыг оруулна уу.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      Код хүчинтэй хугацаа: <span className="font-bold">{forgotEmailOtpTimeText}</span>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                        Баталгаажуулах код
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={forgotEmailOtpCode}
+                        onChange={(e) => setForgotEmailOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="123456"
+                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-center text-lg font-bold tracking-[0.35em] outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                        autoFocus
+                      />
+                    </div>
+
+                    {forgotError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                        {forgotError}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={forgotLoading || forgotEmailOtpRemainingSeconds <= 0}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-lg disabled:opacity-70"
+                    >
+                      {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                      {forgotLoading ? "Шалгаж байна..." : "Код баталгаажуулах"}
+                    </button>
+                  </form>
                 )}
 
                 {forgotStep === "newPassword" && (
@@ -480,6 +693,67 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 </div>
 
                 {tab === "login" ? (
+                  loginOtpChallenge ? (
+                    <form onSubmit={handleLoginOtpSubmit} className="space-y-4">
+                      <div className="mb-2 text-center">
+                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50">
+                          <ShieldCheck size={28} className="text-amber-500" />
+                        </div>
+                        <h2 className="text-xl font-black text-gray-900">Имэйл баталгаажуулах</h2>
+                        <p className="mt-1 text-sm text-gray-500">
+                          {loginOtpChallenge.emailMasked || identifier} хаяг руу илгээсэн 6 оронтой кодыг оруулна уу.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        Код хүчинтэй хугацаа: <span className="font-bold">{loginOtpTimeText}</span>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
+                          Баталгаажуулах код
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={loginOtpCode}
+                          onChange={(e) => setLoginOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                          placeholder="123456"
+                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-center text-lg font-bold tracking-[0.35em] outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                          autoFocus
+                        />
+                      </div>
+
+                      {displayError && (
+                        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                          {displayError}
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={isLoading || loginOtpRemainingSeconds <= 0}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-lg disabled:opacity-70"
+                      >
+                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                        {isLoading ? "Шалгаж байна..." : "Код баталгаажуулах"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginOtpChallenge(null);
+                          setLoginOtpCode("");
+                          setLoginOtpExpiresAt(0);
+                          setLocalError("");
+                        }}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-6 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-50"
+                      >
+                        Буцах
+                      </button>
+                    </form>
+                  ) : (
                   <form onSubmit={handleLoginSubmit} className="space-y-4">
                     <div>
                       <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
@@ -573,6 +847,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                       ))}
                     </div>
                   </form>
+                  )
                 ) : (
                   <form onSubmit={handleRegisterSubmit} className="space-y-4">
                     <div>

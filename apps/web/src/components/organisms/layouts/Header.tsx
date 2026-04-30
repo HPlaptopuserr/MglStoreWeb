@@ -528,11 +528,12 @@ export const Header = () => {
       <LoginModal
         open={authOpen}
         onClose={closeAuthModal}
-        onLogin={async (identifier, password) => {
+        onLogin={async (identifier, password, options) => {
           setAuthError("");
           setAuthLoading(true);
           try {
-            await login(identifier, password);
+            const result = await login(identifier, password, options);
+            if (result?.requiresEmailOtp) return result;
             closeAuthModal();
             closeMobile();
           } catch (err: unknown) {

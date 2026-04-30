@@ -17,12 +17,27 @@ type AuthResponsePayload = {
   message?: string;
   accessToken?: string;
   user?: AuthUser;
+  requiresEmailOtp?: boolean;
+  challengeToken?: string;
+  emailMasked?: string;
+  expiresIn?: number;
+};
+
+export type LoginResult = {
+  requiresEmailOtp?: boolean;
+  challengeToken?: string;
+  emailMasked?: string;
+  expiresIn?: number;
 };
 
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (identifier: string, password: string) => Promise<void>;
+  login: (
+    identifier: string,
+    password: string,
+    options?: { otpCode?: string; challengeToken?: string },
+  ) => Promise<LoginResult | void>;
   register: (fullName: string, identifier: string, password: string) => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<AuthUser>) => void;
@@ -98,7 +113,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return res;
   }, []);
 
-  const login = useCallback(async (identifier: string, password: string) => {
+  const login = useCallback(async (
+    identifier: string,
+    password: string,
+    options?: { otpCode?: string; challengeToken?: string },
+  ) => {
     const isEmail = identifier.includes("@");
     const payload = isEmail
       ? { email: identifier.trim(), password: password.trim() }
@@ -107,11 +126,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await fetch(`${API_BASE}/auth/web/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        ...(options?.otpCode ? { otpCode: options.otpCode } : {}),
+        ...(options?.challengeToken ? { challengeToken: options.challengeToken } : {}),
+      }),
     });
 
     const data = await readAuthPayload(res);
     if (!res.ok) throw new Error(data?.message || "Нэвтрэхэд алдаа гарлаа.");
+
+    if (data.requiresEmailOtp) {
+      return {
+        requiresEmailOtp: true,
+        challengeToken: data.challengeToken,
+        emailMasked: data.emailMasked,
+        expiresIn: data.expiresIn,
+      };
+    }
 
     localStorage.setItem(AUTH_TOKEN_KEY, data.accessToken || "");
     setUser(data.user || null);
