@@ -215,7 +215,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     const isPhone = /^[0-9+\-\s()]{7,16}$/.test(value) && !value.includes("@");
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
     if (!isPhone && !isEmail) {
-      setForgotError("Нууц үг сэргээхэд бүртгэлтэй утасны дугаараа оруулна уу.");
+      setForgotError("Бүртгэлтэй и-мэйл эсвэл утасны дугаараа оруулна уу.");
       return;
     }
 
@@ -473,17 +473,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                         <KeyRound size={28} className="text-amber-500" />
                       </div>
                       <h2 className="text-xl font-black text-gray-900">Нууц үг сэргээх</h2>
-                      <p className="mt-1 text-sm text-gray-500">Бүртгэлтэй утасны дугаараа оруулна уу.</p>
+                      <p className="mt-1 text-sm text-gray-500">Бүртгэлтэй и-мэйл эсвэл утасны дугаараа оруулна уу.</p>
                     </div>
                     <div>
                       <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                        Утасны дугаар
+                        И-мэйл эсвэл утасны дугаар
                       </label>
                       <input
                         type="text"
                         value={forgotIdentifier}
                         onChange={(e) => setForgotIdentifier(e.target.value)}
-                        placeholder="99112233"
+                        placeholder="name@example.com эсвэл 99112233"
                         className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
                         autoFocus
                       />
