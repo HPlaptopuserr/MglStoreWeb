@@ -159,8 +159,33 @@ router.post("/admin/organizations", requireAuth, requirePlatformPermission(Permi
     }
 
     const normalizedEmail = normalizeEmail(ownerEmail);
-    if (!normalizedEmail) {
+    if (ownerEmail && !normalizedEmail) {
       return res.status(400).json({ message: "Owner email зөв форматтай байх ёстой" });
+    }
+
+    const slug = await generateUniqueOrganizationSlug(name);
+    const resolvedTaxId = taxId?.trim() || (await generateUniqueTaxId("TEMP"));
+
+    if (!normalizedEmail) {
+      const organization = await prisma.organization.create({
+        data: {
+          name: name.trim(),
+          slug,
+          taxId: resolvedTaxId,
+          type:
+            type && Object.values(OrgType).includes(type as OrgType)
+              ? (type as OrgType)
+              : OrgType.SUPPLIER,
+          status: OrgStatus.ACTIVE,
+          email: null,
+          phone: phone?.trim() || null,
+          address: address?.trim() || null,
+          businessCategory: businessCategory?.trim() || null,
+          isVerified: false,
+        },
+        select: { id: true, name: true, slug: true, taxId: true },
+      });
+      return res.status(201).json({ organization, user: null, inviteToken: null, inviteLink: null });
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -189,8 +214,6 @@ router.post("/admin/organizations", requireAuth, requirePlatformPermission(Permi
       });
     }
 
-    const slug = await generateUniqueOrganizationSlug(name);
-    const resolvedTaxId = taxId?.trim() || (await generateUniqueTaxId("TEMP"));
     const inviteToken = generateInviteToken();
     const inviteTokenExpiresAt = getInviteTokenExpiry();
 

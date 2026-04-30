@@ -281,8 +281,8 @@ export default function PartnersPage() {
   };
 
   const handleCreateOrganization = async () => {
-    if (!createForm.name.trim() || !createForm.ownerEmail.trim()) {
-      setCreateError("Байгууллагын нэр болон owner email шаардлагатай");
+    if (!createForm.name.trim()) {
+      setCreateError("Байгууллагын нэр шаардлагатай");
       return;
     }
 
@@ -295,7 +295,7 @@ export default function PartnersPage() {
         body: JSON.stringify({
           ...createForm,
           name: createForm.name.trim(),
-          ownerEmail: createForm.ownerEmail.trim(),
+          ownerEmail: createForm.ownerEmail.trim() || null,
           ownerName: createForm.ownerName.trim(),
           phone: createForm.phone.trim(),
           address: createForm.address.trim(),
@@ -311,11 +311,13 @@ export default function PartnersPage() {
 
       setCreateModalOpen(false);
       setCreateForm(EMPTY_CREATE_FORM);
-      setInviteModal({
-        organizationName: data.organization?.name || createForm.name,
-        email: data.user?.email || createForm.ownerEmail,
-        inviteLink: data.inviteLink,
-      });
+      if (data.inviteLink) {
+        setInviteModal({
+          organizationName: data.organization?.name || createForm.name,
+          email: data.user?.email || createForm.ownerEmail,
+          inviteLink: data.inviteLink,
+        });
+      }
       await fetchPartners();
     } catch (error) {
       setCreateError(
@@ -427,7 +429,7 @@ export default function PartnersPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Owner email *</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Owner email</label>
                 <input
                   type="email"
                   value={createForm.ownerEmail}
