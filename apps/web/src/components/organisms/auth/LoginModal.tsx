@@ -965,6 +965,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <div className="h-2 w-2 rounded-full bg-white/60" />
               </div>
 
+
+
+
               <div className="mt-8 border-t border-white/20 pt-8">
                 <p className="mb-4 text-sm text-white/80">Бидэнтэй нэгдэх</p>
                 <div className="flex justify-center gap-4">
