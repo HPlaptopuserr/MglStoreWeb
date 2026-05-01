@@ -8,11 +8,11 @@ import {
   Package,
   AlertTriangle,
   XCircle,
-  Filter,
   X,
   Calendar,
   Barcode,
   MapPin,
+  Trash2,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 
@@ -48,6 +48,8 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockStatus>("all");
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Load warehouses
   useEffect(() => {
@@ -96,6 +98,29 @@ export default function InventoryPage() {
     };
     load();
   }, [selectedWarehouseId]);
+
+  const handleDelete = async () => {
+    if (!selectedItem) return;
+    setDeleting(true);
+    try {
+      const res = await wmsFetch(
+        `${API}/warehouses/${selectedWarehouseId}/inventory/${selectedItem.product.id}`,
+        { method: "DELETE" },
+      );
+      if (res.ok) {
+        setInventory((prev) => prev.filter((i) => i.id !== selectedItem.id));
+        setSelectedItem(null);
+        setDeleteConfirm(false);
+      } else {
+        const data = await res.json().catch(() => null);
+        alert(data?.message || "Устгахад алдаа гарлаа");
+      }
+    } catch {
+      alert("Устгахад алдаа гарлаа");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const getStatus = (item: InventoryItem): StockStatus => {
     if (item.quantity === 0) return "out";
@@ -466,7 +491,51 @@ export default function InventoryPage() {
                 >
                   Хаах
                 </button>
+                <button
+                  onClick={() => setDeleteConfirm(true)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-4 py-2.5 font-medium text-red-600 hover:bg-red-100"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Устгах
+                </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm modal */}
+      {deleteConfirm && selectedItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900">Бараа устгах</h3>
+                <p className="text-sm text-slate-500">Агуулахаас бүрмөсөн хасагдана</p>
+              </div>
+            </div>
+            <p className="mb-5 rounded-lg bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+              {selectedItem.product.name}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                disabled={deleting}
+                className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Болих
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Устгах
+              </button>
             </div>
           </div>
         </div>

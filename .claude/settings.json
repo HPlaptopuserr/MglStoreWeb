@@ -7,7 +7,10 @@
       "Bash(git -C /home/guser/Documents/Projects/MglStoreWeb commit -m ' *)",
       "Bash(git -C /home/guser/Documents/Projects/MglStoreWeb push origin main)",
       "Bash(git -C /home/guser/Documents/Projects/MglStoreWeb remote -v)",
-      "Read(//home/guser/.ssh/**)"
+      "Read(//home/guser/.ssh/**)",
+      "Bash(pnpm --filter api exec tsc --noEmit)",
+      "Bash(pnpm --filter vendor exec tsc --noEmit)",
+      "Bash(pnpm --filter admin exec tsc --noEmit)"
     ]
   }
 }

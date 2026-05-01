@@ -33,6 +33,7 @@ import {
   formatReceipt,
   createCardAttempt,
   getCardAttemptStatus,
+  cancelPushEcr,
   createQPayInvoice,
   getQPayInvoiceStatus,
   confirmQPayInvoice,
@@ -115,6 +116,7 @@ export default function PosDemoPage() {
   const [demoShiftId] = useState("demo-shift-1");
   const [demoBranchId] = useState("demo-branch-1");
   const [isCardProcessing, setIsCardProcessing] = useState(false);
+  const [isCancellingCard, setIsCancellingCard] = useState(false);
   const [autoCheckoutActive, setAutoCheckoutActive] = useState(false);
   const [autoFinalizing, setAutoFinalizing] = useState(false);
   const [successOverlay, setSuccessOverlay] = useState<{ visible: boolean; text: string }>({
@@ -166,6 +168,19 @@ export default function PosDemoPage() {
       setScanMessage(text);
       console.info(`[POS] ${text}`);
     }, 2000);
+  };
+
+  const handleCancelPushEcr = async () => {
+    const terminalId = registerConfig?.cardTerminalId;
+    if (!terminalId) return;
+    setIsCancellingCard(true);
+    try {
+      await cancelPushEcr(terminalId);
+    } catch {
+      /* ignore — terminal will timeout on its own */
+    } finally {
+      setIsCancellingCard(false);
+    }
   };
 
   const showSuccessOverlay = (text: string) => {
@@ -502,8 +517,10 @@ export default function PosDemoPage() {
           organizationId,
         });
 
+        const isPushEcr = registerConfig?.cardProviderType === "PUSH_ECR";
+        const maxPolls = isPushEcr ? 150 : 8; // 150×800ms=120s for Push ECR
         let approvedAttempt = attempt;
-        for (let i = 0; i < 8; i += 1) {
+        for (let i = 0; i < maxPolls; i += 1) {
           if (approvedAttempt.status === "APPROVED") break;
           if (approvedAttempt.status === "DECLINED" || approvedAttempt.status === "FAILED") break;
           await new Promise((resolve) => setTimeout(resolve, 800));
@@ -791,7 +808,7 @@ export default function PosDemoPage() {
             className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600"
           >
             <Settings size={13} />
-             Бүртгэх
+            Бүртгэх
           </button>
         </div>
       )}
@@ -841,7 +858,7 @@ export default function PosDemoPage() {
             {setupTab === "new" ? (
               <div className="space-y-3">
                 <p className="text-xs text-slate-500">
-                  Энэ кассын нэрийг оруулна уу. Шинэ register автоматаар үүсч хадгалагдана.
+                  Энэ кассын нэрийг оруулна уу. Шинэ register үүсгэгдэн Admin батлалт хүлээнэ.
                 </p>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold text-slate-500">Нэр</label>
@@ -917,7 +934,34 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      {registerConfig && (
+      {registerConfig && !registerConfig.isActive && !showSetupPanel && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2 text-sm text-amber-800 min-w-0">
+            <AlertTriangle size={14} className="text-amber-600 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-semibold">
+                {registerConfig.name}
+                <span className="font-normal text-amber-600"> · {registerConfig.branch.name}</span>
+              </p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Admin батлахыг хүлээж байна. ID-г Admin-д дамжуулна уу:
+              </p>
+              <p className="text-xs font-mono text-amber-900 bg-amber-100 rounded px-1.5 py-0.5 mt-1 break-all select-all">
+                {registerConfig.id}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSetupPanel(true)}
+            className="text-slate-400 hover:text-slate-600 shrink-0 mt-0.5"
+          >
+            <Settings size={14} />
+          </button>
+        </div>
+      )}
+
+      {registerConfig && registerConfig.isActive && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-emerald-800">
             <CheckCircle2 size={14} className="text-emerald-600" />
@@ -941,7 +985,7 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      {view === "checkout" && (
+      {view === "checkout" && registerConfig?.isActive !== false && (
         <PosCheckoutView
           lines={state.cart}
           totals={totals}
@@ -971,6 +1015,25 @@ export default function PosDemoPage() {
             <CheckCircle2 className="mx-auto h-24 w-24 text-emerald-400" strokeWidth={2.4} />
             <p className="mt-4 text-3xl font-black tracking-tight text-emerald-300">Амжилттай</p>
             <p className="mt-1 text-sm font-semibold text-emerald-100/90">{successOverlay.text}</p>
+          </div>
+        </div>
+      )}
+
+      {isCardProcessing && registerConfig?.cardProviderType === "PUSH_ECR" && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
+          <div className="rounded-3xl border border-blue-300/40 bg-white px-10 py-8 text-center shadow-2xl w-80">
+            <Loader2 className="mx-auto h-14 w-14 animate-spin text-blue-500" />
+            <p className="mt-4 text-lg font-bold text-slate-900">Картаар төлж байна</p>
+            <p className="mt-1 text-sm text-slate-500">Терминал дээр карт уншуулна уу</p>
+            <button
+              type="button"
+              onClick={handleCancelPushEcr}
+              disabled={isCancellingCard}
+              className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {isCancellingCard ? <Loader2 size={14} className="animate-spin" /> : null}
+              Цуцлах
+            </button>
           </div>
         </div>
       )}
@@ -1164,7 +1227,7 @@ export default function PosDemoPage() {
             onSubmit={() => {
               void startAutoCheckoutFlow();
             }}
-            disabled={state.cart.length === 0 || saleLoading || isCardProcessing || autoFinalizing}
+            disabled={state.cart.length === 0 || saleLoading || isCardProcessing || autoFinalizing || (registerConfig !== null && !registerConfig.isActive)}
           />
 
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">

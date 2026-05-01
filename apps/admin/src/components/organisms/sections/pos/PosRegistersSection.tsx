@@ -36,6 +36,7 @@ type PosRegister = {
   qpayMerchantId: string | null;
   qpayTerminalId: string | null;
   isActive: boolean;
+  activationStatus: string;
   createdAt: string;
 };
 
@@ -65,7 +66,7 @@ const EMPTY_FORM: FormState = {
   qpayTerminalId: "",
 };
 
-const CARD_PROVIDERS = ["QPOSLANE", "GANTIGO", "IDPAY"];
+const CARD_PROVIDERS = ["PUSH_ECR", "QPOSLANE", "GANTIGO", "IDPAY"];
 const getPosVisibilityKey = (organizationId: string) =>
   `pos-enabled-${organizationId}`;
 
@@ -94,6 +95,12 @@ export function PosRegistersSection() {
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  const [quickBranchOpen, setQuickBranchOpen] = useState(false);
+  const [quickBranchName, setQuickBranchName] = useState("");
+  const [quickBranchAddress, setQuickBranchAddress] = useState("");
+  const [quickBranchSaving, setQuickBranchSaving] = useState(false);
+  const [quickBranchError, setQuickBranchError] = useState("");
 
   /* fetch orgs on mount */
   useEffect(() => {
@@ -177,6 +184,37 @@ export function PosRegistersSection() {
     setEditingId(null);
     setError("");
     setBridgeCheckMessage(null);
+  };
+
+  const handleQuickAddBranch = async () => {
+    if (!quickBranchName.trim() || !quickBranchAddress.trim()) {
+      setQuickBranchError("Нэр болон хаяг шаардлагатай");
+      return;
+    }
+    setQuickBranchSaving(true);
+    setQuickBranchError("");
+    try {
+      const res = await adminFetch(`${API}/partners/${selectedOrgId}/branches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: quickBranchName.trim(), address: quickBranchAddress.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setQuickBranchError(err.message || "Салбар үүсгэхэд алдаа гарлаа");
+        return;
+      }
+      const created: Branch = await res.json();
+      setBranches((prev) => [...prev, created]);
+      set("branchId", created.id);
+      setQuickBranchOpen(false);
+      setQuickBranchName("");
+      setQuickBranchAddress("");
+    } catch {
+      setQuickBranchError("Сервертэй холбогдоход алдаа гарлаа");
+    } finally {
+      setQuickBranchSaving(false);
+    }
   };
 
   const set = <K extends keyof FormState>(key: K, val: FormState[K]) =>
@@ -314,7 +352,7 @@ export function PosRegistersSection() {
         cardEnabled: form.cardEnabled,
         cardProviderType: form.cardProviderType || null,
         cardTerminalId: form.cardTerminalId.trim() || null,
-        terminalBridgeUrl: form.terminalBridgeUrl.trim() || null,
+        terminalBridgeUrl: form.cardProviderType === "PUSH_ECR" ? null : (form.terminalBridgeUrl.trim() || null),
         qpayEnabled: form.qpayEnabled,
         qpayMerchantId: form.qpayMerchantId.trim() || null,
         qpayTerminalId: form.qpayTerminalId.trim() || null,
@@ -513,6 +551,11 @@ export function PosRegistersSection() {
                           <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
                             {r.branch.name}
                           </span>
+                          {r.activationStatus === "PENDING" && (
+                            <span className="rounded-lg bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                              Хүлээлтэд
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1.5 flex flex-wrap gap-2">
                           {r.cardEnabled ? (
@@ -631,6 +674,7 @@ export function PosRegistersSection() {
                     value={form.branchId}
                     onChange={(e) => set("branchId", e.target.value)}
                     className={SELECT}
+                    disabled={branches.length === 0}
                   >
                     <option value="">— Салбар сонгох —</option>
                     {branches.map((b) => (
@@ -639,8 +683,55 @@ export function PosRegistersSection() {
                   </select>
                   <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 </div>
-                {branches.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">Энэ байгууллагад салбар бүртгэгдээгүй байна.</p>
+                {branches.length === 0 && !quickBranchOpen && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <p className="text-xs text-amber-600">Салбар бүртгэгдээгүй байна.</p>
+                    <button
+                      type="button"
+                      onClick={() => { setQuickBranchOpen(true); setQuickBranchError(""); }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                    >
+                      <Plus size={12} /> Салбар нэмэх
+                    </button>
+                  </div>
+                )}
+                {quickBranchOpen && (
+                  <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-indigo-700">Шинэ салбар нэмэх</p>
+                    {quickBranchError && (
+                      <p className="text-xs text-red-600">{quickBranchError}</p>
+                    )}
+                    <input
+                      value={quickBranchName}
+                      onChange={(e) => setQuickBranchName(e.target.value)}
+                      placeholder="Салбарын нэр *"
+                      className={INPUT}
+                    />
+                    <input
+                      value={quickBranchAddress}
+                      onChange={(e) => setQuickBranchAddress(e.target.value)}
+                      placeholder="Хаяг *"
+                      className={INPUT}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setQuickBranchOpen(false); setQuickBranchError(""); }}
+                        className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                      >
+                        Болих
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleQuickAddBranch}
+                        disabled={quickBranchSaving}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        {quickBranchSaving ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                        Нэмэх
+                      </button>
+                    </div>
+                  </div>
                 )}
               </Field>
 
@@ -663,7 +754,13 @@ export function PosRegistersSection() {
                       <div className="relative">
                         <select
                           value={form.cardProviderType}
-                          onChange={(e) => set("cardProviderType", e.target.value)}
+                          onChange={(e) => {
+                            set("cardProviderType", e.target.value);
+                            if (e.target.value === "PUSH_ECR") {
+                              set("terminalBridgeUrl", "");
+                              setBridgeCheckMessage(null);
+                            }
+                          }}
                           className={SELECT}
                         >
                           <option value="">— сонгох —</option>
@@ -682,7 +779,7 @@ export function PosRegistersSection() {
                         className={INPUT}
                       />
                     </Field>
-                    <Field label="Bridge URL" className="col-span-2">
+                    {form.cardProviderType !== "PUSH_ECR" && <Field label="Bridge URL" className="col-span-2">
                       <input
                         value={form.terminalBridgeUrl}
                         onChange={(e) => {
@@ -722,7 +819,7 @@ export function PosRegistersSection() {
                       <p className="mt-1 text-[11px] text-slate-400">
                         Касс дахь локал bridge server хаяг (хоосон бол mock simulation хэрэглэнэ)
                       </p>
-                    </Field>
+                    </Field>}
                   </div>
                 )}
               </div>

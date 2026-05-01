@@ -26,6 +26,25 @@ const isProdLikeEnv = runtimeEnv === "production" || runtimeEnv === "staging";
 const allowPosSimulation = process.env.POS_ALLOW_SIMULATION === "true" && runtimeEnv === "development";
 const bridgeSharedSecret = String(process.env.POS_BRIDGE_SHARED_SECRET || "").trim();
 
+const pushEcrBaseUrl = (process.env.PUSH_ECR_BASE_URL || "https://push.easypay.mn:8443").replace(/\/$/, "");
+const pushEcrApiKey = process.env.PUSH_ECR_API_KEY || "";
+const pushEcrClientId = process.env.PUSH_ECR_CLIENT_ID || "";
+
+type PushEcrPurchaseResponse = {
+  succeed: boolean;
+  message?: string;
+  amount?: number;
+  payment?: string;
+  systemRef?: string;
+  traceno?: string;
+  approveCode?: string;
+  maskedPAN?: string;
+  date?: string;
+  merchantId?: string;
+  terminalId?: string;
+  bankTid?: string;
+};
+
 const MONEY_EPSILON = 0.01;
 
 type AuthClaims = {
@@ -204,7 +223,7 @@ const requireAdminUser = async (req: Request, res: Response) => {
     return null;
   }
 
-  if (actor.role !== "ADMIN") {
+  if (actor.role !== "ADMIN" && actor.role !== "SUPER_ADMIN") {
     res.status(403).json({ message: "Admin эрх шаардлагатай" });
     return null;
   }
@@ -242,6 +261,16 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     return res.status(400).json({ message: "CARD amount буруу байна" });
   }
 
+  // Detect Push ECR provider early so we can skip bridge validation
+  let isPushEcr = false;
+  if (registerId) {
+    const regForProvider = await prisma.posRegister.findUnique({
+      where: { id: registerId },
+      select: { cardProviderType: true },
+    });
+    isPushEcr = regForProvider?.cardProviderType === "PUSH_ECR";
+  }
+
   if (bridgeUrl !== null) {
     try {
       const parsed = new URL(bridgeUrl);
@@ -253,7 +282,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     }
   }
 
-  if (!bridgeUrl && !allowPosSimulation) {
+  if (!bridgeUrl && !allowPosSimulation && !isPushEcr) {
     return res.status(400).json({
       message:
         "Card simulation идэвхгүй байна. terminalBridgeUrl тохируулж bridge-р authorize хийнэ үү.",
@@ -375,6 +404,46 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           });
         }
       })();
+    } else if (isPushEcr) {
+      // Push ECR: call PayPRO cloud API directly (terminal handles the card transaction)
+      void (async () => {
+        try {
+          const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/purchase`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": pushEcrApiKey,
+              "x-client-id": pushEcrClientId,
+            },
+            body: JSON.stringify({
+              terminalId,
+              amount,
+              payment: 1, // 1=Card, 4=SocialPay QR, 7=Monpay QR
+              referralcode: attempt.id,
+              skipPrint: false,
+            }),
+            signal: AbortSignal.timeout(120_000),
+          });
+          const ecrData = (await ecrRes.json()) as PushEcrPurchaseResponse;
+          await prisma.cardPaymentAttempt.update({
+            where: { id: attempt.id },
+            data: {
+              status: ecrData.succeed ? PosPaymentStatus.APPROVED : PosPaymentStatus.DECLINED,
+              transactionId: ecrData.systemRef || ecrData.traceno || null,
+              message: ecrData.message || null,
+              providerPayload: ecrData as object,
+            },
+          });
+        } catch (err) {
+          await prisma.cardPaymentAttempt.update({
+            where: { id: attempt.id },
+            data: {
+              status: PosPaymentStatus.FAILED,
+              message: err instanceof Error ? err.message : "Push ECR холболт амжилтгүй боллоо",
+            },
+          });
+        }
+      })();
     } else if (allowPosSimulation) {
       setTimeout(() => {
         void prisma.cardPaymentAttempt.update({
@@ -401,6 +470,36 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
   } catch (error) {
     console.error("card authorize error", error);
     return res.status(500).json({ message: "Card authorize хийхэд алдаа гарлаа" });
+  }
+});
+
+router.post("/pos/payments/push-ecr/cancel", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const terminalId = String(req.body?.terminalId || "");
+  if (!terminalId) {
+    return res.status(400).json({ message: "terminalId шаардлагатай" });
+  }
+
+  try {
+    const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/cancel`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": pushEcrApiKey,
+        "x-client-id": pushEcrClientId,
+      },
+      body: JSON.stringify({ termianlId: terminalId }), // API typo: termianlId
+      signal: AbortSignal.timeout(15_000),
+    });
+    const data = (await ecrRes.json()) as { succeed: boolean; message?: string };
+    return res.json({ succeed: data.succeed, message: data.message });
+  } catch (err) {
+    return res.status(500).json({
+      succeed: false,
+      message: err instanceof Error ? err.message : "Push ECR cancel амжилтгүй боллоо",
+    });
   }
 });
 
@@ -2310,7 +2409,12 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
         qpayEnabled: nextQpayEnabled,
         qpayMerchantId: nextQpayMerchantId,
         qpayTerminalId: nextQpayTerminalId,
-        ...(isActive !== undefined && { isActive: Boolean(isActive) }),
+        ...(isActive !== undefined && {
+          isActive: Boolean(isActive),
+          ...(Boolean(isActive) && existing.activationStatus === PosActivationStatus.PENDING && {
+            activationStatus: PosActivationStatus.APPROVED,
+          }),
+        }),
       },
       include: { branch: { select: { id: true, name: true } } },
     });

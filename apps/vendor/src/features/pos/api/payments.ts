@@ -73,6 +73,13 @@ export function confirmQPayInvoice(invoiceId: string): Promise<QPayInvoice> {
   });
 }
 
+export function cancelPushEcr(terminalId: string): Promise<{ succeed: boolean; message?: string }> {
+  return posRequest("/pos/payments/push-ecr/cancel", {
+    method: "POST",
+    body: { terminalId },
+  });
+}
+
 /* ─── Register config ─────────────────────────────────────────────── */
 
 export type RegisterConfig = {
