@@ -934,6 +934,7 @@ model WarehouseInventory {
   lastRestockedAt DateTime?
   lastAuditedAt   DateTime?
   note            String?
+  showOnWeb       Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -943,6 +944,7 @@ model WarehouseInventory {
   @@index([warehouseId])
   @@index([productId])
   @@index([quantity])
+  @@index([showOnWeb])
 }
 
 model WarehouseStockRequest {

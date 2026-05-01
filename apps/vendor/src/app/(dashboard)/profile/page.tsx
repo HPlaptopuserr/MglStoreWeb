@@ -176,7 +176,8 @@ export default function ProfilePage() {
         if (catsRes.ok) setCategories(await catsRes.json());
 
         if (partnersRes.ok && (userEmail || orgId)) {
-          const data = await partnersRes.json();
+          const json = await partnersRes.json();
+          const data = Array.isArray(json) ? json : json?.data || [];
           const found = data.find((p: any) => p.id === orgId || p.email === userEmail);
           if (found) {
             setPartner(found);

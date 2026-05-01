@@ -6,9 +6,18 @@ type PosRegisterQPayConfig = {
   qpayTerminalId: string | null;
 };
 
-const resolveSharedPassword = () =>
-  process.env.QPAY_MULTI_MERCHANT_PASSWORD || process.env.QPAY_CLIENT_SECRET || "";
-
+/**
+ * POS register-н QPay merchant context.
+ *
+ * ── Стандарт QPay V2 (одоогийн тохиргоо) ───────────────────────────────
+ * Register-н qpayMerchantId/qpayTerminalId тохируулагдаагүй бол
+ * стандарт QPay V2 env credentials ашиглана (QPAY_CLIENT_ID, QPAY_INVOICE_CODE).
+ * Нэг байгууллагад нэг invoice code → merchant.qpay.mn/v2
+ *
+ * ── QuickQR multi-merchant (ирээдүйн тохиргоо) ─────────────────────────
+ * Register-н qpayMerchantId нь QuickQR UUID байвал QuickQR API ашиглана.
+ * → sandbox-quickqr.qpay.mn/v2  (эсвэл production)
+ */
 export function buildQPayMerchantContextFromPosRegister(
   register: PosRegisterQPayConfig,
 ): QPayMerchantContext | null {
@@ -16,22 +25,36 @@ export function buildQPayMerchantContextFromPosRegister(
     return null;
   }
 
-  const username = (register.qpayMerchantId || "").trim();
-  const terminalId = (register.qpayTerminalId || "").trim();
-  const password = resolveSharedPassword().trim();
+  const qpayMerchantId = (register.qpayMerchantId || "").trim();
 
-  if (!username || !terminalId || !password) {
-    return null;
+  // QuickQR path: register has a UUID merchant_id from QuickQR registration
+  // UUID pattern check (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    qpayMerchantId,
+  );
+
+  if (isUUID) {
+    const masterUsername = (process.env.QPAY_QUICKQR_MASTER_USERNAME || "").trim();
+    const masterPassword = (process.env.QPAY_QUICKQR_MASTER_PASSWORD || "").trim();
+    const masterTerminalId = (
+      process.env.QPAY_QUICKQR_MASTER_TERMINAL_ID || masterUsername
+    ).trim();
+
+    if (!masterUsername || !masterPassword) return null;
+
+    return {
+      username: masterUsername,
+      password: masterPassword,
+      terminalId: masterTerminalId,
+      invoiceCode: null,
+      merchantId: qpayMerchantId,                               // QuickQR UUID
+      branchCode: (register.qpayTerminalId || "").trim() || null,
+      merchantKey: `quickqr:${masterUsername}:${qpayMerchantId}`,
+    };
   }
 
-  return {
-    username,
-    password,
-    terminalId,
-    // QuickQR token endpoint requires terminal_id and invoice endpoint uses invoice_code.
-    // In current POS config, qpayTerminalId is the only merchant-scoped key we have,
-    // so we map it to both until a dedicated invoiceCode field is introduced.
-    invoiceCode: terminalId,
-    merchantKey: `pos:${username}:${terminalId}`,
-  };
+  // Standard QPay V2 path: use env credentials directly
+  // Returns null → caller falls back to org-level config → uses QPAY_CLIENT_ID/INVOICE_CODE
+  return null;
 }
+

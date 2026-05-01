@@ -18,6 +18,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
+import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
 
 /* ─── types ──────────────────────────────────────────────────────────── */
 type Org = { id: string; name: string; slug: string };
@@ -113,9 +114,12 @@ export function OrgStaffTab() {
 
   /* load orgs */
   useEffect(() => {
-    adminFetch(`${API}/partners?status=APPROVED`)
+    adminFetch(`${API}/partners?status=ACTIVE`)
       .then((r) => r.json())
-      .then((data) => setOrgs(Array.isArray(data) ? data : []))
+      .then((raw) => {
+        const list = Array.isArray(raw) ? raw : raw?.data || [];
+        setOrgs(list);
+      })
       .catch(() => setOrgs([]))
       .finally(() => setLoadingOrgs(false));
   }, []);
@@ -206,23 +210,13 @@ export function OrgStaffTab() {
     <div className="space-y-5">
       {/* org selector + add button */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative max-w-xs flex-1">
-          <select
-            value={selectedOrgId}
-            onChange={(e) => setSelectedOrgId(e.target.value)}
-            className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-3 pr-8 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-300"
-          >
-            <option value="">
-              {loadingOrgs ? "Ачаалж байна..." : "— Байгууллага сонгох —"}
-            </option>
-            {orgs.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        </div>
+        <OrgSearchDropdown
+          orgs={orgs}
+          value={selectedOrgId}
+          onChange={setSelectedOrgId}
+          loading={loadingOrgs}
+          className="w-80"
+        />
 
         {selectedOrgId && (
           <button

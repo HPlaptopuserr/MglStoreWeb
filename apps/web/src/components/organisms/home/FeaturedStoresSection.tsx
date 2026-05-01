@@ -30,7 +30,8 @@ export const FeaturedStoresSection = () => {
       try {
         const res = await fetch(`${API}/partners`);
         if (!res.ok) throw new Error("Failed to fetch stores");
-        const data = await res.json();
+        const raw = await res.json();
+        const data = Array.isArray(raw) ? raw : raw?.data || [];
 
         const activeStores = data
           .filter((p: ApiPartner) => p.status === "ACTIVE")

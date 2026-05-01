@@ -17,10 +17,11 @@ const env = () => ({
   publicUrl: process.env.API_PUBLIC_URL || "http://localhost:3001",
 });
 
-// Vendor merchant contexts use QPAY_QUICKQR_BASE_URL if set; else fall back to QPAY_BASE_URL
+// Vendor merchant contexts use QPAY_QUICKQR_BASE_URL only when merchantId is set
+// (QuickQR multi-merchant). Standard QPay V2 contexts always use QPAY_BASE_URL.
 const resolveBaseUrl = (context?: QPayMerchantContext) => {
   const { baseUrl, quickqrBaseUrl } = env();
-  if (context?.username && quickqrBaseUrl) return quickqrBaseUrl;
+  if (context?.merchantId && quickqrBaseUrl) return quickqrBaseUrl;
   return baseUrl;
 };
 
@@ -186,6 +187,58 @@ export async function createQPayInvoice(params: {
   }
 
   const callbackUrl = `${publicUrl}${callbackPath}?${callbackQuery.toString()}`;
+
+  // ── QuickQR branch ──────────────────────────────────────────
+  // QuickQR uses merchant_id + bank_accounts instead of invoice_code
+  if (params.merchantContext?.merchantId) {
+    const body: Record<string, unknown> = {
+      merchant_id: params.merchantContext.merchantId,
+      amount: params.amount,
+      currency: "MNT",
+      callback_url: callbackUrl,
+      description: params.description || `MGL Store - ${params.orderNumber}`,
+      customer_name: "MGL Store Customer",
+      customer_logo: "",
+    };
+
+    if (params.merchantContext.branchCode) {
+      body.branch_code = params.merchantContext.branchCode;
+    }
+
+    if (params.merchantContext.bankAccounts?.length) {
+      body.bank_accounts = params.merchantContext.bankAccounts.map((b) => ({
+        ...b,
+        default: b.is_default ?? true,
+      }));
+    }
+
+    const res = await authorizedFetch(
+      `${baseUrl}/invoice`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      params.merchantContext,
+    );
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error("QuickQR create invoice failed:", res.status, errBody);
+      throw new Error(`QuickQR create invoice failed: ${res.status}`);
+    }
+
+    const raw = (await res.json()) as Record<string, unknown>;
+    // QuickQR response: { id, qr_text, qr_image, urls }
+    return {
+      invoice_id: String(raw.id || raw.invoice_id || ""),
+      qr_text: String(raw.qr_text || ""),
+      qr_image: String(raw.qr_image || ""),
+      urls: (raw.urls as QPayDeepLink[]) || [],
+    };
+  }
+
+  // ── Standard QPay V2 branch ─────────────────────────────────
   const invoiceCode =
     (params.merchantContext?.invoiceCode || "").trim() || defaultInvoiceCode;
 
@@ -387,15 +440,19 @@ export async function checkQPayPayment(
 ): Promise<QPayPaymentCheckResponse> {
   const baseUrl = resolveBaseUrl(merchantContext);
 
+  // QuickQR uses { invoice_id } — standard QPay uses { object_type, object_id }
+  const isQuickQr = !!(merchantContext?.username && env().quickqrBaseUrl);
+
+  const body = isQuickQr
+    ? { invoice_id: invoiceId }
+    : { object_type: "INVOICE", object_id: invoiceId };
+
   const res = await authorizedFetch(
     `${baseUrl}/payment/check`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        object_type: "INVOICE",
-        object_id: invoiceId,
-      }),
+      body: JSON.stringify(body),
     },
     merchantContext,
   );
@@ -406,5 +463,26 @@ export async function checkQPayPayment(
     throw new Error(`QPay payment check failed: ${res.status}`);
   }
 
-  return (await res.json()) as QPayPaymentCheckResponse;
+  const raw = (await res.json()) as Record<string, unknown>;
+
+  // QuickQR response format: { invoice_status, payments: [...] }
+  // Standard QPay format: { count, paid_amount, rows: [...] }
+  if (isQuickQr && raw.payments) {
+    const payments = raw.payments as Record<string, unknown>[];
+    const paidPayments = payments.filter(
+      (p) => String(p.payment_status || p.status || "").toUpperCase() === "SUCCESS",
+    );
+    return {
+      count: paidPayments.length,
+      paid_amount: paidPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0),
+      rows: paidPayments.map((p) => ({
+        payment_id: String(p.id || p.payment_id || ""),
+        payment_status: String(p.payment_status || p.status || ""),
+        payment_amount: Number(p.amount || 0),
+        transaction_id: String(p.transaction_id || ""),
+      })),
+    };
+  }
+
+  return raw as unknown as QPayPaymentCheckResponse;
 }

@@ -11,6 +11,7 @@ import {
   ScanLine,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
+import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
 
 type Org = { id: string; name: string; slug: string };
 
@@ -46,10 +47,10 @@ export function VendorFeaturesSection() {
   );
 
   useEffect(() => {
-    adminFetch(`${API}/partners?status=APPROVED&limit=1000`)
+    adminFetch(`${API}/partners?status=ACTIVE&limit=1000`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
-        const list = Array.isArray(data) ? data : data?.partners || [];
+        const list = Array.isArray(data) ? data : data?.data || data?.partners || [];
         setOrgs(list.map((p: any) => ({ id: p.id, name: p.name, slug: p.slug })));
       })
       .catch(() => setError("Байгууллагын жагсаалт авахад алдаа гарлаа."))
@@ -140,35 +141,14 @@ export function VendorFeaturesSection() {
       </div>
 
       {/* org selector */}
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-          Байгууллага сонгох
-        </label>
-        {loadingOrgs ? (
-          <div className="flex items-center gap-2 text-sm text-slate-400">
-            <Loader2 size={14} className="animate-spin" /> Ачаалж байна...
-          </div>
-        ) : (
-          <div className="relative w-72">
-            <select
-              value={selectedOrgId}
-              onChange={(e) => setSelectedOrgId(e.target.value)}
-              className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 pr-9 text-sm font-medium text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-            >
-              <option value="">— Байгууллага сонгох —</option>
-              {orgs.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              size={14}
-              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-          </div>
-        )}
-      </div>
+      <OrgSearchDropdown
+        orgs={orgs}
+        value={selectedOrgId}
+        onChange={setSelectedOrgId}
+        loading={loadingOrgs}
+        label="Байгууллага сонгох"
+        className="w-80"
+      />
 
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-medium">

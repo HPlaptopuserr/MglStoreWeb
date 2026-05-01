@@ -85,7 +85,8 @@ export default function OrganizationsPage() {
         ]);
 
         if (partnersRes.ok) {
-          const data = await partnersRes.json();
+          const raw = await partnersRes.json();
+          const data = Array.isArray(raw) ? raw : raw?.data || [];
 
           const activeStores = data
             .filter((p: ApiPartner) => p.status === "ACTIVE")

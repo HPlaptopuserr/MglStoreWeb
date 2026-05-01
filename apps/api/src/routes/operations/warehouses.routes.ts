@@ -435,6 +435,26 @@ router.get("/warehouses/:id/detail", async (req, res) => {
   }
 });
 
+// Toggle showOnWeb for a warehouse inventory item
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+router.patch("/warehouses/:id/inventory/:invId/show-on-web", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
+  try {
+    const { invId } = req.params;
+    const existing = await (prisma.warehouseInventory as any).findUnique({ where: { id: invId } });
+    if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
+
+    const updated = await (prisma.warehouseInventory as any).update({
+      where: { id: invId },
+      data: { showOnWeb: !existing.showOnWeb },
+      select: { id: true, showOnWeb: true },
+    });
+    return res.json(updated);
+  } catch (error) {
+    console.error("toggle showOnWeb error", error);
+    return res.status(500).json({ message: "Алдаа гарлаа", error: String(error) });
+  }
+});
+
 // Add/Update inventory for a warehouse
 router.post("/warehouses/:id/inventory", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
   try {

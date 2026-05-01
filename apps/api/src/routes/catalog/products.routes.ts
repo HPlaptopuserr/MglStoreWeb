@@ -9,6 +9,7 @@ import { Permission } from "@mgl/types";
 import { requireAuth } from "../../middleware/auth";
 import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
+import { requireActivePlan, checkProductLimit, checkImportLimit } from "../../middleware/plan-guard";
 import {
   extractExcelImages,
   uploadBufferToSupabase,
@@ -63,14 +64,17 @@ router.get("/products", async (req, res) => {
     if (organizationId) where.organizationId = organizationId;
     if (businessCategoryId) where.businessCategoryId = businessCategoryId;
 
-    // Vendor visibility rule:
-    // Only show products that are self-registered (no warehouse info)
-    // OR have been explicitly pulled via stock request (TRANSFER_IN)
+    // Visibility rule:
+    // Show products that are:
+    //   1. Self-registered by a vendor (no warehouse inventory), OR
+    //   2. Have been pulled to vendor via stock request (TRANSFER_IN), OR
+    //   3. Are in a warehouse with showOnWeb = true (central catalog products)
     where.AND = [
       {
         OR: [
           { warehouseInventories: { none: {} } },
           { inventoryLogs: { some: { reason: "TRANSFER_IN" } } },
+          { warehouseInventories: { some: { showOnWeb: true, quantity: { gt: 0 } } } },
         ],
       },
     ];
@@ -167,6 +171,8 @@ router.get("/products/import-template", (_req, res) => {
 router.post(
   "/products/import",
   requireAuth,
+  requireActivePlan("body"),
+  checkImportLimit(),
   upload.single("file"),
   async (req, res) => {
     try {
@@ -209,6 +215,16 @@ router.post(
 
       if (rows.length > 1000) {
         return res.status(400).json({ message: "Нэг удаад 1000-аас олон бараа оруулах боломжгүй" });
+      }
+
+      // Enforce plan product limit during import
+      const remainingSlots: number | undefined = (req as any).remainingProductSlots;
+      if (remainingSlots !== undefined && rows.length > remainingSlots) {
+        return res.status(400).json({
+          message: `Таны планд ${remainingSlots} бараа нэмэх зай үлдсэн байна. Файлд ${rows.length} бараа байна.`,
+          code: "PRODUCT_LIMIT_WOULD_EXCEED",
+          remaining: remainingSlots,
+        });
       }
 
       // Extract embedded images from xlsx (row → image buffers)
@@ -434,7 +450,13 @@ router.get("/products/:id", async (req, res) => {
 });
 
 /* ─── POST /products ────────────────────────────────────────────────── */
-router.post("/products", requireAuth, requireOrgPermission({ from: "body" }, Permission.MANAGE_PRODUCTS), async (req, res) => {
+router.post(
+  "/products",
+  requireAuth,
+  requireOrgPermission({ from: "body" }, Permission.MANAGE_PRODUCTS),
+  requireActivePlan("body"),
+  checkProductLimit(1),
+  async (req, res) => {
   try {
     const {
       organizationId,
@@ -558,7 +580,8 @@ router.post("/products", requireAuth, requireOrgPermission({ from: "body" }, Per
     console.error("create product error", error);
     return res.status(500).json({ message: "Бараа үүсгэхэд алдаа гарлаа", error: String(error) });
   }
-});
+  }
+);
 
 /* ─── PATCH /products/:id ───────────────────────────────────────────── */
 router.patch("/products/:id", requireAuth, async (req, res) => {

@@ -86,9 +86,10 @@ export default function InvestorsPage() {
     try {
       const res = await adminFetch(`${API}/partners`);
       if (res.ok) {
-        const data = await res.json();
+        const raw = await res.json();
+        const list = Array.isArray(raw) ? raw : raw?.data || [];
         setPartners(
-          data
+          list
             .filter((p: any) => p.status === "ACTIVE")
             .map((p: any) => ({
               id: p.id,

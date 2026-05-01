@@ -17,6 +17,8 @@ import {
   Loader2,
   Search,
   ExternalLink,
+  Globe,
+  GlobeLock,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 
@@ -30,6 +32,7 @@ interface InventoryItem {
   expiryDate: string | null;
   lastRestockedAt: string | null;
   note: string | null;
+  showOnWeb: boolean;
   product: {
     id: string;
     name: string;
@@ -80,6 +83,32 @@ export default function WarehouseDetailPage() {
   const [warehouse, setWarehouse] = useState<WarehouseDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const handleToggleShowOnWeb = async (warehouseId: string, invId: string, current: boolean) => {
+    setTogglingId(invId);
+    try {
+      const res = await adminFetch(`${API}/warehouses/${warehouseId}/inventory/${invId}/show-on-web`, {
+        method: "PATCH",
+      });
+      if (res.ok) {
+        setWarehouse((prev) =>
+          prev
+            ? {
+                ...prev,
+                inventories: prev.inventories.map((inv) =>
+                  inv.id === invId ? { ...inv, showOnWeb: !current } : inv,
+                ),
+              }
+            : prev,
+        );
+      }
+    } catch (e) {
+      console.error("toggle showOnWeb failed", e);
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   useEffect(() => {
     const fetchWarehouse = async () => {
@@ -370,6 +399,9 @@ export default function WarehouseDetailPage() {
                   <th className="px-6 py-3 text-right text-xs font-semibold uppercase text-slate-500">
                     Нийлүүлэгч
                   </th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold uppercase text-slate-500">
+                    Web
+                  </th>
                   <th className="px-6 py-3 text-right text-xs font-semibold uppercase text-slate-500">
                     Статус
                   </th>
@@ -438,6 +470,28 @@ export default function WarehouseDetailPage() {
                         <span className="text-sm text-slate-600">
                           {inv.product.organization.name}
                         </span>
+                      </td>
+                      {/* Web toggle */}
+                      <td className="px-6 py-4 text-center">
+                        <button
+                          onClick={() => handleToggleShowOnWeb(warehouse.id, inv.id, inv.showOnWeb)}
+                          disabled={togglingId === inv.id}
+                          title={inv.showOnWeb ? "Web дээр харагдаж байна — дарж нуух" : "Web дээр харуулах"}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all disabled:opacity-50 ${
+                            inv.showOnWeb
+                              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                              : "bg-slate-50 text-slate-400 hover:bg-slate-100 border border-slate-200"
+                          }`}
+                        >
+                          {togglingId === inv.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : inv.showOnWeb ? (
+                            <Globe size={12} />
+                          ) : (
+                            <GlobeLock size={12} />
+                          )}
+                          {inv.showOnWeb ? "Нийтлэг" : "Хаалттай"}
+                        </button>
                       </td>
                       <td className="px-6 py-4 text-right">
                         {isLowStock ? (

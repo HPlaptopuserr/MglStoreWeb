@@ -233,6 +233,12 @@ router.post("/admin/organizations", requireAuth, requirePlatformPermission(Permi
           address: address?.trim() || null,
           businessCategory: businessCategory?.trim() || null,
           isVerified: false,
+          // ─── Auto-activate 14-day trial ──────────────────────────
+          subdomainEnabled: true,
+          planType: "trial",
+          planActivatedAt: new Date(),
+          planExpiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          trialUsed: true,
         },
         select: {
           id: true,

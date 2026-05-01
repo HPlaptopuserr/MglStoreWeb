@@ -80,7 +80,7 @@ export default function AdminWarehousesPage() {
     try {
       const [warehouseRes, orgRes] = await Promise.all([
         adminFetch(`${API}/warehouses`),
-        adminFetch(`${API}/partners?status=APPROVED&limit=1000`),
+        adminFetch(`${API}/partners?status=ACTIVE&limit=1000`),
       ]);
 
       if (warehouseRes.ok) {
