@@ -1,9 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Loader2,
+  MessageSquareText,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
 import { API_BASE } from "@/lib/api";
-import { addSession } from "@/lib/admin-auth";
+import { addSession, type AdminUser } from "@/lib/admin-auth";
+
+type ForgotStep = "identifier" | "verifyMn" | "emailOtp" | "newPassword" | "done";
+
+type VerifyMnSession = {
+  sessionId: string;
+  phone: string;
+  shortcode: string;
+  text: string;
+  smsUri: string;
+  displayInstruction: string;
+  expiresAt: string;
+};
+
+type ApiPayload = {
+  message?: string;
+  channel?: string;
+  session?: VerifyMnSession;
+  resetToken?: string;
+  challengeToken?: string;
+  emailMasked?: string;
+  expiresIn?: number;
+  accessToken?: string;
+  user?: AdminUser;
+};
+
+async function readApiPayload(res: Response): Promise<ApiPayload> {
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return res.json().catch(() => ({}));
+  }
+
+  await res.text().catch(() => "");
+  return { message: "Серверээс буруу хариу ирлээ. API тохиргоогоо шалгана уу." };
+}
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
@@ -11,9 +57,99 @@ export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotStep, setForgotStep] = useState<ForgotStep>("identifier");
+  const [forgotIdentifier, setForgotIdentifier] = useState("");
+  const [verifyMnSession, setVerifyMnSession] = useState<VerifyMnSession | null>(null);
+  const [verifyMnNow, setVerifyMnNow] = useState(() => Date.now());
+  const [emailOtpChallenge, setEmailOtpChallenge] = useState<ApiPayload | null>(null);
+  const [emailOtpCode, setEmailOtpCode] = useState("");
+  const [emailOtpExpiresAt, setEmailOtpExpiresAt] = useState(0);
+  const [emailOtpNow, setEmailOtpNow] = useState(() => Date.now());
+  const [resetToken, setResetToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   const router = useRouter();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!verifyMnSession) return;
+
+    setVerifyMnNow(Date.now());
+    const timer = window.setInterval(() => setVerifyMnNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [verifyMnSession]);
+
+  useEffect(() => {
+    if (!emailOtpChallenge) return;
+
+    setEmailOtpNow(Date.now());
+    const timer = window.setInterval(() => setEmailOtpNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [emailOtpChallenge]);
+
+  const verifyMnRemainingSeconds = useMemo(() => {
+    if (!verifyMnSession) return 0;
+    return Math.max(0, Math.ceil((new Date(verifyMnSession.expiresAt).getTime() - verifyMnNow) / 1000));
+  }, [verifyMnNow, verifyMnSession]);
+
+  const verifyMnTimeText = useMemo(() => {
+    const minutes = Math.floor(verifyMnRemainingSeconds / 60);
+    const seconds = verifyMnRemainingSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }, [verifyMnRemainingSeconds]);
+
+  const emailOtpRemainingSeconds = useMemo(() => {
+    if (!emailOtpChallenge || !emailOtpExpiresAt) return 0;
+    return Math.max(0, Math.ceil((emailOtpExpiresAt - emailOtpNow) / 1000));
+  }, [emailOtpChallenge, emailOtpExpiresAt, emailOtpNow]);
+
+  const emailOtpTimeText = useMemo(() => {
+    const minutes = Math.floor(emailOtpRemainingSeconds / 60);
+    const seconds = emailOtpRemainingSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }, [emailOtpRemainingSeconds]);
+
+  const resetForgotState = () => {
+    setForgotStep("identifier");
+    setForgotIdentifier("");
+    setVerifyMnSession(null);
+    setEmailOtpChallenge(null);
+    setEmailOtpCode("");
+    setEmailOtpExpiresAt(0);
+    setResetToken("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setCopied(false);
+    setError("");
+  };
+
+  const openForgot = () => {
+    resetForgotState();
+    setShowForgot(true);
+  };
+
+  const backFromForgot = () => {
+    if (forgotStep === "identifier" || forgotStep === "done") {
+      resetForgotState();
+      setShowForgot(false);
+      return;
+    }
+
+    setForgotStep("identifier");
+    setVerifyMnSession(null);
+    setEmailOtpChallenge(null);
+    setEmailOtpCode("");
+    setEmailOtpExpiresAt(0);
+    setResetToken("");
+    setError("");
+  };
+
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
@@ -34,19 +170,9 @@ export default function AdminLoginPage() {
         }),
       });
 
-      const text = await res.text();
-      let data: any;
-
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error(
-          "Серверээс буруу өгөгдөл ирлээ. API ажиллаж байгаа эсэхийг шалга.",
-        );
-      }
-
-      if (!res.ok) {
-        throw new Error(data?.message || "Нэвтрэх эрх татгалзагдлаа.");
+      const data = await readApiPayload(res);
+      if (!res.ok || !data.accessToken || !data.user) {
+        throw new Error(data.message || "Нэвтрэх эрх татгалзагдлаа.");
       }
 
       localStorage.setItem("admin_token", data.accessToken);
@@ -56,26 +182,437 @@ export default function AdminLoginPage() {
       router.push("/dashboard");
       router.refresh();
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Нэвтрэх нэр эсвэл нууц үг буруу байна",
-      );
+      setError(err instanceof Error ? err.message : "Нэвтрэх нэр эсвэл нууц үг буруу байна");
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleForgotSendCode = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    const value = forgotIdentifier.trim();
+    const isPhone = /^[0-9+\-\s()]{7,16}$/.test(value) && !value.includes("@");
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    if (!isPhone && !isEmail) {
+      setError("Admin бүртгэлтэй имэйл эсвэл утасны дугаараа оруулна уу.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/admin/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isPhone ? { phone: value } : { email: value.toLowerCase() }),
+      });
+      const data = await readApiPayload(res);
+
+      if (!res.ok) {
+        throw new Error(data.message || "Баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
+      }
+
+      if (data.channel === "emailOtp" && data.challengeToken) {
+        setEmailOtpChallenge(data);
+        setEmailOtpCode("");
+        setEmailOtpExpiresAt(Date.now() + (data.expiresIn || 600) * 1000);
+        setEmailOtpNow(Date.now());
+        setForgotStep("emailOtp");
+        return;
+      }
+
+      if (!data.session) {
+        throw new Error(data.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
+      }
+
+      setVerifyMnSession(data.session);
+      setVerifyMnNow(Date.now());
+      setForgotStep("verifyMn");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Алдаа гарлаа.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyMnComplete = async () => {
+    setError("");
+    if (!verifyMnSession) {
+      setError("Verify.mn баталгаажуулалт эхлээгүй байна.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/admin/forgot-password/verify-mn/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: forgotIdentifier.trim(),
+          sessionId: verifyMnSession.sessionId,
+        }),
+      });
+      const data = await readApiPayload(res);
+      if (!res.ok || !data.resetToken) {
+        throw new Error(data.message || "Verify.mn баталгаажуулахад алдаа гарлаа.");
+      }
+
+      setResetToken(data.resetToken);
+      setVerifyMnSession(null);
+      setForgotStep("newPassword");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Алдаа гарлаа.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEmailOtpSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (!emailOtpChallenge?.challengeToken) {
+      setError("Баталгаажуулах хүсэлт олдсонгүй. Дахин оролдоно уу.");
+      return;
+    }
+
+    if (!/^\d{6}$/.test(emailOtpCode.trim())) {
+      setError("6 оронтой баталгаажуулах кодоо оруулна уу.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/admin/forgot-password/email/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          otpCode: emailOtpCode.trim(),
+          challengeToken: emailOtpChallenge.challengeToken,
+        }),
+      });
+      const data = await readApiPayload(res);
+      if (!res.ok || !data.resetToken) {
+        throw new Error(data.message || "Имэйл код баталгаажуулахад алдаа гарлаа.");
+      }
+
+      setResetToken(data.resetToken);
+      setEmailOtpChallenge(null);
+      setEmailOtpCode("");
+      setEmailOtpExpiresAt(0);
+      setForgotStep("newPassword");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Алдаа гарлаа.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (newPassword.length < 6) {
+      setError("Нууц үг дор хаяж 6 тэмдэгт байх ёстой.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Нууц үгүүд таарахгүй байна.");
+      return;
+    }
+    if (!resetToken) {
+      setError("Баталгаажуулалт дуусаагүй байна. Дахин оролдоно уу.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resetToken,
+          password: newPassword,
+        }),
+      });
+      const data = await readApiPayload(res);
+      if (!res.ok) {
+        throw new Error(data.message || "Нууц үг шинэчлэхэд алдаа гарлаа.");
+      }
+
+      setForgotStep("done");
+      setPassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Алдаа гарлаа.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCopySmsText = async () => {
+    if (!verifyMnSession) return;
+
+    try {
+      await navigator.clipboard.writeText(verifyMnSession.text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const renderPasswordInput = (
+    id: string,
+    value: string,
+    onChange: (value: string) => void,
+    visible: boolean,
+    setVisible: (value: boolean) => void,
+    placeholder = "••••••••",
+  ) => (
+    <div className="relative">
+      <input
+        id={id}
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={isLoading}
+        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+      />
+      <button
+        type="button"
+        onClick={() => setVisible(!visible)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600"
+        aria-label={visible ? "Нууц үг нуух" : "Нууц үг харах"}
+      >
+        {visible ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+      </button>
+    </div>
+  );
+
+  const renderForgotContent = () => {
+    if (forgotStep === "identifier") {
+      return (
+        <form className="mt-8 space-y-6" onSubmit={handleForgotSendCode}>
+          <div className="text-center">
+            <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
+              <KeyRound className="h-6 w-6" />
+            </div>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900">Нууц үг сэргээх</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Admin бүртгэлтэй имэйл эсвэл утасны дугаараа оруулна уу.
+            </p>
+          </div>
+
+          {error && <ErrorMessage message={error} />}
+
+          <div>
+            <label htmlFor="forgotIdentifier" className="mb-1 block text-sm font-medium text-slate-700">
+              Имэйл эсвэл утасны дугаар
+            </label>
+            <input
+              id="forgotIdentifier"
+              type="text"
+              value={forgotIdentifier}
+              onChange={(e) => setForgotIdentifier(e.target.value)}
+              placeholder="admin@mglstore.mn эсвэл 99112233"
+              disabled={isLoading}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <PrimaryButton loading={isLoading} label="Баталгаажуулах код авах" loadingLabel="Илгээж байна..." />
+        </form>
+      );
+    }
+
+    if (forgotStep === "verifyMn" && verifyMnSession) {
+      const isExpired = verifyMnRemainingSeconds <= 0;
+      const progress = Math.max(0, Math.min(100, (verifyMnRemainingSeconds / (5 * 60)) * 100));
+
+      return (
+        <div className="mt-8 space-y-5">
+          <div className="text-center">
+            <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900">Verify.mn баталгаажуулалт</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Доорх кодтой SMS-г заасан дугаар руу илгээгээд шалгана уу.
+            </p>
+          </div>
+
+          {error && <ErrorMessage message={error} />}
+
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-600">Verify.mn</span>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${isExpired ? "bg-red-100 text-red-700" : "bg-white text-emerald-700"}`}>
+                {isExpired ? "Дууссан" : verifyMnTimeText}
+              </span>
+            </div>
+            <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-white">
+              <div className={`h-full ${isExpired ? "bg-red-500" : "bg-emerald-500"}`} style={{ width: `${progress}%` }} />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-white p-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Илгээх дугаар</p>
+                <p className="mt-1 text-2xl font-black text-slate-950">{verifyMnSession.shortcode}</p>
+              </div>
+              <div className="rounded-xl bg-white p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">SMS текст</p>
+                  <button
+                    type="button"
+                    onClick={handleCopySmsText}
+                    className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-200"
+                  >
+                    {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    {copied ? "OK" : "Хуулах"}
+                  </button>
+                </div>
+                <p className="rounded-lg bg-slate-50 px-2 py-2 text-center text-xl font-black tracking-wide text-slate-950">
+                  {verifyMnSession.text}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {isExpired ? (
+              <button
+                type="button"
+                onClick={(event) => void handleForgotSendCode(event as unknown as FormEvent)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Дахин авах
+              </button>
+            ) : (
+              <a
+                href={verifyMnSession.smsUri}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800"
+              >
+                <MessageSquareText className="h-4 w-4" />
+                SMS илгээх
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={handleVerifyMnComplete}
+              disabled={isLoading || isExpired}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              {isLoading ? "Шалгаж байна..." : "Шалгах"}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (forgotStep === "emailOtp") {
+      return (
+        <form className="mt-8 space-y-6" onSubmit={handleEmailOtpSubmit}>
+          <div className="text-center">
+            <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900">Имэйл OTP</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              {emailOtpChallenge?.emailMasked || forgotIdentifier} хаяг руу илгээсэн 6 оронтой кодыг оруулна уу.
+            </p>
+          </div>
+
+          {error && <ErrorMessage message={error} />}
+
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+            Код хүчинтэй хугацаа: <span className="font-bold">{emailOtpTimeText}</span>
+          </div>
+
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={emailOtpCode}
+            onChange={(e) => setEmailOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="123456"
+            disabled={isLoading}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-lg font-bold tracking-[0.35em] text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+            autoFocus
+          />
+
+          <PrimaryButton
+            loading={isLoading}
+            disabled={emailOtpRemainingSeconds <= 0}
+            label="Код баталгаажуулах"
+            loadingLabel="Шалгаж байна..."
+          />
+        </form>
+      );
+    }
+
+    if (forgotStep === "newPassword") {
+      return (
+        <form className="mt-8 space-y-6" onSubmit={handleResetPassword}>
+          <div className="text-center">
+            <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
+              <KeyRound className="h-6 w-6" />
+            </div>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900">Шинэ нууц үг</h2>
+            <p className="mt-2 text-sm text-slate-500">Admin account-ийн шинэ нууц үгээ тохируулна уу.</p>
+          </div>
+
+          {error && <ErrorMessage message={error} />}
+
+          <div>
+            <label htmlFor="newPassword" className="mb-1 block text-sm font-medium text-slate-700">
+              Шинэ нууц үг
+            </label>
+            {renderPasswordInput("newPassword", newPassword, setNewPassword, showNewPassword, setShowNewPassword)}
+          </div>
+
+          <div>
+            <label htmlFor="confirmPassword" className="mb-1 block text-sm font-medium text-slate-700">
+              Нууц үг давтах
+            </label>
+            {renderPasswordInput("confirmPassword", confirmPassword, setConfirmPassword, showConfirmPassword, setShowConfirmPassword)}
+          </div>
+
+          <PrimaryButton loading={isLoading} label="Нууц үг шинэчлэх" loadingLabel="Шинэчилж байна..." />
+        </form>
+      );
+    }
+
+    return (
+      <div className="mt-8 space-y-6 text-center">
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+          <Check className="h-6 w-6" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Нууц үг шинэчлэгдлээ</h2>
+          <p className="mt-2 text-sm text-slate-500">Шинэ нууц үгээрээ admin panel-д нэвтэрнэ үү.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            resetForgotState();
+            setShowForgot(false);
+          }}
+          className="flex w-full justify-center rounded-xl bg-slate-900 px-4 py-3.5 text-sm font-bold text-white transition-all hover:bg-slate-800"
+        >
+          Нэвтрэх рүү буцах
+        </button>
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      {/* Left Panel */}
+    <div className="flex min-h-screen bg-slate-50">
       <div className="relative hidden overflow-hidden bg-slate-900 p-16 text-white lg:flex lg:w-1/2 lg:flex-col lg:justify-between">
         <div className="pointer-events-none absolute inset-0 opacity-10">
-          <svg
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            className="h-full w-full fill-current text-indigo-500"
-          >
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full fill-current text-indigo-500">
             <polygon points="0,100 100,0 100,100" />
           </svg>
         </div>
@@ -85,204 +622,129 @@ export default function AdminLoginPage() {
             MGL<span className="text-indigo-500">ADMIN</span>
           </h1>
           <p className="max-w-md text-lg text-slate-400">
-            Системийн удирдлага, байгууллагын хүсэлт, хэрэглэгчийн хяналт болон
-            үндсэн үйл ажиллагааг нэг цэгээс удирдана.
+            Системийн удирдлага, байгууллагын хүсэлт, хэрэглэгчийн хяналт болон үндсэн үйл ажиллагааг нэг цэгээс удирдана.
           </p>
         </div>
 
         <div className="relative z-10 space-y-6">
-          <div className="flex items-center space-x-4 rounded-xl border border-slate-700 bg-slate-800/50 p-4 backdrop-blur-sm">
-            <div className="rounded-lg bg-indigo-500/20 p-3">
-              <svg
-                className="h-6 w-6 text-indigo-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 12l2 2 4-4m5-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+          {[
+            ["Хяналтын төв", "Admin dashboard руу аюулгүй нэвтрэх"],
+            ["Удирдлагын боломж", "Хүсэлт, хэрэглэгч, системийн урсгал"],
+          ].map(([label, text]) => (
+            <div key={label} className="flex items-center space-x-4 rounded-xl border border-slate-700 bg-slate-800/50 p-4 backdrop-blur-sm">
+              <div className="rounded-lg bg-indigo-500/20 p-3 text-indigo-500">
+                <ShieldCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-400">{label}</p>
+                <p className="text-xl font-bold">{text}</p>
+              </div>
             </div>
-
-            <div>
-              <p className="text-sm text-slate-400">Хяналтын төв</p>
-              <p className="text-xl font-bold">
-                Admin dashboard руу аюулгүй нэвтрэх
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-4 rounded-xl border border-slate-700 bg-slate-800/50 p-4 backdrop-blur-sm">
-            <div className="rounded-lg bg-indigo-500/20 p-3">
-              <svg
-                className="h-6 w-6 text-indigo-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M3 7h18M3 12h18M3 17h18"
-                />
-              </svg>
-            </div>
-
-            <div>
-              <p className="text-sm text-slate-400">Удирдлагын боломж</p>
-              <p className="text-xl font-bold">
-                Хүсэлт, хэрэглэгч, системийн урсгал
-              </p>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 
-      {/* Right Panel */}
       <div className="flex w-full items-center justify-center p-8 sm:p-12 lg:w-1/2">
-        <div className="w-full max-w-md space-y-8 rounded-2xl border border-slate-100 bg-white p-10 shadow-xl">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900">
-              Админ нэвтрэх
-            </h2>
-            <p className="mt-2 text-sm text-slate-500">
-              Зөвхөн зөвшөөрөгдсөн админ хэрэглэгч системд нэвтрэх боломжтой.
-            </p>
-          </div>
-
-          <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-            {error && (
-              <div className="rounded-lg border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-600">
-                {error}
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="email"
-                  className="mb-1 block text-sm font-medium text-slate-700"
-                >
-                  Имэйл хаяг
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@mglstore.mn"
-                  disabled={isLoading}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div>
-                <div className="mb-1 flex justify-between">
-                  <label
-                    htmlFor="password"
-                    className="block text-sm font-medium text-slate-700"
-                  >
-                    Нууц үг
-                  </label>
-                </div>
-
-                <div className="relative">
-                  <input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    disabled={isLoading}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    {showPassword ? (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
-                        stroke="currentColor"
-                        className="w-5 h-5"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"
-                        />
-                      </svg>
-                    ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
-                        stroke="currentColor"
-                        className="w-5 h-5"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
+        <div className="w-full max-w-md rounded-2xl border border-slate-100 bg-white p-10 shadow-xl">
+          {showForgot && (
             <button
-              type="submit"
-              disabled={isLoading}
-              className="flex w-full justify-center rounded-xl border border-transparent bg-slate-900 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+              type="button"
+              onClick={backFromForgot}
+              className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-800"
             >
-              {isLoading ? (
-                <svg
-                  className="h-5 w-5 animate-spin text-white"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-              ) : (
-                "Нэвтрэх"
-              )}
+              <ArrowLeft className="h-4 w-4" />
+              {forgotStep === "identifier" || forgotStep === "done" ? "Нэвтрэх рүү буцах" : "Буцах"}
             </button>
-          </form>
+          )}
 
-          <p className="mt-6 text-center text-sm text-slate-500">
-            MGL Store системийн дотоод удирдлагын хэсэг
-          </p>
+          {showForgot ? (
+            renderForgotContent()
+          ) : (
+            <>
+              <div className="text-center">
+                <h2 className="text-3xl font-bold tracking-tight text-slate-900">Админ нэвтрэх</h2>
+                <p className="mt-2 text-sm text-slate-500">
+                  Зөвхөн зөвшөөрөгдсөн admin хэрэглэгч системд нэвтрэх боломжтой.
+                </p>
+              </div>
+
+              <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+                {error && <ErrorMessage message={error} />}
+
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
+                      Имэйл хаяг
+                    </label>
+                    <input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="admin@mglstore.mn"
+                      disabled={isLoading}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 transition-colors focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="mb-1 flex items-center justify-between">
+                      <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+                        Нууц үг
+                      </label>
+                      <button
+                        type="button"
+                        onClick={openForgot}
+                        className="text-sm font-semibold text-indigo-600 transition-colors hover:text-indigo-500"
+                      >
+                        Нууц үгээ мартсан?
+                      </button>
+                    </div>
+                    {renderPasswordInput("password", password, setPassword, showPassword, setShowPassword)}
+                  </div>
+                </div>
+
+                <PrimaryButton loading={isLoading} label="Нэвтрэх" loadingLabel="Шалгаж байна..." />
+              </form>
+
+              <p className="mt-6 text-center text-sm text-slate-500">
+                MGL Store системийн дотоод удирдлагын хэсэг
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function ErrorMessage({ message }: { message: string }) {
+  return (
+    <div className="rounded-lg border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-600">
+      {message}
+    </div>
+  );
+}
+
+function PrimaryButton({
+  loading,
+  disabled,
+  label,
+  loadingLabel,
+}: {
+  loading: boolean;
+  disabled?: boolean;
+  label: string;
+  loadingLabel: string;
+}) {
+  return (
+    <button
+      type="submit"
+      disabled={loading || disabled}
+      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-transparent bg-slate-900 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+    >
+      {loading && <Loader2 className="h-5 w-5 animate-spin" />}
+      {loading ? loadingLabel : label}
+    </button>
   );
 }

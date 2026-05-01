@@ -31,7 +31,7 @@ type VerifyMnStatusResponse = {
   expiresAt: string;
 };
 
-type WebEmailOtpPurpose = "web-email-login" | "web-password-reset";
+type WebEmailOtpPurpose = "web-email-login" | "web-password-reset" | "admin-password-reset";
 
 type WebEmailOtpChallenge = {
   purpose: WebEmailOtpPurpose;
@@ -177,6 +177,20 @@ async function findWebUserByIdentifier(identifier: string, isPhone: boolean) {
     where: { email: identifier.toLowerCase() },
     include: { profile: true },
   });
+}
+
+async function findAdminUserByIdentifier(identifier: string, isPhone: boolean) {
+  const user = isPhone
+    ? await prisma.user.findFirst({
+        where: { profile: { phoneNumber: identifier } },
+        include: { profile: true },
+      })
+    : await prisma.user.findUnique({
+        where: { email: identifier.toLowerCase() },
+        include: { profile: true },
+      });
+
+  return user && isAdminRole(user.role) ? user : null;
 }
 
 async function createVerifyMnSession(phone: string): Promise<VerifyMnSessionResponse> {
@@ -363,6 +377,148 @@ router.post("/admin/login", async (req, res) => {
   } catch (error) {
     console.error("[admin login error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
+
+router.post("/admin/forgot-password", async (req, res) => {
+  try {
+    const { email, phone } = req.body;
+    const identifier: string | undefined = email || phone;
+
+    if (!identifier) {
+      return res.status(400).json({
+        message: "Имэйл эсвэл утасны дугаар шаардлагатай",
+      });
+    }
+
+    const normalized = normalizeWebIdentifier(email, phone);
+    const user = await findAdminUserByIdentifier(normalized.identifier, normalized.isPhone);
+
+    if (!user) {
+      return res.status(404).json({ message: "Admin хэрэглэгч олдсонгүй" });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ message: "Admin хэрэглэгч идэвхгүй байна" });
+    }
+
+    if (!normalized.isPhone) {
+      if (!isSmtpConfigured()) {
+        return res.status(500).json({ message: "SMTP тохиргоо хийгдээгүй байна" });
+      }
+
+      const challenge = createEmailOtpChallenge(
+        { id: user.id, email: user.email },
+        "admin-password-reset",
+      );
+      await sendPasswordResetOtpEmail(user.email, challenge.code);
+
+      return res.json({
+        message: "Нууц үг сэргээх код имэйл рүү илгээгдлээ",
+        channel: "emailOtp",
+        challengeToken: challenge.challengeToken,
+        emailMasked: maskEmail(user.email),
+        expiresIn: challenge.expiresIn,
+      });
+    }
+
+    const session = await createVerifyMnSession(normalized.identifier);
+    return res.json({
+      message: "Verify.mn баталгаажуулалт эхэллээ",
+      channel: "verifyMn",
+      session,
+    });
+  } catch (error) {
+    console.error("[admin forgot-password error]", error);
+    return res.status(500).json({
+      message: error instanceof Error ? error.message : "Сервер дээр алдаа гарлаа",
+    });
+  }
+});
+
+router.post("/admin/forgot-password/verify-mn/complete", async (req, res) => {
+  try {
+    const { phone, sessionId } = req.body;
+    const { identifier, isPhone } = normalizeWebIdentifier(undefined, phone);
+
+    if (!isPhone || !identifier || !sessionId) {
+      return res.status(400).json({ message: "Утасны дугаар болон sessionId шаардлагатай." });
+    }
+
+    const user = await findAdminUserByIdentifier(identifier, true);
+    if (!user) {
+      return res.status(404).json({ message: "Admin хэрэглэгч олдсонгүй" });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ message: "Admin хэрэглэгч идэвхгүй байна" });
+    }
+
+    const status = await getVerifyMnSessionStatus(sessionId);
+    const statusPhone = normalizePhoneDigits(status.phone);
+    if (statusPhone && statusPhone !== identifier) {
+      return res.status(400).json({ message: "Баталгаажуулсан дугаар таарахгүй байна." });
+    }
+
+    if (status.sessionStatus !== "VERIFIED") {
+      return res.status(400).json({
+        message: status.sessionStatus === "EXPIRED"
+          ? "Баталгаажуулах хугацаа дууссан байна."
+          : "SMS баталгаажуулалт хараахан ирээгүй байна.",
+        status: status.sessionStatus,
+      });
+    }
+
+    const resetToken = await createPasswordResetToken(user.id);
+    return res.json({
+      message: "Утас баталгаажлаа",
+      resetToken,
+    });
+  } catch (error) {
+    console.error("[admin forgot-password verify.mn complete error]", error);
+    return res.status(500).json({
+      message: error instanceof Error ? error.message : "Verify.mn баталгаажуулахад алдаа гарлаа",
+    });
+  }
+});
+
+router.post("/admin/forgot-password/email/complete", async (req, res) => {
+  try {
+    const { otpCode, challengeToken } = req.body;
+
+    let challenge: WebEmailOtpChallenge;
+    try {
+      challenge = verifyEmailOtpChallenge(otpCode, challengeToken, "admin-password-reset");
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (code === "EMAIL_OTP_REQUIRED") {
+        return res.status(400).json({ message: "Баталгаажуулах код шаардлагатай" });
+      }
+      if (code === "EMAIL_OTP_EXPIRED") {
+        return res.status(400).json({ message: "Баталгаажуулах кодын хугацаа дууссан байна" });
+      }
+      if (code === "EMAIL_OTP_INVALID_CODE") {
+        return res.status(400).json({ message: "Баталгаажуулах код буруу байна" });
+      }
+      return res.status(400).json({ message: "Баталгаажуулах хүсэлт буруу байна" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: challenge.userId },
+    });
+
+    if (!user || !user.isActive || user.email !== challenge.email || !isAdminRole(user.role)) {
+      return res.status(401).json({ message: "Admin нууц үг сэргээх эрх баталгаажаагүй байна" });
+    }
+
+    const resetToken = await createPasswordResetToken(user.id);
+    return res.json({
+      message: "Имэйл баталгаажлаа",
+      resetToken,
+    });
+  } catch (error) {
+    console.error("[admin forgot-password email complete error]", error);
+    return res.status(500).json({ message: "Имэйл код баталгаажуулахад алдаа гарлаа" });
   }
 });
 
