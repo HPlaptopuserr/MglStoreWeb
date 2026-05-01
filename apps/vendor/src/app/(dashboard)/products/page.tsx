@@ -163,11 +163,10 @@ function CategorySelector({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`w-full flex items-center justify-between gap-2 h-11 px-4 rounded-xl border text-sm transition-all outline-none ${
-          open
+        className={`w-full flex items-center justify-between gap-2 h-11 px-4 rounded-xl border text-sm transition-all outline-none ${open
             ? "border-amber-500 ring-2 ring-amber-100 bg-white"
             : "border-slate-200 bg-slate-50 hover:bg-white hover:border-slate-300"
-        }`}
+          }`}
       >
         <span className={selectedLabel ? "text-slate-900 font-medium" : "text-slate-400"}>
           {selectedLabel || "Ангилал сонгох..."}
@@ -280,9 +279,8 @@ function ImageUploadGrid({
                   }
                   setDragging(null);
                 }}
-                className={`relative group aspect-square rounded-xl overflow-hidden border-2 cursor-grab active:cursor-grabbing transition-all ${
-                  isFirst ? "border-amber-400" : "border-slate-200"
-                } ${dragging === idx ? "opacity-50 scale-95" : ""}`}
+                className={`relative group aspect-square rounded-xl overflow-hidden border-2 cursor-grab active:cursor-grabbing transition-all ${isFirst ? "border-amber-400" : "border-slate-200"
+                  } ${dragging === idx ? "opacity-50 scale-95" : ""}`}
               >
                 <img
                   src={img}
@@ -310,13 +308,12 @@ function ImageUploadGrid({
           return (
             <label
               key={idx}
-              className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-colors ${
-                canAdd
+              className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-colors ${canAdd
                   ? "border-slate-300 hover:border-amber-400 hover:bg-amber-50 cursor-pointer"
                   : isUploadingSlot
                     ? "border-amber-300 bg-amber-50"
                     : "border-slate-100 bg-slate-50/50 cursor-not-allowed"
-              }`}
+                }`}
             >
               {isUploadingSlot ? (
                 <>
@@ -537,11 +534,10 @@ export default function ProductsPage() {
       {/* Toast */}
       {toast && (
         <div
-          className={`fixed top-5 right-5 z-[100] flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm font-semibold shadow-2xl shadow-black/10 border transition-all animate-in slide-in-from-top-2 ${
-            toast.type === "success"
+          className={`fixed top-5 right-5 z-[100] flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm font-semibold shadow-2xl shadow-black/10 border transition-all animate-in slide-in-from-top-2 ${toast.type === "success"
               ? "bg-white border-amber-200 text-amber-700"
               : "bg-white border-red-200 text-red-600"
-          }`}
+            }`}
         >
           {toast.type === "success" ? (
             <CheckCircle2 size={18} className="text-amber-500" />
@@ -868,11 +864,10 @@ export default function ProductsPage() {
               <button
                 key={btn.key}
                 onClick={() => setStatusFilter(btn.key as "all" | "active" | "inactive")}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  statusFilter === btn.key
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === btn.key
                     ? "bg-amber-500 text-black"
                     : "text-slate-500 hover:text-slate-700"
-                }`}
+                  }`}
               >
                 {btn.label}
                 <span className="ml-1 opacity-70">{btn.count}</span>
@@ -960,11 +955,10 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            product.isActive
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${product.isActive
                               ? "bg-emerald-100 text-emerald-700"
                               : "bg-slate-100 text-slate-500"
-                          }`}
+                            }`}
                         >
                           {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
                         </span>

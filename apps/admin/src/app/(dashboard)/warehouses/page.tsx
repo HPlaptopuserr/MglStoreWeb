@@ -70,6 +70,7 @@ export default function AdminWarehousesPage() {
   });
   const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orgSearchTerm, setOrgSearchTerm] = useState("");
 
   useEffect(() => {
     fetchData();
@@ -89,8 +90,8 @@ export default function AdminWarehousesPage() {
 
       if (orgRes.ok) {
         const data = await orgRes.json();
-        // API returns array directly, not { partners: [...] }
-        const partners = Array.isArray(data) ? data : data?.partners || [];
+        // New API returns { data, pagination } envelope; fallback to array for safety
+        const partners = Array.isArray(data) ? data : data?.data || data?.partners || [];
         setOrganizations(
           partners.map((p: any) => ({
             id: p.id,
@@ -245,6 +246,7 @@ export default function AdminWarehousesPage() {
   const openAssignModal = (warehouse: WarehouseData) => {
     setSelectedWarehouse(warehouse);
     setSelectedOrgIds(warehouse.organizations?.map((o) => o.id) || []);
+    setOrgSearchTerm("");
     setShowAssignModal(true);
     setOpenDropdownId(null);
   };
@@ -735,113 +737,253 @@ export default function AdminWarehousesPage() {
       )}
 
       {/* Assign Modal */}
-      {showAssignModal && selectedWarehouse && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h2 className="text-lg font-bold text-slate-900">
-                Агуулах хуваарилах
-              </h2>
-              <button
-                onClick={() => {
-                  setShowAssignModal(false);
-                  setSelectedOrgIds([]);
-                }}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      {showAssignModal && selectedWarehouse && (() => {
+        const filteredOrgs = organizations.filter((org) =>
+          org.name.toLowerCase().includes(orgSearchTerm.toLowerCase()) ||
+          org.slug.toLowerCase().includes(orgSearchTerm.toLowerCase())
+        );
+        const allFilteredSelected =
+          filteredOrgs.length > 0 &&
+          filteredOrgs.every((o) => selectedOrgIds.includes(o.id));
 
-            <div className="p-6 space-y-4">
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-sm text-slate-600">
-                  <span className="font-semibold">
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setShowAssignModal(false);
+                setSelectedOrgIds([]);
+                setOrgSearchTerm("");
+              }
+            }}
+          >
+            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200/60 flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Агуулах хуваарилах</h2>
+                  <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[280px]">
                     {selectedWarehouse.name}
-                  </span>{" "}
-                  агуулахыг vendor-уудад хуваарилах (олон сонголт)
-                </p>
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowAssignModal(false);
+                    setSelectedOrgIds([]);
+                    setOrgSearchTerm("");
+                  }}
+                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
 
-              <div>
-                <label className="mb-3 block text-sm font-semibold text-slate-700">
-                  Vendor сонгох ({selectedOrgIds.length} сонгогдсон)
-                </label>
-                <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
-                  {organizations.length === 0 ? (
-                    <p className="p-4 text-sm text-slate-500 text-center">
-                      Vendor олдсонгүй
-                    </p>
+              {/* Body */}
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+
+                {/* Search input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Vendor хайх..."
+                    value={orgSearchTerm}
+                    onChange={(e) => setOrgSearchTerm(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-9 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#5B4CFF] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5B4CFF]/20 transition-all"
+                  />
+                  {orgSearchTerm && (
+                    <button
+                      onClick={() => setOrgSearchTerm("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Select all + count bar */}
+                <div className="flex items-center justify-between px-1">
+                  <label className="flex items-center gap-2 cursor-pointer group">
+                    <div
+                      className={`flex h-4 w-4 items-center justify-center rounded border-2 transition-all ${
+                        allFilteredSelected
+                          ? "border-[#5B4CFF] bg-[#5B4CFF]"
+                          : "border-slate-300 group-hover:border-[#5B4CFF]/50"
+                      }`}
+                      onClick={() => {
+                        if (allFilteredSelected) {
+                          // Deselect only filtered ones
+                          const filteredIds = filteredOrgs.map((o) => o.id);
+                          setSelectedOrgIds(selectedOrgIds.filter((id) => !filteredIds.includes(id)));
+                        } else {
+                          // Add filtered ones to selection
+                          const newIds = new Set([...selectedOrgIds, ...filteredOrgs.map((o) => o.id)]);
+                          setSelectedOrgIds(Array.from(newIds));
+                        }
+                      }}
+                    >
+                      {allFilteredSelected && <Check className="h-2.5 w-2.5 text-white" />}
+                    </div>
+                    <span className="text-xs font-medium text-slate-500 select-none">
+                      {orgSearchTerm ? "Үр дүн бүгдийг" : "Бүгдийг"} сонгох
+                    </span>
+                  </label>
+                  <span className="text-xs font-semibold text-[#5B4CFF]">
+                    {selectedOrgIds.length} / {organizations.length} сонгогдсон
+                  </span>
+                </div>
+
+                {/* Vendor list */}
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  {filteredOrgs.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-center">
+                      <div className="mb-3 rounded-full bg-slate-100 p-3">
+                        <Search className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <p className="text-sm font-medium text-slate-600">Олдсонгүй</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        &ldquo;{orgSearchTerm}&rdquo; хайлтад тохирох vendor байхгүй
+                      </p>
+                      <button
+                        onClick={() => setOrgSearchTerm("")}
+                        className="mt-3 text-xs text-[#5B4CFF] hover:underline"
+                      >
+                        Хайлт цэвэрлэх
+                      </button>
+                    </div>
                   ) : (
-                    organizations.map((org) => {
-                      const isSelected = selectedOrgIds.includes(org.id);
-                      return (
-                        <label
-                          key={org.id}
-                          className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                            isSelected ? "bg-[#5B4CFF]/5" : "hover:bg-slate-50"
-                          }`}
-                        >
-                          <div
-                            className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+                    <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto overscroll-contain">
+                      {filteredOrgs.map((org) => {
+                        const isSelected = selectedOrgIds.includes(org.id);
+                        return (
+                          <label
+                            key={org.id}
+                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors select-none ${
                               isSelected
-                                ? "border-[#5B4CFF] bg-[#5B4CFF]"
-                                : "border-slate-300"
+                                ? "bg-[#5B4CFF]/5 hover:bg-[#5B4CFF]/8"
+                                : "hover:bg-slate-50"
                             }`}
                           >
+                            <div
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-all ${
+                                isSelected
+                                  ? "border-[#5B4CFF] bg-[#5B4CFF]"
+                                  : "border-slate-300"
+                              }`}
+                            >
+                              {isSelected && (
+                                <Check className="h-2.5 w-2.5 text-white" />
+                              )}
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                if (isSelected) {
+                                  setSelectedOrgIds(selectedOrgIds.filter((id) => id !== org.id));
+                                } else {
+                                  setSelectedOrgIds([...selectedOrgIds, org.id]);
+                                }
+                              }}
+                              className="sr-only"
+                            />
+                            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#5B4CFF]/10 to-[#5B4CFF]/20 text-[10px] font-bold text-[#5B4CFF] uppercase">
+                                {org.name.charAt(0)}
+                              </div>
+                              <div className="min-w-0">
+                                <p className={`truncate text-sm font-medium ${
+                                  isSelected ? "text-[#5B4CFF]" : "text-slate-800"
+                                }`}>
+                                  {org.name}
+                                </p>
+                                <p className="truncate text-xs text-slate-400">@{org.slug}</p>
+                              </div>
+                            </div>
                             {isSelected && (
-                              <Check className="h-3 w-3 text-white" />
+                              <div className="shrink-0">
+                                <CheckCircle className="h-4 w-4 text-[#5B4CFF]" />
+                              </div>
                             )}
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {
-                              if (isSelected) {
-                                setSelectedOrgIds(
-                                  selectedOrgIds.filter((id) => id !== org.id),
-                                );
-                              } else {
-                                setSelectedOrgIds([...selectedOrgIds, org.id]);
-                              }
-                            }}
-                            className="sr-only"
-                          />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected badges */}
+                {selectedOrgIds.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Сонгосон</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedOrgIds.map((id) => {
+                        const org = organizations.find((o) => o.id === id);
+                        if (!org) return null;
+                        return (
                           <span
-                            className={`text-sm ${isSelected ? "font-medium text-[#5B4CFF]" : "text-slate-700"}`}
+                            key={id}
+                            className="inline-flex items-center gap-1 rounded-full bg-[#5B4CFF]/10 pl-2.5 pr-1.5 py-1 text-xs font-medium text-[#5B4CFF]"
                           >
                             {org.name}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedOrgIds(selectedOrgIds.filter((sid) => sid !== id))
+                              }
+                              className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#5B4CFF]/20 hover:bg-[#5B4CFF]/40 transition-colors"
+                            >
+                              <X className="h-2 w-2" />
+                            </button>
                           </span>
-                        </label>
-                      );
-                    })
-                  )}
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4 shrink-0">
+                <button
+                  onClick={() => {
+                    setSelectedOrgIds([]);
+                  }}
+                  disabled={selectedOrgIds.length === 0}
+                  className="text-xs font-medium text-slate-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                >
+                  Бүгдийг цэвэрлэх
+                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowAssignModal(false);
+                      setSelectedOrgIds([]);
+                      setOrgSearchTerm("");
+                    }}
+                    className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                  >
+                    Болих
+                  </button>
+                  <button
+                    onClick={handleAssignWarehouse}
+                    disabled={isSubmitting}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#5B4CFF] px-5 py-2.5 text-sm font-bold text-white shadow-sm shadow-[#5B4CFF]/30 transition-all hover:bg-[#5B4CFF]/90 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
+                    Хадгалах
+                  </button>
                 </div>
               </div>
             </div>
-
-            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
-              <button
-                onClick={() => {
-                  setShowAssignModal(false);
-                  setSelectedOrgIds([]);
-                }}
-                className="rounded-xl px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-              >
-                Болих
-              </button>
-              <button
-                onClick={handleAssignWarehouse}
-                disabled={isSubmitting}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#5B4CFF] px-5 py-2.5 text-sm font-bold text-white transition-all hover:bg-[#5B4CFF]/90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                Хадгалах
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && selectedWarehouse && (

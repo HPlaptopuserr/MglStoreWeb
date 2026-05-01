@@ -5,6 +5,8 @@ import {
   Search,
   Loader2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Package,
   AlertTriangle,
   XCircle,
@@ -50,6 +52,8 @@ export default function InventoryPage() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   // Load warehouses
   useEffect(() => {
@@ -146,6 +150,12 @@ export default function InventoryPage() {
       return true;
     });
   }, [inventory, search, statusFilter]);
+
+  // Reset to page 1 when filter/search changes
+  useMemo(() => { setCurrentPage(1); }, [search, statusFilter, selectedWarehouseId]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const counts = useMemo(() => {
     const healthy = inventory.filter((i) => getStatus(i) === "healthy").length;
@@ -283,7 +293,7 @@ export default function InventoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((item) => {
+                {paginated.map((item) => {
                   const status = getStatus(item);
                   return (
                     <tr
@@ -347,6 +357,73 @@ export default function InventoryPage() {
                 })}
               </tbody>
             </table>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+                <p className="text-xs text-slate-500">
+                  Нийт <span className="font-semibold text-slate-700">{filtered.length}</span> барааны{" "}
+                  <span className="font-semibold text-slate-700">
+                    {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)}
+                  </span>-г харуулж байна
+                </p>
+
+                <div className="flex items-center gap-1">
+                  {/* Prev */}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+
+                  {/* Page numbers with smart ellipsis */}
+                  {(() => {
+                    const pages: (number | "…")[] = [];
+                    if (totalPages <= 7) {
+                      for (let i = 1; i <= totalPages; i++) pages.push(i);
+                    } else {
+                      pages.push(1);
+                      if (currentPage > 3) pages.push("…");
+                      const start = Math.max(2, currentPage - 1);
+                      const end = Math.min(totalPages - 1, currentPage + 1);
+                      for (let i = start; i <= end; i++) pages.push(i);
+                      if (currentPage < totalPages - 2) pages.push("…");
+                      pages.push(totalPages);
+                    }
+                    return pages.map((p, idx) =>
+                      p === "…" ? (
+                        <span key={`e${idx}`} className="flex h-8 w-8 items-center justify-center text-xs text-slate-400">
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={p}
+                          onClick={() => setCurrentPage(p as number)}
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-semibold transition-colors ${
+                            currentPage === p
+                              ? "border-blue-500 bg-blue-600 text-white"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      )
+                    );
+                  })()}
+
+                  {/* Next */}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -118,7 +118,7 @@ const transferStockToVendor = async (
 };
 
 // Get all stock requests (Admin sees all, Vendor sees their own)
-router.get("/stock-requests", async (req, res) => {
+router.get("/stock-requests", requireAuth, async (req, res) => {
   try {
     const { organizationId, status, warehouseId } = req.query;
 
@@ -210,7 +210,7 @@ router.get("/stock-requests", async (req, res) => {
 });
 
 // Get single stock request
-router.get("/stock-requests/:id", async (req, res) => {
+router.get("/stock-requests/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -456,7 +456,7 @@ router.post("/stock-requests", requireAuth, requireOrgPermission({ from: "body" 
 });
 
 // Approve stock request (Admin)
-router.patch("/stock-requests/:id/approve", async (req, res) => {
+router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { reviewedById, reviewNote, items } = req.body;
@@ -597,7 +597,7 @@ router.patch("/stock-requests/:id/approve", async (req, res) => {
 });
 
 // Reject stock request (Admin)
-router.patch("/stock-requests/:id/reject", async (req, res) => {
+router.patch("/stock-requests/:id/reject", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { reviewedById, reviewNote } = req.body;
@@ -645,7 +645,7 @@ router.patch("/stock-requests/:id/reject", async (req, res) => {
 });
 
 // Mark as processing (Admin - after approval, when starting to prepare)
-router.patch("/stock-requests/:id/process", async (req, res) => {
+router.patch("/stock-requests/:id/process", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -680,7 +680,7 @@ router.patch("/stock-requests/:id/process", async (req, res) => {
 });
 
 // Complete stock request (Admin - when delivered)
-router.patch("/stock-requests/:id/complete", async (req, res) => {
+router.patch("/stock-requests/:id/complete", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -757,7 +757,7 @@ router.patch("/stock-requests/:id/complete", async (req, res) => {
 });
 
 // Cancel stock request (Vendor - only if pending)
-router.patch("/stock-requests/:id/cancel", async (req, res) => {
+router.patch("/stock-requests/:id/cancel", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 

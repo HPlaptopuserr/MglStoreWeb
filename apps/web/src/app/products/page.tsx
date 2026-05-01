@@ -72,7 +72,7 @@ function ProductsContent() {
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(categoryParam);
-  const [showMore, setShowMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Filter & Sort state
   const [sortKey, setSortKey] = useState<SortKey>("newest");
@@ -164,7 +164,7 @@ function ProductsContent() {
     setActiveCategory(resolvedCategoryParam);
     setSearchQuery(searchParam);
     setDebouncedSearch(searchParam);
-    setShowMore(false);
+    setCurrentPage(1);
   }, [resolvedCategoryParam, searchParam]);
 
   useEffect(() => {
@@ -176,7 +176,7 @@ function ProductsContent() {
 
   const handleCategoryClick = (catId: string | null) => {
     setActiveCategory(catId);
-    setShowMore(false);
+    setCurrentPage(1);
     router.push(buildProductsUrl(catId, searchQuery), { scroll: false });
   };
 
@@ -191,7 +191,7 @@ function ProductsContent() {
     setSearchQuery("");
     setDebouncedSearch("");
     setSortKey("newest");
-    setShowMore(false);
+    setCurrentPage(1);
     router.replace(buildProductsUrl(activeCategory, ""), { scroll: false });
   };
 
@@ -255,9 +255,20 @@ function ProductsContent() {
     return list;
   }, [apiProducts, searchQuery, discountOnly, priceMin, priceMax, sortKey]);
 
-  const displayProducts = showMore
-    ? processedProducts
-    : processedProducts.slice(0, PRODUCTS_PER_PAGE);
+  // Reset page on filter change
+  const totalPages = Math.max(1, Math.ceil(processedProducts.length / PRODUCTS_PER_PAGE));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useMemo(() => { setCurrentPage(1); }, [processedProducts.length, discountOnly, priceMin, priceMax, sortKey]);
+
+  const displayProducts = processedProducts.slice(
+    (currentPage - 1) * PRODUCTS_PER_PAGE,
+    currentPage * PRODUCTS_PER_PAGE,
+  );
+
+  const goToPage = (p: number) => {
+    setCurrentPage(p);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const activeCategoryName = apiCategories.find((c) => c.id === activeCategory)?.name;
 
@@ -297,7 +308,7 @@ function ProductsContent() {
             type="text"
             placeholder="Бараа хайх..."
             value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setShowMore(false); }}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
             onKeyDown={(e) => {
               if (e.key === "Enter") submitSearch();
             }}
@@ -308,7 +319,7 @@ function ProductsContent() {
               onClick={() => {
                 setSearchQuery("");
                 setDebouncedSearch("");
-                setShowMore(false);
+                setCurrentPage(1);
                 router.replace(buildProductsUrl(activeCategory, ""), { scroll: false });
               }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
@@ -410,7 +421,7 @@ function ProductsContent() {
                       {SORT_OPTIONS.map((opt) => (
                         <button
                           key={opt.key}
-                          onClick={() => { setSortKey(opt.key); setShowMore(false); }}
+                          onClick={() => { setSortKey(opt.key); setCurrentPage(1); }}
                           className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
                             sortKey === opt.key
                               ? "bg-black text-white font-medium"
@@ -445,7 +456,7 @@ function ProductsContent() {
                         placeholder="Доод"
                         value={priceMin}
                         min={0}
-                        onChange={(e) => { setPriceMin(e.target.value); setShowMore(false); }}
+                        onChange={(e) => { setPriceMin(e.target.value); setCurrentPage(1); }}
                         className="w-full px-3 py-1.5 border border-gray-200 text-sm focus:outline-none focus:border-black transition-colors"
                       />
                       <span className="text-gray-300 text-sm">—</span>
@@ -454,7 +465,7 @@ function ProductsContent() {
                         placeholder="Дээд"
                         value={priceMax}
                         min={0}
-                        onChange={(e) => { setPriceMax(e.target.value); setShowMore(false); }}
+                        onChange={(e) => { setPriceMax(e.target.value); setCurrentPage(1); }}
                         className="w-full px-3 py-1.5 border border-gray-200 text-sm focus:outline-none focus:border-black transition-colors"
                       />
                     </div>
@@ -466,7 +477,7 @@ function ProductsContent() {
                   {/* Discount toggle */}
                   <div>
                     <button
-                      onClick={() => { setDiscountOnly((v) => !v); setShowMore(false); }}
+                      onClick={() => { setDiscountOnly((v) => !v); setCurrentPage(1); }}
                       className="w-full flex items-center justify-between group"
                     >
                       <div className="text-left">
@@ -533,7 +544,7 @@ function ProductsContent() {
                   onClick={() => {
                     setSearchQuery("");
                     setDebouncedSearch("");
-                    setShowMore(false);
+                    setCurrentPage(1);
                     router.replace(buildProductsUrl(activeCategory, ""), { scroll: false });
                   }}
                   className="ml-1 text-gray-400 hover:text-black"
@@ -601,29 +612,69 @@ function ProductsContent() {
           </div>
         )}
 
-        {/* Load More */}
-        {!showMore && processedProducts.length > PRODUCTS_PER_PAGE && (
-          <div className="mt-12 flex flex-col items-center gap-3">
-            <button
-              onClick={() => setShowMore(true)}
-              className="px-12 py-3.5 bg-black text-white text-xs font-bold uppercase tracking-widest hover:bg-[#FFAD02] hover:text-black transition-colors"
-            >
-              Цааш харах ({processedProducts.length - PRODUCTS_PER_PAGE} бараа)
-            </button>
-            <p className="text-xs text-gray-400">
-              {PRODUCTS_PER_PAGE} / {processedProducts.length} бараа харагдаж байна
-            </p>
-          </div>
-        )}
 
-        {showMore && (
-          <div className="mt-12 flex justify-center">
-            <button
-              onClick={() => { setShowMore(false); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-              className="px-12 py-3.5 border border-black text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white transition-colors"
-            >
-              Хураах
-            </button>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-12 flex flex-col items-center gap-4">
+            <p className="text-xs text-gray-400">
+              {(currentPage - 1) * PRODUCTS_PER_PAGE + 1}–{Math.min(currentPage * PRODUCTS_PER_PAGE, processedProducts.length)}{" "}/
+              {" "}{processedProducts.length} бараа
+            </p>
+
+            <div className="flex items-center gap-1">
+              {/* Prev */}
+              <button
+                onClick={() => goToPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="flex h-9 w-9 items-center justify-center border border-black text-black transition-colors hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {/* Page numbers */}
+              {(() => {
+                const pages: (number | "…")[] = [];
+                if (totalPages <= 7) {
+                  for (let i = 1; i <= totalPages; i++) pages.push(i);
+                } else {
+                  pages.push(1);
+                  if (currentPage > 3) pages.push("…");
+                  const start = Math.max(2, currentPage - 1);
+                  const end = Math.min(totalPages - 1, currentPage + 1);
+                  for (let i = start; i <= end; i++) pages.push(i);
+                  if (currentPage < totalPages - 2) pages.push("…");
+                  pages.push(totalPages);
+                }
+                return pages.map((p, idx) =>
+                  p === "…" ? (
+                    <span key={`e${idx}`} className="flex h-9 w-9 items-center justify-center text-sm text-gray-300">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => goToPage(p as number)}
+                      className={`flex h-9 w-9 items-center justify-center border text-xs font-bold uppercase tracking-wider transition-colors ${
+                        currentPage === p
+                          ? "border-black bg-black text-white"
+                          : "border-gray-200 text-black hover:border-black hover:bg-black hover:text-white"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                );
+              })()}
+
+              {/* Next */}
+              <button
+                onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="flex h-9 w-9 items-center justify-center border border-black text-black transition-colors hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -16,7 +16,7 @@ import { adjustStock, resolveOrgWarehouse, syncProductStock } from "../../servic
 const router: ExpressRouter = Router();
 
 // Get all warehouses (Admin - can see all)
-router.get("/warehouses", async (req, res) => {
+router.get("/warehouses", requireAuth, async (req, res) => {
   try {
     const { organizationId, isActive } = req.query;
 
@@ -68,10 +68,13 @@ router.get("/warehouses", async (req, res) => {
       },
     });
 
-    // Transform to include organizations array
+    // Transform to include organizations array and flatten createdBy
     const result = warehouses.map((w: (typeof warehouses)[number]) => ({
       ...w,
       organizations: w.organizations.map((wo: (typeof w.organizations)[number]) => wo.organization),
+      createdBy: w.createdBy
+        ? { id: w.createdBy.id, name: w.createdBy.profile?.fullName || w.createdBy.email }
+        : null,
     }));
 
     res.json(result);
@@ -84,7 +87,7 @@ router.get("/warehouses", async (req, res) => {
 });
 
 // Get warehouses for a specific organization (Vendor)
-router.get("/warehouses/organization/:orgId", async (req, res) => {
+router.get("/warehouses/organization/:orgId", requireAuth, async (req, res) => {
   try {
     const { orgId } = req.params;
 
@@ -433,7 +436,7 @@ router.get("/warehouses/:id/detail", async (req, res) => {
 });
 
 // Add/Update inventory for a warehouse
-router.post("/warehouses/:id/inventory", async (req, res) => {
+router.post("/warehouses/:id/inventory", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -548,6 +551,8 @@ router.post("/warehouses/:id/inventory", async (req, res) => {
 // Update inventory quantity
 router.patch(
   "/warehouses/:warehouseId/inventory/:productId",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
   async (req, res) => {
     try {
       const { warehouseId, productId } = req.params;
@@ -632,6 +637,8 @@ router.patch(
 // Delete inventory from warehouse
 router.delete(
   "/warehouses/:warehouseId/inventory/:productId",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
   async (req, res) => {
     try {
       const { warehouseId, productId } = req.params;
@@ -1061,7 +1068,7 @@ router.post(
               });
             }
 
-            // Sync product stock inside the same transaction
+            // Sync product stock inside the same transaction (always, even if qty=0)
             await syncProductStock(tx, product.id);
 
             return { product, wasUpdate };
