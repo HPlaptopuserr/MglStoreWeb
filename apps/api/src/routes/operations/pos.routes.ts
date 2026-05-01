@@ -30,12 +30,14 @@ const bridgeSharedSecret = String(process.env.POS_BRIDGE_SHARED_SECRET || "").tr
 const pushEcrBaseUrl = (process.env.PUSH_ECR_BASE_URL || "https://push.easypay.mn:8443").replace(/\/$/, "");
 const pushEcrApiKey = process.env.PUSH_ECR_API_KEY || "";
 const pushEcrClientId = process.env.PUSH_ECR_CLIENT_ID || "";
+/** Default terminal ID from env — overridden per-register when cardTerminalId is set */
+const pushEcrDefaultTerminalId = process.env.PUSH_ECR_TERMINAL_ID || "";
 
 type PushEcrPurchaseResponse = {
   succeed: boolean;
   message?: string;
   amount?: number;
-  payment?: string;
+  payment?: number;
   systemRef?: string;
   traceno?: string;
   approveCode?: string;
@@ -44,7 +46,19 @@ type PushEcrPurchaseResponse = {
   merchantId?: string;
   terminalId?: string;
   bankTid?: string;
+  ezTransactionId?: string;
+  transactionAt?: string;
 };
+
+/** referralcode — max 10 chars as per Push ECR API spec */
+const makePushEcrReferral = (attemptId: string): string =>
+  attemptId.replace(/-/g, "").slice(0, 10).toUpperCase();
+
+const pushEcrHeaders = () => ({
+  "Content-Type": "application/json",
+  "x-api-key": pushEcrApiKey,
+  "x-client-id": pushEcrClientId,
+});
 
 const MONEY_EPSILON = 0.01;
 
@@ -298,6 +312,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
 
   try {
     let effectiveOrganizationId: string | null = null;
+    let registerCardTerminalId: string | null = null;
     if (registerId) {
       const register = await prisma.posRegister.findUnique({
         where: { id: registerId },
@@ -306,6 +321,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           organizationId: true,
           activationStatus: true,
           isActive: true,
+          cardTerminalId: true,
         },
       });
 
@@ -319,6 +335,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
         return res.status(403).json({ message: "Өөр байгууллагын register дээр authorize хийх боломжгүй" });
       }
 
+      registerCardTerminalId = register.cardTerminalId || null;
       effectiveOrganizationId = register.organizationId;
     }
 
@@ -410,20 +427,23 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       })();
     } else if (isPushEcr) {
       // Push ECR: call PayPRO cloud API directly (terminal handles the card transaction)
+      // terminalId priority: request body → register.cardTerminalId → env PUSH_ECR_TERMINAL_ID
+      const effectiveTerminalId = terminalId !== "terminal-1" ? terminalId
+        : (registerCardTerminalId || pushEcrDefaultTerminalId || terminalId);
+
+      // referralcode: max 10 chars per Push ECR API spec
+      const referralCode = makePushEcrReferral(attempt.id);
+
       void (async () => {
         try {
           const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/purchase`, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": pushEcrApiKey,
-              "x-client-id": pushEcrClientId,
-            },
+            headers: pushEcrHeaders(),
             body: JSON.stringify({
-              terminalId,
+              terminalId: effectiveTerminalId,
               amount,
               payment: 1, // 1=Card, 4=SocialPay QR, 7=Monpay QR
-              referralcode: attempt.id,
+              referralcode: referralCode,
               skipPrint: false,
             }),
             signal: AbortSignal.timeout(120_000),
@@ -433,9 +453,13 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
             where: { id: attempt.id },
             data: {
               status: ecrData.succeed ? PosPaymentStatus.APPROVED : PosPaymentStatus.DECLINED,
-              transactionId: ecrData.systemRef || ecrData.traceno || null,
+              transactionId: ecrData.ezTransactionId || ecrData.systemRef || ecrData.traceno || null,
               message: ecrData.message || null,
-              providerPayload: ecrData as object,
+              providerPayload: {
+                ...ecrData,
+                _referralCode: referralCode,
+                _terminalId: effectiveTerminalId,
+              } as object,
             },
           });
         } catch (err) {
@@ -481,7 +505,8 @@ router.post("/pos/payments/push-ecr/cancel", async (req, res) => {
   const actor = await requirePosUser(req, res);
   if (!actor) return;
 
-  const terminalId = String(req.body?.terminalId || "");
+  // terminalId: from request body, fallback to env default
+  const terminalId = String(req.body?.terminalId || pushEcrDefaultTerminalId || "");
   if (!terminalId) {
     return res.status(400).json({ message: "terminalId шаардлагатай" });
   }
@@ -489,12 +514,9 @@ router.post("/pos/payments/push-ecr/cancel", async (req, res) => {
   try {
     const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/cancel`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": pushEcrApiKey,
-        "x-client-id": pushEcrClientId,
-      },
-      body: JSON.stringify({ termianlId: terminalId }), // API typo: termianlId
+      headers: pushEcrHeaders(),
+      // NOTE: Push ECR API has a typo in the param name: 'termianlId' (not 'terminalId')
+      body: JSON.stringify({ termianlId: terminalId }),
       signal: AbortSignal.timeout(15_000),
     });
     const data = (await ecrRes.json()) as { succeed: boolean; message?: string };
@@ -503,6 +525,69 @@ router.post("/pos/payments/push-ecr/cancel", async (req, res) => {
     return res.status(500).json({
       succeed: false,
       message: err instanceof Error ? err.message : "Push ECR cancel амжилтгүй боллоо",
+    });
+  }
+});
+
+/**
+ * POST /pos/payments/push-ecr/inquiry
+ * Check status of a Push ECR transaction by referralcode.
+ * Useful when polling status after a purchase request.
+ */
+router.post("/pos/payments/push-ecr/inquiry", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const terminalId = String(req.body?.terminalId || pushEcrDefaultTerminalId || "");
+  const referralcode = String(req.body?.referralcode || "").slice(0, 10);
+
+  if (!terminalId || !referralcode) {
+    return res.status(400).json({ message: "terminalId болон referralcode шаардлагатай" });
+  }
+
+  try {
+    const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/inquiry`, {
+      method: "POST",
+      headers: pushEcrHeaders(),
+      body: JSON.stringify({ terminalId, referralcode }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const data = (await ecrRes.json()) as PushEcrPurchaseResponse;
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({
+      succeed: false,
+      message: err instanceof Error ? err.message : "Push ECR inquiry амжилтгүй боллоо",
+    });
+  }
+});
+
+/**
+ * POST /pos/payments/push-ecr/healthcheck
+ * Check if terminal is online and ready.
+ */
+router.post("/pos/payments/push-ecr/healthcheck", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const terminalId = String(req.body?.terminalId || pushEcrDefaultTerminalId || "");
+  if (!terminalId) {
+    return res.status(400).json({ message: "terminalId шаардлагатай" });
+  }
+
+  try {
+    const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/healthcheck`, {
+      method: "POST",
+      headers: pushEcrHeaders(),
+      body: JSON.stringify({ terminalId }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const data = (await ecrRes.json()) as { succeed: boolean; message?: string };
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({
+      succeed: false,
+      message: err instanceof Error ? err.message : "Terminal healthcheck амжилтгүй боллоо",
     });
   }
 });
