@@ -1,5 +1,12 @@
 import { prisma } from "@mgl/database";
 import type { QPayMerchantContext } from "./qpay.types";
+import {
+  registerQPayMerchantCompany,
+  registerQPayMerchantPerson,
+  type QPayBankAccount,
+  type QPayRegisterCompanyParams,
+  type QPayRegisterPersonParams,
+} from "./qpay";
 
 export type ConnectMerchantResult = {
   success: boolean;
@@ -21,6 +28,7 @@ export async function connectVendorMerchant(
   organizationId: string,
   merchantId: string,
   merchantKey: string,
+  invoiceCode?: string,
 ): Promise<ConnectMerchantResult> {
   try {
     if (!organizationId || !merchantId || !merchantKey) {
@@ -42,11 +50,12 @@ export async function connectVendorMerchant(
     }
 
     // Update organization with merchant credentials
-    await (prisma.organization.update as any)({
+    await prisma.organization.update({
       where: { id: organizationId },
       data: {
         qpayMerchantId: merchantId.trim(),
         qpayMerchantKey: merchantKey.trim(),
+        qpayInvoiceCode: invoiceCode?.trim() || null,
         qpayEnabled: true,
         qpayConnectedAt: new Date(),
       },
@@ -85,7 +94,7 @@ export async function disconnectVendorMerchant(
     }
 
     // Clear merchant credentials
-    await (prisma.organization.update as any)({
+    await prisma.organization.update({
       where: { id: organizationId },
       data: {
         qpayMerchantId: null,
@@ -115,12 +124,13 @@ export async function getVendorMerchantConfig(
   organizationId: string,
 ): Promise<GetMerchantConfigResult> {
   try {
-    const org = await (prisma.organization.findUnique as any)({
+    const org = await prisma.organization.findUnique({
       where: { id: organizationId },
       select: {
         qpayEnabled: true,
         qpayMerchantId: true,
         qpayMerchantKey: true,
+        qpayInvoiceCode: true,
         qpayConnectedAt: true,
       },
     });
@@ -142,7 +152,10 @@ export async function getVendorMerchantConfig(
     const merchantContext: QPayMerchantContext = {
       username: org.qpayMerchantId,
       password: org.qpayMerchantKey,
-      invoiceCode: undefined,
+      // QuickQR auth requires terminal_id — use merchantId as terminal identifier
+      terminalId: org.qpayMerchantId,
+      // fall back to merchantId if no dedicated invoiceCode was stored
+      invoiceCode: org.qpayInvoiceCode || org.qpayMerchantId,
       merchantKey: `vendor:${org.qpayMerchantId}`,
     };
 
@@ -159,6 +172,52 @@ export async function getVendorMerchantConfig(
   }
 }
 
+export type RegisterVendorParams =
+  | ({ type: "company" } & Omit<QPayRegisterCompanyParams, never>)
+  | ({ type: "person" } & Omit<QPayRegisterPersonParams, never>);
+
+/**
+ * Register vendor with QPay QuickQR and save credentials to org
+ */
+export async function registerVendorWithQPay(
+  organizationId: string,
+  params: RegisterVendorParams,
+): Promise<ConnectMerchantResult & { raw?: Record<string, unknown> }> {
+  try {
+    const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+    if (!org) return { success: false, message: "Байгууллага олдсонгүй" };
+
+    const result =
+      params.type === "company"
+        ? await registerQPayMerchantCompany(params as QPayRegisterCompanyParams)
+        : await registerQPayMerchantPerson(params as QPayRegisterPersonParams);
+
+    const bankAccounts: QPayBankAccount[] = (params as any).bank_accounts || [];
+
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        qpayMerchantId: result.merchantId || null,
+        qpayMerchantKey: result.merchantKey || null,
+        qpayInvoiceCode: result.invoiceCode || null,
+        qpayBankAccounts: bankAccounts.length > 0 ? (bankAccounts as any) : undefined,
+        qpayEnabled: !!(result.merchantId && result.merchantKey),
+        qpayConnectedAt: new Date(),
+      },
+    });
+
+    return {
+      success: true,
+      message: "QPay мерчант амжилттай бүртгэгдлээ",
+      merchantId: result.merchantId,
+      raw: result.raw,
+    };
+  } catch (error: any) {
+    console.error("registerVendorWithQPay error", error);
+    return { success: false, message: error?.message || "Бүртгэхэд алдаа гарлаа" };
+  }
+}
+
 /**
  * Check if vendor has merchant account connected
  */
@@ -166,7 +225,7 @@ export async function isVendorMerchantConnected(
   organizationId: string,
 ): Promise<boolean> {
   try {
-    const org = await (prisma.organization.findUnique as any)({
+    const org = await prisma.organization.findUnique({
       where: { id: organizationId },
       select: { qpayEnabled: true, qpayMerchantId: true },
     });
@@ -182,7 +241,7 @@ export async function isVendorMerchantConnected(
  */
 export async function getVendorMerchantStatus(organizationId: string) {
   try {
-    const org = await (prisma.organization.findUnique as any)({
+    const org = await prisma.organization.findUnique({
       where: { id: organizationId },
       select: {
         name: true,

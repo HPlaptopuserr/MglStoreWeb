@@ -17,6 +17,7 @@ import { adjustStock, resolveOrgWarehouse } from "../../services/inventory.servi
 import { hasOrgMembership } from "../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../services/qpay.merchant-context";
+import { getVendorMerchantConfig } from "../../services/vendor-merchant.service";
 
 const router: ExpressRouter = Router();
 
@@ -322,7 +323,10 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     }
 
     if (!effectiveOrganizationId) {
-      effectiveOrganizationId = actor.role === "ADMIN" ? bodyOrganizationId : actor.organizationId;
+      effectiveOrganizationId =
+        actor.role === "ADMIN"
+          ? bodyOrganizationId
+          : (actor.organizationId || bodyOrganizationId);
     }
 
     if (actor.role !== "ADMIN" && bodyOrganizationId && bodyOrganizationId !== effectiveOrganizationId) {
@@ -584,19 +588,29 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
     }
 
     if (!effectiveOrganizationId) {
-      effectiveOrganizationId = actor.role === "ADMIN" ? bodyOrganizationId : actor.organizationId;
+      effectiveOrganizationId =
+        actor.role === "ADMIN"
+          ? bodyOrganizationId
+          : (actor.organizationId || bodyOrganizationId);
     }
 
     if (actor.role !== "ADMIN" && bodyOrganizationId && bodyOrganizationId !== effectiveOrganizationId) {
       return res.status(403).json({ message: "organizationId зөрүүтэй байна" });
     }
 
-    const merchantContext = registerQpayConfig
+    let merchantContext = registerQpayConfig
       ? buildQPayMerchantContextFromPosRegister(registerQpayConfig)
       : null;
-    if (registerQpayConfig && !merchantContext) {
+
+    // Fall back to organization-level QPay config when register has no config
+    if (!merchantContext && effectiveOrganizationId) {
+      const orgRes = await getVendorMerchantConfig(effectiveOrganizationId);
+      merchantContext = orgRes.config ?? null;
+    }
+
+    if (!merchantContext) {
       return res.status(400).json({
-        message: "QPay merchant тохиргоо дутуу байна (merchantId/terminalId/password)",
+        message: "QPay merchant тохиргоо дутуу байна. Тохиргоо хуудаснаас QPay дансаа холбоно уу.",
       });
     }
 
@@ -726,14 +740,21 @@ router.get("/pos/payments/qpay/status/:invoiceId", async (req, res) => {
       const payload = (invoice.webhookPayload || {}) as Record<string, unknown>;
       const providerInvoiceId = String(payload.providerInvoiceId || "").trim();
       if (providerInvoiceId) {
-        const merchantContext = invoice.register
+        let statusMerchantContext = invoice.register
           ? buildQPayMerchantContextFromPosRegister({
               qpayEnabled: invoice.register.qpayEnabled,
               qpayMerchantId: invoice.register.qpayMerchantId,
               qpayTerminalId: invoice.register.qpayTerminalId,
             })
           : null;
-        const check = await checkQPayPayment(providerInvoiceId, merchantContext || undefined);
+
+        // Fall back to org-level config if register has no QPay config
+        if (!statusMerchantContext && invoice.organizationId) {
+          const orgRes = await getVendorMerchantConfig(invoice.organizationId);
+          statusMerchantContext = orgRes.config ?? null;
+        }
+
+        const check = await checkQPayPayment(providerInvoiceId, statusMerchantContext || undefined);
         const paidRow = Array.isArray(check.rows) ? check.rows[0] : null;
         if (check.count > 0 && paidRow?.payment_id) {
           current = await prisma.qPayInvoice.update({
@@ -2065,6 +2086,54 @@ router.post("/pos/registers/self-claim", async (req, res) => {
     }
     console.error("self-claim pos-register error", error);
     return res.status(500).json({ message: "POS бүртгэхэд алдаа гарлаа" });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Vendor — list own org's approved POS registers
+ * GET /pos/registers/mine
+ * Returns all APPROVED+active registers for the authenticated vendor's org.
+ * ─────────────────────────────────────────────────────────────────────── */
+router.get("/pos/registers/mine", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const organizationId = actor.organizationId;
+  if (!organizationId) {
+    return res.status(400).json({ message: "Байгууллагатай холбоогүй хэрэглэгч" });
+  }
+
+  try {
+    const registers = await prisma.posRegister.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        activationStatus: PosActivationStatus.APPROVED,
+        deletedAt: null,
+      },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        name: true,
+        label: true,
+        branchId: true,
+        organizationId: true,
+        cardEnabled: true,
+        cardProviderType: true,
+        cardTerminalId: true,
+        terminalBridgeUrl: true,
+        qpayEnabled: true,
+        qpayMerchantId: true,
+        qpayTerminalId: true,
+        isActive: true,
+        activationStatus: true,
+        branch: { select: { id: true, name: true } },
+      },
+    });
+    return res.json(registers);
+  } catch (error) {
+    console.error("list own registers error", error);
+    return res.status(500).json({ message: "POS жагсаалт авахад алдаа гарлаа" });
   }
 });
 

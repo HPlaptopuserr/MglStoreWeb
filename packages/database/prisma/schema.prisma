@@ -317,6 +317,8 @@ model Organization {
   maxMembers                   Int                     @default(5)
   qpayMerchantId               String?                 @unique
   qpayMerchantKey              String?
+  qpayInvoiceCode              String?
+  qpayBankAccounts             Json?
   qpayEnabled                  Boolean                 @default(false)
   qpayConnectedAt              DateTime?
   subdomainEnabled             Boolean                 @default(false)

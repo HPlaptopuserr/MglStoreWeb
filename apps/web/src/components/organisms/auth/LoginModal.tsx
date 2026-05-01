@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { User, Loader2, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck } from "lucide-react";
 import { API_BASE } from "@/lib/api";
-import { VerifyMnPanel, type VerifyMnSession } from "./VerifyMnPanel";
+import { VerifyMnPanel, type VerifyMnSession } from "@mgl/ui";
 
 type AuthTab = "login" | "register";
 type ForgotStep = "identifier" | "verifyMn" | "emailOtp" | "newPassword" | "done";

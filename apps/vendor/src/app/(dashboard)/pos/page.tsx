@@ -207,13 +207,48 @@ export default function PosDemoPage() {
     } catch {}
   }, []);
 
+  const [orgRegisters, setOrgRegisters] = useState<RegisterConfig[]>([]);
+  const [showRegisterPicker, setShowRegisterPicker] = useState(false);
+
   useEffect(() => {
     const registerId = localStorage.getItem("pos_register_id");
-    if (!registerId) return;
-    fetchRegisterConfig(registerId)
-      .then(setRegisterConfig)
-      .catch(() => {});
+    if (registerId) {
+      fetchRegisterConfig(registerId)
+        .then(setRegisterConfig)
+        .catch(() => {
+          // Saved ID is stale/invalid — clear it and try org registers
+          localStorage.removeItem("pos_register_id");
+          setRegisterConfig(null);
+        });
+    }
   }, []);
+
+  // Auto-discover org registers when no register is loaded yet
+  useEffect(() => {
+    if (registerConfig) return; // already connected
+    if (!organizationId) return;
+    const token = localStorage.getItem("vendor_token");
+    if (!token) return;
+
+    fetch(`${API}/pos/registers/mine`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: RegisterConfig[]) => {
+        if (!Array.isArray(list) || list.length === 0) return;
+        if (list.length === 1) {
+          // Only one register — auto-connect
+          localStorage.setItem("pos_register_id", list[0].id);
+          setRegisterConfig(list[0]);
+        } else {
+          // Multiple registers — let vendor choose
+          setOrgRegisters(list);
+          setShowRegisterPicker(true);
+        }
+      })
+      .catch(() => {});
+  }, [organizationId, registerConfig]);
+
 
   // Load branches whenever setup panel opens
   useEffect(() => {
@@ -796,7 +831,7 @@ export default function PosDemoPage() {
   return (
     <div className="space-y-6 p-4 sm:p-6 bg-slate-50 min-h-screen">
       {/* ── Register setup banner ────────────────────────────────── */}
-      {!registerConfig && !showSetupPanel && (
+      {!registerConfig && !showSetupPanel && !showRegisterPicker && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
           <AlertTriangle size={16} className="text-amber-600 shrink-0" />
           <p className="flex-1 text-sm text-amber-800 font-medium">
@@ -810,6 +845,58 @@ export default function PosDemoPage() {
             <Settings size={13} />
             Бүртгэх
           </button>
+        </div>
+      )}
+
+      {/* ── Register picker (multiple approved registers) ──────────── */}
+      {showRegisterPicker && !registerConfig && (
+        <div className="rounded-2xl border border-violet-200 bg-white shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <Monitor size={15} className="text-violet-600" />
+              POS кассаа сонгох
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowRegisterPicker(false)}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="px-5 py-4 space-y-2">
+            <p className="text-xs text-slate-500 mb-3">
+              Таны байгууллагад бүртгэгдсэн {orgRegisters.length} POS касс байна. Нэгийг сонгоно уу.
+            </p>
+            {orgRegisters.map((reg) => (
+              <button
+                key={reg.id}
+                type="button"
+                onClick={() => {
+                  localStorage.setItem("pos_register_id", reg.id);
+                  setRegisterConfig(reg);
+                  setShowRegisterPicker(false);
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-violet-400 hover:bg-violet-50 transition-colors text-left"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+                  <Monitor size={16} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-800">{reg.name}</p>
+                  <p className="text-xs text-slate-500">{reg.branch?.name}</p>
+                </div>
+                <div className="flex gap-1 flex-wrap justify-end">
+                  {reg.cardEnabled && (
+                    <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Card</span>
+                  )}
+                  {reg.qpayEnabled && (
+                    <span className="text-[10px] font-semibold bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">QPay</span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

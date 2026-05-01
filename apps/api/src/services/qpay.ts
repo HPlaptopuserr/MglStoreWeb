@@ -10,11 +10,19 @@ import type { QPayCallbackConfig, QPayMerchantContext } from "./qpay.types";
 
 const env = () => ({
   baseUrl: process.env.QPAY_BASE_URL || "https://merchant.qpay.mn/v2",
+  quickqrBaseUrl: process.env.QPAY_QUICKQR_BASE_URL || "",
   clientId: process.env.QPAY_CLIENT_ID || "",
   clientSecret: process.env.QPAY_CLIENT_SECRET || "",
   invoiceCode: process.env.QPAY_INVOICE_CODE || "",
   publicUrl: process.env.API_PUBLIC_URL || "http://localhost:3001",
 });
+
+// Vendor merchant contexts use QPAY_QUICKQR_BASE_URL if set; else fall back to QPAY_BASE_URL
+const resolveBaseUrl = (context?: QPayMerchantContext) => {
+  const { baseUrl, quickqrBaseUrl } = env();
+  if (context?.username && quickqrBaseUrl) return quickqrBaseUrl;
+  return baseUrl;
+};
 
 /* ── Token cache ──────────────────────────────────────── */
 type TokenCacheEntry = {
@@ -23,6 +31,15 @@ type TokenCacheEntry = {
 };
 
 const tokenCache = new Map<string, TokenCacheEntry>();
+
+/** Cache-г бүхэлд нь эсвэл тодорхой key-р цэвэрлэх */
+export function clearTokenCache(cacheKey?: string): void {
+  if (cacheKey) {
+    tokenCache.delete(cacheKey);
+  } else {
+    tokenCache.clear();
+  }
+}
 
 function getContextIdentity(context?: QPayMerchantContext): {
   cacheKey: string;
@@ -44,18 +61,14 @@ function getContextIdentity(context?: QPayMerchantContext): {
   return { cacheKey, username, password, terminalId };
 }
 
-async function getAccessToken(context?: QPayMerchantContext): Promise<string> {
-  const { baseUrl } = env();
-  const { cacheKey, username, password, terminalId } = getContextIdentity(context);
-  const cached = tokenCache.get(cacheKey);
-
-  // Return cached token if still valid (60 s buffer)
-  if (cached && Date.now() < cached.expiresAt - 60_000) {
-    return cached.token;
-  }
-
+async function fetchNewToken(
+  baseUrl: string,
+  username: string,
+  password: string,
+  terminalId?: string,
+): Promise<{ token: string; expiresAt: number }> {
   const credentials = Buffer.from(`${username}:${password}`).toString("base64");
-  const body = terminalId ? JSON.stringify({ terminal_id: terminalId }) : undefined;
+  const bodyPayload = terminalId ? JSON.stringify({ terminal_id: terminalId }) : undefined;
 
   const res = await fetch(`${baseUrl}/auth/token`, {
     method: "POST",
@@ -63,12 +76,12 @@ async function getAccessToken(context?: QPayMerchantContext): Promise<string> {
       Authorization: `Basic ${credentials}`,
       "Content-Type": "application/json",
     },
-    body,
+    body: bodyPayload,
   });
 
   if (!res.ok) {
-    const body = await res.text();
-    console.error("QPay auth failed:", res.status, body);
+    const errText = await res.text();
+    console.error("QPay auth failed:", res.status, errText);
     throw new Error(`QPay auth failed: ${res.status}`);
   }
 
@@ -79,12 +92,62 @@ async function getAccessToken(context?: QPayMerchantContext): Promise<string> {
     refresh_token: string;
   };
 
-  const token = data.access_token;
-  tokenCache.set(cacheKey, {
-    token,
+  return {
+    token: data.access_token,
     expiresAt: Date.now() + data.expires_in * 1000,
+  };
+}
+
+async function getAccessToken(context?: QPayMerchantContext): Promise<string> {
+  const baseUrl = resolveBaseUrl(context);
+  const { cacheKey, username, password, terminalId } = getContextIdentity(context);
+  const cached = tokenCache.get(cacheKey);
+
+  // Return cached token if still valid (60 s buffer)
+  if (cached && Date.now() < cached.expiresAt - 60_000) {
+    return cached.token;
+  }
+
+  // Cache хоосон эсвэл хугацаа дууссан — шинэ token авах
+  const entry = await fetchNewToken(baseUrl, username, password, terminalId);
+  tokenCache.set(cacheKey, entry);
+  return entry.token;
+}
+
+/**
+ * Bearer token-тэй request хийх. 401 гарвал cache арилгаж нэг удаа retry хийнэ.
+ */
+async function authorizedFetch(
+  url: string,
+  options: RequestInit,
+  context?: QPayMerchantContext,
+): Promise<Response> {
+  const { cacheKey } = getContextIdentity(context);
+  const token = await getAccessToken(context);
+
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      Authorization: `Bearer ${token}`,
+    },
   });
-  return token;
+
+  // 401 → cache арилгаж нэг удаа retry
+  if (res.status === 401) {
+    console.warn("QPay 401 — cache арилгаж дахин оролдож байна:", cacheKey);
+    tokenCache.delete(cacheKey);
+    const retryToken = await getAccessToken(context);
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        Authorization: `Bearer ${retryToken}`,
+      },
+    });
+  }
+
+  return res;
 }
 
 /* ── Create invoice ───────────────────────────────────── */
@@ -110,8 +173,8 @@ export async function createQPayInvoice(params: {
   merchantContext?: QPayMerchantContext;
   callbackConfig?: QPayCallbackConfig;
 }): Promise<QPayInvoiceResponse> {
-  const token = await getAccessToken(params.merchantContext);
-  const { baseUrl, invoiceCode: defaultInvoiceCode, publicUrl } = env();
+  const baseUrl = resolveBaseUrl(params.merchantContext);
+  const { invoiceCode: defaultInvoiceCode, publicUrl } = env();
 
   const callbackPath = params.callbackConfig?.path || "/api/store/qpay/callback";
   const callbackQuery = new URLSearchParams({ orderId: params.orderId });
@@ -139,14 +202,15 @@ export async function createQPayInvoice(params: {
     callback_url: callbackUrl,
   };
 
-  const res = await fetch(`${baseUrl}/invoice`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+  const res = await authorizedFetch(
+    `${baseUrl}/invoice`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+    params.merchantContext,
+  );
 
   if (!res.ok) {
     const errBody = await res.text();
@@ -156,6 +220,153 @@ export async function createQPayInvoice(params: {
 
   const data = (await res.json()) as QPayInvoiceResponse;
   return data;
+}
+
+/* ── QuickQR merchant registration ───────────────────── */
+
+const masterEnv = () => ({
+  username: process.env.QPAY_QUICKQR_MASTER_USERNAME || "",
+  password: process.env.QPAY_QUICKQR_MASTER_PASSWORD || "",
+  terminalId: process.env.QPAY_QUICKQR_MASTER_TERMINAL_ID || "",
+});
+
+async function getMasterToken(): Promise<string> {
+  const { quickqrBaseUrl } = env();
+  const { username, password, terminalId } = masterEnv();
+
+  if (!quickqrBaseUrl || !username || !password) {
+    throw new Error("QPay QuickQR master credentials are not configured");
+  }
+
+  const cacheKey = `master:${username}`;
+  const cached = tokenCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt - 60_000) return cached.token;
+
+  // QuickQR always requires terminal_id; fall back to username if not explicitly configured
+  const effectiveTerminalId = terminalId || username;
+  const entry = await fetchNewToken(quickqrBaseUrl, username, password, effectiveTerminalId);
+  tokenCache.set(cacheKey, entry);
+  return entry.token;
+}
+
+export type QPayBankAccount = {
+  account_bank_code: string;
+  account_number: string;
+  account_name: string;
+  is_default: boolean;
+};
+
+export type QPayRegisterCompanyParams = {
+  register_number: string;
+  company_name: string;
+  name: string;
+  name_eng?: string;
+  mcc_code: string;
+  city: string;
+  district: string;
+  address: string;
+  phone: string;
+  email: string;
+  owner_first_name?: string;
+  owner_last_name?: string;
+  bank_accounts?: QPayBankAccount[];
+};
+
+export type QPayRegisterPersonParams = {
+  register_number: string;
+  first_name?: string;
+  last_name?: string;
+  name?: string;
+  name_eng?: string;
+  business_name: string;
+  mcc_code: string;
+  city: string;
+  district: string;
+  address: string;
+  phone: string;
+  email: string;
+  bank_accounts?: QPayBankAccount[];
+};
+
+export type QPayMerchantRegistrationResult = {
+  raw: Record<string, unknown>;
+  merchantId?: string;
+  merchantKey?: string;
+  invoiceCode?: string;
+};
+
+export async function registerQPayMerchantCompany(
+  params: QPayRegisterCompanyParams,
+): Promise<QPayMerchantRegistrationResult> {
+  const { quickqrBaseUrl } = env();
+  const token = await getMasterToken();
+
+  const res = await fetch(`${quickqrBaseUrl}/merchant/company`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`QPay register company failed: ${res.status} ${errBody}`);
+  }
+
+  const raw = (await res.json()) as Record<string, unknown>;
+  return {
+    raw,
+    merchantId: String(raw.merchant_id || raw.username || raw.id || ""),
+    merchantKey: String(raw.merchant_key || raw.password || raw.secret || ""),
+    invoiceCode: String(raw.invoice_code || raw.terminal_id || ""),
+  };
+}
+
+export async function registerQPayMerchantPerson(
+  params: QPayRegisterPersonParams,
+): Promise<QPayMerchantRegistrationResult> {
+  const { quickqrBaseUrl } = env();
+  const token = await getMasterToken();
+
+  const res = await fetch(`${quickqrBaseUrl}/merchant/person`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`QPay register person failed: ${res.status} ${errBody}`);
+  }
+
+  const raw = (await res.json()) as Record<string, unknown>;
+  return {
+    raw,
+    merchantId: String(raw.merchant_id || raw.username || raw.id || ""),
+    merchantKey: String(raw.merchant_key || raw.password || raw.secret || ""),
+    invoiceCode: String(raw.invoice_code || raw.terminal_id || ""),
+  };
+}
+
+export async function getQPayCityList(): Promise<{ code: string; name: string }[]> {
+  const { quickqrBaseUrl } = env();
+  const token = await getMasterToken();
+  const res = await fetch(`${quickqrBaseUrl}/aimaghot`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { code?: string; name?: string }[] | Record<string, unknown>;
+  return Array.isArray(data) ? data.map((d) => ({ code: String(d.code || ""), name: String(d.name || "") })) : [];
+}
+
+export async function getQPayDistrictList(cityCode: string): Promise<{ code: string; name: string }[]> {
+  const { quickqrBaseUrl } = env();
+  const token = await getMasterToken();
+  const res = await fetch(`${quickqrBaseUrl}/sumduureg/${cityCode}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { code?: string; name?: string }[] | Record<string, unknown>;
+  return Array.isArray(data) ? data.map((d) => ({ code: String(d.code || ""), name: String(d.name || "") })) : [];
 }
 
 /* ── Check payment ────────────────────────────────────── */
@@ -174,21 +385,20 @@ export async function checkQPayPayment(
   invoiceId: string,
   merchantContext?: QPayMerchantContext,
 ): Promise<QPayPaymentCheckResponse> {
-  const token = await getAccessToken(merchantContext);
+  const baseUrl = resolveBaseUrl(merchantContext);
 
-  const { baseUrl } = env();
-
-  const res = await fetch(`${baseUrl}/payment/check`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+  const res = await authorizedFetch(
+    `${baseUrl}/payment/check`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        object_type: "INVOICE",
+        object_id: invoiceId,
+      }),
     },
-    body: JSON.stringify({
-      object_type: "INVOICE",
-      object_id: invoiceId,
-    }),
-  });
+    merchantContext,
+  );
 
   if (!res.ok) {
     const errBody = await res.text();
