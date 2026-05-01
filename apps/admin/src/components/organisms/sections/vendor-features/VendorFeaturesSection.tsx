@@ -47,7 +47,7 @@ export function VendorFeaturesSection() {
   );
 
   useEffect(() => {
-    adminFetch(`${API}/partners?status=ACTIVE&limit=1000`)
+    adminFetch(`${API}/partners?limit=10000`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const list = Array.isArray(data) ? data : data?.data || data?.partners || [];

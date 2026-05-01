@@ -24,6 +24,7 @@ interface ApiProduct {
   sku?: string | null;
   barcode?: string | null;
   price: number;
+  stock?: number;
   images: { id: string; url: string }[];
   organization: { id: string; name: string } | null;
   discounts: { percent: number }[];
@@ -605,6 +606,7 @@ function ProductsContent() {
                     category={product.businessCategory?.name}
                     originalPrice={originalPrice}
                     storeName={product.organization?.name}
+                    stock={product.stock}
                   />
                 </div>
               );

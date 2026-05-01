@@ -74,7 +74,7 @@ router.get("/products", async (req, res) => {
         OR: [
           { warehouseInventories: { none: {} } },
           { inventoryLogs: { some: { reason: "TRANSFER_IN" } } },
-          { warehouseInventories: { some: { showOnWeb: true, quantity: { gt: 0 } } } },
+          { warehouseInventories: { some: { showOnWeb: true } } },
         ],
       },
     ];

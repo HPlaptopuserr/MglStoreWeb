@@ -505,7 +505,7 @@ router.get("/partners", async (req, res) => {
   try {
     const PAGE_LIMIT = 16;
     const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || PAGE_LIMIT), 10) || PAGE_LIMIT));
+    const limit = Math.min(10000, Math.max(1, parseInt(String(req.query.limit || PAGE_LIMIT), 10) || PAGE_LIMIT));
     const search = String(req.query.search || "").trim();
     const statusFilter = String(req.query.status || "").trim();
     const skip = (page - 1) * limit;

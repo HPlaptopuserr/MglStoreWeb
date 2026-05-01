@@ -114,7 +114,7 @@ export function OrgStaffTab() {
 
   /* load orgs */
   useEffect(() => {
-    adminFetch(`${API}/partners?status=ACTIVE`)
+    adminFetch(`${API}/partners?limit=10000`)
       .then((r) => r.json())
       .then((raw) => {
         const list = Array.isArray(raw) ? raw : raw?.data || [];
