@@ -132,6 +132,7 @@ export async function getVendorMerchantConfig(
         qpayMerchantKey: true,
         qpayInvoiceCode: true,
         qpayConnectedAt: true,
+        qpayBankAccounts: true,
       },
     });
 
@@ -149,14 +150,22 @@ export async function getVendorMerchantConfig(
       };
     }
 
+    const masterUsername = (process.env.QPAY_QUICKQR_MASTER_USERNAME || "").trim();
+    const masterPassword = (process.env.QPAY_QUICKQR_MASTER_PASSWORD || "").trim();
+    const masterTerminalId = (process.env.QPAY_QUICKQR_MASTER_TERMINAL_ID || masterUsername).trim();
+
+    // Use master credentials for authentication. The vendor's specific identity
+    // is passed via `merchantId` and `bankAccounts` in the invoice body.
     const merchantContext: QPayMerchantContext = {
-      username: org.qpayMerchantId,
-      password: org.qpayMerchantKey,
-      // QuickQR auth requires terminal_id — use merchantId as terminal identifier
-      terminalId: org.qpayMerchantId,
-      // fall back to merchantId if no dedicated invoiceCode was stored
-      invoiceCode: org.qpayInvoiceCode || org.qpayMerchantId,
+      username: masterUsername || org.qpayMerchantId, // fallback to org credentials if master missing
+      password: masterPassword || org.qpayMerchantKey,
+      terminalId: masterTerminalId,
+      invoiceCode: null, // QuickQR uses merchantId
+      merchantId: org.qpayMerchantId,
       merchantKey: `vendor:${org.qpayMerchantId}`,
+      bankAccounts: Array.isArray(org.qpayBankAccounts)
+        ? (org.qpayBankAccounts as unknown as QPayBankAccount[])
+        : null,
     };
 
     return {
