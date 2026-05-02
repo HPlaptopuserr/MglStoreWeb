@@ -196,4 +196,113 @@ router.get("/vendor/merchant/districts/:cityCode", requireAuth, async (req, res)
   }
 });
 
+/**
+ * GET /api/vendor/merchant/recover/:registerNumber
+ * Try to recover merchant credentials from QPay QuickQR by register number.
+ * Returns { success, merchantId, merchantKey } if found, then auto-connects.
+ */
+router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).userId as string;
+    const { registerNumber } = req.params;
+
+    const member = await prisma.organizationMember.findFirst({
+      where: { userId },
+      select: { organizationId: true },
+    });
+    if (!member) {
+      return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+    }
+
+    // Try QPay QuickQR merchant lookup by register number
+    const quickqrBaseUrl = process.env.QPAY_QUICKQR_BASE_URL || "";
+    const masterUsername = (process.env.QPAY_QUICKQR_MASTER_USERNAME || "").trim();
+    const masterPassword = (process.env.QPAY_QUICKQR_MASTER_PASSWORD || "").trim();
+
+    if (!quickqrBaseUrl || !masterUsername || !masterPassword) {
+      return res.status(503).json({ success: false, message: "QPay тохиргоо дутуу байна" });
+    }
+
+    // Get master token
+    const credentials = Buffer.from(`${masterUsername}:${masterPassword}`).toString("base64");
+    const terminalId = (process.env.QPAY_QUICKQR_MASTER_TERMINAL_ID || masterUsername).trim();
+    const tokenRes = await fetch(`${quickqrBaseUrl}/auth/token`, {
+      method: "POST",
+      headers: { Authorization: `Basic ${credentials}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ terminal_id: terminalId }),
+    });
+
+    if (!tokenRes.ok) {
+      return res.status(502).json({ success: false, message: "QPay auth алдаа гарлаа" });
+    }
+
+    const { access_token } = await tokenRes.json() as { access_token: string };
+
+    // Try QPay merchant lookup endpoint
+    const lookupRes = await fetch(`${quickqrBaseUrl}/merchant/${encodeURIComponent(registerNumber)}`, {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
+
+    if (!lookupRes.ok) {
+      // Try alternative search endpoint
+      const searchRes = await fetch(`${quickqrBaseUrl}/merchant?register_number=${encodeURIComponent(registerNumber)}`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+      });
+
+      if (!searchRes.ok) {
+        return res.status(404).json({
+          success: false,
+          message: "QPay системд энэ регистрийн дугааратай мерчант олдсонгүй. QPay-тай шууд холбоо бариарай.",
+        });
+      }
+
+      const searchData = await searchRes.json() as Record<string, unknown>;
+      const merchantId = String(searchData.merchant_id || searchData.username || searchData.id || "");
+      const merchantKey = String(searchData.merchant_key || searchData.password || searchData.secret || "");
+
+      if (!merchantId || !merchantKey) {
+        return res.status(404).json({ success: false, message: "Мерчант мэдээлэл олдсонгүй" });
+      }
+
+      // Auto-connect
+      await prisma.organization.update({
+        where: { id: member.organizationId },
+        data: {
+          qpayMerchantId: merchantId,
+          qpayMerchantKey: merchantKey,
+          qpayEnabled: true,
+          qpayConnectedAt: new Date(),
+        },
+      });
+
+      return res.json({ success: true, merchantId, message: "Мерчант мэдээлэл олдоод холбогдлоо" });
+    }
+
+    const data = await lookupRes.json() as Record<string, unknown>;
+    const merchantId = String(data.merchant_id || data.username || data.id || "");
+    const merchantKey = String(data.merchant_key || data.password || data.secret || "");
+
+    if (!merchantId || !merchantKey) {
+      return res.status(404).json({ success: false, message: "Мерчант credential олдсонгүй — QPay-тай холбоо барина уу" });
+    }
+
+    // Auto-connect
+    await prisma.organization.update({
+      where: { id: member.organizationId },
+      data: {
+        qpayMerchantId: merchantId,
+        qpayMerchantKey: merchantKey,
+        qpayEnabled: true,
+        qpayConnectedAt: new Date(),
+      },
+    });
+
+    return res.json({ success: true, merchantId, message: "Мерчант мэдээлэл олдоод амжилттай холбогдлоо" });
+  } catch (error) {
+    console.error("merchant recover error", error);
+    return res.status(500).json({ success: false, message: "Серверийн алдаа" });
+  }
+});
+
 export default router;
+

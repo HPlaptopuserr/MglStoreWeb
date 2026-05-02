@@ -3,6 +3,7 @@ import type { QPayMerchantContext } from "./qpay.types";
 import {
   registerQPayMerchantCompany,
   registerQPayMerchantPerson,
+  QPayAlreadyRegisteredError,
   type QPayBankAccount,
   type QPayRegisterCompanyParams,
   type QPayRegisterPersonParams,
@@ -12,6 +13,7 @@ export type ConnectMerchantResult = {
   success: boolean;
   message: string;
   merchantId?: string;
+  alreadyRegistered?: boolean;
 };
 
 export type GetMerchantConfigResult = {
@@ -99,6 +101,8 @@ export async function disconnectVendorMerchant(
       data: {
         qpayMerchantId: null,
         qpayMerchantKey: null,
+        qpayInvoiceCode: null,
+        qpayBankAccounts: [],
         qpayEnabled: false,
         qpayConnectedAt: null,
       },
@@ -223,6 +227,16 @@ export async function registerVendorWithQPay(
     };
   } catch (error: any) {
     console.error("registerVendorWithQPay error", error);
+    // Тухайн регистрийн дугаараар QPay мерчант аль хэдийн бүртгэгдсэн
+    if (error instanceof QPayAlreadyRegisteredError) {
+      return {
+        success: false,
+        message:
+          `Энэ регистрийн дугаараар (${error.registerNumber}) QPay мерчант аль хэдийн бүртгэгдсэн байна. ` +
+          `"Данс аль хэдийн байна" tab руу орж Мерчант ID болон Key-ээ оруулна уу.`,
+        alreadyRegistered: true,
+      };
+    }
     return { success: false, message: error?.message || "Бүртгэхэд алдаа гарлаа" };
   }
 }

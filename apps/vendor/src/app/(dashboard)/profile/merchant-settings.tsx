@@ -83,6 +83,8 @@ export function MerchantSettingsSection() {
   const [merchantId, setMerchantId] = useState("");
   const [merchantKey, setMerchantKey] = useState("");
   const [invoiceCode, setInvoiceCode] = useState("");
+  const [recoveryRegNum, setRecoveryRegNum] = useState("");
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   useEffect(() => {
     loadMerchantStatus();
@@ -188,6 +190,13 @@ export function MerchantSettingsSection() {
       if (data.success) {
         setMessage({ type: "success", text: "QPay мерчант амжилттай бүртгэгдлээ!" });
         await loadMerchantStatus();
+      } else if (data.alreadyRegistered) {
+        // Auto-switch to manual tab so the user can connect with existing credentials
+        setTab("manual");
+        setMessage({
+          type: "error",
+          text: data.message,
+        });
       } else {
         setMessage({ type: "error", text: data.message || "Бүртгэхэд алдаа гарлаа" });
       }
@@ -228,6 +237,30 @@ export function MerchantSettingsSection() {
       setMessage({ type: "error", text: "Серверийн алдаа" });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  /* ── Recover ──────────────────────────────────────────── */
+  const handleRecover = async () => {
+    if (!recoveryRegNum) {
+      setMessage({ type: "error", text: "Регистрийн дугаараа оруулна уу" });
+      return;
+    }
+    setRecoveryLoading(true);
+    setMessage(null);
+    try {
+      const res = await authFetch(`${API}/vendor/merchant/recover/${encodeURIComponent(recoveryRegNum)}`);
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: "success", text: data.message });
+        await loadMerchantStatus();
+      } else {
+        setMessage({ type: "error", text: data.message || "Мэдээлэл олдсонгүй" });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Серверийн алдаа" });
+    } finally {
+      setRecoveryLoading(false);
     }
   };
 
@@ -564,25 +597,61 @@ export function MerchantSettingsSection() {
 
       {/* ── MANUAL TAB ── */}
       {tab === "manual" && (
-        <div className="space-y-4">
-          <p className="text-sm text-slate-500">QPay дансаа аль хэдийн бүртгэсэн бол доор мэдээллээ оруулна уу.</p>
-          <Field label="Мерчант ID *">
-            <input type="text" value={merchantId} onChange={(e) => setMerchantId(e.target.value)} placeholder="MYSHOP_MN" className={inputCls} />
-          </Field>
-          <Field label="Мерчант Key *">
-            <input type="password" value={merchantKey} onChange={(e) => setMerchantKey(e.target.value)} placeholder="•••••••••" className={inputCls} />
-          </Field>
-          <Field label="Invoice Code (заавал биш)">
-            <input type="text" value={invoiceCode} onChange={(e) => setInvoiceCode(e.target.value)} placeholder="Хоосон бол Мерчант ID ашиглагдана" className={inputCls} />
-          </Field>
-          <button
-            onClick={handleManualConnect}
-            disabled={isSubmitting || !merchantId || !merchantKey}
-            className="w-full py-3 rounded-lg bg-[#5B4CFF] hover:bg-[#4A3CDB] text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Холбох
-          </button>
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-800 mb-2 border-b pb-2 border-slate-100">
+              Мэдээллээ сэргээх (Мартсан үед)
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Та QPay мерчант бүртгэлтэй ч ID/Key-ээ мартсан бол регистрийн дугаараараа хайж олох боломжтой.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={recoveryRegNum}
+                onChange={(e) => setRecoveryRegNum(e.target.value)}
+                placeholder="Регистрийн дугаар (Ж: АМ12345678)"
+                className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#5B4CFF]/30 focus:border-[#5B4CFF] focus:bg-white transition-all"
+              />
+              <button
+                onClick={handleRecover}
+                disabled={recoveryLoading || !recoveryRegNum}
+                className="px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+              >
+                {recoveryLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Хайх & Холбох
+              </button>
+            </div>
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-slate-400 font-semibold tracking-wider">Эсвэл гараар оруулах</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <Field label="Мерчант ID *">
+              <input type="text" value={merchantId} onChange={(e) => setMerchantId(e.target.value)} placeholder="Жишээ: MYSHOP_MN" className={inputCls} />
+            </Field>
+            <Field label="Мерчант Key *">
+              <input type="password" value={merchantKey} onChange={(e) => setMerchantKey(e.target.value)} placeholder="•••••••••" className={inputCls} />
+            </Field>
+            <Field label="Invoice Code (заавал биш)">
+              <input type="text" value={invoiceCode} onChange={(e) => setInvoiceCode(e.target.value)} placeholder="Хоосон орхивол Мерчант ID ашиглагдана" className={inputCls} />
+            </Field>
+            <button
+              onClick={handleManualConnect}
+              disabled={isSubmitting || !merchantId || !merchantKey}
+              className="w-full py-3 rounded-lg bg-[#5B4CFF] hover:bg-[#4A3CDB] text-white font-semibold shadow-md shadow-[#5B4CFF]/20 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2 transition-all"
+            >
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Холбох
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -622,6 +622,82 @@ router.get("/partners", async (req, res) => {
   }
 });
 
+// GET /partners/:id — fetch a single partner by ID
+router.get("/partners/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const partner = await prisma.organization.findUnique({
+      where: { id, deletedAt: null },
+      include: {
+        _count: {
+          select: {
+            members: true,
+            products: true,
+            branches: true,
+            orders: true,
+          },
+        },
+        investorProfile: {
+          select: {
+            id: true,
+            tier: true,
+            featured: true,
+            investmentLevel: true,
+            publiclyVisible: true,
+          },
+        },
+      },
+    });
+
+    if (!partner) {
+      return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+    }
+
+    return res.json({
+      id: partner.id,
+      name: partner.name,
+      slug: partner.slug,
+      taxId: partner.taxId,
+      type: partner.type,
+      status: partner.status,
+      isVerified: partner.isVerified,
+      businessCategory: partner.businessCategory,
+      email: partner.email,
+      phone: partner.phone,
+      logoUrl: partner.logoUrl,
+      bannerUrl: partner.bannerUrl,
+      address: partner.address,
+      description: partner.description,
+      shortDescription: partner.shortDescription,
+      openingHours: partner.openingHours,
+      deliveryText: partner.deliveryText,
+      deliveryPrice: partner.deliveryPrice,
+      rating: partner.rating,
+      reviewCount: partner.reviewCount,
+      customers: (partner as any).customerCount,
+      years: partner.operatingYears,
+      createdAt: partner.createdAt,
+      isInvestor: !!partner.investorProfile,
+      investorTier: partner.investorProfile?.tier || null,
+      investmentAmount: partner.investorProfile?.investmentLevel
+        ? Number(partner.investorProfile.investmentLevel)
+        : null,
+      subdomainEnabled: partner.subdomainEnabled,
+      planActivatedAt: partner.planActivatedAt,
+      planExpiresAt: partner.planExpiresAt,
+      stats: {
+        users: partner._count.members,
+        products: partner._count.products,
+        branches: partner._count.branches,
+        orders: partner._count.orders,
+      },
+    });
+  } catch (error) {
+    console.error("get partner by id error", error);
+    return res.status(500).json({ message: "Байгууллагын мэдээлэл авахад алдаа гарлаа" });
+  }
+});
+
 // ─── HR / Staff endpoints ────────────────────────────────────────────────────
 
 const VALID_STAFF_ROLES = ["OWNER", "ADMIN", "STAFF", "VIEWER"] as const;

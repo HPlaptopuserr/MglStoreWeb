@@ -348,6 +348,13 @@ export type QPayMerchantRegistrationResult = {
   invoiceCode?: string;
 };
 
+export class QPayAlreadyRegisteredError extends Error {
+  constructor(public readonly registerNumber: string) {
+    super("MERCHANT_ALREADY_REGISTERED");
+    this.name = "QPayAlreadyRegisteredError";
+  }
+}
+
 export async function registerQPayMerchantCompany(
   params: QPayRegisterCompanyParams,
 ): Promise<QPayMerchantRegistrationResult> {
@@ -362,6 +369,15 @@ export async function registerQPayMerchantCompany(
 
   if (!res.ok) {
     const errBody = await res.text();
+    // Detect already-registered and throw typed error
+    try {
+      const parsed = JSON.parse(errBody);
+      if (parsed?.error === "MERCHANT_ALREADY_REGISTERED") {
+        throw new QPayAlreadyRegisteredError(params.register_number);
+      }
+    } catch (e) {
+      if (e instanceof QPayAlreadyRegisteredError) throw e;
+    }
     throw new Error(`QPay register company failed: ${res.status} ${errBody}`);
   }
 
@@ -388,6 +404,15 @@ export async function registerQPayMerchantPerson(
 
   if (!res.ok) {
     const errBody = await res.text();
+    // Detect already-registered and throw typed error
+    try {
+      const parsed = JSON.parse(errBody);
+      if (parsed?.error === "MERCHANT_ALREADY_REGISTERED") {
+        throw new QPayAlreadyRegisteredError(params.register_number);
+      }
+    } catch (e) {
+      if (e instanceof QPayAlreadyRegisteredError) throw e;
+    }
     throw new Error(`QPay register person failed: ${res.status} ${errBody}`);
   }
 
@@ -441,7 +466,7 @@ export async function checkQPayPayment(
   const baseUrl = resolveBaseUrl(merchantContext);
 
   // QuickQR uses { invoice_id } — standard QPay uses { object_type, object_id }
-  const isQuickQr = !!(merchantContext?.username && env().quickqrBaseUrl);
+  const isQuickQr = !!merchantContext?.merchantId;
 
   const body = isQuickQr
     ? { invoice_id: invoiceId }

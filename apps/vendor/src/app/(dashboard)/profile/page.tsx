@@ -165,23 +165,20 @@ export default function ProfilePage() {
         const storedUser = JSON.parse(
           localStorage.getItem("vendor_user") || "{}",
         );
-        const userEmail = storedUser.email;
         const orgId = storedUser.organizationId;
+        const userEmail = storedUser.email;
 
-        const [partnersRes, catsRes] = await Promise.all([
-          authFetch(`${API}/partners`, { cache: "no-store" }),
-          authFetch(`${API}/business-categories`),
-        ]);
-
+        const catsRes = await authFetch(`${API}/business-categories`);
         if (catsRes.ok) setCategories(await catsRes.json());
 
-        if (partnersRes.ok && (userEmail || orgId)) {
-          const json = await partnersRes.json();
-          const data = Array.isArray(json) ? json : json?.data || [];
-          const found = data.find((p: any) => p.id === orgId || p.email === userEmail);
-          if (found) {
+        // Fetch this org directly by ID to avoid pagination issues
+        if (orgId) {
+          const partnerRes = await authFetch(`${API}/partners/${orgId}`, {
+            cache: "no-store",
+          });
+          if (partnerRes.ok) {
+            const found = await partnerRes.json();
             setPartner(found);
-            // Initialize form data
             setFormData({
               phone: found.phone || "",
               email: found.email || "",
@@ -193,6 +190,31 @@ export default function ProfilePage() {
               deliveryPrice: found.deliveryPrice || "",
               operatingYears: found.years || 1,
             });
+          }
+        } else if (userEmail) {
+          // Fallback: search by email if orgId not set (legacy accounts)
+          const partnersRes = await authFetch(
+            `${API}/partners?limit=10000`,
+            { cache: "no-store" },
+          );
+          if (partnersRes.ok) {
+            const json = await partnersRes.json();
+            const data = Array.isArray(json) ? json : json?.data || [];
+            const found = data.find((p: any) => p.email === userEmail);
+            if (found) {
+              setPartner(found);
+              setFormData({
+                phone: found.phone || "",
+                email: found.email || "",
+                address: found.address || "",
+                description: found.description || "",
+                shortDescription: found.shortDescription || "",
+                openingHours: found.openingHours || [],
+                deliveryText: found.deliveryText || "",
+                deliveryPrice: found.deliveryPrice || "",
+                operatingYears: found.years || 1,
+              });
+            }
           }
         }
       } catch (error) {
