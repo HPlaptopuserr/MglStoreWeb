@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { API } from "@/lib/api";
-import { ServiceCard } from "@/components/molecules/ServiceCard";
+import { ServiceCard } from "@/app/services/_components/ServiceCard";
 
 const POSTS_PER_PAGE = 16;
 

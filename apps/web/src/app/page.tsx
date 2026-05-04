@@ -2,7 +2,7 @@ import { HeroSection } from "@/components/organisms/home/HeroSection";
 import Categories from "@/components/organisms/home/CategoryRail";
 import { BrandTicker } from "@/components/organisms/home/BrandTicker";
 import { ProductGrid } from "@/components/organisms/home/grid/ProductGrid";
-import { ServiceGrid } from "@/components/organisms/home/grid/ServiceGrid";
+import { ServiceGrid } from "@/app/services/_components/ServiceGrid";
 import { PartnershipContact } from "@/components/organisms/partnership/PartnershipContact";
 import { FeaturedStoresSection } from "@/components/organisms/home/FeaturedStoresSection";
 import { InvestorSection } from "@/components/organisms/home/InvestorSection";
