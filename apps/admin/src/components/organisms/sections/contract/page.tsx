@@ -4,7 +4,7 @@ import React, { useRef, useState, useEffect } from "react";
 import {
   CheckCircle2, PenTool, Eraser, Loader2, History, Edit,
   Check, Link as LinkIcon, Eye, Plus, Download,
-  Upload, ToggleLeft, ToggleRight, Users, ClipboardList, XCircle, FileText, Building, Phone, Mail, Globe, X
+  Upload, ToggleLeft, ToggleRight, Users, ClipboardList, XCircle, FileText, Building, Phone, Mail, Globe, X, Trash2
 } from "lucide-react";
 import { adminFetch, API } from "@/lib/api";
 
@@ -163,7 +163,11 @@ export function Contract() {
     presidentName: "Батбаяр Хишигжаргал",
     presidentTitle: "Хуулийн зөвлөх",
     orgName: "Монгол эзэнтэй ЖДБ эрхлэгчдийн нэгдсэн холбоо",
+    headerTitle: "МОНГОЛ ЭЗЭНТЭЙ ЖИЖИГ ДУНД БИЗНЕС\nЭРХЛЭГЧДИЙН НЭГДСЭН ХОЛБОО",
+    headerSubtitle: "Mongolian SME United Association",
+    headerContractTitle: "УДИРДАХ ЗӨВЛӨЛИЙН ГИШҮҮНЧЛЭЛИЙН ГЭРЭЭ",
     content: DEFAULT_CONTRACT_TEXT,
+    contentIsHtml: false,
     isPaid: false,
     defaultFeePlan: "6m",
     feePlans: DEFAULT_FEE_PLANS as { key: string; label: string; sublabel: string; price: number }[],
@@ -475,6 +479,23 @@ function ContractHistoryTab({
 }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Энэ гэрээг устгах уу? Бүх submissions мөн устана.")) return;
+    setDeletingId(id);
+    try {
+      const res = await adminFetch(`${API}/contracts/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        setContracts(prev => prev.filter(c => c.id !== id));
+        setStats((s: any) => ({ ...s, total: Math.max(0, s.total - 1) }));
+      } else {
+        alert(data.error || "Устгахад алдаа гарлаа");
+      }
+    } catch { alert("Устгахад алдаа гарлаа"); }
+    finally { setDeletingId(null); }
+  };
 
   const handleCopy = (id: string) => {
     const base = process.env.NEXT_PUBLIC_WEB_URL || "http://localhost:3001";
@@ -556,6 +577,10 @@ function ContractHistoryTab({
                           {copiedId === c.id ? <span className="text-green-600 font-medium">Хуулсан</span> : "Link"}
                         </button>
                       )}
+                      <button onClick={() => handleDelete(c.id)} disabled={deletingId === c.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-red-200 rounded-lg text-sm text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors">
+                        {deletingId === c.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -585,7 +610,18 @@ function NewContractButton({ settings, setContracts, setStats }: {
     try {
       const res = await adminFetch(`${API}/contracts`, {
         method: "POST",
-        body: JSON.stringify({ feePlan: settings.isPaid ? feePlan : null, isPaid: settings.isPaid, adminSignature: sig.getDataUrl(), adminName: settings.presidentName, adminTitle: settings.presidentTitle }),
+        body: JSON.stringify({
+          feePlan: settings.isPaid ? feePlan : null,
+          isPaid: settings.isPaid,
+          adminSignature: sig.getDataUrl(),
+          adminName: settings.presidentName,
+          adminTitle: settings.presidentTitle,
+          headerData: {
+            title: settings.headerTitle || null,
+            subtitle: settings.headerSubtitle || null,
+            contractTitle: settings.headerContractTitle || null,
+          },
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -692,13 +728,19 @@ function ContractEditorTab({
     try {
       if (file.name.endsWith(".txt")) {
         const text = await file.text();
-        setSettings((prev: any) => ({ ...prev, content: text }));
+        setSettings((prev: any) => ({ ...prev, content: text, contentIsHtml: false }));
       } else if (file.name.endsWith(".docx")) {
         const buf = await file.arrayBuffer();
-        // mammoth browser bundle
         const mammoth = (await import("mammoth/mammoth.browser.js" as any)) as any;
-        const result = await mammoth.extractRawText({ arrayBuffer: buf });
-        setSettings((prev: any) => ({ ...prev, content: result.value }));
+        const result = await mammoth.convertToHtml({ arrayBuffer: buf }, {
+          styleMap: [
+            "p[style-name='Heading 1'] => h2:fresh",
+            "p[style-name='Heading 2'] => h3:fresh",
+            "b => strong",
+            "i => em",
+          ],
+        });
+        setSettings((prev: any) => ({ ...prev, content: result.value, contentIsHtml: true }));
       } else {
         alert(".txt эсвэл .docx файл сонгоно уу");
       }
@@ -722,6 +764,11 @@ function ContractEditorTab({
           adminName: settings.presidentName || null,
           adminTitle: settings.presidentTitle || null,
           adminStamp: adminStamp || null,
+          headerData: {
+            title: settings.headerTitle || null,
+            subtitle: settings.headerSubtitle || null,
+            contractTitle: settings.headerContractTitle || null,
+          },
         }),
       });
       const data = await res.json();
@@ -764,6 +811,28 @@ function ContractEditorTab({
           <input type="text" value={settings.orgName} onChange={e => setSettings({ ...settings, orgName: e.target.value })}
             className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
+
+        <div className="md:col-span-3 border-t border-neutral-200 pt-4 mt-2">
+          <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Гэрээний толгой хэсэг</div>
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1.5">Байгууллагын нэр (толгой)</label>
+              <textarea rows={2} value={settings.headerTitle} onChange={e => setSettings({ ...settings, headerTitle: e.target.value })}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1.5">Дэд гарчиг (англи)</label>
+              <input type="text" value={settings.headerSubtitle} onChange={e => setSettings({ ...settings, headerSubtitle: e.target.value })}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1.5">Гэрээний нэр</label>
+              <input type="text" value={settings.headerContractTitle} onChange={e => setSettings({ ...settings, headerContractTitle: e.target.value })}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+        </div>
+
         <div className="md:col-span-3">
           <label className="block text-sm font-medium text-neutral-700 mb-1.5">Холбооны тамга (зураг)</label>
           <input ref={stampRef} type="file" accept="image/*" className="hidden"
@@ -898,8 +967,25 @@ function ContractEditorTab({
             </button>
           </div>
         </div>
-        <textarea value={settings.content} onChange={e => setSettings({ ...settings, content: e.target.value })}
-          className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-serif text-sm leading-relaxed resize-none bg-neutral-50 min-h-[400px]" />
+        {settings.contentIsHtml ? (
+          <div className="relative">
+            <div
+              className="w-full p-4 border border-neutral-200 rounded-xl font-serif text-sm leading-relaxed bg-neutral-50 min-h-[400px] contract-html-content overflow-auto
+                [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-neutral-300 [&_td]:p-2 [&_th]:border [&_th]:border-neutral-300 [&_th]:p-2 [&_th]:bg-neutral-100"
+              dangerouslySetInnerHTML={{ __html: settings.content }}
+            />
+            <button
+              type="button"
+              onClick={() => setSettings({ ...settings, contentIsHtml: false, content: "" })}
+              className="absolute top-2 right-2 px-2 py-1 bg-white border border-neutral-200 rounded text-xs text-red-400 hover:text-red-600 shadow-sm"
+            >
+              Цэвэрлэх
+            </button>
+          </div>
+        ) : (
+          <textarea value={settings.content} onChange={e => setSettings({ ...settings, content: e.target.value })}
+            className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-serif text-sm leading-relaxed resize-none bg-neutral-50 min-h-[400px]" />
+        )}
       </div>
 
       {/* Admin signature */}
@@ -955,7 +1041,15 @@ function ContractPreviewTab({ settings }: { settings: any }) {
         </div>
         <div className="border-b-2 border-[#1e4e8c] my-4"></div>
         <div className="text-center font-bold text-[#1e4e8c] mb-4 text-base">УДИРДАХ ЗӨВЛӨЛИЙН ГИШҮҮНЧЛЭЛИЙН ГЭРЭЭ</div>
-        <div className="whitespace-pre-wrap mt-6">{settings.content}</div>
+        {settings.contentIsHtml ? (
+          <div
+            className="mt-6 contract-html-content
+              [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-neutral-300 [&_td]:p-2 [&_th]:border [&_th]:border-neutral-300 [&_th]:p-2 [&_th]:bg-neutral-100"
+            dangerouslySetInnerHTML={{ __html: settings.content }}
+          />
+        ) : (
+          <div className="whitespace-pre-wrap mt-6">{settings.content}</div>
+        )}
 
         <div className="mt-8 overflow-hidden">
           <table className="w-full border-collapse border border-[#b4c6e7] text-sm">

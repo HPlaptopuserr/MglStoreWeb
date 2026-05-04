@@ -112,6 +112,7 @@ export default function ContractSignPage() {
     isPaid: boolean; feePlan: string | null;
     adminSignature?: string; adminName?: string; adminTitle?: string; adminStamp?: string;
     isTemplate?: boolean; memberSignature?: string;
+    headerData?: { title?: string; subtitle?: string; contractTitle?: string } | null;
   } | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [memberPosition, setMemberPosition] = useState("");
@@ -147,6 +148,7 @@ export default function ContractSignPage() {
             adminStamp: d.contract.adminStamp,
             isTemplate: d.contract.isTemplate,
             memberSignature: d.contract.memberSignature,
+            headerData: d.contract.headerData ?? null,
           });
           // In print mode: pre-fill memberData from stored JSON
           if (isPrintMode && d.contract.memberData) {
@@ -423,17 +425,19 @@ export default function ContractSignPage() {
 
           <div className="px-8 sm:px-16 py-12 sm:py-20 text-sm leading-relaxed text-black font-serif">
 
-            {/* HEADER RECREATION FROM MOCKUP */}
-            <div className="text-center font-bold text-lg mb-1 leading-snug text-[#1e4e8c]">
-              МОНГОЛ ЭЗЭНТЭЙ ЖИЖИГ ДУНД БИЗНЕС<br />
-              ЭРХЛЭГЧДИЙН НЭГДСЭН ХОЛБОО<br />
-              <span className="font-normal text-sm italic text-neutral-600">Mongolian SME United Association</span>
+            {/* HEADER */}
+            <div className="text-center font-bold text-lg mb-1 leading-snug text-[#1e4e8c] whitespace-pre-line">
+              {contractInfo?.headerData?.title ?? "МОНГОЛ ЭЗЭНТЭЙ ЖИЖИГ ДУНД БИЗНЕС\nЭРХЛЭГЧДИЙН НЭГДСЭН ХОЛБОО"}
+              <br />
+              <span className="font-normal text-sm italic text-neutral-600">
+                {contractInfo?.headerData?.subtitle ?? "Mongolian SME United Association"}
+              </span>
             </div>
 
             <div className="border-b-2 border-[#1e4e8c] my-4 max-w-4xl mx-auto"></div>
 
             <div className="text-center font-bold text-[#1e4e8c] mb-4 text-base">
-              УДИРДАХ ЗӨВЛӨЛИЙН ГИШҮҮНЧЛЭЛИЙН ГЭРЭЭ
+              {contractInfo?.headerData?.contractTitle ?? "УДИРДАХ ЗӨВЛӨЛИЙН ГИШҮҮНЧЛЭЛИЙН ГЭРЭЭ"}
             </div>
 
             <table className="w-full text-sm border-collapse border border-[#b4c6e7] mb-6 font-sans">

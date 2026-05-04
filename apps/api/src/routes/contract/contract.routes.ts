@@ -62,8 +62,12 @@ router.get("/contracts", requireAuth, async (_req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 router.post("/contracts", requireAuth, async (req, res) => {
   try {
-    const userId = ((req as any).user?.userId || (req as any).userId) as string;
-    const { feePlan, isPaid = false, adminSignature, adminName, adminTitle, adminStamp } = req.body;
+    const userId = ((req as any).user?.userId || (req as any).user?.id || (req as any).userId) as string | undefined;
+    const { feePlan, isPaid = false, adminSignature, adminName, adminTitle, adminStamp, headerData } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Хэрэглэгч тодорхойгүй байна" });
+    }
 
     if (!adminSignature) {
       return res.status(400).json({ success: false, error: "Админы гарын үсэг шаардлагатай" });
@@ -81,6 +85,7 @@ router.post("/contracts", requireAuth, async (req, res) => {
         adminName: adminName || null,
         adminTitle: adminTitle || null,
         adminStamp: adminStamp || null,
+        headerData: headerData || null,
       },
     });
 
@@ -101,6 +106,25 @@ router.post("/contracts", requireAuth, async (req, res) => {
   } catch (error: any) {
     console.error("contract create error", error);
     return res.status(500).json({ success: false, error: error?.message || "Гэрээ үүсгэхэд алдаа гарлаа" });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// DELETE /api/contracts/:id  —  Delete a template and its submissions (admin)
+// ──────────────────────────────────────────────────────────────────────────────
+router.delete("/contracts/:id", requireAuth, async (req, res) => {
+  try {
+    const contract = await prisma.contract.findUnique({ where: { id: req.params.id } });
+    if (!contract) {
+      return res.status(404).json({ success: false, error: "Гэрээ олдсонгүй" });
+    }
+    // Delete submissions first, then the template
+    await prisma.contract.deleteMany({ where: { templateId: req.params.id } });
+    await prisma.contract.delete({ where: { id: req.params.id } });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("contract delete error", error);
+    return res.status(500).json({ success: false, error: "Гэрээ устгахад алдаа гарлаа" });
   }
 });
 
@@ -133,6 +157,7 @@ router.get("/contracts/:id", async (req, res) => {
         adminStamp: contract.adminStamp,
         memberData: contract.memberData,
         memberSignature: contract.memberSignature,
+        headerData: contract.headerData,
         signedAt: contract.signedAt,
         pdfUrl: contract.pdfUrl,
         submissionCount: contract._count.submissions,

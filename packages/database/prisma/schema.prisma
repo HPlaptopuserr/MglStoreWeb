@@ -1771,6 +1771,7 @@ model Contract {
   qpayInvoiceId    String?
   memberData       Json?
   memberSignature  String?
+  headerData       Json?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   signedAt         DateTime?
