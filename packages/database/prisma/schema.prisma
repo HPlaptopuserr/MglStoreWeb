@@ -59,7 +59,7 @@ model User {
   sentDirectMessages           DirectMessage[]          @relation("DirectMessageSender")
   posShifts                    PosShift[]               @relation("PosShiftCashier")
   posSales                     PosSale[]                @relation("PosSaleCashier")
-
+  contracts                    Contract[]
   @@index([role])
   @@index([isActive])
   @@index([deletedAt])
@@ -347,7 +347,7 @@ model Organization {
   joinRequests                 OrgJoinRequest[]        @relation("OrgJoinRequests")
   posShifts                    PosShift[]
   posSales                     PosSale[]
-
+  contracts                    Contract[]
   upgradePlans                 OrgUpgradePlan[]
 
   @@index([type])
@@ -1743,3 +1743,61 @@ enum PosSaleStatus {
   VOIDED
   REFUNDED
 }
+
+enum ContractStatus {
+  PENDING
+  SIGNED
+  EXPIRED
+  TAMPERED
+}
+
+model Contract {
+  id             String         @id @default(uuid())
+  version        String         @default("v1.0")
+  status         ContractStatus @default(PENDING)
+  userId         String
+  organizationId String?
+  feePlan          String?
+  isPaid           Boolean        @default(false)
+  isTemplate       Boolean        @default(false)
+  templateId       String?
+  pdfUrl           String?
+  documentHash     String?
+  otpSecret        String?
+  adminSignature   String?
+  adminName        String?
+  adminTitle       String?
+  adminStamp       String?
+  qpayInvoiceId    String?
+  memberData       Json?
+  memberSignature  String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  signedAt         DateTime?
+  user           User           @relation(fields: [userId], references: [id])
+  organization   Organization?  @relation(fields: [organizationId], references: [id])
+  auditLogs      ContractAuditLog[]
+  template       Contract?      @relation("ContractSubmissions", fields: [templateId], references: [id])
+  submissions    Contract[]     @relation("ContractSubmissions")
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([documentHash])
+  @@index([templateId])
+  @@index([isTemplate])
+}
+
+model ContractAuditLog {
+  id         String   @id @default(uuid())
+  contractId String
+  action     String   // FORM_SUBMITTED, OTP_VERIFIED, PDF_GENERATED, SIGNED
+  ipAddress  String?
+  userAgent  String?
+  deviceInfo Json?
+  timestamp  DateTime @default(now())
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([timestamp])
+}
+

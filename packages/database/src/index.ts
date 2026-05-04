@@ -26,4 +26,5 @@ export {
   PosQPayStatus,
   ShiftStatus,
   PosSaleStatus,
+  ContractStatus,
 } from "@prisma/client";

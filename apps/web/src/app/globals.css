@@ -83,3 +83,41 @@ h6 {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* ── Print / PDF Export styles ─────────────────────────────────── */
+@media print {
+  /* Hide everything except the contract paper */
+  body > *,
+  .no-print,
+  form > *:not(.contract-paper) {
+    display: none !important;
+  }
+
+  /* Show only the A4 contract block */
+  .contract-paper {
+    display: block !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Remove background colours for ink-saving */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Ensure text and tables print clearly */
+  table {
+    page-break-inside: avoid;
+  }
+
+  /* Signature canvas — hide the interactive UI hint in print */
+  canvas {
+    display: none !important;
+  }
+}
+

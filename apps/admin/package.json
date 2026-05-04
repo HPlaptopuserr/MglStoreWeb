@@ -15,6 +15,7 @@
     "clsx": "^2.1.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.575.0",
+    "mammoth": "^1.12.0",
     "next": "16.1.6",
     "qrcode.react": "^4.2.0",
     "react": "18.2.0",

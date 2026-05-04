@@ -250,8 +250,7 @@ export async function createQPayInvoice(params: {
     throw new Error("QPay invoice code is not configured");
   }
 
-  const bankAccounts = params.merchantContext?.bankAccounts;
-  const body: Record<string, unknown> = {
+  const body = {
     invoice_code: invoiceCode,
     sender_invoice_no: params.orderNumber,
     invoice_receiver_code: params.orderId,
@@ -259,15 +258,6 @@ export async function createQPayInvoice(params: {
     amount: params.amount,
     callback_url: callbackUrl,
   };
-
-  if (bankAccounts?.length) {
-    body.bank_accounts = bankAccounts.map((b) => ({
-      account_bank_code: b.account_bank_code,
-      account_number: b.account_number,
-      account_name: b.account_name,
-      is_default: b.is_default ?? true,
-    }));
-  }
 
   const res = await authorizedFetch(
     `${baseUrl}/invoice`,
