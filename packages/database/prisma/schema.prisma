@@ -317,6 +317,8 @@ model Organization {
   maxMembers                   Int                     @default(5)
   qpayMerchantId               String?                 @unique
   qpayMerchantKey              String?
+  qpayInvoiceCode              String?
+  qpayBankAccounts             Json?
   qpayEnabled                  Boolean                 @default(false)
   qpayConnectedAt              DateTime?
   subdomainEnabled             Boolean                 @default(false)
@@ -932,6 +934,7 @@ model WarehouseInventory {
   lastRestockedAt DateTime?
   lastAuditedAt   DateTime?
   note            String?
+  showOnWeb       Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -941,6 +944,7 @@ model WarehouseInventory {
   @@index([warehouseId])
   @@index([productId])
   @@index([quantity])
+  @@index([showOnWeb])
 }
 
 model WarehouseStockRequest {

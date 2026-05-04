@@ -17,6 +17,7 @@ import { adjustStock, resolveOrgWarehouse } from "../../services/inventory.servi
 import { hasOrgMembership } from "../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../services/qpay.merchant-context";
+import { getVendorMerchantConfig } from "../../services/vendor-merchant.service";
 
 const router: ExpressRouter = Router();
 
@@ -29,12 +30,14 @@ const bridgeSharedSecret = String(process.env.POS_BRIDGE_SHARED_SECRET || "").tr
 const pushEcrBaseUrl = (process.env.PUSH_ECR_BASE_URL || "https://push.easypay.mn:8443").replace(/\/$/, "");
 const pushEcrApiKey = process.env.PUSH_ECR_API_KEY || "";
 const pushEcrClientId = process.env.PUSH_ECR_CLIENT_ID || "";
+/** Default terminal ID from env — overridden per-register when cardTerminalId is set */
+const pushEcrDefaultTerminalId = process.env.PUSH_ECR_TERMINAL_ID || "";
 
 type PushEcrPurchaseResponse = {
   succeed: boolean;
   message?: string;
   amount?: number;
-  payment?: string;
+  payment?: number;
   systemRef?: string;
   traceno?: string;
   approveCode?: string;
@@ -43,7 +46,19 @@ type PushEcrPurchaseResponse = {
   merchantId?: string;
   terminalId?: string;
   bankTid?: string;
+  ezTransactionId?: string;
+  transactionAt?: string;
 };
+
+/** referralcode — max 10 chars as per Push ECR API spec */
+const makePushEcrReferral = (attemptId: string): string =>
+  attemptId.replace(/-/g, "").slice(0, 10).toUpperCase();
+
+const pushEcrHeaders = () => ({
+  "Content-Type": "application/json",
+  "x-api-key": pushEcrApiKey,
+  "x-client-id": pushEcrClientId,
+});
 
 const MONEY_EPSILON = 0.01;
 
@@ -297,6 +312,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
 
   try {
     let effectiveOrganizationId: string | null = null;
+    let registerCardTerminalId: string | null = null;
     if (registerId) {
       const register = await prisma.posRegister.findUnique({
         where: { id: registerId },
@@ -305,6 +321,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           organizationId: true,
           activationStatus: true,
           isActive: true,
+          cardTerminalId: true,
         },
       });
 
@@ -318,11 +335,15 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
         return res.status(403).json({ message: "Өөр байгууллагын register дээр authorize хийх боломжгүй" });
       }
 
+      registerCardTerminalId = register.cardTerminalId || null;
       effectiveOrganizationId = register.organizationId;
     }
 
     if (!effectiveOrganizationId) {
-      effectiveOrganizationId = actor.role === "ADMIN" ? bodyOrganizationId : actor.organizationId;
+      effectiveOrganizationId =
+        actor.role === "ADMIN"
+          ? bodyOrganizationId
+          : (actor.organizationId || bodyOrganizationId);
     }
 
     if (actor.role !== "ADMIN" && bodyOrganizationId && bodyOrganizationId !== effectiveOrganizationId) {
@@ -406,20 +427,23 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       })();
     } else if (isPushEcr) {
       // Push ECR: call PayPRO cloud API directly (terminal handles the card transaction)
+      // terminalId priority: request body → register.cardTerminalId → env PUSH_ECR_TERMINAL_ID
+      const effectiveTerminalId = terminalId !== "terminal-1" ? terminalId
+        : (registerCardTerminalId || pushEcrDefaultTerminalId || terminalId);
+
+      // referralcode: max 10 chars per Push ECR API spec
+      const referralCode = makePushEcrReferral(attempt.id);
+
       void (async () => {
         try {
           const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/purchase`, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": pushEcrApiKey,
-              "x-client-id": pushEcrClientId,
-            },
+            headers: pushEcrHeaders(),
             body: JSON.stringify({
-              terminalId,
+              terminalId: effectiveTerminalId,
               amount,
               payment: 1, // 1=Card, 4=SocialPay QR, 7=Monpay QR
-              referralcode: attempt.id,
+              referralcode: referralCode,
               skipPrint: false,
             }),
             signal: AbortSignal.timeout(120_000),
@@ -429,9 +453,13 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
             where: { id: attempt.id },
             data: {
               status: ecrData.succeed ? PosPaymentStatus.APPROVED : PosPaymentStatus.DECLINED,
-              transactionId: ecrData.systemRef || ecrData.traceno || null,
+              transactionId: ecrData.ezTransactionId || ecrData.systemRef || ecrData.traceno || null,
               message: ecrData.message || null,
-              providerPayload: ecrData as object,
+              providerPayload: {
+                ...ecrData,
+                _referralCode: referralCode,
+                _terminalId: effectiveTerminalId,
+              } as object,
             },
           });
         } catch (err) {
@@ -477,7 +505,8 @@ router.post("/pos/payments/push-ecr/cancel", async (req, res) => {
   const actor = await requirePosUser(req, res);
   if (!actor) return;
 
-  const terminalId = String(req.body?.terminalId || "");
+  // terminalId: from request body, fallback to env default
+  const terminalId = String(req.body?.terminalId || pushEcrDefaultTerminalId || "");
   if (!terminalId) {
     return res.status(400).json({ message: "terminalId шаардлагатай" });
   }
@@ -485,12 +514,9 @@ router.post("/pos/payments/push-ecr/cancel", async (req, res) => {
   try {
     const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/cancel`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": pushEcrApiKey,
-        "x-client-id": pushEcrClientId,
-      },
-      body: JSON.stringify({ termianlId: terminalId }), // API typo: termianlId
+      headers: pushEcrHeaders(),
+      // NOTE: Push ECR API has a typo in the param name: 'termianlId' (not 'terminalId')
+      body: JSON.stringify({ termianlId: terminalId }),
       signal: AbortSignal.timeout(15_000),
     });
     const data = (await ecrRes.json()) as { succeed: boolean; message?: string };
@@ -499,6 +525,69 @@ router.post("/pos/payments/push-ecr/cancel", async (req, res) => {
     return res.status(500).json({
       succeed: false,
       message: err instanceof Error ? err.message : "Push ECR cancel амжилтгүй боллоо",
+    });
+  }
+});
+
+/**
+ * POST /pos/payments/push-ecr/inquiry
+ * Check status of a Push ECR transaction by referralcode.
+ * Useful when polling status after a purchase request.
+ */
+router.post("/pos/payments/push-ecr/inquiry", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const terminalId = String(req.body?.terminalId || pushEcrDefaultTerminalId || "");
+  const referralcode = String(req.body?.referralcode || "").slice(0, 10);
+
+  if (!terminalId || !referralcode) {
+    return res.status(400).json({ message: "terminalId болон referralcode шаардлагатай" });
+  }
+
+  try {
+    const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/inquiry`, {
+      method: "POST",
+      headers: pushEcrHeaders(),
+      body: JSON.stringify({ terminalId, referralcode }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const data = (await ecrRes.json()) as PushEcrPurchaseResponse;
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({
+      succeed: false,
+      message: err instanceof Error ? err.message : "Push ECR inquiry амжилтгүй боллоо",
+    });
+  }
+});
+
+/**
+ * POST /pos/payments/push-ecr/healthcheck
+ * Check if terminal is online and ready.
+ */
+router.post("/pos/payments/push-ecr/healthcheck", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const terminalId = String(req.body?.terminalId || pushEcrDefaultTerminalId || "");
+  if (!terminalId) {
+    return res.status(400).json({ message: "terminalId шаардлагатай" });
+  }
+
+  try {
+    const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/healthcheck`, {
+      method: "POST",
+      headers: pushEcrHeaders(),
+      body: JSON.stringify({ terminalId }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const data = (await ecrRes.json()) as { succeed: boolean; message?: string };
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({
+      succeed: false,
+      message: err instanceof Error ? err.message : "Terminal healthcheck амжилтгүй боллоо",
     });
   }
 });
@@ -538,6 +627,8 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
   const amount = Number(req.body?.amount || 0);
   const registerId: string | null = req.body?.registerId || null;
   const bodyOrganizationId: string | null = req.body?.organizationId || null;
+
+  console.log("[QPay invoice] amount:", amount, "registerId:", registerId, "orgId:", bodyOrganizationId);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ message: "QPay amount буруу байна" });
@@ -584,20 +675,53 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
     }
 
     if (!effectiveOrganizationId) {
-      effectiveOrganizationId = actor.role === "ADMIN" ? bodyOrganizationId : actor.organizationId;
+      effectiveOrganizationId =
+        actor.role === "ADMIN"
+          ? bodyOrganizationId
+          : (actor.organizationId || bodyOrganizationId);
     }
 
     if (actor.role !== "ADMIN" && bodyOrganizationId && bodyOrganizationId !== effectiveOrganizationId) {
       return res.status(403).json({ message: "organizationId зөрүүтэй байна" });
     }
 
-    const merchantContext = registerQpayConfig
+    console.log("[QPay invoice] registerQpayConfig:", JSON.stringify(registerQpayConfig));
+
+    let merchantContext = registerQpayConfig
       ? buildQPayMerchantContextFromPosRegister(registerQpayConfig)
       : null;
-    if (registerQpayConfig && !merchantContext) {
+
+    console.log("[QPay invoice] merchantContext from register:", merchantContext ? "set" : "null");
+
+    // Fall back to organization-level QPay config when register has no config
+    if (!merchantContext && effectiveOrganizationId) {
+      const orgRes = await getVendorMerchantConfig(effectiveOrganizationId);
+      console.log("[QPay invoice] org config:", JSON.stringify(orgRes));
+      merchantContext = orgRes.config ?? null;
+    }
+
+    console.log("[QPay invoice] final merchantContext:", JSON.stringify({
+      username: merchantContext?.username,
+      invoiceCode: merchantContext?.invoiceCode,
+      merchantId: merchantContext?.merchantId,
+      merchantKey: merchantContext?.merchantKey,
+      bankAccounts: merchantContext?.bankAccounts,
+    }, null, 2));
+
+    if (!merchantContext) {
       return res.status(400).json({
-        message: "QPay merchant тохиргоо дутуу байна (merchantId/terminalId/password)",
+        message: "QPay merchant тохиргоо дутуу байна. Тохиргоо хуудаснаас QPay дансаа холбоно уу.",
       });
+    }
+
+    // Org нэрийг invoice description-д ашиглах
+    let orgName = "MGL Store";
+    if (effectiveOrganizationId) {
+      const orgForName = await prisma.organization.findUnique({
+        where: { id: effectiveOrganizationId },
+        select: { name: true },
+      });
+      if (orgForName?.name) orgName = orgForName.name;
     }
 
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -618,15 +742,11 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
         orderId: invoice.id,
         orderNumber: `POS-${invoice.id.slice(0, 8)}`,
         amount,
-        description: `POS invoice ${invoice.id}`,
+        description: `${orgName} - худалдан авалт`,
         merchantContext: merchantContext || undefined,
         callbackConfig: {
-          path: "/api/operations/pos/payments/qpay/webhook",
-          query: {
-            invoiceId: invoice.id,
-            registerId: registerId || undefined,
-            organizationId: effectiveOrganizationId || undefined,
-          },
+          path: "/api/pos/qpay/cb",
+          query: {},
         },
       });
 
@@ -675,7 +795,8 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
     }
   } catch (error) {
     console.error("qpay invoice create error", error);
-    return res.status(500).json({ message: "QPay invoice үүсгэхэд алдаа гарлаа" });
+    const msg = error instanceof Error ? error.message : "QPay invoice үүсгэхэд алдаа гарлаа";
+    return res.status(500).json({ message: msg });
   }
 });
 
@@ -726,14 +847,21 @@ router.get("/pos/payments/qpay/status/:invoiceId", async (req, res) => {
       const payload = (invoice.webhookPayload || {}) as Record<string, unknown>;
       const providerInvoiceId = String(payload.providerInvoiceId || "").trim();
       if (providerInvoiceId) {
-        const merchantContext = invoice.register
+        let statusMerchantContext = invoice.register
           ? buildQPayMerchantContextFromPosRegister({
               qpayEnabled: invoice.register.qpayEnabled,
               qpayMerchantId: invoice.register.qpayMerchantId,
               qpayTerminalId: invoice.register.qpayTerminalId,
             })
           : null;
-        const check = await checkQPayPayment(providerInvoiceId, merchantContext || undefined);
+
+        // Fall back to org-level config if register has no QPay config
+        if (!statusMerchantContext && invoice.organizationId) {
+          const orgRes = await getVendorMerchantConfig(invoice.organizationId);
+          statusMerchantContext = orgRes.config ?? null;
+        }
+
+        const check = await checkQPayPayment(providerInvoiceId, statusMerchantContext || undefined);
         const paidRow = Array.isArray(check.rows) ? check.rows[0] : null;
         if (check.count > 0 && paidRow?.payment_id) {
           current = await prisma.qPayInvoice.update({
@@ -816,6 +944,14 @@ router.post("/pos/payments/qpay/confirm", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * POST /pos/qpay/cb  — short alias for QuickQR callback (255-char URL limit)
+ */
+router.post("/pos/qpay/cb", async (req, res, next) => {
+  req.url = "/pos/payments/qpay/webhook";
+  next("route");
+});
+
+/**
  * POST /pos/payments/qpay/webhook  — real QPay bank callback
  * Secured with HMAC-SHA256 when QPAY_WEBHOOK_SECRET is set.
  * QPay банк payload: { invoiceId, paymentId, amount, status, paidDate }
@@ -1714,6 +1850,88 @@ router.get("/pos/receipts", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * Sales history — org-level
+ * GET /pos/sales/history?organizationId=&from=&to=&page=&limit=
+ * ─────────────────────────────────────────────────────────────────────── */
+router.get("/pos/sales/history", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const queryOrgId = String(req.query.organizationId || "").trim() || null;
+    const effectiveOrgId =
+      actor.role === "ADMIN" ? queryOrgId : (actor.organizationId || queryOrgId);
+
+    if (!effectiveOrgId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+
+    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, effectiveOrgId))) {
+      return res.status(403).json({ message: "Энэ байгууллагын мэдээлэл харах эрхгүй" });
+    }
+
+    const fromStr = String(req.query.from || "").trim();
+    const toStr = String(req.query.to || "").trim();
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
+
+    const where: Record<string, unknown> = { organizationId: effectiveOrgId };
+    if (fromStr || toStr) {
+      where.createdAt = {
+        ...(fromStr ? { gte: new Date(fromStr) } : {}),
+        ...(toStr ? { lte: new Date(toStr) } : {}),
+      };
+    }
+
+    const [total, sales] = await Promise.all([
+      prisma.posSale.count({ where }),
+      prisma.posSale.findMany({
+        where,
+        include: {
+          lines: { include: { product: { select: { name: true, sku: true } } } },
+          cashier: { select: { email: true, profile: { select: { fullName: true } } } },
+          branch: { select: { name: true } },
+          register: { select: { name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    const result = sales.map((sale) => ({
+      id: sale.id,
+      receiptNo: sale.receiptNo,
+      branchName: sale.branch.name,
+      registerName: sale.register?.name || null,
+      cashierName: sale.cashier.profile?.fullName || sale.cashier.email,
+      paymentMethod: sale.paymentMethod,
+      status: sale.status,
+      subtotal: Number(sale.subtotal),
+      taxTotal: Number(sale.taxTotal),
+      discountTotal: Number(sale.discountTotal),
+      grandTotal: Number(sale.grandTotal),
+      createdAt: sale.createdAt.toISOString(),
+      lines: sale.lines.map((line) => ({
+        productId: line.productId,
+        productName: line.productName,
+        productSku: line.productSku,
+        qty: line.qty,
+        unitPrice: Number(line.unitPrice),
+        taxAmount: Number(line.taxAmount),
+        discount: Number(line.discount),
+        lineTotal: Number(line.lineTotal),
+      })),
+    }));
+
+    return res.json({ total, page, limit, pages: Math.ceil(total / limit), sales: result });
+  } catch (error) {
+    console.error("sales history error", error);
+    return res.status(500).json({ message: "Борлуулалтын түүх авахад алдаа гарлаа" });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
  * POS Reports — aggregated sales report
  * GET /pos/reports?branchId=<uuid>&from=<ISO>&to=<ISO>
  * ─────────────────────────────────────────────────────────────────────── */
@@ -2065,6 +2283,54 @@ router.post("/pos/registers/self-claim", async (req, res) => {
     }
     console.error("self-claim pos-register error", error);
     return res.status(500).json({ message: "POS бүртгэхэд алдаа гарлаа" });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Vendor — list own org's approved POS registers
+ * GET /pos/registers/mine
+ * Returns all APPROVED+active registers for the authenticated vendor's org.
+ * ─────────────────────────────────────────────────────────────────────── */
+router.get("/pos/registers/mine", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const organizationId = actor.organizationId;
+  if (!organizationId) {
+    return res.status(400).json({ message: "Байгууллагатай холбоогүй хэрэглэгч" });
+  }
+
+  try {
+    const registers = await prisma.posRegister.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        activationStatus: PosActivationStatus.APPROVED,
+        deletedAt: null,
+      },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        name: true,
+        label: true,
+        branchId: true,
+        organizationId: true,
+        cardEnabled: true,
+        cardProviderType: true,
+        cardTerminalId: true,
+        terminalBridgeUrl: true,
+        qpayEnabled: true,
+        qpayMerchantId: true,
+        qpayTerminalId: true,
+        isActive: true,
+        activationStatus: true,
+        branch: { select: { id: true, name: true } },
+      },
+    });
+    return res.json(registers);
+  } catch (error) {
+    console.error("list own registers error", error);
+    return res.status(500).json({ message: "POS жагсаалт авахад алдаа гарлаа" });
   }
 });
 

@@ -55,8 +55,70 @@ const generateInvoiceNumber = async (): Promise<string> => {
   return `INV-${yearShort}${month}${day}${String(count + 1).padStart(4, "0")}`;
 };
 
+// Helper: Transfer requested stock to Vendor's product catalog
+const transferStockToVendor = async (
+  tx: Prisma.TransactionClient,
+  request: { organizationId: string; requestNumber: string },
+  items: { productId: string; approvedQuantity: number | null; quantity: number }[]
+) => {
+  for (const item of items) {
+    const quantity = item.approvedQuantity || item.quantity;
+    if (quantity <= 0) continue;
+
+    const sourceProduct = await tx.product.findUnique({
+      where: { id: item.productId },
+      include: { images: true }
+    });
+
+    if (!sourceProduct) continue;
+
+    let targetProduct;
+    if (sourceProduct.sku) {
+      targetProduct = await tx.product.findFirst({
+        where: { organizationId: request.organizationId, sku: sourceProduct.sku, deletedAt: null }
+      });
+    }
+
+    if (!targetProduct) {
+      targetProduct = await tx.product.create({
+        data: {
+          organizationId: request.organizationId,
+          name: sourceProduct.name,
+          description: sourceProduct.description,
+          sku: sourceProduct.sku,
+          barcode: sourceProduct.barcode,
+          unit: sourceProduct.unit,
+          price: sourceProduct.price,
+          costPrice: sourceProduct.costPrice,
+          businessCategoryId: sourceProduct.businessCategoryId,
+          categoryId: sourceProduct.categoryId,
+          isActive: true,
+          stock: quantity,
+          images: {
+            create: sourceProduct.images.map(img => ({ url: img.url }))
+          }
+        }
+      });
+    } else {
+      targetProduct = await tx.product.update({
+        where: { id: targetProduct.id },
+        data: { stock: { increment: quantity } }
+      });
+    }
+
+    await tx.inventoryLedger.create({
+      data: {
+        productId: targetProduct.id,
+        change: quantity,
+        reason: InventoryReason.TRANSFER_IN,
+        note: `Бараа таталт батлагдсан (${request.requestNumber})`
+      }
+    });
+  }
+};
+
 // Get all stock requests (Admin sees all, Vendor sees their own)
-router.get("/stock-requests", async (req, res) => {
+router.get("/stock-requests", requireAuth, async (req, res) => {
   try {
     const { organizationId, status, warehouseId } = req.query;
 
@@ -148,7 +210,7 @@ router.get("/stock-requests", async (req, res) => {
 });
 
 // Get single stock request
-router.get("/stock-requests/:id", async (req, res) => {
+router.get("/stock-requests/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -394,7 +456,7 @@ router.post("/stock-requests", requireAuth, requireOrgPermission({ from: "body" 
 });
 
 // Approve stock request (Admin)
-router.patch("/stock-requests/:id/approve", async (req, res) => {
+router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { reviewedById, reviewNote, items } = req.body;
@@ -535,7 +597,7 @@ router.patch("/stock-requests/:id/approve", async (req, res) => {
 });
 
 // Reject stock request (Admin)
-router.patch("/stock-requests/:id/reject", async (req, res) => {
+router.patch("/stock-requests/:id/reject", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { reviewedById, reviewNote } = req.body;
@@ -583,7 +645,7 @@ router.patch("/stock-requests/:id/reject", async (req, res) => {
 });
 
 // Mark as processing (Admin - after approval, when starting to prepare)
-router.patch("/stock-requests/:id/process", async (req, res) => {
+router.patch("/stock-requests/:id/process", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -618,7 +680,7 @@ router.patch("/stock-requests/:id/process", async (req, res) => {
 });
 
 // Complete stock request (Admin - when delivered)
-router.patch("/stock-requests/:id/complete", async (req, res) => {
+router.patch("/stock-requests/:id/complete", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -657,6 +719,9 @@ router.patch("/stock-requests/:id/complete", async (req, res) => {
         });
       }
 
+      // Transfer stock to Vendor
+      await transferStockToVendor(tx, { organizationId: request.organizationId, requestNumber: request.requestNumber }, request.items);
+
       // Update request status
       return tx.warehouseStockRequest.update({
         where: { id },
@@ -692,7 +757,7 @@ router.patch("/stock-requests/:id/complete", async (req, res) => {
 });
 
 // Cancel stock request (Vendor - only if pending)
-router.patch("/stock-requests/:id/cancel", async (req, res) => {
+router.patch("/stock-requests/:id/cancel", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1567,6 +1632,14 @@ router.patch("/stock-requests/dispatches/:id/deliver", async (req, res) => {
     }
 
     const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const request = await tx.warehouseStockRequest.findUnique({
+        where: { id: dispatch.requestId },
+        include: { items: true }
+      });
+      if (request) {
+        await transferStockToVendor(tx, { organizationId: request.organizationId, requestNumber: request.requestNumber }, request.items);
+      }
+
       await tx.warehouseStockRequest.update({
         where: { id: dispatch.requestId },
         data: {

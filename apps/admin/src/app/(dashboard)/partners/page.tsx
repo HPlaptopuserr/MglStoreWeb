@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Search,
   Building2,
@@ -24,6 +24,9 @@ import {
   Copy,
   CheckCircle2,
   FileSpreadsheet,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { API, adminFetch } from "@/lib/api";
@@ -206,6 +209,13 @@ function CategoryDropdown({
 export default function PartnersPage() {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState(""); // debounced input
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const PAGE_SIZE = 16;
+
   const [deleteModal, setDeleteModal] = useState<Partner | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
@@ -239,9 +249,9 @@ export default function PartnersPage() {
         }),
       });
       if (res.ok) {
-        setPartners((prev) => prev.filter((p) => p.id !== partner.id));
         setDeleteModal(null);
         setDeleteReason("");
+        fetchPartners(currentPage, searchQuery);
       } else {
         const data = await res.json();
         alert(data.message || "Устгахад алдаа гарлаа");
@@ -254,25 +264,57 @@ export default function PartnersPage() {
     }
   };
 
-  const filteredPartners = partners.filter((partner) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      partner.name.toLowerCase().includes(query) ||
-      partner.slug.toLowerCase().includes(query) ||
-      partner.type.toLowerCase().includes(query) ||
-      partner.status.toLowerCase().includes(query) ||
-      (partner.email && partner.email.toLowerCase().includes(query)) ||
-      (partner.taxId && partner.taxId.toLowerCase().includes(query))
-    );
-  });
+  const fetchPartners = useCallback(
+    async (page = currentPage, search = searchQuery) => {
+      setIsLoading(true);
+      try {
+        const params = new URLSearchParams({
+          page: String(page),
+          limit: String(PAGE_SIZE),
+        });
+        if (search) params.set("search", search);
+        const res = await adminFetch(`${API}/partners?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const json = await res.json();
+        if (Array.isArray(json)) {
+          setPartners(json);
+          setTotalCount(json.length);
+          setTotalPages(1);
+        } else {
+          setPartners(json.data || []);
+          setTotalCount(json.pagination?.total ?? 0);
+          setTotalPages(json.pagination?.totalPages ?? 1);
+        }
+      } catch (e) {
+        console.error("fetchPartners error", e);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentPage, searchQuery],
+  );
 
-  const fetchPartners = async () => {
-    const res = await adminFetch(`${API}/partners`, {
-      cache: "no-store",
-    });
-    const data = await res.json();
-    setPartners(Array.isArray(data) ? data : []);
-  };
+  useEffect(() => {
+    fetchPartners(currentPage, searchQuery);
+  }, [fetchPartners]);
+
+  useEffect(() => {
+    adminFetch(`${API}/business-categories?level=0`)
+      .then((r) => r.json())
+      .then((data: ApiCategory[]) => setApiCategories(data))
+      .catch(console.error);
+  }, []);
+
+  // Debounce search input — commit to searchQuery after 400ms
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchQuery(searchInput);
+      setCurrentPage(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const handleCategoryUpdated = (id: string, cat: string | null) => {
     setPartners((prev) =>
@@ -335,13 +377,6 @@ export default function PartnersPage() {
     setTimeout(() => setInviteCopied(false), 2000);
   };
 
-  useEffect(() => {
-    fetchPartners();
-    adminFetch(`${API}/business-categories?level=0`)
-      .then((r) => r.json())
-      .then((data: ApiCategory[]) => setApiCategories(data))
-      .catch(console.error);
-  }, []);
 
   return (
     <div className="text-slate-800 font-sans">
@@ -533,7 +568,7 @@ export default function PartnersPage() {
                   Нийт байгууллага
                 </p>
                 <h3 className="text-2xl md:text-3xl font-bold text-slate-900 leading-tight">
-                  {partners.length}
+                  {totalCount}
                 </h3>
               </div>
             </div>
@@ -545,9 +580,13 @@ export default function PartnersPage() {
                 Түншүүд
               </h1>
               <p className="text-xs md:text-sm text-slate-500 mt-0.5 md:mt-1">
-                Хайлтанд: {filteredPartners.length}{" "}
-                {searchQuery && (
-                  <span className="text-slate-400"> (Олдсон)</span>
+                {searchQuery ? (
+                  <>
+                    <span className="font-medium text-indigo-600">&ldquo;{searchQuery}&rdquo;</span>
+                    {" "}хайлтын үр дүн — {totalCount} олдлоо
+                  </>
+                ) : (
+                  <>Нийт {totalCount} байгууллага<span className="mx-1">·</span>{currentPage}/{totalPages} хуудас</>
                 )}
               </p>
             </div>
@@ -579,14 +618,14 @@ export default function PartnersPage() {
               />
               <input
                 type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Компанийн нэр, И-мэйл, РД-р хайх..."
                 className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm transition-all focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white placeholder:text-slate-400 font-medium placeholder:font-normal"
               />
-              {searchQuery && (
+              {searchInput && (
                 <button
-                  onClick={() => setSearchQuery("")}
+                  onClick={() => { setSearchInput(""); setSearchQuery(""); }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 rounded-full p-1 hover:bg-slate-100 transition-colors"
                 >
                   <X size={14} />
@@ -596,8 +635,48 @@ export default function PartnersPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-          {filteredPartners.map((partner) => (
+        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4 transition-opacity ${isLoading ? "opacity-50 pointer-events-none" : ""}`}>
+          {isLoading && partners.length === 0 ? (
+            // Skeleton loader
+            Array.from({ length: PAGE_SIZE }).map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden animate-pulse">
+                <div className="p-5 border-b border-slate-100">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-11 h-11 rounded-xl bg-slate-200" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 bg-slate-200 rounded w-3/4" />
+                      <div className="h-3 bg-slate-100 rounded w-1/2" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="h-6 w-20 bg-slate-100 rounded-full" />
+                    <div className="h-6 w-16 bg-slate-100 rounded-full" />
+                  </div>
+                </div>
+                <div className="p-5 space-y-2">
+                  <div className="h-3 bg-slate-100 rounded w-full" />
+                  <div className="h-3 bg-slate-100 rounded w-2/3" />
+                  <div className="h-3 bg-slate-100 rounded w-3/4" />
+                </div>
+                <div className="px-4 py-3 border-t border-slate-100 grid grid-cols-4 gap-2">
+                  {Array.from({ length: 4 }).map((_, j) => (
+                    <div key={j} className="h-8 bg-slate-100 rounded" />
+                  ))}
+                </div>
+              </div>
+            ))
+          ) : partners.length === 0 ? (
+            <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
+              <div className="mb-4 rounded-full bg-slate-100 p-5">
+                <Building2 className="h-10 w-10 text-slate-300" />
+              </div>
+              <p className="font-semibold text-slate-600">Байгууллага олдсонгүй</p>
+              <p className="mt-1 text-sm text-slate-400">
+                {searchQuery ? `"${searchQuery}" хайлтад тохирох үр дүн байхгүй` : "Одоогоор нэг ч байгууллага бүртгэлгүй байна"}
+              </p>
+            </div>
+          ) : (
+            partners.map((partner) => (
             <Link
               href={`/partners/${partner.id}`}
               key={partner.id}
@@ -736,8 +815,74 @@ export default function PartnersPage() {
                 </div>
               </div>
             </Link>
-          ))}
+            ))
+          )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between">
+            <p className="text-sm text-slate-500">
+              Нийт <span className="font-semibold text-slate-800">{totalCount}</span> байгууллагаас{" "}
+              <span className="font-semibold text-slate-800">{(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, totalCount)}</span>-г харуулж байна
+            </p>
+
+            <div className="flex items-center gap-1">
+              {/* Prev */}
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-all hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {/* Page numbers */}
+              {(() => {
+                const pages: (number | "…")[] = [];
+                if (totalPages <= 7) {
+                  for (let i = 1; i <= totalPages; i++) pages.push(i);
+                } else {
+                  pages.push(1);
+                  if (currentPage > 3) pages.push("…");
+                  const start = Math.max(2, currentPage - 1);
+                  const end = Math.min(totalPages - 1, currentPage + 1);
+                  for (let i = start; i <= end; i++) pages.push(i);
+                  if (currentPage < totalPages - 2) pages.push("…");
+                  pages.push(totalPages);
+                }
+                return pages.map((p, idx) =>
+                  p === "…" ? (
+                    <span key={`ellipsis-${idx}`} className="flex h-9 w-9 items-center justify-center text-sm text-slate-400">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p as number)}
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold transition-all ${
+                        currentPage === p
+                          ? "border-indigo-500 bg-indigo-600 text-white shadow-sm shadow-indigo-200"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                );
+              })()}
+
+              {/* Next */}
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-all hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}

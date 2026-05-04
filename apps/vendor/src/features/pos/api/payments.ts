@@ -18,6 +18,7 @@ export type QPayInvoice = {
   invoiceId: string;
   amount: number;
   qrText: string;
+  qrImage: string;
   status: QPayInvoiceStatus;
   expiresAt: string;
   paidAt?: string;

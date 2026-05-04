@@ -13,6 +13,7 @@ type CustomerPayload = {
     invoiceId: string;
     amount: number;
     qrText: string;
+    qrImage: string;
     expiresAt: string;
   } | null;
   ts: number;
@@ -52,8 +53,8 @@ export default function CustomerDisplayPage() {
     return () => channel.close();
   }, []);
 
-  const qrSrc = payload.qpayModal
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(payload.qpayModal.qrText)}`
+  const qrSrc = payload.qpayModal?.qrImage
+    ? `data:image/png;base64,${payload.qpayModal.qrImage}`
     : null;
 
   return (

@@ -37,13 +37,18 @@ export async function adjustStock(tx: Tx, input: AdjustStockInput): Promise<void
   } = input;
 
   if (warehouseId) {
-    // Update warehouse inventory
-    await tx.warehouseInventory.update({
+    // Update warehouse inventory (upsert to handle missing records)
+    await tx.warehouseInventory.upsert({
       where: {
         warehouseId_productId: { warehouseId, productId },
       },
-      data: {
+      update: {
         quantity: { increment: change },
+      },
+      create: {
+        warehouseId,
+        productId,
+        quantity: change,
       },
     });
 

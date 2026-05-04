@@ -233,6 +233,12 @@ router.post("/admin/organizations", requireAuth, requirePlatformPermission(Permi
           address: address?.trim() || null,
           businessCategory: businessCategory?.trim() || null,
           isVerified: false,
+          // ─── Auto-activate 14-day trial ──────────────────────────
+          subdomainEnabled: true,
+          planType: "trial",
+          planActivatedAt: new Date(),
+          planExpiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          trialUsed: true,
         },
         select: {
           id: true,
@@ -497,44 +503,57 @@ router.patch(
 
 router.get("/partners", async (req, res) => {
   try {
-    const partners = await prisma.organization.findMany({
-      where: {
-        deletedAt: null,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      include: {
-        _count: {
-          select: {
-            members: true,
-            products: true,
-            branches: true,
-            orders: true,
+    const PAGE_LIMIT = 16;
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const limit = Math.min(10000, Math.max(1, parseInt(String(req.query.limit || PAGE_LIMIT), 10) || PAGE_LIMIT));
+    const search = String(req.query.search || "").trim();
+    const statusFilter = String(req.query.status || "").trim();
+    const skip = (page - 1) * limit;
+
+    const where: any = { deletedAt: null };
+
+    if (statusFilter) where.status = statusFilter;
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { slug: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+        { taxId: { contains: search, mode: "insensitive" } },
+        { phone: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    const [total, partners] = await prisma.$transaction([
+      prisma.organization.count({ where }),
+      prisma.organization.findMany({
+        where,
+        orderBy: [
+          // Investors always first — DB-level approximation; fine-sort in JS below
+          { createdAt: "desc" },
+        ],
+        skip,
+        take: limit,
+        include: {
+          _count: {
+            select: {
+              members: true,
+              products: true,
+              branches: true,
+              orders: true,
+            },
+          },
+          investorProfile: {
+            select: {
+              id: true,
+              tier: true,
+              featured: true,
+              investmentLevel: true,
+              publiclyVisible: true,
+            },
           },
         },
-        investorProfile: {
-          select: {
-            id: true,
-            tier: true,
-            featured: true,
-            investmentLevel: true,
-            publiclyVisible: true,
-          },
-        },
-        products: {
-          where: {
-            isActive: true,
-            deletedAt: null,
-          },
-          include: {
-            images: true,
-            category: true,
-          },
-          take: 20,
-        },
-      },
-    });
+      }),
+    ]);
 
     const result = partners.map((partner: any) => ({
       id: partner.id,
@@ -562,7 +581,9 @@ router.get("/partners", async (req, res) => {
       createdAt: partner.createdAt,
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
-      investmentAmount: partner.investorProfile?.investmentLevel ? Number(partner.investorProfile.investmentLevel) : null,
+      investmentAmount: partner.investorProfile?.investmentLevel
+        ? Number(partner.investorProfile.investmentLevel)
+        : null,
       subdomainEnabled: partner.subdomainEnabled,
       planActivatedAt: partner.planActivatedAt,
       planExpiresAt: partner.planExpiresAt,
@@ -572,36 +593,108 @@ router.get("/partners", async (req, res) => {
         branches: partner._count.branches,
         orders: partner._count.orders,
       },
-      products: partner.products.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        title: p.name,
-        description: p.description,
-        price: Number(p.price),
-        originalPrice: p.costPrice ? Number(p.costPrice) : undefined,
-        stock: p.stock,
-        category: p.category?.name,
-        image: p.images?.[0]?.url,
-        images: p.images?.map((img: any) => img.url),
-      })),
     }));
 
-    // Sort: investors first (by investmentAmount desc), then regular partners by createdAt
+    // Sort investors first within the current page
     result.sort((a: any, b: any) => {
       if (a.isInvestor && !b.isInvestor) return -1;
       if (!a.isInvestor && b.isInvestor) return 1;
       if (a.isInvestor && b.isInvestor) {
         return (b.investmentAmount || 0) - (a.investmentAmount || 0);
       }
-      return 0; // keep createdAt desc from DB
+      return 0;
     });
 
-    res.json(result);
+    res.json({
+      data: result,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   } catch (error) {
     console.error("get partners error", error);
     res.status(500).json({
       message: "Түншүүдийг авахад алдаа гарлаа",
     });
+  }
+});
+
+// GET /partners/:id — fetch a single partner by ID
+router.get("/partners/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const partner = await prisma.organization.findUnique({
+      where: { id, deletedAt: null },
+      include: {
+        _count: {
+          select: {
+            members: true,
+            products: true,
+            branches: true,
+            orders: true,
+          },
+        },
+        investorProfile: {
+          select: {
+            id: true,
+            tier: true,
+            featured: true,
+            investmentLevel: true,
+            publiclyVisible: true,
+          },
+        },
+      },
+    });
+
+    if (!partner) {
+      return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+    }
+
+    return res.json({
+      id: partner.id,
+      name: partner.name,
+      slug: partner.slug,
+      taxId: partner.taxId,
+      type: partner.type,
+      status: partner.status,
+      isVerified: partner.isVerified,
+      businessCategory: partner.businessCategory,
+      email: partner.email,
+      phone: partner.phone,
+      logoUrl: partner.logoUrl,
+      bannerUrl: partner.bannerUrl,
+      address: partner.address,
+      description: partner.description,
+      shortDescription: partner.shortDescription,
+      openingHours: partner.openingHours,
+      deliveryText: partner.deliveryText,
+      deliveryPrice: partner.deliveryPrice,
+      rating: partner.rating,
+      reviewCount: partner.reviewCount,
+      customers: (partner as any).customerCount,
+      years: partner.operatingYears,
+      createdAt: partner.createdAt,
+      isInvestor: !!partner.investorProfile,
+      investorTier: partner.investorProfile?.tier || null,
+      investmentAmount: partner.investorProfile?.investmentLevel
+        ? Number(partner.investorProfile.investmentLevel)
+        : null,
+      subdomainEnabled: partner.subdomainEnabled,
+      planActivatedAt: partner.planActivatedAt,
+      planExpiresAt: partner.planExpiresAt,
+      stats: {
+        users: partner._count.members,
+        products: partner._count.products,
+        branches: partner._count.branches,
+        orders: partner._count.orders,
+      },
+    });
+  } catch (error) {
+    console.error("get partner by id error", error);
+    return res.status(500).json({ message: "Байгууллагын мэдээлэл авахад алдаа гарлаа" });
   }
 });
 

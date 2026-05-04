@@ -11,8 +11,9 @@ export function usePartners(enabled: boolean) {
     if (!enabled) return;
     adminFetch(`${API}/partners`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((data: CardPartner[]) => {
-        if (Array.isArray(data)) setPartners(data);
+      .then((raw: any) => {
+        const data = Array.isArray(raw) ? raw : raw?.data || [];
+        setPartners(data as CardPartner[]);
       })
       .catch(() => {});
   }, [enabled]);

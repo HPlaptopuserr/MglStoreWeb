@@ -60,7 +60,8 @@ export const SearchBar = () => {
           );
         }
         if (partRes.ok) {
-          const parts = await partRes.json();
+          const raw = await partRes.json();
+          const parts = Array.isArray(raw) ? raw : raw?.data || [];
           setApiBrands(parts.map((p: any) => ({ id: p.id, name: p.name })));
         }
       } catch (e) {

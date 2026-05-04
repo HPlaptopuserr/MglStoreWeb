@@ -31,8 +31,8 @@ export function useBranches(enabled: boolean) {
         .then((r) => (r.ok ? r.json() : []))
         .catch(() => []),
     ])
-      .then(([partnersData, branchesData]) => {
-        const partners = Array.isArray(partnersData) ? (partnersData as CardPartner[]) : [];
+      .then(([partnersRaw, branchesData]) => {
+        const partners = Array.isArray(partnersRaw) ? (partnersRaw as CardPartner[]) : ((partnersRaw as any)?.data || []) as CardPartner[];
         const branches = Array.isArray(branchesData) ? (branchesData as BranchMapItem[]) : [];
 
         setBranchPartners(partners);

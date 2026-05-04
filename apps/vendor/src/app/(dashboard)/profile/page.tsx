@@ -165,22 +165,20 @@ export default function ProfilePage() {
         const storedUser = JSON.parse(
           localStorage.getItem("vendor_user") || "{}",
         );
-        const userEmail = storedUser.email;
         const orgId = storedUser.organizationId;
+        const userEmail = storedUser.email;
 
-        const [partnersRes, catsRes] = await Promise.all([
-          authFetch(`${API}/partners`, { cache: "no-store" }),
-          authFetch(`${API}/business-categories`),
-        ]);
-
+        const catsRes = await authFetch(`${API}/business-categories`);
         if (catsRes.ok) setCategories(await catsRes.json());
 
-        if (partnersRes.ok && (userEmail || orgId)) {
-          const data = await partnersRes.json();
-          const found = data.find((p: any) => p.id === orgId || p.email === userEmail);
-          if (found) {
+        // Fetch this org directly by ID to avoid pagination issues
+        if (orgId) {
+          const partnerRes = await authFetch(`${API}/partners/${orgId}`, {
+            cache: "no-store",
+          });
+          if (partnerRes.ok) {
+            const found = await partnerRes.json();
             setPartner(found);
-            // Initialize form data
             setFormData({
               phone: found.phone || "",
               email: found.email || "",
@@ -192,6 +190,31 @@ export default function ProfilePage() {
               deliveryPrice: found.deliveryPrice || "",
               operatingYears: found.years || 1,
             });
+          }
+        } else if (userEmail) {
+          // Fallback: search by email if orgId not set (legacy accounts)
+          const partnersRes = await authFetch(
+            `${API}/partners?limit=10000`,
+            { cache: "no-store" },
+          );
+          if (partnersRes.ok) {
+            const json = await partnersRes.json();
+            const data = Array.isArray(json) ? json : json?.data || [];
+            const found = data.find((p: any) => p.email === userEmail);
+            if (found) {
+              setPartner(found);
+              setFormData({
+                phone: found.phone || "",
+                email: found.email || "",
+                address: found.address || "",
+                description: found.description || "",
+                shortDescription: found.shortDescription || "",
+                openingHours: found.openingHours || [],
+                deliveryText: found.deliveryText || "",
+                deliveryPrice: found.deliveryPrice || "",
+                operatingYears: found.years || 1,
+              });
+            }
           }
         }
       } catch (error) {
@@ -357,35 +380,35 @@ export default function ProfilePage() {
 
   const statItems = partner.stats
     ? [
-        {
-          label: "Хэрэглэгч",
-          value: partner.stats.users,
-          icon: Users,
-          color: "text-indigo-600",
-          bg: "bg-indigo-50",
-        },
-        {
-          label: "Бүтээгдэхүүн",
-          value: partner.stats.products,
-          icon: Package,
-          color: "text-emerald-600",
-          bg: "bg-emerald-50",
-        },
-        {
-          label: "Салбар",
-          value: partner.stats.branches,
-          icon: GitBranch,
-          color: "text-amber-600",
-          bg: "bg-amber-50",
-        },
-        {
-          label: "Захиалга",
-          value: partner.stats.orders,
-          icon: ShoppingCart,
-          color: "text-sky-600",
-          bg: "bg-sky-50",
-        },
-      ]
+      {
+        label: "Хэрэглэгч",
+        value: partner.stats.users,
+        icon: Users,
+        color: "text-indigo-600",
+        bg: "bg-indigo-50",
+      },
+      {
+        label: "Бүтээгдэхүүн",
+        value: partner.stats.products,
+        icon: Package,
+        color: "text-emerald-600",
+        bg: "bg-emerald-50",
+      },
+      {
+        label: "Салбар",
+        value: partner.stats.branches,
+        icon: GitBranch,
+        color: "text-amber-600",
+        bg: "bg-amber-50",
+      },
+      {
+        label: "Захиалга",
+        value: partner.stats.orders,
+        icon: ShoppingCart,
+        color: "text-sky-600",
+        bg: "bg-sky-50",
+      },
+    ]
     : [];
 
   return (
@@ -523,490 +546,523 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
-              Байгууллагын мэдээлэл
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <InfoItem
-                icon={<FileText size={18} className="text-slate-400" />}
-                label="Регистрийн дугаар"
-                value={partner.taxId}
-              />
-              <InfoItem
-                icon={<Calendar size={18} className="text-slate-400" />}
-                label="Бүртгүүлсэн огноо"
-                value={new Date(partner.createdAt).toLocaleDateString("mn-MN")}
-              />
-              <InfoItem
-                icon={<Shield size={18} className="text-slate-400" />}
-                label="Баталгаажилт"
-                value={partner.isVerified ? "Баталгаажсан" : "Баталгаажаагүй"}
-                valueColor={
-                  partner.isVerified ? "text-emerald-600" : "text-amber-600"
-                }
-              />
-              <InfoItem
-                icon={<Briefcase size={18} className="text-slate-400" />}
-                label="Төрөл"
-                value={partner.type}
-              />
-            </div>
-          </div>
+      {/* Tab switcher */}
+      <div className="flex border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => setActiveTab("profile")}
+          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${activeTab === "profile"
+              ? "border-b-2 border-indigo-500 text-indigo-600"
+              : "text-slate-500 hover:text-slate-700"
+            }`}
+        >
+          Профайл
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("merchant")}
+          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${activeTab === "merchant"
+              ? "border-b-2 border-indigo-500 text-indigo-600"
+              : "text-slate-500 hover:text-slate-700"
+            }`}
+        >
+          QPay Мерчант тохиргоо
+        </button>
+      </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
-                Бизнесийн ангилал
+      {activeTab === "merchant" && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-6">
+            QPay Multimerchant тохиргоо
+          </h3>
+          <MerchantSettingsSection organizationId={partner?.id} />
+        </div>
+      )}
+
+      {activeTab === "profile" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
+                Байгууллагын мэдээлэл
               </h3>
-              {saved && (
-                <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
-                  <Check size={13} /> Хадгалагдлаа
-                </span>
-              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <InfoItem
+                  icon={<FileText size={18} className="text-slate-400" />}
+                  label="Регистрийн дугаар"
+                  value={partner.taxId}
+                />
+                <InfoItem
+                  icon={<Calendar size={18} className="text-slate-400" />}
+                  label="Бүртгүүлсэн огноо"
+                  value={new Date(partner.createdAt).toLocaleDateString("mn-MN")}
+                />
+                <InfoItem
+                  icon={<Shield size={18} className="text-slate-400" />}
+                  label="Баталгаажилт"
+                  value={partner.isVerified ? "Баталгаажсан" : "Баталгаажаагүй"}
+                  valueColor={
+                    partner.isVerified ? "text-emerald-600" : "text-amber-600"
+                  }
+                />
+                <InfoItem
+                  icon={<Briefcase size={18} className="text-slate-400" />}
+                  label="Төрөл"
+                  value={partner.type}
+                />
+              </div>
             </div>
 
-            <p className="text-sm text-slate-500 mb-4">
-              Таны байгууллага ямар ангилалд харьяалагдахыг сонгоно уу. Олон
-              ангилал сонгох боломжтой.
-            </p>
-
-            {selectedCats.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {selectedCats.map((cat) => (
-                  <span
-                    key={cat.slug}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-semibold text-indigo-700"
-                  >
-                    <span>{cat.icon ?? "🏷️"}</span>
-                    {cat.name}
-                    <button
-                      type="button"
-                      onClick={() => handleCategoryToggle(cat.slug)}
-                      className="ml-0.5 hover:text-red-500 transition-colors"
-                    >
-                      <X size={12} />
-                    </button>
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
+                  Бизнесийн ангилал
+                </h3>
+                {saved && (
+                  <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                    <Check size={13} /> Хадгалагдлаа
                   </span>
-                ))}
+                )}
+              </div>
+
+              <p className="text-sm text-slate-500 mb-4">
+                Таны байгууллага ямар ангилалд харьяалагдахыг сонгоно уу. Олон
+                ангилал сонгох боломжтой.
+              </p>
+
+              {selectedCats.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {selectedCats.map((cat) => (
+                    <span
+                      key={cat.slug}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-semibold text-indigo-700"
+                    >
+                      <span>{cat.icon ?? "🏷️"}</span>
+                      {cat.name}
+                      <button
+                        type="button"
+                        onClick={() => handleCategoryToggle(cat.slug)}
+                        className="ml-0.5 hover:text-red-500 transition-colors"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="relative">
+                <button
+                  onClick={() => setCatOpen((v) => !v)}
+                  disabled={saving}
+                  className="w-full flex items-center justify-between px-4 py-3 border border-slate-200 rounded-xl text-sm font-semibold hover:border-indigo-400 hover:bg-indigo-50/30 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-60"
+                >
+                  <div className="flex items-center gap-3">
+                    {saving ? (
+                      <Loader2
+                        size={18}
+                        className="text-slate-400 animate-spin"
+                      />
+                    ) : (
+                      <Tag size={18} className="text-slate-400" />
+                    )}
+                    <span
+                      className={selectedCats.length > 0 ? "text-slate-800" : "text-slate-400"}
+                    >
+                      {selectedCats.length > 0
+                        ? `${selectedCats.length} ангилал сонгогдсон`
+                        : "Ангилал сонгоно уу..."}
+                    </span>
+                  </div>
+                  <ChevronDown
+                    size={16}
+                    className={`text-slate-400 transition-transform ${catOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {catOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setCatOpen(false)}
+                    />
+                    <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+                      {selectedCats.length > 0 && (
+                        <button
+                          onClick={handleClearCategories}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-400 hover:bg-slate-50 transition-colors border-b border-slate-100"
+                        >
+                          <span className="w-4" />
+                          Бүгдийг арилгах
+                        </button>
+                      )}
+                      {categories.map((cat) => {
+                        const isSelected = selectedSlugs.includes(cat.slug);
+                        return (
+                          <button
+                            key={cat.slug}
+                            onClick={() => handleCategoryToggle(cat.slug)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-indigo-50 transition-colors ${isSelected ? "bg-indigo-50/50" : ""
+                              }`}
+                          >
+                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${isSelected
+                                ? "border-indigo-500 bg-indigo-500"
+                                : "border-slate-300"
+                              }`}>
+                              {isSelected && <Check size={10} className="text-white" />}
+                            </div>
+                            <span className="text-lg">{cat.icon ?? "🏷️"}</span>
+                            <span className="font-semibold text-slate-700">
+                              {cat.name}
+                            </span>
+                            <code className="ml-auto text-xs text-slate-400 font-mono">
+                              {cat.slug}
+                            </code>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
+                  Холбоо барих
+                </h3>
+                {!isEditing && (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                  >
+                    <Pencil size={14} />
+                    Засах
+                  </button>
+                )}
+                {profileSaved && (
+                  <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                    <Check size={13} /> Хадгалагдлаа
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <InfoItem
+                  icon={<Mail size={18} className="text-slate-400" />}
+                  label="И-мэйл"
+                  value={partner.email || "Бүртгэлгүй"}
+                />
+                <InfoItem
+                  icon={<Phone size={18} className="text-slate-400" />}
+                  label="Утас"
+                  value={partner.phone || "Бүртгэлгүй"}
+                />
+                <div className="sm:col-span-2">
+                  <InfoItem
+                    icon={<MapPin size={18} className="text-slate-400" />}
+                    label="Хаяг"
+                    value={partner.address || "Бүртгэлгүй"}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Profile Edit Form */}
+            {isEditing && (
+              <div className="bg-white rounded-2xl border-2 border-indigo-200 shadow-sm p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <Pencil size={18} className="text-indigo-500" />
+                    Профайл засах
+                  </h3>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Basic Info */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                        И-мэйл
+                      </label>
+                      <div className="relative">
+                        <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                          className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                          placeholder="example@mail.com"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                        Утас
+                      </label>
+                      <div className="relative">
+                        <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="tel"
+                          value={formData.phone}
+                          onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                          className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                          placeholder="99001122"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                      Хаяг
+                    </label>
+                    <div className="relative">
+                      <MapPin size={16} className="absolute left-3 top-3 text-slate-400" />
+                      <input
+                        type="text"
+                        value={formData.address}
+                        onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                        placeholder="Улаанбаатар хот, Баянзүрх дүүрэг..."
+                      />
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                      Богино танилцуулга
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.shortDescription}
+                      onChange={(e) => setFormData(prev => ({ ...prev, shortDescription: e.target.value }))}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                      placeholder="Чанартай бараа бүтээгдэхүүн..."
+                      maxLength={100}
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Нийтийн хуудсанд гарчиг болон харагдана</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                      Дэлгэрэнгүй танилцуулга
+                    </label>
+                    <textarea
+                      value={formData.description}
+                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                      rows={4}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 resize-none"
+                      placeholder="Байгууллагын талаар дэлгэрэнгүй мэдээлэл..."
+                    />
+                  </div>
+
+                  {/* Opening Hours */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                        <Clock size={14} />
+                        Ажлын цаг
+                      </label>
+                      <button
+                        type="button"
+                        onClick={addOpeningHour}
+                        className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      >
+                        <Plus size={14} />
+                        Нэмэх
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {formData.openingHours.length === 0 ? (
+                        <p className="text-sm text-slate-400 italic">Цагийн хуваарь нэмэгдээгүй байна</p>
+                      ) : (
+                        formData.openingHours.map((hour, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={hour}
+                              onChange={(e) => updateOpeningHour(index, e.target.value)}
+                              className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                              placeholder="Даваа-Баасан: 09:00-18:00"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeOpeningHour(index)}
+                              className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Delivery Info */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <Truck size={14} />
+                        Хүргэлтийн мэдээлэл
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.deliveryText}
+                        onChange={(e) => setFormData(prev => ({ ...prev, deliveryText: e.target.value }))}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                        placeholder="Улаанбаатар хотод хүргэнэ"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                        Хүргэлтийн үнэ
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.deliveryPrice}
+                        onChange={(e) => setFormData(prev => ({ ...prev, deliveryPrice: e.target.value }))}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                        placeholder="5,000₮"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Operating Years */}
+                  <div className="w-full sm:w-1/2">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                      <Calendar size={14} />
+                      Үйл ажиллагаа явуулсан жил
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={formData.operatingYears}
+                      onChange={(e) => setFormData(prev => ({ ...prev, operatingYears: parseInt(e.target.value) || 1 }))}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                    />
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                    <button
+                      onClick={handleCancelEdit}
+                      className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                    >
+                      Цуцлах
+                    </button>
+                    <button
+                      onClick={handleProfileSave}
+                      disabled={profileSaving}
+                      className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-60"
+                    >
+                      {profileSaving ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Save size={16} />
+                      )}
+                      Хадгалах
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
-            <div className="relative">
-              <button
-                onClick={() => setCatOpen((v) => !v)}
-                disabled={saving}
-                className="w-full flex items-center justify-between px-4 py-3 border border-slate-200 rounded-xl text-sm font-semibold hover:border-indigo-400 hover:bg-indigo-50/30 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-60"
-              >
-                <div className="flex items-center gap-3">
-                  {saving ? (
-                    <Loader2
-                      size={18}
-                      className="text-slate-400 animate-spin"
-                    />
-                  ) : (
-                    <Tag size={18} className="text-slate-400" />
-                  )}
-                  <span
-                    className={selectedCats.length > 0 ? "text-slate-800" : "text-slate-400"}
-                  >
-                    {selectedCats.length > 0
-                      ? `${selectedCats.length} ангилал сонгогдсон`
-                      : "Ангилал сонгоно уу..."}
-                  </span>
-                </div>
-                <ChevronDown
-                  size={16}
-                  className={`text-slate-400 transition-transform ${catOpen ? "rotate-180" : ""}`}
-                />
-              </button>
-
-              {catOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setCatOpen(false)}
-                  />
-                  <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
-                    {selectedCats.length > 0 && (
-                      <button
-                        onClick={handleClearCategories}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-400 hover:bg-slate-50 transition-colors border-b border-slate-100"
-                      >
-                        <span className="w-4" />
-                        Бүгдийг арилгах
-                      </button>
-                    )}
-                    {categories.map((cat) => {
-                      const isSelected = selectedSlugs.includes(cat.slug);
-                      return (
-                        <button
-                          key={cat.slug}
-                          onClick={() => handleCategoryToggle(cat.slug)}
-                          className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-indigo-50 transition-colors ${
-                            isSelected ? "bg-indigo-50/50" : ""
-                          }`}
-                        >
-                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${
-                            isSelected
-                              ? "border-indigo-500 bg-indigo-500"
-                              : "border-slate-300"
-                          }`}>
-                            {isSelected && <Check size={10} className="text-white" />}
-                          </div>
-                          <span className="text-lg">{cat.icon ?? "🏷️"}</span>
-                          <span className="font-semibold text-slate-700">
-                            {cat.name}
-                          </span>
-                          <code className="ml-auto text-xs text-slate-400 font-mono">
-                            {cat.slug}
-                          </code>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
-                Холбоо барих
-              </h3>
-              {!isEditing && (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
-                >
-                  <Pencil size={14} />
-                  Засах
-                </button>
-              )}
-              {profileSaved && (
-                <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
-                  <Check size={13} /> Хадгалагдлаа
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <InfoItem
-                icon={<Mail size={18} className="text-slate-400" />}
-                label="И-мэйл"
-                value={partner.email || "Бүртгэлгүй"}
-              />
-              <InfoItem
-                icon={<Phone size={18} className="text-slate-400" />}
-                label="Утас"
-                value={partner.phone || "Бүртгэлгүй"}
-              />
-              <div className="sm:col-span-2">
-                <InfoItem
-                  icon={<MapPin size={18} className="text-slate-400" />}
-                  label="Хаяг"
-                  value={partner.address || "Бүртгэлгүй"}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Profile Edit Form */}
-          {isEditing && (
-            <div className="bg-white rounded-2xl border-2 border-indigo-200 shadow-sm p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Pencil size={18} className="text-indigo-500" />
-                  Профайл засах
+            {/* Public Profile Preview Section */}
+            {!isEditing && (partner.description || partner.shortDescription || partner.deliveryText || partner.openingHours?.length > 0) && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
+                  Нийтийн профайл мэдээлэл
                 </h3>
-                <button
-                  onClick={handleCancelEdit}
-                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="space-y-6">
-                {/* Basic Info */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                      И-мэйл
-                    </label>
-                    <div className="relative">
-                      <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
-                        placeholder="example@mail.com"
-                      />
+                <div className="space-y-4">
+                  {partner.shortDescription && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 mb-1">Богино танилцуулга</p>
+                      <p className="text-sm text-slate-700">{partner.shortDescription}</p>
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                      Утас
-                    </label>
-                    <div className="relative">
-                      <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="tel"
-                        value={formData.phone}
-                        onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
-                        placeholder="99001122"
-                      />
+                  )}
+                  {partner.description && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 mb-1">Дэлгэрэнгүй</p>
+                      <p className="text-sm text-slate-700 whitespace-pre-wrap">{partner.description}</p>
                     </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                    Хаяг
-                  </label>
-                  <div className="relative">
-                    <MapPin size={16} className="absolute left-3 top-3 text-slate-400" />
-                    <input
-                      type="text"
-                      value={formData.address}
-                      onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                      className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
-                      placeholder="Улаанбаатар хот, Баянзүрх дүүрэг..."
-                    />
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                    Богино танилцуулга
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.shortDescription}
-                    onChange={(e) => setFormData(prev => ({ ...prev, shortDescription: e.target.value }))}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
-                    placeholder="Чанартай бараа бүтээгдэхүүн..."
-                    maxLength={100}
-                  />
-                  <p className="text-xs text-slate-400 mt-1">Нийтийн хуудсанд гарчиг болон харагдана</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                    Дэлгэрэнгүй танилцуулга
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    rows={4}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 resize-none"
-                    placeholder="Байгууллагын талаар дэлгэрэнгүй мэдээлэл..."
-                  />
-                </div>
-
-                {/* Opening Hours */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                      <Clock size={14} />
-                      Ажлын цаг
-                    </label>
-                    <button
-                      type="button"
-                      onClick={addOpeningHour}
-                      className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                    >
-                      <Plus size={14} />
-                      Нэмэх
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {formData.openingHours.length === 0 ? (
-                      <p className="text-sm text-slate-400 italic">Цагийн хуваарь нэмэгдээгүй байна</p>
-                    ) : (
-                      formData.openingHours.map((hour, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={hour}
-                            onChange={(e) => updateOpeningHour(index, e.target.value)}
-                            className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
-                            placeholder="Даваа-Баасан: 09:00-18:00"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeOpeningHour(index)}
-                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Delivery Info */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                      <Truck size={14} />
-                      Хүргэлтийн мэдээлэл
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.deliveryText}
-                      onChange={(e) => setFormData(prev => ({ ...prev, deliveryText: e.target.value }))}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
-                      placeholder="Улаанбаатар хотод хүргэнэ"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                      Хүргэлтийн үнэ
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.deliveryPrice}
-                      onChange={(e) => setFormData(prev => ({ ...prev, deliveryPrice: e.target.value }))}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
-                      placeholder="5,000₮"
-                    />
-                  </div>
-                </div>
-
-                {/* Operating Years */}
-                <div className="w-full sm:w-1/2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                    <Calendar size={14} />
-                    Үйл ажиллагаа явуулсан жил
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={formData.operatingYears}
-                    onChange={(e) => setFormData(prev => ({ ...prev, operatingYears: parseInt(e.target.value) || 1 }))}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
-                  />
-                </div>
-
-                {/* Save Button */}
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                  <button
-                    onClick={handleCancelEdit}
-                    className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-                  >
-                    Цуцлах
-                  </button>
-                  <button
-                    onClick={handleProfileSave}
-                    disabled={profileSaving}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-60"
-                  >
-                    {profileSaving ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <Save size={16} />
-                    )}
-                    Хадгалах
-                  </button>
+                  )}
+                  {partner.openingHours?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                        <Clock size={12} /> Ажлын цаг
+                      </p>
+                      <div className="space-y-1">
+                        {partner.openingHours.map((h: string, i: number) => (
+                          <p key={i} className="text-sm text-slate-700">{h}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(partner.deliveryText || partner.deliveryPrice) && (
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                        <Truck size={12} /> Хүргэлт
+                      </p>
+                      <p className="text-sm text-slate-700">
+                        {partner.deliveryText}
+                        {partner.deliveryPrice && <span className="text-indigo-600 font-semibold ml-2">{partner.deliveryPrice}</span>}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-center">
+              <div className="w-16 h-16 bg-linear-to-br from-[#FFAD02] to-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-200/50">
+                <Building2 className="text-white" size={28} />
+              </div>
+              <h4 className="text-lg font-bold text-slate-900 mb-1">
+                MglStore Vendor
+              </h4>
+              <p className="text-sm text-slate-500 mb-4">
+                Бүртгэлтэй албан ёсны түнш
+              </p>
+              <div className="w-full h-px bg-slate-100 mb-4" />
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Та MglStore платформын бүртгэлтэй vendor бөгөөд бараа
+                бүтээгдэхүүнээ зарах, захиалга удирдах эрхтэй.
+              </p>
             </div>
-          )}
 
-          {/* Public Profile Preview Section */}
-          {!isEditing && (partner.description || partner.shortDescription || partner.deliveryText || partner.openingHours?.length > 0) && (
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
-                Нийтийн профайл мэдээлэл
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
+                Түргэн холбоосууд
               </h3>
-              <div className="space-y-4">
-                {partner.shortDescription && (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-400 mb-1">Богино танилцуулга</p>
-                    <p className="text-sm text-slate-700">{partner.shortDescription}</p>
-                  </div>
-                )}
-                {partner.description && (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-400 mb-1">Дэлгэрэнгүй</p>
-                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{partner.description}</p>
-                  </div>
-                )}
-                {partner.openingHours?.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                      <Clock size={12} /> Ажлын цаг
-                    </p>
-                    <div className="space-y-1">
-                      {partner.openingHours.map((h: string, i: number) => (
-                        <p key={i} className="text-sm text-slate-700">{h}</p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {(partner.deliveryText || partner.deliveryPrice) && (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                      <Truck size={12} /> Хүргэлт
-                    </p>
-                    <p className="text-sm text-slate-700">
-                      {partner.deliveryText}
-                      {partner.deliveryPrice && <span className="text-indigo-600 font-semibold ml-2">{partner.deliveryPrice}</span>}
-                    </p>
-                  </div>
-                )}
+              <div className="space-y-2">
+                {[
+                  { label: "Бүтээгдэхүүн нэмэх", href: "/products" },
+                  { label: "Захиалгууд харах", href: "/orders" },
+                  { label: "Тохиргоо", href: "/settings" },
+                ].map((link) => (
+                  <button
+                    key={link.label}
+                    onClick={() => router.push(link.href)}
+                    className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                  >
+                    {link.label}
+                  </button>
+                ))}
               </div>
             </div>
-          )}
-        </div>
-
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-center">
-            <div className="w-16 h-16 bg-linear-to-br from-[#FFAD02] to-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-200/50">
-              <Building2 className="text-white" size={28} />
-            </div>
-            <h4 className="text-lg font-bold text-slate-900 mb-1">
-              MglStore Vendor
-            </h4>
-            <p className="text-sm text-slate-500 mb-4">
-              Бүртгэлтэй албан ёсны түнш
-            </p>
-            <div className="w-full h-px bg-slate-100 mb-4" />
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Та MglStore платформын бүртгэлтэй vendor бөгөөд бараа
-              бүтээгдэхүүнээ зарах, захиалга удирдах эрхтэй.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
-              Түргэн холбоосууд
-            </h3>
-            <div className="space-y-2">
-              {[
-                { label: "Бүтээгдэхүүн нэмэх", href: "/products" },
-                { label: "Захиалгууд харах", href: "/orders" },
-                { label: "Тохиргоо", href: "/settings" },
-              ].map((link) => (
-                <button
-                  key={link.label}
-                  onClick={() => router.push(link.href)}
-                  className="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-                >
-                  {link.label}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

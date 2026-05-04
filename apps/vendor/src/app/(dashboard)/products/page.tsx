@@ -21,6 +21,9 @@ import {
   BarChart2,
   Layers,
   FileSpreadsheet,
+  Crown,
+  Lock,
+  AlertTriangle,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
 import { ExcelImportModal } from "@/features/products";
@@ -163,11 +166,10 @@ function CategorySelector({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`w-full flex items-center justify-between gap-2 h-11 px-4 rounded-xl border text-sm transition-all outline-none ${
-          open
+        className={`w-full flex items-center justify-between gap-2 h-11 px-4 rounded-xl border text-sm transition-all outline-none ${open
             ? "border-amber-500 ring-2 ring-amber-100 bg-white"
             : "border-slate-200 bg-slate-50 hover:bg-white hover:border-slate-300"
-        }`}
+          }`}
       >
         <span className={selectedLabel ? "text-slate-900 font-medium" : "text-slate-400"}>
           {selectedLabel || "Ангилал сонгох..."}
@@ -280,9 +282,8 @@ function ImageUploadGrid({
                   }
                   setDragging(null);
                 }}
-                className={`relative group aspect-square rounded-xl overflow-hidden border-2 cursor-grab active:cursor-grabbing transition-all ${
-                  isFirst ? "border-amber-400" : "border-slate-200"
-                } ${dragging === idx ? "opacity-50 scale-95" : ""}`}
+                className={`relative group aspect-square rounded-xl overflow-hidden border-2 cursor-grab active:cursor-grabbing transition-all ${isFirst ? "border-amber-400" : "border-slate-200"
+                  } ${dragging === idx ? "opacity-50 scale-95" : ""}`}
               >
                 <img
                   src={img}
@@ -310,13 +311,12 @@ function ImageUploadGrid({
           return (
             <label
               key={idx}
-              className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-colors ${
-                canAdd
+              className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-colors ${canAdd
                   ? "border-slate-300 hover:border-amber-400 hover:bg-amber-50 cursor-pointer"
                   : isUploadingSlot
                     ? "border-amber-300 bg-amber-50"
                     : "border-slate-100 bg-slate-50/50 cursor-not-allowed"
-              }`}
+                }`}
             >
               {isUploadingSlot ? (
                 <>
@@ -365,6 +365,23 @@ export default function ProductsPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
+  // ─── Plan status ───────────────────────────────────────────────────────
+  const [planStatus, setPlanStatus] = useState<{
+    isActive: boolean;
+    planType: string | null;
+    planExpiresAt: string | null;
+    trialUsed: boolean;
+    currentPlan: { maxProducts: number; name: string; isTrial: boolean } | null;
+  } | null>(null);
+
+  const isPlanActive = planStatus?.isActive ?? true; // optimistic
+  const daysLeft = planStatus?.planExpiresAt
+    ? Math.ceil((new Date(planStatus.planExpiresAt).getTime() - Date.now()) / 86_400_000)
+    : null;
+  const productLimit = planStatus?.currentPlan?.maxProducts ?? -1;
+  const productLimitReached = productLimit !== -1 && products.length >= productLimit;
+  const canAddProduct = isPlanActive && !productLimitReached;
+
   const getOrgId = () => {
     try {
       const user = JSON.parse(localStorage.getItem("vendor_user") || "{}");
@@ -409,6 +426,21 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+    // Fetch plan status
+    authFetch(`${API}/vendor/upgrade/status`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) {
+          setPlanStatus({
+            isActive: data.isActive,
+            planType: data.planType,
+            planExpiresAt: data.planExpiresAt,
+            trialUsed: data.trialUsed,
+            currentPlan: data.currentPlan,
+          });
+        }
+      })
+      .catch(() => {/* ignore */});
   }, [fetchProducts, fetchCategories]);
 
   const openAdd = () => {
@@ -537,11 +569,10 @@ export default function ProductsPage() {
       {/* Toast */}
       {toast && (
         <div
-          className={`fixed top-5 right-5 z-[100] flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm font-semibold shadow-2xl shadow-black/10 border transition-all animate-in slide-in-from-top-2 ${
-            toast.type === "success"
+          className={`fixed top-5 right-5 z-[100] flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm font-semibold shadow-2xl shadow-black/10 border transition-all animate-in slide-in-from-top-2 ${toast.type === "success"
               ? "bg-white border-amber-200 text-amber-700"
               : "bg-white border-red-200 text-red-600"
-          }`}
+            }`}
         >
           {toast.type === "success" ? (
             <CheckCircle2 size={18} className="text-amber-500" />
@@ -552,10 +583,76 @@ export default function ProductsPage() {
         </div>
       )}
 
+      {/* Plan expired / trial warning banner */}
+      {planStatus && (
+        <>
+          {!isPlanActive && (
+            <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <Lock size={18} className="shrink-0 text-red-500" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-red-700">Таны план дууссан байна</p>
+                <p className="text-xs text-red-500">Бараа нэмэх, засах боломжгүй. Дахин идэвхжүүлэхийн тулд сунгана уу.</p>
+              </div>
+              <a
+                href="/upgrade"
+                className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 transition-colors shrink-0"
+              >
+                <Crown size={14} />
+                Сунгах
+              </a>
+            </div>
+          )}
+          {isPlanActive && planStatus.currentPlan?.isTrial && daysLeft !== null && daysLeft <= 7 && (
+            <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <AlertTriangle size={18} className="shrink-0 text-amber-500" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-amber-700">Үнэгүй туршилт: {daysLeft} хоног үлдсэн</p>
+                <p className="text-xs text-amber-500">Планаа сунгаж, бүх боломжуудыг ашиглаарай.</p>
+              </div>
+              <a
+                href="/upgrade"
+                className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition-colors shrink-0"
+              >
+                <Crown size={14} />
+                Сунгах
+              </a>
+            </div>
+          )}
+          {isPlanActive && productLimitReached && (
+            <div className="flex items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+              <AlertCircle size={18} className="shrink-0 text-orange-500" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-orange-700">Барааны хязгаарт хүрлээ ({productLimit})</p>
+                <p className="text-xs text-orange-500">Дахин бараа нэмэхийн тулд планаа сунгана уу.</p>
+              </div>
+              <a
+                href="/upgrade"
+                className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-xs font-bold text-white hover:bg-orange-600 transition-colors shrink-0"
+              >
+                <Crown size={14} />
+                Сунгах
+              </a>
+            </div>
+          )}
+        </>
+      )}
+
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">Бараа</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-black tracking-tight text-slate-900">Бараа</h1>
+            {isPlanActive && planStatus?.currentPlan && (
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                planStatus.currentPlan.isTrial
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-emerald-100 text-emerald-700"
+              }`}>
+                {planStatus.currentPlan.name}
+                {productLimit !== -1 && ` · ${products.length}/${productLimit}`}
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 text-sm font-medium text-slate-500">Таны бараа бүтээгдэхүүний каталог</p>
         </div>
         <div className="flex items-center gap-3">
@@ -569,17 +666,29 @@ export default function ProductsPage() {
             />
           </div>
           <button
-            onClick={() => setImportOpen(true)}
-            className="flex items-center gap-2 h-10 px-5 rounded-xl bg-emerald-600 text-white text-sm font-bold shadow-lg shadow-emerald-500/25 hover:bg-emerald-700 transition-colors whitespace-nowrap"
+            onClick={() => canAddProduct && setImportOpen(true)}
+            disabled={!canAddProduct}
+            title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
+            className={`flex items-center gap-2 h-10 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+              canAddProduct
+                ? "bg-emerald-600 shadow-emerald-500/25 hover:bg-emerald-700"
+                : "bg-slate-300 cursor-not-allowed shadow-none"
+            }`}
           >
-            <FileSpreadsheet size={16} />
+            {canAddProduct ? <FileSpreadsheet size={16} /> : <Lock size={16} />}
             Excel импорт
           </button>
           <button
-            onClick={openAdd}
-            className="flex items-center gap-2 h-10 px-5 rounded-xl bg-amber-600 text-white text-sm font-bold shadow-lg shadow-amber-500/25 hover:bg-amber-700 transition-colors whitespace-nowrap"
+            onClick={() => canAddProduct && openAdd()}
+            disabled={!canAddProduct}
+            title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
+            className={`flex items-center gap-2 h-10 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+              canAddProduct
+                ? "bg-amber-600 shadow-amber-500/25 hover:bg-amber-700"
+                : "bg-slate-300 cursor-not-allowed shadow-none"
+            }`}
           >
-            <Plus size={16} />
+            {canAddProduct ? <Plus size={16} /> : <Lock size={16} />}
             Бараа нэмэх
           </button>
         </div>
@@ -868,11 +977,10 @@ export default function ProductsPage() {
               <button
                 key={btn.key}
                 onClick={() => setStatusFilter(btn.key as "all" | "active" | "inactive")}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  statusFilter === btn.key
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === btn.key
                     ? "bg-amber-500 text-black"
                     : "text-slate-500 hover:text-slate-700"
-                }`}
+                  }`}
               >
                 {btn.label}
                 <span className="ml-1 opacity-70">{btn.count}</span>
@@ -960,11 +1068,10 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            product.isActive
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${product.isActive
                               ? "bg-emerald-100 text-emerald-700"
                               : "bg-slate-100 text-slate-500"
-                          }`}
+                            }`}
                         >
                           {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
                         </span>

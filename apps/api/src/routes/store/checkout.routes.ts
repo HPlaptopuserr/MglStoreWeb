@@ -9,6 +9,7 @@ import {
 } from "@mgl/database";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import { adjustStock, resolveOrgWarehouse } from "../../services/inventory.service";
+import { getVendorMerchantConfig } from "../../services/vendor-merchant.service";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("FATAL: JWT_SECRET not set"); })() : "dev-secret-change-me");
@@ -130,6 +131,13 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
 
     const total = subtotal; // no delivery fee for now
 
+    // Check if vendor has QPay connected
+    const merchantRes = await getVendorMerchantConfig(orgIds[0]);
+    if (!merchantRes.success || !merchantRes.config) {
+      return res.status(400).json({ message: "Дэлгүүр QPay дансаа холбоогүй байна. Төлбөр авах боломжгүй." });
+    }
+    const merchantContext = merchantRes.config;
+
     // Create order + items + payment attempt in a transaction
     const order = await prisma.$transaction(async (tx) => {
       // Decrement stock through unified adjustStock (warehouse-aware + ledger)
@@ -192,6 +200,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         orderId: order.id,
         orderNumber: order.orderNumber,
         amount: Number(order.total),
+        merchantContext,
       });
     } catch (err) {
       console.error("QPay invoice creation failed:", err);
@@ -252,6 +261,7 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
       select: {
         id: true,
         customerId: true,
+        organizationId: true,
         status: true,
         paymentStatus: true,
         orderNumber: true,
@@ -283,7 +293,9 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
       return res.status(400).json({ message: "QPay нэхэмжлэх олдсонгүй" });
     }
 
-    const qpayCheck = await checkQPayPayment(payment.providerRef);
+    const merchantRes = await getVendorMerchantConfig(order.organizationId);
+    const merchantContext = merchantRes.config ?? undefined;
+    const qpayCheck = await checkQPayPayment(payment.providerRef, merchantContext);
 
     if (qpayCheck.count === 0) {
       return res.json({
@@ -354,6 +366,7 @@ router.get("/store/checkout/:orderId/payment-status", async (req: Request, res: 
       select: {
         id: true,
         customerId: true,
+        organizationId: true,
         paymentStatus: true,
         orderNumber: true,
         payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, status: true } },
@@ -377,7 +390,9 @@ router.get("/store/checkout/:orderId/payment-status", async (req: Request, res: 
       return res.json({ status: "PENDING" });
     }
 
-    const qpayCheck = await checkQPayPayment(payment.providerRef);
+    const merchantRes2 = await getVendorMerchantConfig(order.organizationId);
+    const merchantContext2 = merchantRes2.config ?? undefined;
+    const qpayCheck = await checkQPayPayment(payment.providerRef, merchantContext2);
 
     if (qpayCheck.count === 0) {
       return res.json({ status: "PENDING" });
@@ -437,6 +452,7 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
       select: {
         id: true,
         customerId: true,
+        organizationId: true,
         paymentStatus: true,
         payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, status: true } },
       },
@@ -455,8 +471,10 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
       return res.status(400).json({ message: "no provider ref" });
     }
 
-    // Verify with QPay
-    const qpayCheck = await checkQPayPayment(payment.providerRef);
+    // Verify with QPay using the vendor's merchant context
+    const merchantRes3 = await getVendorMerchantConfig(order.organizationId);
+    const merchantContext3 = merchantRes3.config ?? undefined;
+    const qpayCheck = await checkQPayPayment(payment.providerRef, merchantContext3);
 
     if (qpayCheck.count === 0) {
       return res.json({ message: "not yet paid" });
