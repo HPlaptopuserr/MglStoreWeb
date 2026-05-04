@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { getInvestorRingStyle } from "@/lib/utils";
 import { ProductDetailOverlay } from "@/components/organisms/ProductDetailOverlay";
-import { ServiceDetailOverlay } from "@/components/organisms/ServiceDetailOverlay";
+import { ServiceDetailOverlay } from "@/app/services/_components/ServiceDetailOverlay";
 
 type ProductItem = OrganizationDetailData["products"][number] & {
   isAvailable?: boolean;

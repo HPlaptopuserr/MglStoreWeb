@@ -60,45 +60,32 @@ router.get("/products", async (req, res) => {
     const { organizationId, businessCategoryId } = req.query as Record<string, string>;
     const search = String(req.query.search ?? req.query.q ?? "").trim();
 
-    const where: any = { deletedAt: null };
+    const where: any = {
+      deletedAt: null,
+      isActive: true,
+      organization: { is: { deletedAt: null, status: "ACTIVE" } },
+    };
     if (organizationId) where.organizationId = organizationId;
     if (businessCategoryId) where.businessCategoryId = businessCategoryId;
 
-    // Visibility rule:
-    // Show products that are:
-    //   1. Self-registered by a vendor (no warehouse inventory), OR
-    //   2. Have been pulled to vendor via stock request (TRANSFER_IN), OR
-    //   3. Are in a warehouse with showOnWeb = true (central catalog products)
-    where.AND = [
-      {
-        OR: [
-          { warehouseInventories: { none: {} } },
-          { inventoryLogs: { some: { reason: "TRANSFER_IN" } } },
-          { warehouseInventories: { some: { showOnWeb: true } } },
-        ],
-      },
-    ];
-
     if (search) {
-      where.AND.push({
-        OR: [
-          { name: { contains: search, mode: "insensitive" } },
-          { description: { contains: search, mode: "insensitive" } },
-          { sku: { contains: search, mode: "insensitive" } },
-          { barcode: { contains: search, mode: "insensitive" } },
-          { organization: { is: { name: { contains: search, mode: "insensitive" } } } },
-          {
-            businessCategory: {
-              is: {
-                OR: [
-                  { name: { contains: search, mode: "insensitive" } },
-                  { slug: { contains: search, mode: "insensitive" } },
-                ],
-              },
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+        { sku: { contains: search, mode: "insensitive" } },
+        { barcode: { contains: search, mode: "insensitive" } },
+        { organization: { is: { name: { contains: search, mode: "insensitive" } } } },
+        {
+          businessCategory: {
+            is: {
+              OR: [
+                { name: { contains: search, mode: "insensitive" } },
+                { slug: { contains: search, mode: "insensitive" } },
+              ],
             },
           },
-        ],
-      });
+        },
+      ];
     }
 
     const products = await prisma.product.findMany({

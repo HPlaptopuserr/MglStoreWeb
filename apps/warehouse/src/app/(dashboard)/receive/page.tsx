@@ -133,10 +133,17 @@ export default function ReceivePage() {
         if (user.organizationId) {
           url = `${API}/warehouses/organization/${user.organizationId}`;
         }
-        const res = await wmsFetch(url);
+        let res = await wmsFetch(url);
+        let data = res.ok ? await res.json() : null;
+        let list = Array.isArray(data) ? data : data?.warehouses || [];
+
+        if (user.organizationId && list.length === 0) {
+          res = await wmsFetch(`${API}/warehouses`);
+          data = res.ok ? await res.json() : null;
+          list = Array.isArray(data) ? data : data?.warehouses || [];
+        }
+
         if (res.ok) {
-          const data = await res.json();
-          const list = Array.isArray(data) ? data : data.warehouses || [];
           setWarehouses(list);
           if (list.length > 0) setSelectedWarehouseId(list[0].id);
           // Try to get org name from warehouse data if not in user

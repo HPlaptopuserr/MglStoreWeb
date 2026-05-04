@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import { CarouselArrowButton } from "./CarouselArrowButton";
+import { CarouselArrowButton } from "@/components/molecules/CarouselArrowButton";
 import { ServiceCarouselItem } from "./ServiceCarouselItem";
 import { ServicePost } from "./ServiceCard";
 
