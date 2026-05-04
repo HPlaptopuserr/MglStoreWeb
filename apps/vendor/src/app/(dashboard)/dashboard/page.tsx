@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Boxes,
   Zap,
+  ReceiptText,
 } from "lucide-react";
 
 const API_BASE =
@@ -182,6 +183,13 @@ export default function Dashboard() {
           </h1>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/sales"
+            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            <ReceiptText size={15} />
+            Борлуулалт
+          </Link>
           <Link
             href="/pos"
             className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"

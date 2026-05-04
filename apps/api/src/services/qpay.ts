@@ -83,7 +83,7 @@ async function fetchNewToken(
   if (!res.ok) {
     const errText = await res.text();
     console.error("QPay auth failed:", res.status, errText);
-    throw new Error(`QPay auth failed: ${res.status}`);
+    throw new Error(`QPay auth failed: ${res.status} - ${errText}`);
   }
 
   const data = (await res.json()) as {
@@ -187,6 +187,7 @@ export async function createQPayInvoice(params: {
   }
 
   const callbackUrl = `${publicUrl}${callbackPath}?${callbackQuery.toString()}`;
+  console.log("[QPay] callbackUrl length:", callbackUrl.length, "url:", callbackUrl);
 
   // ── QuickQR branch ──────────────────────────────────────────
   // QuickQR uses merchant_id + bank_accounts instead of invoice_code
@@ -207,7 +208,10 @@ export async function createQPayInvoice(params: {
 
     if (params.merchantContext.bankAccounts?.length) {
       body.bank_accounts = params.merchantContext.bankAccounts.map((b) => ({
-        ...b,
+        account_bank_code: b.account_bank_code,
+        account_number: b.account_number,
+        account_name: b.account_name,
+        is_default: b.is_default ?? true,
         default: b.is_default ?? true,
       }));
     }
@@ -225,14 +229,14 @@ export async function createQPayInvoice(params: {
     if (!res.ok) {
       const errBody = await res.text();
       console.error("QuickQR create invoice failed:", res.status, errBody);
-      throw new Error(`QuickQR create invoice failed: ${res.status}`);
+      throw new Error(`QuickQR create invoice failed: ${res.status} - ${errBody}`);
     }
 
     const raw = (await res.json()) as Record<string, unknown>;
-    // QuickQR response: { id, qr_text, qr_image, urls }
+    // QuickQR response: { id, qr_code, urls } — note: field is qr_code not qr_text
     return {
       invoice_id: String(raw.id || raw.invoice_id || ""),
-      qr_text: String(raw.qr_text || ""),
+      qr_text: String(raw.qr_text || raw.qr_code || ""),
       qr_image: String(raw.qr_image || ""),
       urls: (raw.urls as QPayDeepLink[]) || [],
     };
@@ -246,7 +250,8 @@ export async function createQPayInvoice(params: {
     throw new Error("QPay invoice code is not configured");
   }
 
-  const body = {
+  const bankAccounts = params.merchantContext?.bankAccounts;
+  const body: Record<string, unknown> = {
     invoice_code: invoiceCode,
     sender_invoice_no: params.orderNumber,
     invoice_receiver_code: params.orderId,
@@ -254,6 +259,15 @@ export async function createQPayInvoice(params: {
     amount: params.amount,
     callback_url: callbackUrl,
   };
+
+  if (bankAccounts?.length) {
+    body.bank_accounts = bankAccounts.map((b) => ({
+      account_bank_code: b.account_bank_code,
+      account_number: b.account_number,
+      account_name: b.account_name,
+      is_default: b.is_default ?? true,
+    }));
+  }
 
   const res = await authorizedFetch(
     `${baseUrl}/invoice`,
@@ -268,11 +282,16 @@ export async function createQPayInvoice(params: {
   if (!res.ok) {
     const errBody = await res.text();
     console.error("QPay create invoice failed:", res.status, errBody);
-    throw new Error(`QPay create invoice failed: ${res.status}`);
+    throw new Error(`QPay create invoice failed: ${res.status} - ${errBody}`);
   }
 
-  const data = (await res.json()) as QPayInvoiceResponse;
-  return data;
+  const data = (await res.json()) as Record<string, unknown>;
+  return {
+    invoice_id: String(data.invoice_id || data.id || ""),
+    qr_text: String(data.qr_text || ""),
+    qr_image: String(data.qr_image || ""),
+    urls: (data.urls as QPayDeepLink[]) || [],
+  };
 }
 
 /* ── QuickQR merchant registration ───────────────────── */
@@ -370,9 +389,16 @@ export async function registerQPayMerchantCompany(
   if (!res.ok) {
     const errBody = await res.text();
     // Detect already-registered and throw typed error
+    console.error("QPay company register error body:", errBody);
     try {
       const parsed = JSON.parse(errBody);
-      if (parsed?.error === "MERCHANT_ALREADY_REGISTERED") {
+      const errStr = JSON.stringify(parsed).toLowerCase();
+      if (
+        parsed?.error === "MERCHANT_ALREADY_REGISTERED" ||
+        parsed?.code === "MERCHANT_ALREADY_REGISTERED" ||
+        errStr.includes("already") ||
+        errStr.includes("exist")
+      ) {
         throw new QPayAlreadyRegisteredError(params.register_number);
       }
     } catch (e) {
@@ -382,6 +408,8 @@ export async function registerQPayMerchantCompany(
   }
 
   const raw = (await res.json()) as Record<string, unknown>;
+  console.log("QPay company registration response keys:", Object.keys(raw));
+  console.log("QPay company registration raw:", JSON.stringify(raw));
   return {
     raw,
     merchantId: String(raw.merchant_id || raw.username || raw.id || ""),
@@ -404,10 +432,16 @@ export async function registerQPayMerchantPerson(
 
   if (!res.ok) {
     const errBody = await res.text();
-    // Detect already-registered and throw typed error
+    console.error("QPay person register error body:", errBody);
     try {
       const parsed = JSON.parse(errBody);
-      if (parsed?.error === "MERCHANT_ALREADY_REGISTERED") {
+      const errStr = JSON.stringify(parsed).toLowerCase();
+      if (
+        parsed?.error === "MERCHANT_ALREADY_REGISTERED" ||
+        parsed?.code === "MERCHANT_ALREADY_REGISTERED" ||
+        errStr.includes("already") ||
+        errStr.includes("exist")
+      ) {
         throw new QPayAlreadyRegisteredError(params.register_number);
       }
     } catch (e) {
@@ -417,6 +451,8 @@ export async function registerQPayMerchantPerson(
   }
 
   const raw = (await res.json()) as Record<string, unknown>;
+  console.log("QPay person registration response keys:", Object.keys(raw));
+  console.log("QPay person registration raw:", JSON.stringify(raw));
   return {
     raw,
     merchantId: String(raw.merchant_id || raw.username || raw.id || ""),

@@ -51,6 +51,7 @@ type QPayModalPayload = {
   invoiceId: string;
   amount: number;
   qrText: string;
+  qrImage: string;
   expiresAt: string;
 };
 
@@ -627,6 +628,7 @@ export default function PosDemoPage() {
         invoiceId: invoice.invoiceId,
         amount: invoice.amount,
         qrText: invoice.qrText,
+        qrImage: invoice.qrImage,
         expiresAt: invoice.expiresAt,
       };
 

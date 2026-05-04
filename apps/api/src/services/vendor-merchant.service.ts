@@ -147,7 +147,13 @@ export async function getVendorMerchantConfig(
       };
     }
 
-    if (!org.qpayEnabled || !org.qpayMerchantId || !org.qpayMerchantKey) {
+    console.log("[getVendorMerchantConfig] org QPay state:", {
+      qpayEnabled: org.qpayEnabled,
+      qpayMerchantId: org.qpayMerchantId,
+      qpayMerchantKey: org.qpayMerchantKey ? "set" : "null",
+    });
+
+    if (!org.qpayEnabled || !org.qpayMerchantId) {
       return {
         success: true,
         config: null,
@@ -157,25 +163,76 @@ export async function getVendorMerchantConfig(
     const masterUsername = (process.env.QPAY_QUICKQR_MASTER_USERNAME || "").trim();
     const masterPassword = (process.env.QPAY_QUICKQR_MASTER_PASSWORD || "").trim();
     const masterTerminalId = (process.env.QPAY_QUICKQR_MASTER_TERMINAL_ID || masterUsername).trim();
+    const quickqrBaseUrl = (process.env.QPAY_QUICKQR_BASE_URL || "").trim();
 
-    // Use master credentials for authentication. The vendor's specific identity
-    // is passed via `merchantId` and `bankAccounts` in the invoice body.
+    // Check if the merchantId is a QuickQR UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+    const isQuickQrUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      org.qpayMerchantId,
+    );
+
+    // QuickQR path: UUID merchantId + valid master credentials + base URL configured
+    if (isQuickQrUUID && masterUsername && masterPassword && quickqrBaseUrl) {
+      console.log("[getVendorMerchantConfig] Using QuickQR path for merchant:", org.qpayMerchantId);
+      const merchantContext: QPayMerchantContext = {
+        username: masterUsername,
+        password: masterPassword,
+        terminalId: masterTerminalId,
+        invoiceCode: null,
+        merchantId: org.qpayMerchantId,
+        merchantKey: `vendor:${org.qpayMerchantId}`,
+        bankAccounts: Array.isArray(org.qpayBankAccounts)
+          ? (org.qpayBankAccounts as unknown as QPayBankAccount[])
+          : null,
+      };
+
+      return {
+        success: true,
+        config: merchantContext,
+      };
+    }
+
+    // Standard QPay V2 path
+    const centralClientId = (process.env.QPAY_CLIENT_ID || "").trim();
+    const centralClientSecret = (process.env.QPAY_CLIENT_SECRET || "").trim();
+    const centralInvoiceCode = (process.env.QPAY_INVOICE_CODE || "").trim();
+    const orgInvoiceCode = (org.qpayInvoiceCode || "").trim();
+    const orgMerchantKey = (org.qpayMerchantKey || "").trim();
+
+    // If the vendor has their own QPay credentials, use them directly.
+    // This ensures QPay authenticates as their own merchant and routes
+    // payments to their registered bank account.
+    if (org.qpayMerchantId && orgMerchantKey) {
+      console.log("[getVendorMerchantConfig] Using vendor-own QPay V2 credentials for:", org.qpayMerchantId);
+      const merchantContext: QPayMerchantContext = {
+        username: org.qpayMerchantId,
+        password: orgMerchantKey,
+        invoiceCode: orgInvoiceCode || null,
+        merchantKey: `v2-own:${org.qpayMerchantId}`,
+        bankAccounts: Array.isArray(org.qpayBankAccounts)
+          ? (org.qpayBankAccounts as unknown as QPayBankAccount[])
+          : null,
+      };
+      return { success: true, config: merchantContext };
+    }
+
+    // Fall back to central credentials — payments go to platform default account.
+    if (!centralClientId || !centralClientSecret) {
+      console.warn("[getVendorMerchantConfig] No QPay credentials configured (neither QuickQR nor V2)");
+      return { success: true, config: null };
+    }
+
+    console.log("[getVendorMerchantConfig] Using central QPay V2 credentials, invoiceCode:", orgInvoiceCode || centralInvoiceCode);
     const merchantContext: QPayMerchantContext = {
-      username: masterUsername || org.qpayMerchantId, // fallback to org credentials if master missing
-      password: masterPassword || org.qpayMerchantKey,
-      terminalId: masterTerminalId,
-      invoiceCode: null, // QuickQR uses merchantId
-      merchantId: org.qpayMerchantId,
-      merchantKey: `vendor:${org.qpayMerchantId}`,
+      username: centralClientId,
+      password: centralClientSecret,
+      invoiceCode: orgInvoiceCode || centralInvoiceCode || null,
+      merchantKey: `v2:${org.qpayMerchantId}`,
       bankAccounts: Array.isArray(org.qpayBankAccounts)
         ? (org.qpayBankAccounts as unknown as QPayBankAccount[])
         : null,
     };
 
-    return {
-      success: true,
-      config: merchantContext,
-    };
+    return { success: true, config: merchantContext };
   } catch (error) {
     console.error("vendor merchant config error", error);
     return {
@@ -204,6 +261,9 @@ export async function registerVendorWithQPay(
       params.type === "company"
         ? await registerQPayMerchantCompany(params as QPayRegisterCompanyParams)
         : await registerQPayMerchantPerson(params as QPayRegisterPersonParams);
+
+    console.log("QPay registration raw response:", JSON.stringify(result.raw, null, 2));
+    console.log("QPay parsed → merchantId:", result.merchantId, "| merchantKey:", result.merchantKey, "| invoiceCode:", result.invoiceCode);
 
     const bankAccounts: QPayBankAccount[] = (params as any).bank_accounts || [];
 

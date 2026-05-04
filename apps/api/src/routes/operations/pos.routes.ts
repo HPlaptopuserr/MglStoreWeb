@@ -628,6 +628,8 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
   const registerId: string | null = req.body?.registerId || null;
   const bodyOrganizationId: string | null = req.body?.organizationId || null;
 
+  console.log("[QPay invoice] amount:", amount, "registerId:", registerId, "orgId:", bodyOrganizationId);
+
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ message: "QPay amount буруу байна" });
   }
@@ -683,20 +685,43 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
       return res.status(403).json({ message: "organizationId зөрүүтэй байна" });
     }
 
+    console.log("[QPay invoice] registerQpayConfig:", JSON.stringify(registerQpayConfig));
+
     let merchantContext = registerQpayConfig
       ? buildQPayMerchantContextFromPosRegister(registerQpayConfig)
       : null;
 
+    console.log("[QPay invoice] merchantContext from register:", merchantContext ? "set" : "null");
+
     // Fall back to organization-level QPay config when register has no config
     if (!merchantContext && effectiveOrganizationId) {
       const orgRes = await getVendorMerchantConfig(effectiveOrganizationId);
+      console.log("[QPay invoice] org config:", JSON.stringify(orgRes));
       merchantContext = orgRes.config ?? null;
     }
+
+    console.log("[QPay invoice] final merchantContext:", JSON.stringify({
+      username: merchantContext?.username,
+      invoiceCode: merchantContext?.invoiceCode,
+      merchantId: merchantContext?.merchantId,
+      merchantKey: merchantContext?.merchantKey,
+      bankAccounts: merchantContext?.bankAccounts,
+    }, null, 2));
 
     if (!merchantContext) {
       return res.status(400).json({
         message: "QPay merchant тохиргоо дутуу байна. Тохиргоо хуудаснаас QPay дансаа холбоно уу.",
       });
+    }
+
+    // Org нэрийг invoice description-д ашиглах
+    let orgName = "MGL Store";
+    if (effectiveOrganizationId) {
+      const orgForName = await prisma.organization.findUnique({
+        where: { id: effectiveOrganizationId },
+        select: { name: true },
+      });
+      if (orgForName?.name) orgName = orgForName.name;
     }
 
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -717,15 +742,11 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
         orderId: invoice.id,
         orderNumber: `POS-${invoice.id.slice(0, 8)}`,
         amount,
-        description: `POS invoice ${invoice.id}`,
+        description: `${orgName} - худалдан авалт`,
         merchantContext: merchantContext || undefined,
         callbackConfig: {
-          path: "/api/operations/pos/payments/qpay/webhook",
-          query: {
-            invoiceId: invoice.id,
-            registerId: registerId || undefined,
-            organizationId: effectiveOrganizationId || undefined,
-          },
+          path: "/api/pos/qpay/cb",
+          query: {},
         },
       });
 
@@ -774,7 +795,8 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
     }
   } catch (error) {
     console.error("qpay invoice create error", error);
-    return res.status(500).json({ message: "QPay invoice үүсгэхэд алдаа гарлаа" });
+    const msg = error instanceof Error ? error.message : "QPay invoice үүсгэхэд алдаа гарлаа";
+    return res.status(500).json({ message: msg });
   }
 });
 
@@ -922,6 +944,14 @@ router.post("/pos/payments/qpay/confirm", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * POST /pos/qpay/cb  — short alias for QuickQR callback (255-char URL limit)
+ */
+router.post("/pos/qpay/cb", async (req, res, next) => {
+  req.url = "/pos/payments/qpay/webhook";
+  next("route");
+});
+
+/**
  * POST /pos/payments/qpay/webhook  — real QPay bank callback
  * Secured with HMAC-SHA256 when QPAY_WEBHOOK_SECRET is set.
  * QPay банк payload: { invoiceId, paymentId, amount, status, paidDate }
@@ -1816,6 +1846,88 @@ router.get("/pos/receipts", async (req, res) => {
   } catch (error) {
     console.error("get receipts error", error);
     res.status(500).json({ message: "Баримтын жагсаалт авахад алдаа гарлаа" });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Sales history — org-level
+ * GET /pos/sales/history?organizationId=&from=&to=&page=&limit=
+ * ─────────────────────────────────────────────────────────────────────── */
+router.get("/pos/sales/history", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const queryOrgId = String(req.query.organizationId || "").trim() || null;
+    const effectiveOrgId =
+      actor.role === "ADMIN" ? queryOrgId : (actor.organizationId || queryOrgId);
+
+    if (!effectiveOrgId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+
+    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, effectiveOrgId))) {
+      return res.status(403).json({ message: "Энэ байгууллагын мэдээлэл харах эрхгүй" });
+    }
+
+    const fromStr = String(req.query.from || "").trim();
+    const toStr = String(req.query.to || "").trim();
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
+
+    const where: Record<string, unknown> = { organizationId: effectiveOrgId };
+    if (fromStr || toStr) {
+      where.createdAt = {
+        ...(fromStr ? { gte: new Date(fromStr) } : {}),
+        ...(toStr ? { lte: new Date(toStr) } : {}),
+      };
+    }
+
+    const [total, sales] = await Promise.all([
+      prisma.posSale.count({ where }),
+      prisma.posSale.findMany({
+        where,
+        include: {
+          lines: { include: { product: { select: { name: true, sku: true } } } },
+          cashier: { select: { email: true, profile: { select: { fullName: true } } } },
+          branch: { select: { name: true } },
+          register: { select: { name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    const result = sales.map((sale) => ({
+      id: sale.id,
+      receiptNo: sale.receiptNo,
+      branchName: sale.branch.name,
+      registerName: sale.register?.name || null,
+      cashierName: sale.cashier.profile?.fullName || sale.cashier.email,
+      paymentMethod: sale.paymentMethod,
+      status: sale.status,
+      subtotal: Number(sale.subtotal),
+      taxTotal: Number(sale.taxTotal),
+      discountTotal: Number(sale.discountTotal),
+      grandTotal: Number(sale.grandTotal),
+      createdAt: sale.createdAt.toISOString(),
+      lines: sale.lines.map((line) => ({
+        productId: line.productId,
+        productName: line.productName,
+        productSku: line.productSku,
+        qty: line.qty,
+        unitPrice: Number(line.unitPrice),
+        taxAmount: Number(line.taxAmount),
+        discount: Number(line.discount),
+        lineTotal: Number(line.lineTotal),
+      })),
+    }));
+
+    return res.json({ total, page, limit, pages: Math.ceil(total / limit), sales: result });
+  } catch (error) {
+    console.error("sales history error", error);
+    return res.status(500).json({ message: "Борлуулалтын түүх авахад алдаа гарлаа" });
   }
 });
 

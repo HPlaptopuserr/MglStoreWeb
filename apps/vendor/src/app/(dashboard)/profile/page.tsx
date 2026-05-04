@@ -575,7 +575,7 @@ export default function ProfilePage() {
           <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-6">
             QPay Multimerchant тохиргоо
           </h3>
-          <MerchantSettingsSection />
+          <MerchantSettingsSection organizationId={partner?.id} />
         </div>
       )}
 

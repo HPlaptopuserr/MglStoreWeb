@@ -43,19 +43,29 @@ const BANK_OPTIONS = [
   { code: "020000", name: "Капитал банк" },
   { code: "320000", name: "ХасБанк" },
   { code: "340000", name: "Улсын банк" },
+  { code: "010000", name: "Төрийн банк" },
   { code: "300000", name: "Капитрон банк" },
   { code: "190000", name: "Транс банк" },
+  { code: "060000", name: "Ариг банк" },
+  { code: "290000", name: "Богд банк" },
+  { code: "210000", name: "Нэшнл Инвестмент банк" },
   { code: "990000", name: "Мобифинанс" },
 ];
 
 /* ── Component ──────────────────────────────────────────── */
-export function MerchantSettingsSection() {
+export function MerchantSettingsSection({ organizationId }: { organizationId?: string }) {
   const [merchantStatus, setMerchantStatus] = useState<MerchantStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [tab, setTab] = useState<"register" | "manual">("register");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [savedBankAccounts, setSavedBankAccounts] = useState<BankAccount[]>([]);
+  const [editingBankAccounts, setEditingBankAccounts] = useState(false);
+  const [connectedBankAccounts, setConnectedBankAccounts] = useState<BankAccount[]>([
+    { account_bank_code: "050000", account_number: "", account_name: "", is_default: true },
+  ]);
+  const [confirmNumbers, setConfirmNumbers] = useState<string[]>([""]);
 
   // Registration form state
   const [merchantType, setMerchantType] = useState<"company" | "person">("company");
@@ -74,6 +84,8 @@ export function MerchantSettingsSection() {
     { account_bank_code: "050000", account_number: "", account_name: "", is_default: true },
   ]);
 
+  const [regConfirmNumbers, setRegConfirmNumbers] = useState<string[]>([""]);
+
   // City / district
   const [cities, setCities] = useState<City[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
@@ -89,6 +101,7 @@ export function MerchantSettingsSection() {
   useEffect(() => {
     loadMerchantStatus();
     loadCities();
+    loadBankAccounts();
   }, []);
 
   useEffect(() => {
@@ -97,10 +110,25 @@ export function MerchantSettingsSection() {
     setDistrict("");
   }, [city]);
 
+  const orgQuery = organizationId ? `?organizationId=${organizationId}` : "";
+
+  const loadBankAccounts = async () => {
+    try {
+      const res = await authFetch(`${API}/vendor/merchant/bank-accounts${orgQuery}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.bank_accounts) && data.bank_accounts.length > 0) {
+          setSavedBankAccounts(data.bank_accounts);
+          setConnectedBankAccounts(data.bank_accounts);
+        }
+      }
+    } catch {}
+  };
+
   const loadMerchantStatus = async () => {
     setIsLoading(true);
     try {
-      const res = await authFetch(`${API}/vendor/merchant/status`);
+      const res = await authFetch(`${API}/vendor/merchant/status${orgQuery}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success) setMerchantStatus(data);
@@ -144,6 +172,18 @@ export function MerchantSettingsSection() {
       return;
     }
     const validBanks = bankAccounts.filter((b) => b.account_number && b.account_name);
+    if (validBanks.length === 0) {
+      setMessage({ type: "error", text: "Дор хаяж нэг банкны данс бүрэн бөглөнө үү" });
+      return;
+    }
+    for (let i = 0; i < bankAccounts.length; i++) {
+      const b = bankAccounts[i];
+      if (!b.account_number) continue;
+      if ((regConfirmNumbers[i] ?? "") !== b.account_number) {
+        setMessage({ type: "error", text: `Данс ${i + 1}-н дугаар баталгаажаагүй байна. Дугаарыг давтан оруулна уу.` });
+        return;
+      }
+    }
 
     setIsSubmitting(true);
     setMessage(null);
@@ -184,7 +224,7 @@ export function MerchantSettingsSection() {
       const res = await authFetch(`${API}/vendor/merchant/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, ...(organizationId ? { organizationId } : {}) }),
       });
       const data = await res.json();
       if (data.success) {
@@ -223,6 +263,7 @@ export function MerchantSettingsSection() {
           merchantId,
           merchantKey,
           ...(invoiceCode ? { invoiceCode } : {}),
+          ...(organizationId ? { organizationId } : {}),
         }),
       });
       const data = await res.json();
@@ -249,7 +290,7 @@ export function MerchantSettingsSection() {
     setRecoveryLoading(true);
     setMessage(null);
     try {
-      const res = await authFetch(`${API}/vendor/merchant/recover/${encodeURIComponent(recoveryRegNum)}`);
+      const res = await authFetch(`${API}/vendor/merchant/recover/${encodeURIComponent(recoveryRegNum)}${orgQuery}`);
       const data = await res.json();
       if (data.success) {
         setMessage({ type: "success", text: data.message });
@@ -269,7 +310,11 @@ export function MerchantSettingsSection() {
     if (!confirm("Мерчант данс салгахыг зөвшөөрч байна уу?")) return;
     setIsSubmitting(true);
     try {
-      const res = await authFetch(`${API}/vendor/merchant/disconnect`, { method: "POST" });
+      const res = await authFetch(`${API}/vendor/merchant/disconnect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(organizationId ? { organizationId } : {}),
+      });
       const data = await res.json();
       if (data.success) {
         setMessage({ type: "success", text: data.message });
@@ -290,10 +335,12 @@ export function MerchantSettingsSection() {
       ...prev,
       { account_bank_code: "050000", account_number: "", account_name: "", is_default: false },
     ]);
+    setRegConfirmNumbers((prev) => [...prev, ""]);
   };
 
   const removeBankAccount = (i: number) => {
     setBankAccounts((prev) => prev.filter((_, idx) => idx !== i));
+    setRegConfirmNumbers((prev) => prev.filter((_, idx) => idx !== i));
   };
 
   const updateBankAccount = (i: number, field: keyof BankAccount, value: string | boolean) => {
@@ -342,6 +389,166 @@ export function MerchantSettingsSection() {
           >
             {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4 text-emerald-600" />}
           </button>
+        </div>
+
+        {/* Bank accounts section */}
+        <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-slate-800 text-sm">Банкны данс</p>
+            {!editingBankAccounts && (
+              <button
+                onClick={() => {
+                  setEditingBankAccounts(true);
+                  setConfirmNumbers(connectedBankAccounts.map(() => ""));
+                }}
+                className="text-xs text-[#5B4CFF] hover:underline font-medium"
+              >
+                {savedBankAccounts.length > 0 ? "Засах" : "+ Данс нэмэх"}
+              </button>
+            )}
+          </div>
+
+          {!editingBankAccounts && savedBankAccounts.length === 0 && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+              ⚠️ Банкны данс бүртгэгдээгүй байна. QPay QR үүсгэхийн тулд данс нэмнэ үү.
+            </div>
+          )}
+
+          {!editingBankAccounts && savedBankAccounts.length > 0 && (
+            <div className="space-y-2">
+              {savedBankAccounts.map((b, i) => {
+                const bank = BANK_OPTIONS.find((o) => o.code === b.account_bank_code);
+                return (
+                  <div key={i} className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">
+                    <span className="font-medium">{bank?.name || b.account_bank_code}</span>
+                    <span className="text-slate-400">·</span>
+                    <span className="font-mono">{b.account_number}</span>
+                    <span className="text-slate-400">·</span>
+                    <span>{b.account_name}</span>
+                    {b.is_default && <span className="ml-auto text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Үндсэн</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {editingBankAccounts && (
+            <div className="space-y-3">
+              {connectedBankAccounts.map((b, i) => {
+                const confirmVal = confirmNumbers[i] ?? "";
+                const mismatch = confirmVal.length > 0 && confirmVal !== b.account_number;
+                return (
+                  <div key={i} className="rounded-lg border border-slate-200 p-3 space-y-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-slate-500">Данс {i + 1}</span>
+                      {connectedBankAccounts.length > 1 && (
+                        <button onClick={() => {
+                          setConnectedBankAccounts((prev) => prev.filter((_, idx) => idx !== i));
+                          setConfirmNumbers((prev) => prev.filter((_, idx) => idx !== i));
+                        }} className="text-red-400 hover:text-red-600">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <select
+                      value={b.account_bank_code}
+                      onChange={(e) => setConnectedBankAccounts((prev) => prev.map((x, idx) => idx === i ? { ...x, account_bank_code: e.target.value } : x))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#5B4CFF]/30"
+                    >
+                      {BANK_OPTIONS.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
+                    </select>
+                    <input
+                      placeholder="Дансны дугаар"
+                      value={b.account_number}
+                      onChange={(e) => {
+                        setConnectedBankAccounts((prev) => prev.map((x, idx) => idx === i ? { ...x, account_number: e.target.value } : x));
+                        setConfirmNumbers((prev) => { const n = [...prev]; n[i] = ""; return n; });
+                      }}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#5B4CFF]/30"
+                    />
+                    <input
+                      placeholder="Дансны дугаар давтан оруулах (баталгаажуулах)"
+                      value={confirmVal}
+                      onChange={(e) => setConfirmNumbers((prev) => { const n = [...prev]; n[i] = e.target.value; return n; })}
+                      className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${mismatch ? "border-red-400 focus:ring-red-200" : confirmVal && !mismatch ? "border-emerald-400 focus:ring-emerald-200" : "border-slate-200 focus:ring-[#5B4CFF]/30"}`}
+                    />
+                    {mismatch && <p className="text-xs text-red-500">Дансны дугаар таарахгүй байна</p>}
+                    {confirmVal && !mismatch && <p className="text-xs text-emerald-600">✓ Дансны дугаар таарч байна</p>}
+                    <input
+                      placeholder="Дансны нэр (эзэмшигч)"
+                      value={b.account_name}
+                      onChange={(e) => setConnectedBankAccounts((prev) => prev.map((x, idx) => idx === i ? { ...x, account_name: e.target.value } : x))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#5B4CFF]/30"
+                    />
+                  </div>
+                );
+              })}
+              <button
+                onClick={() => {
+                  setConnectedBankAccounts((prev) => [...prev, { account_bank_code: "050000", account_number: "", account_name: "", is_default: false }]);
+                  setConfirmNumbers((prev) => [...prev, ""]);
+                }}
+                className="flex items-center gap-1 text-xs text-[#5B4CFF] hover:underline"
+              >
+                <Plus className="h-3 w-3" /> Данс нэмэх
+              </button>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={async () => {
+                    const valid = connectedBankAccounts.filter((b) => b.account_number && b.account_name);
+                    if (valid.length === 0) {
+                      setMessage({ type: "error", text: "Дор хаяж нэг данс бүрэн бөглөнө үү" });
+                      return;
+                    }
+                    // Баталгаажуулалт шалгах
+                    for (let i = 0; i < connectedBankAccounts.length; i++) {
+                      const b = connectedBankAccounts[i];
+                      if (!b.account_number) continue;
+                      if ((confirmNumbers[i] ?? "") !== b.account_number) {
+                        setMessage({ type: "error", text: `Данс ${i + 1}-н дугаар баталгаажаагүй байна. Дугаарыг давтан оруулна уу.` });
+                        return;
+                      }
+                    }
+                    setIsSubmitting(true);
+                    setMessage(null);
+                    try {
+                      const res = await authFetch(`${API}/vendor/merchant/bank-accounts`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ bank_accounts: valid, organizationId: organizationId || undefined }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        setSavedBankAccounts(valid);
+                        setEditingBankAccounts(false);
+                        setMessage({ type: "success", text: "Банкны данс хадгалагдлаа" });
+                      } else {
+                        setMessage({ type: "error", text: data.message || "Алдаа гарлаа" });
+                      }
+                    } catch {
+                      setMessage({ type: "error", text: "Алдаа гарлаа" });
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  disabled={isSubmitting}
+                  className="flex-1 py-2 rounded-lg bg-[#5B4CFF] text-white text-sm font-semibold disabled:opacity-50"
+                >
+                  {isSubmitting ? "Хадгалж байна..." : "Хадгалах"}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingBankAccounts(false);
+                    setConnectedBankAccounts(savedBankAccounts.length > 0 ? savedBankAccounts : [{ account_bank_code: "050000", account_number: "", account_name: "", is_default: true }]);
+                    setConfirmNumbers(savedBankAccounts.map(() => ""));
+                  }}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm font-semibold"
+                >
+                  Болих
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {message && (
@@ -558,10 +765,30 @@ export function MerchantSettingsSection() {
                   <input
                     type="text"
                     value={b.account_number}
-                    onChange={(e) => updateBankAccount(i, "account_number", e.target.value)}
+                    onChange={(e) => {
+                      updateBankAccount(i, "account_number", e.target.value);
+                      setRegConfirmNumbers((prev) => { const n = [...prev]; n[i] = ""; return n; });
+                    }}
                     placeholder="Дансны дугаар"
                     className={inputCls}
                   />
+                  {(() => {
+                    const confirmVal = regConfirmNumbers[i] ?? "";
+                    const mismatch = confirmVal.length > 0 && confirmVal !== b.account_number;
+                    return (
+                      <>
+                        <input
+                          type="text"
+                          value={confirmVal}
+                          onChange={(e) => setRegConfirmNumbers((prev) => { const n = [...prev]; n[i] = e.target.value; return n; })}
+                          placeholder="Дансны дугаар давтан оруулах (баталгаажуулах)"
+                          className={inputCls + (mismatch ? " border-red-400" : confirmVal && !mismatch ? " border-emerald-400" : "")}
+                        />
+                        {mismatch && <p className="text-xs text-red-500">Дансны дугаар таарахгүй байна</p>}
+                        {confirmVal && !mismatch && <p className="text-xs text-emerald-600">✓ Таарч байна</p>}
+                      </>
+                    );
+                  })()}
                   <input
                     type="text"
                     value={b.account_name}

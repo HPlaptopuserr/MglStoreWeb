@@ -39,8 +39,9 @@ export function buildQPayMerchantContextFromPosRegister(
     const masterTerminalId = (
       process.env.QPAY_QUICKQR_MASTER_TERMINAL_ID || masterUsername
     ).trim();
+    const quickqrBaseUrl = (process.env.QPAY_QUICKQR_BASE_URL || "").trim();
 
-    if (!masterUsername || !masterPassword) return null;
+    if (!masterUsername || !masterPassword || !quickqrBaseUrl) return null;
 
     return {
       username: masterUsername,
