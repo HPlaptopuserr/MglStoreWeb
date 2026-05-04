@@ -164,7 +164,7 @@ export class ContractService {
       data: {
         contractId,
         action,
-        meta: meta ? JSON.parse(JSON.stringify(meta)) : null,
+        deviceInfo: meta ? JSON.parse(JSON.stringify(meta)) : null,
         timestamp: new Date()
       }
     });
