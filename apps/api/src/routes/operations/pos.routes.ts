@@ -454,6 +454,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
             data: {
               status: ecrData.succeed ? PosPaymentStatus.APPROVED : PosPaymentStatus.DECLINED,
               transactionId: ecrData.ezTransactionId || ecrData.systemRef || ecrData.traceno || null,
+              traceno: ecrData.traceno || null,
               message: ecrData.message || null,
               providerPayload: {
                 ...ecrData,
@@ -579,7 +580,7 @@ router.post("/pos/payments/push-ecr/healthcheck", async (req, res) => {
     const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/healthcheck`, {
       method: "POST",
       headers: pushEcrHeaders(),
-      body: JSON.stringify({ terminalId }),
+      body: JSON.stringify({ termianlId: terminalId }),
       signal: AbortSignal.timeout(10_000),
     });
     const data = (await ecrRes.json()) as { succeed: boolean; message?: string };
@@ -588,6 +589,68 @@ router.post("/pos/payments/push-ecr/healthcheck", async (req, res) => {
     return res.status(500).json({
       succeed: false,
       message: err instanceof Error ? err.message : "Terminal healthcheck амжилтгүй боллоо",
+    });
+  }
+});
+
+/**
+ * POST /pos/payments/push-ecr/void
+ * Буцаалт хийх — purchase-ийн traceno шаардлагатай.
+ */
+router.post("/pos/payments/push-ecr/void", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const terminalId = String(req.body?.terminalId || pushEcrDefaultTerminalId || "");
+  const traceno = String(req.body?.traceno || "");
+  const skipPrint = req.body?.skipPrint === true;
+
+  if (!terminalId) return res.status(400).json({ message: "terminalId шаардлагатай" });
+  if (!traceno) return res.status(400).json({ message: "traceno шаардлагатай" });
+
+  try {
+    const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/void`, {
+      method: "POST",
+      headers: pushEcrHeaders(),
+      body: JSON.stringify({ terminalId, traceno, skipPrint }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const data = await ecrRes.json();
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({
+      succeed: false,
+      message: err instanceof Error ? err.message : "Push ECR void амжилтгүй боллоо",
+    });
+  }
+});
+
+/**
+ * POST /pos/payments/push-ecr/settlement
+ * Өдрийн нэгтгэл хийх.
+ */
+router.post("/pos/payments/push-ecr/settlement", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const terminalId = String(req.body?.terminalId || pushEcrDefaultTerminalId || "");
+  const skipPrint = req.body?.skipPrint === true;
+
+  if (!terminalId) return res.status(400).json({ message: "terminalId шаардлагатай" });
+
+  try {
+    const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/settlement`, {
+      method: "POST",
+      headers: pushEcrHeaders(),
+      body: JSON.stringify({ terminalId, skipPrint }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const data = await ecrRes.json();
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({
+      succeed: false,
+      message: err instanceof Error ? err.message : "Push ECR settlement амжилтгүй боллоо",
     });
   }
 });

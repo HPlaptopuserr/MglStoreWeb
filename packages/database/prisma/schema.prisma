@@ -1116,6 +1116,7 @@ model CardPaymentAttempt {
   amount          Decimal          @db.Decimal(18, 2)
   status          PosPaymentStatus @default(PENDING)
   transactionId   String?
+  traceno         String?
   message         String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
