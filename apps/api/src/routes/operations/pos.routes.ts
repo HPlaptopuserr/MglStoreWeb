@@ -580,7 +580,7 @@ router.post("/pos/payments/push-ecr/healthcheck", async (req, res) => {
     const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/healthcheck`, {
       method: "POST",
       headers: pushEcrHeaders(),
-      body: JSON.stringify({ termianlId: terminalId }),
+      body: JSON.stringify({ terminalId }),
       signal: AbortSignal.timeout(10_000),
     });
     const data = (await ecrRes.json()) as { succeed: boolean; message?: string };
@@ -1179,8 +1179,8 @@ router.post("/pos/sales", async (req, res) => {
       return res.status(200).json(existingSale.response as object);
     }
 
-    if (!body.shiftId || !body.branchId) {
-      return res.status(400).json({ message: "shiftId болон branchId шаардлагатай" });
+    if (!body.branchId) {
+      return res.status(400).json({ message: "branchId шаардлагатай" });
     }
 
     if (lines.length === 0) {
@@ -1335,6 +1335,7 @@ router.post("/pos/sales", async (req, res) => {
       const cardLines = normalizedPayments.filter((item) => item.method === PaymentMethod.CARD);
       const qpayLines = normalizedPayments.filter((item) => item.method === PaymentMethod.QPAY);
 
+      const cardAttemptMap = new Map<string, { traceno: string | null; terminalId: string }>();
       for (const cardLine of cardLines) {
         const attemptId = String(cardLine.attemptId || cardLine.transactionId || "").trim();
         if (!attemptId) {
@@ -1343,6 +1344,7 @@ router.post("/pos/sales", async (req, res) => {
 
         const attempt = await tx.cardPaymentAttempt.findUnique({ where: { id: attemptId } });
         if (!attempt) throw toApiError(404, `Card attempt олдсонгүй: ${attemptId}`);
+        cardAttemptMap.set(attemptId, { traceno: attempt.traceno, terminalId: attempt.terminalId });
         if (attempt.status !== PosPaymentStatus.APPROVED) {
           throw toApiError(409, `Card attempt ${attemptId} approved биш байна`);
         }
@@ -1469,6 +1471,54 @@ router.post("/pos/sales", async (req, res) => {
         return methods.length === 1 ? methods[0] : "MIXED";
       })();
 
+      // Resolve shiftId: use provided if valid, otherwise find/create for this cashier
+      let resolvedShiftId: string = body.shiftId || "";
+
+      // Check if provided shiftId actually exists
+      if (resolvedShiftId) {
+        const shiftExists = await tx.posShift.findUnique({
+          where: { id: resolvedShiftId },
+          select: { id: true, status: true },
+        });
+        if (!shiftExists) {
+          resolvedShiftId = ""; // invalid, will auto-resolve below
+        }
+      }
+
+      // Auto-find or auto-create shift if not resolved yet
+      if (!resolvedShiftId) {
+        const branchId = body.branchId!;
+        const orgId = effectiveOrganizationId;
+
+        // Find existing open shift for this cashier
+        const existingShift = await tx.posShift.findFirst({
+          where: {
+            cashierId: actor.id,
+            organizationId: orgId,
+            status: "OPEN",
+          },
+          orderBy: { openedAt: "desc" },
+          select: { id: true },
+        });
+
+        if (existingShift) {
+          resolvedShiftId = existingShift.id;
+        } else {
+          // Auto-create a shift for this cashier
+          const autoShift = await tx.posShift.create({
+            data: {
+              organizationId: orgId,
+              branchId,
+              cashierId: actor.id,
+              openingCash: 0,
+              status: "OPEN",
+            },
+            select: { id: true },
+          });
+          resolvedShiftId = autoShift.id;
+        }
+      }
+
       // Create structured PosSale + PosSaleLine records
       const posSale = await tx.posSale.create({
         data: {
@@ -1476,7 +1526,7 @@ router.post("/pos/sales", async (req, res) => {
           organizationId: effectiveOrganizationId,
           branchId: body.branchId!,
           registerId: registerId || undefined,
-          shiftId: body.shiftId!,
+          shiftId: resolvedShiftId,
           cashierId: actor.id,
           paymentMethod: paymentMethodSummary || "CASH",
           subtotal: subTotal,
@@ -1514,7 +1564,13 @@ router.post("/pos/sales", async (req, res) => {
         branchName: fullSale.branch.name,
         cashierName: fullSale.cashier.email,
         paymentMethod: fullSale.paymentMethod,
-        paymentBreakdown: normalizedPayments,
+        paymentBreakdown: normalizedPayments.map((item) => {
+          if (item.method === PaymentMethod.CARD && item.attemptId) {
+            const attemptMeta = cardAttemptMap.get(String(item.attemptId));
+            return { ...item, traceno: attemptMeta?.traceno ?? null, terminalId: attemptMeta?.terminalId ?? null };
+          }
+          return item;
+        }),
         createdAt: fullSale.createdAt.toISOString(),
         lines: fullSale.lines.map((l) => ({
           productId: l.productId,

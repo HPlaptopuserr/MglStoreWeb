@@ -25,6 +25,7 @@ import {
   usePosCart,
   useCreateSale,
   useOwnProducts,
+  useCurrentShift,
   type CartLine,
   type CartTotals,
   type PaymentMethod,
@@ -114,8 +115,6 @@ export default function PosDemoPage() {
   const [view, setView] = useState<PosView>("register");
   const [displayOpened, setDisplayOpened] = useState(false);
   const [qpayModal, setQpayModal] = useState<QPayModalPayload | null>(null);
-  const [demoShiftId] = useState("demo-shift-1");
-  const [demoBranchId] = useState("demo-branch-1");
   const [isCardProcessing, setIsCardProcessing] = useState(false);
   const [isCancellingCard, setIsCancellingCard] = useState(false);
   const [autoCheckoutActive, setAutoCheckoutActive] = useState(false);
@@ -134,6 +133,11 @@ export default function PosDemoPage() {
   const [setupRegistering, setSetupRegistering] = useState(false);
   const [setupError, setSetupError] = useState("");
   const [setupExistingId, setSetupExistingId] = useState("");
+  // Shift management
+  const [showShiftPanel, setShowShiftPanel] = useState(false);
+  const [openingCashInput, setOpeningCashInput] = useState("");
+  const [closingCashInput, setClosingCashInput] = useState("");
+  const [shiftFetched, setShiftFetched] = useState(false);
 
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const customerWindowRef = useRef<Window | null>(null);
@@ -147,6 +151,7 @@ export default function PosDemoPage() {
   const { products, loading, error } = useOwnProducts(organizationId);
   const { state, totals, addProduct, dispatch } = usePosCart();
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
+  const { shift, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn } = useCurrentShift();
 
   const clearProgressTicker = () => {
     if (progressTickerRef.current !== null) {
@@ -207,6 +212,15 @@ export default function PosDemoPage() {
       }
     } catch {}
   }, []);
+
+  // Fetch current open shift on load
+  useEffect(() => {
+    if (shiftFetched) return;
+    const token = localStorage.getItem("vendor_token");
+    if (!token) return;
+    setShiftFetched(true);
+    void loadShift();
+  }, [shiftFetched, loadShift]);
 
   const [orgRegisters, setOrgRegisters] = useState<RegisterConfig[]>([]);
   const [showRegisterPicker, setShowRegisterPicker] = useState(false);
@@ -483,10 +497,11 @@ export default function PosDemoPage() {
       clientSaleIdRef.current = `sale-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     }
 
+
     try {
       const receipt = await submitSale({
-        shiftId: demoShiftId,
-        branchId: registerConfig?.branchId ?? demoBranchId,
+        shiftId: shift?.id ?? "",
+        branchId: registerConfig?.branchId ?? "",
         registerId: registerConfig?.id,
         organizationId,
         clientSaleId: clientSaleIdRef.current,
@@ -1074,6 +1089,140 @@ export default function PosDemoPage() {
         </div>
       )}
 
+      {/* ── Shift status / open shift banner ───────────────────── */}
+      {registerConfig?.isActive && (
+        <div
+          className={`rounded-xl border px-4 py-2.5 flex items-center justify-between gap-3 ${
+            shift
+              ? "border-teal-200 bg-teal-50"
+              : "border-amber-200 bg-amber-50"
+          }`}
+        >
+          <div className="flex items-center gap-2 text-sm">
+            {shift ? (
+              <>
+                <CheckCircle2 size={14} className="text-teal-600" />
+                <span className="font-semibold text-teal-800">Ээлж нээлттэй</span>
+                <span className="text-teal-600 text-xs">
+                  · {new Date(shift.openedAt).toLocaleTimeString("mn-MN", { hour: "2-digit", minute: "2-digit" })} нээгдсэн
+                </span>
+              </>
+            ) : (
+              <>
+                <AlertTriangle size={14} className="text-amber-600" />
+                <span className="font-semibold text-amber-800">Ээлж нээгдээгүй байна</span>
+                <span className="text-amber-600 text-xs">· Борлуулалт хийхийн тулд эхлээд ээлж нээнэ үү</span>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowShiftPanel((v) => !v)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+              shift
+                ? "bg-teal-100 text-teal-700 hover:bg-teal-200"
+                : "bg-amber-500 text-white hover:bg-amber-600"
+            }`}
+          >
+            {shift ? "Ээлж хаах" : "Ээлж нээх"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Shift open/close panel ─────────────────────────────── */}
+      {showShiftPanel && registerConfig?.isActive && (
+        <div className="rounded-2xl border border-teal-200 bg-white shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+            <p className="text-sm font-bold text-slate-800">
+              {shift ? "Ээлж хаах" : "Ээлж нээх"}
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowShiftPanel(false)}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {!shift ? (
+              <>
+                <p className="text-xs text-slate-500">Эхлэх мөнгийг оруулна уу.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={openingCashInput}
+                    onChange={(e) => setOpeningCashInput(e.target.value)}
+                    placeholder="Эхлэх мөнгө ₮"
+                    className="flex-1 h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                  />
+                  <button
+                    type="button"
+                    disabled={shiftLoading}
+                    onClick={async () => {
+                      if (!registerConfig?.branchId) return;
+                      try {
+                        await openShift(
+                          registerConfig.branchId,
+                          Number(openingCashInput) || 0,
+                        );
+                        setShowShiftPanel(false);
+                        setOpeningCashInput("");
+                      } catch (e: any) {
+                        setScanMessage(e?.message || "Ээлж нээхэд алдаа гарлаа");
+                        setScanStatus("not-found");
+                      }
+                    }}
+                    className="h-9 px-4 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-50"
+                  >
+                    {shiftLoading ? <Loader2 size={14} className="animate-spin" /> : "Нээх"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500">Хаах үеийн бэлэн мөнгийг оруулна уу.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={closingCashInput}
+                    onChange={(e) => setClosingCashInput(e.target.value)}
+                    placeholder="Хаах мөнгө ₮"
+                    className="flex-1 h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                  />
+                  <button
+                    type="button"
+                    disabled={shiftLoading}
+                    onClick={async () => {
+                      try {
+                        const termId = registerConfig?.cardProviderType === "PUSH_ECR"
+                          ? registerConfig.cardTerminalId
+                          : undefined;
+                        await closeShiftFn(
+                          Number(closingCashInput) || 0,
+                          undefined,
+                          termId ?? undefined,
+                        );
+                        setShowShiftPanel(false);
+                        setClosingCashInput("");
+                      } catch (e: any) {
+                        setScanMessage(e?.message || "Ээлж хаахад алдаа гарлаа");
+                        setScanStatus("not-found");
+                      }
+                    }}
+                    className="h-9 px-4 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50"
+                  >
+                    {shiftLoading ? <Loader2 size={14} className="animate-spin" /> : "Хаах"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {view === "checkout" && registerConfig?.isActive !== false && (
         <PosCheckoutView
           lines={state.cart}
@@ -1160,6 +1309,7 @@ export default function PosDemoPage() {
         registerName={registerConfig?.name ?? "POS"}
         cashierName="Vendor Cashier"
         shiftStatus="Нээлттэй"
+        terminalId={registerConfig?.cardProviderType === "PUSH_ECR" ? registerConfig.cardTerminalId : null}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">

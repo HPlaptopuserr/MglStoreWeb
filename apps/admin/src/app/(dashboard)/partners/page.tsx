@@ -677,144 +677,144 @@ export default function PartnersPage() {
             </div>
           ) : (
             partners.map((partner) => (
-            <Link
-              href={`/partners/${partner.id}`}
-              key={partner.id}
-              className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col group hover:shadow-lg hover:border-indigo-200/60 transition-all duration-300 cursor-pointer"
-            >
-              <div className={`p-4 md:p-5 border-b ${partner.isInvestor ? 'border-amber-200' : 'border-slate-100'}`}>
-                {partner.isInvestor && (
-                  <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg w-fit">
-                    <TrendingUp size={12} className="text-amber-600" />
-                    <span className="text-xs font-semibold text-amber-700">
-                      Хөрөнгө оруулагч
-                      {partner.investmentAmount ? ` · ${Number(partner.investmentAmount).toLocaleString()}₮` : ''}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between items-start mb-3 gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    {partner.isInvestor && partner.investmentAmount ? (
-                      <div style={getInvestorRingStyle(partner.investmentAmount)} className="shrink-0">
-                        <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center bg-amber-50 text-amber-600 group-hover:bg-amber-100 transition-colors">
+              <Link
+                href={`/partners/${partner.id}`}
+                key={partner.id}
+                className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col group hover:shadow-lg hover:border-indigo-200/60 transition-all duration-300 cursor-pointer"
+              >
+                <div className={`p-4 md:p-5 border-b ${partner.isInvestor ? 'border-amber-200' : 'border-slate-100'}`}>
+                  {partner.isInvestor && (
+                    <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg w-fit">
+                      <TrendingUp size={12} className="text-amber-600" />
+                      <span className="text-xs font-semibold text-amber-700">
+                        Хөрөнгө оруулагч
+                        {partner.investmentAmount ? ` · ${Number(partner.investmentAmount).toLocaleString()}₮` : ''}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-start mb-3 gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {partner.isInvestor && partner.investmentAmount ? (
+                        <div style={getInvestorRingStyle(partner.investmentAmount)} className="shrink-0">
+                          <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center bg-amber-50 text-amber-600 group-hover:bg-amber-100 transition-colors">
+                            <Building2 size={20} />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100">
                           <Building2 size={20} />
                         </div>
-                      </div>
-                    ) : (
-                      <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100">
-                        <Building2 size={20} />
-                      </div>
-                    )}
+                      )}
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <h3 className="font-bold text-slate-900 text-sm md:text-base truncate">
-                          {partner.name}
-                        </h3>
-                        {partner.isVerified && (
-                          <BadgeCheck
-                            size={18}
-                            className="text-blue-500 shrink-0"
-                          />
-                        )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <h3 className="font-bold text-slate-900 text-sm md:text-base truncate">
+                            {partner.name}
+                          </h3>
+                          {partner.isVerified && (
+                            <BadgeCheck
+                              size={18}
+                              className="text-blue-500 shrink-0"
+                            />
+                          )}
+                        </div>
+                        <div className="text-sm text-slate-500 truncate">
+                          @{partner.slug}
+                        </div>
                       </div>
-                      <div className="text-sm text-slate-500 truncate">
-                        @{partner.slug}
-                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {/* Delete Button - small icon */}
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeleteModal(partner);
+                        }}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+                        title="Устгах"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                        {partner.status}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* Delete Button - small icon */}
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setDeleteModal(partner);
-                      }}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                      title="Устгах"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
-                      {partner.status}
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-medium text-slate-600">
+                      <Briefcase size={12} />
+                      {partner.type}
+                    </span>
+
+                    {/* ← Inline ангилал сонгогч */}
+                    <CategoryDropdown
+                      partner={partner}
+                      categories={apiCategories}
+                      onUpdated={handleCategoryUpdated}
+                    />
+
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-medium text-slate-600">
+                      <FileText size={12} />
+                      {partner.taxId}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-medium text-slate-600">
-                    <Briefcase size={12} />
-                    {partner.type}
-                  </span>
+                <div className="p-4 md:p-5 space-y-2.5 flex-1 bg-slate-50/40">
+                  <div className="flex items-start gap-3 text-sm text-slate-600">
+                    <Mail size={16} className="text-slate-400 mt-0.5 shrink-0" />
+                    <span className="truncate">{partner.email || "N/A"}</span>
+                  </div>
 
-                  {/* ← Inline ангилал сонгогч */}
-                  <CategoryDropdown
-                    partner={partner}
-                    categories={apiCategories}
-                    onUpdated={handleCategoryUpdated}
-                  />
+                  <div className="flex items-start gap-3 text-sm text-slate-600">
+                    <Phone size={16} className="text-slate-400 mt-0.5 shrink-0" />
+                    <span>{partner.phone || "N/A"}</span>
+                  </div>
 
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-medium text-slate-600">
-                    <FileText size={12} />
-                    {partner.taxId}
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-4 md:p-5 space-y-2.5 flex-1 bg-slate-50/40">
-                <div className="flex items-start gap-3 text-sm text-slate-600">
-                  <Mail size={16} className="text-slate-400 mt-0.5 shrink-0" />
-                  <span className="truncate">{partner.email || "N/A"}</span>
+                  <div className="flex items-start gap-3 text-sm text-slate-600">
+                    <MapPin
+                      size={16}
+                      className="text-slate-400 mt-0.5 shrink-0"
+                    />
+                    <span className="line-clamp-2">
+                      {partner.address || "N/A"}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex items-start gap-3 text-sm text-slate-600">
-                  <Phone size={16} className="text-slate-400 mt-0.5 shrink-0" />
-                  <span>{partner.phone || "N/A"}</span>
-                </div>
+                <div className="p-3 md:p-4 border-t border-slate-100 bg-white grid grid-cols-4 divide-x divide-slate-100">
+                  <div className="flex flex-col items-center justify-center py-1">
+                    <Users size={12} className="text-slate-300 mb-0.5" />
+                    <span className="font-bold text-slate-800 text-xs md:text-sm">
+                      {partner.stats.users}
+                    </span>
+                  </div>
 
-                <div className="flex items-start gap-3 text-sm text-slate-600">
-                  <MapPin
-                    size={16}
-                    className="text-slate-400 mt-0.5 shrink-0"
-                  />
-                  <span className="line-clamp-2">
-                    {partner.address || "N/A"}
-                  </span>
-                </div>
-              </div>
+                  <div className="flex flex-col items-center justify-center py-1">
+                    <Package size={12} className="text-slate-300 mb-0.5" />
+                    <span className="font-bold text-slate-800 text-xs md:text-sm">
+                      {partner.stats.products}
+                    </span>
+                  </div>
 
-              <div className="p-3 md:p-4 border-t border-slate-100 bg-white grid grid-cols-4 divide-x divide-slate-100">
-                <div className="flex flex-col items-center justify-center py-1">
-                  <Users size={12} className="text-slate-300 mb-0.5" />
-                  <span className="font-bold text-slate-800 text-xs md:text-sm">
-                    {partner.stats.users}
-                  </span>
-                </div>
+                  <div className="flex flex-col items-center justify-center py-1">
+                    <Store size={12} className="text-slate-300 mb-0.5" />
+                    <span className="font-bold text-slate-800 text-xs md:text-sm">
+                      {partner.stats.branches}
+                    </span>
+                  </div>
 
-                <div className="flex flex-col items-center justify-center py-1">
-                  <Package size={12} className="text-slate-300 mb-0.5" />
-                  <span className="font-bold text-slate-800 text-xs md:text-sm">
-                    {partner.stats.products}
-                  </span>
+                  <div className="flex flex-col items-center justify-center py-1">
+                    <ShoppingCart size={12} className="text-slate-300 mb-0.5" />
+                    <span className="font-bold text-slate-800 text-xs md:text-sm">
+                      {partner.stats.orders}
+                    </span>
+                  </div>
                 </div>
-
-                <div className="flex flex-col items-center justify-center py-1">
-                  <Store size={12} className="text-slate-300 mb-0.5" />
-                  <span className="font-bold text-slate-800 text-xs md:text-sm">
-                    {partner.stats.branches}
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center py-1">
-                  <ShoppingCart size={12} className="text-slate-300 mb-0.5" />
-                  <span className="font-bold text-slate-800 text-xs md:text-sm">
-                    {partner.stats.orders}
-                  </span>
-                </div>
-              </div>
-            </Link>
+              </Link>
             ))
           )}
         </div>
@@ -860,11 +860,10 @@ export default function PartnersPage() {
                     <button
                       key={p}
                       onClick={() => setCurrentPage(p as number)}
-                      className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold transition-all ${
-                        currentPage === p
-                          ? "border-indigo-500 bg-indigo-600 text-white shadow-sm shadow-indigo-200"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600"
-                      }`}
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold transition-all ${currentPage === p
+                        ? "border-indigo-500 bg-indigo-600 text-white shadow-sm shadow-indigo-200"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600"
+                        }`}
                     >
                       {p}
                     </button>
@@ -962,8 +961,8 @@ export default function PartnersPage() {
 
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
               <p className="text-xs text-amber-700">
-                <strong>Анхааруулга:</strong> Энэ байгууллагын бүх хэрэглэгчид 
-                идэвхигүй болно. Дата 30 хоногийн турш хадгалагдаж, дараа нь 
+                <strong>Анхааруулга:</strong> Энэ байгууллагын бүх хэрэглэгчид
+                идэвхигүй болно. Дата 30 хоногийн турш хадгалагдаж, дараа нь
                 бүрмөсөн устгагдана. Энэ хугацаанд сэргээх боломжтой.
               </p>
             </div>

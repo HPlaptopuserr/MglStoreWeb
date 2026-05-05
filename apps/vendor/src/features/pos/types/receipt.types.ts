@@ -18,6 +18,9 @@ export type PosReceipt = {
     amount: number;
     transactionId?: string;
     invoiceId?: string;
+    attemptId?: string;
+    traceno?: string | null;
+    terminalId?: string | null;
   }>;
   createdAt: string;
   lines: ReceiptLine[];
