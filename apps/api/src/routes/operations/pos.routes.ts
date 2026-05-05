@@ -700,6 +700,15 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
       merchantContext = orgRes.config ?? null;
     }
 
+    // Merge org-level bank accounts into context if context has none (register doesn't store bank accounts)
+    if (merchantContext && !merchantContext.bankAccounts?.length && effectiveOrganizationId) {
+      const orgRes = await getVendorMerchantConfig(effectiveOrganizationId);
+      if (orgRes.config?.bankAccounts?.length) {
+        merchantContext = { ...merchantContext, bankAccounts: orgRes.config.bankAccounts };
+        console.log("[QPay invoice] Merged org bank accounts into context:", orgRes.config.bankAccounts.length);
+      }
+    }
+
     console.log("[QPay invoice] final merchantContext:", JSON.stringify({
       username: merchantContext?.username,
       invoiceCode: merchantContext?.invoiceCode,
