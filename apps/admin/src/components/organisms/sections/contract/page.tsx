@@ -263,7 +263,7 @@ function ContractDetailModal({ contractId, onClose, settings }: { contractId: st
     const p = settings.feePlans.find((f: any) => f.key === key);
     return p ? `${p.label} — ${p.price.toLocaleString()}₮` : "—";
   };
-  const base = process.env.NEXT_PUBLIC_WEB_URL || "http://localhost:3001";
+  const base = process.env.NEXT_PUBLIC_WEB_URL || "https://mglstore.mn";
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex justify-end" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -498,7 +498,7 @@ function ContractHistoryTab({
   };
 
   const handleCopy = (id: string) => {
-    const base = process.env.NEXT_PUBLIC_WEB_URL || "http://localhost:3001";
+    const base = process.env.NEXT_PUBLIC_WEB_URL || "https://mglstore.mn";
     navigator.clipboard.writeText(`${base}/contract/sign/${id}`);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -508,7 +508,7 @@ function ContractHistoryTab({
     if (c.pdfUrl) {
       window.open(c.pdfUrl, "_blank");
     } else {
-      const base = process.env.NEXT_PUBLIC_WEB_URL || "http://localhost:3001";
+      const base = process.env.NEXT_PUBLIC_WEB_URL || "https://mglstore.mn";
       window.open(`${base}/contract/sign/${c.id}?print=1`, "_blank");
     }
   };
