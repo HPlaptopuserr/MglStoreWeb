@@ -84,7 +84,7 @@ export default function TransfersPage() {
         let hasMore = true;
 
         while (hasMore) {
-          const res = await wmsFetch(`${API}/warehouses/${sourceId}/detail?invPage=${page}&invLimit=200`);
+          const res = await wmsFetch(`${API}/warehouses/${sourceId}/detail?invPage=${page}&invLimit=50`);
           if (res.ok) {
             const data = await res.json();
             allInventories = [...allInventories, ...(data.inventories || [])];
@@ -201,7 +201,7 @@ export default function TransfersPage() {
       let hasMore = true;
 
       while (hasMore) {
-        const res = await wmsFetch(`${API}/warehouses/${sourceId}/detail?invPage=${page}&invLimit=200`);
+        const res = await wmsFetch(`${API}/warehouses/${sourceId}/detail?invPage=${page}&invLimit=50`);
         if (res.ok) {
           const data = await res.json();
           allInventories = [...allInventories, ...(data.inventories || [])];

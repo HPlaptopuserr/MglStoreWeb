@@ -53,35 +53,14 @@ export default function WmsDashboardPage() {
             ? whData
             : whData.warehouses || [];
 
-          // Fetch details for each warehouse
+          // Fetch first page only — dashboard only needs summary stats + top low/out-of-stock items
           const details: WarehouseDetail[] = [];
           for (const wh of whList.slice(0, 10)) {
-            let mergedDetail: any = null;
-            let page = 1;
-            let hasMore = true;
-
-            while (hasMore) {
-              const detailRes = await wmsFetch(
-                `${API}/warehouses/${wh.id}/detail?invPage=${page}&invLimit=200`,
-              );
-              if (detailRes.ok) {
-                const data = await detailRes.json();
-                if (!mergedDetail) {
-                  mergedDetail = data;
-                } else {
-                  mergedDetail.inventories = [...mergedDetail.inventories, ...(data.inventories || [])];
-                }
-                if (data.pagination && data.pagination.page < data.pagination.totalPages) {
-                  page++;
-                } else {
-                  hasMore = false;
-                }
-              } else {
-                break;
-              }
-            }
-            if (mergedDetail) {
-              details.push(mergedDetail);
+            const detailRes = await wmsFetch(
+              `${API}/warehouses/${wh.id}/detail?invPage=1&invLimit=10`,
+            );
+            if (detailRes.ok) {
+              details.push(await detailRes.json());
             }
           }
           setWarehouses(details);

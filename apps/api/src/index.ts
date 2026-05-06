@@ -59,25 +59,29 @@ app.use(
   }),
 );
 
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean)
-  : [
-      "http://mglstore.mn:3002",
-      "http://admin.mglstore.mn:3003",
-      "http://vendor.mglstore.mn:3004",
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:3002",
-      "http://localhost:3003",
-      "https://mgl-web-n7wg.onrender.com",
-      "https://mgl-admin.onrender.com",
-      "https://mgl-vendor.onrender.com",
-      "https://mgl-warehouse.onrender.com",
-      "https://mglstore.mn",
-      "https://admin.mglstore.mn",
-      "https://vendor.mglstore.mn",
-      "https://warehouse.mglstore.mn",
-    ];
+const defaultOrigins = [
+  "http://mglstore.mn:3002",
+  "http://admin.mglstore.mn:3003",
+  "http://vendor.mglstore.mn:3004",
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:3002",
+  "http://localhost:3003",
+  "https://mgl-web-n7wg.onrender.com",
+  "https://mgl-admin.onrender.com",
+  "https://mgl-vendor.onrender.com",
+  "https://mgl-warehouse.onrender.com",
+  "https://mglstore.mn",
+  "https://admin.mglstore.mn",
+  "https://vendor.mglstore.mn",
+  "https://warehouse.mglstore.mn",
+];
+const allowedOrigins = [
+  ...defaultOrigins,
+  ...(process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean)
+    : []),
+];
 
 app.use(
   cors({

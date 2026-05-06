@@ -98,7 +98,7 @@ export default function InventoryPage() {
 
         while (hasMore && !cancelled) {
           const res = await wmsFetch(
-            `${API}/warehouses/${selectedWarehouseId}/detail?invPage=${page}&invLimit=200`
+            `${API}/warehouses/${selectedWarehouseId}/detail?invPage=${page}&invLimit=50`
           );
           if (cancelled) return;
           if (res.ok) {

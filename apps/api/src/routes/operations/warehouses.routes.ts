@@ -341,11 +341,11 @@ router.get("/warehouses/:id/detail", async (req, res) => {
 
     // Inventory pagination params — default 100, hard cap 200
     const invPage  = Math.max(1, parseInt((req.query.invPage  as string) || "1",  10) || 1);
-    const invLimit = Math.min(200, Math.max(1, parseInt((req.query.invLimit as string) || "100", 10) || 100));
+    const invLimit = Math.min(100, Math.max(1, parseInt((req.query.invLimit as string) || "50", 10) || 50));
     const invSkip  = (invPage - 1) * invLimit;
 
-    // Fetch warehouse meta + paginated inventories in parallel with total count
-    const [warehouse, invTotal] = await Promise.all([
+    // Fetch warehouse meta, paginated inventories, and total count in parallel
+    const [warehouse, inventories, invTotal] = await Promise.all([
       prisma.warehouse.findUnique({
         where: { id, deletedAt: null },
         include: {
@@ -361,38 +361,6 @@ router.get("/warehouses/:id/detail", async (req, res) => {
               },
             },
           },
-          inventories: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  sku: true,
-                  price: true,
-                  images: {
-                    take: 1,
-                    select: { url: true },
-                  },
-                  category: {
-                    select: {
-                      id: true,
-                      name: true,
-                    },
-                  },
-                  organization: {
-                    select: {
-                      id: true,
-                      name: true,
-                      slug: true,
-                    },
-                  },
-                },
-              },
-            },
-            orderBy: { updatedAt: "desc" },
-            skip: invSkip,
-            take: invLimit,
-          },
           createdBy: {
             select: {
               id: true,
@@ -404,6 +372,39 @@ router.get("/warehouses/:id/detail", async (req, res) => {
           },
         },
       }),
+      prisma.warehouseInventory.findMany({
+        where: { warehouseId: id },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              price: true,
+              images: {
+                take: 1,
+                select: { url: true },
+              },
+              category: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              organization: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        skip: invSkip,
+        take: invLimit,
+      }),
       // Accurate aggregate stats — independent of pagination window
       prisma.warehouseInventory.count({ where: { warehouseId: id } }),
     ]);
@@ -412,8 +413,11 @@ router.get("/warehouses/:id/detail", async (req, res) => {
       return res.status(404).json({ message: "Агуулах олдсонгүй" });
     }
 
-    // Aggregate stats computed across ALL inventory rows (not just the page)
-    const [aggResult, outCount] = await Promise.all([
+    // Attach paginated inventories to the warehouse object for the frontend
+    (warehouse as any).inventories = inventories;
+
+    // Aggregate stats computed across ALL inventory rows
+    const [aggResult, outCount, lowStockItemsRaw] = await Promise.all([
       prisma.warehouseInventory.aggregate({
         where: { warehouseId: id },
         _sum: { quantity: true },
@@ -421,22 +425,16 @@ router.get("/warehouses/:id/detail", async (req, res) => {
       prisma.warehouseInventory.count({
         where: { warehouseId: id, quantity: 0 },
       }),
+      prisma.$queryRaw<[{ count: bigint }]>`
+        SELECT COUNT(*)::int AS count
+        FROM "WarehouseInventory"
+        WHERE "warehouseId" = ${id}
+          AND quantity > 0
+          AND quantity <= "minQuantity"
+      `
     ]);
 
-    // Low-stock count: quantity > 0 AND quantity <= minQuantity
-    // Because Prisma can't compare two columns directly, use the paginated
-    // window for an approximation when on page 1, otherwise use a raw count.
-    const lowStockItems = invPage === 1
-      ? warehouse.inventories.filter(
-          (inv) => inv.quantity > 0 && inv.quantity <= inv.minQuantity,
-        ).length
-      : await prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(*)::int AS count
-          FROM "WarehouseInventory"
-          WHERE "warehouseId" = ${id}
-            AND quantity > 0
-            AND quantity <= "minQuantity"
-        `.then((r) => Number(r[0]?.count ?? 0));
+    const lowStockItems = Number(lowStockItemsRaw[0]?.count ?? 0);
 
     const totalQuantity = aggResult._sum.quantity ?? 0;
 
