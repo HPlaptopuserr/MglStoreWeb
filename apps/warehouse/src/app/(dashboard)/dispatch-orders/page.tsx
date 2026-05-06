@@ -1696,7 +1696,7 @@ function PadaanView({
       >
         {/* Header */}
         <div className="header mb-5 border-b-2 border-double border-slate-300 pb-4 text-center">
-          <h1 className="text-2xl font-bold text-slate-800">ЗАРЛАГЫН ПАДААН</h1>
+          <h1 className="text-2xl font-bold text-slate-800">ЗАРЛАГЫН БАРИМТ</h1>
           <p className="mt-1 text-sm text-slate-500">
             {d.dispatchNumber} •{" "}
             {new Date(d.createdAt).toLocaleDateString("mn-MN", {

@@ -454,6 +454,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
             data: {
               status: ecrData.succeed ? PosPaymentStatus.APPROVED : PosPaymentStatus.DECLINED,
               transactionId: ecrData.ezTransactionId || ecrData.systemRef || ecrData.traceno || null,
+              traceno: ecrData.traceno || null,
               message: ecrData.message || null,
               providerPayload: {
                 ...ecrData,
@@ -592,6 +593,68 @@ router.post("/pos/payments/push-ecr/healthcheck", async (req, res) => {
   }
 });
 
+/**
+ * POST /pos/payments/push-ecr/void
+ * Буцаалт хийх — purchase-ийн traceno шаардлагатай.
+ */
+router.post("/pos/payments/push-ecr/void", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const terminalId = String(req.body?.terminalId || pushEcrDefaultTerminalId || "");
+  const traceno = String(req.body?.traceno || "");
+  const skipPrint = req.body?.skipPrint === true;
+
+  if (!terminalId) return res.status(400).json({ message: "terminalId шаардлагатай" });
+  if (!traceno) return res.status(400).json({ message: "traceno шаардлагатай" });
+
+  try {
+    const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/void`, {
+      method: "POST",
+      headers: pushEcrHeaders(),
+      body: JSON.stringify({ terminalId, traceno, skipPrint }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const data = await ecrRes.json();
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({
+      succeed: false,
+      message: err instanceof Error ? err.message : "Push ECR void амжилтгүй боллоо",
+    });
+  }
+});
+
+/**
+ * POST /pos/payments/push-ecr/settlement
+ * Өдрийн нэгтгэл хийх.
+ */
+router.post("/pos/payments/push-ecr/settlement", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const terminalId = String(req.body?.terminalId || pushEcrDefaultTerminalId || "");
+  const skipPrint = req.body?.skipPrint === true;
+
+  if (!terminalId) return res.status(400).json({ message: "terminalId шаардлагатай" });
+
+  try {
+    const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/settlement`, {
+      method: "POST",
+      headers: pushEcrHeaders(),
+      body: JSON.stringify({ terminalId, skipPrint }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const data = await ecrRes.json();
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({
+      succeed: false,
+      message: err instanceof Error ? err.message : "Push ECR settlement амжилтгүй боллоо",
+    });
+  }
+});
+
 router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
   const actor = await requirePosUser(req, res);
   if (!actor) return;
@@ -698,6 +761,15 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
       const orgRes = await getVendorMerchantConfig(effectiveOrganizationId);
       console.log("[QPay invoice] org config:", JSON.stringify(orgRes));
       merchantContext = orgRes.config ?? null;
+    }
+
+    // Merge org-level bank accounts into context if context has none (register doesn't store bank accounts)
+    if (merchantContext && !merchantContext.bankAccounts?.length && effectiveOrganizationId) {
+      const orgRes = await getVendorMerchantConfig(effectiveOrganizationId);
+      if (orgRes.config?.bankAccounts?.length) {
+        merchantContext = { ...merchantContext, bankAccounts: orgRes.config.bankAccounts };
+        console.log("[QPay invoice] Merged org bank accounts into context:", orgRes.config.bankAccounts.length);
+      }
     }
 
     console.log("[QPay invoice] final merchantContext:", JSON.stringify({
@@ -1107,8 +1179,8 @@ router.post("/pos/sales", async (req, res) => {
       return res.status(200).json(existingSale.response as object);
     }
 
-    if (!body.shiftId || !body.branchId) {
-      return res.status(400).json({ message: "shiftId болон branchId шаардлагатай" });
+    if (!body.branchId) {
+      return res.status(400).json({ message: "branchId шаардлагатай" });
     }
 
     if (lines.length === 0) {
@@ -1263,6 +1335,7 @@ router.post("/pos/sales", async (req, res) => {
       const cardLines = normalizedPayments.filter((item) => item.method === PaymentMethod.CARD);
       const qpayLines = normalizedPayments.filter((item) => item.method === PaymentMethod.QPAY);
 
+      const cardAttemptMap = new Map<string, { traceno: string | null; terminalId: string }>();
       for (const cardLine of cardLines) {
         const attemptId = String(cardLine.attemptId || cardLine.transactionId || "").trim();
         if (!attemptId) {
@@ -1271,6 +1344,7 @@ router.post("/pos/sales", async (req, res) => {
 
         const attempt = await tx.cardPaymentAttempt.findUnique({ where: { id: attemptId } });
         if (!attempt) throw toApiError(404, `Card attempt олдсонгүй: ${attemptId}`);
+        cardAttemptMap.set(attemptId, { traceno: attempt.traceno, terminalId: attempt.terminalId });
         if (attempt.status !== PosPaymentStatus.APPROVED) {
           throw toApiError(409, `Card attempt ${attemptId} approved биш байна`);
         }
@@ -1397,6 +1471,54 @@ router.post("/pos/sales", async (req, res) => {
         return methods.length === 1 ? methods[0] : "MIXED";
       })();
 
+      // Resolve shiftId: use provided if valid, otherwise find/create for this cashier
+      let resolvedShiftId: string = body.shiftId || "";
+
+      // Check if provided shiftId actually exists
+      if (resolvedShiftId) {
+        const shiftExists = await tx.posShift.findUnique({
+          where: { id: resolvedShiftId },
+          select: { id: true, status: true },
+        });
+        if (!shiftExists) {
+          resolvedShiftId = ""; // invalid, will auto-resolve below
+        }
+      }
+
+      // Auto-find or auto-create shift if not resolved yet
+      if (!resolvedShiftId) {
+        const branchId = body.branchId!;
+        const orgId = effectiveOrganizationId;
+
+        // Find existing open shift for this cashier
+        const existingShift = await tx.posShift.findFirst({
+          where: {
+            cashierId: actor.id,
+            organizationId: orgId,
+            status: "OPEN",
+          },
+          orderBy: { openedAt: "desc" },
+          select: { id: true },
+        });
+
+        if (existingShift) {
+          resolvedShiftId = existingShift.id;
+        } else {
+          // Auto-create a shift for this cashier
+          const autoShift = await tx.posShift.create({
+            data: {
+              organizationId: orgId,
+              branchId,
+              cashierId: actor.id,
+              openingCash: 0,
+              status: "OPEN",
+            },
+            select: { id: true },
+          });
+          resolvedShiftId = autoShift.id;
+        }
+      }
+
       // Create structured PosSale + PosSaleLine records
       const posSale = await tx.posSale.create({
         data: {
@@ -1404,7 +1526,7 @@ router.post("/pos/sales", async (req, res) => {
           organizationId: effectiveOrganizationId,
           branchId: body.branchId!,
           registerId: registerId || undefined,
-          shiftId: body.shiftId!,
+          shiftId: resolvedShiftId,
           cashierId: actor.id,
           paymentMethod: paymentMethodSummary || "CASH",
           subtotal: subTotal,
@@ -1442,7 +1564,13 @@ router.post("/pos/sales", async (req, res) => {
         branchName: fullSale.branch.name,
         cashierName: fullSale.cashier.email,
         paymentMethod: fullSale.paymentMethod,
-        paymentBreakdown: normalizedPayments,
+        paymentBreakdown: normalizedPayments.map((item) => {
+          if (item.method === PaymentMethod.CARD && item.attemptId) {
+            const attemptMeta = cardAttemptMap.get(String(item.attemptId));
+            return { ...item, traceno: attemptMeta?.traceno ?? null, terminalId: attemptMeta?.terminalId ?? null };
+          }
+          return item;
+        }),
         createdAt: fullSale.createdAt.toISOString(),
         lines: fullSale.lines.map((l) => ({
           productId: l.productId,

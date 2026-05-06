@@ -95,14 +95,13 @@ export async function disconnectVendorMerchant(
       };
     }
 
-    // Clear merchant credentials
+    // Clear merchant credentials but keep bank accounts so re-registration can use them
     await prisma.organization.update({
       where: { id: organizationId },
       data: {
         qpayMerchantId: null,
         qpayMerchantKey: null,
         qpayInvoiceCode: null,
-        qpayBankAccounts: [],
         qpayEnabled: false,
         qpayConnectedAt: null,
       },
@@ -137,6 +136,11 @@ export async function getVendorMerchantConfig(
         qpayInvoiceCode: true,
         qpayConnectedAt: true,
         qpayBankAccounts: true,
+        taxId: true,
+        name: true,
+        email: true,
+        phone: true,
+        address: true,
       },
     });
 
@@ -197,10 +201,12 @@ export async function getVendorMerchantConfig(
     const centralInvoiceCode = (process.env.QPAY_INVOICE_CODE || "").trim();
     const orgInvoiceCode = (org.qpayInvoiceCode || "").trim();
     const orgMerchantKey = (org.qpayMerchantKey || "").trim();
+    const orgBankAccounts = Array.isArray(org.qpayBankAccounts)
+      ? (org.qpayBankAccounts as unknown as QPayBankAccount[])
+      : null;
 
     // If the vendor has their own QPay credentials, use them directly.
-    // This ensures QPay authenticates as their own merchant and routes
-    // payments to their registered bank account.
+    // QPay authenticates as their own merchant → payments go to their registered bank account.
     if (org.qpayMerchantId && orgMerchantKey) {
       console.log("[getVendorMerchantConfig] Using vendor-own QPay V2 credentials for:", org.qpayMerchantId);
       const merchantContext: QPayMerchantContext = {
@@ -208,16 +214,69 @@ export async function getVendorMerchantConfig(
         password: orgMerchantKey,
         invoiceCode: orgInvoiceCode || null,
         merchantKey: `v2-own:${org.qpayMerchantId}`,
-        bankAccounts: Array.isArray(org.qpayBankAccounts)
-          ? (org.qpayBankAccounts as unknown as QPayBankAccount[])
-          : null,
+        bankAccounts: orgBankAccounts,
       };
       return { success: true, config: merchantContext };
     }
 
+    // If vendor has saved bank accounts + QuickQR is configured →
+    // auto-register them as a QuickQR sub-merchant so their bank account is used.
+    if (orgBankAccounts?.length && masterUsername && masterPassword && quickqrBaseUrl && org.taxId) {
+      console.log("[getVendorMerchantConfig] Auto-registering vendor via QuickQR for org:", organizationId);
+      try {
+        const regResult = await registerQPayMerchantCompany({
+          register_number: org.taxId,
+          company_name: org.name,
+          name: org.name,
+          mcc_code: "5999",
+          city: "11000",
+          district: "110400",
+          address: org.address || org.name,
+          phone: org.phone || "99999999",
+          email: org.email || "info@mglstore.mn",
+          bank_accounts: orgBankAccounts,
+        });
+
+        if (regResult.merchantId) {
+          const isNewUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(regResult.merchantId);
+          await prisma.organization.update({
+            where: { id: organizationId },
+            data: {
+              qpayMerchantId: regResult.merchantId,
+              qpayMerchantKey: regResult.merchantKey || null,
+              qpayInvoiceCode: regResult.invoiceCode || null,
+              qpayEnabled: isNewUUID ? true : !!(regResult.merchantId && regResult.merchantKey),
+              qpayConnectedAt: new Date(),
+            },
+          });
+
+          if (isNewUUID) {
+            console.log("[getVendorMerchantConfig] QuickQR auto-registration success, UUID:", regResult.merchantId);
+            const merchantContext: QPayMerchantContext = {
+              username: masterUsername,
+              password: masterPassword,
+              terminalId: masterTerminalId,
+              invoiceCode: null,
+              merchantId: regResult.merchantId,
+              merchantKey: `vendor:${regResult.merchantId}`,
+              bankAccounts: orgBankAccounts,
+            };
+            return { success: true, config: merchantContext };
+          }
+        }
+      } catch (regError: any) {
+        // Already registered → try to recover via register number
+        if (regError?.message?.includes("ALREADY") || regError?.message?.includes("exist")) {
+          console.log("[getVendorMerchantConfig] Already registered in QuickQR, attempting recovery for:", org.taxId);
+        } else {
+          console.warn("[getVendorMerchantConfig] QuickQR auto-registration failed, falling back to V2:", regError?.message);
+        }
+      }
+    }
+
     // Fall back to central credentials — payments go to platform default account.
     if (!centralClientId || !centralClientSecret) {
-      console.warn("[getVendorMerchantConfig] No QPay credentials configured (neither QuickQR nor V2)");
+      console.warn("[getVendorMerchantConfig] No QPay credentials configured");
       return { success: true, config: null };
     }
 
@@ -227,9 +286,7 @@ export async function getVendorMerchantConfig(
       password: centralClientSecret,
       invoiceCode: orgInvoiceCode || centralInvoiceCode || null,
       merchantKey: `v2:${org.qpayMerchantId}`,
-      bankAccounts: Array.isArray(org.qpayBankAccounts)
-        ? (org.qpayBankAccounts as unknown as QPayBankAccount[])
-        : null,
+      bankAccounts: orgBankAccounts,
     };
 
     return { success: true, config: merchantContext };
@@ -267,6 +324,12 @@ export async function registerVendorWithQPay(
 
     const bankAccounts: QPayBankAccount[] = (params as any).bank_accounts || [];
 
+    const isQuickQrUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      result.merchantId || "",
+    );
+    // QuickQR UUID merchants authenticate via master credentials — no per-vendor key needed
+    const qpayEnabled = isQuickQrUUID ? !!result.merchantId : !!(result.merchantId && result.merchantKey);
+
     await prisma.organization.update({
       where: { id: organizationId },
       data: {
@@ -274,7 +337,7 @@ export async function registerVendorWithQPay(
         qpayMerchantKey: result.merchantKey || null,
         qpayInvoiceCode: result.invoiceCode || null,
         qpayBankAccounts: bankAccounts.length > 0 ? (bankAccounts as any) : undefined,
-        qpayEnabled: !!(result.merchantId && result.merchantKey),
+        qpayEnabled,
         qpayConnectedAt: new Date(),
       },
     });
@@ -287,18 +350,85 @@ export async function registerVendorWithQPay(
     };
   } catch (error: any) {
     console.error("registerVendorWithQPay error", error);
-    // Тухайн регистрийн дугаараар QPay мерчант аль хэдийн бүртгэгдсэн
+    // Аль хэдийн бүртгэгдсэн → auto-recover хийх
     if (error instanceof QPayAlreadyRegisteredError) {
+      try {
+        const bankAccounts: QPayBankAccount[] = (params as any).bank_accounts || [];
+        const recovered = await autoRecoverMerchant(organizationId, error.registerNumber, bankAccounts);
+        if (recovered.success) return recovered;
+      } catch (recErr) {
+        console.error("auto-recover failed", recErr);
+      }
       return {
         success: false,
-        message:
-          `Энэ регистрийн дугаараар (${error.registerNumber}) QPay мерчант аль хэдийн бүртгэгдсэн байна. ` +
-          `"Данс аль хэдийн байна" tab руу орж Мерчант ID болон Key-ээ оруулна уу.`,
+        message: `Энэ регистрийн дугаараар QPay мерчант аль хэдийн бүртгэгдсэн. Recover автоматаар амжилтгүй боллоо — QPay-тай шууд холбогдоно уу.`,
         alreadyRegistered: true,
       };
     }
     return { success: false, message: error?.message || "Бүртгэхэд алдаа гарлаа" };
   }
+}
+
+async function autoRecoverMerchant(
+  organizationId: string,
+  registerNumber: string,
+  bankAccounts: QPayBankAccount[],
+): Promise<ConnectMerchantResult> {
+  const quickqrBaseUrl = (process.env.QPAY_QUICKQR_BASE_URL || "").trim();
+  const masterUsername = (process.env.QPAY_QUICKQR_MASTER_USERNAME || "").trim();
+  const masterPassword = (process.env.QPAY_QUICKQR_MASTER_PASSWORD || "").trim();
+  const terminalId = (process.env.QPAY_QUICKQR_MASTER_TERMINAL_ID || masterUsername).trim();
+
+  if (!quickqrBaseUrl || !masterUsername || !masterPassword) {
+    throw new Error("QPay QuickQR тохиргоо дутуу");
+  }
+
+  const credentials = Buffer.from(`${masterUsername}:${masterPassword}`).toString("base64");
+  const tokenRes = await fetch(`${quickqrBaseUrl}/auth/token`, {
+    method: "POST",
+    headers: { Authorization: `Basic ${credentials}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ terminal_id: terminalId }),
+  });
+  if (!tokenRes.ok) throw new Error("QPay auth алдаа");
+  const { access_token } = await tokenRes.json() as { access_token: string };
+
+  const listRes = await fetch(`${quickqrBaseUrl}/merchant/list`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ offset: { page_number: 1, page_limit: 200 } }),
+  });
+  if (!listRes.ok) throw new Error("Мерчант жагсаалт авахэд алдаа");
+
+  const listData = await listRes.json() as Record<string, unknown>;
+  const rows = (listData.rows || listData.merchants || listData.data || listData) as Record<string, unknown>[];
+  if (!Array.isArray(rows)) throw new Error("Мерчант жагсаалт буруу формат");
+
+  const match = rows.find((m) => {
+    const reg = String(m.register_number || m.register_no || m.register || "").toLowerCase();
+    return reg === registerNumber.toLowerCase();
+  });
+
+  if (!match) throw new Error(`"${registerNumber}" мерчант QPay-д олдсонгүй`);
+
+  const merchantId = String(match.merchant_id || match.id || match.username || "");
+  if (!merchantId) throw new Error("Мерчант ID олдсонгүй");
+
+  const merchantKey = String(match.merchant_key || match.password || match.secret || "");
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(merchantId);
+
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: {
+      qpayMerchantId: merchantId,
+      qpayMerchantKey: merchantKey || null,
+      qpayEnabled: true,
+      qpayConnectedAt: new Date(),
+      ...(bankAccounts.length > 0 ? { qpayBankAccounts: bankAccounts as any } : {}),
+    },
+  });
+
+  console.log(`[autoRecover] Merchant recovered: ${merchantId} (UUID: ${isUUID})`);
+  return { success: true, message: "QPay мерчант олдоод амжилттай холбогдлоо", merchantId };
 }
 
 /**

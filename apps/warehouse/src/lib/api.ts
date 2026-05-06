@@ -10,7 +10,7 @@ export const API_BASE =
 export const API = `${API_BASE}/api`;
 
 /** Fetch wrapper that auto-attaches the WMS auth token */
-export function wmsFetch(
+export async function wmsFetch(
   input: string | URL | Request,
   init?: RequestInit,
 ): Promise<Response> {
@@ -29,5 +29,11 @@ export function wmsFetch(
   ) {
     headers.set("Content-Type", "application/json");
   }
-  return fetch(input, { ...init, headers });
+  const res = await fetch(input, { ...init, headers });
+  if (res.status === 401 && typeof window !== "undefined") {
+    localStorage.removeItem("wms_token");
+    localStorage.removeItem("wms_user");
+    window.location.replace("/login");
+  }
+  return res;
 }

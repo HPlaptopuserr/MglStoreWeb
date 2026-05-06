@@ -47,6 +47,8 @@ export default function InventoryPage() {
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("");
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockStatus>("all");
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
@@ -78,30 +80,44 @@ export default function InventoryPage() {
     load();
   }, []);
 
-  // Load inventory when warehouse changes
+  // Load inventory when warehouse changes (with auto-retry on network error)
   useEffect(() => {
     if (!selectedWarehouseId) {
       setLoading(false);
       return;
     }
-    const load = async () => {
+    let cancelled = false;
+    const load = async (attempt = 0) => {
       setLoading(true);
+      setFetchError(false);
       try {
         const res = await wmsFetch(
           `${API}/warehouses/${selectedWarehouseId}/detail`,
         );
+        if (cancelled) return;
         if (res.ok) {
           const data = await res.json();
           setInventory(data.inventories || []);
+        } else if (attempt < 2) {
+          setTimeout(() => { if (!cancelled) load(attempt + 1); }, 1500);
+          return;
+        } else {
+          setFetchError(true);
         }
       } catch {
-        /* ignore */
+        if (cancelled) return;
+        if (attempt < 2) {
+          setTimeout(() => { if (!cancelled) load(attempt + 1); }, 1500);
+          return;
+        }
+        setFetchError(true);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     load();
-  }, [selectedWarehouseId]);
+    return () => { cancelled = true; };
+  }, [selectedWarehouseId, retryCount]);
 
   const handleDelete = async () => {
     if (!selectedItem) return;
@@ -264,8 +280,22 @@ export default function InventoryPage() {
       {/* Table */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         {loading ? (
-          <div className="flex h-64 items-center justify-center">
+          <div className="flex h-64 flex-col items-center justify-center gap-2">
             <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+            <p className="text-xs text-slate-400">Мэдээлэл татаж байна...</p>
+          </div>
+        ) : fetchError ? (
+          <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-400">
+            <Package className="h-8 w-8 text-red-300" />
+            <p className="text-sm font-medium text-slate-600">Сервертэй холбогдоход алдаа гарлаа</p>
+            <p className="text-xs text-slate-400">Интернэт холболт болон серверийн байдлыг шалгана уу</p>
+            <button
+              onClick={() => setRetryCount((c) => c + 1)}
+              className="mt-1 flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+            >
+              <Loader2 className="h-3.5 w-3.5" />
+              Дахин оролдох
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex h-64 flex-col items-center justify-center gap-2 text-slate-400">

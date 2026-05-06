@@ -13,6 +13,7 @@ import { FormBuilderTool, QrGeneratorPanel } from "@/components/organisms";
 import { PosRegistersSection } from "@/components/organisms/sections/pos/PosRegistersSection";
 import { VendorFeaturesSection } from "@/components/organisms/sections/vendor-features/VendorFeaturesSection";
 import { HrSection } from "@/components/organisms/sections/hr/HrSection";
+import { Contract } from "@/components/organisms/sections/contract/page";
 import { useAdminAuth } from "@/lib/admin-auth";
 
 export default function SectionsPage() {
@@ -74,6 +75,7 @@ export default function SectionsPage() {
           {active === "pos" && <PosRegistersSection />}
           {active === "vendor-features" && <VendorFeaturesSection />}
           {active === "hr" && <HrSection />}
+          {active === "contract" && <Contract />}
         </div>
       ) : (
         <FormBuilderTool />

@@ -80,7 +80,7 @@ export default function OrganizationsPage() {
     const fetchData = async () => {
       try {
         const [partnersRes, investorsRes] = await Promise.all([
-          fetch(`${API}/partners`),
+          fetch(`${API}/partners?limit=1000`),
           fetch(`${API}/investors`),
         ]);
 

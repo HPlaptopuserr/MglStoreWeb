@@ -81,6 +81,17 @@ export function cancelPushEcr(terminalId: string): Promise<{ succeed: boolean; m
   });
 }
 
+export function voidPushEcr(payload: {
+  terminalId: string;
+  traceno: string;
+  skipPrint?: boolean;
+}): Promise<{ succeed: boolean; message?: string }> {
+  return posRequest("/pos/payments/push-ecr/void", {
+    method: "POST",
+    body: payload,
+  });
+}
+
 /* ─── Register config ─────────────────────────────────────────────── */
 
 export type RegisterConfig = {

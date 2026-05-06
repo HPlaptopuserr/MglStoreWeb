@@ -4,6 +4,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import contractRoutes from "./routes/contract/contract.routes";
 import {
   authRoutes,
   investorRoutes,
@@ -120,6 +121,7 @@ app.use("/api", storeCheckoutRoutes);
 app.use("/api", vendorOrderRoutes);
 app.use("/api", vendorMerchantRoutes);
 app.use("/api", vendorUpgradeRoutes);
+app.use("/api", contractRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");

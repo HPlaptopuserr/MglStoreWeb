@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AdminSidebar, SidebarProps } from "../organisms/AdminSidebar";
 import { VendorSidebar } from "../organisms/VendorSidebar";
@@ -36,7 +36,10 @@ export function DashboardLayout({
   const pathname = usePathname();
   const isAdmin = variant === "admin";
   const isVendor = variant === "vendor";
-  const isVendorPosRoute = isVendor && (pathname === "/pos" || pathname.startsWith("/pos/"));
+  const isVendorPosRoute =
+    isVendor && (pathname === "/pos" || pathname.startsWith("/pos/"));
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans">
@@ -50,17 +53,31 @@ export function DashboardLayout({
         />
       )}
 
-      {isVendor && <VendorSidebar onSignOut={onSignOut} showPos={showPos} showSupplyProducts={showSupplyProducts} showServicePosts={showServicePosts} />}
+      {isVendor && (
+        <VendorSidebar
+          onSignOut={onSignOut}
+          showPos={showPos}
+          showSupplyProducts={showSupplyProducts}
+          showServicePosts={showServicePosts}
+          mobileOpen={mobileMenuOpen}
+          onMobileClose={() => setMobileMenuOpen(false)}
+        />
+      )}
 
-      <div className="flex flex-1 flex-col bg-slate-50 min-h-screen">
-        {isVendor && <VendorHeader userName={organizationName || userName} />}
+      <div className="flex min-h-screen flex-1 flex-col bg-slate-50">
+        {isVendor && (
+          <VendorHeader
+            userName={organizationName || userName}
+            onMenuToggle={() => setMobileMenuOpen((o) => !o)}
+          />
+        )}
         <main
           className={`overflow-x-hidden ${
             isAdmin
-              ? "px-10 pt-8 pb-10"
+              ? "px-4 pt-6 pb-10 sm:px-10 sm:pt-8"
               : isVendorPosRoute
                 ? "px-3 pt-4 pb-6 sm:px-4"
-                : "px-6 pt-6 pb-10"
+                : "px-4 pt-5 pb-10 sm:px-6 sm:pt-6"
           }`}
         >
           <div
