@@ -1,7 +1,19 @@
+import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
+import multer from "multer";
 import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
+import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
+
+const bannerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB raw — browser already compressed
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Зөвхөн зураг файл байх ёстой"));
+  },
+});
 
 const router: ExpressRouter = Router();
 
@@ -79,5 +91,35 @@ router.put("/site-settings", requireAuth, requirePlatformPermission(Permission.M
     res.status(500).json({ message: "Хадгалахад алдаа гарлаа" });
   }
 });
+
+// POST /site-settings/banner-upload — зургийг Supabase Storage-д upload хийж URL буцаана
+router.post(
+  "/site-settings/banner-upload",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_SITE_SETTINGS),
+  bannerUpload.single("image"),
+  async (req, res) => {
+    if (!req.file) {
+      res.status(400).json({ message: "Зураг файл шаардлагатай" });
+      return;
+    }
+    try {
+      const ext = req.file.mimetype === "image/png" ? ".png" : ".jpg";
+      const fileName = `banners/${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
+      const { error } = await getSupabase().storage
+        .from(PRODUCT_IMAGES_BUCKET)
+        .upload(fileName, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+      if (error) {
+        res.status(500).json({ message: "Зураг хадгалахад алдаа гарлаа", detail: error.message });
+        return;
+      }
+      const { data } = getSupabase().storage.from(PRODUCT_IMAGES_BUCKET).getPublicUrl(fileName);
+      res.json({ url: data.publicUrl });
+    } catch (err) {
+      console.error("banner-upload error", err);
+      res.status(500).json({ message: "Зураг upload хийхэд алдаа гарлаа" });
+    }
+  },
+);
 
 export default router;
