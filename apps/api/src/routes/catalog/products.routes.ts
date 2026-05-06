@@ -62,31 +62,20 @@ router.get("/products", async (req, res) => {
     const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(200, Math.max(1, Number(req.query.limit || 100)));
 
+    // Base where: use indexed columns only — avoid relation filters (they cause slow JOINs)
     const where: any = {
       deletedAt: null,
       isActive: true,
-      organization: { is: { deletedAt: null, status: "ACTIVE" } },
     };
     if (organizationId) where.organizationId = organizationId;
     if (businessCategoryId) where.businessCategoryId = businessCategoryId;
 
+    // Text search: limit to indexed/fast columns only
     if (search) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
         { sku: { contains: search, mode: "insensitive" } },
         { barcode: { contains: search, mode: "insensitive" } },
-        { organization: { is: { name: { contains: search, mode: "insensitive" } } } },
-        {
-          businessCategory: {
-            is: {
-              OR: [
-                { name: { contains: search, mode: "insensitive" } },
-                { slug: { contains: search, mode: "insensitive" } },
-              ],
-            },
-          },
-        },
       ];
     }
 
@@ -97,7 +86,17 @@ router.get("/products", async (req, res) => {
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
-        include: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          sku: true,
+          barcode: true,
+          price: true,
+          stock: true,
+          isActive: true,
+          createdAt: true,
+          businessCategoryId: true,
           images: { select: { id: true, url: true } },
           businessCategory: { select: { id: true, name: true, slug: true } },
           organization: { select: { id: true, name: true, logoUrl: true } },

@@ -607,12 +607,17 @@ model Product {
   returnItems          DispatchReturnItem[] @relation("ReturnProducts")
 
   @@unique([organizationId, sku])
+  // Existing indexes
   @@index([organizationId, isActive])
   @@index([categoryId])
   @@index([businessCategoryId])
   @@index([deletedAt])
   @@index([name])
   @@index([barcode])
+  // Composite indexes for fast public listing queries
+  @@index([deletedAt, isActive, createdAt(sort: Desc)])
+  @@index([businessCategoryId, deletedAt, isActive])
+  @@index([organizationId, deletedAt, isActive])
 }
 
 model ProductRequest {
