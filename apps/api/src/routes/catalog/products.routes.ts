@@ -59,6 +59,8 @@ router.get("/products", async (req, res) => {
   try {
     const { organizationId, businessCategoryId } = req.query as Record<string, string>;
     const search = String(req.query.search ?? req.query.q ?? "").trim();
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit || 100)));
 
     const where: any = {
       deletedAt: null,
@@ -88,22 +90,27 @@ router.get("/products", async (req, res) => {
       ];
     }
 
-    const products = await prisma.product.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: {
-        images: { select: { id: true, url: true } },
-        businessCategory: { select: { id: true, name: true, slug: true } },
-        organization: { select: { id: true, name: true, logoUrl: true } },
-        discounts: {
-          where: { isActive: true, validUntil: { gte: new Date() } },
-          select: { percent: true, validUntil: true },
-          take: 1,
+    const [total, products] = await Promise.all([
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          images: { select: { id: true, url: true } },
+          businessCategory: { select: { id: true, name: true, slug: true } },
+          organization: { select: { id: true, name: true, logoUrl: true } },
+          discounts: {
+            where: { isActive: true, validUntil: { gte: new Date() } },
+            select: { percent: true, validUntil: true },
+            take: 1,
+          },
         },
-      },
-    });
+      }),
+    ]);
 
-    return res.json(products);
+    return res.json({ total, page, limit, pages: Math.ceil(total / limit), products });
   } catch (error) {
     console.error("get products error", error);
     return res.status(500).json({ message: "Бараа авахад алдаа гарлаа", error: String(error) });

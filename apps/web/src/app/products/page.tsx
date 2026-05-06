@@ -153,7 +153,8 @@ function ProductsContent() {
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
-          setApiProducts(Array.isArray(data) ? data : []);
+          // Handle both old array format and new paginated format
+          setApiProducts(Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []));
         }
       } catch {}
       finally { setProductsLoading(false); }
