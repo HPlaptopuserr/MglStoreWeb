@@ -60,7 +60,7 @@ router.get("/products", async (req, res) => {
     const { organizationId, businessCategoryId } = req.query as Record<string, string>;
     const search = String(req.query.search ?? req.query.q ?? "").trim();
     const page = Math.max(1, Number(req.query.page || 1));
-    const limit = Math.min(200, Math.max(1, Number(req.query.limit || 100)));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 24)));
 
     // Base where: use indexed columns only — avoid relation filters (they cause slow JOINs)
     const where: any = {
@@ -89,7 +89,7 @@ router.get("/products", async (req, res) => {
         select: {
           id: true,
           name: true,
-          description: true,
+          // description omitted from list view — too large, use /products/:id for detail
           sku: true,
           barcode: true,
           price: true,
