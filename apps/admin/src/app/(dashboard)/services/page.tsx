@@ -89,7 +89,6 @@ export default function ServiceRequestsPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const serviceTypes = [
     { value: "POSTER_DESIGN", label: "Poster хийлгэх" },
@@ -137,27 +136,6 @@ export default function ServiceRequestsPage() {
   useEffect(() => {
     fetchRequests();
   }, [fetchRequests]);
-
-  const updateStatus = async (id: string, status: string) => {
-    try {
-      setActionLoading(id);
-      const res = await adminFetch(`${API}/service-requests/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-
-      if (!res.ok) throw new Error("Статус шинэчлэхэд алдаа гарлаа");
-
-      await fetchRequests();
-      setSelectedRequest(null);
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : "Алдаа гарлаа");
-    } finally {
-      setActionLoading(null);
-    }
-  };
 
   const totalText = useMemo(() => {
     return `Нийт ${requests.length} хүсэлт`;
@@ -350,44 +328,6 @@ export default function ServiceRequestsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          {req.status === "PENDING" && (
-                            <>
-                              <button
-                                onClick={() => updateStatus(req.id, "IN_PROGRESS")}
-                                disabled={actionLoading === req.id}
-                                className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
-                                title="Хийгдэж эхлэх"
-                              >
-                                {actionLoading === req.id ? (
-                                  <Loader2 size={16} className="animate-spin" />
-                                ) : (
-                                  <Clock size={16} />
-                                )}
-                              </button>
-                              <button
-                                onClick={() => updateStatus(req.id, "CANCELLED")}
-                                disabled={actionLoading === req.id}
-                                className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
-                                title="Цуцлах"
-                              >
-                                <X size={16} />
-                              </button>
-                            </>
-                          )}
-                          {req.status === "IN_PROGRESS" && (
-                            <button
-                              onClick={() => updateStatus(req.id, "COMPLETED")}
-                              disabled={actionLoading === req.id}
-                              className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
-                              title="Дууссан"
-                            >
-                              {actionLoading === req.id ? (
-                                <Loader2 size={16} className="animate-spin" />
-                              ) : (
-                                <Check size={16} />
-                              )}
-                            </button>
-                          )}
                           <button
                             onClick={() => setSelectedRequest(req)}
                             className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
@@ -527,47 +467,9 @@ export default function ServiceRequestsPage() {
                   </div>
                 )}
 
-                {/* Quick Actions */}
-                {selectedRequest.status === "PENDING" && (
-                  <div className="flex gap-2 pt-4 border-t border-slate-100">
-                    <button
-                      onClick={() => updateStatus(selectedRequest.id, "IN_PROGRESS")}
-                      disabled={actionLoading === selectedRequest.id}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    >
-                      {actionLoading === selectedRequest.id ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <Clock size={16} />
-                      )}
-                      Эхлүүлэх
-                    </button>
-                    <button
-                      onClick={() => updateStatus(selectedRequest.id, "CANCELLED")}
-                      disabled={actionLoading === selectedRequest.id}
-                      className="px-4 py-2.5 border border-rose-200 text-rose-600 rounded-xl font-semibold hover:bg-rose-50 transition-colors disabled:opacity-50"
-                    >
-                      Цуцлах
-                    </button>
-                  </div>
-                )}
-
-                {selectedRequest.status === "IN_PROGRESS" && (
-                  <div className="pt-4 border-t border-slate-100">
-                    <button
-                      onClick={() => updateStatus(selectedRequest.id, "COMPLETED")}
-                      disabled={actionLoading === selectedRequest.id}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                    >
-                      {actionLoading === selectedRequest.id ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <Check size={16} />
-                      )}
-                      Дууссан гэж тэмдэглэх
-                    </button>
-                  </div>
-                )}
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  Төлөвийг vendor талын үйлчилгээний пост дээрээс шинэчилнэ.
+                </div>
               </div>
             </div>
           </div>

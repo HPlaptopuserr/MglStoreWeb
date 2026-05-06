@@ -392,6 +392,7 @@ model ServicePost {
   deletedAt      DateTime?
   organization   Organization       @relation(fields: [organizationId], references: [id])
   images         ServicePostImage[]
+  requests       ServiceRequest[]
 
   @@index([organizationId, isActive])
   @@index([deletedAt])
@@ -853,6 +854,7 @@ model ReturnRequest {
 model ServiceRequest {
   id             String               @id @default(uuid())
   organizationId String
+  servicePostId  String?
   requestedById  String
   type           ServiceRequestType
   title          String
@@ -869,8 +871,10 @@ model ServiceRequest {
   assignedTo     User?                @relation("ServiceRequestAssignedTo", fields: [assignedToId], references: [id])
   organization   Organization         @relation(fields: [organizationId], references: [id])
   requestedBy    User                 @relation("ServiceRequestRequestedBy", fields: [requestedById], references: [id])
+  servicePost    ServicePost?         @relation(fields: [servicePostId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
+  @@index([servicePostId])
   @@index([requestedById])
   @@index([assignedToId])
   @@index([type])
