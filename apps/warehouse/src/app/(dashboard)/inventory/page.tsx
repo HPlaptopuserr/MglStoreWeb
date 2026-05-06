@@ -91,13 +91,33 @@ export default function InventoryPage() {
       setLoading(true);
       setFetchError(false);
       try {
-        const res = await wmsFetch(
-          `${API}/warehouses/${selectedWarehouseId}/detail`,
-        );
+        let allInventories: any[] = [];
+        let page = 1;
+        let hasMore = true;
+        let fetchFailed = false;
+
+        while (hasMore && !cancelled) {
+          const res = await wmsFetch(
+            `${API}/warehouses/${selectedWarehouseId}/detail?invPage=${page}&invLimit=200`
+          );
+          if (cancelled) return;
+          if (res.ok) {
+            const data = await res.json();
+            allInventories = [...allInventories, ...(data.inventories || [])];
+            if (data.pagination && data.pagination.page < data.pagination.totalPages) {
+              page++;
+            } else {
+              hasMore = false;
+            }
+          } else {
+            fetchFailed = true;
+            break;
+          }
+        }
+
         if (cancelled) return;
-        if (res.ok) {
-          const data = await res.json();
-          setInventory(data.inventories || []);
+        if (!fetchFailed) {
+          setInventory(allInventories);
         } else if (attempt < 2) {
           setTimeout(() => { if (!cancelled) load(attempt + 1); }, 1500);
           return;

@@ -56,11 +56,32 @@ export default function WmsDashboardPage() {
           // Fetch details for each warehouse
           const details: WarehouseDetail[] = [];
           for (const wh of whList.slice(0, 10)) {
-            const detailRes = await wmsFetch(
-              `${API}/warehouses/${wh.id}/detail`,
-            );
-            if (detailRes.ok) {
-              details.push(await detailRes.json());
+            let mergedDetail: any = null;
+            let page = 1;
+            let hasMore = true;
+
+            while (hasMore) {
+              const detailRes = await wmsFetch(
+                `${API}/warehouses/${wh.id}/detail?invPage=${page}&invLimit=200`,
+              );
+              if (detailRes.ok) {
+                const data = await detailRes.json();
+                if (!mergedDetail) {
+                  mergedDetail = data;
+                } else {
+                  mergedDetail.inventories = [...mergedDetail.inventories, ...(data.inventories || [])];
+                }
+                if (data.pagination && data.pagination.page < data.pagination.totalPages) {
+                  page++;
+                } else {
+                  hasMore = false;
+                }
+              } else {
+                break;
+              }
+            }
+            if (mergedDetail) {
+              details.push(mergedDetail);
             }
           }
           setWarehouses(details);
