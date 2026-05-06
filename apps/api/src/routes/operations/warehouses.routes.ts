@@ -413,8 +413,21 @@ router.get("/warehouses/:id/detail", async (req, res) => {
       return res.status(404).json({ message: "Агуулах олдсонгүй" });
     }
 
+    // Strip base64 image URLs — they bloat the response by ~1MB per product
+    const sanitizedInventories = inventories.map((inv) => ({
+      ...inv,
+      product: inv.product
+        ? {
+            ...inv.product,
+            images: (inv.product.images ?? [])
+              .filter((img) => img.url && !img.url.startsWith("data:"))
+              .slice(0, 1),
+          }
+        : inv.product,
+    }));
+
     // Attach paginated inventories to the warehouse object for the frontend
-    (warehouse as any).inventories = inventories;
+    (warehouse as any).inventories = sanitizedInventories;
 
     // Aggregate stats computed across ALL inventory rows
     const [aggResult, outCount, lowStockItemsRaw] = await Promise.all([
