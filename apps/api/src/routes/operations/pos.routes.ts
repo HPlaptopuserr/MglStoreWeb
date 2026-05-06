@@ -691,7 +691,7 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
   const registerId: string | null = req.body?.registerId || null;
   const bodyOrganizationId: string | null = req.body?.organizationId || null;
 
-  console.log("[QPay invoice] amount:", amount, "registerId:", registerId, "orgId:", bodyOrganizationId);
+  if (!isProdLikeEnv) console.log("[QPay invoice] amount:", amount, "registerId:", registerId, "orgId:", bodyOrganizationId);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ message: "QPay amount буруу байна" });
@@ -748,18 +748,18 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
       return res.status(403).json({ message: "organizationId зөрүүтэй байна" });
     }
 
-    console.log("[QPay invoice] registerQpayConfig:", JSON.stringify(registerQpayConfig));
+    if (!isProdLikeEnv) console.log("[QPay invoice] registerQpayConfig:", JSON.stringify(registerQpayConfig));
 
     let merchantContext = registerQpayConfig
       ? buildQPayMerchantContextFromPosRegister(registerQpayConfig)
       : null;
 
-    console.log("[QPay invoice] merchantContext from register:", merchantContext ? "set" : "null");
+    if (!isProdLikeEnv) console.log("[QPay invoice] merchantContext from register:", merchantContext ? "set" : "null");
 
     // Fall back to organization-level QPay config when register has no config
     if (!merchantContext && effectiveOrganizationId) {
       const orgRes = await getVendorMerchantConfig(effectiveOrganizationId);
-      console.log("[QPay invoice] org config:", JSON.stringify(orgRes));
+      if (!isProdLikeEnv) console.log("[QPay invoice] org config:", JSON.stringify(orgRes));
       merchantContext = orgRes.config ?? null;
     }
 
@@ -768,11 +768,11 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
       const orgRes = await getVendorMerchantConfig(effectiveOrganizationId);
       if (orgRes.config?.bankAccounts?.length) {
         merchantContext = { ...merchantContext, bankAccounts: orgRes.config.bankAccounts };
-        console.log("[QPay invoice] Merged org bank accounts into context:", orgRes.config.bankAccounts.length);
+        if (!isProdLikeEnv) console.log("[QPay invoice] Merged org bank accounts into context:", orgRes.config.bankAccounts.length);
       }
     }
 
-    console.log("[QPay invoice] final merchantContext:", JSON.stringify({
+    if (!isProdLikeEnv) console.log("[QPay invoice] final merchantContext:", JSON.stringify({
       username: merchantContext?.username,
       invoiceCode: merchantContext?.invoiceCode,
       merchantId: merchantContext?.merchantId,
