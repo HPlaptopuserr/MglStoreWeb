@@ -335,6 +335,7 @@ router.get("/partners/grouped", async (req, res) => {
       orderBy: {
         name: "asc",
       },
+      take: 500, // safety cap — grouped view doesn't need more
       select: {
         id: true,
         name: true,
@@ -1326,6 +1327,7 @@ router.get("/partners/deleted/list", async (req, res) => {
       orderBy: {
         deletedAt: "desc",
       },
+      take: 200,
       select: {
         id: true,
         name: true,
