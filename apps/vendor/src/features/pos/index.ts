@@ -5,7 +5,9 @@ export * from "./api/open-shift";
 export * from "./api/close-shift";
 export * from "./api/get-receipts";
 export * from "./api/get-pos-reports";
-export * from "./api/payments";
+export * from "./api/card-terminal";
+export * from "./api/qpay";
+export * from "./api/register";
 
 export * from "./components/PosHeader";
 export * from "./components/PosProductGrid";
