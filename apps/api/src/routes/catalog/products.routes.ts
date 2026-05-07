@@ -97,7 +97,11 @@ router.get("/products", async (req, res) => {
           isActive: true,
           createdAt: true,
           businessCategoryId: true,
-          images: { select: { id: true, url: true } },
+          images: {
+            where: { url: { not: { startsWith: "data:" } } },
+            select: { id: true, url: true },
+            take: 1,
+          },
           businessCategory: { select: { id: true, name: true, slug: true } },
           organization: { select: { id: true, name: true, logoUrl: true } },
           discounts: {
@@ -527,8 +531,13 @@ router.post(
       }
     }
 
-    // Validate max 5 images
-    const imageUrls: string[] = Array.isArray(images) ? images.slice(0, 5) : [];
+    // Validate max 5 images — reject base64 to prevent DB bloat
+    const rawImages: string[] = Array.isArray(images) ? images.slice(0, 5) : [];
+    const hasBase64 = rawImages.some((u) => u.startsWith("data:"));
+    if (hasBase64) {
+      return res.status(400).json({ message: "Зургийг /products/upload-image endpoint-аар урьдчилан upload хийнэ үү" });
+    }
+    const imageUrls: string[] = rawImages;
 
     const product = await prisma.product.create({
       data: {
@@ -616,9 +625,12 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (businessCategoryId !== undefined) data.businessCategoryId = businessCategoryId || null;
     if (isActive !== undefined) data.isActive = Boolean(isActive);
 
-    // Replace images if provided
+    // Replace images if provided — reject base64 to prevent DB bloat
     if (Array.isArray(images)) {
       const imageUrls = images.slice(0, 5);
+      if (imageUrls.some((u: string) => u.startsWith("data:"))) {
+        return res.status(400).json({ message: "Зургийг /products/upload-image endpoint-аар урьдчилан upload хийнэ үү" });
+      }
       await prisma.productImage.deleteMany({ where: { productId: id } });
       data.images = { create: imageUrls.map((url: string) => ({ url })) };
     }
@@ -656,6 +668,9 @@ router.patch("/products/:id/images", requireAuth, async (req, res) => {
     if (!perm) return;
 
     const imageUrls = images.slice(0, 5);
+    if (imageUrls.some((u: string) => u.startsWith("data:"))) {
+      return res.status(400).json({ message: "Зургийг /products/upload-image endpoint-аар урьдчилан upload хийнэ үү" });
+    }
     await prisma.productImage.deleteMany({ where: { productId: id } });
 
     const product = await prisma.product.update({
