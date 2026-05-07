@@ -4,9 +4,9 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import contractRoutes from "./routes/contract/contract.routes";
 import {
   authRoutes,
+  contractRoutes,
   investorRoutes,
   orgJoinRoutes,
   orgMemberRoutes,

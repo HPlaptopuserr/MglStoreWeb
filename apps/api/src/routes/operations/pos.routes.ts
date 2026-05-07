@@ -21,9 +21,13 @@ import { getVendorMerchantConfig } from "../../services/vendor-merchant.service"
 
 const router: ExpressRouter = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const runtimeEnv = String(process.env.APP_ENV || process.env.NODE_ENV || "development").toLowerCase();
 const isProdLikeEnv = runtimeEnv === "production" || runtimeEnv === "staging";
+
+if (isProdLikeEnv && !process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET env var is required in production");
+}
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const allowPosSimulation = process.env.POS_ALLOW_SIMULATION === "true" && runtimeEnv === "development";
 const bridgeSharedSecret = String(process.env.POS_BRIDGE_SHARED_SECRET || "").trim();
 

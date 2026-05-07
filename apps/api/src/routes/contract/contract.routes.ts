@@ -1,9 +1,21 @@
-import { Router, type Router as ExpressRouter } from "express";
+import { Router, type Router as ExpressRouter, type Request } from "express";
 import { requireAuth } from "../../middleware/auth";
 import { prisma } from "@mgl/database";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 
 const router: ExpressRouter = Router();
+
+/** Төлбөртэй гэрээний хураамж — ₮ */
+const CONTRACT_FEE_PLANS: Record<string, number> = {
+  "6m": 1_800_000,
+  "12m": 3_000_000,
+};
+const CONTRACT_FEE_DEFAULT = 1_800_000;
+
+function getRequestUserId(req: Request): string | undefined {
+  const u = (req as any).user;
+  return u?.userId ?? u?.id ?? (req as any).userId;
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // GET /api/contracts/stats  —  Admin dashboard stats
@@ -62,7 +74,7 @@ router.get("/contracts", requireAuth, async (_req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 router.post("/contracts", requireAuth, async (req, res) => {
   try {
-    const userId = ((req as any).user?.userId || (req as any).user?.id || (req as any).userId) as string | undefined;
+    const userId = getRequestUserId(req);
     const { feePlan, isPaid = false, adminSignature, adminName, adminTitle, adminStamp, headerData } = req.body;
 
     if (!userId) {
@@ -277,8 +289,7 @@ router.post("/contracts/:id/qpay", async (req, res) => {
       return res.status(404).json({ success: false, error: "Гэрээ олдсонгүй" });
     }
 
-    const PLANS: Record<string, number> = { "6m": 1800000, "12m": 3000000 };
-    const amount = PLANS[contract.feePlan || ""] || 1800000;
+    const amount = CONTRACT_FEE_PLANS[contract.feePlan || ""] ?? CONTRACT_FEE_DEFAULT;
 
     const invoice = await createQPayInvoice({
       orderId: contract.id,

@@ -1,4 +1,5 @@
 export { authRoutes } from "./auth";
+export { contractRoutes } from "./contract";
 
 export {
   investorRoutes,
