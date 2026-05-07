@@ -360,6 +360,7 @@ model Organization {
 model OrgUpgradePlan {
   id             String            @id @default(uuid())
   organizationId String
+  planId         String?
   planType       String
   invoiceId      String            @unique
   invoiceNo      String            @unique
@@ -370,12 +371,44 @@ model OrgUpgradePlan {
   expiresAt      DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
+
   organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan           UpgradePlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
+  @@index([planId])
   @@index([status])
   @@index([invoiceId])
   @@index([createdAt])
+}
+
+model UpgradePlan {
+  id             String   @id @default(uuid())
+  code           String   @unique
+  name           String
+  description    String?
+  price          Decimal  @db.Decimal(18, 2)
+  durationDays   Int
+
+  maxProducts    Int
+  maxImages      Int
+  maxCategories  Int
+  hasBanner      Boolean  @default(false)
+  hasAnalytics   Boolean  @default(false)
+
+  isTrial        Boolean  @default(false)
+  badge          String?
+  isRecommended  Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  orgUpgradePlans OrgUpgradePlan[]
+
+  @@index([isActive])
+  @@index([sortOrder])
 }
 
 model ServicePost {

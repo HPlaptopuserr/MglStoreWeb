@@ -461,7 +461,7 @@ router.patch("/partners/:id/investor", requireAuth, requirePlatformPermission(Pe
   }
 });
 
-// PATCH /admin/partners/:id/subdomain — admin manually toggle subdomain
+// PATCH /admin/partners/:id/plan — admin manually activate/deactivate plan
 router.patch(
   "/admin/partners/:id/subdomain",
   requireAuth,
@@ -469,35 +469,47 @@ router.patch(
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { enabled } = req.body as { enabled: boolean };
+      const { enabled, planId } = req.body as { enabled: boolean; planId?: string };
 
       const org = await (prisma.organization.findUnique as any)({
         where: { id },
-        select: { id: true, slug: true, subdomainEnabled: true },
+        select: { id: true, trialUsed: true },
       });
       if (!org) return res.status(404).json({ message: "Байгууллага олдсонгүй" });
 
       const now = new Date();
-      const expiresAt = enabled ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) : null;
+      let expiresAt: Date | null = null;
+      let planType: string | null = null;
+      let planDays = 30;
 
-      await (prisma.organization.update as any)({
-        where: { id },
-        data: {
-          subdomainEnabled: enabled,
-          planActivatedAt: enabled ? now : null,
-          planExpiresAt: expiresAt,
-        },
-      });
+      if (enabled && planId) {
+        const dbPlan = await (prisma.upgradePlan as any).findFirst({
+          where: { isActive: true, OR: [{ id: planId }, { code: planId }] },
+        });
+        if (dbPlan) {
+          planDays = dbPlan.durationDays;
+          planType = dbPlan.code;
+        }
+        expiresAt = new Date(now.getTime() + planDays * 24 * 60 * 60 * 1000);
+      }
+
+      const updateData: any = {
+        planActivatedAt: enabled ? now : null,
+        planExpiresAt: expiresAt,
+      };
+      if (enabled && planType) updateData.planType = planType;
+      if (enabled && planType === "trial") updateData.trialUsed = true;
+
+      await (prisma.organization.update as any)({ where: { id }, data: updateData });
 
       return res.json({
         success: true,
-        subdomainEnabled: enabled,
-        subdomain: `${org.slug}.mglstore.mn`,
+        planType: enabled ? planType : null,
         planExpiresAt: expiresAt,
       });
     } catch (error) {
-      console.error("subdomain toggle error", error);
-      return res.status(500).json({ message: "Subdomain өөрчлөхөд алдаа гарлаа" });
+      console.error("plan toggle error", error);
+      return res.status(500).json({ message: "План өөрчлөхөд алдаа гарлаа" });
     }
   },
 );

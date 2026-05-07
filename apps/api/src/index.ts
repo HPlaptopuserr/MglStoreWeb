@@ -25,6 +25,7 @@ import {
   warehousesRoutes,
   dashboardRoutes,
   siteSettingsRoutes,
+  upgradePlansRoutes,
   formRoutes,
   attendanceRoutes,
   chatRoutes,
@@ -115,6 +116,7 @@ app.use("/api", vendorSetupRoutes);
 app.use("/api", warehouseSetupRoutes);
 app.use("/api", investorRoutes);
 app.use("/api", siteSettingsRoutes);
+app.use("/api", upgradePlansRoutes);
 app.use("/api", productsRoutes);
 app.use("/api", servicePostsRoutes);
 app.use("/api", formRoutes);

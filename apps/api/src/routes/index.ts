@@ -23,7 +23,7 @@ export {
   warehousesRoutes,
 } from "./operations";
 
-export { dashboardRoutes, siteSettingsRoutes } from "./system";
+export { dashboardRoutes, siteSettingsRoutes, upgradePlansRoutes } from "./system";
 
 export { formRoutes } from "./forms";
 
