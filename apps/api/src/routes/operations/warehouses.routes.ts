@@ -640,7 +640,12 @@ router.patch(
         expiryDate,
         note,
         name,
+        description,
+        barcode,
+        unit,
         price,
+        costPrice,
+        businessCategoryId,
       } = req.body;
 
       const updateData: any = {};
@@ -661,12 +666,40 @@ router.patch(
         }
         productUpdateData.name = trimmedName;
       }
+      if (description !== undefined) productUpdateData.description = description ? String(description).trim() : null;
+      if (barcode !== undefined) productUpdateData.barcode = barcode ? String(barcode).trim() : null;
+      if (unit !== undefined) productUpdateData.unit = unit ? String(unit).trim() : null;
       if (price !== undefined) {
         const parsedPrice = Number(price);
         if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
           return res.status(400).json({ message: "Үнэ буруу байна" });
         }
         productUpdateData.price = parsedPrice;
+      }
+      if (costPrice !== undefined) {
+        if (costPrice === null || costPrice === "") {
+          productUpdateData.costPrice = null;
+        } else {
+          const parsedCostPrice = Number(costPrice);
+          if (!Number.isFinite(parsedCostPrice) || parsedCostPrice < 0) {
+            return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
+          }
+          productUpdateData.costPrice = parsedCostPrice;
+        }
+      }
+      if (businessCategoryId !== undefined) {
+        if (businessCategoryId) {
+          const category = await prisma.businessCategory.findUnique({
+            where: { id: String(businessCategoryId) },
+            select: { id: true },
+          });
+          if (!category) {
+            return res.status(400).json({ message: "Ангилал олдсонгүй" });
+          }
+          productUpdateData.businessCategoryId = String(businessCategoryId);
+        } else {
+          productUpdateData.businessCategoryId = null;
+        }
       }
 
       const targetInventory = await prisma.warehouseInventory.findUnique({
@@ -699,7 +732,6 @@ router.patch(
             data: productUpdateData,
           });
         }
-
         const inv = await tx.warehouseInventory.update({
           where: {
             warehouseId_productId: {

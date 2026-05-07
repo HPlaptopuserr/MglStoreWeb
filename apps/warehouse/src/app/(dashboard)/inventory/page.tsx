@@ -46,7 +46,12 @@ type InventoryItem = {
 
 type EditForm = {
   name: string;
+  description: string;
   price: string;
+  costPrice: string;
+  barcode: string;
+  unit: string;
+  businessCategoryId: string;
   quantity: string;
   minQuantity: string;
   maxQuantity: string;
@@ -56,6 +61,7 @@ type EditForm = {
 };
 
 type WarehouseOption = { id: string; name: string };
+type CategoryOption = { id: string; name: string; level: number };
 type StockStatus = "all" | "healthy" | "low" | "out";
 
 const STATUS_CONFIG = {
@@ -66,6 +72,7 @@ const STATUS_CONFIG = {
 
 export default function InventoryPage() {
   const [warehouses, setWarehouses]           = useState<WarehouseOption[]>([]);
+  const [categories, setCategories]           = useState<CategoryOption[]>([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
   const [inventory, setInventory]             = useState<InventoryItem[]>([]);
   const [loading, setLoading]                 = useState(true);
@@ -97,6 +104,18 @@ export default function InventoryPage() {
           const list: WarehouseOption[] = Array.isArray(data) ? data : data.warehouses || [];
           setWarehouses(list);
           if (list.length > 0) setSelectedWarehouseId(list[0].id);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await wmsFetch(`${API}/business-categories`);
+        if (res.ok) {
+          const data = await res.json();
+          setCategories(Array.isArray(data) ? data : []);
         }
       } catch { /* ignore */ }
     })();
@@ -160,7 +179,12 @@ export default function InventoryPage() {
     setEditing(true);
     setEditForm({
       name: selectedItem.product.name,
+      description: selectedItem.product.description || "",
       price: String(Number(selectedItem.product.price) || 0),
+      costPrice: selectedItem.product.costPrice == null ? "" : String(Number(selectedItem.product.costPrice)),
+      barcode: selectedItem.product.barcode || "",
+      unit: selectedItem.product.unit || "",
+      businessCategoryId: selectedItem.product.businessCategory?.id || "",
       quantity: String(selectedItem.quantity),
       minQuantity: String(selectedItem.minQuantity),
       maxQuantity: selectedItem.maxQuantity == null ? "" : String(selectedItem.maxQuantity),
@@ -182,9 +206,11 @@ export default function InventoryPage() {
     const minQuantity = Number(editForm.minQuantity || 0);
     const maxQuantity = editForm.maxQuantity.trim() ? Number(editForm.maxQuantity) : null;
     const price = Number(editForm.price);
+    const costPrice = editForm.costPrice.trim() ? Number(editForm.costPrice) : null;
 
     if (!editForm.name.trim()) return alert("Барааны нэр оруулна уу");
     if (!Number.isFinite(price) || price < 0) return alert("Үнэ буруу байна");
+    if (costPrice !== null && (!Number.isFinite(costPrice) || costPrice < 0)) return alert("Өртөг үнэ буруу байна");
     if (!Number.isInteger(quantity) || quantity < 0) return alert("Нөөцийн тоо буруу байна");
     if (!Number.isInteger(minQuantity) || minQuantity < 0) return alert("Min тоо буруу байна");
     if (maxQuantity !== null && (!Number.isInteger(maxQuantity) || maxQuantity < 0)) return alert("Max тоо буруу байна");
@@ -197,7 +223,12 @@ export default function InventoryPage() {
           method: "PATCH",
           body: JSON.stringify({
             name: editForm.name.trim(),
+            description: editForm.description.trim() || null,
             price,
+            costPrice,
+            barcode: editForm.barcode.trim() || null,
+            unit: editForm.unit.trim() || null,
+            businessCategoryId: editForm.businessCategoryId || null,
             quantity,
             minQuantity,
             maxQuantity,
@@ -583,6 +614,28 @@ export default function InventoryPage() {
                       </Field>
                       <Field label="Үнэ">
                         <input type="number" min="0" value={editForm.price} onChange={(e) => setEditForm((f) => f && { ...f, price: e.target.value })} className={inputClass} />
+                      </Field>
+                      <Field label="Өртөг үнэ">
+                        <input type="number" min="0" value={editForm.costPrice} onChange={(e) => setEditForm((f) => f && { ...f, costPrice: e.target.value })} className={inputClass} />
+                      </Field>
+                      <Field label="Barcode">
+                        <input value={editForm.barcode} onChange={(e) => setEditForm((f) => f && { ...f, barcode: e.target.value })} className={inputClass} />
+                      </Field>
+                      <Field label="Нэгж">
+                        <input value={editForm.unit} onChange={(e) => setEditForm((f) => f && { ...f, unit: e.target.value })} className={inputClass} />
+                      </Field>
+                      <Field label="Ангилал" className="sm:col-span-2">
+                        <select value={editForm.businessCategoryId} onChange={(e) => setEditForm((f) => f && { ...f, businessCategoryId: e.target.value })} className={inputClass}>
+                          <option value="">Ангилалгүй</option>
+                          {categories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {"—".repeat(category.level)} {category.name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Тайлбар" className="sm:col-span-2">
+                        <textarea value={editForm.description} onChange={(e) => setEditForm((f) => f && { ...f, description: e.target.value })} rows={3} className={`${inputClass} h-auto py-2`} />
                       </Field>
                       <Field label="Гар дээрх тоо">
                         <input type="number" min="0" value={editForm.quantity} onChange={(e) => setEditForm((f) => f && { ...f, quantity: e.target.value })} className={inputClass} />
