@@ -1,6 +1,7 @@
 export * from "./api/get-pos-products";
 export * from "./api/get-own-products";
 export * from "./api/create-sale";
+export * from "./api/shifts";
 export * from "./api/open-shift";
 export * from "./api/close-shift";
 export * from "./api/get-receipts";

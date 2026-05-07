@@ -4,7 +4,7 @@ import { useState } from "react";
 import { RotateCcw, Loader2 } from "lucide-react";
 import type { PosReceipt } from "../types/receipt.types";
 import { formatReceipt } from "../utils/format-receipt";
-import { voidPushEcr } from "../api/payments";
+import { voidPushEcr } from "../api/card-terminal";
 
 type Props = {
   receipt: PosReceipt | null;

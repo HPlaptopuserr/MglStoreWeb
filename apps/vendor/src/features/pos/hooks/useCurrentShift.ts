@@ -1,22 +1,20 @@
 import { useState } from "react";
 import { closeShift } from "../api/close-shift";
 import { openShift } from "../api/open-shift";
+import { getCurrentShift } from "../api/shifts";
+import { settlePushEcr } from "../api/card-terminal";
 import type { PosShift } from "../types/shift.types";
-import { posRequest } from "../api/_pos-client";
 
 export function useCurrentShift() {
   const [shift, setShift] = useState<PosShift | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /** Fetch the current open shift from the server and hydrate state. */
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const fetched = await posRequest<PosShift | null>("/pos/shifts/current", {
-        method: "GET",
-      });
+      const fetched = await getCurrentShift();
       setShift(fetched ?? null);
       return fetched ?? null;
     } catch (e: any) {
@@ -47,15 +45,12 @@ export function useCurrentShift() {
     setLoading(true);
     setError(null);
     try {
-      // Settlement хийх — PUSH_ECR terminal байвал өдрийн нэгтгэл хийнэ
       if (terminalId) {
         try {
-          await posRequest("/pos/payments/push-ecr/settlement", {
-            method: "POST",
-            body: { terminalId, skipPrint: false },
-          });
+          // Settlement амжилтгүй болсон ч shift хаалтыг үргэлжлүүлнэ
+          await settlePushEcr(terminalId);
         } catch {
-          // settlement амжилтгүй болсон ч shift хаалтыг үргэлжлүүлнэ
+          /* intentional — settlement failure must not block shift close */
         }
       }
       const closed = await closeShift({ shiftId: shift.id, closingCash, note });
