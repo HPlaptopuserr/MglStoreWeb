@@ -1,4 +1,4 @@
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { Dispatch, Ref, SetStateAction } from "react";
 import { Building2, Loader2, MapPin, Plus, Tag } from "lucide-react";
 import type { CardPartner, BranchFormState } from "@/lib/sections/types";
 
@@ -11,7 +11,7 @@ type Props = {
   setForm: Dispatch<SetStateAction<BranchFormState>>;
   branchSaving: boolean;
   branchMapError: string;
-  mapPickerRef: RefObject<HTMLDivElement>;
+  mapPickerRef: Ref<HTMLDivElement>;
   onSubmit: () => void;
 };
 
