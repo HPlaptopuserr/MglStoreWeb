@@ -21,3 +21,4 @@ export * from "./dto/order.dto";
 export * from "./responses/api";
 export * from "./responses/order.response";
 export * from "./responses/product.response";
+export * from "./responses/upgrade.response";
