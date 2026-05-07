@@ -4,7 +4,7 @@ import type { BranchMapItem } from "@/lib/sections/types";
 import { BranchList } from "./BranchList";
 
 type Props = {
-  previewMapRef: RefObject<HTMLDivElement | null>;
+  previewMapRef: RefObject<HTMLDivElement>;
   hasMapPreview: boolean;
   isBranchCoordsValid: boolean;
   selectedRegisteredBranch: BranchMapItem | null;
@@ -52,7 +52,8 @@ export function BranchPreviewPanel({
             Flutter App Preview
           </p>
         </div>
-        {hasMapPreview && (
+
+        {hasMapPreview && previewLat !== null && previewLng !== null && (
           <a
             href={`https://maps.google.com/?q=${previewLat},${previewLng}`}
             target="_blank"
@@ -72,16 +73,20 @@ export function BranchPreviewPanel({
             ref={previewMapRef}
             className="h-60 w-full rounded-xl border border-slate-200 shadow-sm"
           />
+
           {selectedRegisteredBranch && (
             <div className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-2.5">
               <MapPin size={16} className="mt-0.5 shrink-0 text-violet-500" />
+
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-800 truncate">
                   {selectedRegisteredBranch.name}
                 </p>
+
                 <p className="text-xs text-slate-500 mt-0.5 truncate">
                   {selectedRegisteredBranch.address}
                 </p>
+
                 <p className="text-[11px] text-violet-600 mt-0.5">
                   {selectedRegisteredBranch.organization.name}
                 </p>
@@ -92,9 +97,12 @@ export function BranchPreviewPanel({
       ) : (
         <div className="h-60 rounded-xl border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-white flex flex-col items-center justify-center text-center px-6 gap-2">
           <MapPin size={28} className="text-slate-300" />
+
           <p className="text-sm text-slate-500">
-            Зүүн талд координат оруулах эсвэл доорх жагсаалтаас салбар сонгоход энд харагдана
+            Зүүн талд координат оруулах эсвэл доорх жагсаалтаас салбар сонгоход
+            энд харагдана
           </p>
+
           <p className="text-xs text-slate-400">
             Энэ preview нь Flutter app дээр хэрхэн харагдахыг харуулна
           </p>
