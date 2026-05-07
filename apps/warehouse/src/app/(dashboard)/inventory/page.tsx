@@ -39,6 +39,8 @@ type InventoryItem = {
 };
 
 type EditForm = {
+  name: string;
+  price: string;
   quantity: string;
   minQuantity: string;
   maxQuantity: string;
@@ -151,6 +153,8 @@ export default function InventoryPage() {
     setDeleteConfirm(false);
     setEditing(true);
     setEditForm({
+      name: selectedItem.product.name,
+      price: String(Number(selectedItem.product.price) || 0),
       quantity: String(selectedItem.quantity),
       minQuantity: String(selectedItem.minQuantity),
       maxQuantity: selectedItem.maxQuantity == null ? "" : String(selectedItem.maxQuantity),
@@ -171,7 +175,10 @@ export default function InventoryPage() {
     const quantity = Number(editForm.quantity);
     const minQuantity = Number(editForm.minQuantity || 0);
     const maxQuantity = editForm.maxQuantity.trim() ? Number(editForm.maxQuantity) : null;
+    const price = Number(editForm.price);
 
+    if (!editForm.name.trim()) return alert("Барааны нэр оруулна уу");
+    if (!Number.isFinite(price) || price < 0) return alert("Үнэ буруу байна");
     if (!Number.isInteger(quantity) || quantity < 0) return alert("Нөөцийн тоо буруу байна");
     if (!Number.isInteger(minQuantity) || minQuantity < 0) return alert("Min тоо буруу байна");
     if (maxQuantity !== null && (!Number.isInteger(maxQuantity) || maxQuantity < 0)) return alert("Max тоо буруу байна");
@@ -183,6 +190,8 @@ export default function InventoryPage() {
         {
           method: "PATCH",
           body: JSON.stringify({
+            name: editForm.name.trim(),
+            price,
             quantity,
             minQuantity,
             maxQuantity,
@@ -563,6 +572,12 @@ export default function InventoryPage() {
                 {editing && editForm ? (
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field label="Барааны нэр" className="sm:col-span-2">
+                        <input value={editForm.name} onChange={(e) => setEditForm((f) => f && { ...f, name: e.target.value })} className={inputClass} />
+                      </Field>
+                      <Field label="Үнэ">
+                        <input type="number" min="0" value={editForm.price} onChange={(e) => setEditForm((f) => f && { ...f, price: e.target.value })} className={inputClass} />
+                      </Field>
                       <Field label="Гар дээрх тоо">
                         <input type="number" min="0" value={editForm.quantity} onChange={(e) => setEditForm((f) => f && { ...f, quantity: e.target.value })} className={inputClass} />
                       </Field>

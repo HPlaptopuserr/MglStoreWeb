@@ -12,6 +12,7 @@ import {
   resolveCol,
 } from "../../lib/excel-import";
 import { adjustStock, resolveOrgWarehouse, syncProductStock } from "../../services/inventory.service";
+import { assertOrgPermission } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
 
@@ -617,7 +618,6 @@ router.post("/warehouses/:id/inventory", requireAuth, requirePlatformPermission(
 router.patch(
   "/warehouses/:warehouseId/inventory/:productId",
   requireAuth,
-  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
   async (req, res) => {
     try {
       const { warehouseId, productId } = req.params;
@@ -629,6 +629,8 @@ router.patch(
         batchNumber,
         expiryDate,
         note,
+        name,
+        price,
       } = req.body;
 
       const updateData: any = {};
@@ -641,6 +643,37 @@ router.patch(
         updateData.expiryDate = expiryDate ? new Date(expiryDate) : null;
       if (note !== undefined) updateData.note = note;
 
+      const productUpdateData: any = {};
+      if (name !== undefined) {
+        const trimmedName = String(name).trim();
+        if (!trimmedName) {
+          return res.status(400).json({ message: "Барааны нэр хоосон байж болохгүй" });
+        }
+        productUpdateData.name = trimmedName;
+      }
+      if (price !== undefined) {
+        const parsedPrice = Number(price);
+        if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+          return res.status(400).json({ message: "Үнэ буруу байна" });
+        }
+        productUpdateData.price = parsedPrice;
+      }
+
+      const targetInventory = await prisma.warehouseInventory.findUnique({
+        where: { warehouseId_productId: { warehouseId, productId } },
+        select: { product: { select: { organizationId: true } } },
+      });
+      if (!targetInventory) {
+        return res.status(404).json({ message: "Агуулахын бараа олдсонгүй" });
+      }
+      const permission = await assertOrgPermission(
+        req,
+        res,
+        targetInventory.product.organizationId,
+        Permission.MANAGE_STOCK,
+      );
+      if (!permission) return;
+
       const inventory = await prisma.$transaction(async (tx) => {
         // Get old quantity for ledger
         const oldInv = quantity !== undefined
@@ -649,6 +682,13 @@ router.patch(
               select: { quantity: true },
             })
           : null;
+
+        if (Object.keys(productUpdateData).length > 0) {
+          await tx.product.update({
+            where: { id: productId },
+            data: productUpdateData,
+          });
+        }
 
         const inv = await tx.warehouseInventory.update({
           where: {
