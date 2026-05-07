@@ -404,7 +404,8 @@ export default function ProductsPage() {
       const res = await authFetch(`${API}/products?organizationId=${orgId}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setProducts(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : Array.isArray(data?.products) ? data.products : [];
+      setProducts(list);
     } catch {
       showToast("error", "Бараа ачаалахад алдаа гарлаа");
     } finally {
