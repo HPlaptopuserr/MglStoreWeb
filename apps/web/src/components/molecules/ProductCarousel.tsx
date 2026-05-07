@@ -40,16 +40,23 @@ export const ProductCarousel = ({
     const el = scrollRef.current;
     if (!el) return;
 
-    updateScrollState();
+    const scheduleUpdate = () => window.requestAnimationFrame(updateScrollState);
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
+    const frame = window.requestAnimationFrame(updateScrollState);
+    const timeout = window.setTimeout(updateScrollState, 250);
 
     el.addEventListener("scroll", updateScrollState, { passive: true });
     window.addEventListener("resize", updateScrollState);
+    resizeObserver.observe(el);
 
     return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
       el.removeEventListener("scroll", updateScrollState);
       window.removeEventListener("resize", updateScrollState);
+      resizeObserver.disconnect();
     };
-  }, [updateScrollState]);
+  }, [updateScrollState, products]);
 
   const scroll = (direction: "left" | "right") => {
     const el = scrollRef.current;

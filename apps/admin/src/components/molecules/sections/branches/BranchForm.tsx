@@ -11,7 +11,7 @@ type Props = {
   setForm: React.Dispatch<React.SetStateAction<BranchFormState>>;
   branchSaving: boolean;
   branchMapError: string;
-  mapPickerRef: RefObject<HTMLDivElement>;
+  mapPickerRef: RefObject<HTMLDivElement | null>;
   onSubmit: () => void;
 };
 

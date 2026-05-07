@@ -179,9 +179,9 @@ function ServicesContent() {
       </div>
 
       {/* Grid */}
-      <div className="container mx-auto px-4 lg:px-8 pb-12 mt-2">
+      <div className="container mx-auto px-4 lg:px-8 pb-12 mt-12">
         {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-2 gap-x-5 gap-y-12 sm:grid-cols-3 md:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="aspect-square bg-gray-100 animate-pulse" />
             ))}
@@ -206,7 +206,7 @@ function ServicesContent() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-2 gap-x-5 gap-y-12 sm:grid-cols-3 md:grid-cols-4">
             {displayed.map((post) => (
               <Link key={post.id} href={`/services/${post.id}`} className="block">
                 <ServiceCard post={post} />

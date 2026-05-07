@@ -2,9 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { API } from "@/lib/api";
-import { mockServices } from "@/app/services/_data/mock-services";
 import { ServiceDetailOverlay } from "@/app/services/_components/ServiceDetailOverlay";
-import { CarouselProgress } from "@/components/molecules/CarouselProgress";
 import { GridHeader } from "@/components/molecules/GridHeader";
 
 import { ServicePost } from "./ServiceCard";
@@ -13,48 +11,37 @@ import { ServiceCarousel } from "./ServiceCarousel";
 export function ServiceGrid() {
   const [posts, setPosts] = useState<ServicePost[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [scrollProgress, setScrollProgress] = useState(0);
-  const [usingMockData, setUsingMockData] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch(`${API}/service-posts?activeOnly=true`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setPosts(data.slice(0, 16));
-          setUsingMockData(false);
-        } else {
-          setPosts(mockServices);
-          setUsingMockData(true);
-        }
+        setPosts(Array.isArray(data) ? data.slice(0, 16) : []);
       })
       .catch(() => {
-        setPosts(mockServices);
-        setUsingMockData(true);
-      });
+        setPosts([]);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   return (
-    <section className="py-6">
+    <section className="bg-white py-6">
       <div className="container mx-auto px-4 lg:px-8">
-        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-28" />
-          <div className="pointer-events-none absolute inset-x-0 top-28 h-20" />
+        <GridHeader title="Үйлчилгээнүүд" href="/services" />
 
-          <div className="relative">
-            <GridHeader title="Үйлчилгээнүүд" href="/services" />
+        <ServiceCarousel
+          posts={posts}
+          onSelect={(id) => {
+            setSelectedId(id);
+          }}
+        />
 
-            <ServiceCarousel
-              posts={posts}
-              onSelect={(id) => {
-                if (!usingMockData) setSelectedId(id);
-              }}
-              onProgressChange={setScrollProgress}
-            />
-
-            <CarouselProgress progress={scrollProgress} />
+        {!loading && posts.length === 0 && (
+          <div className="flex min-h-[220px] items-center justify-center text-sm font-medium text-slate-400">
+            Одоогоор нийтлэгдсэн үйлчилгээ байхгүй байна.
           </div>
-        </div>
+        )}
       </div>
 
       {selectedId && (

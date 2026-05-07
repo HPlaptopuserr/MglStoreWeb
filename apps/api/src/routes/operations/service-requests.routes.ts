@@ -363,6 +363,48 @@ router.patch("/service-requests/:id", requireAuth, async (req, res) => {
   }
 });
 
+// Delete completed service request (Admin or owning vendor)
+router.delete("/service-requests/:id", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await prisma.serviceRequest.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        organizationId: true,
+        status: true,
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ message: "Үйлчилгээний хүсэлт олдсонгүй" });
+    }
+
+    if (existing.status !== "COMPLETED") {
+      return res.status(400).json({ message: "Зөвхөн дууссан хүсэлтийг устгах боломжтой" });
+    }
+
+    const user = (req as any).user;
+    const canManagePlatformServices =
+      Boolean(user?.role && (isFullAdmin(user.role) || hasPlatformPermission(user.role, Permission.MANAGE_SERVICES)));
+
+    if (!canManagePlatformServices) {
+      const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_SERVICES);
+      if (!perm) return;
+    }
+
+    await prisma.serviceRequest.delete({ where: { id } });
+
+    res.json({ message: "Хүсэлт устгагдлаа" });
+  } catch (error) {
+    console.error("delete service request error", error);
+    res.status(500).json({
+      message: "Үйлчилгээний хүсэлт устгахад алдаа гарлаа",
+    });
+  }
+});
+
 // Get service request types
 router.get("/service-request-types", async (_req, res) => {
   const types = Object.entries(SERVICE_TYPE_LABELS).map(([value, label]) => ({

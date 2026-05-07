@@ -10,7 +10,6 @@ export default function VendorForgotPasswordPage() {
 
   return (
     <div className="min-h-screen flex bg-slate-50">
-      {/* Left panel */}
       <div className="hidden lg:flex lg:w-1/2 bg-slate-900 text-white flex-col justify-between p-16 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10 pointer-events-none">
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full fill-current text-amber-500">
@@ -43,11 +42,11 @@ export default function VendorForgotPasswordPage() {
         </div>
       </div>
 
-      {/* Right panel */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-10">
           <ForgotPasswordFlow
             apiBase={API_URL}
+            authPathPrefix="/auth/vendor"
             onDone={() => router.push("/login")}
           />
         </div>

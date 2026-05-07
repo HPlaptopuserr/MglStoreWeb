@@ -38,9 +38,15 @@ export type ForgotPasswordFlowProps = {
   apiBase: string;
   onDone: () => void;
   onBack?: () => void;
+  authPathPrefix?: string;
 };
 
-export function ForgotPasswordFlow({ apiBase, onDone, onBack }: ForgotPasswordFlowProps) {
+export function ForgotPasswordFlow({
+  apiBase,
+  onDone,
+  onBack,
+  authPathPrefix = "/auth",
+}: ForgotPasswordFlowProps) {
   const [step, setStep] = useState<ForgotStep>("identifier");
   const [identifier, setIdentifier] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -93,6 +99,11 @@ export function ForgotPasswordFlow({ apiBase, onDone, onBack }: ForgotPasswordFl
     return `${m}:${s.toString().padStart(2, "0")}`;
   }, [emailOtpRemainingSeconds]);
 
+  const authBase = useMemo(
+    () => `${apiBase}${authPathPrefix.startsWith("/") ? authPathPrefix : `/${authPathPrefix}`}`.replace(/\/$/, ""),
+    [apiBase, authPathPrefix],
+  );
+
   const goBack = () => {
     if (step === "identifier" || step === "done") {
       onBack ? onBack() : onDone();
@@ -120,7 +131,7 @@ export function ForgotPasswordFlow({ apiBase, onDone, onBack }: ForgotPasswordFl
 
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/auth/forgot-password`, {
+      const res = await fetch(`${authBase}/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isPhone ? { phone: value } : { email: value.toLowerCase() }),
@@ -153,7 +164,7 @@ export function ForgotPasswordFlow({ apiBase, onDone, onBack }: ForgotPasswordFl
     setError("");
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/auth/forgot-password/verify-mn/complete`, {
+      const res = await fetch(`${authBase}/forgot-password/verify-mn/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: identifier.trim(), sessionId: verifyMnSession.sessionId }),
@@ -186,7 +197,7 @@ export function ForgotPasswordFlow({ apiBase, onDone, onBack }: ForgotPasswordFl
 
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/auth/forgot-password/email/complete`, {
+      const res = await fetch(`${authBase}/forgot-password/email/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -195,7 +206,7 @@ export function ForgotPasswordFlow({ apiBase, onDone, onBack }: ForgotPasswordFl
         }),
       });
       const data = await readApiPayload(res);
-      if (!res.ok) throw new Error(data.message || "Имэйл код баталгаажуулахад алдаа гарлаа.");
+      if (!res.ok) throw new Error(data.message || "И-мэйл код баталгаажуулахад алдаа гарлаа.");
       if (!data.resetToken) throw new Error("Нууц үг шинэчлэх эрх үүссэнгүй. Дахин оролдоно уу.");
 
       setResetToken(data.resetToken);
@@ -318,7 +329,7 @@ export function ForgotPasswordFlow({ apiBase, onDone, onBack }: ForgotPasswordFl
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50">
               <ShieldCheck size={28} className="text-amber-500" />
             </div>
-            <h2 className="text-xl font-black text-gray-900">Имэйл баталгаажуулах</h2>
+            <h2 className="text-xl font-black text-gray-900">И-мэйл баталгаажуулах</h2>
             <p className="mt-1 text-sm text-gray-500">
               {emailOtpChallenge.emailMasked || identifier} хаяг руу илгээсэн 6 оронтой кодыг оруулна уу.
             </p>
@@ -375,7 +386,7 @@ export function ForgotPasswordFlow({ apiBase, onDone, onBack }: ForgotPasswordFl
                 type={showNewPassword ? "text" : "password"}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="********"
                 className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
               />
               <button
@@ -397,7 +408,7 @@ export function ForgotPasswordFlow({ apiBase, onDone, onBack }: ForgotPasswordFl
                 type={showConfirmPassword ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="********"
                 className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
               />
               <button

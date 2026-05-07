@@ -31,7 +31,11 @@ type VerifyMnStatusResponse = {
   expiresAt: string;
 };
 
-type WebEmailOtpPurpose = "web-email-login" | "web-password-reset" | "admin-password-reset";
+type WebEmailOtpPurpose =
+  | "web-email-login"
+  | "web-password-reset"
+  | "admin-password-reset"
+  | "vendor-password-reset";
 
 type WebEmailOtpChallenge = {
   purpose: WebEmailOtpPurpose;
@@ -177,6 +181,29 @@ async function findWebUserByIdentifier(identifier: string, isPhone: boolean) {
     where: { email: identifier.toLowerCase() },
     include: { profile: true },
   });
+}
+
+async function findVendorUserByIdentifier(identifier: string, isPhone: boolean) {
+  if (isPhone) {
+    const users = await prisma.user.findMany({
+      where: { profile: { phoneNumber: identifier } },
+      include: { profile: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    for (const user of users) {
+      const orgInfo = await resolveOrganization(user.id);
+      if (orgInfo) return user;
+    }
+
+    return null;
+  }
+
+  const user = await findWebUserByIdentifier(identifier, isPhone);
+  if (!user) return null;
+
+  const orgInfo = await resolveOrganization(user.id);
+  return orgInfo ? user : null;
 }
 
 async function findAdminUserByIdentifier(identifier: string, isPhone: boolean) {
@@ -522,6 +549,149 @@ router.post("/admin/forgot-password/email/complete", async (req, res) => {
   }
 });
 
+router.post("/vendor/forgot-password", async (req, res) => {
+  try {
+    const { email, phone } = req.body;
+    const identifier: string | undefined = email || phone;
+
+    if (!identifier) {
+      return res.status(400).json({
+        message: "И-мэйл эсвэл утасны дугаар шаардлагатай",
+      });
+    }
+
+    const normalized = normalizeWebIdentifier(email, phone);
+    const user = await findVendorUserByIdentifier(normalized.identifier, normalized.isPhone);
+
+    if (!user) {
+      return res.status(404).json({ message: "Нийлүүлэгч хэрэглэгч олдсонгүй" });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ message: "Нийлүүлэгч хэрэглэгч идэвхгүй байна" });
+    }
+
+    if (!normalized.isPhone) {
+      if (!isSmtpConfigured()) {
+        return res.status(500).json({ message: "SMTP тохиргоо хийгдээгүй байна" });
+      }
+
+      const challenge = createEmailOtpChallenge(
+        { id: user.id, email: user.email },
+        "vendor-password-reset",
+      );
+      await sendPasswordResetOtpEmail(user.email, challenge.code);
+
+      return res.json({
+        message: "Нууц үг сэргээх код имэйл рүү илгээгдлээ",
+        channel: "emailOtp",
+        challengeToken: challenge.challengeToken,
+        emailMasked: maskEmail(user.email),
+        expiresIn: challenge.expiresIn,
+      });
+    }
+
+    const session = await createVerifyMnSession(normalized.identifier);
+    return res.json({
+      message: "Verify.mn баталгаажуулалт эхэллээ",
+      channel: "verifyMn",
+      session,
+    });
+  } catch (error) {
+    console.error("[vendor forgot-password error]", error);
+    return res.status(500).json({
+      message: error instanceof Error ? error.message : "Сервер дээр алдаа гарлаа",
+    });
+  }
+});
+
+router.post("/vendor/forgot-password/verify-mn/complete", async (req, res) => {
+  try {
+    const { phone, sessionId } = req.body;
+    const { identifier, isPhone } = normalizeWebIdentifier(undefined, phone);
+
+    if (!isPhone || !identifier || !sessionId) {
+      return res.status(400).json({ message: "Утасны дугаар болон sessionId шаардлагатай." });
+    }
+
+    const user = await findVendorUserByIdentifier(identifier, true);
+    if (!user) {
+      return res.status(404).json({ message: "Нийлүүлэгч хэрэглэгч олдсонгүй" });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ message: "Нийлүүлэгч хэрэглэгч идэвхгүй байна" });
+    }
+
+    const status = await getVerifyMnSessionStatus(sessionId);
+    const statusPhone = normalizePhoneDigits(status.phone);
+    if (statusPhone && statusPhone !== identifier) {
+      return res.status(400).json({ message: "Баталгаажуулсан дугаар таарахгүй байна." });
+    }
+
+    if (status.sessionStatus !== "VERIFIED") {
+      return res.status(400).json({
+        message: status.sessionStatus === "EXPIRED"
+          ? "Баталгаажуулах хугацаа дууссан байна."
+          : "SMS баталгаажуулалт хараахан ирээгүй байна.",
+        status: status.sessionStatus,
+      });
+    }
+
+    const resetToken = await createPasswordResetToken(user.id);
+    return res.json({
+      message: "Утас баталгаажлаа",
+      resetToken,
+    });
+  } catch (error) {
+    console.error("[vendor forgot-password verify.mn complete error]", error);
+    return res.status(500).json({
+      message: error instanceof Error ? error.message : "Verify.mn баталгаажуулахад алдаа гарлаа",
+    });
+  }
+});
+
+router.post("/vendor/forgot-password/email/complete", async (req, res) => {
+  try {
+    const { otpCode, challengeToken } = req.body;
+
+    let challenge: WebEmailOtpChallenge;
+    try {
+      challenge = verifyEmailOtpChallenge(otpCode, challengeToken, "vendor-password-reset");
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (code === "EMAIL_OTP_REQUIRED") {
+        return res.status(400).json({ message: "Баталгаажуулах код шаардлагатай" });
+      }
+      if (code === "EMAIL_OTP_EXPIRED") {
+        return res.status(400).json({ message: "Баталгаажуулах кодын хугацаа дууссан байна" });
+      }
+      if (code === "EMAIL_OTP_INVALID_CODE") {
+        return res.status(400).json({ message: "Баталгаажуулах код буруу байна" });
+      }
+      return res.status(400).json({ message: "Баталгаажуулах хүсэлт буруу байна" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: challenge.userId },
+    });
+
+    const orgInfo = user ? await resolveOrganization(user.id) : null;
+    if (!user || !user.isActive || user.email !== challenge.email || !orgInfo) {
+      return res.status(401).json({ message: "Нийлүүлэгч нууц үг сэргээх эрх баталгаажаагүй байна" });
+    }
+
+    const resetToken = await createPasswordResetToken(user.id);
+    return res.json({
+      message: "Имэйл баталгаажлаа",
+      resetToken,
+    });
+  } catch (error) {
+    console.error("[vendor forgot-password email complete error]", error);
+    return res.status(500).json({ message: "Имэйл код баталгаажуулахад алдаа гарлаа" });
+  }
+});
+
 router.post("/login", async (req, res) => {
   try {
     const { email, phone, password } = req.body;
@@ -634,6 +804,83 @@ router.post("/login", async (req, res) => {
     });
   } catch (error) {
     console.error("[login error]", error);
+    return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
+
+router.post("/vendor/login", async (req, res) => {
+  try {
+    const { email, phone, password } = req.body;
+    const identifier: string | undefined = email || phone;
+
+    if (!identifier || !password) {
+      return res.status(400).json({
+        message: "И-мэйл эсвэл утасны дугаар болон нууц үг шаардлагатай",
+      });
+    }
+
+    const isPhone = /^[0-9+\-\s()]{7,15}$/.test(identifier.trim()) && !identifier.includes("@");
+    const user = isPhone
+      ? await prisma.user.findFirst({
+          where: { profile: { phoneNumber: identifier.trim() } },
+          include: { profile: true },
+        })
+      : await prisma.user.findUnique({
+          where: { email: identifier.trim().toLowerCase() },
+          include: { profile: true },
+        });
+
+    if (!user) {
+      return res.status(401).json({ message: "Хэрэглэгч олдсонгүй" });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ message: "Хэрэглэгч идэвхгүй байна" });
+    }
+
+    if (!user.passwordHash) {
+      return res.status(401).json({
+        message: "Нууц үг тохируулаагүй байна. Урилгын линкээр нууц үгээ тохируулна уу.",
+      });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!isValidPassword) {
+      return res.status(401).json({ message: "Нууц үг буруу байна" });
+    }
+
+    const orgInfo = await resolveOrganization(user.id);
+    if (!orgInfo?.organizationId) {
+      return res.status(403).json({ message: "Байгууллагад бүртгэлтэй хэрэглэгч биш байна" });
+    }
+
+    const org = await prisma.organization.findUnique({
+      where: { id: orgInfo.organizationId },
+      select: { name: true },
+    });
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    const accessToken = createWebAccessToken(user, orgInfo);
+
+    return res.json({
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        orgRole: orgInfo.orgRole,
+        fullName: user.profile?.fullName || "",
+        phone: user.profile?.phoneNumber || null,
+        organizationId: orgInfo.organizationId,
+        organizationName: org?.name || "",
+      },
+    });
+  } catch (error) {
+    console.error("[vendor login error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
   }
 });

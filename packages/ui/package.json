@@ -20,18 +20,22 @@
     "@mgl/types": "workspace:*",
     "clsx": "^2.1.1",
     "framer-motion": "^12.35.0",
+    "lucide-react": "^0.575.0",
     "motion": "^12.34.3",
-    "next": "^14",
     "qrcode.react": "^4.2.0",
     "tailwind-merge": "^3.5.0"
   },
   "peerDependencies": {
+    "next": ">=14",
     "react": ">=18",
     "react-dom": ">=18"
   },
   "devDependencies": {
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "next": "16.1.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

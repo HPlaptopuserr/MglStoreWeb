@@ -408,6 +408,25 @@ export default function ServicePostsPage() {
     }
   };
 
+  const deleteCompletedRequest = async (requestId: string) => {
+    if (!confirm("Дууссан хүсэлтийг устгах уу?")) return;
+
+    setRequestActionLoading(requestId);
+    try {
+      const res = await authFetch(`${API}/service-requests/${requestId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Хүсэлт устгахад алдаа гарлаа");
+      }
+      setServiceRequests((prev) => prev.filter((item) => item.id !== requestId));
+      showToast("success", "Хүсэлт устгагдлаа");
+    } catch (err: unknown) {
+      showToast("error", err instanceof Error ? err.message : "Хүсэлт устгахад алдаа гарлаа");
+    } finally {
+      setRequestActionLoading(null);
+    }
+  };
+
   const filteredPosts = posts.filter(
     (p) =>
       p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -814,6 +833,17 @@ export default function ServicePostsPage() {
                             >
                               {isUpdating ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                               Дуусгах
+                            </button>
+                          )}
+                          {request.status === "COMPLETED" && (
+                            <button
+                              type="button"
+                              onClick={() => deleteCompletedRequest(request.id)}
+                              disabled={isUpdating}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60"
+                            >
+                              {isUpdating ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                              Устгах
                             </button>
                           )}
                         </div>

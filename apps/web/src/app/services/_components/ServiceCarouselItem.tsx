@@ -15,7 +15,7 @@ export function ServiceCarouselItem({
   return (
     <div
       onClick={onClick}
-      className="shrink-0 w-[76%] sm:w-[42%] md:w-[30%] lg:w-[23.5%] cursor-pointer pt-7"
+      className="w-[78%] shrink-0 cursor-pointer sm:w-[44%] md:w-[30%] lg:w-[23.5%]"
     >
       <ServiceCard post={post} />
     </div>

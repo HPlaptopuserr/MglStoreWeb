@@ -27,14 +27,14 @@ export function ServiceCard({ post }: ServiceCardProps) {
   const thumb = !imgError && post.images[0]?.url ? post.images[0].url : null;
 
   return (
-    <article className="group relative flex h-full min-h-[300px] flex-col items-center overflow-visible  rounded-sm bg-whitepx-5 pb-6 pt-0 text-center shadow-[0_12px_24px_rgba(15,23,42,0.14)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_30px_rgba(15,23,42,0.18)]">
-      <div className="relative -mt-7 mb-5 aspect-[1.18/1] w-full max-w-[190px] overflow-hidden bg-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.22)]">
+    <article className="group relative flex h-full min-h-[285px] min-w-0 flex-col items-center overflow-visible bg-white px-5 pb-6 pt-[104px] text-center shadow-[0_18px_40px_rgba(15,23,42,0.26)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_26px_52px_rgba(15,23,42,0.32)]">
+      <div className="absolute -top-8 left-1/2 aspect-[1.08/1] w-[68%] max-w-[156px] -translate-x-1/2 overflow-hidden bg-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.22)]">
         {thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={thumb}
             alt={post.title}
-            className="h-full w-full object-cover grayscale-[12%] transition duration-500 group-hover:scale-105 group-hover:grayscale-0"
+            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
             onError={() => setImgError(true)}
           />
         ) : (
@@ -56,22 +56,22 @@ export function ServiceCard({ post }: ServiceCardProps) {
         )}
       </div>
 
-      <div className="flex flex-1 flex-col items-center">
-        <h3 className="line-clamp-2 min-h-[44px] text-base font-extrabold leading-snug text-slate-950">
+      <div className="flex min-w-0 flex-1 flex-col items-center pt-5">
+        <h3 className="line-clamp-2 min-h-[40px] max-w-full break-words text-base font-extrabold leading-tight text-slate-950">
           {post.title}
         </h3>
 
-        <p className="mt-3 line-clamp-3 min-h-[60px] text-sm italic leading-relaxed text-slate-500">
+        <p className="mt-3 line-clamp-3 min-h-[58px] max-w-full break-words text-[13px] italic leading-relaxed text-slate-500 [overflow-wrap:anywhere]">
           {post.description || post.organization.name}
         </p>
 
         {post.priceText && (
-          <span className="mt-3 text-sm font-bold text-[#c94f00]">
+          <span className="mt-4 max-w-full break-words text-sm font-bold text-[#c94f00] [overflow-wrap:anywhere]">
             {post.priceText}
           </span>
         )}
 
-        <span className="mt-auto inline-flex border-b border-slate-500 pt-5 text-xs font-extrabold uppercase tracking-[0.18em] text-slate-700 transition-colors group-hover:border-[#c94f00] group-hover:text-[#c94f00]">
+        <span className="mt-auto inline-flex border-b border-slate-500 pt-4 text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-700 transition-colors group-hover:border-[#c94f00] group-hover:text-[#c94f00]">
           Дэлгэрэнгүй
         </span>
       </div>

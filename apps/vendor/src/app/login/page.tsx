@@ -28,7 +28,7 @@ export default function VendorLoginPage() {
     const isPhone = /^[0-9+\-\s()]{7,15}$/.test(identifier.trim());
 
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
+      const res = await fetch(`${API_URL}/auth/vendor/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(

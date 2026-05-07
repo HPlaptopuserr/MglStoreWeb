@@ -4,7 +4,7 @@ import type { BranchMapItem } from "@/lib/sections/types";
 import { BranchList } from "./BranchList";
 
 type Props = {
-  previewMapRef: RefObject<HTMLDivElement>;
+  previewMapRef: RefObject<HTMLDivElement | null>;
   hasMapPreview: boolean;
   isBranchCoordsValid: boolean;
   selectedRegisteredBranch: BranchMapItem | null;

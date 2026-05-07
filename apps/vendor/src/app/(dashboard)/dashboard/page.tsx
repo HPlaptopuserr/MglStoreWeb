@@ -472,7 +472,7 @@ export default function Dashboard() {
                     { href: "/service-posts", icon: Wrench, label: "Үйлчилгээний постууд", desc: "Хүсэлтүүдээ харах", color: "bg-slate-100", textColor: "text-slate-700" },
                   ].map((a) => (
                     <Link
-                      key={a.href}
+                      key={`${a.href}-${a.label}`}
                       href={a.href}
                       className="flex items-center justify-between rounded-xl p-3 hover:bg-slate-50 transition-colors border border-slate-100"
                     >
