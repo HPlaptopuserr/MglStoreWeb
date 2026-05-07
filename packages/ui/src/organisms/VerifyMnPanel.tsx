@@ -51,7 +51,7 @@ export function VerifyMnPanel({
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50">
           <ShieldCheck size={28} className="text-blue-500" />
         </div>
-        <h2 className="text-xl font-black text-gray-900">Утас баталгаажуулах</h2>
+        <h2 className="text-xl font-black text-gray-900">Утасны Дугаараар баталгаажуулах</h2>
         <p className="mt-1 text-sm text-gray-500">
           Доорх SMS-г илгээсний дараа шалгах товчийг дарна уу.
         </p>
