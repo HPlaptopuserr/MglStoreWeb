@@ -32,9 +32,15 @@ type InventoryItem = {
   product: {
     id: string;
     name: string;
+    description?: string | null;
     sku: string | null;
     price: string;
+    costPrice?: string | null;
     barcode?: string;
+    unit?: string | null;
+    images?: { url: string }[];
+    businessCategory?: { id: string; name: string } | null;
+    category?: { id: string; name: string } | null;
   };
 };
 
@@ -636,6 +642,54 @@ export default function InventoryPage() {
                       </p>
                     </div>
                   ))}
+
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Barcode</p>
+                    <p className="mt-1 font-mono text-sm font-semibold text-slate-800">
+                      {selectedItem.product.barcode || "—"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Нэгж</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">
+                      {selectedItem.product.unit || "—"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Өртөг үнэ</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">
+                      {selectedItem.product.costPrice == null ? "—" : `${Number(selectedItem.product.costPrice).toLocaleString()}₮`}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Ангилал</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">
+                      {selectedItem.product.businessCategory?.name || selectedItem.product.category?.name || "—"}
+                    </p>
+                  </div>
+
+                  {selectedItem.product.description && (
+                    <div className="col-span-2 rounded-lg bg-slate-50 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Тайлбар</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-800">
+                        {selectedItem.product.description}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedItem.product.images?.[0]?.url && (
+                    <div className="col-span-2 rounded-lg bg-slate-50 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Зураг</p>
+                      <img
+                        src={selectedItem.product.images[0].url}
+                        alt={selectedItem.product.name}
+                        className="mt-2 max-h-44 rounded-lg border border-slate-200 object-contain"
+                      />
+                    </div>
+                  )}
 
                   {selectedItem.expiryDate && (
                     <div className="col-span-2 rounded-lg bg-slate-50 p-3">

@@ -380,11 +380,21 @@ router.get("/warehouses/:id/detail", async (req, res) => {
             select: {
               id: true,
               name: true,
+              description: true,
               sku: true,
+              barcode: true,
+              unit: true,
               price: true,
+              costPrice: true,
               images: {
                 take: 1,
                 select: { url: true },
+              },
+              businessCategory: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
               category: {
                 select: {
@@ -703,8 +713,28 @@ router.patch(
               select: {
                 id: true,
                 name: true,
+                description: true,
                 sku: true,
+                barcode: true,
+                unit: true,
                 price: true,
+                costPrice: true,
+                images: {
+                  take: 1,
+                  select: { url: true },
+                },
+                businessCategory: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+                category: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
               },
             },
           },
