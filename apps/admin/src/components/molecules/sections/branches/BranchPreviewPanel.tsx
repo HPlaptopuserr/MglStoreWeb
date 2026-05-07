@@ -25,6 +25,7 @@ type Props = {
 export function BranchPreviewPanel({
   previewMapRef,
   hasMapPreview,
+  isBranchCoordsValid,
   selectedRegisteredBranch,
   previewLat,
   previewLng,
