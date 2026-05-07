@@ -167,8 +167,8 @@ function CategorySelector({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={`w-full flex items-center justify-between gap-2 h-11 px-4 rounded-xl border text-sm transition-all outline-none ${open
-            ? "border-amber-500 ring-2 ring-amber-100 bg-white"
-            : "border-slate-200 bg-slate-50 hover:bg-white hover:border-slate-300"
+          ? "border-amber-500 ring-2 ring-amber-100 bg-white"
+          : "border-slate-200 bg-slate-50 hover:bg-white hover:border-slate-300"
           }`}
       >
         <span className={selectedLabel ? "text-slate-900 font-medium" : "text-slate-400"}>
@@ -312,10 +312,10 @@ function ImageUploadGrid({
             <label
               key={idx}
               className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-colors ${canAdd
-                  ? "border-slate-300 hover:border-amber-400 hover:bg-amber-50 cursor-pointer"
-                  : isUploadingSlot
-                    ? "border-amber-300 bg-amber-50"
-                    : "border-slate-100 bg-slate-50/50 cursor-not-allowed"
+                ? "border-slate-300 hover:border-amber-400 hover:bg-amber-50 cursor-pointer"
+                : isUploadingSlot
+                  ? "border-amber-300 bg-amber-50"
+                  : "border-slate-100 bg-slate-50/50 cursor-not-allowed"
                 }`}
             >
               {isUploadingSlot ? (
@@ -440,7 +440,7 @@ export default function ProductsPage() {
           });
         }
       })
-      .catch(() => {/* ignore */});
+      .catch(() => {/* ignore */ });
   }, [fetchProducts, fetchCategories]);
 
   const openAdd = () => {
@@ -565,563 +565,666 @@ export default function ProductsPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50/50 p-4 md:p-6 space-y-6">
-      {/* Toast */}
-      {toast && (
-        <div
-          className={`fixed top-5 right-5 z-[100] flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm font-semibold shadow-2xl shadow-black/10 border transition-all animate-in slide-in-from-top-2 ${toast.type === "success"
+    <div className="w-full min-w-0 px-4 pt-5 pb-10 sm:px-6 sm:pt-6">
+      <div className="mx-auto max-w-6xl w-full min-w-0 space-y-6">
+        {/* Toast */}
+        {toast && (
+          <div
+            className={`fixed top-5 right-5 z-[100] flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm font-semibold shadow-2xl shadow-black/10 border transition-all animate-in slide-in-from-top-2 ${toast.type === "success"
               ? "bg-white border-amber-200 text-amber-700"
               : "bg-white border-red-200 text-red-600"
-            }`}
-        >
-          {toast.type === "success" ? (
-            <CheckCircle2 size={18} className="text-amber-500" />
-          ) : (
-            <AlertCircle size={18} className="text-red-500" />
-          )}
-          {toast.msg}
-        </div>
-      )}
+              }`}
+          >
+            {toast.type === "success" ? (
+              <CheckCircle2 size={18} className="text-amber-500" />
+            ) : (
+              <AlertCircle size={18} className="text-red-500" />
+            )}
+            {toast.msg}
+          </div>
+        )}
 
-      {/* Plan expired / trial warning banner */}
-      {planStatus && (
-        <>
-          {!isPlanActive && (
-            <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-              <Lock size={18} className="shrink-0 text-red-500" />
-              <div className="flex-1">
-                <p className="text-sm font-bold text-red-700">Таны план дууссан байна</p>
-                <p className="text-xs text-red-500">Бараа нэмэх, засах боломжгүй. Дахин идэвхжүүлэхийн тулд сунгана уу.</p>
+        {/* Plan expired / trial warning banner */}
+        {planStatus && (
+          <>
+            {!isPlanActive && (
+              <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                <Lock size={18} className="shrink-0 text-red-500" />
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-red-700">Таны план дууссан байна</p>
+                  <p className="text-xs text-red-500">Бараа нэмэх, засах боломжгүй. Дахин идэвхжүүлэхийн тулд сунгана уу.</p>
+                </div>
+                <a
+                  href="/upgrade"
+                  className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 transition-colors shrink-0"
+                >
+                  <Crown size={14} />
+                  Сунгах
+                </a>
               </div>
-              <a
-                href="/upgrade"
-                className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 transition-colors shrink-0"
-              >
-                <Crown size={14} />
-                Сунгах
-              </a>
-            </div>
-          )}
-          {isPlanActive && planStatus.currentPlan?.isTrial && daysLeft !== null && daysLeft <= 7 && (
-            <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <AlertTriangle size={18} className="shrink-0 text-amber-500" />
-              <div className="flex-1">
-                <p className="text-sm font-bold text-amber-700">Үнэгүй туршилт: {daysLeft} хоног үлдсэн</p>
-                <p className="text-xs text-amber-500">Планаа сунгаж, бүх боломжуудыг ашиглаарай.</p>
+            )}
+            {isPlanActive && planStatus.currentPlan?.isTrial && daysLeft !== null && daysLeft <= 7 && (
+              <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <AlertTriangle size={18} className="shrink-0 text-amber-500" />
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-amber-700">Үнэгүй туршилт: {daysLeft} хоног үлдсэн</p>
+                  <p className="text-xs text-amber-500">Планаа сунгаж, бүх боломжуудыг ашиглаарай.</p>
+                </div>
+                <a
+                  href="/upgrade"
+                  className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition-colors shrink-0"
+                >
+                  <Crown size={14} />
+                  Сунгах
+                </a>
               </div>
-              <a
-                href="/upgrade"
-                className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition-colors shrink-0"
-              >
-                <Crown size={14} />
-                Сунгах
-              </a>
-            </div>
-          )}
-          {isPlanActive && productLimitReached && (
-            <div className="flex items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
-              <AlertCircle size={18} className="shrink-0 text-orange-500" />
-              <div className="flex-1">
-                <p className="text-sm font-bold text-orange-700">Барааны хязгаарт хүрлээ ({productLimit})</p>
-                <p className="text-xs text-orange-500">Дахин бараа нэмэхийн тулд планаа сунгана уу.</p>
+            )}
+            {isPlanActive && productLimitReached && (
+              <div className="flex items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+                <AlertCircle size={18} className="shrink-0 text-orange-500" />
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-orange-700">Барааны хязгаарт хүрлээ ({productLimit})</p>
+                  <p className="text-xs text-orange-500">Дахин бараа нэмэхийн тулд планаа сунгана уу.</p>
+                </div>
+                <a
+                  href="/upgrade"
+                  className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-xs font-bold text-white hover:bg-orange-600 transition-colors shrink-0"
+                >
+                  <Crown size={14} />
+                  Сунгах
+                </a>
               </div>
-              <a
-                href="/upgrade"
-                className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-xs font-bold text-white hover:bg-orange-600 transition-colors shrink-0"
-              >
-                <Crown size={14} />
-                Сунгах
-              </a>
-            </div>
-          )}
-        </>
-      )}
+            )}
+          </>
+        )}
 
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-black tracking-tight text-slate-900">Бараа</h1>
-            {isPlanActive && planStatus?.currentPlan && (
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                planStatus.currentPlan.isTrial
+        {/* Header */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-black tracking-tight text-slate-900">Бараа</h1>
+              {isPlanActive && planStatus?.currentPlan && (
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${planStatus.currentPlan.isTrial
                   ? "bg-amber-100 text-amber-700"
                   : "bg-emerald-100 text-emerald-700"
-              }`}>
-                {planStatus.currentPlan.name}
-                {productLimit !== -1 && ` · ${products.length}/${productLimit}`}
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 text-sm font-medium text-slate-500">Таны бараа бүтээгдэхүүний каталог</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 md:w-72">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
-              placeholder="Нэр, SKU хайх..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <button
-            onClick={() => canAddProduct && setImportOpen(true)}
-            disabled={!canAddProduct}
-            title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
-            className={`flex items-center gap-2 h-10 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
-              canAddProduct
-                ? "bg-emerald-600 shadow-emerald-500/25 hover:bg-emerald-700"
-                : "bg-slate-300 cursor-not-allowed shadow-none"
-            }`}
-          >
-            {canAddProduct ? <FileSpreadsheet size={16} /> : <Lock size={16} />}
-            Excel импорт
-          </button>
-          <button
-            onClick={() => canAddProduct && openAdd()}
-            disabled={!canAddProduct}
-            title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
-            className={`flex items-center gap-2 h-10 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
-              canAddProduct
-                ? "bg-amber-600 shadow-amber-500/25 hover:bg-amber-700"
-                : "bg-slate-300 cursor-not-allowed shadow-none"
-            }`}
-          >
-            {canAddProduct ? <Plus size={16} /> : <Lock size={16} />}
-            Бараа нэмэх
-          </button>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: "Нийт бараа", value: products.length, icon: Package, color: "bg-amber-50 text-amber-600" },
-          { label: "Идэвхтэй", value: products.filter((p) => p.isActive).length, icon: ToggleRight, color: "bg-amber-50 text-amber-600" },
-          { label: "Нийт нөөц", value: products.reduce((s, p) => s + p.stock, 0), icon: BarChart2, color: "bg-amber-50 text-amber-600" },
-          { label: "Ангилалтай", value: products.filter((p) => p.businessCategoryId).length, icon: Layers, color: "bg-amber-50 text-amber-600" },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3 shadow-sm">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-              <Icon size={18} />
+                  }`}>
+                  {planStatus.currentPlan.name}
+                  {productLimit !== -1 && ` · ${products.length}/${productLimit}`}
+                </span>
+              )}
             </div>
-            <div>
-              <div className="text-xl font-black text-slate-900">{value}</div>
-              <div className="text-xs font-medium text-slate-500">{label}</div>
-            </div>
+            <p className="mt-0.5 text-sm font-medium text-slate-500">Таны бараа бүтээгдэхүүний каталог</p>
           </div>
-        ))}
-      </div>
-
-      {/* Excel Import Modal */}
-      {importOpen && (
-        <ExcelImportModal
-          organizationId={getOrgId() || ""}
-          onClose={() => setImportOpen(false)}
-          onSuccess={fetchProducts}
-        />
-      )}
-
-      {/* Add/Edit Form Modal */}
-      {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-top-4">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-              <div>
-                <h2 className="text-lg font-black text-slate-900">
-                  {editingId ? "Бараа засах" : "Шинэ бараа нэмэх"}
-                </h2>
-                <p className="text-xs font-medium text-slate-400 mt-0.5">Мэдээллийг бүрэн оруулна уу</p>
-              </div>
-              <button
-                onClick={closeForm}
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSave} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Барааны нэр <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    required
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
-                    placeholder="Жишээ: Самар гоймон"
-                    value={form.name}
-                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">SKU / Код</label>
-                  <input
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
-                    placeholder="Жишээ: GM-001-BLK"
-                    value={form.sku}
-                    onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Үнэ (₮) <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <Banknote size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      required
-                      type="number"
-                      min="0"
-                      step="1"
-                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
-                      placeholder="0"
-                      value={form.price}
-                      onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Нөөц (ширхэг)</label>
-                  <div className="relative">
-                    <BarChart2 size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="number"
-                      min="0"
-                      max="2147483647"
-                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
-                      placeholder="0"
-                      value={form.stock}
-                      onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Ангилал</label>
-                <CategorySelector
-                  categories={categories}
-                  value={form.businessCategoryId}
-                  onChange={(id) => setForm((f) => ({ ...f, businessCategoryId: id }))}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Тайлбар</label>
-                <textarea
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all resize-none"
-                  placeholder="Барааны дэлгэрэнгүй тайлбар..."
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                />
-              </div>
-
-              <ImageUploadGrid
-                images={form.images}
-                onChange={(imgs) => setForm((f) => ({ ...f, images: imgs }))}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative w-full md:flex-1 md:w-72">
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
+                placeholder="Нэр, SKU хайх..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
-
-              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={closeForm}
-                  className="h-10 px-5 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-                >
-                  Болих
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex items-center gap-2 h-10 px-7 rounded-xl bg-amber-600 text-white text-sm font-bold shadow-lg shadow-amber-500/25 hover:bg-amber-700 disabled:opacity-60 transition-colors"
-                >
-                  {saving && <Loader2 size={15} className="animate-spin" />}
-                  {editingId ? "Хадгалах" : "Нэмэх"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Product Detail Drawer */}
-      {selectedProduct && !formOpen && (
-        <div
-          className="fixed inset-0 z-40 flex justify-end bg-black/30 backdrop-blur-sm"
-          onClick={() => setSelectedProduct(null)}
-        >
-          <div
-            className="w-full max-w-sm bg-white h-full overflow-y-auto shadow-2xl animate-in slide-in-from-right-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="relative">
-              {selectedProduct.images.length > 0 ? (
-                <img
-                  src={selectedProduct.images[0].url}
-                  alt={selectedProduct.name}
-                  className="w-full h-56 object-cover"
-                />
-              ) : (
-                <div className="w-full h-56 bg-slate-100 flex items-center justify-center">
-                  <Package size={40} className="text-slate-300" />
-                </div>
-              )}
-              <button
-                onClick={() => setSelectedProduct(null)}
-                className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm"
-              >
-                <X size={16} />
-              </button>
             </div>
-
-            <div className="p-5 space-y-4">
-              <div>
-                <h2 className="text-xl font-black text-slate-900">{selectedProduct.name}</h2>
-                {selectedProduct.sku && (
-                  <p className="text-xs font-mono text-slate-400 mt-0.5">SKU: {selectedProduct.sku}</p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3">
-                <span className="text-2xl font-black text-amber-600">
-                  ₮{Number(selectedProduct.price).toLocaleString()}
-                </span>
-                <span className={`text-xs font-bold px-2 py-1 rounded-full ${selectedProduct.isActive ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"}`}>
-                  {selectedProduct.isActive ? "Идэвхтэй" : "Идэвхгүй"}
-                </span>
-              </div>
-
-              {selectedProduct.businessCategory && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Tag size={14} className="text-slate-400" />
-                  <span className="font-medium text-slate-600">{selectedProduct.businessCategory.name}</span>
-                </div>
-              )}
-
-              {selectedProduct.description && (
-                <p className="text-sm text-slate-600 leading-relaxed">{selectedProduct.description}</p>
-              )}
-
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
-                <BarChart2 size={14} />
-                Нөөц: <span className="font-bold text-slate-800">{selectedProduct.stock} ширхэг</span>
-              </div>
-
-              {selectedProduct.images.length > 1 && (
-                <div className="grid grid-cols-4 gap-2">
-                  {selectedProduct.images.slice(1).map((img) => (
-                    <img key={img.id} src={img.url} alt="" className="w-full aspect-square object-cover rounded-lg border border-slate-100" />
-                  ))}
-                </div>
-              )}
-
-              <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
-                <button
-                  onClick={() => openEdit(selectedProduct)}
-                  className="flex items-center justify-center gap-2 h-10 rounded-xl bg-amber-600 text-white text-sm font-bold"
-                >
-                  <Pencil size={14} />
-                  Засах
-                </button>
-                <button
-                  onClick={() => handleToggleActive(selectedProduct)}
-                  className="flex items-center justify-center gap-2 h-10 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50"
-                >
-                  {selectedProduct.isActive ? <ToggleLeft size={16} /> : <ToggleRight size={16} />}
-                  {selectedProduct.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх"}
-                </button>
-                <button
-                  onClick={() => handleDelete(selectedProduct.id)}
-                  disabled={deletingId === selectedProduct.id}
-                  className="flex items-center justify-center gap-2 h-10 rounded-xl border border-red-200 text-red-500 text-sm font-bold hover:bg-red-50 disabled:opacity-50"
-                >
-                  {deletingId === selectedProduct.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                  Устгах
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Product List */}
-      <div>
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-slate-900">Миний бараа</h2>
-            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-              {filtered.length}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
-            {[
-              { key: "all", label: "Бүгд", count: products.length },
-              {
-                key: "active",
-                label: "Идэвхтэй",
-                count: products.filter((p) => p.isActive).length,
-              },
-              {
-                key: "inactive",
-                label: "Идэвхгүй",
-                count: products.filter((p) => !p.isActive).length,
-              },
-            ].map((btn) => (
+            <div className="flex w-full md:w-auto items-center gap-3">
               <button
-                key={btn.key}
-                onClick={() => setStatusFilter(btn.key as "all" | "active" | "inactive")}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === btn.key
-                    ? "bg-amber-500 text-black"
-                    : "text-slate-500 hover:text-slate-700"
+                onClick={() => canAddProduct && setImportOpen(true)}
+                disabled={!canAddProduct}
+                title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
+                className={`flex-1 md:flex-none flex justify-center items-center gap-2 h-10 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${canAddProduct
+                  ? "bg-emerald-600 shadow-emerald-500/25 hover:bg-emerald-700"
+                  : "bg-slate-300 cursor-not-allowed shadow-none"
                   }`}
               >
-                {btn.label}
-                <span className="ml-1 opacity-70">{btn.count}</span>
+                {canAddProduct ? <FileSpreadsheet size={16} /> : <Lock size={16} />}
+                Excel импорт
               </button>
-            ))}
+              <button
+                onClick={() => canAddProduct && openAdd()}
+                disabled={!canAddProduct}
+                title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
+                className={`flex-1 md:flex-none flex justify-center items-center gap-2 h-10 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${canAddProduct
+                  ? "bg-amber-600 shadow-amber-500/25 hover:bg-amber-700"
+                  : "bg-slate-300 cursor-not-allowed shadow-none"
+                  }`}
+              >
+                {canAddProduct ? <Plus size={16} /> : <Lock size={16} />}
+                Бараа нэмэх
+              </button>
+            </div>
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center py-24">
-            <Loader2 size={32} className="animate-spin text-amber-400" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white py-24 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-50">
-              <Package size={28} className="text-slate-300" />
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: "Нийт бараа", value: products.length, icon: Package, color: "bg-amber-50 text-amber-600" },
+            { label: "Идэвхтэй", value: products.filter((p) => p.isActive).length, icon: ToggleRight, color: "bg-amber-50 text-amber-600" },
+            { label: "Нийт нөөц", value: products.reduce((s, p) => s + p.stock, 0), icon: BarChart2, color: "bg-amber-50 text-amber-600" },
+            { label: "Ангилалтай", value: products.filter((p) => p.businessCategoryId).length, icon: Layers, color: "bg-amber-50 text-amber-600" },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <div key={label} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3 shadow-sm">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
+                <Icon size={18} />
+              </div>
+              <div>
+                <div className="text-xl font-black text-slate-900">{value}</div>
+                <div className="text-xs font-medium text-slate-500">{label}</div>
+              </div>
             </div>
-            <h3 className="text-base font-semibold text-slate-800">
-              {searchQuery ? "Хайлтад тохирох бараа олдсонгүй" : "Бараа байхгүй байна"}
-            </h3>
-            {!searchQuery && (
-              <button
-                onClick={openAdd}
-                className="mt-4 inline-flex items-center gap-2 h-10 px-6 rounded-xl bg-amber-600 text-white text-sm font-bold"
-              >
-                <Plus size={15} />
-                Эхний бараагаа нэмэх
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3 font-semibold">Бараа</th>
-                    <th className="px-4 py-3 font-semibold">SKU</th>
-                    <th className="px-4 py-3 font-semibold">Ангилал</th>
-                    <th className="px-4 py-3 text-right font-semibold">Үнэ</th>
-                    <th className="px-4 py-3 text-right font-semibold">Нөөц</th>
-                    <th className="px-4 py-3 font-semibold">Төлөв</th>
-                    <th className="px-4 py-3 text-right font-semibold">Үйлдэл</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((product) => (
-                    <tr
-                      key={product.id}
-                      className="cursor-pointer border-b border-slate-50 transition-colors last:border-0 hover:bg-amber-50/40"
-                      onClick={() => setSelectedProduct(product)}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
-                            {product.images.length > 0 ? (
-                              <img
-                                src={product.images[0].url}
-                                alt={product.name}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <Package size={16} className="text-slate-300" />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate font-medium text-slate-900">{product.name}</p>
-                            {product.description && (
-                              <p className="truncate text-xs text-slate-400">{product.description}</p>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                        {product.sku || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {product.businessCategory?.name || "Ангилалгүй"}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                        ₮{Number(product.price).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-700">
-                        {product.stock}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${product.isActive
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-slate-100 text-slate-500"
-                            }`}
-                        >
-                          {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEdit(product);
-                            }}
-                            className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                            aria-label="Засах"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleActive(product);
-                            }}
-                            className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                            aria-label="Төлөв өөрчлөх"
-                          >
-                            {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(product.id);
-                            }}
-                            disabled={deletingId === product.id}
-                            className="rounded-md p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            aria-label="Устгах"
-                          >
-                            {deletingId === product.id ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <Trash2 size={14} />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          ))}
+        </div>
+
+        {/* Excel Import Modal */}
+        {importOpen && (
+          <ExcelImportModal
+            organizationId={getOrgId() || ""}
+            onClose={() => setImportOpen(false)}
+            onSuccess={fetchProducts}
+          />
+        )}
+
+        {/* Add/Edit Form Modal */}
+        {formOpen && (
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 bg-black/40 backdrop-blur-sm">
+            <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-top-4">
+              <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+                <div>
+                  <h2 className="text-lg font-black text-slate-900">
+                    {editingId ? "Бараа засах" : "Шинэ бараа нэмэх"}
+                  </h2>
+                  <p className="text-xs font-medium text-slate-400 mt-0.5">Мэдээллийг бүрэн оруулна уу</p>
+                </div>
+                <button
+                  onClick={closeForm}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSave} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Барааны нэр <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      required
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
+                      placeholder="Жишээ: Самар гоймон"
+                      value={form.name}
+                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">SKU / Код</label>
+                    <input
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
+                      placeholder="Жишээ: GM-001-BLK"
+                      value={form.sku}
+                      onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Үнэ (₮) <span className="text-red-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <Banknote size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        required
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
+                        placeholder="0"
+                        value={form.price}
+                        onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Нөөц (ширхэг)</label>
+                    <div className="relative">
+                      <BarChart2 size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="number"
+                        min="0"
+                        max="2147483647"
+                        className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
+                        placeholder="0"
+                        value={form.stock}
+                        onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Ангилал</label>
+                  <CategorySelector
+                    categories={categories}
+                    value={form.businessCategoryId}
+                    onChange={(id) => setForm((f) => ({ ...f, businessCategoryId: id }))}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Тайлбар</label>
+                  <textarea
+                    rows={3}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all resize-none"
+                    placeholder="Барааны дэлгэрэнгүй тайлбар..."
+                    value={form.description}
+                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  />
+                </div>
+
+                <ImageUploadGrid
+                  images={form.images}
+                  onChange={(imgs) => setForm((f) => ({ ...f, images: imgs }))}
+                />
+
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={closeForm}
+                    className="h-10 px-5 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  >
+                    Болих
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="flex items-center gap-2 h-10 px-7 rounded-xl bg-amber-600 text-white text-sm font-bold shadow-lg shadow-amber-500/25 hover:bg-amber-700 disabled:opacity-60 transition-colors"
+                  >
+                    {saving && <Loader2 size={15} className="animate-spin" />}
+                    {editingId ? "Хадгалах" : "Нэмэх"}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
+
+        {/* Product Detail Drawer */}
+        {selectedProduct && !formOpen && (
+          <div
+            className="fixed inset-0 z-40 flex justify-end bg-black/30 backdrop-blur-sm"
+            onClick={() => setSelectedProduct(null)}
+          >
+            <div
+              className="w-full max-w-sm bg-white h-full overflow-y-auto shadow-2xl animate-in slide-in-from-right-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="relative">
+                {selectedProduct.images.length > 0 ? (
+                  <img
+                    src={selectedProduct.images[0].url}
+                    alt={selectedProduct.name}
+                    className="w-full h-56 object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-56 bg-slate-100 flex items-center justify-center">
+                    <Package size={40} className="text-slate-300" />
+                  </div>
+                )}
+                <button
+                  onClick={() => setSelectedProduct(null)}
+                  className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">{selectedProduct.name}</h2>
+                  {selectedProduct.sku && (
+                    <p className="text-xs font-mono text-slate-400 mt-0.5">SKU: {selectedProduct.sku}</p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl font-black text-amber-600">
+                    ₮{Number(selectedProduct.price).toLocaleString()}
+                  </span>
+                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${selectedProduct.isActive ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"}`}>
+                    {selectedProduct.isActive ? "Идэвхтэй" : "Идэвхгүй"}
+                  </span>
+                </div>
+
+                {selectedProduct.businessCategory && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Tag size={14} className="text-slate-400" />
+                    <span className="font-medium text-slate-600">{selectedProduct.businessCategory.name}</span>
+                  </div>
+                )}
+
+                {selectedProduct.description && (
+                  <p className="text-sm text-slate-600 leading-relaxed">{selectedProduct.description}</p>
+                )}
+
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+                  <BarChart2 size={14} />
+                  Нөөц: <span className="font-bold text-slate-800">{selectedProduct.stock} ширхэг</span>
+                </div>
+
+                {selectedProduct.images.length > 1 && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {selectedProduct.images.slice(1).map((img) => (
+                      <img key={img.id} src={img.url} alt="" className="w-full aspect-square object-cover rounded-lg border border-slate-100" />
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => openEdit(selectedProduct)}
+                    className="flex items-center justify-center gap-2 h-10 rounded-xl bg-amber-600 text-white text-sm font-bold"
+                  >
+                    <Pencil size={14} />
+                    Засах
+                  </button>
+                  <button
+                    onClick={() => handleToggleActive(selectedProduct)}
+                    className="flex items-center justify-center gap-2 h-10 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                  >
+                    {selectedProduct.isActive ? <ToggleLeft size={16} /> : <ToggleRight size={16} />}
+                    {selectedProduct.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх"}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(selectedProduct.id)}
+                    disabled={deletingId === selectedProduct.id}
+                    className="flex items-center justify-center gap-2 h-10 rounded-xl border border-red-200 text-red-500 text-sm font-bold hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {deletingId === selectedProduct.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    Устгах
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Product List */}
+        <div>
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-slate-900">Миний бараа</h2>
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                {filtered.length}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+              {[
+                { key: "all", label: "Бүгд", count: products.length },
+                {
+                  key: "active",
+                  label: "Идэвхтэй",
+                  count: products.filter((p) => p.isActive).length,
+                },
+                {
+                  key: "inactive",
+                  label: "Идэвхгүй",
+                  count: products.filter((p) => !p.isActive).length,
+                },
+              ].map((btn) => (
+                <button
+                  key={btn.key}
+                  onClick={() => setStatusFilter(btn.key as "all" | "active" | "inactive")}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === btn.key
+                    ? "bg-amber-500 text-black"
+                    : "text-slate-500 hover:text-slate-700"
+                    }`}
+                >
+                  {btn.label}
+                  <span className="ml-1 opacity-70">{btn.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center py-24">
+              <Loader2 size={32} className="animate-spin text-amber-400" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-white py-24 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-50">
+                <Package size={28} className="text-slate-300" />
+              </div>
+              <h3 className="text-base font-semibold text-slate-800">
+                {searchQuery ? "Хайлтад тохирох бараа олдсонгүй" : "Бараа байхгүй байна"}
+              </h3>
+              {!searchQuery && (
+                <button
+                  onClick={openAdd}
+                  className="mt-4 inline-flex items-center gap-2 h-10 px-6 rounded-xl bg-amber-600 text-white text-sm font-bold"
+                >
+                  <Plus size={15} />
+                  Эхний бараагаа нэмэх
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px] text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                        <th className="px-4 py-3 font-semibold">Бараа</th>
+                        <th className="px-4 py-3 font-semibold">SKU</th>
+                        <th className="px-4 py-3 font-semibold">Ангилал</th>
+                        <th className="px-4 py-3 text-right font-semibold">Үнэ</th>
+                        <th className="px-4 py-3 text-right font-semibold">Нөөц</th>
+                        <th className="px-4 py-3 font-semibold">Төлөв</th>
+                        <th className="px-4 py-3 text-right font-semibold">Үйлдэл</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((product) => (
+                        <tr
+                          key={product.id}
+                          className="cursor-pointer border-b border-slate-50 transition-colors last:border-0 hover:bg-amber-50/40"
+                          onClick={() => setSelectedProduct(product)}
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+                                {product.images.length > 0 ? (
+                                  <img
+                                    src={product.images[0].url}
+                                    alt={product.name}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <Package size={16} className="text-slate-300" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-slate-900">{product.name}</p>
+                                {product.description && (
+                                  <p className="truncate text-xs text-slate-400">{product.description}</p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                            {product.sku || "—"}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {product.businessCategory?.name || "Ангилалгүй"}
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                            ₮{Number(product.price).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-700">
+                            {product.stock}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${product.isActive
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-slate-100 text-slate-500"
+                                }`}
+                            >
+                              {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEdit(product);
+                                }}
+                                className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="Засах"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleActive(product);
+                                }}
+                                className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="Төлөв өөрчлөх"
+                              >
+                                {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(product.id);
+                                }}
+                                disabled={deletingId === product.id}
+                                className="rounded-md p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                aria-label="Устгах"
+                              >
+                                {deletingId === product.id ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={14} />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+
+              {/* Mobile Card View */}
+              <div className="grid grid-cols-1 gap-4 md:hidden mt-2">
+                {filtered.map((product) => (
+                  <div
+                    key={product.id}
+                    className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm relative overflow-hidden"
+                    onClick={() => setSelectedProduct(product)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
+                        {product.images.length > 0 ? (
+                          <img
+                            src={product.images[0].url}
+                            alt={product.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <Package size={24} className="text-slate-300" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-base font-bold text-slate-900">{product.name}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          SKU: {product.sku || "—"}
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-slate-600">
+                          {product.businessCategory?.name || "Ангилалгүй"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-1 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Үнэ</p>
+                        <p className="text-sm font-black text-slate-900">
+                          ₮{Number(product.price).toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Нөөц</p>
+                        <p className="text-sm font-black text-slate-700">
+                          {product.stock} ширхэг
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-2 pt-3 border-t border-slate-100">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${product.isActive
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-slate-100 text-slate-500"
+                          }`}
+                      >
+                        {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
+                      </span>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(product);
+                          }}
+                          className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 bg-slate-50"
+                          aria-label="Засах"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleActive(product);
+                          }}
+                          className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 bg-slate-50"
+                          aria-label="Төлөв өөрчлөх"
+                        >
+                          {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(product.id);
+                          }}
+                          disabled={deletingId === product.id}
+                          className="rounded-md p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 bg-red-50"
+                          aria-label="Устгах"
+                        >
+                          {deletingId === product.id ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={14} />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

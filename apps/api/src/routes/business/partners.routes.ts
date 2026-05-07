@@ -335,6 +335,7 @@ router.get("/partners/grouped", async (req, res) => {
       orderBy: {
         name: "asc",
       },
+      take: 500, // safety cap — grouped view doesn't need more
       select: {
         id: true,
         name: true,
@@ -1326,6 +1327,7 @@ router.get("/partners/deleted/list", async (req, res) => {
       orderBy: {
         deletedAt: "desc",
       },
+      take: 200,
       select: {
         id: true,
         name: true,
@@ -1696,47 +1698,52 @@ router.post(
           continue;
         }
 
-        if (!emailStr || !emailStr.includes("@")) {
-          results.errors.push({ row: rowNum, name: orgName, reason: "Owner email буруу эсвэл хоосон" });
+        if (emailStr && !emailStr.includes("@")) {
+          results.errors.push({ row: rowNum, name: orgName, reason: "Owner email буруу форматтай байна" });
           results.skipped++;
           continue;
         }
 
         // Skip if already processed in this batch (in-file duplicate)
-        if (processedEmails.has(emailStr)) {
-          continue; // Already reported as duplicate
+        if (emailStr) {
+          if (processedEmails.has(emailStr)) {
+            continue; // Already reported as duplicate
+          }
+          processedEmails.add(emailStr);
         }
-        processedEmails.add(emailStr);
 
         // Check existing user with active org
-        const existingUser = await prisma.user.findUnique({
-          where: { email: emailStr },
-          select: { id: true, passwordHash: true },
-        });
-
-        if (existingUser?.passwordHash) {
-          results.errors.push({
-            row: rowNum,
-            name: orgName,
-            reason: `Email "${emailStr}" дээр нууц үгтэй хэрэглэгч бүртгэлтэй байна`,
+        let existingUser = null;
+        if (emailStr) {
+          existingUser = await prisma.user.findUnique({
+            where: { email: emailStr },
+            select: { id: true, passwordHash: true },
           });
-          results.skipped++;
-          continue;
-        }
 
-        if (existingUser) {
-          const hasOrg = await prisma.organizationMember.findFirst({
-            where: { userId: existingUser.id, isActive: true },
-            select: { id: true },
-          });
-          if (hasOrg) {
+          if (existingUser?.passwordHash) {
             results.errors.push({
               row: rowNum,
               name: orgName,
-              reason: `Email "${emailStr}" дээр аль хэдийн өөр байгууллагад бүртгэлтэй`,
+              reason: `Email "${emailStr}" дээр нууц үгтэй хэрэглэгч бүртгэлтэй байна`,
             });
             results.skipped++;
             continue;
+          }
+
+          if (existingUser) {
+            const hasOrg = await prisma.organizationMember.findFirst({
+              where: { userId: existingUser.id, isActive: true },
+              select: { id: true },
+            });
+            if (hasOrg) {
+              results.errors.push({
+                row: rowNum,
+                name: orgName,
+                reason: `Email "${emailStr}" дээр аль хэдийн өөр байгууллагад бүртгэлтэй`,
+              });
+              results.skipped++;
+              continue;
+            }
           }
         }
 
@@ -1810,7 +1817,7 @@ router.post(
                 taxId: finalTaxId,
                 type: orgType,
                 status: OrgStatus.ACTIVE,
-                email: emailStr,
+                email: emailStr || null,
                 phone: resolvedPhone,
                 address: address ? String(address).trim() : null,
                 isVerified: false,
@@ -1818,67 +1825,69 @@ router.post(
               select: { id: true, name: true },
             });
 
-            const user = existingUser
-              ? await tx.user.update({
-                  where: { id: existingUser.id },
-                  data: {
-                    role: PlatformRole.USER,
-                    isActive: true,
-                    emailVerified: true,
-                    onboardingSource: OnboardingSource.ADMIN,
-                  },
-                  select: { id: true, email: true },
-                })
-              : await tx.user.create({
-                  data: {
-                    email: emailStr,
-                    role: PlatformRole.USER,
-                    isActive: true,
-                    emailVerified: true,
-                    onboardingSource: OnboardingSource.ADMIN,
-                  },
-                  select: { id: true, email: true },
-                });
+            if (emailStr) {
+              const user = existingUser
+                ? await tx.user.update({
+                    where: { id: existingUser.id },
+                    data: {
+                      role: PlatformRole.USER,
+                      isActive: true,
+                      emailVerified: true,
+                      onboardingSource: OnboardingSource.ADMIN,
+                    },
+                    select: { id: true, email: true },
+                  })
+                : await tx.user.create({
+                    data: {
+                      email: emailStr,
+                      role: PlatformRole.USER,
+                      isActive: true,
+                      emailVerified: true,
+                      onboardingSource: OnboardingSource.ADMIN,
+                    },
+                    select: { id: true, email: true },
+                  });
 
-            await tx.profile.upsert({
-              where: { userId: user.id },
-              update: {
-                fullName: resolvedOwnerName,
-                phoneNumber: resolvedPhone,
-              },
-              create: {
-                userId: user.id,
-                fullName: resolvedOwnerName,
-                phoneNumber: resolvedPhone,
-              },
-            });
+              await tx.profile.upsert({
+                where: { userId: user.id },
+                update: {
+                  fullName: resolvedOwnerName,
+                  phoneNumber: resolvedPhone,
+                },
+                create: {
+                  userId: user.id,
+                  fullName: resolvedOwnerName,
+                  phoneNumber: resolvedPhone,
+                },
+              });
 
-            await tx.vendorSetupToken.create({
-              data: {
-                userId: user.id,
-                token: inviteToken,
-                expiresAt: inviteTokenExpiresAt,
-              },
-            });
+              await tx.vendorSetupToken.create({
+                data: {
+                  userId: user.id,
+                  token: inviteToken,
+                  expiresAt: inviteTokenExpiresAt,
+                },
+              });
 
-            await tx.organizationMember.create({
-              data: {
-                userId: user.id,
-                organizationId: organization.id,
-                role: "OWNER",
-                isPrimary: true,
-                isActive: true,
-              },
-            });
+              await tx.organizationMember.create({
+                data: {
+                  userId: user.id,
+                  organizationId: organization.id,
+                  role: "OWNER",
+                  isPrimary: true,
+                  isActive: true,
+                },
+              });
+            }
 
-            return { organization, user };
+            return { organization, inviteLink: emailStr ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null };
           });
 
           results.organizations.push({
             id: result.organization.id,
             name: result.organization.name,
-            email: result.user.email,
-            inviteLink: `${VENDOR_APP_URL}/set-password?token=${inviteToken}`,
+            email: emailStr,
+            inviteLink: result.inviteLink || "",
           });
           results.created++;
         } catch (err) {

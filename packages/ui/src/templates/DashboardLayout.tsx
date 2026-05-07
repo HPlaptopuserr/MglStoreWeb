@@ -64,34 +64,30 @@ export function DashboardLayout({
         />
       )}
 
-      <div className="flex min-h-screen flex-1 flex-col bg-slate-50">
+      <div className="flex min-h-screen flex-1 flex-col bg-slate-50 min-w-0">
         {isVendor && (
           <VendorHeader
             userName={organizationName || userName}
             onMenuToggle={() => setMobileMenuOpen((o) => !o)}
           />
         )}
-        <main
-          className={`overflow-x-hidden ${
-            isAdmin
-              ? "px-4 pt-6 pb-10 sm:px-10 sm:pt-8"
-              : isVendorPosRoute
-                ? "px-3 pt-4 pb-6 sm:px-4"
-                : "px-4 pt-5 pb-10 sm:px-6 sm:pt-6"
-          }`}
-        >
-          <div
-            className={`${
-              isAdmin
-                ? "max-w-7xl"
-                : isVendorPosRoute
-                  ? "max-w-[1480px]"
-                  : "max-w-6xl"
-            } mx-auto`}
-          >
+        {isVendor ? (
+          <main className="min-w-0 flex-1 overflow-x-hidden bg-slate-50">
             {children}
-          </div>
-        </main>
+          </main>
+        ) : (
+          <main
+            className={`overflow-x-hidden ${
+              isAdmin
+                ? "px-4 pt-6 pb-10 sm:px-10 sm:pt-8"
+                : "px-4 pt-5 pb-10 sm:px-6 sm:pt-6"
+            }`}
+          >
+            <div className={`${isAdmin ? "max-w-7xl" : "max-w-6xl"} mx-auto`}>
+              {children}
+            </div>
+          </main>
+        )}
       </div>
     </div>
   );

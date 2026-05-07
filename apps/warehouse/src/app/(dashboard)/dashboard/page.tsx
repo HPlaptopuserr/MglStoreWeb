@@ -2,341 +2,289 @@
 
 import { useEffect, useState } from "react";
 import {
-  AlertTriangle,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Loader2,
-  TrendingUp,
-  TrendingDown,
-  Clock,
-  ArrowRight,
-  Layers,
+  AlertTriangle, ArrowDownToLine, ArrowUpFromLine,
+  Loader2, TrendingUp, TrendingDown, ArrowLeftRight,
+  ArrowRight, Layers, Package, ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
 import { API, wmsFetch } from "@/lib/api";
-import {
-  KpiCard,
-  RecentMovements,
-  MovementDetailModal,
-  PendingRequests,
-  CategoryModal,
-} from "@/components/dashboard";
+import { RecentMovements, MovementDetailModal, PendingRequests, CategoryModal } from "@/components/dashboard";
 import type { WarehouseDetail, Movement, CategoryWithCount } from "@/components/dashboard";
 
+const QUICK_ACTIONS = [
+  { href: "/receive",   label: "Бараа хүлээн авах", icon: ArrowDownToLine,  bg: "bg-emerald-500" },
+  { href: "/dispatch",  label: "Бараа гаргах",       icon: ArrowUpFromLine,  bg: "bg-blue-500" },
+  { href: "/transfers", label: "Шилжүүлэг",          icon: ArrowLeftRight,   bg: "bg-purple-500" },
+];
+
 export default function WmsDashboardPage() {
-  const [warehouses, setWarehouses] = useState<WarehouseDetail[]>([]);
-  const [movements, setMovements] = useState<Movement[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedWarehouse, setSelectedWarehouse] =
-    useState<WarehouseDetail | null>(null);
-  const [categories, setCategories] = useState<CategoryWithCount[]>([]);
+  const [warehouses, setWarehouses]           = useState<WarehouseDetail[]>([]);
+  const [movements, setMovements]             = useState<Movement[]>([]);
+  const [loading, setLoading]                 = useState(true);
+  const [selectedWarehouse, setSelectedWarehouse] = useState<WarehouseDetail | null>(null);
+  const [categories, setCategories]           = useState<CategoryWithCount[]>([]);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null);
+  const [selectedMovement, setSelectedMovement]   = useState<Movement | null>(null);
+  const [whDropdownOpen, setWhDropdownOpen]   = useState(false);
 
   useEffect(() => {
-    const load = async () => {
+    (async () => {
       try {
-        const user = JSON.parse(
-          localStorage.getItem("wms_user") || "{}",
-        );
+        const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
+        const whUrl = user.organizationId
+          ? `${API}/warehouses/organization/${user.organizationId}`
+          : `${API}/warehouses`;
 
-        // Fetch warehouses
-        let url = `${API}/warehouses`;
-        if (user.organizationId) {
-          url = `${API}/warehouses/organization/${user.organizationId}`;
-        }
+        const [whRes, catRes, mvRes] = await Promise.all([
+          wmsFetch(whUrl),
+          wmsFetch(`${API}/business-categories`),
+          wmsFetch(`${API}/inventory-ledger?limit=10`),
+        ]);
 
-        const whRes = await wmsFetch(url);
         if (whRes.ok) {
           const whData = await whRes.json();
-          const whList = Array.isArray(whData)
-            ? whData
-            : whData.warehouses || [];
-
-          // Fetch details for each warehouse
+          const whList = Array.isArray(whData) ? whData : whData.warehouses || [];
           const details: WarehouseDetail[] = [];
           for (const wh of whList.slice(0, 10)) {
-            const detailRes = await wmsFetch(
-              `${API}/warehouses/${wh.id}/detail`,
-            );
-            if (detailRes.ok) {
-              details.push(await detailRes.json());
-            }
+            const r = await wmsFetch(`${API}/warehouses/${wh.id}/detail?invPage=1&invLimit=10`);
+            if (r.ok) details.push(await r.json());
           }
           setWarehouses(details);
           if (details.length > 0) setSelectedWarehouse(details[0]);
         }
-
-        // Fetch categories
-        const catRes = await wmsFetch(`${API}/business-categories`);
         if (catRes.ok) {
-          const catData = await catRes.json();
-          setCategories(Array.isArray(catData) ? catData : []);
+          const d = await catRes.json();
+          setCategories(Array.isArray(d) ? d : []);
         }
-
-        // Fetch recent movements
-        const mvRes = await wmsFetch(`${API}/inventory-ledger?limit=10`);
         if (mvRes.ok) {
-          const mvData = await mvRes.json();
-          setMovements(mvData.entries || []);
+          const d = await mvRes.json();
+          setMovements(d.entries || []);
         }
       } catch (err) {
         console.error("Dashboard load failed:", err);
       } finally {
         setLoading(false);
       }
-    };
-    load();
+    })();
   }, []);
 
   if (loading) {
     return (
-      <div className="flex h-96 items-center justify-center">
+      <div className="flex h-[60vh] flex-col items-center justify-center gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <p className="text-sm text-slate-400">Мэдээлэл татаж байна...</p>
       </div>
     );
   }
 
-  // Aggregate stats across all warehouses
-  const totalProducts = warehouses.reduce(
-    (sum, w) => sum + (w.summary?.totalProducts || 0),
-    0,
-  );
-  const totalStock = warehouses.reduce(
-    (sum, w) => sum + (w.summary?.totalQuantity || 0),
-    0,
-  );
-  const lowStockItems = warehouses.reduce(
-    (sum, w) => sum + (w.summary?.lowStockCount || 0),
-    0,
-  );
-  const outOfStockItems = warehouses.reduce(
-    (sum, w) => sum + (w.summary?.outOfStockCount || 0),
-    0,
-  );
+  const totalProducts   = warehouses.reduce((s, w) => s + (w.summary?.totalProducts  || 0), 0);
+  const totalQuantity   = warehouses.reduce((s, w) => s + (w.summary?.totalQuantity  || 0), 0);
+  const lowStockItems   = warehouses.reduce((s, w) => s + (w.summary?.lowStockCount  || 0), 0);
+  const outOfStockItems = warehouses.reduce((s, w) => s + (w.summary?.outOfStockCount|| 0), 0);
 
-  // Build low stock items from selected warehouse
-  const lowStockList =
-    selectedWarehouse?.inventories
-      ?.filter((inv) => inv.quantity <= inv.minQuantity && inv.quantity > 0)
-      .slice(0, 5) || [];
-
-  const outOfStockList =
-    selectedWarehouse?.inventories
-      ?.filter((inv) => inv.quantity === 0)
-      .slice(0, 5) || [];
+  const lowStockList  = selectedWarehouse?.inventories?.filter((i) => i.quantity > 0 && i.quantity <= i.minQuantity).slice(0, 5) || [];
+  const outStockList  = selectedWarehouse?.inventories?.filter((i) => i.quantity === 0).slice(0, 5) || [];
+  const alertList     = [...outStockList, ...lowStockList];
 
   return (
-    <div className="space-y-6">
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard
-          label="Ангилал"
-          value={categories.length.toString()}
-          icon={<Layers className="h-5 w-5 text-blue-600" />}
-          color="blue"
+    <div className="space-y-5 pb-6">
+
+      {/* ── KPI row ──────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {/* Categories */}
+        <button
           onClick={() => setShowCategoryModal(true)}
-        />
-        <KpiCard
-          label="Нийт нөөц"
-          value={totalProducts.toLocaleString()}
-          icon={<TrendingUp className="h-5 w-5 text-emerald-600" />}
-          color="emerald"
-          sub="нэгж"
-        />
-        <KpiCard
-          label="Дутагдалтай"
-          value={lowStockItems.toString()}
-          icon={<TrendingDown className="h-5 w-5 text-amber-600" />}
-          color="amber"
-          alert={lowStockItems > 0}
-        />
-        <KpiCard
-          label="Дууссан"
-          value={outOfStockItems.toString()}
-          icon={<AlertTriangle className="h-5 w-5 text-red-600" />}
-          color="red"
-          alert={outOfStockItems > 0}
-        />
+          className="flex flex-col rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-100 transition active:scale-[0.98]"
+        >
+          <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100">
+            <Layers className="h-4.5 w-4.5 text-blue-600" />
+          </div>
+          <p className="text-xs font-medium text-slate-400">Ангилал</p>
+          <p className="mt-0.5 text-3xl font-black text-slate-900">{categories.length}</p>
+        </button>
+
+        {/* Total stock */}
+        <div className="flex flex-col rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+          <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100">
+            <TrendingUp className="h-4.5 w-4.5 text-emerald-600" />
+          </div>
+          <p className="text-xs font-medium text-slate-400">Нийт нөөц</p>
+          <p className="mt-0.5 text-3xl font-black text-slate-900">{totalProducts}</p>
+          <p className="text-[11px] text-slate-400">{totalQuantity.toLocaleString()} нэгж</p>
+        </div>
+
+        {/* Low stock */}
+        <div className={`flex flex-col rounded-2xl p-4 shadow-sm ring-1 ${
+          lowStockItems > 0 ? "bg-amber-50 ring-amber-100" : "bg-white ring-slate-100"
+        }`}>
+          <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${
+            lowStockItems > 0 ? "bg-amber-200" : "bg-slate-100"
+          }`}>
+            <TrendingDown className={`h-4.5 w-4.5 ${lowStockItems > 0 ? "text-amber-700" : "text-slate-400"}`} />
+          </div>
+          <p className="text-xs font-medium text-slate-400">Дутагдалтай</p>
+          <p className={`mt-0.5 text-3xl font-black ${lowStockItems > 0 ? "text-amber-700" : "text-slate-900"}`}>
+            {lowStockItems}
+          </p>
+        </div>
+
+        {/* Out of stock */}
+        <div className={`flex flex-col rounded-2xl p-4 shadow-sm ring-1 ${
+          outOfStockItems > 0 ? "bg-red-50 ring-red-100" : "bg-white ring-slate-100"
+        }`}>
+          <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${
+            outOfStockItems > 0 ? "bg-red-200" : "bg-slate-100"
+          }`}>
+            <AlertTriangle className={`h-4.5 w-4.5 ${outOfStockItems > 0 ? "text-red-700" : "text-slate-400"}`} />
+          </div>
+          <p className="text-xs font-medium text-slate-400">Дууссан</p>
+          <p className={`mt-0.5 text-3xl font-black ${outOfStockItems > 0 ? "text-red-700" : "text-slate-900"}`}>
+            {outOfStockItems}
+          </p>
+        </div>
       </div>
 
-      {/* Warehouse selector */}
+      {/* ── Warehouse picker (only if multiple) ──────────────────────── */}
       {warehouses.length > 1 && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-slate-500">Агуулах:</span>
-          <div className="flex gap-2">
-            {warehouses.map((wh) => (
-              <button
-                key={wh.id}
-                onClick={() => setSelectedWarehouse(wh)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  selectedWarehouse?.id === wh.id
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-                }`}
-              >
-                {wh.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Low stock alerts */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5 lg:col-span-2">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900">
-              Дутагдалтай бараа
-            </h2>
-            <Link
-              href="/inventory?status=low"
-              className="text-xs font-medium text-blue-600 hover:text-blue-700"
-            >
-              Бүгдийг харах →
-            </Link>
-          </div>
-
-          {lowStockList.length === 0 && outOfStockList.length === 0 ? (
-            <div className="rounded-lg bg-emerald-50 px-4 py-8 text-center">
-              <p className="text-sm font-medium text-emerald-700">
-                Дутагдалтай бараа байхгүй
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {outOfStockList.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between rounded-lg border border-red-100 bg-red-50/50 px-4 py-3"
+        <div className="relative">
+          <button
+            onClick={() => setWhDropdownOpen((v) => !v)}
+            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm sm:w-auto sm:min-w-[200px]"
+          >
+            <span>{selectedWarehouse?.name || "Агуулах сонгох"}</span>
+            <ChevronDown className={`ml-3 h-4 w-4 text-slate-400 transition-transform ${whDropdownOpen ? "rotate-180" : ""}`} />
+          </button>
+          {whDropdownOpen && (
+            <div className="absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:w-auto sm:min-w-[200px]">
+              {warehouses.map((wh) => (
+                <button
+                  key={wh.id}
+                  onClick={() => { setSelectedWarehouse(wh); setWhDropdownOpen(false); }}
+                  className={`flex w-full items-center px-4 py-3 text-sm transition-colors ${
+                    selectedWarehouse?.id === wh.id
+                      ? "bg-blue-50 font-semibold text-blue-700"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
                 >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {item.product.name}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {item.product.sku || "SKU байхгүй"}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
-                      ДУУССАН
-                    </span>
-                    <p className="mt-0.5 text-xs text-slate-400">
-                      Min: {item.minQuantity}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {lowStockList.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50/50 px-4 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {item.product.name}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {item.product.sku || "SKU байхгүй"}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">
-                      {item.quantity} / {item.minQuantity}
-                    </span>
-                  </div>
-                </div>
+                  {wh.name}
+                </button>
               ))}
             </div>
           )}
         </div>
+      )}
 
-        {/* Quick actions */}
+      {/* ── Main content grid ─────────────────────────────────────────── */}
+      <div className="grid gap-4 lg:grid-cols-3">
+
+        {/* Alert list */}
+        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 lg:col-span-2">
+          <div className="flex items-center justify-between px-5 py-4">
+            <h2 className="font-bold text-slate-900">Анхааруулга</h2>
+            <Link href="/inventory" className="text-xs font-semibold text-blue-600">
+              Бүгд харах →
+            </Link>
+          </div>
+
+          {alertList.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50">
+                <Package className="h-6 w-6 text-emerald-500" />
+              </div>
+              <p className="text-sm font-medium text-emerald-700">Бүх бараа хэвийн</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-50">
+              {alertList.map((item) => {
+                const isOut = item.quantity === 0;
+                return (
+                  <div key={item.id} className="flex items-center gap-3 px-5 py-3.5">
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      isOut ? "bg-red-100" : "bg-amber-100"
+                    }`}>
+                      {isOut
+                        ? <AlertTriangle className="h-4 w-4 text-red-600" />
+                        : <TrendingDown className="h-4 w-4 text-amber-600" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900">{item.product.name}</p>
+                      <p className="text-xs text-slate-400">{item.product.sku || "—"}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                        isOut ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                      }`}>
+                        {isOut ? "Дууссан" : `${item.quantity}/${item.minQuantity}`}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Right column */}
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="mb-4 text-sm font-bold text-slate-900">
-              Шуурхай үйлдэл
-            </h2>
-            <div className="space-y-2">
-              <Link
-                href="/receive"
-                className="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 transition-colors hover:border-blue-200 hover:bg-blue-50/30"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100">
-                    <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
+          {/* Quick actions */}
+          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+            <h2 className="px-5 pb-2 pt-4 font-bold text-slate-900">Шуурхай үйлдэл</h2>
+            <div className="divide-y divide-slate-50">
+              {QUICK_ACTIONS.map(({ href, label, icon: Icon, bg }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50 active:bg-slate-100"
+                >
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${bg}`}>
+                    <Icon className="h-4 w-4 text-white" />
                   </div>
-                  <span className="text-sm font-medium text-slate-700">
-                    Бараа хүлээн авах
-                  </span>
-                </div>
-                <ArrowRight className="h-4 w-4 text-slate-300" />
-              </Link>
-
-              <Link
-                href="/dispatch"
-                className="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 transition-colors hover:border-blue-200 hover:bg-blue-50/30"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100">
-                    <ArrowUpFromLine className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-700">
-                    Бараа гаргах
-                  </span>
-                </div>
-                <ArrowRight className="h-4 w-4 text-slate-300" />
-              </Link>
-
-              <Link
-                href="/transfers"
-                className="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 transition-colors hover:border-blue-200 hover:bg-blue-50/30"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100">
-                    <Clock className="h-4 w-4 text-purple-600" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-700">
-                    Шилжүүлэг
-                  </span>
-                </div>
-                <ArrowRight className="h-4 w-4 text-slate-300" />
-              </Link>
+                  <span className="flex-1 text-sm font-medium text-slate-700">{label}</span>
+                  <ArrowRight className="h-4 w-4 text-slate-300" />
+                </Link>
+              ))}
             </div>
           </div>
 
           {/* Warehouse info */}
           {selectedWarehouse && (
-            <div className="rounded-xl border border-slate-200 bg-white p-5">
-              <h2 className="mb-3 text-sm font-bold text-slate-900">
-                {selectedWarehouse.name}
-              </h2>
-              <p className="text-xs text-slate-500">
-                {selectedWarehouse.address}
-              </p>
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Хүчин чадал</span>
-                  <span className="font-medium text-slate-900">
-                    {selectedWarehouse.capacity > 0
-                      ? selectedWarehouse.capacity.toLocaleString()
-                      : "—"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Нийт бараа</span>
-                  <span className="font-medium text-slate-900">
-                    {selectedWarehouse.summary?.totalProducts || 0}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Нийт нөөц</span>
-                  <span className="font-medium text-slate-900">
-                    {(
-                      selectedWarehouse.summary?.totalQuantity || 0
-                    ).toLocaleString()}
-                  </span>
+            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+              <div className="px-5 pb-4 pt-4">
+                <h2 className="font-bold text-slate-900">{selectedWarehouse.name}</h2>
+                {selectedWarehouse.address && (
+                  <p className="mt-0.5 text-xs text-slate-400">{selectedWarehouse.address}</p>
+                )}
+                <div className="mt-4 space-y-3">
+                  {[
+                    { label: "Хүчин чадал", value: selectedWarehouse.capacity > 0 ? selectedWarehouse.capacity.toLocaleString() : "—" },
+                    { label: "Нийт бараа",  value: selectedWarehouse.summary?.totalProducts || 0 },
+                    { label: "Нийт нөөц",  value: (selectedWarehouse.summary?.totalQuantity || 0).toLocaleString() },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <span className="text-sm text-slate-500">{label}</span>
+                      <span className="text-sm font-semibold text-slate-900">{value}</span>
+                    </div>
+                  ))}
+                  {((selectedWarehouse.summary as any)?.capacityUsed ?? 0) > 0 && (
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className="text-xs text-slate-400">Дүүргэлт</span>
+                        <span className="text-xs font-semibold text-slate-700">
+                          {(selectedWarehouse.summary as any).capacityUsed}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            ((selectedWarehouse.summary as any).capacityUsed || 0) > 90 ? "bg-red-500"
+                            : ((selectedWarehouse.summary as any).capacityUsed || 0) > 70 ? "bg-amber-500"
+                            : "bg-emerald-500"
+                          }`}
+                          style={{ width: `${Math.min(100, (selectedWarehouse.summary as any).capacityUsed || 0)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -345,27 +293,21 @@ export default function WmsDashboardPage() {
       </div>
 
       {/* Recent movements */}
-      <RecentMovements movements={movements} onSelect={setSelectedMovement} />
+      <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 overflow-hidden">
+        <RecentMovements movements={movements} onSelect={setSelectedMovement} />
+      </div>
 
-      {/* Pending stock requests */}
-      <PendingRequests />
+      {/* Pending requests */}
+      <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 overflow-hidden">
+        <PendingRequests />
+      </div>
 
-      {/* Category modal */}
       {showCategoryModal && (
-        <CategoryModal
-          categories={categories}
-          onClose={() => setShowCategoryModal(false)}
-        />
+        <CategoryModal categories={categories} onClose={() => setShowCategoryModal(false)} />
       )}
-
-      {/* Movement detail modal */}
       {selectedMovement && (
-        <MovementDetailModal
-          movement={selectedMovement}
-          onClose={() => setSelectedMovement(null)}
-        />
+        <MovementDetailModal movement={selectedMovement} onClose={() => setSelectedMovement(null)} />
       )}
     </div>
   );
 }
-

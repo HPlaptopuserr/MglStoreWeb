@@ -141,6 +141,9 @@ function ProductsContent() {
     loadCategories();
   }, []);
 
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
   useEffect(() => {
     const loadProducts = async () => {
       setProductsLoading(true);
@@ -148,18 +151,23 @@ function ProductsContent() {
         const params = new URLSearchParams();
         if (activeCategory) params.set("businessCategoryId", activeCategory);
         if (debouncedSearch) params.set("search", debouncedSearch);
-        const query = params.toString();
-        const url = `${API}/products${query ? `?${query}` : ""}`;
+        params.set("page", String(currentPage));
+        params.set("limit", "24");
+        const url = `${API}/products?${params.toString()}`;
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
-          setApiProducts(Array.isArray(data) ? data : []);
+          const list = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
+          setApiProducts(list);
+          const tot = data.total ?? list.length;
+          setTotalProducts(tot);
+          setTotalPages(data.pages ?? Math.max(1, Math.ceil(tot / 24)));
         }
       } catch {}
       finally { setProductsLoading(false); }
     };
     loadProducts();
-  }, [activeCategory, debouncedSearch]);
+  }, [activeCategory, debouncedSearch, currentPage]);
 
   useEffect(() => {
     setActiveCategory(resolvedCategoryParam);
@@ -256,15 +264,16 @@ function ProductsContent() {
     return list;
   }, [apiProducts, searchQuery, discountOnly, priceMin, priceMax, sortKey]);
 
-  // Reset page on filter change
-  const totalPages = Math.max(1, Math.ceil(processedProducts.length / PRODUCTS_PER_PAGE));
+  // Server-side pagination: API already returns only the current page's products
+  // Client-side filters (price range, discount) still apply on the current page
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => { setCurrentPage(1); }, [processedProducts.length, discountOnly, priceMin, priceMax, sortKey]);
+  useMemo(() => { setCurrentPage(1); }, [activeCategory, debouncedSearch, discountOnly, priceMin, priceMax, sortKey]);
 
-  const displayProducts = processedProducts.slice(
-    (currentPage - 1) * PRODUCTS_PER_PAGE,
-    currentPage * PRODUCTS_PER_PAGE,
-  );
+  // processedProducts is already the current page slice from API
+  const displayProducts = processedProducts;
+  const effectiveTotalPages = (discountOnly || priceMin || priceMax)
+    ? Math.max(1, Math.ceil(processedProducts.length / PRODUCTS_PER_PAGE))
+    : totalPages;
 
   const goToPage = (p: number) => {
     setCurrentPage(p);
@@ -295,7 +304,7 @@ function ProductsContent() {
           <h1 className="text-2xl md:text-4xl font-black tracking-tight text-black uppercase">
             {activeCategoryName ?? "Бүх бараа бүтээгдэхүүн"}{" "}
             <span className="text-[#FFAD02] text-sm md:text-base font-bold align-middle">
-              ({processedProducts.length})
+              ({totalProducts})
             </span>
           </h1>
         </div>
@@ -616,11 +625,10 @@ function ProductsContent() {
 
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {effectiveTotalPages > 1 && (
           <div className="mt-12 flex flex-col items-center gap-4">
             <p className="text-xs text-gray-400">
-              {(currentPage - 1) * PRODUCTS_PER_PAGE + 1}–{Math.min(currentPage * PRODUCTS_PER_PAGE, processedProducts.length)}{" "}/
-              {" "}{processedProducts.length} бараа
+              Хуудас {currentPage} / {effectiveTotalPages} ({totalProducts} бараа)
             </p>
 
             <div className="flex items-center gap-1">
@@ -636,16 +644,16 @@ function ProductsContent() {
               {/* Page numbers */}
               {(() => {
                 const pages: (number | "…")[] = [];
-                if (totalPages <= 7) {
-                  for (let i = 1; i <= totalPages; i++) pages.push(i);
+                if (effectiveTotalPages <= 7) {
+                  for (let i = 1; i <= effectiveTotalPages; i++) pages.push(i);
                 } else {
                   pages.push(1);
                   if (currentPage > 3) pages.push("…");
                   const start = Math.max(2, currentPage - 1);
-                  const end = Math.min(totalPages - 1, currentPage + 1);
+                  const end = Math.min(effectiveTotalPages - 1, currentPage + 1);
                   for (let i = start; i <= end; i++) pages.push(i);
-                  if (currentPage < totalPages - 2) pages.push("…");
-                  pages.push(totalPages);
+                  if (currentPage < effectiveTotalPages - 2) pages.push("…");
+                  pages.push(effectiveTotalPages);
                 }
                 return pages.map((p, idx) =>
                   p === "…" ? (
@@ -670,8 +678,8 @@ function ProductsContent() {
 
               {/* Next */}
               <button
-                onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
+                onClick={() => goToPage(Math.min(effectiveTotalPages, currentPage + 1))}
+                disabled={currentPage === effectiveTotalPages}
                 className="flex h-9 w-9 items-center justify-center border border-black text-black transition-colors hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
               >
                 <ChevronRight size={16} />

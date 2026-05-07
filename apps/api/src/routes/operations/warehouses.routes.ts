@@ -334,97 +334,142 @@ router.delete("/warehouses/:id", requireAuth, requirePlatformPermission(Permissi
   }
 });
 
-// Get warehouse detail with inventory
+// Get warehouse detail with inventory (paginated)
 router.get("/warehouses/:id/detail", async (req, res) => {
   try {
     const { id } = req.params;
 
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id, deletedAt: null },
-      include: {
-        organizations: {
-          include: {
-            organization: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                logoUrl: true,
-              },
-            },
-          },
-        },
-        inventories: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                sku: true,
-                price: true,
-                images: {
-                  take: 1,
-                  select: { url: true },
-                },
-                category: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-                organization: {
-                  select: {
-                    id: true,
-                    name: true,
-                    slug: true,
-                  },
+    // Inventory pagination params — default 100, hard cap 200
+    const invPage  = Math.max(1, parseInt((req.query.invPage  as string) || "1",  10) || 1);
+    const invLimit = Math.min(100, Math.max(1, parseInt((req.query.invLimit as string) || "50", 10) || 50));
+    const invSkip  = (invPage - 1) * invLimit;
+
+    // Fetch warehouse meta, paginated inventories, and total count in parallel
+    const [warehouse, inventories, invTotal] = await Promise.all([
+      prisma.warehouse.findUnique({
+        where: { id, deletedAt: null },
+        include: {
+          organizations: {
+            include: {
+              organization: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  logoUrl: true,
                 },
               },
             },
           },
-          orderBy: {
-            updatedAt: "desc",
-          },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            email: true,
-            profile: {
-              select: {
-                fullName: true,
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              profile: {
+                select: { fullName: true },
               },
             },
           },
         },
-      },
-    });
+      }),
+      prisma.warehouseInventory.findMany({
+        where: { warehouseId: id },
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              price: true,
+              images: {
+                take: 1,
+                select: { url: true },
+              },
+              category: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              organization: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        skip: invSkip,
+        take: invLimit,
+      }),
+      // Accurate aggregate stats — independent of pagination window
+      prisma.warehouseInventory.count({ where: { warehouseId: id } }),
+    ]);
 
     if (!warehouse) {
       return res.status(404).json({ message: "Агуулах олдсонгүй" });
     }
 
-    // Calculate summary stats
-    const totalProducts = warehouse.inventories.length;
-    const totalQuantity = warehouse.inventories.reduce(
-      (sum: number, inv: (typeof warehouse.inventories)[number]) => sum + inv.quantity,
-      0,
-    );
-    const lowStockItems = warehouse.inventories.filter(
-      (inv: (typeof warehouse.inventories)[number]) => inv.quantity <= inv.minQuantity,
-    ).length;
+    // Strip base64 image URLs — they bloat the response by ~1MB per product
+    const sanitizedInventories = inventories.map((inv) => ({
+      ...inv,
+      product: inv.product
+        ? {
+            ...inv.product,
+            images: (inv.product.images ?? [])
+              .filter((img) => img.url && !img.url.startsWith("data:"))
+              .slice(0, 1),
+          }
+        : inv.product,
+    }));
+
+    // Attach paginated inventories to the warehouse object for the frontend
+    (warehouse as any).inventories = sanitizedInventories;
+
+    // Aggregate stats computed across ALL inventory rows
+    const [aggResult, outCount, lowStockItemsRaw] = await Promise.all([
+      prisma.warehouseInventory.aggregate({
+        where: { warehouseId: id },
+        _sum: { quantity: true },
+      }),
+      prisma.warehouseInventory.count({
+        where: { warehouseId: id, quantity: 0 },
+      }),
+      prisma.$queryRaw<[{ count: bigint }]>`
+        SELECT COUNT(*)::int AS count
+        FROM "WarehouseInventory"
+        WHERE "warehouseId" = ${id}
+          AND quantity > 0
+          AND quantity <= "minQuantity"
+      `
+    ]);
+
+    const lowStockItems = Number(lowStockItemsRaw[0]?.count ?? 0);
+
+    const totalQuantity = aggResult._sum.quantity ?? 0;
 
     res.json({
       ...warehouse,
-      organizations: warehouse.organizations.map((wo: (typeof warehouse.organizations)[number]) => wo.organization),
+      organizations: warehouse.organizations.map((wo) => wo.organization),
       summary: {
-        totalProducts,
+        totalProducts: invTotal,
         totalQuantity,
         lowStockItems,
+        lowStockCount: lowStockItems,
+        outOfStockCount: outCount,
         capacityUsed:
           warehouse.capacity > 0
             ? Math.round((totalQuantity / warehouse.capacity) * 100)
             : 0,
+      },
+      pagination: {
+        page: invPage,
+        limit: invLimit,
+        total: invTotal,
+        totalPages: Math.ceil(invTotal / invLimit),
       },
     });
   } catch (error) {

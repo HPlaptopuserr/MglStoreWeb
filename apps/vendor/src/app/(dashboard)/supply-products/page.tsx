@@ -145,7 +145,8 @@ export default function SupplyProductsPage() {
   }, [data]);
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="w-full min-w-0 px-4 pt-5 pb-10 sm:px-6 sm:pt-6">
+      <div className="mx-auto max-w-6xl w-full min-w-0 space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-3xl font-black tracking-tight text-slate-900">
@@ -266,7 +267,9 @@ export default function SupplyProductsPage() {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <>
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1100px] text-sm">
               <thead>
@@ -363,7 +366,81 @@ export default function SupplyProductsPage() {
             </table>
           </div>
         </div>
+
+        {/* Mobile Card View */}
+        <div className="grid grid-cols-1 gap-4 md:hidden">
+          {filteredItems.map((item) => {
+            const isLowStock = item.quantity <= item.alertThreshold;
+            const isOwnProduct = item.source === "own";
+
+            return (
+              <div
+                key={item.id}
+                className={`flex flex-col gap-3 rounded-2xl border p-4 shadow-sm relative overflow-hidden ${
+                  isLowStock ? "border-red-200 bg-red-50/40" : "border-slate-200 bg-white"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
+                    {item.product.images[0]?.url ? (
+                      <img
+                        src={item.product.images[0].url}
+                        alt={item.product.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Package size={24} className="text-slate-300" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-base font-bold text-slate-900">{item.product.name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      SKU: {item.product.sku || "—"} • {item.product.categoryName}
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-amber-600">
+                      {isOwnProduct ? "Өөрийн бараа" : "Татагдсан бараа"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-1 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Үлдэгдэл</p>
+                    <p className={`text-sm font-black ${isLowStock ? "text-red-600" : "text-slate-900"}`}>
+                      {item.quantity} ширхэг
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Үнэ</p>
+                    <p className="text-sm font-black text-slate-900">
+                      ₮{Number(item.product.price).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mt-2 pt-3 border-t border-slate-100">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-slate-700">{item.warehouse.name}</span>
+                    <span className="text-[10px] text-slate-500">{item.warehouse.city}, {item.warehouse.district}</span>
+                  </div>
+                  <Link
+                    href={`/shipments?warehouseId=${encodeURIComponent(item.warehouse.id)}&productId=${encodeURIComponent(item.product.id)}`}
+                    className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-bold transition-colors ${
+                      isLowStock 
+                        ? "bg-red-100 text-red-700 hover:bg-red-200" 
+                        : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                    }`}
+                  >
+                    Түүх <ChevronRight size={14} />
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        </>
       )}
+      </div>
     </div>
   );
 }

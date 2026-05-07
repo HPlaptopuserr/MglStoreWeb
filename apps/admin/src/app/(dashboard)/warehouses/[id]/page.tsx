@@ -44,6 +44,13 @@ interface InventoryItem {
   };
 }
 
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 interface WarehouseDetail {
   id: string;
   name: string;
@@ -75,6 +82,7 @@ interface WarehouseDetail {
     lowStockItems: number;
     capacityUsed: number;
   };
+  pagination?: Pagination;
 }
 
 export default function WarehouseDetailPage() {
@@ -82,6 +90,8 @@ export default function WarehouseDetailPage() {
   const router = useRouter();
   const [warehouse, setWarehouse] = useState<WarehouseDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
@@ -110,13 +120,15 @@ export default function WarehouseDetailPage() {
     }
   };
 
+  // Initial load — page 1
   useEffect(() => {
     const fetchWarehouse = async () => {
       try {
-        const res = await adminFetch(`${API}/warehouses/${params.id}/detail`);
+        const res = await adminFetch(`${API}/warehouses/${params.id}/detail?invPage=1&invLimit=100`);
         if (!res.ok) throw new Error("Failed to fetch warehouse");
         const data = await res.json();
         setWarehouse(data);
+        setCurrentPage(1);
       } catch (error) {
         console.error("Failed to fetch warehouse:", error);
       } finally {
@@ -128,6 +140,38 @@ export default function WarehouseDetailPage() {
       fetchWarehouse();
     }
   }, [params?.id]);
+
+  // Load next page of inventories and append
+  const handleLoadMore = async () => {
+    if (!warehouse || loadingMore) return;
+    const nextPage = currentPage + 1;
+    setLoadingMore(true);
+    try {
+      const res = await adminFetch(
+        `${API}/warehouses/${params.id}/detail?invPage=${nextPage}&invLimit=100`,
+      );
+      if (!res.ok) return;
+      const data: WarehouseDetail = await res.json();
+      setWarehouse((prev) =>
+        prev
+          ? {
+              ...prev,
+              inventories: [...prev.inventories, ...data.inventories],
+              pagination: data.pagination,
+            }
+          : prev,
+      );
+      setCurrentPage(nextPage);
+    } catch (e) {
+      console.error("load more failed", e);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const hasMore =
+    !!warehouse?.pagination &&
+    warehouse.pagination.page < warehouse.pagination.totalPages;
 
   const filteredInventory = warehouse?.inventories.filter(
     (inv) =>
@@ -510,6 +554,27 @@ export default function WarehouseDetailPage() {
                 })}
               </tbody>
             </table>
+
+            {/* Load more footer */}
+            {(hasMore || warehouse?.pagination) && !searchTerm && (
+              <div className="flex items-center justify-between border-t border-slate-100 px-6 py-3">
+                <p className="text-xs text-slate-500">
+                  <span className="font-semibold text-slate-700">{warehouse?.inventories.length}</span> / <span className="font-semibold text-slate-700">{warehouse?.summary.totalProducts}</span> бараа харагдаж байна
+                </p>
+                {hasMore && (
+                  <button
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="inline-flex items-center gap-2 rounded-xl border border-[#5B4CFF]/30 bg-[#5B4CFF]/5 px-4 py-1.5 text-xs font-semibold text-[#5B4CFF] hover:bg-[#5B4CFF]/10 disabled:opacity-50"
+                  >
+                    {loadingMore ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : null}
+                    {loadingMore ? "Уншиж байна..." : "Цааш харах"}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-16">

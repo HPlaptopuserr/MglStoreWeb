@@ -79,11 +79,25 @@ export default function TransfersPage() {
     if (!sourceId) return;
     const load = async () => {
       try {
-        const res = await wmsFetch(`${API}/warehouses/${sourceId}/detail`);
-        if (res.ok) {
-          const data = await res.json();
-          setInventory(data.inventories || []);
+        let allInventories: any[] = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+          const res = await wmsFetch(`${API}/warehouses/${sourceId}/detail?invPage=${page}&invLimit=50`);
+          if (res.ok) {
+            const data = await res.json();
+            allInventories = [...allInventories, ...(data.inventories || [])];
+            if (data.pagination && data.pagination.page < data.pagination.totalPages) {
+              page++;
+            } else {
+              hasMore = false;
+            }
+          } else {
+            break;
+          }
         }
+        setInventory(allInventories);
       } catch {
         /* ignore */
       }
@@ -182,11 +196,25 @@ export default function TransfersPage() {
       setNote("");
 
       // Refresh source inventory
-      const res = await wmsFetch(`${API}/warehouses/${sourceId}/detail`);
-      if (res.ok) {
-        const data = await res.json();
-        setInventory(data.inventories || []);
+      let allInventories: any[] = [];
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        const res = await wmsFetch(`${API}/warehouses/${sourceId}/detail?invPage=${page}&invLimit=50`);
+        if (res.ok) {
+          const data = await res.json();
+          allInventories = [...allInventories, ...(data.inventories || [])];
+          if (data.pagination && data.pagination.page < data.pagination.totalPages) {
+            page++;
+          } else {
+            hasMore = false;
+          }
+        } else {
+          break;
+        }
       }
+      setInventory(allInventories);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       console.error("Transfer failed:", err);

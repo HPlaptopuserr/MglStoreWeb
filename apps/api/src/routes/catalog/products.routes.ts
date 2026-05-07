@@ -59,51 +59,61 @@ router.get("/products", async (req, res) => {
   try {
     const { organizationId, businessCategoryId } = req.query as Record<string, string>;
     const search = String(req.query.search ?? req.query.q ?? "").trim();
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 24)));
 
+    // Base where: use indexed columns only — avoid relation filters (they cause slow JOINs)
     const where: any = {
       deletedAt: null,
       isActive: true,
-      organization: { is: { deletedAt: null, status: "ACTIVE" } },
     };
     if (organizationId) where.organizationId = organizationId;
     if (businessCategoryId) where.businessCategoryId = businessCategoryId;
 
+    // Text search: limit to indexed/fast columns only
     if (search) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
         { sku: { contains: search, mode: "insensitive" } },
         { barcode: { contains: search, mode: "insensitive" } },
-        { organization: { is: { name: { contains: search, mode: "insensitive" } } } },
-        {
-          businessCategory: {
-            is: {
-              OR: [
-                { name: { contains: search, mode: "insensitive" } },
-                { slug: { contains: search, mode: "insensitive" } },
-              ],
-            },
-          },
-        },
       ];
     }
 
-    const products = await prisma.product.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: {
-        images: { select: { id: true, url: true } },
-        businessCategory: { select: { id: true, name: true, slug: true } },
-        organization: { select: { id: true, name: true, logoUrl: true } },
-        discounts: {
-          where: { isActive: true, validUntil: { gte: new Date() } },
-          select: { percent: true, validUntil: true },
-          take: 1,
+    const [total, products] = await Promise.all([
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          // description omitted from list view — too large, use /products/:id for detail
+          sku: true,
+          barcode: true,
+          price: true,
+          stock: true,
+          isActive: true,
+          createdAt: true,
+          businessCategoryId: true,
+          images: {
+            where: { url: { not: { startsWith: "data:" } } },
+            select: { id: true, url: true },
+            take: 1,
+          },
+          businessCategory: { select: { id: true, name: true, slug: true } },
+          organization: { select: { id: true, name: true, logoUrl: true } },
+          discounts: {
+            where: { isActive: true, validUntil: { gte: new Date() } },
+            select: { percent: true, validUntil: true },
+            take: 1,
+          },
         },
-      },
-    });
+      }),
+    ]);
 
-    return res.json(products);
+    return res.json({ total, page, limit, pages: Math.ceil(total / limit), products });
   } catch (error) {
     console.error("get products error", error);
     return res.status(500).json({ message: "Бараа авахад алдаа гарлаа", error: String(error) });
@@ -521,8 +531,13 @@ router.post(
       }
     }
 
-    // Validate max 5 images
-    const imageUrls: string[] = Array.isArray(images) ? images.slice(0, 5) : [];
+    // Validate max 5 images — reject base64 to prevent DB bloat
+    const rawImages: string[] = Array.isArray(images) ? images.slice(0, 5) : [];
+    const hasBase64 = rawImages.some((u) => u.startsWith("data:"));
+    if (hasBase64) {
+      return res.status(400).json({ message: "Зургийг /products/upload-image endpoint-аар урьдчилан upload хийнэ үү" });
+    }
+    const imageUrls: string[] = rawImages;
 
     const product = await prisma.product.create({
       data: {
@@ -610,9 +625,12 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (businessCategoryId !== undefined) data.businessCategoryId = businessCategoryId || null;
     if (isActive !== undefined) data.isActive = Boolean(isActive);
 
-    // Replace images if provided
+    // Replace images if provided — reject base64 to prevent DB bloat
     if (Array.isArray(images)) {
       const imageUrls = images.slice(0, 5);
+      if (imageUrls.some((u: string) => u.startsWith("data:"))) {
+        return res.status(400).json({ message: "Зургийг /products/upload-image endpoint-аар урьдчилан upload хийнэ үү" });
+      }
       await prisma.productImage.deleteMany({ where: { productId: id } });
       data.images = { create: imageUrls.map((url: string) => ({ url })) };
     }
@@ -650,6 +668,9 @@ router.patch("/products/:id/images", requireAuth, async (req, res) => {
     if (!perm) return;
 
     const imageUrls = images.slice(0, 5);
+    if (imageUrls.some((u: string) => u.startsWith("data:"))) {
+      return res.status(400).json({ message: "Зургийг /products/upload-image endpoint-аар урьдчилан upload хийнэ үү" });
+    }
     await prisma.productImage.deleteMany({ where: { productId: id } });
 
     const product = await prisma.product.update({
