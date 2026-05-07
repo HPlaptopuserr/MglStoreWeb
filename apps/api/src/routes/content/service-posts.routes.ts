@@ -1,7 +1,7 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
-import { requireAuth } from "../../middleware/auth";
+import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
@@ -61,6 +61,74 @@ router.get("/service-posts/:id", async (req, res) => {
   } catch (error) {
     console.error("get service-post error", error);
     res.status(500).json({ message: "Постыг авахад алдаа гарлаа" });
+  }
+});
+
+// ── POST /service-posts/:id/request — create a customer request for the vendor
+router.post("/service-posts/:id/request", requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user as AuthPayload | undefined;
+    const { message } = req.body || {};
+
+    if (!user?.userId) {
+      return res.status(401).json({ message: "Нэвтрээгүй байна" });
+    }
+
+    const post = await prisma.servicePost.findFirst({
+      where: { id: req.params.id, deletedAt: null, isActive: true },
+      select: {
+        id: true,
+        title: true,
+        organizationId: true,
+        organization: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    if (!post) {
+      return res.status(404).json({ message: "Үйлчилгээ олдсонгүй" });
+    }
+
+    const cleanMessage = typeof message === "string" ? message.trim() : "";
+    const description = [
+      `Web үйлчилгээний постоос ирсэн хүсэлт: ${post.title}`,
+      `Post ID: ${post.id}`,
+      cleanMessage ? `Тайлбар: ${cleanMessage}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const request = await prisma.serviceRequest.create({
+      data: {
+        organizationId: post.organizationId,
+        servicePostId: post.id,
+        requestedById: user.userId,
+        type: "OTHER",
+        title: `${post.title} - үйлчилгээний хүсэлт`,
+        description,
+        status: "PENDING",
+      },
+      include: {
+        organization: {
+          select: { id: true, name: true },
+        },
+        requestedBy: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: { fullName: true, phoneNumber: true },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(201).json(request);
+  } catch (error) {
+    console.error("create service-post request error", error);
+    res.status(500).json({ message: "Үйлчилгээний хүсэлт илгээхэд алдаа гарлаа" });
   }
 });
 

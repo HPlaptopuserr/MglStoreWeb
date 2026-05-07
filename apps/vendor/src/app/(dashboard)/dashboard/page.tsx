@@ -326,7 +326,7 @@ export default function Dashboard() {
                 label: "Үйлчилгээ",
                 value: data?.serviceRequests.total ?? 0,
                 sub: `${data?.serviceRequests.pending ?? 0} хүлээгдэж буй`,
-                href: "/services",
+                href: "/service-posts",
                 color: "bg-emerald-50 text-emerald-600",
               },
             ].map((s) => (
@@ -469,7 +469,7 @@ export default function Dashboard() {
                     { href: "/shipments", icon: Truck, label: "Нийлүүлэлт хүсэх", desc: "Агуулахаас бараа авах", color: "bg-[#FFAD02]", textColor: "text-black" },
                     { href: "/products", icon: Package, label: "Бараа нэмэх", desc: "Шинэ бүтээгдэхүүн", color: "bg-slate-900", textColor: "text-white" },
                     { href: "/service-posts", icon: Megaphone, label: "Зар нийтлэх", desc: "Зар сурталчилгаа", color: "bg-pink-500", textColor: "text-white" },
-                    { href: "/services", icon: Wrench, label: "Үйлчилгээ хүсэх", desc: "Дэмжлэг авах", color: "bg-slate-100", textColor: "text-slate-700" },
+                    { href: "/service-posts", icon: Wrench, label: "Үйлчилгээний постууд", desc: "Хүсэлтүүдээ харах", color: "bg-slate-100", textColor: "text-slate-700" },
                   ].map((a) => (
                     <Link
                       key={a.href}
@@ -501,7 +501,7 @@ export default function Dashboard() {
                       </div>
                       <h2 className="text-sm font-semibold text-slate-900">Сүүлийн үйлчилгээ</h2>
                     </div>
-                    <Link href="/services" className="text-[10px] font-bold text-slate-400 hover:text-slate-600">
+                    <Link href="/service-posts" className="text-[10px] font-bold text-slate-400 hover:text-slate-600">
                       Бүгд →
                     </Link>
                   </div>

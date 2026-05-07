@@ -1,8 +1,8 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
-import { Permission } from "@mgl/types";
+import { Permission, hasPlatformPermission, isFullAdmin } from "@mgl/types";
 import { requireAuth } from "../../middleware/auth";
-import { requireOrgPermission } from "../../services/permission.service";
+import { assertOrgPermission, requireOrgPermission } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
 
@@ -28,7 +28,15 @@ router.get("/service-requests", async (req, res) => {
   try {
     const { status, type, organizationId, search } = req.query;
 
-    const where: any = {};
+    const where: any = {
+      servicePostId: null,
+      NOT: {
+        description: {
+          contains: "Web үйлчилгээний постоос ирсэн хүсэлт",
+          mode: "insensitive",
+        },
+      },
+    };
 
     if (status && status !== "ALL") {
       where.status = status;
@@ -82,6 +90,7 @@ router.get("/service-requests", async (req, res) => {
             profile: {
               select: {
                 fullName: true,
+                phoneNumber: true,
               },
             },
           },
@@ -113,7 +122,7 @@ router.get("/service-requests", async (req, res) => {
 router.get("/service-requests/organization/:orgId", requireAuth, requireOrgPermission({ from: "params", field: "orgId" }, Permission.VIEW_ORG_DASHBOARD), async (req, res) => {
   try {
     const { orgId } = req.params;
-    const { status } = req.query;
+    const { status, servicePostId } = req.query;
 
     const where: any = {
       organizationId: orgId,
@@ -123,9 +132,19 @@ router.get("/service-requests/organization/:orgId", requireAuth, requireOrgPermi
       where.status = status;
     }
 
+    if (servicePostId && servicePostId !== "ALL") {
+      where.servicePostId = servicePostId;
+    }
+
     const requests = await prisma.serviceRequest.findMany({
       where,
       include: {
+        servicePost: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
         requestedBy: {
           select: {
             id: true,
@@ -133,6 +152,7 @@ router.get("/service-requests/organization/:orgId", requireAuth, requireOrgPermi
             profile: {
               select: {
                 fullName: true,
+                phoneNumber: true,
               },
             },
           },
@@ -174,7 +194,7 @@ router.get("/service-requests/organization/:orgId", requireAuth, requireOrgPermi
 // Create service request (Vendor)
 router.post("/service-requests", requireAuth, requireOrgPermission({ from: "body" }, Permission.MANAGE_SERVICES), async (req, res) => {
   try {
-    const { organizationId, requestedById, type, title, description } = req.body;
+    const { organizationId, requestedById, type, title, description, servicePostId } = req.body;
 
     if (!organizationId || !requestedById || !type || !title) {
       return res.status(400).json({
@@ -198,9 +218,20 @@ router.post("/service-requests", requireAuth, requireOrgPermission({ from: "body
       });
     }
 
+    if (servicePostId) {
+      const post = await prisma.servicePost.findFirst({
+        where: { id: servicePostId, organizationId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!post) {
+        return res.status(400).json({ message: "Үйлчилгээний пост олдсонгүй" });
+      }
+    }
+
     const request = await prisma.serviceRequest.create({
       data: {
         organizationId,
+        servicePostId: servicePostId || null,
         requestedById,
         type,
         title,
@@ -241,11 +272,29 @@ router.post("/service-requests", requireAuth, requireOrgPermission({ from: "body
   }
 });
 
-// Update service request status (Admin)
-router.patch("/service-requests/:id", async (req, res) => {
+// Update service request status (Admin or owning vendor)
+router.patch("/service-requests/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { status, adminNote, assignedToId, estimatedPrice, finalPrice } = req.body;
+
+    const existing = await prisma.serviceRequest.findUnique({
+      where: { id },
+      select: { organizationId: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ message: "Үйлчилгээний хүсэлт олдсонгүй" });
+    }
+
+    const user = (req as any).user;
+    const canManagePlatformServices =
+      Boolean(user?.role && (isFullAdmin(user.role) || hasPlatformPermission(user.role, Permission.MANAGE_SERVICES)));
+
+    if (!canManagePlatformServices) {
+      const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_SERVICES);
+      if (!perm) return;
+    }
 
     const updateData: any = {};
 

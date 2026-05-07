@@ -12,7 +12,6 @@ import {
   RotateCcw,
   Sparkles,
   Truck,
-  Wrench,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
 
@@ -24,12 +23,6 @@ type StockRequestStatus =
   | "COMPLETED"
   | "CANCELLED";
 
-type ServiceRequestStatus =
-  | "PENDING"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "CANCELLED";
-
 type StockRequest = {
   id: string;
   requestNumber: string;
@@ -38,25 +31,11 @@ type StockRequest = {
   warehouse?: { name: string };
 };
 
-type ServiceRequest = {
-  id: string;
-  title: string;
-  status: ServiceRequestStatus;
-  createdAt: string;
-};
-
 const stockStatusLabel: Record<StockRequestStatus, string> = {
   PENDING: "Хүлээгдэж буй",
   APPROVED: "Зөвшөөрөгдсөн",
   REJECTED: "Татгалзсан",
   PROCESSING: "Боловсруулж буй",
-  COMPLETED: "Дууссан",
-  CANCELLED: "Цуцлагдсан",
-};
-
-const serviceStatusLabel: Record<ServiceRequestStatus, string> = {
-  PENDING: "Хүлээгдэж буй",
-  IN_PROGRESS: "Хийгдэж буй",
   COMPLETED: "Дууссан",
   CANCELLED: "Цуцлагдсан",
 };
@@ -76,7 +55,6 @@ const statusColor = (status: string) => {
 export default function RequestsHubPage() {
   const [loading, setLoading] = useState(true);
   const [stockRequests, setStockRequests] = useState<StockRequest[]>([]);
-  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -87,20 +65,13 @@ export default function RequestsHubPage() {
           return;
         }
 
-        const [stockRes, serviceRes] = await Promise.all([
-          authFetch(`${API}/stock-requests?organizationId=${storedUser.organizationId}`),
-          authFetch(`${API}/service-requests/organization/${storedUser.organizationId}`),
-        ]);
+        const stockRes = await authFetch(`${API}/stock-requests?organizationId=${storedUser.organizationId}`);
 
         if (stockRes.ok) {
           const stockData = (await stockRes.json()) || [];
           setStockRequests(stockData);
         }
 
-        if (serviceRes.ok) {
-          const serviceData = (await serviceRes.json()) || [];
-          setServiceRequests(serviceData);
-        }
       } catch (error) {
         console.error("Failed to load requests hub data:", error);
       } finally {
@@ -113,19 +84,17 @@ export default function RequestsHubPage() {
 
   const summary = useMemo(() => {
     const stockPending = stockRequests.filter((r) => r.status === "PENDING").length;
-    const servicePending = serviceRequests.filter((r) => r.status === "PENDING").length;
 
     return {
-      total: stockRequests.length + serviceRequests.length,
-      pending: stockPending + servicePending,
+      total: stockRequests.length,
+      pending: stockPending,
       stock: stockRequests.length,
-      service: serviceRequests.length,
       returns: 0,
     };
-  }, [serviceRequests, stockRequests]);
+  }, [stockRequests]);
 
   const recentFeed = useMemo(() => {
-    const stockFeed = stockRequests.slice(0, 5).map((item) => ({
+    return stockRequests.slice(0, 8).map((item) => ({
       id: item.id,
       type: "Бараа таталт",
       title: `#${item.requestNumber}`,
@@ -134,21 +103,7 @@ export default function RequestsHubPage() {
       meta: item.warehouse?.name || "Агуулах",
       href: "/shipments",
     }));
-
-    const serviceFeed = serviceRequests.slice(0, 5).map((item) => ({
-      id: item.id,
-      type: "Үйлчилгээ",
-      title: item.title,
-      status: item.status,
-      date: item.createdAt,
-      meta: "Үйлчилгээний хүсэлт",
-      href: "/services",
-    }));
-
-    return [...stockFeed, ...serviceFeed]
-      .sort((a, b) => +new Date(b.date) - +new Date(a.date))
-      .slice(0, 8);
-  }, [serviceRequests, stockRequests]);
+  }, [stockRequests]);
 
   if (loading) {
     return (
@@ -186,7 +141,7 @@ export default function RequestsHubPage() {
               Хүсэлтүүд
             </h1>
             <p className="mt-2 max-w-2xl text-sm font-medium text-slate-600 md:text-base">
-              Бараа таталт, буцаалт, үйлчилгээний хүсэлтээ нэг дэлгэцээс хянаж,
+              Бараа таталт, буцаалтын хүсэлтээ нэг дэлгэцээс хянаж,
               шаардлагатай үйлдэл рүү шууд орно.
             </p>
           </div>
@@ -204,7 +159,7 @@ export default function RequestsHubPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2">
         {[
           {
             key: "stock",
@@ -223,15 +178,6 @@ export default function RequestsHubPage() {
             href: "/returns",
             icon: RotateCcw,
             accent: "from-slate-900 to-slate-700 text-white",
-          },
-          {
-            key: "service",
-            title: "Үйлчилгээний хүсэлт",
-            desc: "Маркетинг, зураг авалт, сургалт",
-            count: summary.service,
-            href: "/services",
-            icon: Wrench,
-            accent: "from-amber-100 to-amber-50 text-slate-900",
           },
         ].map((item) => (
           <Link
@@ -283,9 +229,7 @@ export default function RequestsHubPage() {
                   </div>
                   <div className="text-right">
                     <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ${statusColor(entry.status)}`}>
-                      {entry.type === "Үйлчилгээ"
-                        ? serviceStatusLabel[entry.status as ServiceRequestStatus]
-                        : stockStatusLabel[entry.status as StockRequestStatus]}
+                      {stockStatusLabel[entry.status as StockRequestStatus]}
                     </span>
                     <p className="mt-1 text-[11px] text-slate-400">
                       {new Date(entry.date).toLocaleDateString("mn-MN")}

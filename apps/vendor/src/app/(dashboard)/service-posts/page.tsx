@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Plus,
   Search,
@@ -17,6 +17,13 @@ import {
   Tag,
   Eye,
   DollarSign,
+  ClipboardList,
+  Clock,
+  Check,
+  XCircle,
+  User,
+  Mail,
+  Phone,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
 
@@ -38,6 +45,27 @@ interface ServicePost {
   createdAt: string;
 }
 
+type ServiceRequestStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+
+interface ServiceRequest {
+  id: string;
+  servicePostId: string | null;
+  title: string;
+  description: string | null;
+  status: ServiceRequestStatus;
+  statusLabel?: string;
+  createdAt: string;
+  updatedAt: string;
+  requestedBy: {
+    id: string;
+    email: string | null;
+    profile: {
+      fullName: string | null;
+      phoneNumber: string | null;
+    } | null;
+  };
+}
+
 type FormState = {
   title: string;
   description: string;
@@ -57,6 +85,20 @@ const EMPTY_FORM: FormState = {
 };
 
 const MAX_IMAGES = 5;
+
+const REQUEST_STATUS_LABELS: Record<ServiceRequestStatus, string> = {
+  PENDING: "Хүлээгдэж буй",
+  IN_PROGRESS: "Хийгдэж буй",
+  COMPLETED: "Дууссан",
+  CANCELLED: "Цуцлагдсан",
+};
+
+const REQUEST_STATUS_CLASS: Record<ServiceRequestStatus, string> = {
+  PENDING: "bg-amber-50 text-amber-700 border-amber-200",
+  IN_PROGRESS: "bg-blue-50 text-blue-700 border-blue-200",
+  COMPLETED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  CANCELLED: "bg-red-50 text-red-700 border-red-200",
+};
 
 /* ─── Image Upload Grid ──────────────────────────────────────────────── */
 function ImageUploadGrid({
@@ -183,12 +225,14 @@ function ImageUploadGrid({
 /* ─── Main Page ──────────────────────────────────────────────────────── */
 export default function ServicePostsPage() {
   const [posts, setPosts] = useState<ServicePost[]>([]);
+  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [requestActionLoading, setRequestActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPost, setSelectedPost] = useState<ServicePost | null>(null);
@@ -217,6 +261,12 @@ export default function ServicePostsPage() {
       if (!res.ok) throw new Error();
       const data = await res.json();
       setPosts(Array.isArray(data) ? data : []);
+
+      const requestRes = await authFetch(`${API}/service-requests/organization/${orgId}`);
+      if (requestRes.ok) {
+        const requestData = await requestRes.json();
+        setServiceRequests(Array.isArray(requestData) ? requestData : []);
+      }
     } catch {
       showToast("error", "Постуудыг ачаалахад алдаа гарлаа");
     } finally {
@@ -336,6 +386,28 @@ export default function ServicePostsPage() {
     }
   };
 
+  const updateRequestStatus = async (requestId: string, status: ServiceRequestStatus) => {
+    setRequestActionLoading(requestId);
+    try {
+      const res = await authFetch(`${API}/service-requests/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Төлөв шинэчлэхэд алдаа гарлаа");
+      }
+      const updated = await res.json();
+      setServiceRequests((prev) => prev.map((item) => (item.id === requestId ? { ...item, ...updated } : item)));
+      showToast("success", "Хүсэлтийн төлөв шинэчлэгдлээ");
+    } catch (err: unknown) {
+      showToast("error", err instanceof Error ? err.message : "Төлөв шинэчлэхэд алдаа гарлаа");
+    } finally {
+      setRequestActionLoading(null);
+    }
+  };
+
   const filteredPosts = posts.filter(
     (p) =>
       p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -344,6 +416,18 @@ export default function ServicePostsPage() {
   );
 
   const activePosts = posts.filter((p) => p.isActive).length;
+  const requestsByPostId = useMemo(() => {
+    const map = new Map<string, ServiceRequest[]>();
+    for (const request of serviceRequests) {
+      if (!request.servicePostId) continue;
+      const list = map.get(request.servicePostId) || [];
+      list.push(request);
+      map.set(request.servicePostId, list);
+    }
+    return map;
+  }, [serviceRequests]);
+  const selectedPostRequests = selectedPost ? requestsByPostId.get(selectedPost.id) || [] : [];
+  const pendingRequests = serviceRequests.filter((request) => request.status === "PENDING").length;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -394,6 +478,18 @@ export default function ServicePostsPage() {
           <div className="w-2 h-2 rounded-full bg-slate-300" />
           <span className="text-sm text-slate-500">
             Нуусан: <strong className="text-slate-900">{posts.length - activePosts}</strong>
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <ClipboardList size={15} className="text-blue-500" />
+          <span className="text-sm text-slate-500">
+            Хүсэлт: <strong className="text-slate-900">{serviceRequests.length}</strong>
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Clock size={15} className="text-amber-500" />
+          <span className="text-sm text-slate-500">
+            Хүлээгдэж буй: <strong className="text-slate-900">{pendingRequests}</strong>
           </span>
         </div>
       </div>
@@ -517,6 +613,9 @@ export default function ServicePostsPage() {
                         <span className="text-[11px] text-slate-400 flex items-center gap-1">
                           <Eye size={11} /> {post.viewCount}
                         </span>
+                        <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                          <ClipboardList size={11} /> {requestsByPostId.get(post.id)?.length || 0}
+                        </span>
                         <span className="text-[11px] text-slate-400">
                           {new Date(post.createdAt).toLocaleDateString("mn-MN")}
                         </span>
@@ -621,6 +720,109 @@ export default function ServicePostsPage() {
                 ))}
               </div>
             )}
+
+            <div className="mb-6 border-t border-slate-100 pt-6">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                  <ClipboardList size={16} className="text-amber-500" />
+                  Постын хүсэлтүүд
+                </h3>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                  {selectedPostRequests.length}
+                </span>
+              </div>
+
+              {selectedPostRequests.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
+                  Энэ пост дээр одоогоор web-ээс ирсэн хүсэлт алга.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedPostRequests.map((request) => {
+                    const requesterName =
+                      request.requestedBy?.profile?.fullName ||
+                      request.requestedBy?.email ||
+                      "Нэр бүртгэгдээгүй";
+                    const isUpdating = requestActionLoading === request.id;
+
+                    return (
+                      <div key={request.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-900 line-clamp-1">{request.title}</p>
+                            <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                              <User size={12} />
+                              {requesterName}
+                            </p>
+                          </div>
+                          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold ${REQUEST_STATUS_CLASS[request.status]}`}>
+                            {request.statusLabel || REQUEST_STATUS_LABELS[request.status]}
+                          </span>
+                        </div>
+
+                        {request.description && (
+                          <p className="mt-3 whitespace-pre-wrap rounded-xl bg-white p-3 text-xs leading-relaxed text-slate-600">
+                            {request.description}
+                          </p>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                          {request.requestedBy?.email && (
+                            <span className="flex items-center gap-1">
+                              <Mail size={12} />
+                              {request.requestedBy.email}
+                            </span>
+                          )}
+                          {request.requestedBy?.profile?.phoneNumber && (
+                            <span className="flex items-center gap-1">
+                              <Phone size={12} />
+                              {request.requestedBy.profile.phoneNumber}
+                            </span>
+                          )}
+                          <span>{new Date(request.createdAt).toLocaleDateString("mn-MN")}</span>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {request.status === "PENDING" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => updateRequestStatus(request.id, "IN_PROGRESS")}
+                                disabled={isUpdating}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+                              >
+                                {isUpdating ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
+                                Эхлүүлэх
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateRequestStatus(request.id, "CANCELLED")}
+                                disabled={isUpdating}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60"
+                              >
+                                <XCircle size={13} />
+                                Цуцлах
+                              </button>
+                            </>
+                          )}
+                          {request.status === "IN_PROGRESS" && (
+                            <button
+                              type="button"
+                              onClick={() => updateRequestStatus(request.id, "COMPLETED")}
+                              disabled={isUpdating}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
+                            >
+                              {isUpdating ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                              Дуусгах
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             <div className="flex gap-3 pt-4 border-t border-slate-100">
               <button
