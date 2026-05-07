@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, type ReactNode } from "react";
 import {
   Search,
   Loader2,
@@ -16,6 +16,8 @@ import {
   MapPin,
   Trash2,
   SlidersHorizontal,
+  Pencil,
+  Save,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 
@@ -34,6 +36,15 @@ type InventoryItem = {
     price: string;
     barcode?: string;
   };
+};
+
+type EditForm = {
+  quantity: string;
+  minQuantity: string;
+  maxQuantity: string;
+  location: string;
+  batchNumber: string;
+  expiryDate: string;
 };
 
 type WarehouseOption = { id: string; name: string };
@@ -57,6 +68,9 @@ export default function InventoryPage() {
   const [selectedItem, setSelectedItem]       = useState<InventoryItem | null>(null);
   const [deleteConfirm, setDeleteConfirm]     = useState(false);
   const [deleting, setDeleting]               = useState(false);
+  const [editing, setEditing]                 = useState(false);
+  const [savingEdit, setSavingEdit]           = useState(false);
+  const [editForm, setEditForm]               = useState<EditForm | null>(null);
   const [currentPage, setCurrentPage]         = useState(1);
   const [filterOpen, setFilterOpen]           = useState(false);
   const PAGE_SIZE = 20;
@@ -117,6 +131,84 @@ export default function InventoryPage() {
     load();
     return () => { cancelled = true; };
   }, [selectedWarehouseId, retryCount]);
+
+  const openItem = (item: InventoryItem) => {
+    setSelectedItem(item);
+    setDeleteConfirm(false);
+    setEditing(false);
+    setEditForm(null);
+  };
+
+  const closeItem = () => {
+    setSelectedItem(null);
+    setDeleteConfirm(false);
+    setEditing(false);
+    setEditForm(null);
+  };
+
+  const startEdit = () => {
+    if (!selectedItem) return;
+    setDeleteConfirm(false);
+    setEditing(true);
+    setEditForm({
+      quantity: String(selectedItem.quantity),
+      minQuantity: String(selectedItem.minQuantity),
+      maxQuantity: selectedItem.maxQuantity == null ? "" : String(selectedItem.maxQuantity),
+      location: selectedItem.location || "",
+      batchNumber: selectedItem.batchNumber || "",
+      expiryDate: selectedItem.expiryDate ? selectedItem.expiryDate.slice(0, 10) : "",
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setEditForm(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedItem || !editForm) return;
+
+    const quantity = Number(editForm.quantity);
+    const minQuantity = Number(editForm.minQuantity || 0);
+    const maxQuantity = editForm.maxQuantity.trim() ? Number(editForm.maxQuantity) : null;
+
+    if (!Number.isInteger(quantity) || quantity < 0) return alert("Нөөцийн тоо буруу байна");
+    if (!Number.isInteger(minQuantity) || minQuantity < 0) return alert("Min тоо буруу байна");
+    if (maxQuantity !== null && (!Number.isInteger(maxQuantity) || maxQuantity < 0)) return alert("Max тоо буруу байна");
+
+    setSavingEdit(true);
+    try {
+      const res = await wmsFetch(
+        `${API}/warehouses/${selectedWarehouseId}/inventory/${selectedItem.product.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            quantity,
+            minQuantity,
+            maxQuantity,
+            location: editForm.location.trim() || null,
+            batchNumber: editForm.batchNumber.trim() || null,
+            expiryDate: editForm.expiryDate || null,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || "Засахад алдаа гарлаа");
+      }
+
+      const updated = await res.json();
+      setInventory((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setSelectedItem(updated);
+      setEditing(false);
+      setEditForm(null);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Засахад алдаа гарлаа");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!selectedItem) return;
@@ -325,7 +417,7 @@ export default function InventoryPage() {
                     return (
                       <tr
                         key={item.id}
-                        onClick={() => setSelectedItem(item)}
+                        onClick={() => openItem(item)}
                         className="cursor-pointer border-b border-slate-50 transition-colors last:border-0 hover:bg-blue-50"
                       >
                         <td className="px-4 py-3">
@@ -378,7 +470,7 @@ export default function InventoryPage() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setSelectedItem(item)}
+                  onClick={() => openItem(item)}
                   className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left transition-all active:scale-[0.99] active:bg-slate-50"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -441,7 +533,7 @@ export default function InventoryPage() {
         return (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
             {/* Backdrop tap to close */}
-            <div className="absolute inset-0" onClick={() => { setSelectedItem(null); setDeleteConfirm(false); }} />
+            <div className="absolute inset-0" onClick={closeItem} />
 
             <div className="relative w-full max-h-[92dvh] overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:max-h-[85vh] sm:max-w-lg sm:rounded-2xl">
               {/* Handle (mobile only) */}
@@ -451,7 +543,7 @@ export default function InventoryPage() {
 
               {/* Close (desktop) */}
               <button
-                onClick={() => { setSelectedItem(null); setDeleteConfirm(false); }}
+                onClick={closeItem}
                 className="absolute right-4 top-4 hidden rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 sm:flex"
               >
                 <X className="h-5 w-5" />
@@ -468,6 +560,40 @@ export default function InventoryPage() {
                   <h2 className="mt-2 text-xl font-bold text-slate-900">{selectedItem.product.name}</h2>
                 </div>
 
+                {editing && editForm ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field label="Гар дээрх тоо">
+                        <input type="number" min="0" value={editForm.quantity} onChange={(e) => setEditForm((f) => f && { ...f, quantity: e.target.value })} className={inputClass} />
+                      </Field>
+                      <Field label="Min тоо">
+                        <input type="number" min="0" value={editForm.minQuantity} onChange={(e) => setEditForm((f) => f && { ...f, minQuantity: e.target.value })} className={inputClass} />
+                      </Field>
+                      <Field label="Max тоо">
+                        <input type="number" min="0" value={editForm.maxQuantity} onChange={(e) => setEditForm((f) => f && { ...f, maxQuantity: e.target.value })} placeholder="Хязгааргүй" className={inputClass} />
+                      </Field>
+                      <Field label="Байрлал">
+                        <input value={editForm.location} onChange={(e) => setEditForm((f) => f && { ...f, location: e.target.value })} className={inputClass} />
+                      </Field>
+                      <Field label="Batch №">
+                        <input value={editForm.batchNumber} onChange={(e) => setEditForm((f) => f && { ...f, batchNumber: e.target.value })} className={inputClass} />
+                      </Field>
+                      <Field label="Хүчинтэй хугацаа">
+                        <input type="date" value={editForm.expiryDate} onChange={(e) => setEditForm((f) => f && { ...f, expiryDate: e.target.value })} className={inputClass} />
+                      </Field>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <button onClick={cancelEdit} disabled={savingEdit} className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                        Болих
+                      </button>
+                      <button onClick={handleSaveEdit} disabled={savingEdit} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                        {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Хадгалах
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
                 {/* Quantity highlight */}
                 <div className="mb-5 rounded-xl bg-blue-50 p-4 text-center">
                   <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">Гар дээрх тоо</p>
@@ -513,10 +639,16 @@ export default function InventoryPage() {
                 {!deleteConfirm ? (
                   <div className="mt-6 flex gap-3">
                     <button
-                      onClick={() => setSelectedItem(null)}
+                      onClick={closeItem}
                       className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100"
                     >
                       Хаах
+                    </button>
+                    <button
+                      onClick={startEdit}
+                      className="flex items-center gap-2 rounded-xl bg-blue-50 px-5 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-100 active:bg-blue-200"
+                    >
+                      <Pencil className="h-4 w-4" /> Засах
                     </button>
                     <button
                       onClick={() => setDeleteConfirm(true)}
@@ -551,6 +683,8 @@ export default function InventoryPage() {
                     </div>
                   </div>
                 )}
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -561,6 +695,28 @@ export default function InventoryPage() {
 }
 
 // ── Shared pagination component ─────────────────────────────────────────────
+const inputClass =
+  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100";
+
+function Field({
+  label,
+  className = "",
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className={`block ${className}`}>
+      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
 function Pagination({
   currentPage,
   totalPages,
