@@ -1,10 +1,10 @@
-import type { RefObject } from "react";
+import type { Ref } from "react";
 import { Eye, MapPin, Navigation } from "lucide-react";
 import type { BranchMapItem } from "@/lib/sections/types";
 import { BranchList } from "./BranchList";
 
 type Props = {
-  previewMapRef: RefObject<HTMLDivElement>;
+  previewMapRef: Ref<HTMLDivElement>;
   hasMapPreview: boolean;
   isBranchCoordsValid: boolean;
   selectedRegisteredBranch: BranchMapItem | null;
