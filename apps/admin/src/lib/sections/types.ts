@@ -1,4 +1,4 @@
-export type SectionKey = "banner" | "categories" | "branches" | "cards" | "qr" | "pos" | "vendor-features" | "hr" | "forms" | "contract";
+export type SectionKey = "banner" | "categories" | "branches" | "cards" | "qr" | "pos" | "vendor-features" | "hr" | "forms" | "contract" | "team";
 
 export type CardPartner = {
   id: string;

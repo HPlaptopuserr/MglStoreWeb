@@ -1835,3 +1835,23 @@ model ContractAuditLog {
   @@index([timestamp])
 }
 
+model TeamMember {
+  id          String   @id @default(uuid())
+  name        String
+  role        String
+  department  String?
+  bio         String?
+  avatarUrl   String?
+  email       String?
+  linkedinUrl String?
+  experience  String?
+  skills      String[]
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([order])
+}
+

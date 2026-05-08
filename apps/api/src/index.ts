@@ -25,6 +25,7 @@ import {
   warehousesRoutes,
   dashboardRoutes,
   siteSettingsRoutes,
+  teamRoutes,
   formRoutes,
   attendanceRoutes,
   chatRoutes,
@@ -111,6 +112,7 @@ app.use("/api", vendorSetupRoutes);
 app.use("/api", warehouseSetupRoutes);
 app.use("/api", investorRoutes);
 app.use("/api", siteSettingsRoutes);
+app.use("/api", teamRoutes);
 app.use("/api", productsRoutes);
 app.use("/api", servicePostsRoutes);
 app.use("/api", formRoutes);

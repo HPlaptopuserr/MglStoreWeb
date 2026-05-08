@@ -14,6 +14,7 @@ import { PosRegistersSection } from "@/components/organisms/sections/pos/PosRegi
 import { VendorFeaturesSection } from "@/components/organisms/sections/vendor-features/VendorFeaturesSection";
 import { HrSection } from "@/components/organisms/sections/hr/HrSection";
 import { Contract } from "@/components/organisms/sections/contract/page";
+import { TeamSection } from "@/components/organisms/sections/team/TeamSection";
 import { useAdminAuth } from "@/lib/admin-auth";
 
 export default function SectionsPage() {
@@ -76,6 +77,7 @@ export default function SectionsPage() {
           {active === "vendor-features" && <VendorFeaturesSection />}
           {active === "hr" && <HrSection />}
           {active === "contract" && <Contract />}
+          {active === "team" && <TeamSection />}
         </div>
       ) : (
         <FormBuilderTool />

@@ -215,6 +215,7 @@ export const Footer = () => {
               <ul className="space-y-2.5">
                 {[
                   { label: "Бидний тухай", href: "#" },
+                  { label: "Баг хамт олон", href: "/company/team" },
                   { label: "Хамтран ажиллах", href: "/company/partnership" },
                   { label: "Ажлын байр", href: "/company/careers" },
                   { label: "Мэдээ", href: "#" },
