@@ -1,6 +1,5 @@
 import { ReactNode } from "react";
 import "./globals.css";
-import { FloatingSideNav } from "@/components/organisms/layouts/FloatingSideNav";
 import { Header } from "@/components/organisms/layouts/Header";
 import { Footer } from "@/components/organisms/layouts/Footer";
 import { SmoothScrollProvider } from "@/components/organisms/layouts/SmoothScrollProvider";
@@ -32,7 +31,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <SmoothScrollProvider>
           <Header />
           <main className="grow pt-40 pb-20 md:pt-32 md:pb-0">{children}</main>
-          <FloatingSideNav />
           <ChatBot />
           <Footer />
         </SmoothScrollProvider>
