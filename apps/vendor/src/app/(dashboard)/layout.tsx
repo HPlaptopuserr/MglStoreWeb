@@ -13,7 +13,7 @@ export default function VendorDashboardLayout({
 }) {
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
-  const [showPos, setShowPos] = useState(false);
+  const [showPos, setShowPos] = useState(true);
   const [showSupplyProducts, setShowSupplyProducts] = useState(false);
   const [showServicePosts, setShowServicePosts] = useState(true);
   const [userData, setUserData] = useState({
@@ -39,6 +39,10 @@ export default function VendorDashboardLayout({
       );
 
       organizationId = storedUser.organizationId || "";
+      if (!organizationId) {
+        const payload = token ? JSON.parse(atob(token.split(".")[1] || "")) : null;
+        organizationId = payload?.organizationId || "";
+      }
 
       setUserData({
         name: storedUser.name || storedUser.fullName || "Vendor",
@@ -67,7 +71,7 @@ export default function VendorDashboardLayout({
             : {};
           const raw = settings[`pos-enabled-${organizationId}`];
           const posEnabled =
-            raw === "1" || raw === "true" || raw === "on";
+            raw === undefined || raw === "1" || raw === "true" || raw === "on";
           setShowPos(posEnabled);
 
           const rawSupply = settings[`supply-products-enabled-${organizationId}`];
@@ -77,7 +81,7 @@ export default function VendorDashboardLayout({
           setShowServicePosts(rawService === undefined || rawService === "1" || rawService === "true" || rawService === "on");
         })
         .catch(() => {
-          setShowPos(false);
+          setShowPos(true);
           setShowSupplyProducts(false);
           setShowServicePosts(true);
         });
