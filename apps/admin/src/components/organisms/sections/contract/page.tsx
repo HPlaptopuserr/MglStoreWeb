@@ -878,6 +878,43 @@ function ContractEditorTab({
           </button>
         </div>
 
+        {!settings.isPaid && (
+          <div className="mt-3 p-4 bg-white border border-neutral-200 rounded-xl shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-4 bg-blue-500 rounded-full" />
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Гэрээний хугацаа</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-neutral-500 pl-1">Үндсэн хугацаа</label>
+                <input
+                  type="text"
+                  value={settings.feePlans[0]?.label ?? ""}
+                  onChange={e => {
+                    const updated = settings.feePlans.map((fp: any, i: number) => i === 0 ? { ...fp, label: e.target.value } : fp);
+                    setSettings({ ...settings, feePlans: updated, defaultFeePlan: updated[0]?.key ?? settings.defaultFeePlan });
+                  }}
+                  placeholder="жш: 1 жил"
+                  className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 bg-neutral-50 hover:bg-white transition-colors placeholder:text-neutral-300"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-neutral-500 pl-1">Тайлбар</label>
+                <input
+                  type="text"
+                  value={settings.feePlans[0]?.sublabel ?? ""}
+                  onChange={e => {
+                    const updated = settings.feePlans.map((fp: any, i: number) => i === 0 ? { ...fp, sublabel: e.target.value } : fp);
+                    setSettings({ ...settings, feePlans: updated });
+                  }}
+                  placeholder="жш: Нэг жил"
+                  className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 bg-neutral-50 hover:bg-white transition-colors placeholder:text-neutral-300"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {settings.isPaid && (
           <div className="flex flex-col gap-4">
             <div>
