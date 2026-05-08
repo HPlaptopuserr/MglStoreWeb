@@ -235,15 +235,20 @@ export default function OrganizationsPage() {
                 <button
                   onClick={handleLoadMore}
                   disabled={isLoadingMore}
-                  className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-8 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-amber-400 hover:text-amber-700 disabled:opacity-60"
+                  className="flex items-center gap-2.5 rounded-2xl border border-gray-200 bg-white px-8 py-3 text-sm font-bold text-gray-700 shadow-sm transition hover:border-[#FFAD02] hover:text-[#FFAD02] disabled:opacity-60"
                 >
                   {isLoadingMore ? (
                     <>
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#FFAD02] border-t-transparent" />
                       Ачааллаж байна...
                     </>
                   ) : (
-                    `Дахин ${Math.min(PAGE_SIZE, total - stores.length)} байгууллага үзэх`
+                    <>
+                      Дахин {Math.min(PAGE_SIZE, total - stores.length)} байгууллага үзэх
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                        {total - stores.length} үлдсэн
+                      </span>
+                    </>
                   )}
                 </button>
               </div>
