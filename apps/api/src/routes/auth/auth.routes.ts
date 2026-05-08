@@ -819,14 +819,23 @@ router.post("/vendor/login", async (req, res) => {
       });
     }
 
-    const isPhone = /^[0-9+\-\s()]{7,15}$/.test(identifier.trim()) && !identifier.includes("@");
+    const normalizedIdentifier = identifier.trim();
+    const normalizedPhone = normalizedIdentifier.replace(/\D/g, "");
+    const isPhone = /^[0-9+\-\s()]{7,15}$/.test(normalizedIdentifier) && !normalizedIdentifier.includes("@");
     const user = isPhone
       ? await prisma.user.findFirst({
-          where: { profile: { phoneNumber: identifier.trim() } },
+          where: {
+            OR: [
+              { profile: { phoneNumber: normalizedIdentifier } },
+              ...(normalizedPhone && normalizedPhone !== normalizedIdentifier
+                ? [{ profile: { phoneNumber: normalizedPhone } }]
+                : []),
+            ],
+          },
           include: { profile: true },
         })
       : await prisma.user.findUnique({
-          where: { email: identifier.trim().toLowerCase() },
+          where: { email: normalizedIdentifier.toLowerCase() },
           include: { profile: true },
         });
 

@@ -704,7 +704,7 @@ router.get("/partners/:id", async (req, res) => {
         title: p.name,
         name: p.name,
         price: Number(p.price),
-        originalPrice: p.originalPrice ? Number(p.originalPrice) : undefined,
+        originalPrice: p.costPrice ? Number(p.costPrice) : undefined,
         image: p.images?.[0]?.url,
         images: p.images?.map((img) => img.url),
         category: p.category?.name,

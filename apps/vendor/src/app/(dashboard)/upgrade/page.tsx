@@ -157,9 +157,28 @@ export default function UpgradePage() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const getOrgId = () => {
+    try {
+      const user = JSON.parse(localStorage.getItem("vendor_user") || "{}");
+      if (user.organizationId) return user.organizationId as string;
+      const token = localStorage.getItem("vendor_token");
+      const payload = token ? JSON.parse(atob(token.split(".")[1] || "")) : null;
+      return payload?.organizationId as string | undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const withOrgId = (url: string) => {
+    const orgId = getOrgId();
+    if (!orgId) return url;
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}organizationId=${encodeURIComponent(orgId)}`;
+  };
+
   const loadStatus = async () => {
     try {
-      const res = await authFetch(`${API}/vendor/upgrade/status`);
+      const res = await authFetch(withOrgId(`${API}/vendor/upgrade/status`));
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -187,7 +206,7 @@ export default function UpgradePage() {
     pollRef.current = setInterval(async () => {
       try {
         const res = await authFetch(
-          `${API}/vendor/upgrade/check/${status.pendingInvoice!.invoiceId}`,
+          withOrgId(`${API}/vendor/upgrade/check/${status.pendingInvoice!.invoiceId}`),
           { method: "POST" },
         );
         const data = await res.json();
@@ -206,7 +225,7 @@ export default function UpgradePage() {
     setIsActing(true);
     setMessage(null);
     try {
-      const res = await authFetch(`${API}/vendor/upgrade/trial`, { method: "POST" });
+      const res = await authFetch(withOrgId(`${API}/vendor/upgrade/trial`), { method: "POST" });
       const data = await res.json();
       if (data.success) {
         setPaid(true);
@@ -227,7 +246,7 @@ export default function UpgradePage() {
     setIsActing(true);
     setMessage(null);
     try {
-      const res = await authFetch(`${API}/vendor/upgrade/initiate`, {
+      const res = await authFetch(withOrgId(`${API}/vendor/upgrade/initiate`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planId: selectedPlan }),
@@ -250,7 +269,7 @@ export default function UpgradePage() {
     setIsChecking(true);
     try {
       const res = await authFetch(
-        `${API}/vendor/upgrade/check/${status.pendingInvoice.invoiceId}`,
+        withOrgId(`${API}/vendor/upgrade/check/${status.pendingInvoice.invoiceId}`),
         { method: "POST" },
       );
       const data = await res.json();
@@ -428,7 +447,7 @@ export default function UpgradePage() {
             </button>
             <button
               onClick={async () => {
-                await (authFetch as any)(`${API}/vendor/upgrade/initiate`, {
+                await (authFetch as any)(withOrgId(`${API}/vendor/upgrade/initiate`), {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ planId: status?.pendingInvoice?.planType }),

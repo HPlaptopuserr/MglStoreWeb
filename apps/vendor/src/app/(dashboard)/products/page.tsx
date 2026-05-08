@@ -385,7 +385,10 @@ export default function ProductsPage() {
   const getOrgId = () => {
     try {
       const user = JSON.parse(localStorage.getItem("vendor_user") || "{}");
-      return user.organizationId as string | undefined;
+      if (user.organizationId) return user.organizationId as string;
+      const token = localStorage.getItem("vendor_token");
+      const payload = token ? JSON.parse(atob(token.split(".")[1] || "")) : null;
+      return payload?.organizationId as string | undefined;
     } catch {
       return undefined;
     }
@@ -404,7 +407,7 @@ export default function ProductsPage() {
       const res = await authFetch(`${API}/products?organizationId=${orgId}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setProducts(Array.isArray(data) ? data : []);
+      setProducts(Array.isArray(data) ? data : Array.isArray(data.products) ? data.products : []);
     } catch {
       showToast("error", "Бараа ачаалахад алдаа гарлаа");
     } finally {
@@ -427,7 +430,11 @@ export default function ProductsPage() {
     fetchProducts();
     fetchCategories();
     // Fetch plan status
-    authFetch(`${API}/vendor/upgrade/status`)
+    const orgId = getOrgId();
+    const statusUrl = orgId
+      ? `${API}/vendor/upgrade/status?organizationId=${encodeURIComponent(orgId)}`
+      : `${API}/vendor/upgrade/status`;
+    authFetch(statusUrl)
       .then((r) => r.json())
       .then((data) => {
         if (data.success) {

@@ -95,9 +95,13 @@ export function getPlan(id: string): Plan | undefined {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-async function getOrgForUser(userId: string) {
+async function getOrgForUser(userId: string, organizationId?: string | null) {
   const member = await prisma.organizationMember.findFirst({
-    where: { userId, isActive: true },
+    where: {
+      userId,
+      isActive: true,
+      ...(organizationId ? { organizationId } : {}),
+    },
     select: {
       organization: {
         select: {
@@ -113,7 +117,30 @@ async function getOrgForUser(userId: string) {
       },
     },
   });
-  return member?.organization ?? null;
+  if (member?.organization) return member.organization;
+
+  if (!organizationId) return null;
+  return prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      subdomainEnabled: true,
+      planType: true,
+      planActivatedAt: true,
+      planExpiresAt: true,
+      trialUsed: true,
+    },
+  });
+}
+
+function getRequestUserId(req: any) {
+  return req.user?.userId || req.user?.id || req.userId;
+}
+
+function getRequestOrganizationId(req: any) {
+  return req.user?.organizationId || req.query?.organizationId || req.body?.organizationId || req.organizationId;
 }
 
 function activationData(plan: Plan) {
@@ -129,8 +156,8 @@ function activationData(plan: Plan) {
  */
 router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).user?.userId as string;
-    const org = await getOrgForUser(userId);
+    const userId = getRequestUserId(req);
+    const org = await getOrgForUser(userId, getRequestOrganizationId(req));
     if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
 
     const pendingInvoice = await (prisma.orgUpgradePlan as any).findFirst({
@@ -177,8 +204,8 @@ router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
  */
 router.post("/vendor/upgrade/trial", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).user?.userId as string;
-    const org = await getOrgForUser(userId);
+    const userId = getRequestUserId(req);
+    const org = await getOrgForUser(userId, getRequestOrganizationId(req));
     if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
 
     if (org.trialUsed) {
@@ -220,7 +247,7 @@ router.post("/vendor/upgrade/trial", requireAuth, async (req, res) => {
  */
 router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).user?.userId as string;
+    const userId = getRequestUserId(req);
     const { planId } = req.body as { planId: PlanId };
 
     const plan = getPlan(planId);
@@ -228,7 +255,7 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: "Буруу план сонгосон" });
     }
 
-    const org = await getOrgForUser(userId);
+    const org = await getOrgForUser(userId, getRequestOrganizationId(req));
     if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
 
     // Cancel stale pending invoices
@@ -279,10 +306,10 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
  */
 router.post("/vendor/upgrade/check/:invoiceId", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).user?.userId as string;
+    const userId = getRequestUserId(req);
     const { invoiceId } = req.params;
 
-    const org = await getOrgForUser(userId);
+    const org = await getOrgForUser(userId, getRequestOrganizationId(req));
     if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
 
     const dbPlan = await (prisma.orgUpgradePlan as any).findFirst({
