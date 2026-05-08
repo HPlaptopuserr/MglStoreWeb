@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Plus, Pencil, Trash2, Loader2, X, CheckCircle2, GripVertical,
   User, Mail, Linkedin, Briefcase, Award, Building2, Eye, EyeOff,
+  Upload, ImageIcon,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 
@@ -47,6 +48,8 @@ export function TeamSection() {
   const [skillInput, setSkillInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,6 +94,26 @@ export function TeamSection() {
   };
 
   const closeModal = () => { setModal(null); setEditing(null); setError(""); };
+
+  const handleAvatarFile = async (file: File) => {
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append("avatar", file);
+      const res = await adminFetch(`${API}/admin/team/upload-avatar`, { method: "POST", body: fd });
+      if (res.ok) {
+        const { url } = await res.json();
+        setForm((p) => ({ ...p, avatarUrl: url }));
+      } else {
+        setError("Зураг upload хийхэд алдаа гарлаа");
+      }
+    } catch {
+      setError("Зураг upload хийхэд алдаа гарлаа");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const addSkill = () => {
     const s = skillInput.trim();
@@ -338,15 +361,59 @@ export function TeamSection() {
                   </Field>
                 </div>
 
-                {/* Avatar URL */}
-                <Field icon={<User size={14} />} label="Зургийн URL">
-                  <input
-                    value={form.avatarUrl ?? ""}
-                    onChange={(e) => setForm((p) => ({ ...p, avatarUrl: e.target.value }))}
-                    placeholder="https://..."
-                    className={inputCls}
-                  />
-                </Field>
+                {/* Avatar upload */}
+                <div>
+                  <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                    <ImageIcon size={14} /> Профайл зураг
+                  </label>
+                  <div className="flex items-center gap-3">
+                    {/* Preview */}
+                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                      {form.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={form.avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                      ) : (
+                        <User size={20} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-slate-300" />
+                      )}
+                      {uploadingAvatar && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+                          <Loader2 size={16} className="animate-spin text-violet-600" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-1 flex-col gap-1.5">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAvatarFile(f); }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingAvatar}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-60 transition-colors"
+                      >
+                        <Upload size={13} />
+                        {uploadingAvatar ? "Байршуулж байна..." : "Зураг сонгох"}
+                      </button>
+                      <p className="text-[10px] text-slate-400">JPG, PNG, WebP · Дээд тал 3MB</p>
+                    </div>
+
+                    {form.avatarUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setForm((p) => ({ ...p, avatarUrl: "" }))}
+                        className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                        title="Зураг устгах"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
 
                 {/* Email + LinkedIn */}
                 <div className="grid grid-cols-2 gap-3">

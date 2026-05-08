@@ -1,7 +1,19 @@
 import { Router, type Router as ExpressRouter } from "express";
+import path from "path";
+import crypto from "crypto";
+import multer from "multer";
 import { prisma } from "@mgl/database";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 import { Permission } from "@mgl/types";
+import { getSupabase, ORG_IMAGES_BUCKET } from "../../lib/supabase";
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    cb(null, ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype));
+  },
+});
 
 const router: ExpressRouter = Router();
 
@@ -113,5 +125,31 @@ router.delete("/admin/team/:id", requireAuth, requirePlatformPermission(Permissi
     res.status(404).json({ message: "Олдсонгүй" });
   }
 });
+
+// Admin: upload avatar
+router.post(
+  "/admin/team/upload-avatar",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_SITE_SETTINGS),
+  avatarUpload.single("avatar"),
+  async (req, res) => {
+    if (!req.file) return res.status(400).json({ message: "Зураг файл шаардлагатай" });
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      return res.status(500).json({ message: "Supabase тохиргоо хийгдээгүй" });
+    }
+    try {
+      const ext = path.extname(req.file.originalname).toLowerCase() || ".jpg";
+      const fileName = `team/${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`;
+      const { error } = await getSupabase().storage
+        .from(ORG_IMAGES_BUCKET)
+        .upload(fileName, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+      if (error) return res.status(500).json({ message: "Upload алдаа", error: error.message });
+      const { data } = getSupabase().storage.from(ORG_IMAGES_BUCKET).getPublicUrl(fileName);
+      res.json({ url: data.publicUrl });
+    } catch {
+      res.status(500).json({ message: "Серверийн алдаа" });
+    }
+  },
+);
 
 export default router;

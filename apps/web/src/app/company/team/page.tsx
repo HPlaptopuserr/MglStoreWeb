@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { API } from "@/lib/api";
 import {
   Linkedin, Mail, Award, Briefcase, Building2, Users,
@@ -50,7 +49,8 @@ function MemberCard({ m }: { m: TeamMember }) {
         <div className="flex items-start gap-4">
           <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-gray-100 ring-1 ring-gray-900/8 sm:h-20 sm:w-20">
             {m.avatarUrl ? (
-              <Image src={m.avatarUrl} alt={m.name} fill className="object-cover" sizes="80px" />
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={m.avatarUrl} alt={m.name} className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-50 to-orange-100">
                 <User size={28} className="text-[#FFAD02]" />
