@@ -24,10 +24,10 @@ type FeatureToggle = {
 };
 
 const FEATURES = [
-  { suffix: "pos-enabled", label: "POS касс", icon: ScanLine },
-  { suffix: "supply-products-enabled", label: "Нэгдсэн бараа", icon: Boxes },
-  { suffix: "service-posts-enabled", label: "Үйлчилгээний постууд", icon: Megaphone },
-] as const;
+  { suffix: "pos-enabled", label: "POS касс", icon: ScanLine, defaultEnabled: false },
+  { suffix: "supply-products-enabled", label: "Нэгдсэн бараа", icon: Boxes, defaultEnabled: false },
+  { suffix: "service-posts-enabled", label: "Үйлчилгээний постууд", icon: Megaphone, defaultEnabled: true },
+];
 
 export function VendorFeaturesSection() {
   const [orgs, setOrgs] = useState<Org[]>([]);
@@ -41,7 +41,7 @@ export function VendorFeaturesSection() {
       key: f.suffix,
       label: f.label,
       icon: f.icon,
-      enabled: false,
+      enabled: f.defaultEnabled,
       saving: false,
     })),
   );
@@ -67,11 +67,13 @@ export function VendorFeaturesSection() {
       setToggles((prev) =>
         prev.map((t) => {
           const raw = settings[`${t.key}-${orgId}`];
-          return {
-            ...t,
-            enabled: raw === "1" || raw === "true" || raw === "on",
-            saving: false,
-          };
+          const feature = FEATURES.find((f) => f.suffix === t.key);
+          const defaultEnabled = feature?.defaultEnabled ?? false;
+          const enabled =
+            raw === undefined
+              ? defaultEnabled
+              : raw === "1" || raw === "true" || raw === "on";
+          return { ...t, enabled, saving: false };
         }),
       );
     } catch {
@@ -84,9 +86,7 @@ export function VendorFeaturesSection() {
   useEffect(() => {
     if (selectedOrgId) loadFeatures(selectedOrgId);
     else
-      setToggles((prev) =>
-        prev.map((t) => ({ ...t, enabled: false, saving: false })),
-      );
+      setToggles(FEATURES.map((f) => ({ key: f.suffix, label: f.label, icon: f.icon, enabled: f.defaultEnabled, saving: false })));
   }, [selectedOrgId, loadFeatures]);
 
   const handleToggle = async (key: string) => {
