@@ -112,7 +112,12 @@ export default function ContractSignPage() {
     isPaid: boolean; feePlan: string | null;
     adminSignature?: string; adminName?: string; adminTitle?: string; adminStamp?: string;
     isTemplate?: boolean; memberSignature?: string;
-    headerData?: { title?: string; subtitle?: string; contractTitle?: string } | null;
+    headerData?: {
+      title?: string; subtitle?: string; contractTitle?: string;
+      hasDuration?: boolean;
+      feePlans?: { key: string; label: string; sublabel: string; price: number }[];
+      defaultFeePlan?: string;
+    } | null;
   } | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [memberPosition, setMemberPosition] = useState("");
@@ -124,10 +129,21 @@ export default function ContractSignPage() {
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [selectedFeePlan, setSelectedFeePlan] = useState("6m");
 
-  const FEE_PLANS = [
-    { key: "6m", label: "6 сар", price: 1_800_000 },
-    { key: "12m", label: "12 сар", price: 3_000_000 },
+  const DEFAULT_FEE_PLANS = [
+    { key: "6m", label: "6 сар", sublabel: "Хагас жил", price: 1_800_000 },
+    { key: "12m", label: "12 сар", sublabel: "Бүтэн жил", price: 3_000_000 },
   ];
+  const FEE_PLANS = (() => {
+    const stored: any[] = contractInfo?.headerData?.feePlans ?? [];
+    if (stored.length >= 2) return stored;
+    // merge stored into defaults so we always have at least 6m + 12m
+    const merged = [...DEFAULT_FEE_PLANS];
+    stored.forEach(p => {
+      const idx = merged.findIndex(d => d.key === p.key);
+      if (idx >= 0) merged[idx] = p; else merged.push(p);
+    });
+    return merged;
+  })();
 
   const [memberData, setMemberData] = useState({
     name: "", register: "", field: "", address: "", phone: "", email: "", website: "", director: ""
@@ -150,6 +166,11 @@ export default function ContractSignPage() {
             memberSignature: d.contract.memberSignature,
             headerData: d.contract.headerData ?? null,
           });
+          const selectedPlanFromContract = isPrintMode
+            ? d.contract.feePlan || d.contract.headerData?.defaultFeePlan || "6m"
+            : d.contract.headerData?.defaultFeePlan || d.contract.feePlan || "6m";
+
+          setSelectedFeePlan(selectedPlanFromContract);
           // In print mode: pre-fill memberData from stored JSON
           if (isPrintMode && d.contract.memberData) {
             const md = d.contract.memberData as any;
@@ -164,6 +185,7 @@ export default function ContractSignPage() {
               director: md.director || "",
             });
             if (md.position) setMemberPosition(md.position);
+            if (md.stamp) setMemberStamp(md.stamp);
           }
           // auto-print after data is ready
           if (isPrintMode) {
@@ -451,8 +473,35 @@ export default function ContractSignPage() {
                 <tr>
                   <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Байршил:</td>
                   <td className="border border-[#b4c6e7] p-2">Улаанбаатар хот</td>
-                  <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Гэрээний хугацаа:</td>
-                  <td className="border border-[#b4c6e7] p-2">{FEE_PLANS.find(p => p.key === selectedFeePlan)?.label ?? "—"}</td>
+                  <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">
+                      Гэрээний хугацаа:
+                    </td>
+
+                    <td className="border border-[#b4c6e7] p-0">
+                      {contractInfo?.headerData?.hasDuration === false ? (
+                        <span className="block px-2 py-2">—</span>
+                      ) : isPrintMode ? (
+                        <span className="block px-2 py-2">
+                          {FEE_PLANS.find(p => p.key === selectedFeePlan)?.label ?? "—"}
+                        </span>
+                      ) : (
+                        <select
+                          value={selectedFeePlan}
+                          onChange={(e) => setSelectedFeePlan(e.target.value)}
+                          className="w-full h-full px-2 py-2 bg-white border-0 outline-none text-sm font-medium text-neutral-900 cursor-pointer"
+                        >
+                          {FEE_PLANS.map((plan) => (
+                            <option key={plan.key} value={plan.key}>
+                              {plan.label}
+                              {plan.sublabel ? ` — ${plan.sublabel}` : ""}
+                              {contractInfo?.isPaid && plan.price
+                                ? ` — ${Number(plan.price).toLocaleString()}₮`
+                                : ""}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
                 </tr>
               </tbody>
             </table>
