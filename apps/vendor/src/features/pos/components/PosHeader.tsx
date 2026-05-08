@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, BarChart2 } from "lucide-react";
-import { settlePushEcr } from "../api/card-terminal";
+import { posRequest } from "../api/_pos-client";
 
 type Props = {
   title: string;
@@ -31,7 +31,10 @@ export function PosHeader({
     setSettling(true);
     setSettlementMsg(null);
     try {
-      const res = await settlePushEcr(terminalId);
+      const res = await posRequest<{ succeed: boolean; message?: string; count?: number; amount?: number }>(
+        "/pos/payments/push-ecr/settlement",
+        { method: "POST", body: { terminalId, skipPrint: false } },
+      );
       setSettlementMsg(
         res.succeed
           ? { ok: true, text: `Нэгтгэл амжилттай — ${res.count ?? 0} гүйлгээ, ${(res.amount ?? 0).toLocaleString()}₮` }

@@ -9,8 +9,6 @@
 html,
 body {
   min-height: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
   background: var(--background);
   color: var(--foreground);
   font-family:
@@ -18,28 +16,6 @@ body {
     Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-  min-width: 0;
-}
-
-img,
-svg,
-video,
-canvas,
-iframe {
-  max-width: 100%;
-}
-
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
 }
 
 /* Smooth scrollbar */
@@ -68,55 +44,13 @@ iframe {
 }
 
 /* Word import HTML content styles */
-.contract-html-content table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 0.75rem 0;
-}
-
-.contract-html-content td,
-.contract-html-content th {
-  border: 1px solid #d1d5db;
-  padding: 6px 10px;
-  text-align: left;
-  font-size: 0.875rem;
-}
-
-.contract-html-content th {
-  background: #f3f4f6;
-  font-weight: 600;
-}
-
-.contract-html-content p {
-  margin: 0.4rem 0;
-}
-
-.contract-html-content h2 {
-  font-size: 1rem;
-  font-weight: 700;
-  margin: 1rem 0 0.4rem;
-}
-
-.contract-html-content h3 {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin: 0.8rem 0 0.3rem;
-}
-
-.contract-html-content strong {
-  font-weight: 700;
-}
-
-.contract-html-content em {
-  font-style: italic;
-}
-
-.contract-html-content ul,
-.contract-html-content ol {
-  padding-left: 1.5rem;
-  margin: 0.4rem 0;
-}
-
-.contract-html-content li {
-  margin: 0.2rem 0;
-}
+.contract-html-content table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; }
+.contract-html-content td, .contract-html-content th { border: 1px solid #d1d5db; padding: 6px 10px; text-align: left; font-size: 0.875rem; }
+.contract-html-content th { background: #f3f4f6; font-weight: 600; }
+.contract-html-content p { margin: 0.4rem 0; }
+.contract-html-content h2 { font-size: 1rem; font-weight: 700; margin: 1rem 0 0.4rem; }
+.contract-html-content h3 { font-size: 0.9rem; font-weight: 600; margin: 0.8rem 0 0.3rem; }
+.contract-html-content strong { font-weight: 700; }
+.contract-html-content em { font-style: italic; }
+.contract-html-content ul, .contract-html-content ol { padding-left: 1.5rem; margin: 0.4rem 0; }
+.contract-html-content li { margin: 0.2rem 0; }

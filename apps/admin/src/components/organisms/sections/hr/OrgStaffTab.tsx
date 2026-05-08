@@ -88,8 +88,7 @@ export function OrgStaffTab() {
       const res = await adminFetch(`${API}/admin/users`);
       if (!res.ok) return;
       const data = await res.json();
-      // Handle both old array format and new paginated format
-      setAllUsers(Array.isArray(data) ? data : (Array.isArray(data.users) ? data.users : []));
+      setAllUsers(Array.isArray(data) ? data : []);
     } catch {
       /* ignore */
     } finally {

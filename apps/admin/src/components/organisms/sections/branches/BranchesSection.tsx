@@ -17,14 +17,11 @@ type Props = {
   saving: boolean;
 };
 
-export function BranchesSection({
-  showBranchMapOnWeb,
-  onToggle,
-  saving,
-}: Props) {
+export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props) {
+  const [active, setActive] = useState(true);
   const [branchMapError, setBranchMapError] = useState("");
 
-  const branches = useBranches(true);
+  const branches = useBranches(active);
 
   // ── Picker map refs ──────────────────────────────────────────────────────
   const mapPickerRef = useRef<HTMLDivElement>(null);
@@ -46,18 +43,15 @@ export function BranchesSection({
 
     const init = async () => {
       const L = await getLeafletLib();
-
       if (cancelled || !mapPickerRef.current || mapInstanceRef.current) return;
 
       const map = L.map(mapPickerRef.current).setView(UB_CENTER, 12);
-
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: BRANCH_MAP_ATTRIBUTION,
       }).addTo(map);
 
       map.on("click", (event: any) => {
         const { lat, lng } = event.latlng;
-
         branches.setBranchForm((prev) => ({
           ...prev,
           lat: lat.toFixed(6),
@@ -66,23 +60,20 @@ export function BranchesSection({
       });
 
       setTimeout(() => map.invalidateSize(), 0);
-
       mapInstanceRef.current = map;
     };
 
     init().catch((err) => {
       console.error("Picker map init failed", err);
-      setBranchMapError(
-        "Map ачаалахад алдаа гарлаа. Хуудсаа дахин ачаална уу."
-      );
+      setBranchMapError("Map ачаалахад алдаа гарлаа. Хуудсаа дахин ачаална уу.");
     });
 
     return () => {
       cancelled = true;
     };
-  }, [branches.branchLoading, branches]);
+  }, [branches.branchLoading]);
 
-  // ── Cleanup picker map on unmount ────────────────────────────────────────
+  // Cleanup picker map on unmount
   useEffect(() => {
     return () => {
       if (mapInstanceRef.current) {
@@ -93,7 +84,7 @@ export function BranchesSection({
     };
   }, []);
 
-  // ── Picker marker sync ───────────────────────────────────────────────────
+  // ── Picker marker + 500m circle sync ────────────────────────────────────
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
@@ -104,14 +95,10 @@ export function BranchesSection({
     }
 
     const map = mapInstanceRef.current;
-    const nextLatLng: [number, number] = [
-      branches.parsedBranchLat,
-      branches.parsedBranchLng,
-    ];
+    const nextLatLng: [number, number] = [branches.parsedBranchLat, branches.parsedBranchLng];
 
     const sync = async () => {
       const L = await getLeafletLib();
-
       if (!mapInstanceRef.current) return;
 
       if (markerInstanceRef.current) {
@@ -149,17 +136,9 @@ export function BranchesSection({
 
     const init = async () => {
       const L = await getLeafletLib();
-
-      if (
-        cancelled ||
-        !previewMapRef.current ||
-        previewMapInstanceRef.current
-      ) {
-        return;
-      }
+      if (cancelled || !previewMapRef.current || previewMapInstanceRef.current) return;
 
       const map = L.map(previewMapRef.current).setView(UB_CENTER, 11);
-
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: BRANCH_MAP_ATTRIBUTION,
       }).addTo(map);
@@ -179,7 +158,7 @@ export function BranchesSection({
     };
   }, [branches.branchLoading]);
 
-  // ── Cleanup preview map on unmount ───────────────────────────────────────
+  // Cleanup preview map on unmount
   useEffect(() => {
     return () => {
       if (previewMapInstanceRef.current) {
@@ -196,18 +175,15 @@ export function BranchesSection({
 
     const sync = async () => {
       const L = await getLeafletLib();
-
       if (!previewMapInstanceRef.current || !previewLayerRef.current) return;
 
       const map = previewMapInstanceRef.current;
       const layer = previewLayerRef.current;
-
       layer.clearLayers();
 
       const bounds = L.latLngBounds([]);
       const activeId =
-        branches.selectedRegisteredBranch?.id ||
-        branches.selectedRegisteredBranchId;
+        branches.selectedRegisteredBranch?.id || branches.selectedRegisteredBranchId;
 
       branches.branchItems.forEach((item) => {
         if (item.lat === null || item.lng === null) return;
@@ -223,16 +199,10 @@ export function BranchesSection({
           fillOpacity: isActive ? 0.95 : 0.8,
         });
 
-        marker.bindTooltip(item.name, {
-          direction: "top",
-          offset: [0, -8],
-        });
-
-        marker.on("click", () =>
-          branches.setSelectedRegisteredBranchId(item.id)
-        );
-
+        marker.bindTooltip(item.name, { direction: "top", offset: [0, -8] });
+        marker.on("click", () => branches.setSelectedRegisteredBranchId(item.id));
         marker.addTo(layer);
+
         bounds.extend(latLng);
       });
 
@@ -241,7 +211,6 @@ export function BranchesSection({
           branches.parsedBranchLat,
           branches.parsedBranchLng,
         ];
-
         const draftMarker = L.circleMarker(draftLatLng, {
           radius: 8,
           color: "#16a34a",
@@ -249,12 +218,7 @@ export function BranchesSection({
           fillColor: "#86efac",
           fillOpacity: 0.85,
         });
-
-        draftMarker.bindTooltip("Шинэ байршлын draft", {
-          direction: "top",
-          offset: [0, -8],
-        });
-
+        draftMarker.bindTooltip("Шинэ байршлын draft", { direction: "top", offset: [0, -8] });
         draftMarker.addTo(layer);
         bounds.extend(draftLatLng);
       }
@@ -278,27 +242,19 @@ export function BranchesSection({
     <div className="flex flex-col gap-6">
       {/* Section header */}
       <div>
-        <h2 className="text-lg font-bold text-slate-800 mb-1">
-          Салбарын байршил
-        </h2>
-
+        <h2 className="text-lg font-bold text-slate-800 mb-1">Салбарын байршил</h2>
         <p className="text-sm text-slate-400">
-          Нүүр хуудасны хамгийн доод хэсэгт харагдах map-д салбарын байршлыг
-          нэмнэ.
+          Нүүр хуудасны хамгийн доод хэсэгт харагдах map-д салбарын байршлыг нэмнэ.
         </p>
 
         {/* Web map visibility toggle */}
         <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
           <div>
-            <p className="text-sm font-semibold text-slate-700">
-              Web дээр map харуулах
-            </p>
-
+            <p className="text-sm font-semibold text-slate-700">Web дээр map харуулах</p>
             <p className="text-xs text-slate-500">
               Асаалттай үед web нүүр хуудсанд салбарын map харагдана.
             </p>
           </div>
-
           <button
             type="button"
             onClick={onToggle}
@@ -320,7 +276,6 @@ export function BranchesSection({
       {branches.branchLoading ? (
         <div className="flex flex-col items-center justify-center py-16 text-slate-400">
           <Loader2 size={34} className="animate-spin" />
-
           <p className="mt-3 text-sm">
             Байгууллага болон салбарын мэдээлэл ачаалж байна...
           </p>

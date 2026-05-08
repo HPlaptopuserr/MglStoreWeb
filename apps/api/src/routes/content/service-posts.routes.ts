@@ -3,6 +3,7 @@ import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
+import { requireActivePlan } from "../../middleware/plan-guard";
 
 const router: ExpressRouter = Router();
 
@@ -133,7 +134,7 @@ router.post("/service-posts/:id/request", requireAuth, async (req, res) => {
 });
 
 // ── POST /service-posts — create (vendor)
-router.post("/service-posts", requireAuth, requireOrgPermission({ from: "body" }, Permission.MANAGE_SERVICES), async (req, res) => {
+router.post("/service-posts", requireAuth, requireOrgPermission({ from: "body" }, Permission.MANAGE_SERVICES), requireActivePlan("body"), async (req, res) => {
   try {
     const { organizationId, title, description, priceText, tags, images, isActive } = req.body;
 

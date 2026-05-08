@@ -1,5 +1,4 @@
 export { authRoutes } from "./auth";
-export { contractRoutes } from "./contract";
 
 export {
   investorRoutes,
@@ -24,7 +23,7 @@ export {
   warehousesRoutes,
 } from "./operations";
 
-export { dashboardRoutes, siteSettingsRoutes, upgradePlansRoutes } from "./system";
+export { dashboardRoutes, siteSettingsRoutes } from "./system";
 
 export { formRoutes } from "./forms";
 

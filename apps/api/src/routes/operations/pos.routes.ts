@@ -21,13 +21,9 @@ import { getVendorMerchantConfig } from "../../services/vendor-merchant.service"
 
 const router: ExpressRouter = Router();
 
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const runtimeEnv = String(process.env.APP_ENV || process.env.NODE_ENV || "development").toLowerCase();
 const isProdLikeEnv = runtimeEnv === "production" || runtimeEnv === "staging";
-
-if (isProdLikeEnv && !process.env.JWT_SECRET) {
-  throw new Error("JWT_SECRET env var is required in production");
-}
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const allowPosSimulation = process.env.POS_ALLOW_SIMULATION === "true" && runtimeEnv === "development";
 const bridgeSharedSecret = String(process.env.POS_BRIDGE_SHARED_SECRET || "").trim();
 
@@ -695,7 +691,7 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
   const registerId: string | null = req.body?.registerId || null;
   const bodyOrganizationId: string | null = req.body?.organizationId || null;
 
-  if (!isProdLikeEnv) console.log("[QPay invoice] amount:", amount, "registerId:", registerId, "orgId:", bodyOrganizationId);
+  console.log("[QPay invoice] amount:", amount, "registerId:", registerId, "orgId:", bodyOrganizationId);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ message: "QPay amount буруу байна" });
@@ -752,18 +748,18 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
       return res.status(403).json({ message: "organizationId зөрүүтэй байна" });
     }
 
-    if (!isProdLikeEnv) console.log("[QPay invoice] registerQpayConfig:", JSON.stringify(registerQpayConfig));
+    console.log("[QPay invoice] registerQpayConfig:", JSON.stringify(registerQpayConfig));
 
     let merchantContext = registerQpayConfig
       ? buildQPayMerchantContextFromPosRegister(registerQpayConfig)
       : null;
 
-    if (!isProdLikeEnv) console.log("[QPay invoice] merchantContext from register:", merchantContext ? "set" : "null");
+    console.log("[QPay invoice] merchantContext from register:", merchantContext ? "set" : "null");
 
     // Fall back to organization-level QPay config when register has no config
     if (!merchantContext && effectiveOrganizationId) {
       const orgRes = await getVendorMerchantConfig(effectiveOrganizationId);
-      if (!isProdLikeEnv) console.log("[QPay invoice] org config:", JSON.stringify(orgRes));
+      console.log("[QPay invoice] org config:", JSON.stringify(orgRes));
       merchantContext = orgRes.config ?? null;
     }
 
@@ -772,11 +768,11 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
       const orgRes = await getVendorMerchantConfig(effectiveOrganizationId);
       if (orgRes.config?.bankAccounts?.length) {
         merchantContext = { ...merchantContext, bankAccounts: orgRes.config.bankAccounts };
-        if (!isProdLikeEnv) console.log("[QPay invoice] Merged org bank accounts into context:", orgRes.config.bankAccounts.length);
+        console.log("[QPay invoice] Merged org bank accounts into context:", orgRes.config.bankAccounts.length);
       }
     }
 
-    if (!isProdLikeEnv) console.log("[QPay invoice] final merchantContext:", JSON.stringify({
+    console.log("[QPay invoice] final merchantContext:", JSON.stringify({
       username: merchantContext?.username,
       invoiceCode: merchantContext?.invoiceCode,
       merchantId: merchantContext?.merchantId,

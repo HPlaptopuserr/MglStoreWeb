@@ -53,13 +53,9 @@ import {
   getQPayInvoiceStatus,
   confirmQPayInvoice,
   fetchRegisterConfig,
-  fetchOrgRegisters,
-  fetchBranches,
-  selfClaimRegister,
-  POS_REGISTER_ID_KEY,
   type RegisterConfig,
-  type Branch,
 } from "@/features/pos";
+import { API, authFetch } from "@/lib/api";
 
 type PosView = "register" | "checkout";
 
@@ -146,7 +142,7 @@ export default function PosDemoPage() {
   // self-registration form
   const [setupTab, setSetupTab] = useState<"new" | "existing">("new");
   const [setupName, setSetupName] = useState("");
-  const [setupBranches, setSetupBranches] = useState<Branch[]>([]);
+  const [setupBranches, setSetupBranches] = useState<{ id: string; name: string }[]>([]);
   const [setupBranchId, setSetupBranchId] = useState("");
   const [setupRegistering, setSetupRegistering] = useState(false);
   const [setupError, setSetupError] = useState("");
@@ -244,13 +240,13 @@ export default function PosDemoPage() {
   const [showRegisterPicker, setShowRegisterPicker] = useState(false);
 
   useEffect(() => {
-    const registerId = localStorage.getItem(POS_REGISTER_ID_KEY);
+    const registerId = localStorage.getItem("pos_register_id");
     if (registerId) {
       fetchRegisterConfig(registerId)
         .then(setRegisterConfig)
         .catch(() => {
           // Saved ID is stale/invalid — clear it and try org registers
-          localStorage.removeItem(POS_REGISTER_ID_KEY);
+          localStorage.removeItem("pos_register_id");
           setRegisterConfig(null);
         });
     }
@@ -260,14 +256,18 @@ export default function PosDemoPage() {
   useEffect(() => {
     if (registerConfig) return; // already connected
     if (!organizationId) return;
-    if (!localStorage.getItem("vendor_token")) return;
+    const token = localStorage.getItem("vendor_token");
+    if (!token) return;
 
-    fetchOrgRegisters()
-      .then((list) => {
-        if (list.length === 0) return;
+    fetch(`${API}/pos/registers/mine`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: RegisterConfig[]) => {
+        if (!Array.isArray(list) || list.length === 0) return;
         if (list.length === 1) {
           // Only one register — auto-connect
-          localStorage.setItem(POS_REGISTER_ID_KEY, list[0].id);
+          localStorage.setItem("pos_register_id", list[0].id);
           setRegisterConfig(list[0]);
         } else {
           // Multiple registers — let vendor choose
@@ -282,9 +282,10 @@ export default function PosDemoPage() {
   // Load branches whenever setup panel opens
   useEffect(() => {
     if (!showSetupPanel || !organizationId) return;
-    fetchBranches(organizationId)
-      .then((data) => {
-        setSetupBranches(data);
+    authFetch(`${API}/admin/branches?organizationId=${organizationId}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: { id: string; name: string }[]) => {
+        setSetupBranches(Array.isArray(data) ? data : []);
         if (data.length > 0 && !setupBranchId) setSetupBranchId(data[0].id);
       })
       .catch(() => {});
@@ -295,7 +296,8 @@ export default function PosDemoPage() {
       setSetupError("Нэр болон салбараа сонгоно уу.");
       return;
     }
-    if (!localStorage.getItem("vendor_token")) {
+    const token = localStorage.getItem("vendor_token");
+    if (!token) {
       setSetupError("Нэвтрэлтийн хугацаа дууссан байна. Дахин нэвтэрнэ үү.");
       return;
     }
@@ -303,17 +305,30 @@ export default function PosDemoPage() {
     setSetupRegistering(true);
     setSetupError("");
     try {
-      const created = await selfClaimRegister({
-        organizationId,
-        branchId: setupBranchId,
-        name: setupName.trim(),
+      const res = await fetch(`${API}/pos/registers/self-claim`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          organizationId,
+          branchId: setupBranchId,
+          name: setupName.trim(),
+        }),
       });
-      localStorage.setItem(POS_REGISTER_ID_KEY, created.id);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setSetupError(err.message || "Бүртгэхэд алдаа гарлаа.");
+        return;
+      }
+      const created = await res.json();
+      localStorage.setItem("pos_register_id", created.id);
       setRegisterConfig(created);
       setShowSetupPanel(false);
       setSetupName("");
-    } catch (e: any) {
-      setSetupError(e?.message || "Сервертэй холбогдоход алдаа гарлаа.");
+    } catch {
+      setSetupError("Сервертэй холбогдоход алдаа гарлаа.");
     } finally {
       setSetupRegistering(false);
     }
@@ -324,7 +339,7 @@ export default function PosDemoPage() {
     if (!id) return;
     setSetupRegistering(true);
     setSetupError("");
-    localStorage.setItem(POS_REGISTER_ID_KEY, id);
+    localStorage.setItem("pos_register_id", id);
     fetchRegisterConfig(id)
       .then((cfg) => {
         setRegisterConfig(cfg);
@@ -336,7 +351,7 @@ export default function PosDemoPage() {
   };
 
   const handleDisconnectRegister = () => {
-    localStorage.removeItem(POS_REGISTER_ID_KEY);
+    localStorage.removeItem("pos_register_id");
     setRegisterConfig(null);
     setShowSetupPanel(false);
     setSetupError("");
@@ -891,7 +906,7 @@ export default function PosDemoPage() {
                 key={reg.id}
                 type="button"
                 onClick={() => {
-                  localStorage.setItem(POS_REGISTER_ID_KEY, reg.id);
+                  localStorage.setItem("pos_register_id", reg.id);
                   setRegisterConfig(reg);
                   setShowRegisterPicker(false);
                 }}

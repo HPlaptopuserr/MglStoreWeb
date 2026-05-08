@@ -33,7 +33,7 @@ const navigation = [
   { name: "POS касс",         href: "/pos",        icon: ScanLine,   posOnly: true },
   { name: "Өөрийн бүтээгдэхүүн", href: "/products", icon: Package },
   { name: "Нэгдсэн бараа",   href: "/supply-products", icon: Boxes,  supplyOnly: true },
-  { name: "Үйлчилгээний постууд", href: "/service-posts", icon: Megaphone },
+  { name: "Үйлчилгээний постууд", href: "/service-posts", icon: Megaphone, serviceOnly: true },
   { name: "Буцаалт",          href: "/returns",   icon: RotateCcw },
   { name: "Борлуулалт",       href: "/sales",     icon: BarChart2 },
   { name: "Түгээгчийн мэдээлэл", href: "/drivers", icon: Users },

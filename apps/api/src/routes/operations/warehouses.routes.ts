@@ -12,7 +12,6 @@ import {
   resolveCol,
 } from "../../lib/excel-import";
 import { adjustStock, resolveOrgWarehouse, syncProductStock } from "../../services/inventory.service";
-import { assertOrgPermission } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
 
@@ -335,152 +334,97 @@ router.delete("/warehouses/:id", requireAuth, requirePlatformPermission(Permissi
   }
 });
 
-// Get warehouse detail with inventory (paginated)
+// Get warehouse detail with inventory
 router.get("/warehouses/:id/detail", async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Inventory pagination params — default 100, hard cap 200
-    const invPage  = Math.max(1, parseInt((req.query.invPage  as string) || "1",  10) || 1);
-    const invLimit = Math.min(100, Math.max(1, parseInt((req.query.invLimit as string) || "50", 10) || 50));
-    const invSkip  = (invPage - 1) * invLimit;
-
-    // Fetch warehouse meta, paginated inventories, and total count in parallel
-    const [warehouse, inventories, invTotal] = await Promise.all([
-      prisma.warehouse.findUnique({
-        where: { id, deletedAt: null },
-        include: {
-          organizations: {
-            include: {
-              organization: {
-                select: {
-                  id: true,
-                  name: true,
-                  slug: true,
-                  logoUrl: true,
-                },
-              },
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              email: true,
-              profile: {
-                select: { fullName: true },
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id, deletedAt: null },
+      include: {
+        organizations: {
+          include: {
+            organization: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                logoUrl: true,
               },
             },
           },
         },
-      }),
-      prisma.warehouseInventory.findMany({
-        where: { warehouseId: id },
-        include: {
-          product: {
-            select: {
-              id: true,
-              name: true,
-              description: true,
-              sku: true,
-              barcode: true,
-              unit: true,
-              price: true,
-              costPrice: true,
-              images: {
-                take: 1,
-                select: { url: true },
-              },
-              businessCategory: {
-                select: {
-                  id: true,
-                  name: true,
+        inventories: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                price: true,
+                images: {
+                  take: 1,
+                  select: { url: true },
                 },
-              },
-              category: {
-                select: {
-                  id: true,
-                  name: true,
+                category: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
                 },
-              },
-              organization: {
-                select: {
-                  id: true,
-                  name: true,
-                  slug: true,
+                organization: {
+                  select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                  },
                 },
               },
             },
           },
+          orderBy: {
+            updatedAt: "desc",
+          },
         },
-        orderBy: { updatedAt: "desc" },
-        skip: invSkip,
-        take: invLimit,
-      }),
-      // Accurate aggregate stats — independent of pagination window
-      prisma.warehouseInventory.count({ where: { warehouseId: id } }),
-    ]);
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: {
+                fullName: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
     if (!warehouse) {
       return res.status(404).json({ message: "Агуулах олдсонгүй" });
     }
 
-    // Strip base64 image URLs — they bloat the response by ~1MB per product
-    const sanitizedInventories = inventories.map((inv) => ({
-      ...inv,
-      product: inv.product
-        ? {
-            ...inv.product,
-            images: (inv.product.images ?? [])
-              .filter((img) => img.url && !img.url.startsWith("data:"))
-              .slice(0, 1),
-          }
-        : inv.product,
-    }));
-
-    // Attach paginated inventories to the warehouse object for the frontend
-    (warehouse as any).inventories = sanitizedInventories;
-
-    // Aggregate stats computed across ALL inventory rows
-    const [aggResult, outCount, lowStockItemsRaw] = await Promise.all([
-      prisma.warehouseInventory.aggregate({
-        where: { warehouseId: id },
-        _sum: { quantity: true },
-      }),
-      prisma.warehouseInventory.count({
-        where: { warehouseId: id, quantity: 0 },
-      }),
-      prisma.$queryRaw<[{ count: bigint }]>`
-        SELECT COUNT(*)::int AS count
-        FROM "WarehouseInventory"
-        WHERE "warehouseId" = ${id}
-          AND quantity > 0
-          AND quantity <= "minQuantity"
-      `
-    ]);
-
-    const lowStockItems = Number(lowStockItemsRaw[0]?.count ?? 0);
-
-    const totalQuantity = aggResult._sum.quantity ?? 0;
+    // Calculate summary stats
+    const totalProducts = warehouse.inventories.length;
+    const totalQuantity = warehouse.inventories.reduce(
+      (sum: number, inv: (typeof warehouse.inventories)[number]) => sum + inv.quantity,
+      0,
+    );
+    const lowStockItems = warehouse.inventories.filter(
+      (inv: (typeof warehouse.inventories)[number]) => inv.quantity <= inv.minQuantity,
+    ).length;
 
     res.json({
       ...warehouse,
-      organizations: warehouse.organizations.map((wo) => wo.organization),
+      organizations: warehouse.organizations.map((wo: (typeof warehouse.organizations)[number]) => wo.organization),
       summary: {
-        totalProducts: invTotal,
+        totalProducts,
         totalQuantity,
         lowStockItems,
-        lowStockCount: lowStockItems,
-        outOfStockCount: outCount,
         capacityUsed:
           warehouse.capacity > 0
             ? Math.round((totalQuantity / warehouse.capacity) * 100)
             : 0,
-      },
-      pagination: {
-        page: invPage,
-        limit: invLimit,
-        total: invTotal,
-        totalPages: Math.ceil(invTotal / invLimit),
       },
     });
   } catch (error) {
@@ -628,6 +572,7 @@ router.post("/warehouses/:id/inventory", requireAuth, requirePlatformPermission(
 router.patch(
   "/warehouses/:warehouseId/inventory/:productId",
   requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
   async (req, res) => {
     try {
       const { warehouseId, productId } = req.params;
@@ -639,13 +584,6 @@ router.patch(
         batchNumber,
         expiryDate,
         note,
-        name,
-        description,
-        barcode,
-        unit,
-        price,
-        costPrice,
-        businessCategoryId,
       } = req.body;
 
       const updateData: any = {};
@@ -658,65 +596,6 @@ router.patch(
         updateData.expiryDate = expiryDate ? new Date(expiryDate) : null;
       if (note !== undefined) updateData.note = note;
 
-      const productUpdateData: any = {};
-      if (name !== undefined) {
-        const trimmedName = String(name).trim();
-        if (!trimmedName) {
-          return res.status(400).json({ message: "Барааны нэр хоосон байж болохгүй" });
-        }
-        productUpdateData.name = trimmedName;
-      }
-      if (description !== undefined) productUpdateData.description = description ? String(description).trim() : null;
-      if (barcode !== undefined) productUpdateData.barcode = barcode ? String(barcode).trim() : null;
-      if (unit !== undefined) productUpdateData.unit = unit ? String(unit).trim() : null;
-      if (price !== undefined) {
-        const parsedPrice = Number(price);
-        if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
-          return res.status(400).json({ message: "Үнэ буруу байна" });
-        }
-        productUpdateData.price = parsedPrice;
-      }
-      if (costPrice !== undefined) {
-        if (costPrice === null || costPrice === "") {
-          productUpdateData.costPrice = null;
-        } else {
-          const parsedCostPrice = Number(costPrice);
-          if (!Number.isFinite(parsedCostPrice) || parsedCostPrice < 0) {
-            return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
-          }
-          productUpdateData.costPrice = parsedCostPrice;
-        }
-      }
-      if (businessCategoryId !== undefined) {
-        if (businessCategoryId) {
-          const category = await prisma.businessCategory.findUnique({
-            where: { id: String(businessCategoryId) },
-            select: { id: true },
-          });
-          if (!category) {
-            return res.status(400).json({ message: "Ангилал олдсонгүй" });
-          }
-          productUpdateData.businessCategoryId = String(businessCategoryId);
-        } else {
-          productUpdateData.businessCategoryId = null;
-        }
-      }
-
-      const targetInventory = await prisma.warehouseInventory.findUnique({
-        where: { warehouseId_productId: { warehouseId, productId } },
-        select: { product: { select: { organizationId: true } } },
-      });
-      if (!targetInventory) {
-        return res.status(404).json({ message: "Агуулахын бараа олдсонгүй" });
-      }
-      const permission = await assertOrgPermission(
-        req,
-        res,
-        targetInventory.product.organizationId,
-        Permission.MANAGE_STOCK,
-      );
-      if (!permission) return;
-
       const inventory = await prisma.$transaction(async (tx) => {
         // Get old quantity for ledger
         const oldInv = quantity !== undefined
@@ -726,12 +605,6 @@ router.patch(
             })
           : null;
 
-        if (Object.keys(productUpdateData).length > 0) {
-          await tx.product.update({
-            where: { id: productId },
-            data: productUpdateData,
-          });
-        }
         const inv = await tx.warehouseInventory.update({
           where: {
             warehouseId_productId: {
@@ -745,28 +618,8 @@ router.patch(
               select: {
                 id: true,
                 name: true,
-                description: true,
                 sku: true,
-                barcode: true,
-                unit: true,
                 price: true,
-                costPrice: true,
-                images: {
-                  take: 1,
-                  select: { url: true },
-                },
-                businessCategory: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-                category: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
               },
             },
           },

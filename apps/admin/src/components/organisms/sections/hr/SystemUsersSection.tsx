@@ -97,8 +97,7 @@ export function SystemUsersSection() {
       const res = await adminFetch(`${API}/admin/users`);
       if (!res.ok) throw new Error("Хэрэглэгчдийн мэдээлэл ачаалахад алдаа гарлаа");
       const data = await res.json();
-      // Handle both old array format and new paginated format
-      setUsers(Array.isArray(data) ? data : (Array.isArray(data.users) ? data.users : []));
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Алдаа гарлаа");
     } finally {

@@ -81,27 +81,13 @@ export default function DispatchPage() {
     const load = async () => {
       setLoading(true);
       try {
-        let allInventories: any[] = [];
-        let page = 1;
-        let hasMore = true;
-
-        while (hasMore) {
-          const res = await wmsFetch(
-            `${API}/warehouses/${selectedWarehouseId}/detail?invPage=${page}&invLimit=200`,
-          );
-          if (res.ok) {
-            const data = await res.json();
-            allInventories = [...allInventories, ...(data.inventories || [])];
-            if (data.pagination && data.pagination.page < data.pagination.totalPages) {
-              page++;
-            } else {
-              hasMore = false;
-            }
-          } else {
-            break;
-          }
+        const res = await wmsFetch(
+          `${API}/warehouses/${selectedWarehouseId}/detail`,
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setInventory(data.inventories || []);
         }
-        setInventory(allInventories);
       } catch {
         /* ignore */
       } finally {
@@ -181,27 +167,13 @@ export default function DispatchPage() {
       setReason("");
       setNote("");
       // Refresh inventory
-      let allInventories: any[] = [];
-      let page = 1;
-      let hasMore = true;
-
-      while (hasMore) {
-        const res = await wmsFetch(
-          `${API}/warehouses/${selectedWarehouseId}/detail?invPage=${page}&invLimit=200`,
-        );
-        if (res.ok) {
-          const data = await res.json();
-          allInventories = [...allInventories, ...(data.inventories || [])];
-          if (data.pagination && data.pagination.page < data.pagination.totalPages) {
-            page++;
-          } else {
-            hasMore = false;
-          }
-        } else {
-          break;
-        }
+      const res = await wmsFetch(
+        `${API}/warehouses/${selectedWarehouseId}/detail`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setInventory(data.inventories || []);
       }
-      setInventory(allInventories);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       console.error("Dispatch failed:", err);

@@ -22,11 +22,10 @@ import {
   EyeOff,
   Copy,
   Check,
+  Globe,
   Crown,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
-
-type UpgradePlan = { id: string; code: string; name: string; durationDays: number; price: number; isTrial: boolean };
 
 export default function PartnerDetailsPage() {
   const params = useParams();
@@ -43,8 +42,6 @@ export default function PartnerDetailsPage() {
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [subdomainSaving, setSubdomainSaving] = useState(false);
-  const [upgradePlans, setUpgradePlans] = useState<UpgradePlan[]>([]);
-  const [selectedPlanId, setSelectedPlanId] = useState<string>("");
 
   useEffect(() => {
     const fetchPartner = async () => {
@@ -73,13 +70,6 @@ export default function PartnerDetailsPage() {
       fetchPartner();
     }
   }, [params?.id]);
-
-  useEffect(() => {
-    adminFetch(`${API}/admin/upgrade-plans`)
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setUpgradePlans(d.plans.filter((p: UpgradePlan) => !p.isTrial)); })
-      .catch(console.error);
-  }, []);
 
   const handleInvestorToggle = async (makeInvestor: boolean) => {
     if (makeInvestor && (!investmentInput || Number(investmentInput) <= 0)) {
@@ -178,13 +168,8 @@ export default function PartnerDetailsPage() {
 
   const handleSubdomainToggle = async (enable: boolean) => {
     if (!partner) return;
-    if (enable && !selectedPlanId) {
-      alert("Идэвхжүүлэх багцаа сонгоно уу");
-      return;
-    }
-    const chosenPlan = upgradePlans.find((p) => p.id === selectedPlanId);
     const msg = enable
-      ? `${partner.slug}.mglstore.mn — ${chosenPlan?.name ?? ""} багцаар идэвхжүүлэхдээ итгэлтэй байна уу?`
+      ? `${partner.slug}.mglstore.mn субдомайн идэвхжүүлэхдээ итгэлтэй байна уу?`
       : "Субдомайн идэвхгүй болгохдоо итгэлтэй байна уу?";
     if (!confirm(msg)) return;
     setSubdomainSaving(true);
@@ -192,17 +177,15 @@ export default function PartnerDetailsPage() {
       const res = await adminFetch(`${API}/admin/partners/${partner.id}/subdomain`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: enable, planId: enable ? selectedPlanId : undefined }),
+        body: JSON.stringify({ enabled: enable }),
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
       setPartner((prev: any) => ({
         ...prev,
         subdomainEnabled: data.subdomainEnabled,
-        planType: data.planType,
         planExpiresAt: data.planExpiresAt,
       }));
-      if (enable) setSelectedPlanId("");
     } catch {
       alert("Субдомайн өөрчлөхөд алдаа гарлаа");
     } finally {
@@ -504,48 +487,32 @@ export default function PartnerDetailsPage() {
             </div>
           </div>
 
-          {/* Plan Section */}
+          {/* Subdomain Section */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
             <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Crown size={20} className="text-amber-500" />
-              Pro план
+              <Globe size={20} className="text-indigo-500" />
+              Веб субдомайн
             </h3>
 
-            {partner.planExpiresAt && new Date(partner.planExpiresAt) > new Date() ? (
+            <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <p className="text-xs font-semibold text-slate-400 mb-1">Хаяг</p>
+              <p className="text-sm font-bold font-mono text-slate-800 break-all">
+                {partner.slug}.mglstore.mn
+              </p>
+            </div>
+
+            {partner.subdomainEnabled ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
                   <CheckCircle2 size={16} className="text-emerald-600" />
                   <div>
-                    <p className="text-sm font-semibold text-emerald-800">
-                      Идэвхтэй {partner.planType ? `· ${partner.planType}` : ""}
-                    </p>
-                    <p className="text-xs text-emerald-600">
-                      Дуусах: {new Date(partner.planExpiresAt).toLocaleDateString("mn-MN")}
-                    </p>
+                    <p className="text-sm font-semibold text-emerald-800">Идэвхтэй</p>
+                    {partner.planExpiresAt && (
+                      <p className="text-xs text-emerald-600">
+                        Дуусах: {new Date(partner.planExpiresAt).toLocaleDateString("mn-MN")}
+                      </p>
+                    )}
                   </div>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 mb-1.5">Багц өөрчлөх / сунгах</p>
-                  <select
-                    value={selectedPlanId}
-                    onChange={(e) => setSelectedPlanId(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 mb-2"
-                  >
-                    <option value="">— Багц сонгох —</option>
-                    {upgradePlans.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} · {p.durationDays}х · {p.price.toLocaleString()}₮
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => handleSubdomainToggle(true)}
-                    disabled={subdomainSaving || !selectedPlanId}
-                    className="w-full px-4 py-2 bg-[#FFAD02] hover:bg-amber-500 disabled:bg-amber-200 text-black text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
-                  >
-                    {subdomainSaving ? <Loader2 size={14} className="animate-spin" /> : <Crown size={14} />}
-                    {subdomainSaving ? "Боловсруулж байна..." : "Сунгах / өөрчлөх"}
-                  </button>
                 </div>
                 <button
                   onClick={() => handleSubdomainToggle(false)}
@@ -557,26 +524,20 @@ export default function PartnerDetailsPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                <p className="text-xs font-semibold text-slate-400 mb-1">Идэвхжүүлэх багц</p>
-                <select
-                  value={selectedPlanId}
-                  onChange={(e) => setSelectedPlanId(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
-                >
-                  <option value="">— Багц сонгох —</option>
-                  {upgradePlans.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} · {p.durationDays}х · {p.price.toLocaleString()}₮
-                    </option>
-                  ))}
-                </select>
+                <p className="text-sm text-slate-500">
+                  Энэ түншид субдомайн идэвхжүүлэх (1 сар).
+                </p>
                 <button
                   onClick={() => handleSubdomainToggle(true)}
-                  disabled={subdomainSaving || !selectedPlanId}
-                  className="w-full px-4 py-2.5 bg-[#FFAD02] hover:bg-amber-500 disabled:bg-amber-200 text-black text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                  disabled={subdomainSaving}
+                  className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
                 >
-                  {subdomainSaving ? <Loader2 size={16} className="animate-spin" /> : <Crown size={16} />}
-                  {subdomainSaving ? "Боловсруулж байна..." : "Pro план идэвхжүүлэх"}
+                  {subdomainSaving ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Crown size={16} />
+                  )}
+                  {subdomainSaving ? "Боловсруулж байна..." : "Субдомайн идэвхжүүлэх"}
                 </button>
               </div>
             )}

@@ -2,147 +2,98 @@ import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
 import { requireAuth } from "../../middleware/auth";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
-import type { Decimal } from "@prisma/client/runtime/library";
 
 const router: ExpressRouter = Router();
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Plan definitions ──────────────────────────────────────────────────────
+
+export type PlanId = "trial" | "1m" | "3m" | "6m" | "1y";
 
 export type Plan = {
-  id: string;
-  code?: string;
+  id: PlanId;
   name: string;
   price: number;
   durationDays: number;
-  maxProducts: number;
-  maxImages: number;
-  maxCategories: number;
+  maxProducts: number;       // -1 = unlimited
+  maxImages: number;         // max images per product, -1 = unlimited
+  maxCategories: number;     // -1 = unlimited
   hasBanner: boolean;
   hasAnalytics: boolean;
   isTrial: boolean;
-  badge?: string | null;
-  description?: string | null;
-  isRecommended?: boolean;
-  isActive?: boolean;
-  sortOrder?: number;
+  badge?: string;
 };
 
-// ─── Fallback plans (used when UpgradePlan table is empty) ──────────────────
-
-export const FALLBACK_PLANS: Plan[] = [
+export const PLANS: Plan[] = [
   {
     id: "trial",
-    code: "trial",
     name: "Үнэгүй туршилт",
     price: 0,
     durationDays: 14,
-    maxProducts: 30,
-    maxImages: 3,
-    maxCategories: 5,
-    hasBanner: true,
+    maxProducts: 10,
+    maxImages: 2,
+    maxCategories: 1,
+    hasBanner: false,
     hasAnalytics: false,
     isTrial: true,
-    badge: "Үнэгүй",
-    sortOrder: 1,
   },
   {
     id: "1m",
-    code: "monthly",
     name: "1 Сар",
-    description: "Шинээр эхэлж байгаа дэлгүүрт",
     price: 49_900,
     durationDays: 30,
-    maxProducts: 150,
+    maxProducts: 100,
     maxImages: 5,
-    maxCategories: 10,
+    maxCategories: 3,
     hasBanner: true,
-    hasAnalytics: true,
+    hasAnalytics: false,
     isTrial: false,
-    sortOrder: 2,
   },
   {
     id: "3m",
-    code: "quarterly",
     name: "3 Сар",
-    description: "Тогтвортой ашиглах хамгийн тохиромжтой",
     price: 129_900,
     durationDays: 90,
-    maxProducts: 500,
-    maxImages: 8,
-    maxCategories: 20,
-    hasBanner: true,
-    hasAnalytics: true,
-    isTrial: false,
-    badge: "Хамгийн тохиромжтой",
-    isRecommended: true,
-    sortOrder: 3,
-  },
-  {
-    id: "6m",
-    code: "half_year",
-    name: "6 Сар",
-    description: "Борлуулалт идэвхтэй дэлгүүрт",
-    price: 239_900,
-    durationDays: 180,
-    maxProducts: 1000,
+    maxProducts: 300,
     maxImages: 10,
-    maxCategories: 50,
+    maxCategories: 5,
     hasBanner: true,
     hasAnalytics: true,
     isTrial: false,
     badge: "Хэмнэлттэй",
-    sortOrder: 4,
+  },
+  {
+    id: "6m",
+    name: "6 Сар",
+    price: 239_900,
+    durationDays: 180,
+    maxProducts: 500,
+    maxImages: 15,
+    maxCategories: 10,
+    hasBanner: true,
+    hasAnalytics: true,
+    isTrial: false,
+    badge: "Алдартай",
   },
   {
     id: "1y",
-    code: "yearly",
     name: "1 Жил",
-    description: "Брэндээ урт хугацаанд хөгжүүлэхэд",
     price: 449_900,
     durationDays: 365,
-    maxProducts: 3000,
-    maxImages: 15,
-    maxCategories: 100,
+    maxProducts: -1,
+    maxImages: -1,
+    maxCategories: -1,
     hasBanner: true,
     hasAnalytics: true,
     isTrial: false,
     badge: "Хамгийн ашигтай",
-    sortOrder: 5,
   },
 ];
 
-// ─── DB helpers ──────────────────────────────────────────────────────────────
-
-function dbPlanToPlain(p: {
-  id: string; code: string; name: string; description: string | null;
-  price: Decimal; durationDays: number; maxProducts: number; maxImages: number;
-  maxCategories: number; hasBanner: boolean; hasAnalytics: boolean; isTrial: boolean;
-  badge: string | null; isRecommended: boolean; isActive: boolean; sortOrder: number;
-}): Plan {
-  return { ...p, price: Number(p.price) };
+export function getPlan(id: string): Plan | undefined {
+  return PLANS.find((p) => p.id === id);
 }
 
-export async function getActivePlans(): Promise<Plan[]> {
-  const rows = await (prisma.upgradePlan as any).findMany({
-    where: { isActive: true },
-    orderBy: { sortOrder: "asc" },
-  });
-  return rows.length ? rows.map(dbPlanToPlain) : FALLBACK_PLANS;
-}
-
-export async function resolvePlan(idOrCode: string): Promise<Plan | undefined> {
-  const row = await (prisma.upgradePlan as any).findFirst({
-    where: { isActive: true, OR: [{ id: idOrCode }, { code: idOrCode }] },
-  });
-  if (row) return dbPlanToPlain(row);
-  return FALLBACK_PLANS.find((p) => p.id === idOrCode || p.code === idOrCode);
-}
-
-export function getPlan(idOrCode: string): Plan | undefined {
-  return FALLBACK_PLANS.find((p) => p.id === idOrCode || p.code === idOrCode);
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────────────────
 
 async function getOrgForUser(userId: string) {
   const member = await prisma.organizationMember.findFirst({
@@ -153,6 +104,7 @@ async function getOrgForUser(userId: string) {
           id: true,
           name: true,
           slug: true,
+          subdomainEnabled: true,
           planType: true,
           planActivatedAt: true,
           planExpiresAt: true,
@@ -170,14 +122,14 @@ function activationData(plan: Plan) {
   return { now, expiresAt };
 }
 
-// ─── Routes ──────────────────────────────────────────────────────────────────
+// ─── Routes ───────────────────────────────────────────────────────────────
 
 /**
  * GET /api/vendor/upgrade/status
  */
 router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = (req as any).user?.userId as string;
     const org = await getOrgForUser(userId);
     if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
 
@@ -186,20 +138,21 @@ router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
 
-    const isActive = org.planExpiresAt ? new Date(org.planExpiresAt) > new Date() : false;
-    const plans = await getActivePlans();
-
-    let currentPlan: Plan | null = null;
-    if (org.planType) currentPlan = (await resolvePlan(org.planType)) ?? null;
+    const isActive =
+      org.subdomainEnabled && org.planExpiresAt
+        ? new Date(org.planExpiresAt) > new Date()
+        : false;
 
     return res.json({
       success: true,
+      subdomainEnabled: org.subdomainEnabled,
+      subdomain: `${org.slug}.mglstore.mn`,
       planType: org.planType,
       planActivatedAt: org.planActivatedAt,
       planExpiresAt: org.planExpiresAt,
       trialUsed: org.trialUsed,
       isActive,
-      currentPlan,
+      currentPlan: org.planType ? getPlan(org.planType) ?? null : null,
       pendingInvoice: pendingInvoice
         ? {
             invoiceId: pendingInvoice.invoiceId,
@@ -207,11 +160,10 @@ router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
             qrText: pendingInvoice.qrText,
             amount: Number(pendingInvoice.amount),
             planType: pendingInvoice.planType,
-            planId: pendingInvoice.planId ?? null,
             createdAt: pendingInvoice.createdAt,
           }
         : null,
-      plans,
+      plans: PLANS,
     });
   } catch (error) {
     console.error("upgrade status error", error);
@@ -221,35 +173,41 @@ router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
 
 /**
  * POST /api/vendor/upgrade/trial
+ * Activate free trial (once per org)
  */
 router.post("/vendor/upgrade/trial", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = (req as any).user?.userId as string;
     const org = await getOrgForUser(userId);
     if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
 
     if (org.trialUsed) {
       return res.status(400).json({ success: false, message: "Үнэгүй туршилтыг аль хэдийн ашигласан байна" });
     }
-    if (org.planExpiresAt && new Date(org.planExpiresAt) > new Date()) {
+    if (org.subdomainEnabled && org.planExpiresAt && new Date(org.planExpiresAt) > new Date()) {
       return res.status(400).json({ success: false, message: "Идэвхтэй план аль хэдийн байна" });
     }
 
-    const plans = await getActivePlans();
-    const trialPlan = plans.find((p) => p.isTrial) ?? FALLBACK_PLANS.find((p) => p.isTrial)!;
-    const { now, expiresAt } = activationData(trialPlan);
+    const plan = getPlan("trial")!;
+    const { now, expiresAt } = activationData(plan);
 
     await (prisma.organization as any).update({
       where: { id: org.id },
       data: {
-        planType: trialPlan.code ?? "trial",
+        subdomainEnabled: true,
+        planType: "trial",
         planActivatedAt: now,
         planExpiresAt: expiresAt,
         trialUsed: true,
       },
     });
 
-    return res.json({ success: true, planType: trialPlan.code ?? "trial", expiresAt });
+    return res.json({
+      success: true,
+      subdomain: `${org.slug}.mglstore.mn`,
+      planType: "trial",
+      expiresAt,
+    });
   } catch (error) {
     console.error("trial activate error", error);
     return res.status(500).json({ success: false, message: "Серверийн алдаа" });
@@ -258,27 +216,29 @@ router.post("/vendor/upgrade/trial", requireAuth, async (req, res) => {
 
 /**
  * POST /api/vendor/upgrade/initiate
- * Body: { planId: "<DB uuid or code>" }
+ * Body: { planId: "1m" | "3m" | "6m" | "1y" }
  */
 router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
-    const { planId } = req.body as { planId: string };
-    if (!planId) return res.status(400).json({ success: false, message: "planId шаардлагатай" });
+    const userId = (req as any).user?.userId as string;
+    const { planId } = req.body as { planId: PlanId };
 
-    const plan = await resolvePlan(planId);
-    if (!plan) return res.status(404).json({ success: false, message: "Сонгосон багц олдсонгүй" });
-    if (plan.isTrial) return res.status(400).json({ success: false, message: "Үнэгүй туршилтыг /trial endpoint-оор идэвхжүүл" });
+    const plan = getPlan(planId);
+    if (!plan || plan.isTrial) {
+      return res.status(400).json({ success: false, message: "Буруу план сонгосон" });
+    }
 
     const org = await getOrgForUser(userId);
     if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
 
+    // Cancel stale pending invoices
     await (prisma.orgUpgradePlan as any).updateMany({
       where: { organizationId: org.id, status: "PENDING" },
       data: { status: "CANCELLED" },
     });
 
     const invoiceNo = `UPG-${org.id.slice(0, 8).toUpperCase()}-${Date.now()}`;
+
     const qpayRes = await createQPayInvoice({
       orderId: org.id,
       orderNumber: invoiceNo,
@@ -290,8 +250,7 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
     await (prisma.orgUpgradePlan as any).create({
       data: {
         organizationId: org.id,
-        ...(plan.id !== (plan.code ?? plan.id) ? { planId: plan.id } : {}),
-        planType: plan.code ?? plan.id,
+        planType: planId,
         invoiceId: qpayRes.invoice_id,
         invoiceNo,
         qrText: qpayRes.qr_text,
@@ -306,7 +265,7 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
       invoiceNo,
       qrText: qpayRes.qr_text,
       amount: plan.price,
-      planType: plan.code ?? plan.id,
+      planType: planId,
       plan,
     });
   } catch (error) {
@@ -320,35 +279,51 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
  */
 router.post("/vendor/upgrade/check/:invoiceId", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = (req as any).user?.userId as string;
     const { invoiceId } = req.params;
 
     const org = await getOrgForUser(userId);
     if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
 
-    const dbRecord = await (prisma.orgUpgradePlan as any).findFirst({
+    const dbPlan = await (prisma.orgUpgradePlan as any).findFirst({
       where: { invoiceId, organizationId: org.id },
     });
-    if (!dbRecord) return res.status(404).json({ success: false, message: "Нэхэмжлэл олдсонгүй" });
-    if (dbRecord.status === "PAID") return res.json({ success: true, paid: true, message: "Төлбөр аль хэдийн баталгаажсан" });
+    if (!dbPlan) return res.status(404).json({ success: false, message: "Нэхэмжлэл олдсонгүй" });
+
+    if (dbPlan.status === "PAID") {
+      return res.json({ success: true, paid: true, message: "Төлбөр аль хэдийн баталгаажсан" });
+    }
 
     const qpayCheck = await checkQPayPayment(invoiceId);
     const isPaid = qpayCheck.count > 0 && qpayCheck.rows.some((r: any) => r.payment_status === "PAID");
 
     if (isPaid) {
-      const plan = (await resolvePlan(dbRecord.planType)) ?? getPlan(dbRecord.planType);
-      if (!plan) return res.status(500).json({ success: false, message: "Багцын мэдээлэл олдсонгүй" });
-
+      const plan = getPlan(dbPlan.planType)!;
       const { now, expiresAt } = activationData(plan);
+
       await prisma.$transaction([
-        (prisma.orgUpgradePlan as any).update({ where: { id: dbRecord.id }, data: { status: "PAID", paidAt: now, expiresAt } }),
+        (prisma.orgUpgradePlan as any).update({
+          where: { id: dbPlan.id },
+          data: { status: "PAID", paidAt: now, expiresAt },
+        }),
         (prisma.organization as any).update({
           where: { id: org.id },
-          data: { planType: dbRecord.planType, planActivatedAt: now, planExpiresAt: expiresAt },
+          data: {
+            subdomainEnabled: true,
+            planType: dbPlan.planType,
+            planActivatedAt: now,
+            planExpiresAt: expiresAt,
+          },
         }),
       ]);
 
-      return res.json({ success: true, paid: true, planType: dbRecord.planType, expiresAt });
+      return res.json({
+        success: true,
+        paid: true,
+        subdomain: `${org.slug}.mglstore.mn`,
+        planType: dbPlan.planType,
+        expiresAt,
+      });
     }
 
     return res.json({ success: true, paid: false, message: "Төлбөр хүлээгдэж байна" });
@@ -359,7 +334,7 @@ router.post("/vendor/upgrade/check/:invoiceId", requireAuth, async (req, res) =>
 });
 
 /**
- * POST /api/vendor/upgrade/callback — QPay webhook
+ * POST /api/vendor/upgrade/callback  — QPay webhook
  */
 router.post("/vendor/upgrade/callback", async (req, res) => {
   try {
@@ -367,24 +342,22 @@ router.post("/vendor/upgrade/callback", async (req, res) => {
     const { invoice_id } = req.body || {};
     if (!invoice_id || !orgId) return res.status(400).json({ message: "Missing params" });
 
-    const dbRecord = await (prisma.orgUpgradePlan as any).findFirst({
+    const dbPlan = await (prisma.orgUpgradePlan as any).findFirst({
       where: { invoiceId: invoice_id, organizationId: orgId, status: "PENDING" },
     });
-    if (!dbRecord) return res.status(200).json({ message: "already handled" });
+    if (!dbPlan) return res.status(200).json({ message: "already handled" });
 
     const qpayCheck = await checkQPayPayment(invoice_id);
     const isPaid = qpayCheck.count > 0 && qpayCheck.rows.some((r: any) => r.payment_status === "PAID");
 
     if (isPaid) {
-      const plan = (await resolvePlan(dbRecord.planType)) ?? getPlan(dbRecord.planType);
-      if (!plan) return res.status(200).json({ message: "plan not found" });
-
+      const plan = getPlan(dbPlan.planType)!;
       const { now, expiresAt } = activationData(plan);
       await prisma.$transaction([
-        (prisma.orgUpgradePlan as any).update({ where: { id: dbRecord.id }, data: { status: "PAID", paidAt: now, expiresAt } }),
+        (prisma.orgUpgradePlan as any).update({ where: { id: dbPlan.id }, data: { status: "PAID", paidAt: now, expiresAt } }),
         (prisma.organization as any).update({
           where: { id: orgId },
-          data: { planType: dbRecord.planType, planActivatedAt: now, planExpiresAt: expiresAt },
+          data: { subdomainEnabled: true, planType: dbPlan.planType, planActivatedAt: now, planExpiresAt: expiresAt },
         }),
       ]);
     }

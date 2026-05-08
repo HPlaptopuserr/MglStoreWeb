@@ -1,14 +1,11 @@
 export * from "./api/get-pos-products";
 export * from "./api/get-own-products";
 export * from "./api/create-sale";
-export * from "./api/shifts";
 export * from "./api/open-shift";
 export * from "./api/close-shift";
 export * from "./api/get-receipts";
 export * from "./api/get-pos-reports";
-export * from "./api/card-terminal";
-export * from "./api/qpay";
-export * from "./api/register";
+export * from "./api/payments";
 
 export * from "./components/PosHeader";
 export * from "./components/PosProductGrid";

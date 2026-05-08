@@ -27,8 +27,9 @@ export const ProductGrid = () => {
     fetch(`${API}/products`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
-        const list = Array.isArray(data) ? data : (Array.isArray(data?.products) ? data.products : []);
-        setProducts(list.slice(0, 16));
+        if (Array.isArray(data)) {
+          setProducts(data.slice(0, 16));
+        }
       })
       .catch(() => {
       });

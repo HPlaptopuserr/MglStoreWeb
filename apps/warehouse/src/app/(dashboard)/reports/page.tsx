@@ -156,29 +156,8 @@ export default function ReportsPage() {
     if (!warehouseId) return;
     setLoading(true);
     try {
-      let mergedDetail: any = null;
-      let page = 1;
-      let hasMore = true;
-
-      while (hasMore) {
-        const res = await wmsFetch(`${API}/warehouses/${warehouseId}/detail?invPage=${page}&invLimit=200`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!mergedDetail) {
-            mergedDetail = data;
-          } else {
-            mergedDetail.inventories = [...mergedDetail.inventories, ...(data.inventories || [])];
-          }
-          if (data.pagination && data.pagination.page < data.pagination.totalPages) {
-            page++;
-          } else {
-            hasMore = false;
-          }
-        } else {
-          break;
-        }
-      }
-      if (mergedDetail) setDetail(mergedDetail);
+      const res = await wmsFetch(`${API}/warehouses/${warehouseId}/detail`);
+      if (res.ok) setDetail(await res.json());
     } catch { /* ignore */ } finally { setLoading(false); }
   }, [warehouseId]);
 

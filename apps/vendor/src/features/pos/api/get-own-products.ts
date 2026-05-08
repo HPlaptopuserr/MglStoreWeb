@@ -1,5 +1,5 @@
+import { API } from "@/lib/api";
 import type { PosProduct } from "../types/pos.types";
-import { posRequest } from "./_pos-client";
 
 type RawProduct = {
   id: string;
@@ -14,10 +14,20 @@ export async function getOwnProducts(
   organizationId: string,
   signal?: AbortSignal,
 ): Promise<PosProduct[]> {
-  const data = await posRequest<RawProduct[]>(
-    `/products?organizationId=${encodeURIComponent(organizationId)}`,
-    { signal },
+  const res = await fetch(
+    `${API}/products?organizationId=${encodeURIComponent(organizationId)}`,
+    {
+      signal,
+      credentials: "include",
+      cache: "no-store",
+    },
   );
+
+  if (!res.ok) {
+    throw new Error("Бараа татахад алдаа гарлаа");
+  }
+
+  const data = (await res.json()) as RawProduct[];
 
   if (!Array.isArray(data)) return [];
 

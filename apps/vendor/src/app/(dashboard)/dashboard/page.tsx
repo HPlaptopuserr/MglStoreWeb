@@ -190,13 +190,13 @@ export default function Dashboard() {
             <ReceiptText size={15} />
             Борлуулалт
           </Link>
-{/*           <Link
+          <Link
             href="/pos"
             className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
           >
             <Barcode size={15} />
             POS Demo
-          </Link> */}
+          </Link>
           {(data?.pendingPayments?.count ?? 0) > 0 && (
             <Link
               href="/shipments"

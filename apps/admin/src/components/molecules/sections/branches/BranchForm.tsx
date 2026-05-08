@@ -1,4 +1,4 @@
-import type { Dispatch, Ref, SetStateAction } from "react";
+import type { RefObject } from "react";
 import { Building2, Loader2, MapPin, Plus, Tag } from "lucide-react";
 import type { CardPartner, BranchFormState } from "@/lib/sections/types";
 
@@ -8,10 +8,10 @@ type Props = {
   setOrgId: (id: string) => void;
   selectedOrg: CardPartner | undefined;
   form: BranchFormState;
-  setForm: Dispatch<SetStateAction<BranchFormState>>;
+  setForm: React.Dispatch<React.SetStateAction<BranchFormState>>;
   branchSaving: boolean;
   branchMapError: string;
-  mapPickerRef: Ref<HTMLDivElement>;
+  mapPickerRef: RefObject<HTMLDivElement | null>;
   onSubmit: () => void;
 };
 
@@ -60,9 +60,7 @@ export function BranchForm({
               <Building2 size={16} className="text-violet-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-bold text-slate-800 truncate">
-                {selectedOrg.name}
-              </p>
+              <p className="text-sm font-bold text-slate-800 truncate">{selectedOrg.name}</p>
               <p className="text-xs text-violet-600">@{selectedOrg.slug}</p>
             </div>
           </div>
@@ -83,19 +81,14 @@ export function BranchForm({
         <input
           type="text"
           value={form.name}
-          onChange={(e) =>
-            setForm((prev) => ({ ...prev, name: e.target.value }))
-          }
+          onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
           placeholder="Салбарын нэр (жишээ: Төв салбар)"
           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-shadow"
         />
-
         <input
           type="text"
           value={form.address}
-          onChange={(e) =>
-            setForm((prev) => ({ ...prev, address: e.target.value }))
-          }
+          onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))}
           placeholder="Салбарын хаяг (жишээ: СБД 1-р хороо, Энхтайвны өргөн чөлөө)"
           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-shadow"
         />
@@ -118,31 +111,22 @@ export function BranchForm({
               type="number"
               step="any"
               value={form.lat}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, lat: e.target.value }))
-              }
+              onChange={(e) => setForm((prev) => ({ ...prev, lat: e.target.value }))}
               placeholder="47.9187"
               className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-shadow"
             />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-400">
-              LAT
-            </span>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-400">LAT</span>
           </div>
-
           <div className="relative">
             <input
               type="number"
               step="any"
               value={form.lng}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, lng: e.target.value }))
-              }
+              onChange={(e) => setForm((prev) => ({ ...prev, lng: e.target.value }))}
               placeholder="106.9176"
               className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-shadow"
             />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-400">
-              LNG
-            </span>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-400">LNG</span>
           </div>
         </div>
 
@@ -154,7 +138,6 @@ export function BranchForm({
                 Map дээр дарж байршил сонгох
               </p>
             </div>
-
             {hasCoords && (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -162,15 +145,12 @@ export function BranchForm({
               </span>
             )}
           </div>
-
           <div ref={mapPickerRef} className="h-64 w-full" />
-
           <div className="px-3 py-2 border-t border-slate-200 bg-slate-50">
             <p className="text-[11px] text-slate-500">
               Map дээр дарахад координат автоматаар бөглөгдөнө.
             </p>
           </div>
-
           {branchMapError && (
             <p className="px-3 py-2 text-xs text-rose-600 border-t border-rose-100 bg-rose-50">
               {branchMapError}

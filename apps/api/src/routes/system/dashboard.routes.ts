@@ -432,8 +432,6 @@ router.get("/vendor/dashboard/stats", requireAuth, requireOrgPermission({ from: 
 router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MANAGE_USERS), async (req, res) => {
   try {
     const { role, search, isActive } = req.query;
-    const page = Math.max(1, Number(req.query.page || 1));
-    const limit = Math.min(200, Math.max(1, Number(req.query.limit || 50)));
 
     const where: Record<string, unknown> = { deletedAt: null };
     if (role && typeof role === "string") where.role = role;
@@ -448,42 +446,37 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
       ];
     }
 
-    const [total, users] = await Promise.all([
-      prisma.user.count({ where }),
-      prisma.user.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * limit,
-        take: limit,
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          isActive: true,
-          emailVerified: true,
-          lastLoginAt: true,
-          createdAt: true,
-          profile: {
-            select: {
-              fullName: true,
-              phoneNumber: true,
-              avatarUrl: true,
-            },
+    const users = await prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        isActive: true,
+        emailVerified: true,
+        lastLoginAt: true,
+        createdAt: true,
+        profile: {
+          select: {
+            fullName: true,
+            phoneNumber: true,
+            avatarUrl: true,
           },
-          organizationMemberships: {
-            where: { isActive: true },
-            select: {
-              role: true,
-              isActive: true,
-              isPrimary: true,
-              organization: {
-                select: { id: true, name: true },
-              },
+        },
+        organizationMemberships: {
+          where: { isActive: true },
+          select: {
+            role: true,
+            isActive: true,
+            isPrimary: true,
+            organization: {
+              select: { id: true, name: true },
             },
           },
         },
-      }),
-    ]);
+      },
+    });
 
     const result = users.map((u: (typeof users)[number]) => {
       const primary = u.organizationMemberships.find((m: (typeof u.organizationMemberships)[number]) => m.isPrimary) || u.organizationMemberships[0] || null;
@@ -510,7 +503,7 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
       };
     });
 
-    return res.json({ total, page, limit, pages: Math.ceil(total / limit), users: result });
+    return res.json(result);
   } catch (error) {
     console.error("[admin users list error]", error);
     return res.status(500).json({ message: "Хэрэглэгчдийн жагсаалт ачаалахад алдаа гарлаа" });
