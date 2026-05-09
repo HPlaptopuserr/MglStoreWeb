@@ -42,3 +42,6 @@ coverage
 next-env.d.ts
 nul
 _tmp_*
+
+# TypeScript build cache
+*.tsbuildinfo

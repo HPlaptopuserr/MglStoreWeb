@@ -24,8 +24,14 @@ import {
   Check,
   Globe,
   Crown,
+  Plus,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
+import {
+  PlanStatusCard,
+  PlanGrantDialog,
+  PlanGrantHistory,
+} from "@/components/organisms/plan-grant";
 
 export default function PartnerDetailsPage() {
   const params = useParams();
@@ -43,6 +49,16 @@ export default function PartnerDetailsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [subdomainSaving, setSubdomainSaving] = useState(false);
 
+  const [showGrantDialog, setShowGrantDialog] = useState(false);
+  const [planData, setPlanData] = useState<{ plans: any[]; history: any[] } | null>(null);
+  const [planDataLoading, setPlanDataLoading] = useState(false);
+
+  const [branches, setBranches] = useState<{ id: string; name: string; address: string }[]>([]);
+  const [branchForm, setBranchForm] = useState({ name: "", address: "" });
+  const [branchSaving, setBranchSaving] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const [showBranchForm, setShowBranchForm] = useState(false);
+
   useEffect(() => {
     const fetchPartner = async () => {
       try {
@@ -59,6 +75,8 @@ export default function PartnerDetailsPage() {
         if (data.investmentAmount) {
           setInvestmentInput(String(data.investmentAmount));
         }
+        fetchPlanData(data.id);
+        fetchBranches(data.id);
       } catch (error) {
         console.error("Failed to fetch partner:", error);
       } finally {
@@ -70,6 +88,49 @@ export default function PartnerDetailsPage() {
       fetchPartner();
     }
   }, [params?.id]);
+
+  const fetchBranches = async (orgId: string) => {
+    try {
+      const res = await adminFetch(`${API}/admin/branches?organizationId=${orgId}`);
+      if (res.ok) setBranches(await res.json());
+    } catch {}
+  };
+
+  const handleAddBranch = async () => {
+    if (!branchForm.name.trim() || !branchForm.address.trim()) {
+      setBranchError("Нэр болон хаяг шаардлагатай");
+      return;
+    }
+    setBranchSaving(true);
+    setBranchError(null);
+    try {
+      const res = await adminFetch(`${API}/partners/${partner.id}/branches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: branchForm.name.trim(), address: branchForm.address.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setBranchError(data.message || "Алдаа гарлаа"); return; }
+      setBranches((prev) => [...prev, data]);
+      setPartner((prev: any) => ({ ...prev, stats: { ...prev.stats, branches: (prev.stats?.branches ?? 0) + 1 } }));
+      setBranchForm({ name: "", address: "" });
+      setShowBranchForm(false);
+    } catch { setBranchError("Сүлжээний алдаа гарлаа"); }
+    finally { setBranchSaving(false); }
+  };
+
+  const fetchPlanData = async (orgId: string) => {
+    setPlanDataLoading(true);
+    try {
+      const res = await adminFetch(`${API}/admin/vendors/${orgId}/plan-history`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success) setPlanData({ plans: data.plans, history: data.history });
+    } catch {
+    } finally {
+      setPlanDataLoading(false);
+    }
+  };
 
   const handleInvestorToggle = async (makeInvestor: boolean) => {
     if (makeInvestor && (!investmentInput || Number(investmentInput) <= 0)) {
@@ -230,6 +291,7 @@ export default function PartnerDetailsPage() {
   };
 
   return (
+    <>
     <div className="min-h-screen bg-[#f8f9fa] text-slate-800 font-sans px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
       {/* Header / Navigation */}
       <div className="mb-4 sm:mb-6 flex items-center justify-between">
@@ -543,6 +605,125 @@ export default function PartnerDetailsPage() {
             )}
           </div>
 
+          {/* Plan Grant Section */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Crown size={20} className="text-violet-500" />
+                Pro Багц удирдлага
+              </h3>
+              <button
+                onClick={() => {
+                  if (!planData && partner?.id) fetchPlanData(partner.id);
+                  setShowGrantDialog(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-colors"
+              >
+                <Crown size={13} />
+                Төлбөргүй нэмэх
+              </button>
+            </div>
+
+            <PlanStatusCard
+              planType={partner.planType ?? null}
+              planActivatedAt={partner.planActivatedAt ?? null}
+              planExpiresAt={partner.planExpiresAt ?? null}
+              subdomainEnabled={partner.subdomainEnabled ?? false}
+              trialUsed={partner.trialUsed ?? false}
+              slug={partner.slug}
+            />
+
+            {/* History toggle */}
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <button
+                onClick={() => {
+                  if (!planData && partner?.id) fetchPlanData(partner.id);
+                  else if (partner?.id) fetchPlanData(partner.id);
+                }}
+                className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
+              >
+                {planDataLoading ? "Ачааллаж байна..." : "Түүхийг шинэчлэх ↻"}
+              </button>
+              <div className="mt-3">
+                <PlanGrantHistory
+                  history={planData?.history ?? []}
+                  loading={planDataLoading && !planData}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Branches Section */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <MapPin size={20} className="text-emerald-500" />
+                Салбарууд
+              </h3>
+              <button
+                onClick={() => { setShowBranchForm((v) => !v); setBranchError(null); }}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg transition-colors"
+              >
+                <Plus size={13} />
+                Нэмэх
+              </button>
+            </div>
+
+            {showBranchForm && (
+              <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                {branchError && (
+                  <p className="text-xs text-red-600">{branchError}</p>
+                )}
+                <input
+                  type="text"
+                  placeholder="Салбарын нэр *"
+                  value={branchForm.name}
+                  onChange={(e) => setBranchForm((f) => ({ ...f, name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Хаяг *"
+                  value={branchForm.address}
+                  onChange={(e) => setBranchForm((f) => ({ ...f, address: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddBranch}
+                    disabled={branchSaving}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    {branchSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                    Хадгалах
+                  </button>
+                  <button
+                    onClick={() => { setShowBranchForm(false); setBranchForm({ name: "", address: "" }); setBranchError(null); }}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm rounded-lg transition-colors"
+                  >
+                    Болих
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {branches.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">Салбар бүртгэгдээгүй байна</p>
+            ) : (
+              <div className="space-y-2">
+                {branches.map((b) => (
+                  <div key={b.id} className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-100 rounded-xl">
+                    <MapPin size={14} className="text-emerald-500 mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-800">{b.name}</p>
+                      <p className="text-xs text-slate-500 break-words">{b.address}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Investor Section */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
             <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
@@ -657,5 +838,19 @@ export default function PartnerDetailsPage() {
         </div>
       </div>
     </div>
+
+      {showGrantDialog && partner && (
+        <PlanGrantDialog
+          orgId={partner.id}
+          orgName={partner.name}
+          plans={planData?.plans ?? []}
+          onSuccess={() => {
+            fetchPlanData(partner.id);
+            setPartner((prev: any) => ({ ...prev }));
+          }}
+          onClose={() => setShowGrantDialog(false)}
+        />
+      )}
+    </>
   );
 }

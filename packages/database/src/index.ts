@@ -27,4 +27,5 @@ export {
   ShiftStatus,
   PosSaleStatus,
   ContractStatus,
+  CardTerminalRequestStatus,
 } from "@prisma/client";

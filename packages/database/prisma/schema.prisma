@@ -34,6 +34,7 @@ model User {
   organizationMemberships      OrganizationMember[]
   passwordResetTokens          PasswordResetToken[]     @relation("UserPasswordResetTokens")
   reviewedPosRegisters         PosRegister[]            @relation("PosRegisterReviewedBy")
+  reviewedCardTerminalRequests CardTerminalRequest[]    @relation("CardTerminalRequestReviewedBy")
   posts                        Post[]                   @relation("PostAuthor")
   reviewedProductRequests      ProductRequest[]         @relation("ReviewedProductRequests")
   submittedProductRequests     ProductRequest[]         @relation("SubmittedProductRequests")
@@ -349,6 +350,7 @@ model Organization {
   posSales                     PosSale[]
   contracts                    Contract[]
   upgradePlans                 OrgUpgradePlan[]
+  cardTerminalRequests         CardTerminalRequest[]
 
   @@index([type])
   @@index([status])
@@ -357,22 +359,50 @@ model Organization {
   @@index([subdomainEnabled])
 }
 
+model CardTerminalRequest {
+  id               String                     @id @default(uuid())
+  organizationId   String
+  contactName      String
+  contactPhone     String
+  contactEmail     String?
+  providerType     String                     // e.g. "MONPAY", "GOLOMT", "TDB", etc.
+  businessNote     String?
+  status           CardTerminalRequestStatus  @default(PENDING)
+  adminNote        String?
+  // credentials set by admin after card terminal company approves
+  cardTerminalId   String?
+  terminalBridgeUrl String?
+  reviewedById     String?
+  reviewedAt       DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  organization     Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewedBy       User?                      @relation("CardTerminalRequestReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
 model OrgUpgradePlan {
-  id             String            @id @default(uuid())
-  organizationId String
-  planId         String?
-  planType       String
-  invoiceId      String            @unique
-  invoiceNo      String            @unique
-  qrText         String
-  amount         Decimal           @db.Decimal(18, 2)
-  status         PlanPaymentStatus @default(PENDING)
-  paidAt         DateTime?
-  expiresAt      DateTime?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  plan           UpgradePlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
+  id               String            @id @default(uuid())
+  organizationId   String
+  planId           String?
+  planType         String
+  invoiceId        String            @unique
+  invoiceNo        String            @unique
+  qrText           String            @default("")
+  amount           Decimal           @db.Decimal(18, 2)
+  status           PlanPaymentStatus @default(PENDING)
+  paidAt           DateTime?
+  expiresAt        DateTime?
+  grantedByAdmin   Boolean           @default(false)
+  grantNote        String?
+  grantedById      String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan             UpgradePlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([planId])
@@ -1493,6 +1523,12 @@ enum ProductApprovalStatus {
   CANCELLED
 }
 
+enum CardTerminalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum AuditAction {
   LOGIN
   LOGOUT
@@ -1525,6 +1561,9 @@ enum AuditAction {
   POS_SALE_CREATED
   POS_REGISTER_CREATED
   POS_QPAY_INVOICE_CREATED
+  CARD_TERMINAL_REQUEST_CREATED
+  CARD_TERMINAL_REQUEST_APPROVED
+  CARD_TERMINAL_REQUEST_REJECTED
 }
 
 enum PosActivationStatus {

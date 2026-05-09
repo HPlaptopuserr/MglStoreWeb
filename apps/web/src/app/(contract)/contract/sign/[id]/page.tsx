@@ -189,7 +189,7 @@ export default function ContractSignPage() {
           }
           // auto-print after data is ready
           if (isPrintMode) {
-            setTimeout(() => window.print(), 1200);
+            setTimeout(() => window.print(), 2500);
           }
         }
       })
@@ -584,7 +584,24 @@ export default function ContractSignPage() {
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border border-[#b4c6e7] p-4 bg-[#f8f9fc] align-top relative">
+                    <td className="border border-[#b4c6e7] p-4 bg-[#f8f9fc] align-top relative overflow-visible">
+                      {/* Stamp overlaid over entire ХОЛБОО column */}
+                      {contractInfo?.adminStamp && (
+                        <img
+                          src={contractInfo.adminStamp}
+                          alt="Тамга"
+                          className="absolute object-contain mix-blend-multiply pointer-events-none z-10"
+                          style={{
+                            width: 180,
+                            height: 180,
+                            top: "30%",
+                            left: "50%",
+                            transform: "translate(-50%, -30%) rotate(-4deg)",
+                            opacity: 0.85,
+                          }}
+                        />
+                      )}
+
                       <div className="border-b-2 border-[#1e4e8c] h-16 mb-1 relative flex items-end justify-center">
                         {contractInfo?.adminSignature
                           ? <img src={contractInfo.adminSignature} alt="Гарын үсэг" className="h-14 max-w-full object-contain mix-blend-multiply" />
@@ -602,13 +619,6 @@ export default function ContractSignPage() {
                         <span className="text-sm font-medium text-[#c00000]">{contractInfo?.adminTitle || ""}</span>
                       </div>
                       <span className="text-neutral-500 font-normal text-xs">Албан тушаал</span>
-
-                      <div className="border-b-2 border-[#1e4e8c] h-16 mb-1 mt-4 flex items-end justify-center">
-                        {contractInfo?.adminStamp && (
-                          <img src={contractInfo.adminStamp} alt="Тамга" className="h-14 max-w-full object-contain mix-blend-multiply" />
-                        )}
-                      </div>
-                      <span className="text-[#c00000] font-normal text-xs">Тамга</span>
 
                       <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 relative flex items-end justify-center">
                         <span className="text-sm font-medium text-neutral-800">{today}</span>
@@ -764,17 +774,25 @@ export default function ContractSignPage() {
             </div>
           </label>
 
-          <button
-            type="submit"
-            disabled={!agreed || isSubmitting || !memberData.name || !memberData.register}
-            className="w-full md:w-auto px-8 py-3.5 bg-[#1e4e8c] text-white rounded-xl font-medium hover:bg-blue-800 focus:ring-4 focus:ring-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-sm"
-          >
-            {isSubmitting ? (
-              <><Loader2 className="w-5 h-5 animate-spin" /> Уншиж байна...</>
-            ) : (
-              <><CheckCircle2 className="w-5 h-5" /> Дараагийн</>
+          <div className="flex flex-col items-end gap-2">
+            {(!memberData.director || !memberPosition) && (
+              <p className="text-xs text-amber-600 font-medium">
+                {!memberData.director ? "Овог нэр оруулна уу · " : ""}
+                {!memberPosition ? "Албан тушаал оруулна уу" : ""}
+              </p>
             )}
-          </button>
+            <button
+              type="submit"
+              disabled={!agreed || isSubmitting || !memberData.name || !memberData.register || !memberData.director || !memberPosition}
+              className="w-full md:w-auto px-8 py-3.5 bg-[#1e4e8c] text-white rounded-xl font-medium hover:bg-blue-800 focus:ring-4 focus:ring-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-sm"
+            >
+              {isSubmitting ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Уншиж байна...</>
+              ) : (
+                <><CheckCircle2 className="w-5 h-5" /> Дараагийн</>
+              )}
+            </button>
+          </div>
         </div>
       </form>
     </div>

@@ -34,6 +34,9 @@ import {
   vendorOrderRoutes,
   vendorMerchantRoutes,
   vendorUpgradeRoutes,
+  vendorCardTerminalRoutes,
+  upgradePlansRoutes,
+  adminGrantPlanRoutes,
 } from "./routes";
 
 const app = express();
@@ -123,6 +126,9 @@ app.use("/api", storeCheckoutRoutes);
 app.use("/api", vendorOrderRoutes);
 app.use("/api", vendorMerchantRoutes);
 app.use("/api", vendorUpgradeRoutes);
+app.use("/api", vendorCardTerminalRoutes);
+app.use("/api", upgradePlansRoutes);
+app.use("/api", adminGrantPlanRoutes);
 app.use("/api", contractRoutes);
 
 app.get("/", (_req, res) => {

@@ -139,7 +139,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     } catch {
       router.replace("/login");
     }
-  }, [router]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const switchSession = useCallback(
     (role: string) => {

@@ -503,6 +503,16 @@ router.patch(
 
 router.get("/partners", async (req, res) => {
   try {
+    // Lightweight list for dropdowns — only id & name
+    if (req.query.minimal === "true") {
+      const orgs = await prisma.organization.findMany({
+        where: { deletedAt: null, status: "ACTIVE" },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
+      return res.json({ partners: orgs, total: orgs.length });
+    }
+
     const PAGE_LIMIT = 16;
     const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
     const limit = Math.min(10000, Math.max(1, parseInt(String(req.query.limit || PAGE_LIMIT), 10) || PAGE_LIMIT));
@@ -691,8 +701,10 @@ router.get("/partners/:id", async (req, res) => {
         ? Number(partner.investorProfile.investmentLevel)
         : null,
       subdomainEnabled: partner.subdomainEnabled,
+      planType: (partner as any).planType,
       planActivatedAt: partner.planActivatedAt,
       planExpiresAt: partner.planExpiresAt,
+      trialUsed: (partner as any).trialUsed,
       stats: {
         users: partner._count.members,
         products: partner._count.products,
