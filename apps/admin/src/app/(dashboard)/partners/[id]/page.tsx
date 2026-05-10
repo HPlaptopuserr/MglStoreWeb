@@ -292,88 +292,111 @@ export default function PartnerDetailsPage() {
 
   return (
     <>
-    <div className="min-h-screen bg-[#f8f9fa] text-slate-800 font-sans px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-      {/* Header / Navigation */}
-      <div className="mb-4 sm:mb-6 flex items-center justify-between">
+    <div className="bg-[#f8f9fa] text-slate-800 font-sans px-4 py-4 sm:px-6 lg:px-8">
+      {/* Back */}
+      <div className="mb-4">
         <button
           onClick={() => router.back()}
-          className="inline-flex items-center gap-2 text-sm sm:text-base text-slate-600 hover:text-slate-800 transition-colors font-medium bg-white px-3 py-2 sm:px-4 rounded-xl border border-slate-200 shadow-sm"
+          className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-800 transition-colors font-medium bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm"
         >
-          <ArrowLeft size={18} />
-          Буцах
+          <ArrowLeft size={16} /> Буцах
         </button>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
-        {/* Main Info Column */}
-        <div className="xl:col-span-2 space-y-4 sm:space-y-6">
-          {/* Profile Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-4 sm:p-6 lg:p-8">
-            <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100 overflow-hidden">
-                {partner.logoUrl ? (
-                  <img
-                    src={partner.logoUrl}
-                    alt={partner.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <Building2 size={36} className="sm:w-10 sm:h-10" />
-                )}
+      {/* ── Profile header ── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 mb-4">
+        <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-5">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100 overflow-hidden">
+            {partner.logoUrl ? (
+              <img src={partner.logoUrl} alt={partner.name} className="w-full h-full object-cover" />
+            ) : (
+              <Building2 size={32} />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{partner.name}</h1>
+                <p className="text-sm text-slate-400 mt-0.5">@{partner.slug}</p>
               </div>
+              {partner.status === "ACTIVE" ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">
+                  <CheckCircle2 size={13} /> Идэвхтэй
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-600 border border-rose-200">
+                  <XCircle size={13} /> Идэвхгүй
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600">
+                <Briefcase size={12} className="text-slate-400" />{partner.type || "Төрөлгүй"}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600">
+                <FileText size={12} className="text-slate-400" />РД: {partner.taxId || "-"}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600">
+                <Calendar size={12} className="text-slate-400" />
+                {partner.createdAt ? new Date(partner.createdAt).toLocaleDateString("mn-MN") : "-"}
+              </span>
+            </div>
+          </div>
+        </div>
 
-              <div className="flex-1 min-w-0 w-full">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 mb-3">
-                  <div className="min-w-0">
-                    <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 break-words">
-                      {partner.name}
-                    </h1>
-                    <div className="text-slate-500 text-sm sm:text-base lg:text-lg mt-1 break-all">
-                      @{partner.slug}
-                    </div>
-                  </div>
+        {/* Stats row inside profile */}
+        <div className="grid grid-cols-4 gap-3 mt-5 pt-5 border-t border-slate-100">
+          {[
+            { label: "Хэрэглэгч", value: stats.users ?? 0, color: "text-indigo-700", bg: "bg-indigo-50" },
+            { label: "Бүтээгдэхүүн", value: stats.products ?? 0, color: "text-emerald-700", bg: "bg-emerald-50" },
+            { label: "Салбар", value: stats.branches ?? 0, color: "text-amber-700", bg: "bg-amber-50" },
+            { label: "Захиалга", value: stats.orders ?? 0, color: "text-sky-700", bg: "bg-sky-50" },
+          ].map((s) => (
+            <div key={s.label} className={`${s.bg} rounded-xl px-3 py-3 text-center`}>
+              <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
+              <p className="text-[11px] font-medium text-slate-500 mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
 
-                  <div className="shrink-0">
-                    {partner.status === "ACTIVE" ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs sm:text-sm font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">
-                        <CheckCircle2 size={16} />
-                        Идэвхтэй
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs sm:text-sm font-semibold bg-rose-50 text-rose-600 border border-rose-200">
-                        <XCircle size={16} />
-                        Идэвхгүй
-                      </span>
-                    )}
-                  </div>
+      {/* ── Main grid ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+
+        {/* Left col: Contact + Credentials */}
+        <div className="xl:col-span-2 space-y-4">
+
+          {/* Contact */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <Phone size={15} className="text-slate-400" /> Холбоо барих мэдээлэл
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                  <Mail size={14} className="text-slate-500" />
                 </div>
-
-                <div className="flex flex-wrap gap-2 sm:gap-3">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-medium text-slate-700">
-                    <Briefcase size={15} className="text-slate-400 shrink-0" />
-                    <span className="break-words">
-                      {partner.type || "Төрөлгүй"}
-                    </span>
-                  </span>
-
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-medium text-slate-700">
-                    <FileText size={15} className="text-slate-400 shrink-0" />
-                    <span className="break-all">
-                      РД: {partner.taxId || "-"}
-                    </span>
-                  </span>
-
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm font-medium text-slate-700">
-                    <Calendar size={15} className="text-slate-400 shrink-0" />
-                    <span>
-                      Бүртгүүлсэн:{" "}
-                      {partner.createdAt
-                        ? new Date(partner.createdAt).toLocaleDateString(
-                            "mn-MN",
-                          )
-                        : "-"}
-                    </span>
-                  </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-400 mb-0.5">И-мэйл</p>
+                  <p className="text-sm font-semibold text-slate-800 break-all">{partner.email || "—"}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                  <Phone size={14} className="text-slate-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-400 mb-0.5">Утас</p>
+                  <p className="text-sm font-semibold text-slate-800">{partner.phone || "—"}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
+                  <MapPin size={14} className="text-slate-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-400 mb-0.5">Хаяг</p>
+                  <p className="text-sm font-semibold text-slate-800 break-words">{partner.address || "—"}</p>
                 </div>
               </div>
             </div>
@@ -381,24 +404,23 @@ export default function PartnerDetailsPage() {
 
           {/* Login Credentials */}
           {partner.members && partner.members.length > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 lg:p-8">
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-5 sm:mb-6 flex items-center gap-2">
-                <Key size={18} className="text-indigo-500" />
-                Нэвтрэх мэдээлэл
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Key size={15} className="text-indigo-500" /> Нэвтрэх мэдээлэл
               </h3>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {partner.members.map((member: any) => (
-                  <div key={member.id} className="border border-slate-100 rounded-xl p-4 bg-slate-50/50">
+                  <div key={member.id} className="border border-slate-100 rounded-xl p-4 bg-slate-50/40">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">{member.role}</p>
-                        <p className="text-sm font-bold text-slate-800 break-all">{member.fullName || "Нэр байхгүй"}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Mail size={13} className="text-slate-400 shrink-0" />
-                          <span className="text-sm text-slate-600 break-all">{member.email}</span>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{member.role}</p>
+                        <p className="text-sm font-bold text-slate-800">{member.fullName || "Нэр байхгүй"}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <Mail size={12} className="text-slate-400 shrink-0" />
+                          <span className="text-xs text-slate-500 break-all">{member.email}</span>
                         </div>
                         {member.lastLoginAt && (
-                          <p className="text-xs text-slate-400 mt-1">
+                          <p className="text-[11px] text-slate-400 mt-0.5">
                             Сүүлд нэвтэрсэн: {new Date(member.lastLoginAt).toLocaleString("mn-MN")}
                           </p>
                         )}
@@ -406,42 +428,27 @@ export default function PartnerDetailsPage() {
                       <button
                         onClick={() => handleResetPassword(member.userId)}
                         disabled={resettingUserId === member.userId}
-                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-100 text-indigo-600 disabled:text-slate-400 rounded-lg transition-colors shrink-0"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-100 text-indigo-600 disabled:text-slate-400 rounded-lg transition-colors shrink-0"
                       >
-                        {resettingUserId === member.userId ? (
-                          <Loader2 size={13} className="animate-spin" />
-                        ) : (
-                          <RefreshCw size={13} />
-                        )}
+                        {resettingUserId === member.userId ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                         Нууц үг шинэчлэх
                       </button>
                     </div>
-
                     {tempPasswords[member.userId] && (
                       <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                         <p className="text-xs font-semibold text-amber-700 mb-1.5">Түр нууц үг:</p>
                         <div className="flex items-center gap-2">
-                          <code className="flex-1 text-sm font-mono font-bold text-amber-900 tracking-wider">
+                          <code className="flex-1 text-sm font-mono font-bold text-amber-900">
                             {showPasswords[member.userId] ? tempPasswords[member.userId] : "••••••••"}
                           </code>
-                          <button
-                            onClick={() =>
-                              setShowPasswords((prev) => ({ ...prev, [member.userId]: !prev[member.userId] }))
-                            }
-                            className="p-1.5 rounded-md hover:bg-amber-100 text-amber-600 transition-colors"
-                          >
-                            {showPasswords[member.userId] ? <EyeOff size={14} /> : <Eye size={14} />}
+                          <button onClick={() => setShowPasswords((p) => ({ ...p, [member.userId]: !p[member.userId] }))} className="p-1.5 rounded-md hover:bg-amber-100 text-amber-600">
+                            {showPasswords[member.userId] ? <EyeOff size={13} /> : <Eye size={13} />}
                           </button>
-                          <button
-                            onClick={() => handleCopy(tempPasswords[member.userId], member.userId)}
-                            className="p-1.5 rounded-md hover:bg-amber-100 text-amber-600 transition-colors"
-                          >
-                            {copiedId === member.userId ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                          <button onClick={() => handleCopy(tempPasswords[member.userId], member.userId)} className="p-1.5 rounded-md hover:bg-amber-100 text-amber-600">
+                            {copiedId === member.userId ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
                           </button>
                         </div>
-                        <p className="text-xs text-amber-600 mt-1.5">
-                          ⚠️ Хэрэглэгчид энэ нууц үгийг өгч, дараа нь өөрчлүүлэхийг зөвлөнө.
-                        </p>
+                        <p className="text-[11px] text-amber-600 mt-1.5">⚠️ Хэрэглэгчид өгч, дараа нь өөрчлүүлэхийг зөвлөнө.</p>
                       </div>
                     )}
                   </div>
@@ -449,181 +456,56 @@ export default function PartnerDetailsPage() {
               </div>
             </div>
           )}
-
-          {/* Contact Information */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 lg:p-8">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-5 sm:mb-6">
-              Холбоо барих мэдээлэл
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
-              <div className="flex items-start gap-3 sm:gap-4 min-w-0">
-                <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                  <Mail size={18} className="text-slate-500" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-500 mb-0.5">
-                    И-мэйл хаяг
-                  </p>
-                  <p className="text-slate-900 font-medium break-all">
-                    {partner.email || "Бүртгэлгүй"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 sm:gap-4 min-w-0">
-                <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                  <Phone size={18} className="text-slate-500" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-500 mb-0.5">
-                    Утасны дугаар
-                  </p>
-                  <p className="text-slate-900 font-medium break-words">
-                    {partner.phone || "Бүртгэлгүй"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 sm:gap-4 md:col-span-2 min-w-0">
-                <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100">
-                  <MapPin size={18} className="text-slate-500" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-500 mb-0.5">
-                    Хаяг байршил
-                  </p>
-                  <p className="text-slate-900 font-medium leading-relaxed break-words">
-                    {partner.address || "Бүртгэлгүй"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
-        {/* Sidebar Column */}
-        <div className="space-y-4 sm:space-y-6">
-          {/* Stats Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-5 sm:mb-6">
-              Үзүүлэлт
+        {/* Right col: management cards */}
+        <div className="space-y-4">
+
+          {/* Subdomain */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+              <Globe size={15} className="text-indigo-500" /> Веб субдомайн
             </h3>
-
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <div className="bg-indigo-50/50 p-3 sm:p-4 rounded-xl border border-indigo-100/50 min-w-0">
-                <p className="text-slate-500 text-xs sm:text-sm font-medium mb-1">
-                  Хэрэглэгч
-                </p>
-                <div className="text-xl sm:text-2xl font-bold text-indigo-700 break-words">
-                  {stats.users ?? 0}
-                </div>
-              </div>
-
-              <div className="bg-emerald-50/50 p-3 sm:p-4 rounded-xl border border-emerald-100/50 min-w-0">
-                <p className="text-slate-500 text-xs sm:text-sm font-medium mb-1">
-                  Бүтээгдэхүүн
-                </p>
-                <div className="text-xl sm:text-2xl font-bold text-emerald-700 break-words">
-                  {stats.products ?? 0}
-                </div>
-              </div>
-
-              <div className="bg-amber-50/50 p-3 sm:p-4 rounded-xl border border-amber-100/50 min-w-0">
-                <p className="text-slate-500 text-xs sm:text-sm font-medium mb-1">
-                  Салбар
-                </p>
-                <div className="text-xl sm:text-2xl font-bold text-amber-700 break-words">
-                  {stats.branches ?? 0}
-                </div>
-              </div>
-
-              <div className="bg-sky-50/50 p-3 sm:p-4 rounded-xl border border-sky-100/50 min-w-0">
-                <p className="text-slate-500 text-xs sm:text-sm font-medium mb-1">
-                  Захиалга
-                </p>
-                <div className="text-xl sm:text-2xl font-bold text-sky-700 break-words">
-                  {stats.orders ?? 0}
-                </div>
-              </div>
+            <div className="mb-3 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100">
+              <p className="text-[10px] font-semibold text-slate-400 mb-0.5">Хаяг</p>
+              <p className="text-xs font-bold font-mono text-slate-700 break-all">{partner.slug}.mglstore.mn</p>
             </div>
-          </div>
-
-          {/* Subdomain Section */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Globe size={20} className="text-indigo-500" />
-              Веб субдомайн
-            </h3>
-
-            <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <p className="text-xs font-semibold text-slate-400 mb-1">Хаяг</p>
-              <p className="text-sm font-bold font-mono text-slate-800 break-all">
-                {partner.slug}.mglstore.mn
-              </p>
-            </div>
-
             {partner.subdomainEnabled ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                  <CheckCircle2 size={16} className="text-emerald-600" />
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
                   <div>
-                    <p className="text-sm font-semibold text-emerald-800">Идэвхтэй</p>
+                    <p className="text-xs font-semibold text-emerald-800">Идэвхтэй</p>
                     {partner.planExpiresAt && (
-                      <p className="text-xs text-emerald-600">
-                        Дуусах: {new Date(partner.planExpiresAt).toLocaleDateString("mn-MN")}
-                      </p>
+                      <p className="text-[11px] text-emerald-600">Дуусах: {new Date(partner.planExpiresAt).toLocaleDateString("mn-MN")}</p>
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={() => handleSubdomainToggle(false)}
-                  disabled={subdomainSaving}
-                  className="w-full px-4 py-2.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-600 text-sm font-medium rounded-xl transition-colors"
-                >
+                <button onClick={() => handleSubdomainToggle(false)} disabled={subdomainSaving} className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-xl transition-colors">
                   {subdomainSaving ? "Боловсруулж байна..." : "Идэвхгүй болгох"}
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-slate-500">
-                  Энэ түншид субдомайн идэвхжүүлэх (1 сар).
-                </p>
-                <button
-                  onClick={() => handleSubdomainToggle(true)}
-                  disabled={subdomainSaving}
-                  className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
-                >
-                  {subdomainSaving ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <Crown size={16} />
-                  )}
-                  {subdomainSaving ? "Боловсруулж байна..." : "Субдомайн идэвхжүүлэх"}
-                </button>
-              </div>
+              <button onClick={() => handleSubdomainToggle(true)} disabled={subdomainSaving} className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-xs font-semibold rounded-xl transition-colors">
+                {subdomainSaving ? <Loader2 size={14} className="animate-spin" /> : <Crown size={14} />}
+                {subdomainSaving ? "Боловсруулж байна..." : "Субдомайн идэвхжүүлэх"}
+              </button>
             )}
           </div>
 
-          {/* Plan Grant Section */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Crown size={20} className="text-violet-500" />
-                Pro Багц удирдлага
+          {/* Pro Plan */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Crown size={15} className="text-violet-500" /> Pro Багц
               </h3>
               <button
-                onClick={() => {
-                  if (!planData && partner?.id) fetchPlanData(partner.id);
-                  setShowGrantDialog(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                onClick={() => { if (!planData && partner?.id) fetchPlanData(partner.id); setShowGrantDialog(true); }}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-semibold rounded-lg transition-colors"
               >
-                <Crown size={13} />
-                Төлбөргүй нэмэх
+                <Crown size={11} /> Төлбөргүй нэмэх
               </button>
             </div>
-
             <PlanStatusCard
               planType={partner.planType ?? null}
               planActivatedAt={partner.planActivatedAt ?? null}
@@ -632,91 +514,52 @@ export default function PartnerDetailsPage() {
               trialUsed={partner.trialUsed ?? false}
               slug={partner.slug}
             />
-
-            {/* History toggle */}
-            <div className="mt-4 pt-4 border-t border-slate-100">
+            <div className="mt-3 pt-3 border-t border-slate-100">
               <button
-                onClick={() => {
-                  if (!planData && partner?.id) fetchPlanData(partner.id);
-                  else if (partner?.id) fetchPlanData(partner.id);
-                }}
-                className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
+                onClick={() => { if (partner?.id) fetchPlanData(partner.id); }}
+                className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors"
               >
                 {planDataLoading ? "Ачааллаж байна..." : "Түүхийг шинэчлэх ↻"}
               </button>
-              <div className="mt-3">
-                <PlanGrantHistory
-                  history={planData?.history ?? []}
-                  loading={planDataLoading && !planData}
-                />
+              <div className="mt-2">
+                <PlanGrantHistory history={planData?.history ?? []} loading={planDataLoading && !planData} />
               </div>
             </div>
           </div>
 
-          {/* Branches Section */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-                <MapPin size={20} className="text-emerald-500" />
-                Салбарууд
+          {/* Branches */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <MapPin size={15} className="text-emerald-500" /> Салбарууд
               </h3>
-              <button
-                onClick={() => { setShowBranchForm((v) => !v); setBranchError(null); }}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg transition-colors"
-              >
-                <Plus size={13} />
-                Нэмэх
+              <button onClick={() => { setShowBranchForm((v) => !v); setBranchError(null); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold rounded-lg transition-colors">
+                <Plus size={11} /> Нэмэх
               </button>
             </div>
-
             {showBranchForm && (
-              <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                {branchError && (
-                  <p className="text-xs text-red-600">{branchError}</p>
-                )}
-                <input
-                  type="text"
-                  placeholder="Салбарын нэр *"
-                  value={branchForm.name}
-                  onChange={(e) => setBranchForm((f) => ({ ...f, name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Хаяг *"
-                  value={branchForm.address}
-                  onChange={(e) => setBranchForm((f) => ({ ...f, address: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                />
+              <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                {branchError && <p className="text-xs text-red-600">{branchError}</p>}
+                <input type="text" placeholder="Салбарын нэр *" value={branchForm.name} onChange={(e) => setBranchForm((f) => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500" />
+                <input type="text" placeholder="Хаяг *" value={branchForm.address} onChange={(e) => setBranchForm((f) => ({ ...f, address: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500" />
                 <div className="flex gap-2">
-                  <button
-                    onClick={handleAddBranch}
-                    disabled={branchSaving}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-                  >
-                    {branchSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                    Хадгалах
+                  <button onClick={handleAddBranch} disabled={branchSaving} className="flex-1 flex items-center justify-center gap-1 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors">
+                    {branchSaving ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Хадгалах
                   </button>
-                  <button
-                    onClick={() => { setShowBranchForm(false); setBranchForm({ name: "", address: "" }); setBranchError(null); }}
-                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm rounded-lg transition-colors"
-                  >
-                    Болих
-                  </button>
+                  <button onClick={() => { setShowBranchForm(false); setBranchForm({ name: "", address: "" }); setBranchError(null); }} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs rounded-lg transition-colors">Болих</button>
                 </div>
               </div>
             )}
-
             {branches.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">Салбар бүртгэгдээгүй байна</p>
+              <p className="text-xs text-slate-400 text-center py-3">Салбар бүртгэгдээгүй байна</p>
             ) : (
               <div className="space-y-2">
                 {branches.map((b) => (
-                  <div key={b.id} className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-100 rounded-xl">
-                    <MapPin size={14} className="text-emerald-500 mt-0.5 shrink-0" />
+                  <div key={b.id} className="flex items-start gap-2 p-2.5 bg-slate-50 border border-slate-100 rounded-xl">
+                    <MapPin size={13} className="text-emerald-500 mt-0.5 shrink-0" />
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-800">{b.name}</p>
-                      <p className="text-xs text-slate-500 break-words">{b.address}</p>
+                      <p className="text-xs font-semibold text-slate-800">{b.name}</p>
+                      <p className="text-[11px] text-slate-500">{b.address}</p>
                     </div>
                   </div>
                 ))}
@@ -724,117 +567,55 @@ export default function PartnerDetailsPage() {
             )}
           </div>
 
-          {/* Investor Section */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <TrendingUp size={20} className="text-amber-500" />
-              Хөрөнгө оруулагч
+          {/* Investor */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+              <TrendingUp size={15} className="text-amber-500" /> Хөрөнгө оруулагч
             </h3>
-
             {partner.isInvestor ? (
-              <div className="space-y-4">
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <DollarSign size={16} className="text-amber-600" />
-                    <span className="text-sm font-semibold text-amber-800">
-                      Хөрөнгө оруулагч
-                    </span>
+              <div className="space-y-3">
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <DollarSign size={14} className="text-amber-600" />
+                    <span className="text-xs font-semibold text-amber-800">Хөрөнгө оруулагч</span>
                   </div>
-                  <p className="text-2xl font-bold text-amber-700">
-                    {partner.investmentAmount
-                      ? `${Number(partner.investmentAmount).toLocaleString()}₮`
-                      : "Дүн оруулаагүй"}
+                  <p className="text-xl font-black text-amber-700">
+                    {partner.investmentAmount ? `${Number(partner.investmentAmount).toLocaleString()}₮` : "Дүн оруулаагүй"}
                   </p>
-                  {lastAdded && (
-                    <p className="text-sm text-green-600 mt-1 font-medium">
-                      +{lastAdded.toLocaleString()}₮ нэмэгдлээ
-                    </p>
-                  )}
+                  {lastAdded && <p className="text-xs text-emerald-600 mt-0.5 font-semibold">+{lastAdded.toLocaleString()}₮ нэмэгдлээ</p>}
                 </div>
-
                 {showAddForm ? (
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-slate-600">
-                      Нэмэх дүн (₮)
-                    </label>
-                    <input
-                      type="number"
-                      value={addInput}
-                      onChange={(e) => setAddInput(e.target.value)}
-                      placeholder="Жишээ: 10000000"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                    />
+                    <input type="number" value={addInput} onChange={(e) => setAddInput(e.target.value)} placeholder="Нэмэх дүн (₮)" className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" />
                     <div className="flex gap-2">
-                      <button
-                        onClick={handleAddAmount}
-                        disabled={investorSaving || !addInput}
-                        className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
-                      >
-                        {investorSaving ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          <DollarSign size={16} />
-                        )}
+                      <button onClick={handleAddAmount} disabled={investorSaving || !addInput} className="flex-1 flex items-center justify-center gap-1 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-xs font-semibold rounded-xl transition-colors">
+                        {investorSaving ? <Loader2 size={13} className="animate-spin" /> : <DollarSign size={13} />}
                         {investorSaving ? "Боловсруулж байна..." : "Нэмэх"}
                       </button>
-                      <button
-                        onClick={() => { setShowAddForm(false); setAddInput(""); }}
-                        className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-xl transition-colors"
-                      >
-                        Болих
-                      </button>
+                      <button onClick={() => { setShowAddForm(false); setAddInput(""); }} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-xl transition-colors">Болих</button>
                     </div>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => { setShowAddForm(true); setLastAdded(null); }}
-                    className="w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
-                  >
-                    <DollarSign size={16} />
-                    Хөрөнгө нэмэх
+                  <button onClick={() => { setShowAddForm(true); setLastAdded(null); }} className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-xl transition-colors">
+                    <DollarSign size={13} /> Хөрөнгө нэмэх
                   </button>
                 )}
-
-                <button
-                  onClick={() => handleInvestorToggle(false)}
-                  disabled={investorSaving}
-                  className="w-full px-4 py-2.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-600 text-sm font-medium rounded-xl transition-colors"
-                >
+                <button onClick={() => handleInvestorToggle(false)} disabled={investorSaving} className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-xl transition-colors">
                   {investorSaving ? "Боловсруулж байна..." : "Хөрөнгө оруулагч төлвийг болиулах"}
                 </button>
               </div>
             ) : (
-              <div className="space-y-4">
-                <p className="text-sm text-slate-500">
-                  Энэ түнш одоогоор энгийн төлөвтэй байна. Хөрөнгө оруулагч болгохын тулд дүнг оруулна уу.
-                </p>
-                <div>
-                  <label className="block text-sm font-medium text-slate-600 mb-1.5">
-                    Хөрөнгө оруулсан дүн (₮)
-                  </label>
-                  <input
-                    type="number"
-                    value={investmentInput}
-                    onChange={(e) => setInvestmentInput(e.target.value)}
-                    placeholder="Жишээ: 50000000"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                  />
-                </div>
-                <button
-                  onClick={() => handleInvestorToggle(true)}
-                  disabled={investorSaving || !investmentInput}
-                  className="w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
-                >
-                  {investorSaving ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <TrendingUp size={16} />
-                  )}
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500">Дүнг оруулж хөрөнгө оруулагч болгоно уу.</p>
+                <input type="number" value={investmentInput} onChange={(e) => setInvestmentInput(e.target.value)} placeholder="Жишээ: 50000000" className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" />
+                <button onClick={() => handleInvestorToggle(true)} disabled={investorSaving || !investmentInput} className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white text-xs font-semibold rounded-xl transition-colors">
+                  {investorSaving ? <Loader2 size={13} className="animate-spin" /> : <TrendingUp size={13} />}
                   {investorSaving ? "Боловсруулж байна..." : "Хөрөнгө оруулагч болгох"}
                 </button>
               </div>
             )}
           </div>
+
         </div>
       </div>
     </div>

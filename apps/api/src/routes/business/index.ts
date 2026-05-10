@@ -1,3 +1,4 @@
+export { default as associationRoutes } from "./association.routes";
 export { default as investorRoutes } from "./investors.routes";
 export { default as orgJoinRoutes } from "./org-join.routes";
 export { default as orgMemberRoutes } from "./org-members.routes";

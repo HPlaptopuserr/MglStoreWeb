@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowUpRight, BadgeCheck } from "lucide-react";
+import { Star, ShoppingBag, Clock, ChevronRight } from "lucide-react";
 import { toCategoryMN } from "@/lib/constants";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 
@@ -29,83 +29,90 @@ export function OrganizationCard({ company }: OrganizationCardProps) {
   return (
     <Link
       href={`/organizations/${company.slug}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl bg-white ring-1 ring-gray-200/80 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:ring-[#FFAD02]/30 hover:shadow-[#FFAD02]/8"
+      className="group flex flex-col rounded-3xl border border-slate-200 bg-white shadow-sm hover:shadow-xl hover:border-[#FFAD02]/40 transition-all duration-300 hover:-translate-y-1 overflow-hidden"
     >
       {/* Banner */}
-      <div className="relative h-32 w-full overflow-hidden bg-gray-100 sm:h-40">
+      <div className="relative h-32 w-full bg-slate-100 sm:h-40">
         <Image
           src={company.banner}
           alt={company.name}
           fill
-          className="object-cover transition-transform duration-500 group-hover:scale-[1.05]"
+          className="object-cover transition-transform duration-700 group-hover:scale-105"
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
         />
-        {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent" />
 
         {/* Open badge */}
-        <div className="absolute right-2.5 top-2.5 z-10">
+        <div className="absolute top-3 right-3 z-10">
           <span
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider shadow-sm backdrop-blur-sm ${
-              company.isOpen
-                ? "bg-emerald-500/90 text-white"
-                : "bg-black/50 text-white/70"
+            className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full text-white ${
+              company.isOpen ? "bg-emerald-500" : "bg-slate-800/80 backdrop-blur-md"
             }`}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${company.isOpen ? "bg-white" : "bg-gray-400"}`} />
             {company.isOpen ? "Нээлттэй" : "Хаалттай"}
           </span>
-        </div>
-
-        {/* Category pill */}
-        <div className="absolute bottom-3 left-[68px] z-10 sm:left-[74px]">
-          <span className="inline-block rounded-full bg-[#FFAD02]/90 px-2.5 py-0.5 text-[10px] font-bold text-gray-900 backdrop-blur-sm shadow-sm">
-            {toCategoryMN(company.category)}
-          </span>
-        </div>
-
-        {/* Logo */}
-        <div className="absolute bottom-[-20px] left-3 z-10 sm:bottom-[-22px] sm:left-4">
-          <InvestorRingWrapper investmentAmount={company.isInvestor ? company.investmentAmount : null} rounded="full">
-            <div className="relative h-12 w-12 overflow-hidden rounded-full bg-white shadow-md sm:h-14 sm:w-14">
-              <Image
-                src={company.logo}
-                alt={company.name}
-                fill
-                className="object-cover"
-                sizes="56px"
-              />
-            </div>
-          </InvestorRingWrapper>
         </div>
       </div>
 
       {/* Body */}
-      <div className="flex flex-1 flex-col px-3.5 pb-3.5 pt-7 sm:px-4 sm:pb-4 sm:pt-8">
-        <div className="flex items-start justify-between gap-1.5">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1">
-              <h3 className="truncate text-[13px] font-bold text-gray-900 group-hover:text-[#FFAD02] transition-colors sm:text-sm">
-                {company.name}
-              </h3>
-              {company.isInvestor && (
-                <BadgeCheck size={13} className="shrink-0 text-[#FFAD02]" />
-              )}
+      <div className="flex flex-col flex-1 px-4 pb-4 pt-3 relative z-10">
+        {/* Logo */}
+        <div className="-mt-10 mb-2.5">
+          <InvestorRingWrapper investmentAmount={company.isInvestor ? company.investmentAmount : null} rounded="full">
+            <div className="w-16 h-16 rounded-full bg-white shadow-md overflow-hidden sm:w-[72px] sm:h-[72px]">
+              <div className="relative w-full h-full rounded-full overflow-hidden bg-slate-100">
+                <Image
+                  src={company.logo}
+                  alt={company.name}
+                  fill
+                  className="object-cover"
+                  sizes="72px"
+                />
+              </div>
             </div>
+          </InvestorRingWrapper>
+        </div>
+
+        {/* Name + rating */}
+        <div className="flex justify-between items-start mb-0.5 gap-1">
+          <h3 className="font-extrabold text-sm text-slate-900 line-clamp-1 group-hover:text-[#FFAD02] transition-colors sm:text-base">
+            {company.name}
+          </h3>
+          <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-lg shrink-0 mt-0.5">
+            <Star size={11} className="fill-amber-400 text-amber-400" />
+            <span className="text-[11px] font-bold text-amber-700">
+              {company.rating ? Number(company.rating).toFixed(1) : "5.0"}
+            </span>
           </div>
         </div>
 
+        {/* Category */}
+        <p className="text-[11px] font-medium text-slate-400 mb-3 capitalize line-clamp-1">
+          {toCategoryMN(company.category)}
+        </p>
+
+        {/* Chips */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[11px] font-semibold text-slate-500">
+            <Clock size={11} className="text-slate-400" />
+            <span>{company.deliveryTime ?? "N/A"}</span>
+          </div>
+          <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[11px] font-semibold text-slate-500">
+            <ShoppingBag size={11} className="text-slate-400" />
+            <span>{company.products?.length ?? 0} бараа</span>
+          </div>
+        </div>
+
+        <div className="w-full h-px bg-slate-100 mt-auto mb-3" />
+
         {/* CTA */}
-        <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
-          <span className="text-xs font-bold text-gray-400 group-hover:text-[#FFAD02] transition-colors">Дэлгэрэнгүй</span>
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 transition-all group-hover:bg-[#FFAD02] group-hover:shadow-md group-hover:shadow-[#FFAD02]/30">
-            <ArrowUpRight size={13} className="text-gray-500 transition-all group-hover:text-gray-900 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        <div className="flex items-center justify-between text-sm font-bold text-[#FFAD02] group-hover:text-amber-600 transition-colors">
+          <span>Дэлгэрэнгүй</span>
+          <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center">
+            <ChevronRight size={15} strokeWidth={3} className="text-[#FFAD02]" />
           </div>
         </div>
       </div>
-
-      {/* Bottom accent line */}
-      <div className="absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-[#FFAD02] to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
     </Link>
   );
 }

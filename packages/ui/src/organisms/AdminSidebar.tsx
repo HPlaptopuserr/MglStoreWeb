@@ -15,6 +15,7 @@ import {
   Tag,
   Package,
   CreditCard,
+  Building2,
 } from "lucide-react";
 
 export interface NavItem {
@@ -74,6 +75,12 @@ export function AdminSidebar({
           label: "Хүсэлтүүд",
           icon: Users,
           href: "/requests",
+        },
+        {
+          id: "association",
+          label: "Гишүүнчлэл",
+          icon: Building2,
+          href: "/association",
         },
       ],
     },

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutGrid,
   Users,
+  Users2,
   Layers,
   Settings,
   Tag,
@@ -92,6 +93,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     requires: ["MANAGE_CHAT"],
   },
   {
+    id: "association",
+    label: "Холбооны гишүүнчлэл",
+    icon: Users2,
+    href: "/association",
+    requires: ["MANAGE_REGISTRATIONS"],
+  },
+  {
     id: "contracts",
     label: "Гэрээний мэдээлэл",
     icon: FileText,
@@ -147,6 +155,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
     if (pathname.startsWith("/services")) return "Үйлчилгээ";
     if (pathname.startsWith("/chat")) return "Чат удирдлага";
     if (pathname.startsWith("/categories")) return "Бизнесийн ангилал";
+    if (pathname.startsWith("/association")) return "Холбооны гишүүнчлэл";
     return "Admin";
   }, [pathname]);
 

@@ -28,7 +28,7 @@ export const FeaturedStoresSection = () => {
   useEffect(() => {
     const fetchStores = async () => {
       try {
-        const res = await fetch(`${API}/partners`);
+        const res = await fetch(`${API}/partners?status=ACTIVE&limit=50`);
         if (!res.ok) throw new Error("Failed to fetch stores");
         const raw = await res.json();
         const data = Array.isArray(raw) ? raw : raw?.data || [];
@@ -50,6 +50,13 @@ export const FeaturedStoresSection = () => {
             isInvestor: p.isInvestor || false,
             investmentAmount: p.investmentAmount || 0,
           }));
+
+        activeStores.sort((a: any, b: any) => {
+          if (a.isInvestor && !b.isInvestor) return -1;
+          if (!a.isInvestor && b.isInvestor) return 1;
+          if (a.isInvestor && b.isInvestor) return (b.investmentAmount || 0) - (a.investmentAmount || 0);
+          return 0;
+        });
 
         setStores(activeStores);
       } catch (error) {

@@ -28,4 +28,5 @@ export {
   PosSaleStatus,
   ContractStatus,
   CardTerminalRequestStatus,
+  AssociationMembershipType,
 } from "@prisma/client";

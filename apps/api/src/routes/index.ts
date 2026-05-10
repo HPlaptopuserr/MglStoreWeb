@@ -1,6 +1,7 @@
 export { authRoutes } from "./auth";
 
 export {
+  associationRoutes,
   investorRoutes,
   orgJoinRoutes,
   orgMemberRoutes,

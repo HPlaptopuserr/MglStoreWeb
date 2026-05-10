@@ -460,12 +460,12 @@ function ProductsSection({ products }: { products: ProductItem[] }) {
           {filtered.map((product) => {
             const available = typeof product.stock === "number" ? product.stock > 0 : true;
             return (
-              <motion.button
+              <motion.div
                 key={product.id}
                 whileHover={{ y: -2 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => setSelectedId(product.id)}
-                className="group text-left bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg transition-all"
+                className="group cursor-pointer text-left bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg transition-all"
               >
                 <div className="relative w-full aspect-square bg-slate-50 overflow-hidden">
                   <Image
@@ -512,7 +512,7 @@ function ProductsSection({ products }: { products: ProductItem[] }) {
                     </button>
                   </div>
                 </div>
-              </motion.button>
+              </motion.div>
             );
           })}
         </div>

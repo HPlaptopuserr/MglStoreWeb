@@ -38,8 +38,8 @@ const navigation = [
   { name: "Борлуулалт",       href: "/sales",     icon: BarChart2 },
   { name: "Түгээгчийн мэдээлэл", href: "/drivers", icon: Users },
   { name: "Хүсэлтүүд",       href: "/requests",  icon: ClipboardList },
-  { name: "Төлбөр",           href: "/payments",       icon: CreditCard },
   { name: "Card Terminal",    href: "/card-terminal",  icon: CreditCard },
+  { name: "Төлбөр",           href: "/payments",       icon: CreditCard },
   { name: "Pro Upgrade",      href: "/upgrade",        icon: Crown },
 ];
 

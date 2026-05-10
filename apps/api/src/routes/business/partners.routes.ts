@@ -541,8 +541,8 @@ router.get("/partners", async (req, res) => {
       prisma.organization.findMany({
         where,
         orderBy: [
-          // Investors first (have a profile), then by createdAt
-          { investorProfile: { id: "desc" } },
+          // ASC on nullable relation → NULLS LAST in PostgreSQL → investors (non-null) come first
+          { investorProfile: { id: "asc" } },
           { createdAt: "desc" },
         ],
         skip,

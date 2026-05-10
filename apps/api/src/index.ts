@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import contractRoutes from "./routes/contract/contract.routes";
 import {
   authRoutes,
+  associationRoutes,
   investorRoutes,
   orgJoinRoutes,
   orgMemberRoutes,
@@ -100,6 +101,7 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 app.use("/api", partnerRequestRoutes);
+app.use("/api", associationRoutes);
 app.use("/api", partnerRoutes);
 app.use("/api", orgJoinRoutes);
 app.use("/api", orgMemberRoutes);

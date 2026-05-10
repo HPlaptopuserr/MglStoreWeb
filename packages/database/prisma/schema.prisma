@@ -1510,6 +1510,13 @@ enum ApprovalStatus {
   CANCELLED
 }
 
+enum AssociationMembershipType {
+  BASIC
+  ACTIVE
+  BRANCH_COUNCIL
+  GOVERNING_COUNCIL
+}
+
 enum OnboardingSource {
   ADMIN
   SELF_SERVICE
@@ -1872,6 +1879,32 @@ model ContractAuditLog {
 
   @@index([contractId])
   @@index([timestamp])
+}
+
+model AssociationMemberRegistration {
+  id               String                    @id @default(uuid())
+  lastName         String
+  firstName        String
+  education        String?
+  profession       String?
+  organizationName String
+  businessActivity String?
+  foundedYear      String?
+  address          String
+  experience       String?
+  phone            String
+  membershipType   AssociationMembershipType
+  durationMonths   Int?
+  status           ApprovalStatus            @default(PENDING)
+  adminNote        String?
+  reviewedAt       DateTime?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  @@index([status])
+  @@index([membershipType])
+  @@index([createdAt])
+  @@index([phone])
 }
 
 model TeamMember {
