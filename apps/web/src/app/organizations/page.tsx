@@ -202,7 +202,7 @@ export default function OrganizationsPage() {
   const hasMore = page < totalPages;
 
   return (
-    <div className="min-h-screen bg-white pb-24">
+    <div className="min-h-screen bg-gray-50 pb-24">
       <OrganizationsHero
         storesCount={total}
         activeCount={total}
@@ -235,7 +235,7 @@ export default function OrganizationsPage() {
                 <button
                   onClick={handleLoadMore}
                   disabled={isLoadingMore}
-                  className="flex items-center gap-2.5 rounded-2xl border border-gray-200 bg-white px-8 py-3 text-sm font-bold text-gray-700 shadow-sm transition hover:border-[#FFAD02] hover:text-[#FFAD02] disabled:opacity-60"
+                  className="flex items-center gap-2.5 rounded-2xl border border-gray-200 bg-white px-8 py-3.5 text-sm font-bold text-gray-700 shadow-sm transition-all hover:border-[#FFAD02] hover:text-[#FFAD02] hover:shadow-md hover:shadow-[#FFAD02]/10 disabled:opacity-60"
                 >
                   {isLoadingMore ? (
                     <>

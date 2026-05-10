@@ -28,7 +28,7 @@ import {
   Zap,
   CheckCircle2,
 } from "lucide-react";
-import { getInvestorRingStyle } from "@/lib/utils";
+import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 import { ProductDetailOverlay } from "@/components/organisms/ProductDetailOverlay";
 import { ServiceDetailOverlay } from "@/app/services/_components/ServiceDetailOverlay";
 
@@ -81,18 +81,8 @@ function HeroSection({ data }: { data: OrganizationDetailData }) {
         >
           <div className="flex items-start gap-4 sm:gap-6">
             {/* Logo */}
-            <div
-              className="shrink-0"
-              style={
-                data.investor?.investmentAmount
-                  ? {
-                      ...getInvestorRingStyle(data.investor.investmentAmount),
-                      borderRadius: "1.25rem",
-                    }
-                  : undefined
-              }
-            >
-              <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-[1.25rem] border-4 border-white overflow-hidden bg-slate-50 shadow-lg">
+            <InvestorRingWrapper investmentAmount={data.investor?.investmentAmount} rounded="xl">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-[1.25rem] overflow-hidden bg-slate-50 shadow-lg">
                 <Image
                   src={data.logo}
                   alt={data.name}
@@ -104,7 +94,7 @@ function HeroSection({ data }: { data: OrganizationDetailData }) {
                   <span className="absolute bottom-1.5 right-1.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full shadow" />
                 )}
               </div>
-            </div>
+            </InvestorRingWrapper>
 
             {/* Name & meta */}
             <div className="flex-1 min-w-0 pt-1">

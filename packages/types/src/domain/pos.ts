@@ -55,6 +55,7 @@ export interface RegisterConfig {
   cardTerminalId: string | null;
   terminalBridgeUrl: string | null;
   qpayEnabled: boolean;
+  effectiveQpayEnabled: boolean;
   qpayMerchantId: string | null;
   qpayTerminalId: string | null;
   isActive: boolean;

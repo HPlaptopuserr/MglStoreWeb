@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Building2,
   MapPin,
@@ -57,6 +57,7 @@ type ProfileFormData = {
 
 export default function ProfilePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [partner, setPartner] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
@@ -89,7 +90,9 @@ export default function ProfilePage() {
   });
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"profile" | "merchant">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "merchant">(
+    searchParams?.get("tab") === "merchant" ? "merchant" : "profile"
+  );
 
   const uploadOrgImage = async (file: File): Promise<string | null> => {
     const fd = new FormData();

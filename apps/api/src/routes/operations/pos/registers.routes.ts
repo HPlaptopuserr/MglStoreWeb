@@ -60,7 +60,14 @@ router.get("/pos/register-config", async (req, res) => {
       return res.status(403).json({ message: "POS идэвхгүй эсвэл батлагдаагүй байна" });
     }
 
-    return res.json(register);
+    // Merge org-level QPay availability so frontend shows accurate status
+    const org = await prisma.organization.findUnique({
+      where: { id: register.organizationId },
+      select: { qpayEnabled: true },
+    });
+    const effectiveQpayEnabled = register.qpayEnabled || (org?.qpayEnabled ?? false);
+
+    return res.json({ ...register, effectiveQpayEnabled });
   } catch (error) {
     console.error("get pos register-config error", error);
     return res.status(500).json({ message: "POS config авахад алдаа гарлаа" });
@@ -175,6 +182,12 @@ router.post("/pos/registers/self-claim", async (req, res) => {
       return res.status(200).json({ ...existing, reused: true });
     }
 
+    // Inherit org-level QPay config so vendor doesn't need admin to re-enable it
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { qpayEnabled: true, qpayMerchantId: true },
+    });
+
     const created = await prisma.posRegister.create({
       data: {
         organizationId,
@@ -182,6 +195,8 @@ router.post("/pos/registers/self-claim", async (req, res) => {
         name,
         isActive: false,
         activationStatus: PosActivationStatus.PENDING,
+        qpayEnabled: org?.qpayEnabled ?? false,
+        qpayMerchantId: org?.qpayMerchantId ?? null,
       },
       include: { branch: { select: { id: true, name: true } } },
     });

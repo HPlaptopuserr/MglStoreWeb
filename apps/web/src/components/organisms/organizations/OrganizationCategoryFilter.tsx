@@ -22,10 +22,10 @@ export function OrganizationCategoryFilter({
   };
 
   return (
-    <div className="sticky top-0 z-30 border-b border-gray-100/80 bg-white/95 backdrop-blur-md">
+    <div className="sticky top-0 z-30 border-b border-gray-200/70 bg-gray-50/95 backdrop-blur-md">
       <div className="relative mx-auto max-w-7xl px-3 sm:px-6">
         {/* Left fade + arrow */}
-        <div className="pointer-events-none absolute bottom-0 left-3 top-0 z-10 w-12 bg-gradient-to-r from-white/95 to-transparent sm:left-6" />
+        <div className="pointer-events-none absolute bottom-0 left-3 top-0 z-10 w-12 bg-gradient-to-r from-gray-50/95 to-transparent sm:left-6" />
         <button
           type="button"
           onClick={() => scroll("left")}
@@ -48,8 +48,8 @@ export function OrganizationCategoryFilter({
                 onClick={() => onChange(cat)}
                 className={`shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-all sm:px-4 sm:py-2 sm:text-[11px] ${
                   isActive
-                    ? "bg-gray-900 text-white shadow-sm"
-                    : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-800"
+                    ? "bg-[#FFAD02] text-gray-900 shadow-sm shadow-[#FFAD02]/30"
+                    : "bg-white text-gray-500 border border-gray-200 hover:border-[#FFAD02]/40 hover:text-gray-800"
                 }`}
               >
                 {cat === "all" ? "Бүгд" : toCategoryMN(cat)}
@@ -59,7 +59,7 @@ export function OrganizationCategoryFilter({
         </div>
 
         {/* Right fade + arrow */}
-        <div className="pointer-events-none absolute bottom-0 right-3 top-0 z-10 w-12 bg-gradient-to-l from-white/95 to-transparent sm:right-6" />
+        <div className="pointer-events-none absolute bottom-0 right-3 top-0 z-10 w-12 bg-gradient-to-l from-gray-50/95 to-transparent sm:right-6" />
         <button
           type="button"
           onClick={() => scroll("right")}

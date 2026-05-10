@@ -62,8 +62,8 @@ export function InvestorsSection({ investors }: InvestorsSectionProps) {
         </div>
       </div>
 
-      {/* Bottom divider */}
-      <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+      {/* Bottom fade to light */}
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-gray-50 to-transparent" />
     </div>
   );
 }
