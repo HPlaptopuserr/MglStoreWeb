@@ -29,18 +29,17 @@ function cn(...classes: Array<string | false | undefined>) {
 
 const navigation = [
   { name: "Хяналтын самбар", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Захиалгууд",       href: "/orders",    icon: ShoppingCart },
-  { name: "POS касс",         href: "/pos",        icon: ScanLine,   posOnly: true },
+  { name: "Захиалгууд", href: "/orders", icon: ShoppingCart },
+  { name: "POS касс", href: "/pos", icon: ScanLine, posOnly: true },
   { name: "Өөрийн бүтээгдэхүүн", href: "/products", icon: Package },
-  { name: "Нэгдсэн бараа",   href: "/supply-products", icon: Boxes,  supplyOnly: true },
+  { name: "Нэгдсэн бараа", href: "/supply-products", icon: Boxes, supplyOnly: true },
   { name: "Үйлчилгээний постууд", href: "/service-posts", icon: Megaphone, serviceOnly: true },
-  { name: "Буцаалт",          href: "/returns",   icon: RotateCcw },
-  { name: "Борлуулалт",       href: "/sales",     icon: BarChart2 },
+  { name: "Буцаалт", href: "/returns", icon: RotateCcw },
+  { name: "Борлуулалт", href: "/sales", icon: BarChart2 },
   { name: "Түгээгчийн мэдээлэл", href: "/drivers", icon: Users },
-  { name: "Хүсэлтүүд",       href: "/requests",  icon: ClipboardList },
-  { name: "Card Terminal",    href: "/card-terminal",  icon: CreditCard },
-  { name: "Төлбөр",           href: "/payments",       icon: CreditCard },
-  { name: "Pro Upgrade",      href: "/upgrade",        icon: Crown },
+  { name: "Хүсэлтүүд", href: "/requests", icon: ClipboardList },
+  { name: "Төлбөр", href: "/payments", icon: CreditCard },
+  { name: "Pro Upgrade", href: "/upgrade", icon: Crown },
 ];
 
 export interface VendorSidebarProps {
@@ -69,8 +68,8 @@ export function VendorSidebar({
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredNavigation = navigation.filter((item) => {
-    if ((item as any).posOnly)     return showPos;
-    if ((item as any).supplyOnly)  return showSupplyProducts;
+    if ((item as any).posOnly) return showPos;
+    if ((item as any).supplyOnly) return showSupplyProducts;
     if ((item as any).serviceOnly) return showServicePosts;
     return true;
   });
@@ -80,8 +79,8 @@ export function VendorSidebar({
     (item) => item.href !== "/pos",
   );
 
-  const regularNav    = filteredNavigation.filter((i) => i.href !== "/upgrade");
-  const upgradeNav    = filteredNavigation.filter((i) => i.href === "/upgrade");
+  const regularNav = filteredNavigation.filter((i) => i.href !== "/upgrade");
+  const upgradeNav = filteredNavigation.filter((i) => i.href === "/upgrade");
   const mobileRegular = mobileNavigation.filter((i) => i.href !== "/upgrade");
   const mobileUpgrade = mobileNavigation.filter((i) => i.href === "/upgrade");
 
@@ -97,9 +96,8 @@ export function VendorSidebar({
     <>
       {/* Logo */}
       <div
-        className={`flex h-16 items-center border-b border-white/10 ${
-          collapsed ? "justify-center px-2" : "px-4"
-        }`}
+        className={`flex h-16 items-center border-b border-white/10 ${collapsed ? "justify-center px-2" : "px-4"
+          }`}
       >
         <div className={`flex items-center ${collapsed ? "" : "space-x-3"}`}>
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FFAD02] shadow-[0_0_15px_rgba(255,173,2,0.4)]">
@@ -215,14 +213,12 @@ export function VendorSidebar({
     <>
       {/* ── Desktop sidebar ── */}
       <div
-        className={`${
-          isCollapsed ? "w-[84px]" : "w-[252px]"
-        } hidden shrink-0 transition-all duration-300 md:block`}
+        className={`${isCollapsed ? "w-[84px]" : "w-[252px]"
+          } hidden shrink-0 transition-all duration-300 md:block`}
       />
       <aside
-        className={`${
-          isCollapsed ? "w-[84px]" : "w-[252px]"
-        } fixed left-0 top-0 z-40 hidden h-screen shrink-0 flex-col border-r border-white/10 bg-black text-white transition-all duration-300 md:flex`}
+        className={`${isCollapsed ? "w-[84px]" : "w-[252px]"
+          } fixed left-0 top-0 z-40 hidden h-screen shrink-0 flex-col border-r border-white/10 bg-black text-white transition-all duration-300 md:flex`}
       >
         {/* Collapse toggle */}
         <button
