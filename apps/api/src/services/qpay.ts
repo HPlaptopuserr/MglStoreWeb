@@ -14,7 +14,7 @@ const env = () => ({
   clientId: process.env.QPAY_CLIENT_ID || "",
   clientSecret: process.env.QPAY_CLIENT_SECRET || "",
   invoiceCode: process.env.QPAY_INVOICE_CODE || "",
-  publicUrl: process.env.API_PUBLIC_URL || "http://localhost:3001",
+  publicUrl: process.env.API_PUBLIC_URL || "https://api.mglstore.mn",
 });
 
 // Vendor merchant contexts use QPAY_QUICKQR_BASE_URL only when merchantId is set
