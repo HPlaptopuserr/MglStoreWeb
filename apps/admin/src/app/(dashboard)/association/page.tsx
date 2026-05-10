@@ -44,8 +44,8 @@ export default function AssociationPage() {
   const [copied, setCopied] = useState(false);
 
   const registrationUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin.replace(/:\d+/, ":3000")}/association`
+    typeof window !== "undefined" && window.location.hostname === "localhost"
+      ? "http://localhost:3000/association"
       : "https://mglstore.mn/association";
 
   // debounce
