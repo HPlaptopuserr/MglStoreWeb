@@ -280,22 +280,36 @@ function useSignatureCanvas() {
   return { ref, start, move, end, clear, hasSignature, getDataUrl };
 }
 
+export const DEFAULT_MEMBER_FIELDS = [
+  { key: "name", label: "Байгууллагын нэр:", required: true, enabled: true },
+  { key: "register", label: "Байгууллагын регистр", required: true, enabled: true },
+  { key: "field", label: "Үйл ажиллагааны чиглэл:", required: false, enabled: true },
+  { key: "address", label: "Хаяг:", required: false, enabled: true },
+  { key: "phone", label: "Утас:", required: true, enabled: true },
+  { key: "email", label: "И-мэйл:", required: false, enabled: true },
+  { key: "website", label: "Вэбсайт:", required: false, enabled: true },
+  { key: "director", label: "Нэр:", required: true, enabled: true },
+  { key: "bank", label: "Банк:", required: false, enabled: true },
+  { key: "accountNumber", label: "Дансны дугаар:", required: false, enabled: true },
+];
+
 // ─── Root component ──────────────────────────────────────────────────────────
 export function Contract() {
   const [activeTab, setActiveTab] = useState<"history" | "editor" | "preview">("history");
   const [settings, setSettings] = useState({
-    presidentName: "Батбаяр Хишигжаргал",
-    presidentTitle: "Хуулийн зөвлөх",
-    orgName: "Монгол эзэнтэй ЖДБ эрхлэгчдийн нэгдсэн холбоо",
-    headerTitle: "МОНГОЛ ЭЗЭНТЭЙ ЖИЖИГ ДУНД БИЗНЕС\nЭРХЛЭГЧДИЙН НЭГДСЭН ХОЛБОО",
-    headerSubtitle: "Mongolian SME United Association",
-    headerContractTitle: "УДИРДАХ ЗӨВЛӨЛИЙН ГИШҮҮНЧЛЭЛИЙН ГЭРЭЭ",
+    presidentName: "",
+    presidentTitle: "",
+    orgName: "",
+    headerTitle: "",
+    headerSubtitle: "",
+    headerContractTitle: "",
     content: DEFAULT_CONTRACT_TEXT,
     contentIsHtml: false,
     isPaid: false,
     hasDuration: true,
-    defaultFeePlan: "6m",
+    defaultFeePlan: "",
     feePlans: DEFAULT_FEE_PLANS as { key: string; label: string; sublabel: string; price: number }[],
+    memberFields: DEFAULT_MEMBER_FIELDS,
   });
   const [contracts, setContracts] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, signed: 0, pending: 0 });
@@ -306,7 +320,40 @@ export function Contract() {
       adminFetch(`${API}/contracts`).then(r => r.json()),
       adminFetch(`${API}/contracts/stats`).then(r => r.json()),
     ]).then(([cd, sd]) => {
-      if (cd.success) setContracts(cd.contracts);
+      if (cd.success) {
+        setContracts(cd.contracts);
+
+        // Load settings from the most recent template
+        if (cd.contracts.length > 0) {
+          const latestTemplateId = cd.contracts[0]?.id;
+          if (latestTemplateId) {
+            adminFetch(`${API}/contracts/${latestTemplateId}`)
+              .then(r => r.json())
+              .then(detail => {
+                if (detail.success && detail.contract) {
+                  const c = detail.contract;
+                  const hd = c.headerData as any;
+                  setSettings(prev => ({
+                    ...prev,
+                    presidentName: c.adminName || prev.presidentName,
+                    presidentTitle: c.adminTitle || prev.presidentTitle,
+                    isPaid: c.isPaid ?? prev.isPaid,
+                    hasDuration: hd?.hasDuration ?? prev.hasDuration,
+                    headerTitle: hd?.title || prev.headerTitle,
+                    headerSubtitle: hd?.subtitle || prev.headerSubtitle,
+                    headerContractTitle: hd?.contractTitle || prev.headerContractTitle,
+                    defaultFeePlan: hd?.defaultFeePlan || prev.defaultFeePlan,
+                    feePlans: (hd?.feePlans?.length > 0 ? hd.feePlans : prev.feePlans),
+                    memberFields: (hd?.memberFields?.length > 0 ? hd.memberFields : prev.memberFields),
+                    content: hd?.content || prev.content,
+                    contentIsHtml: hd?.contentIsHtml ?? prev.contentIsHtml,
+                  }));
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      }
       if (sd.success) setStats({ total: sd.total, signed: sd.signed, pending: sd.pending });
     }).catch(() => { }).finally(() => setLoading(false));
   }, []);
@@ -750,7 +797,7 @@ function NewContractButton({ settings, setContracts, setStats }: {
     setCreating(true);
 
     try {
-      const selectedPlan = settings.hasDuration
+      const selectedPlan = (settings.hasDuration || settings.isPaid)
         ? (settings.isPaid ? feePlan : settings.defaultFeePlan)
         : null;
 
@@ -769,6 +816,9 @@ function NewContractButton({ settings, setContracts, setStats }: {
             hasDuration: settings.hasDuration,
             feePlans: settings.feePlans,
             defaultFeePlan: settings.defaultFeePlan,
+            memberFields: settings.memberFields,
+            content: settings.content || null,
+            contentIsHtml: settings.contentIsHtml || false,
           },
         }),
       });
@@ -823,10 +873,10 @@ function NewContractButton({ settings, setContracts, setStats }: {
               </button>
             </div>
 
-            {settings.hasDuration && (
+            {(settings.hasDuration || settings.isPaid) && (
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Гэрээний хугацаа
+                  {settings.hasDuration ? "Гэрээний хугацаа" : "Төлбөрийн сонголт"}
                 </label>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -842,7 +892,7 @@ function NewContractButton({ settings, setContracts, setStats }: {
                       }`}
                     >
                       <span className="font-bold text-base">
-                        {p.label || "Нэргүй хугацаа"}
+                        {p.label || (settings.hasDuration ? "Нэргүй хугацаа" : "Сонголт")}
                       </span>
 
                       <span className="text-xs text-neutral-500">
@@ -905,6 +955,7 @@ function ContractEditorTab({
   const [importLoading, setImportLoading] = useState(false);
   const [adminStamp, setAdminStamp] = useState<string | null>(null);
   const [adminSignature, setAdminSignature] = useState("");
+  const [editorTab, setEditorTab] = useState<"general" | "header" | "fields" | "payment" | "content" | "signature">("general");
   const fileRef = useRef<HTMLInputElement>(null);
   const stampRef = useRef<HTMLInputElement>(null);
 
@@ -1001,7 +1052,7 @@ function ContractEditorTab({
     setSaving(true);
 
     try {
-      const selectedPlan = settings.hasDuration
+      const selectedPlan = (settings.hasDuration || settings.isPaid)
         ? settings.defaultFeePlan
         : null;
 
@@ -1021,6 +1072,9 @@ function ContractEditorTab({
             hasDuration: settings.hasDuration,
             feePlans: settings.feePlans,
             defaultFeePlan: settings.defaultFeePlan,
+            memberFields: settings.memberFields,
+            content: settings.content || null,
+            contentIsHtml: settings.contentIsHtml || false,
           },
         }),
       });
@@ -1058,25 +1112,55 @@ function ContractEditorTab({
         </button>
       </div>
 
-      <div className="p-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-3 gap-6 bg-neutral-50/30">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1.5">Овог нэр</label>
-          <input type="text" value={settings.presidentName} onChange={e => setSettings({ ...settings, presidentName: e.target.value })}
-            className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1.5">Албан тушаал</label>
-          <input type="text" value={settings.presidentTitle} onChange={e => setSettings({ ...settings, presidentTitle: e.target.value })}
-            className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div className="md:col-span-3">
-          <label className="block text-sm font-medium text-neutral-700 mb-1.5">Байгууллагын нэр</label>
-          <input type="text" value={settings.orgName} onChange={e => setSettings({ ...settings, orgName: e.target.value })}
-            className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
+      {/* Sub-tabs */}
+      <div className="flex items-center gap-1 bg-neutral-100 p-1.5 border-b border-neutral-200 overflow-x-auto">
+        {([
+          ["general", "⚙️ Ерөнхий"],
+          ["header", "📄 Толгой хэсэг"],
+          ["fields", "📋 Гишүүний мэдээлэл"],
+          ["payment", "💳 Төлбөр & Хугацаа"],
+          ["content", "📝 Гэрээний агуулга"],
+          ["signature", "✍️ Гарын үсэг"],
+        ] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => setEditorTab(tab)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+              editorTab === tab
+                ? "bg-white text-blue-700 shadow-sm"
+                : "text-neutral-600 hover:text-neutral-900 bg-transparent"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-        <div className="md:col-span-3 border-t border-neutral-200 pt-4 mt-2">
-          <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Гэрээний толгой хэсэг</div>
+      {/* General Tab */}
+      {editorTab === "general" && (
+        <div className="p-6 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-3 gap-6 bg-neutral-50/30">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">Овог нэр</label>
+            <input type="text" value={settings.presidentName} onChange={e => setSettings({ ...settings, presidentName: e.target.value })}
+              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">Албан тушаал</label>
+            <input type="text" value={settings.presidentTitle} onChange={e => setSettings({ ...settings, presidentTitle: e.target.value })}
+              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="md:col-span-3">
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">Байгууллагын нэр</label>
+            <input type="text" value={settings.orgName} onChange={e => setSettings({ ...settings, orgName: e.target.value })}
+              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+        </div>
+      )}
+
+      {/* Header Tab */}
+      {editorTab === "header" && (
+        <div className="p-6 border-b border-neutral-100 bg-neutral-50/20">
+          <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-4">Гэрээний толгой хэсэг</div>
           <div className="flex flex-col gap-3">
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1.5">Байгууллагын нэр (толгой)</label>
@@ -1094,267 +1178,336 @@ function ContractEditorTab({
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
-        </div>
 
-        <div className="md:col-span-3">
-          <label className="block text-sm font-medium text-neutral-700 mb-1.5">Холбооны тамга (зураг)</label>
-          <input ref={stampRef} type="file" accept="image/*" className="hidden"
-            onChange={e => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = ev => setAdminStamp(ev.target?.result as string);
-              reader.readAsDataURL(file);
-            }}
-          />
-          <div
-            onClick={() => stampRef.current?.click()}
-            className="w-full border-2 border-dashed border-neutral-300 rounded-lg p-4 flex items-center gap-4 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors"
-          >
-            {adminStamp ? (
-              <>
-                <img src={adminStamp} alt="Тамга" className="h-16 max-w-[160px] object-contain mix-blend-multiply" />
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-neutral-700">Тамга upload хийгдсэн</div>
-                  <button type="button" onClick={e => { e.stopPropagation(); setAdminStamp(null); }}
-                    className="text-xs text-red-400 hover:text-red-500 mt-1">Хасах</button>
-                </div>
-              </>
-            ) : (
-              <div className="text-sm text-neutral-400">Тамганы зураг енд дарна upload хийх (PNG / JPG)</div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Payment settings */}
-      <div className="p-6 border-b border-neutral-100 bg-neutral-50/20">
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-neutral-800">
-              Хураамж & Хугацааны тохиргоо
-            </div>
-            <div className="text-sm text-neutral-500 mt-0.5">
-              Гэрээнд төлбөр болон хугацааг тохируулна
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-neutral-700 mb-1.5">Холбооны тамга (зураг)</label>
+            <input ref={stampRef} type="file" accept="image/*" className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => setAdminStamp(ev.target?.result as string);
+                reader.readAsDataURL(file);
+              }}
+            />
+            <div
+              onClick={() => stampRef.current?.click()}
+              className="w-full border-2 border-dashed border-neutral-300 rounded-lg p-4 flex items-center gap-4 cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors"
+            >
+              {adminStamp ? (
+                <>
+                  <img src={adminStamp} alt="Тамга" className="h-16 max-w-[160px] object-contain mix-blend-multiply" />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-neutral-700">Тамга upload хийгдсэн</div>
+                    <button type="button" onClick={e => { e.stopPropagation(); setAdminStamp(null); }}
+                      className="text-xs text-red-400 hover:text-red-500 mt-1">Хасах</button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-neutral-400">Тамганы зураг энд дарна upload хийх (PNG / JPG)</div>
+              )}
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                setSettings({
-                  ...settings,
-                  hasDuration: !settings.hasDuration,
-                })
-              }
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
-                settings.hasDuration
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                  : "border-neutral-200 text-neutral-400"
-              }`}
-            >
-              {settings.hasDuration ? (
-                <ToggleRight className="w-5 h-5" />
-              ) : (
-                <ToggleLeft className="w-5 h-5" />
-              )}
-              Хугацаа
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                setSettings({
-                  ...settings,
-                  isPaid: !settings.isPaid,
-                })
-              }
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
-                settings.isPaid
-                  ? "border-blue-500 bg-blue-50 text-blue-700"
-                  : "border-neutral-200 text-neutral-600"
-              }`}
-            >
-              {settings.isPaid ? (
-                <ToggleRight className="w-5 h-5" />
-              ) : (
-                <ToggleLeft className="w-5 h-5" />
-              )}
-              {settings.isPaid ? "Төлбөртэй" : "Төлбөргүй"}
-            </button>
-          </div>
         </div>
+      )}
 
-        {settings.hasDuration && (
-          <div className="mt-1 p-4 bg-white border border-emerald-200 rounded-xl shadow-sm">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-4 bg-emerald-500 rounded-full" />
-                <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
-                  Гэрээний хугацаа
-                </span>
+      {/* Fields Tab */}
+      {editorTab === "fields" && (
+        <div className="p-6 border-b border-neutral-100 bg-neutral-50/20">
+          <div className="font-medium text-neutral-800 mb-4">
+            Гишүүний мэдээллийн талбарууд (Хүснэгт)
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {settings.memberFields.map((field: any, idx: number) => (
+              <div key={field.key} className="flex items-center gap-3 bg-white p-3 border border-neutral-200 rounded-xl shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettings((prev: any) => ({
+                      ...prev,
+                      memberFields: prev.memberFields.map((f: any, i: number) =>
+                        i === idx ? { ...f, enabled: !f.enabled } : f
+                      ),
+                    }));
+                  }}
+                  className={`p-1.5 rounded-lg transition-colors ${field.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-neutral-100 text-neutral-400'}`}
+                >
+                  {field.enabled ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+                </button>
+                <input
+                  type="text"
+                  value={field.label}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setSettings((prev: any) => ({
+                      ...prev,
+                      memberFields: prev.memberFields.map((f: any, i: number) =>
+                        i === idx ? { ...f, label: val } : f
+                      ),
+                    }));
+                  }}
+                  disabled={!field.enabled}
+                  className="flex-1 px-3 py-1.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:blue-500 disabled:opacity-50 disabled:bg-neutral-50"
+                />
+                <label className={`flex items-center gap-2 text-sm font-medium ${field.enabled ? 'text-neutral-700' : 'text-neutral-400'}`}>
+                  <input
+                    type="checkbox"
+                    checked={field.required}
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      setSettings((prev: any) => ({
+                        ...prev,
+                        memberFields: prev.memberFields.map((f: any, i: number) =>
+                          i === idx ? { ...f, required: checked } : f
+                        ),
+                      }));
+                    }}
+                    disabled={!field.enabled}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  Заавал
+                </label>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Payment & Duration Tab */}
+      {editorTab === "payment" && (
+        <div className="p-6 border-b border-neutral-100 bg-neutral-50/20">
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-neutral-800">
+                Хураамж & Хугацааны тохиргоо
+              </div>
+              <div className="text-sm text-neutral-500 mt-0.5">
+                Гэрээнд төлбөр болон хугацааг тохируулна
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setSettings({
+                    ...settings,
+                    hasDuration: !settings.hasDuration,
+                  })
+                }
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
+                  settings.hasDuration
+                    ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                    : "border-neutral-200 text-neutral-400"
+                }`}
+              >
+                {settings.hasDuration ? (
+                  <ToggleRight className="w-5 h-5" />
+                ) : (
+                  <ToggleLeft className="w-5 h-5" />
+                )}
+                Хугацаа
+              </button>
 
               <button
                 type="button"
-                onClick={addFeePlan}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Хугацаа нэмэх
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {settings.feePlans.map((plan: any, index: number) => (
-                <div
-                  key={plan.key}
-                  className="grid grid-cols-1 md:grid-cols-12 gap-3 p-4 bg-neutral-50 border border-neutral-200 rounded-xl"
-                >
-                  <div className="md:col-span-3 flex flex-col gap-1">
-                    <label className="text-xs font-medium text-neutral-500 pl-1">
-                      Хугацаа
-                    </label>
-                    <input
-                      type="text"
-                      value={plan.label ?? ""}
-                      onChange={e => updateFeePlan(index, "label", e.target.value)}
-                      placeholder="жш: 6 сар"
-                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 bg-white transition-colors placeholder:text-neutral-300"
-                    />
-                  </div>
-
-                  <div className="md:col-span-3 flex flex-col gap-1">
-                    <label className="text-xs font-medium text-neutral-500 pl-1">
-                      Тайлбар
-                    </label>
-                    <input
-                      type="text"
-                      value={plan.sublabel ?? ""}
-                      onChange={e => updateFeePlan(index, "sublabel", e.target.value)}
-                      placeholder="жш: Хагас жил"
-                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 bg-white transition-colors placeholder:text-neutral-300"
-                    />
-                  </div>
-
-                  <div className="md:col-span-3 flex flex-col gap-1">
-                    <label className="text-xs font-medium text-neutral-500 pl-1">
-                      Үнэ
-                    </label>
-                    <input
-                      type="text"
-                      value={plan.price ? Number(plan.price).toLocaleString() : ""}
-                      onChange={e => updateFeePlan(index, "price", e.target.value)}
-                      placeholder="жш: 1800000"
-                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 bg-white transition-colors placeholder:text-neutral-300"
-                    />
-                  </div>
-
-                  <div className="md:col-span-3 flex items-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSettings({
-                          ...settings,
-                          defaultFeePlan: plan.key,
-                        })
-                      }
-                      className={`flex-1 px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
-                        settings.defaultFeePlan === plan.key
-                          ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                          : "border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
-                      }`}
-                    >
-                      {settings.defaultFeePlan === plan.key ? "Үндсэн" : "Үндсэн болгох"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => removeFeePlan(index)}
-                      disabled={settings.feePlans.length <= 1}
-                      className="px-3 py-2.5 border border-red-200 text-red-500 bg-white rounded-lg text-sm hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-                Dropdown дээр сонгогдох үндсэн хугацаа
-              </label>
-
-              <select
-                value={settings.defaultFeePlan}
-                onChange={e =>
+                onClick={() =>
                   setSettings({
                     ...settings,
-                    defaultFeePlan: e.target.value,
+                    isPaid: !settings.isPaid,
                   })
                 }
-                className="w-full px-3 py-2.5 border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
+                  settings.isPaid
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-neutral-200 text-neutral-600"
+                }`}
               >
-                {settings.feePlans.map((plan: any) => (
-                  <option key={plan.key} value={plan.key}>
-                    {plan.label || "Нэргүй хугацаа"}
-                    {plan.sublabel ? ` — ${plan.sublabel}` : ""}
-                    {settings.isPaid && plan.price
-                      ? ` — ${Number(plan.price).toLocaleString()}₮`
-                      : ""}
-                  </option>
-                ))}
-              </select>
+                {settings.isPaid ? (
+                  <ToggleRight className="w-5 h-5" />
+                ) : (
+                  <ToggleLeft className="w-5 h-5" />
+                )}
+                {settings.isPaid ? "Төлбөртэй" : "Төлбөргүй"}
+              </button>
             </div>
           </div>
-        )}
-      </div>
 
-      {/* Content editor */}
-      <div className="p-6 flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-neutral-500">Доорх текст шинэ гэрээнүүдэд тусгагдана.</p>
-          <div className="flex items-center gap-2">
-            <input ref={fileRef} type="file" accept=".txt,.docx" className="hidden" onChange={handleImport} />
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={importLoading}
-              className="flex items-center gap-2 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50">
-              {importLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              Word / TXT импорт
-            </button>
-          </div>
+          {(settings.hasDuration || settings.isPaid) && (
+            <div className="mt-1 p-4 bg-white border border-emerald-200 rounded-xl shadow-sm">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-4 bg-emerald-500 rounded-full" />
+                  <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+                    {settings.hasDuration ? "Гэрээний хугацаа" : "Төлбөрийн сонголт"}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addFeePlan}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {settings.hasDuration ? "Хугацаа нэмэх" : "Сонголт нэмэх"}
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {settings.feePlans.map((plan: any, index: number) => (
+                  <div
+                    key={plan.key}
+                    className="grid grid-cols-1 md:grid-cols-12 gap-3 p-4 bg-neutral-50 border border-neutral-200 rounded-xl"
+                  >
+                    <div className="md:col-span-3 flex flex-col gap-1">
+                      <label className="text-xs font-medium text-neutral-500 pl-1">
+                        {settings.hasDuration ? "Хугацаа" : "Сонголтын нэр"}
+                      </label>
+                      <input
+                        type="text"
+                        value={plan.label ?? ""}
+                        onChange={e => updateFeePlan(index, "label", e.target.value)}
+                        placeholder="жш: 6 сар"
+                        className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 bg-white transition-colors placeholder:text-neutral-300"
+                      />
+                    </div>
+
+                    <div className="md:col-span-3 flex flex-col gap-1">
+                      <label className="text-xs font-medium text-neutral-500 pl-1">
+                        Тайлбар
+                      </label>
+                      <input
+                        type="text"
+                        value={plan.sublabel ?? ""}
+                        onChange={e => updateFeePlan(index, "sublabel", e.target.value)}
+                        placeholder="жш: Хагас жил"
+                        className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 bg-white transition-colors placeholder:text-neutral-300"
+                      />
+                    </div>
+
+                    <div className="md:col-span-3 flex flex-col gap-1">
+                      <label className="text-xs font-medium text-neutral-500 pl-1">
+                        Үнэ
+                      </label>
+                      <input
+                        type="text"
+                        value={plan.price ? Number(plan.price).toLocaleString() : ""}
+                        onChange={e => updateFeePlan(index, "price", e.target.value)}
+                        placeholder="жш: 1800000"
+                        className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 bg-white transition-colors placeholder:text-neutral-300"
+                      />
+                    </div>
+
+                    <div className="md:col-span-3 flex items-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSettings((prev: any) => ({
+                            ...prev,
+                            defaultFeePlan: plan.key,
+                          }))
+                        }
+                        className={`flex-1 px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
+                          settings.defaultFeePlan === plan.key
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                            : "border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+                        }`}
+                      >
+                        {settings.defaultFeePlan === plan.key ? "Үндсэн" : "Үндсэн болгох"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => removeFeePlan(index)}
+                        disabled={settings.feePlans.length <= 1}
+                        className="px-3 py-2.5 border border-red-200 text-red-500 bg-white rounded-lg text-sm hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+                  Dropdown дээр сонгогдох үндсэн {settings.hasDuration ? "хугацаа" : "сонголт"}
+                </label>
+
+                <select
+                  value={settings.defaultFeePlan}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setSettings((prev: any) => ({
+                      ...prev,
+                      defaultFeePlan: val,
+                    }));
+                  }}
+                  className="w-full px-3 py-2.5 border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  {settings.feePlans.map((plan: any) => (
+                    <option key={plan.key} value={plan.key}>
+                      {plan.label || "Нэргүй хугацаа"}
+                      {plan.sublabel ? ` — ${plan.sublabel}` : ""}
+                      {settings.isPaid && plan.price
+                        ? ` — ${Number(plan.price).toLocaleString()}₮`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
-        {settings.contentIsHtml ? (
-          <div className="relative">
-            <div
-              className="w-full p-4 border border-neutral-200 rounded-xl font-serif text-sm leading-relaxed bg-neutral-50 min-h-[400px] contract-html-content overflow-auto
-                [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-neutral-300 [&_td]:p-2 [&_th]:border [&_th]:border-neutral-300 [&_th]:p-2 [&_th]:bg-neutral-100"
-              dangerouslySetInnerHTML={{ __html: settings.content }}
-            />
-            <button
-              type="button"
-              onClick={() => setSettings({ ...settings, contentIsHtml: false, content: "" })}
-              className="absolute top-2 right-2 px-2 py-1 bg-white border border-neutral-200 rounded text-xs text-red-400 hover:text-red-600 shadow-sm"
-            >
-              Цэвэрлэх
-            </button>
-          </div>
-        ) : (
-          <textarea value={settings.content} onChange={e => setSettings({ ...settings, content: e.target.value })}
-            className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-serif text-sm leading-relaxed resize-none bg-neutral-50 min-h-[400px]" />
-        )}
-      </div>
+      )}
 
-      {/* Admin signature */}
-      <div className="p-6 border-t border-neutral-100">
-        <SignatureInput
-          label="Гэрээ байгуулагчийн гарын үсэг"
-          required
-          onReady={setAdminSignature}
-          onClear={() => setAdminSignature("")}
-        />
-      </div>
+      {/* Content Tab */}
+      {editorTab === "content" && (
+        <div className="p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-neutral-500">Доорх текст шинэ гэрээнүүдэд тусгагдана.</p>
+            <div className="flex items-center gap-2">
+              <input ref={fileRef} type="file" accept=".txt,.docx" className="hidden" onChange={handleImport} />
+              <button type="button" onClick={() => fileRef.current?.click()} disabled={importLoading}
+                className="flex items-center gap-2 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50">
+                {importLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                Word / TXT импорт
+              </button>
+            </div>
+          </div>
+          {settings.contentIsHtml ? (
+            <div className="relative">
+              <div
+                className="w-full p-4 border border-neutral-200 rounded-xl font-serif text-sm leading-relaxed bg-neutral-50 min-h-[400px] contract-html-content overflow-auto
+                  [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-neutral-300 [&_td]:p-2 [&_th]:border [&_th]:border-neutral-300 [&_th]:p-2 [&_th]:bg-neutral-100"
+                dangerouslySetInnerHTML={{ __html: settings.content }}
+              />
+              <button
+                type="button"
+                onClick={() => setSettings({ ...settings, contentIsHtml: false, content: "" })}
+                className="absolute top-2 right-2 px-2 py-1 bg-white border border-neutral-200 rounded text-xs text-red-400 hover:text-red-600 shadow-sm"
+              >
+                Цэвэрлэх
+              </button>
+            </div>
+          ) : (
+            <textarea value={settings.content} onChange={e => setSettings({ ...settings, content: e.target.value })}
+              className="w-full p-4 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-serif text-sm leading-relaxed resize-none bg-neutral-50 min-h-[400px]" />
+          )}
+        </div>
+      )}
+
+      {/* Signature Tab */}
+      {editorTab === "signature" && (
+        <div className="p-6 border-t border-neutral-100">
+          <SignatureInput
+            label="Гэрээ байгуулагчийн гарын үсэг"
+            required
+            onReady={setAdminSignature}
+            onClear={() => setAdminSignature("")}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1365,6 +1518,64 @@ function ContractPreviewTab({ settings }: { settings: any }) {
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [memberData, setMemberData] = useState<Record<string, string>>({});
+  const [memberSignature, setMemberSignature] = useState("");
+  const [memberHasSignature, setMemberHasSignature] = useState(false);
+  const memberSigRef = useRef<HTMLCanvasElement>(null);
+  const memberSigDrawing = useRef(false);
+
+  const memberSigGetPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = memberSigRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width;
+    const sy = canvas.height / rect.height;
+    const cx = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const cy = "touches" in e ? e.touches[0].clientY : e.clientY;
+    return { x: (cx - rect.left) * sx, y: (cy - rect.top) * sy };
+  };
+
+  const memberSigInitCtx = () => {
+    const ctx = memberSigRef.current?.getContext("2d");
+    if (ctx) { ctx.lineWidth = 2.5; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#1e4e8c"; }
+    return ctx;
+  };
+
+  const memberSigStart = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const ctx = memberSigInitCtx();
+    if (!ctx) return;
+    const { x, y } = memberSigGetPos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    memberSigDrawing.current = true;
+  };
+
+  const memberSigMove = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!memberSigDrawing.current) return;
+    const ctx = memberSigRef.current?.getContext("2d");
+    if (!ctx) return;
+    const { x, y } = memberSigGetPos(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    setMemberHasSignature(true);
+  };
+
+  const memberSigEnd = () => {
+    memberSigDrawing.current = false;
+    if (memberSigRef.current) {
+      setMemberSignature(memberSigRef.current.toDataURL("image/png"));
+    }
+  };
+
+  const memberSigClear = () => {
+    const canvas = memberSigRef.current;
+    if (!canvas) return;
+    canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+    setMemberHasSignature(false);
+    setMemberSignature("");
+  };
 
   if (submitted) {
     return (
@@ -1380,11 +1591,22 @@ function ContractPreviewTab({ settings }: { settings: any }) {
     <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden w-full max-w-4xl mx-auto">
       <div className="p-8 md:p-12 text-sm leading-relaxed text-black font-serif border-b border-neutral-200">
         <div className="text-center font-bold text-lg mb-1 leading-snug text-[#1e4e8c]">
-          МОНГОЛ ЭЗЭНТЭЙ ЖИЖИГ ДУНД БИЗНЕС<br />ЭРХЛЭГЧДИЙН НЭГДСЭН ХОЛБОО<br />
-          <span className="font-normal text-sm italic text-neutral-600">Mongolian SME United Association</span>
+          {settings.headerTitle ? (
+            <>
+              {settings.headerTitle}<br />
+              {settings.headerSubtitle && <span className="font-normal text-sm italic text-neutral-600">{settings.headerSubtitle}</span>}
+            </>
+          ) : (
+            <>
+              МОНГОЛ ЭЗЭНТЭЙ ЖИЖИГ ДУНД БИЗНЕС<br />ЭРХЛЭГЧДИЙН НЭГДСЭН ХОЛБОО<br />
+              <span className="font-normal text-sm italic text-neutral-600">Mongolian SME United Association</span>
+            </>
+          )}
         </div>
         <div className="border-b-2 border-[#1e4e8c] my-4"></div>
-        <div className="text-center font-bold text-[#1e4e8c] mb-4 text-base">УДИРДАХ ЗӨВЛӨЛИЙН ГИШҮҮНЧЛЭЛИЙН ГЭРЭЭ</div>
+        <div className="text-center font-bold text-[#1e4e8c] mb-4 text-base">
+          {settings.headerContractTitle || "УДИРДАХ ЗӨВЛӨЛИЙН ГИШҮҮНЧЛЭЛИЙН ГЭРЭЭ"}
+        </div>
         {settings.contentIsHtml ? (
           <div
             className="mt-6 contract-html-content
@@ -1401,7 +1623,7 @@ function ContractPreviewTab({ settings }: { settings: any }) {
               <tr>
                 <th className="border border-[#b4c6e7] bg-[#f8f9fc] p-4 text-center w-1/2">
                   <div className="text-[#1e4e8c] font-bold text-base mb-1">ХОЛБОО</div>
-                  <div className="text-[#c00000] font-normal">{settings.orgName}</div>
+                  <div className="text-[#c00000] font-normal">{settings.orgName || "Байгууллагын нэр"}</div>
                 </th>
                 <th className="border border-[#b4c6e7] bg-[#f8f9fc] p-4 text-center w-1/2">
                   <div className="text-[#1e4e8c] font-bold text-base mb-1">ГИШҮҮН</div>
@@ -1416,36 +1638,57 @@ function ContractPreviewTab({ settings }: { settings: any }) {
                   </div>
                   <div className="text-xs text-[#c00000] mb-1">Гарын үсэг / Албан тушаал</div>
                   <div className="border-b-2 border-[#1e4e8c] h-8 mt-3 mb-1 flex items-end justify-center">
-                    <span className="text-sm font-medium">{settings.presidentName}</span>
+                    <span className="text-sm font-medium">{settings.presidentName || "Овог нэр"}</span>
                   </div>
                   <div className="text-xs text-neutral-500 mb-1">Овог нэр</div>
                   <div className="border-b-2 border-[#1e4e8c] h-8 mt-3 mb-1 flex items-end justify-center">
-                    <span className="text-sm font-medium text-[#c00000]">{settings.presidentTitle}</span>
+                    <span className="text-sm font-medium text-[#c00000]">{settings.presidentTitle || "Албан тушаал"}</span>
                   </div>
                   <div className="text-xs text-neutral-500">Албан тушаал</div>
                 </td>
-                <td className="border border-[#b4c6e7] p-4 bg-[#f8f9fc] align-top group relative">
-                  <div className="border-2 border-dashed border-[#1e4e8c]/40 rounded-lg bg-blue-50/20 relative" style={{ height: 100 }}>
-                    <canvas ref={sig.ref} width={400} height={100}
-                      className="absolute inset-0 w-full h-full touch-none" style={{ cursor: "crosshair" }}
-                      onMouseDown={sig.start} onMouseMove={sig.move} onMouseUp={sig.end} onMouseLeave={sig.end}
-                      onTouchStart={sig.start} onTouchMove={sig.move} onTouchEnd={sig.end} />
-                    {!sig.hasSignature && (
-                      <div className="absolute inset-0 flex items-center justify-center gap-2 text-blue-300/70 pointer-events-none text-xs">
-                        <PenTool className="w-4 h-4" /> Гарын үсэг зурна уу
+                <td className="border border-[#b4c6e7] p-4 bg-[#f8f9fc] align-top">
+                  <div className="flex flex-col gap-3">
+                    {settings.memberFields && settings.memberFields.filter((f: any) => f.enabled).map((field: any) => (
+                      <div key={field.key} className="flex flex-col">
+                        <label className="text-xs text-neutral-600 mb-1.5 font-medium">
+                          {field.label}
+                          {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder={`${field.label}ыг оруулна уу`}
+                          value={memberData[field.key] || ""}
+                          onChange={e => setMemberData(prev => ({ ...prev, [field.key]: e.target.value }))}
+                          className="border-b-2 border-[#1e4e8c] px-1 py-1.5 text-sm bg-transparent focus:outline-none focus:bg-blue-50/20 rounded-sm transition-colors"
+                        />
                       </div>
-                    )}
-                    {sig.hasSignature && (
-                      <button type="button" onClick={sig.clear} className="absolute top-1 right-1 px-2 py-0.5 bg-white border border-neutral-200 rounded text-xs text-neutral-400 hover:text-red-500 z-10">
-                        <Eraser className="w-3 h-3" />
-                      </button>
-                    )}
+                    ))}
+                    <div className="flex flex-col mt-2">
+                      <label className="text-xs text-[#c00000] font-medium mb-1.5">Гарын үсэг</label>
+                      <div className="border-2 border-dashed border-[#1e4e8c]/40 rounded-lg bg-blue-50/20 relative" style={{ height: 80 }}>
+                        <canvas ref={memberSigRef} width={400} height={80}
+                          className="absolute inset-0 w-full h-full touch-none" style={{ cursor: "crosshair" }}
+                          onMouseDown={memberSigStart} onMouseMove={memberSigMove} onMouseUp={memberSigEnd} 
+                          onMouseLeave={memberSigEnd}
+                          onTouchStart={memberSigStart} onTouchMove={memberSigMove} 
+                          onTouchEnd={memberSigEnd}
+                        />
+                        {!memberHasSignature && (
+                          <div className="absolute inset-0 flex items-center justify-center gap-2 text-blue-300/70 pointer-events-none text-xs">
+                            <PenTool className="w-4 h-4" /> Гарын үсэг зурна уу
+                          </div>
+                        )}
+                        {memberHasSignature && (
+                          <button type="button" onClick={memberSigClear} 
+                            className="absolute top-1 right-1 px-2 py-0.5 bg-white border border-neutral-200 rounded text-xs text-neutral-400 hover:text-red-500 z-10">
+                            <Eraser className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="border-b-2 border-[#1e4e8c] h-8 mt-3 mb-1"></div>
+                    <div className="text-xs text-neutral-500 mb-1">Овог нэр</div>
                   </div>
-                  <div className="text-xs text-[#c00000] mb-1">Гарын үсэг / Албан тушаал</div>
-                  <div className="border-b-2 border-[#1e4e8c] h-8 mt-3 mb-1"></div>
-                  <div className="text-xs text-neutral-500 mb-1">Овог нэр</div>
-                  <div className="border-b-2 border-[#1e4e8c] h-8 mt-3 mb-1"></div>
-                  <div className="text-xs text-neutral-500">Албан тушаал</div>
                 </td>
               </tr>
             </tbody>
@@ -1458,7 +1701,10 @@ function ContractPreviewTab({ settings }: { settings: any }) {
           <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="w-5 h-5 mt-0.5 text-blue-600 rounded border-gray-300" />
           <span className="text-sm text-neutral-600">Би дээрх гэрээний нөхцөлүүдийг уншиж танилцсан бөгөөд бүрэн хүлээн зөвшөөрч байна.</span>
         </label>
-        <button disabled={!agreed || submitting} onClick={() => { setSubmitting(true); setTimeout(() => { setSubmitting(false); setSubmitted(true); }, 1500); }}
+        <button 
+          disabled={!agreed || submitting || !memberSignature} 
+          title={!memberSignature ? "Гарын үсэг зураагүйгээр хадгалах боломжгүй" : ""}
+          onClick={() => { setSubmitting(true); setTimeout(() => { setSubmitting(false); setSubmitted(true); }, 1500); }}
           className="w-full md:w-auto px-8 py-3.5 bg-[#1e4e8c] text-white rounded-xl font-medium hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
           {submitting ? <><Loader2 className="w-5 h-5 animate-spin" /> Боловсруулж байна...</> : <><CheckCircle2 className="w-5 h-5" /> Гэрээг баталгаажуулах</>}
         </button>

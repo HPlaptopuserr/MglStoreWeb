@@ -3,98 +3,14 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { CheckCircle2, PenTool, Eraser, Loader2, QrCode, Smartphone, Download } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
+import { ContractPayment } from "../../../../../components/organisms/ContractPayment";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
 const API = `${API_BASE}/api`;
 
-// Reuse the default text for mockup purposes
+// Fallback text only used when contract has no saved content
 const DEFAULT_CONTRACT_TEXT = `ХОЁР. ГЭРЭЕНИЙ ЗОРИЛГО
-2.1. Энэхүү гэрээний зорилго нь Гишүүн байгууллагыг Холбооны бүрэлдэхүүнд элсүүлэх, гишүүнчлэлийн эрх, үүрэг, хариуцлагыг тодорхойлж, талуудын харилцааг зохицуулахад оршино.
-2.2. Монгол эзэнтэй жижиг дунд бизнес эрхлэгчдийн нэгдсэн холбоо нь Монгол иргэний эзэмшилд байдаг жижиг, дунд бизнес эрхлэгчдийг нэгтгэж, тэдний эрх ашгийг хамгаалах, бизнесийн орчин бүрдүүлэх, хамтын хөгжлийг дэмжих зорилготой байгууллага мөн.
-2.3. Гишүүн байгууллага нь Холбооны дүрэм, журам болон энэхүү гэрээний нөхцөлийг дагаж мөрдөхийг зөвшөөрч, гишүүнчлэлд элсэхийг хүссэн тул тохиролцоонд хүрч гэрээ байгуулж байна.
-
-ГУРАВ. ГИШҮҮНЧЛЭЛИЙН ХУРААМЖ
-3.1. Гишүүн нь доорх хураамжийн нэг сонголтыг сонгон гэрээ байгуулснаас хойш 5 /тав/ ажлын өдрийн дотор Холбооны дансанд шилжүүлэх үүрэгтэй.
-☐ 6 сар (Хагас жилийн хураамж) 1,800,000₮
-☐ 12 сар (Бүтэн жилийн хураамж) 3,000,000₮
-3.2. Гишүүнчлэлийн хугацаа дуусахаас өмнө Гишүүн байгууллага дараагийн хугацааны хураамжийг төлсөн тохиолдолд гишүүнчлэл тасралтгүй үргэлжилнэ.
-3.3. Хугацааг дуусгавар болгохоос 14 /арван дөрөв/ хоногийн өмнө сунгаагүй тохиолдолд гишүүнчлэл автоматаар дуусгавар болно.
-3.4. Хураамжийг банкны шилжүүлгээр төлөх бөгөөд гүйлгээний утгад байгууллагын нэр болон гэрээний дугаарыг заавал бичнэ.
-3.5. Аль нэг шалтгаанаар гэрээ цуцлагдсан тохиолдолд төлсөн хураамж буцаан олгогдохгүй.
-3.6. Хураамжийн дүнд нэмэгдсэн өртгийн татвар (НӨАТ) орохгүй бөгөөд Гишүүн нь холбогдох татварыг өөрөө хариуцна.
-
-ДӨРӨВ. ГИШҮҮНИЙ ЭРХ, ҮҮРЭГ	
-4.1. Гишүүн байгууллага нь гишүүнчлэлийн хураамжийг хугацаанд нь бүрэн төлсний үндсэн дээр дараах эрх эдэлнэ:
-4.1.1. Салбар төлөөлөн удирдах гишүүний бүх эрхийг ижил эдлэх 
-4.1.2. Холбоонд төсөл хөтөлбөр санаачлах 
-4.1.3. Холбооноос санаачилсан төсөл удирдах 
-4.1.4. Холбооноос зарласан тендерт оролцох 
-4.1.5. MGL store вэбсайтад 20 хүртэлх төрлийн бараа бүтээгдэхүүн байршуулах мөн байгууллагын танилцуулага тавих 
-4.1.6. MGL-ын гишүүн байгууллага 20 хүртэлх бүтээгдэхүүн борлуулах 
-4.1.7. Үйлдвэрүүдийн нэгж хувьцаанд 2 дахин их хөрөнгө оруулах 
-4.1.8. Хүний нөөцийн болон хууль зүйн чиглэлээр үйлчилгээ авах 	
-4.2. Дээрх эрхүүд нь гишүүнчлэлийн хугацаанд л хүчинтэй бөгөөд гэрээ дуусгавар болсноор автоматаар зогсоно.
-4.3. Гишүүн байгууллага нь эрхээ бусдад шилжүүлэх, дамжуулах эрхгүй.
-4.4. Гишүүн нь дараах үүргийг хүлээнэ:
-4.4.1. ТУЗ-аас баталсан бодлогыг манлайлах 
-4.4.2. Салбаруудын хоорондын үйл ажиллагааг уялдуулах 
-4.4.3. Холбооны гишүүд дунд тендер зарлаж сонгон шалгаруулах 
-4.4.4. Холбооны гишүүдийн ашгийг хамгаалах төлөөлөх зөвлөлийн эрх үйл ажиллагаанд идэвхтэй оролцох 
-4.4.5. Гишүүнчлэлийн хураамжийг энэхүү гэрээнд заасан хугацаа болон нөхцөлийн дагуу бүрэн, цаг тухайд нь төлөх
-4.4.6. Холбооны дүрэм, журам, шийдвэр болон энэхүү гэрээний нөхцөлийг бүрэн дагаж мөрдөх
-4.4.7. MGL Store платформд байршуулсан бараа бүтээгдэхүүний мэдээллийг үнэн зөв, дутуу орхигдуулалгүй байршуулах
-4.4.8. Холбооны нэр, брэнд, лого, бусад оюуны өмчийг зөвшөөрлийн хүрээнд ашиглах
-4.4.9. Холбооны дотоод мэдээлэл, гишүүдийн хувийн болон байгууллагын мэдээллийг нууцлах
-4.4.10. Бусад гишүүдтэй харилцан хүндэтгэлтэй, шударга, ёс зүйтэй харилцах.
-4.4.11. Холбооны үйл ажиллагаа, зорилгын эсрэг чиглэсэн аливаа үйлдлээс татгалзах
-4.4.12. Гэрээ байгуулахад ашигласан мэдээлэл (хаяг, холбогдох этгээд гэх мэт) өөрчлөгдсөн тохиолдолд 14 хоногийн дотор Холбоонд мэдэгдэх
-
-ТАВ. ХОЛБООНЫ ЭРХ, ҮҮРЭГ
-5.1. Холбооны эрх 
-5.1.1. Гишүүнчлэлийн хураамжийн нөхцөлийг жил бүр тогтоох буюу өөрчлөх тохиолдолд 30 хоногийн өмнө мэдэгдэнэ.
-5.1.2. Гишүүн байгууллагын гэрээний үүргийн биелэлтийг хянах, шаардлагатай бол баримт бичиг, мэдээлэл хүсэх эрхтэй.
-5.1.3. Дүрэм, журмыг зөрчсөн гишүүнд анхааруулга өгөх, тодорхой хугацаанд эрхийг нь түдгэлзүүлэх буюу гишүүнчлэлийг цуцлах эрхтэй.
-5.1.4. MGL Store платформд байршуулсан стандарт хангаагүй, хуурамч мэдээлэл бүхий бараа бүтээгдэхүүнийг мэдэгдэлгүйгээр буулгах эрхтэй.
-5.2. Холбооны үүрэг
-5.2.1. Гишүүн байгууллагад энэхүү гэрээнд заасан бүх эрхийг бүрэн эдлүүлэх нөхцөлийг бүрдүүлэх.
-5.2.2. Гишүүний мэдээллийг нууцлах, гуравдагч этгээдэд дамжуулахгүй байх.
-5.2.3. Холбооны үйл ажиллагаа, шийдвэр, санхүүгийн байдлын талаар гишүүдэд ил тод мэдэгдэх.
-5.2.4. Гишүүдийн санал, гомдлыг хүлээн авч, 14 ажлын өдрийн дотор хариу өгөх.
-5.2.5. Гишүүнчлэлийн хураамж өөрчлөгдөх тохиолдолд 30 хоногийн өмнө бичгээр мэдэгдэх
-5.2.6. MGL Store платформыг жилийн 97%-иас дээш ажиллагаатай байхаар хангах
-
-ЗУРГАА. НУУЦЛАЛ
-6.1. Талууд нь энэхүү гэрээтэй холбоотой болон гэрээний хэрэгжилтийн явцад олж авсан бизнесийн нууц, гишүүдийн мэдээлэл болон бусад нууцлалын мэдээллийг гуравдагч этгээдэд задруулахгүй байх үүрэгтэй.
-6.2. Нууцлалын үүрэг нь гэрээ дуусгавар болсноос хойш 3 (гурван) жилийн турш хүчин төгөлдөр байна.
-6.3. Монгол Улсын хууль тогтоомжоор шаардагдсан тохиолдолд мэдээлэл гаргаж өгөхийг нууцлалын зөрчил гэж үзэхгүй, гэвч нөгөө талд урьдчилан мэдэгдэх үүрэгтэй.
-6.4. Нууцлалыг зөрчсөн тал нь учирсан хохирлыг бүрэн хариуцах бөгөөд нэмж Холбоо нь нааш цааш тийш арга хэмжээ авах эрхтэй.
-
-ДОЛОО. ГЭРЭЭ ЦУЦЛАХ БОЛОН ГИШҮҮНЧЛЭЛ ЗОГСООХ
-7.1. Дараах тохиолдолд Холбоо нь Гишүүний эрхийг түр зогсоож болно:
-7.1.1. Хураамж төлөгдөөгүй буюу хугацаа хэтэрсэн тохиолдолд хугацааг дуусгавар болтол.
-7.1.2. Гэрээний үүргийг зөрчсөн тохиолдолд зөрчил арилах хүртэл.
-7.1.3. Холбооны нэр хүндэд хохирол учруулсан буюу учруулж болзошгүй нөхцөл үүссэн тохиолдолд.
-7.2. Дараах тохиолдолд гэрээ дуусгавар болно:
-7.2.1. Гишүүнчлэлийн хугацаа дуусч, цаг тухайд нь сунгагдаагүй тохиолдолд.
-7.2.2. Гишүүн байгууллага 30 (гуч) хоногийн өмнө бичгээр мэдэгдэн гэрээг цуцласан тохиолдолд.
-7.2.3. Холбоо нь дараах тохиолдолд гишүүнчлэлийг цуцлах эрхтэй: хураамжийн өрийг 30 хоног давсан; дүрэм журмыг давтан зөрчсөн; байгууллага татан буугдсан; хууль бус үйл ажиллагаа явуулсан нь тогтоогдсон.
-7.2.4. Харилцан тохиролцсоны үндсэн дээр.
-7.2.5. Гэрээ дуусгавар болсон тохиолдолд Гишүүн нь Холбооны бүх эрхийн хэрэглэлт, платформ хандах эрхийг нэн даруй зогсоох үүрэгтэй.
-7.2.6. Гэрээ дуусгавар болсон тохиолдолд төлсөн хураамж буцаан олгогдохгүй.
-
-НАЙМ. МАРГААН ШИЙДВЭРЛЭХ
-8.1. Энэхүү гэрээтэй холбоотой аливаа маргааныг талууд эхлээд харилцан яриа, хэлэлцээрийн замаар шийдвэрлэхийг эрмэлзэнэ.
-8.2. Маргааны тухай нэг тал нөгөөд бичгээр мэдэгдснээс хойш 30 (гуч) хоногийн дотор харилцан тохиролцоонд хүрч чадаагүй тохиолдолд маргааныг Монгол Улсын Арбитрийн хуульд заасны дагуу арбитрын журмаар шийдвэрлэнэ.
-8.3. Арбитрын шийдвэр нь эцэслэн шийдэгдсэн, хоёр талд тус адил заавал биелүүлэх шинжтэй байна.
-8.4. Арбитрын ажиллагааны хугацаанд гэрээний хэрэгжилт тасалдахгүй үргэлжилнэ.
-
-ЕС. БУСАД НӨХЦӨЛ
-9.1. Энэхүү гэрээ нь Монгол Улсын хуулийн дагуу зохицуулагдана.
-9.2. Гэрээнд нэмэлт өөрчлөлт оруулах бол талуудын бичгэн тохиролцоогоор хийх бөгөөд нэмэлт, өөрчлөлт нь гэрээний салшгүй хэсэг болно.
-9.3. Гэрээний аль нэг заалт хүчингүй болсон нь бусад заалтуудын хүчин төгөлдөр байдалд нөлөөлөхгүй.
-9.4. Энэхүү гэрээг 2 (хоёр) хувь үйлдэж, тал бүр нэг хувийг хадгална. Хоёр хувь нь тус адил хүчинтэй.
-9.5. Гэрээтэй холбоотой бүх мэдэгдэл, захидал харилцааг гэрээнд заасан хаяг болон и-мэйлээр явуулна. Мэдэгдэл нь и-мэйлээр явуулсан өдрөөс, бичгээр илгээсэн бол хүлээн авсан өдрөөс эхлэн хүчинтэй тооцогдоно.
-9.6. Монгол хэл дээр үйлдэгдсэн гэрээний хувь нь эх хувь байна.`;
+2.1. Энэхүү гэрээний зорилго нь Гишүүн байгууллагыг Холбооны бүрэлдэхүүнд элсүүлэх, гишүүнчлэлийн эрх, үүрэг, хариуцлагыг тодорхойлж, талуудын харилцааг зохицуулахад оршино.`;
 
 export default function ContractSignPage() {
   const params = useParams();
@@ -112,11 +28,14 @@ export default function ContractSignPage() {
     isPaid: boolean; feePlan: string | null;
     adminSignature?: string; adminName?: string; adminTitle?: string; adminStamp?: string;
     isTemplate?: boolean; memberSignature?: string;
+    contractContent?: string; contentIsHtml?: boolean;
     headerData?: {
       title?: string; subtitle?: string; contractTitle?: string;
       hasDuration?: boolean;
       feePlans?: { key: string; label: string; sublabel: string; price: number }[];
       defaultFeePlan?: string;
+      memberFields?: { key: string; label: string; required: boolean; enabled: boolean }[];
+      content?: string; contentIsHtml?: boolean;
     } | null;
   } | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
@@ -135,15 +54,21 @@ export default function ContractSignPage() {
   ];
   const FEE_PLANS = (() => {
     const stored: any[] = contractInfo?.headerData?.feePlans ?? [];
-    if (stored.length >= 2) return stored;
-    // merge stored into defaults so we always have at least 6m + 12m
-    const merged = [...DEFAULT_FEE_PLANS];
-    stored.forEach(p => {
-      const idx = merged.findIndex(d => d.key === p.key);
-      if (idx >= 0) merged[idx] = p; else merged.push(p);
-    });
-    return merged;
+    if (stored.length > 0) return stored;
+    return DEFAULT_FEE_PLANS;
   })();
+
+  const DEFAULT_MEMBER_FIELDS = [
+    { key: "name", label: "Байгууллагын нэр:", required: true, enabled: true },
+    { key: "register", label: "Байгууллагын регистр", required: true, enabled: true },
+    { key: "field", label: "Үйл ажиллагааны чиглэл:", required: false, enabled: true },
+    { key: "address", label: "Хаяг:", required: false, enabled: true },
+    { key: "phone", label: "Утас:", required: true, enabled: true },
+    { key: "email", label: "И-мэйл:", required: false, enabled: true },
+    { key: "website", label: "Вэбсайт:", required: false, enabled: true },
+    { key: "director", label: "Нэр:", required: true, enabled: true },
+  ];
+  const MEMBER_FIELDS = contractInfo?.headerData?.memberFields ?? DEFAULT_MEMBER_FIELDS;
 
   const [memberData, setMemberData] = useState({
     name: "", register: "", field: "", address: "", phone: "", email: "", website: "", director: ""
@@ -165,6 +90,8 @@ export default function ContractSignPage() {
             isTemplate: d.contract.isTemplate,
             memberSignature: d.contract.memberSignature,
             headerData: d.contract.headerData ?? null,
+            contractContent: (d.contract.headerData as any)?.content || null,
+            contentIsHtml: (d.contract.headerData as any)?.contentIsHtml || false,
           });
           const selectedPlanFromContract = isPrintMode
             ? d.contract.feePlan || d.contract.headerData?.defaultFeePlan || "6m"
@@ -373,59 +300,12 @@ export default function ContractSignPage() {
 
   if (step === "qpay" && qpayData) {
     return (
-      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4 sm:p-6">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-neutral-100 overflow-hidden">
-          <div className="bg-[#1e4e8c] p-6 text-white text-center">
-            <QrCode className="w-12 h-12 mx-auto mb-3 opacity-90" />
-            <h2 className="text-xl font-bold">Хураамж төлөх</h2>
-            <p className="text-blue-200 text-sm mt-1">Төлбөр төлөгдсөнөөр гэрээ хүчин төгөлдөр болно.</p>
-          </div>
-
-          <div className="p-6 flex flex-col items-center gap-5">
-            {qpayData.qrImage ? (
-              <img src={`data:image/png;base64,${qpayData.qrImage}`} alt="QPay QR" className="w-52 h-52 rounded-xl border-2 border-neutral-200 shadow-sm" />
-            ) : (
-              <div className="w-52 h-52 bg-neutral-100 rounded-xl border-2 border-neutral-200 flex items-center justify-center text-neutral-400 text-sm">QR код ачааллаж байна...</div>
-            )}
-
-            <div className="text-center">
-              <div className="text-sm text-neutral-500">Төлөх дүн</div>
-              <div className="text-3xl font-bold text-neutral-900">{qpayData.amount.toLocaleString()} ₮</div>
-            </div>
-
-            {/* Auto-polling status indicator */}
-            <div className="w-full bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-center gap-3">
-              <div className="relative flex-shrink-0">
-                <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-              </div>
-              <div className="text-sm text-blue-700">
-                Төлбөр автоматаар шалгагдаж байна...
-                <span className="ml-1 font-semibold text-blue-900">{pollCountdown}с</span>
-              </div>
-            </div>
-
-            {/* Deep links for mobile apps */}
-            {qpayData.urls.length > 0 && (
-              <div className="w-full">
-                <div className="flex items-center gap-2 text-xs text-neutral-500 mb-2"><Smartphone className="w-3.5 h-3.5" /> Банкны аппаар нэвтрэх:</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {qpayData.urls.slice(0, 6).map((u: any) => (
-                    <a key={u.name} href={u.link} className="flex items-center gap-2 px-3 py-2 border border-neutral-200 rounded-lg text-xs font-medium text-neutral-700 hover:bg-neutral-50 transition-colors truncate">
-                      {u.logo && <img src={u.logo} alt={u.name} className="w-5 h-5 rounded flex-shrink-0" />}
-                      {u.description || u.name}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <button onClick={checkPayment} disabled={checkingPayment}
-              className="w-full px-6 py-3.5 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm">
-              {checkingPayment ? <><Loader2 className="w-5 h-5 animate-spin" /> Шалгаж байна...</> : <><CheckCircle2 className="w-5 h-5" /> Төлбөр төлсөн</>}
-            </button>
-          </div>
-        </div>
-      </div>
+      <ContractPayment
+        qpayData={qpayData}
+        pollCountdown={pollCountdown}
+        checkingPayment={checkingPayment}
+        onCheckPayment={checkPayment}
+      />
     );
   }
 
@@ -474,11 +354,11 @@ export default function ContractSignPage() {
                   <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Байршил:</td>
                   <td className="border border-[#b4c6e7] p-2">Улаанбаатар хот</td>
                   <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">
-                      Гэрээний хугацаа:
+                      {contractInfo?.headerData?.hasDuration !== false ? "Гэрээний хугацаа:" : contractInfo?.isPaid ? "Төлбөрийн сонголт:" : "Сонголт:"}
                     </td>
 
                     <td className="border border-[#b4c6e7] p-0">
-                      {contractInfo?.headerData?.hasDuration === false ? (
+                      {contractInfo?.headerData?.hasDuration === false && !contractInfo?.isPaid ? (
                         <span className="block px-2 py-2">—</span>
                       ) : isPrintMode ? (
                         <span className="block px-2 py-2">
@@ -492,7 +372,7 @@ export default function ContractSignPage() {
                         >
                           {FEE_PLANS.map((plan) => (
                             <option key={plan.key} value={plan.key}>
-                              {plan.label}
+                              {plan.label || "Төлбөр"}
                               {plan.sublabel ? ` — ${plan.sublabel}` : ""}
                               {contractInfo?.isPaid && plan.price
                                 ? ` — ${Number(plan.price).toLocaleString()}₮`
@@ -518,40 +398,29 @@ export default function ContractSignPage() {
             <div className="font-medium mb-2 text-[#c00000]">1.1 Холбооны мэдээлэл</div>
             <table className="w-full text-sm border-collapse border border-[#b4c6e7] mb-6 font-sans">
               <tbody>
-                <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c] w-1/3">Байгууллагын нэр:</td><td className="border border-[#b4c6e7] p-2 text-[#c00000]">Монгол эзэнтэй ЖДБ эрхлэгчдийн нэгдсэн холбоо</td></tr>
-                <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Байгууллагын регистр</td><td className="border border-[#b4c6e7] p-2">7236841</td></tr>
+                <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c] w-1/3">Байгууллагын нэр:</td><td className="border border-[#b4c6e7] p-2 text-[#c00000]">ЭМ ЖИ ЭЛ БМБЧ ПЬЮР</td></tr>
                 <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Хаяг:</td><td className="border border-[#b4c6e7] p-2 text-[#c00000]">Улаанбаатар хот, БГД дүүрэг, 21 хороо, Горький 14-330</td></tr>
                 <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Утас:</td><td className="border border-[#b4c6e7] p-2">91601316, 95606060</td></tr>
                 <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">И-мэйл:</td><td className="border border-[#b4c6e7] p-2">Bigservice1316@gmail.com</td></tr>
                 <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Вэбсайт:</td><td className="border border-[#b4c6e7] p-2 text-[#c00000] underline">MGLSTORE.MN</td></tr>
-                <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Дансны мэдээлэл:</td><td className="border border-[#b4c6e7] p-2 flex gap-4 text-[#c00000]"><span className="underline">Банк:Төрийн банк</span> <span className="underline">Дансны дугаар: 9999 9999 6996</span></td></tr>
               </tbody>
             </table>
 
             <div className="font-medium mb-2 text-[#c00000]">1.2 Гишүүн байгууллагын мэдээлэл</div>
             <table className="w-full text-sm border-collapse border border-[#b4c6e7] mb-8 font-sans">
               <tbody>
-                {([
-                  ["Байгууллагын нэр:", "name", true],
-                  ["Байгууллагын регистр", "register", true],
-                  ["Үйл ажиллагааны чиглэл:", "field", false],
-                  ["Хаяг:", "address", false],
-                  ["Утас:", "phone", true],
-                  ["И-мэйл:", "email", false],
-                  ["Вэбсайт:", "website", false],
-                  ["Нэр:", "director", true],
-                ] as [string, keyof typeof memberData, boolean][]).map(([label, key, required]) => (
-                  <tr key={key}>
-                    <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c] w-1/3">{label}</td>
+                {MEMBER_FIELDS.filter((f: any) => f.enabled).map((field: any) => (
+                  <tr key={field.key}>
+                    <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c] w-1/3">{field.label}</td>
                     <td className="border border-[#b4c6e7] p-0">
                       {isPrintMode ? (
-                        <div className="w-full p-2 text-blue-900 min-h-[36px]">{memberData[key]}</div>
+                        <div className="w-full p-2 text-blue-900 min-h-[36px]">{memberData[field.key as keyof typeof memberData]}</div>
                       ) : (
                         <input
-                          required={required}
+                          required={field.required}
                           type="text"
-                          value={memberData[key]}
-                          onChange={e => setMemberData({ ...memberData, [key]: e.target.value })}
+                          value={memberData[field.key as keyof typeof memberData]}
+                          onChange={e => setMemberData({ ...memberData, [field.key]: e.target.value })}
                           className="w-full p-2 border-0 outline-none bg-blue-50/30 focus:bg-white text-blue-900 placeholder:text-blue-300"
                           placeholder="Бичих..."
                         />
@@ -562,9 +431,17 @@ export default function ContractSignPage() {
               </tbody>
             </table>
 
-            <div className="whitespace-pre-wrap mb-12">
-              {DEFAULT_CONTRACT_TEXT}
-            </div>
+            {contractInfo?.contentIsHtml && contractInfo?.contractContent ? (
+              <div
+                className="mb-12 contract-html-content
+                  [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-neutral-300 [&_td]:p-2 [&_th]:border [&_th]:border-neutral-300 [&_th]:p-2 [&_th]:bg-neutral-100"
+                dangerouslySetInnerHTML={{ __html: contractInfo.contractContent }}
+              />
+            ) : (
+              <div className="whitespace-pre-wrap mb-12">
+                {contractInfo?.contractContent || DEFAULT_CONTRACT_TEXT}
+              </div>
+            )}
 
             {/* TABLE BASED SIGNATURE BLOCK JUST LIKE IN THE MOCKUP */}
             <div className="overflow-hidden page-break-inside-avoid">

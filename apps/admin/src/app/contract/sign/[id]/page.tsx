@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { CheckCircle2, PenTool, Eraser, Loader2, QrCode, Smartphone, Download } from "lucide-react";
+import { CheckCircle2, PenTool, Eraser, Loader2, QrCode, Smartphone, Download, ChevronDown, ChevronUp } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
-
+import { ContractPayment } from "../../../../components/organisms/ContractPayment";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
 const API = `${API_BASE}/api`;
 
@@ -18,6 +18,7 @@ export default function ContractSignPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const [showSignature, setShowSignature] = useState(false);
   const [today, setToday] = useState("");
 
   const [step, setStep] = useState<"fill" | "qpay" | "success">("fill");
@@ -26,7 +27,15 @@ export default function ContractSignPage() {
     isPaid: boolean; feePlan: string | null;
     adminSignature?: string; adminName?: string; adminTitle?: string; adminStamp?: string;
     isTemplate?: boolean; memberSignature?: string;
-    headerData?: { title?: string; subtitle?: string; contractTitle?: string } | null;
+    contractContent?: string; contentIsHtml?: boolean;
+    headerData?: {
+      title?: string; subtitle?: string; contractTitle?: string;
+      hasDuration?: boolean;
+      feePlans?: { key: string; label: string; sublabel: string; price: number }[];
+      defaultFeePlan?: string;
+      memberFields?: { key: string; label: string; required: boolean; enabled: boolean }[];
+      content?: string; contentIsHtml?: boolean;
+    } | null;
   } | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [memberPosition, setMemberPosition] = useState("");
@@ -38,10 +47,27 @@ export default function ContractSignPage() {
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [selectedFeePlan, setSelectedFeePlan] = useState("6m");
 
-  const FEE_PLANS = [
+  const DEFAULT_FEE_PLANS = [
     { key: "6m", label: "6 сар", price: 1_800_000 },
     { key: "12m", label: "12 сар", price: 3_000_000 },
   ];
+  const FEE_PLANS = (() => {
+    const stored: any[] = (contractInfo?.headerData as any)?.feePlans ?? [];
+    if (stored.length > 0) return stored;
+    return DEFAULT_FEE_PLANS;
+  })();
+
+  const DEFAULT_MEMBER_FIELDS = [
+    { key: "name", label: "Байгууллагын нэр:", required: true, enabled: true },
+    { key: "register", label: "Байгууллагын регистр", required: true, enabled: true },
+    { key: "field", label: "Үйл ажиллагааны чиглэл:", required: false, enabled: true },
+    { key: "address", label: "Хаяг:", required: false, enabled: true },
+    { key: "phone", label: "Утас:", required: true, enabled: true },
+    { key: "email", label: "И-мэйл:", required: false, enabled: true },
+    { key: "website", label: "Вэбсайт:", required: false, enabled: true },
+    { key: "director", label: "Нэр:", required: true, enabled: true },
+  ];
+  const MEMBER_FIELDS = contractInfo?.headerData?.memberFields ?? DEFAULT_MEMBER_FIELDS;
 
   const [memberData, setMemberData] = useState({
     name: "", register: "", field: "", address: "", phone: "", email: "", website: "", director: ""
@@ -63,6 +89,8 @@ export default function ContractSignPage() {
             isTemplate: d.contract.isTemplate,
             memberSignature: d.contract.memberSignature,
             headerData: d.contract.headerData ?? null,
+            contractContent: (d.contract.headerData as any)?.content || null,
+            contentIsHtml: (d.contract.headerData as any)?.contentIsHtml || false,
           });
           // In print mode: pre-fill memberData from stored JSON
           if (isPrintMode && d.contract.memberData) {
@@ -265,59 +293,12 @@ export default function ContractSignPage() {
 
   if (step === "qpay" && qpayData) {
     return (
-      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-4 sm:p-6">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-neutral-100 overflow-hidden">
-          <div className="bg-[#1e4e8c] p-6 text-white text-center">
-            <QrCode className="w-12 h-12 mx-auto mb-3 opacity-90" />
-            <h2 className="text-xl font-bold">Хураамж төлөх</h2>
-            <p className="text-blue-200 text-sm mt-1">Төлбөр төлөгдсөнөөр гэрээ хүчин төгөлдөр болно.</p>
-          </div>
-
-          <div className="p-6 flex flex-col items-center gap-5">
-            {qpayData.qrImage ? (
-              <img src={`data:image/png;base64,${qpayData.qrImage}`} alt="QPay QR" className="w-52 h-52 rounded-xl border-2 border-neutral-200 shadow-sm" />
-            ) : (
-              <div className="w-52 h-52 bg-neutral-100 rounded-xl border-2 border-neutral-200 flex items-center justify-center text-neutral-400 text-sm">QR код ачааллаж байна...</div>
-            )}
-
-            <div className="text-center">
-              <div className="text-sm text-neutral-500">Төлөх дүн</div>
-              <div className="text-3xl font-bold text-neutral-900">{qpayData.amount.toLocaleString()} ₮</div>
-            </div>
-
-            {/* Auto-polling status indicator */}
-            <div className="w-full bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-center gap-3">
-              <div className="relative flex-shrink-0">
-                <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-              </div>
-              <div className="text-sm text-blue-700">
-                Төлбөр автоматаар шалгагдаж байна...
-                <span className="ml-1 font-semibold text-blue-900">{pollCountdown}с</span>
-              </div>
-            </div>
-
-            {/* Deep links for mobile apps */}
-            {qpayData.urls.length > 0 && (
-              <div className="w-full">
-                <div className="flex items-center gap-2 text-xs text-neutral-500 mb-2"><Smartphone className="w-3.5 h-3.5" /> Банкны аппаар нэвтрэх:</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {qpayData.urls.slice(0, 6).map((u: any) => (
-                    <a key={u.name} href={u.link} className="flex items-center gap-2 px-3 py-2 border border-neutral-200 rounded-lg text-xs font-medium text-neutral-700 hover:bg-neutral-50 transition-colors truncate">
-                      {u.logo && <img src={u.logo} alt={u.name} className="w-5 h-5 rounded flex-shrink-0" />}
-                      {u.description || u.name}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <button onClick={checkPayment} disabled={checkingPayment}
-              className="w-full px-6 py-3.5 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm">
-              {checkingPayment ? <><Loader2 className="w-5 h-5 animate-spin" /> Шалгаж байна...</> : <><CheckCircle2 className="w-5 h-5" /> Төлбөр төлсөн</>}
-            </button>
-          </div>
-        </div>
-      </div>
+      <ContractPayment
+        qpayData={qpayData}
+        pollCountdown={pollCountdown}
+        checkingPayment={checkingPayment}
+        onCheckPayment={checkPayment}
+      />
     );
   }
 
@@ -365,8 +346,32 @@ export default function ContractSignPage() {
                 <tr>
                   <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Байршил:</td>
                   <td className="border border-[#b4c6e7] p-2">Улаанбаатар хот</td>
-                  <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Гэрээний хугацаа:</td>
-                  <td className="border border-[#b4c6e7] p-2">{FEE_PLANS.find(p => p.key === selectedFeePlan)?.label ?? "—"}</td>
+                  <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">
+                    {contractInfo?.headerData?.hasDuration !== false ? "Гэрээний хугацаа:" : contractInfo?.isPaid ? "Төлбөрийн сонголт:" : "Сонголт:"}
+                  </td>
+                  <td className="border border-[#b4c6e7] p-0">
+                    {contractInfo?.headerData?.hasDuration === false && !contractInfo?.isPaid ? (
+                      <span className="block px-2 py-2">—</span>
+                    ) : isPrintMode ? (
+                      <span className="block px-2 py-2">
+                        {FEE_PLANS.find(p => p.key === selectedFeePlan)?.label ?? "—"}
+                      </span>
+                    ) : (
+                      <select
+                        value={selectedFeePlan}
+                        onChange={(e) => setSelectedFeePlan(e.target.value)}
+                        className="w-full h-full px-2 py-2 bg-white border-0 outline-none text-sm font-medium text-neutral-900 cursor-pointer"
+                      >
+                        {FEE_PLANS.map((plan) => (
+                          <option key={plan.key} value={plan.key}>
+                            {plan.label || "Төлбөр"}
+                            {plan.sublabel ? ` — ${plan.sublabel}` : ""}
+                            {contractInfo?.isPaid && plan.price ? ` — ${Number(plan.price).toLocaleString()}₮` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -389,34 +394,24 @@ export default function ContractSignPage() {
                 <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Утас:</td><td className="border border-[#b4c6e7] p-2">91601316, 95606060</td></tr>
                 <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">И-мэйл:</td><td className="border border-[#b4c6e7] p-2">Bigservice1316@gmail.com</td></tr>
                 <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Вэбсайт:</td><td className="border border-[#b4c6e7] p-2 text-[#c00000] underline">MGLSTORE.MN</td></tr>
-                <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Дансны мэдээлэл:</td><td className="border border-[#b4c6e7] p-2 flex gap-4 text-[#c00000]"><span className="underline">Банк:Төрийн банк</span> <span className="underline">Дансны дугаар: 9999 9999 6996</span></td></tr>
               </tbody>
             </table>
 
             <div className="font-medium mb-2 text-[#c00000]">1.2 Гишүүн байгууллагын мэдээлэл</div>
             <table className="w-full text-sm border-collapse border border-[#b4c6e7] mb-8 font-sans">
               <tbody>
-                {([
-                  ["Байгууллагын нэр:", "name", true],
-                  ["Байгууллагын регистр", "register", true],
-                  ["Үйл ажиллагааны чиглэл:", "field", false],
-                  ["Хаяг:", "address", false],
-                  ["Утас:", "phone", true],
-                  ["И-мэйл:", "email", false],
-                  ["Вэбсайт:", "website", false],
-                  ["Нэр:", "director", true],
-                ] as [string, keyof typeof memberData, boolean][]).map(([label, key, required]) => (
-                  <tr key={key}>
-                    <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c] w-1/3">{label}</td>
+                {MEMBER_FIELDS.filter((f: any) => f.enabled).map((field: any) => (
+                  <tr key={field.key}>
+                    <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c] w-1/3">{field.label}</td>
                     <td className="border border-[#b4c6e7] p-0">
                       {isPrintMode ? (
-                        <div className="w-full p-2 text-blue-900 min-h-[36px]">{memberData[key]}</div>
+                        <div className="w-full p-2 text-blue-900 min-h-[36px]">{memberData[field.key as keyof typeof memberData]}</div>
                       ) : (
                         <input
-                          required={required}
+                          required={field.required}
                           type="text"
-                          value={memberData[key]}
-                          onChange={e => setMemberData({ ...memberData, [key]: e.target.value })}
+                          value={memberData[field.key as keyof typeof memberData]}
+                          onChange={e => setMemberData({ ...memberData, [field.key]: e.target.value })}
                           className="w-full p-2 border-0 outline-none bg-blue-50/30 focus:bg-white text-blue-900 placeholder:text-blue-300"
                           placeholder="Бичих..."
                         />
@@ -427,133 +422,157 @@ export default function ContractSignPage() {
               </tbody>
             </table>
 
-            <div className="whitespace-pre-wrap mb-12">
-              {DEFAULT_CONTRACT_TEXT}
-            </div>
+            {contractInfo?.contentIsHtml && contractInfo?.contractContent ? (
+              <div
+                className="mb-12 contract-html-content
+                  [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-neutral-300 [&_td]:p-2 [&_th]:border [&_th]:border-neutral-300 [&_th]:p-2 [&_th]:bg-neutral-100"
+                dangerouslySetInnerHTML={{ __html: contractInfo.contractContent }}
+              />
+            ) : (
+              <div className="whitespace-pre-wrap mb-12">
+                {contractInfo?.contractContent || DEFAULT_CONTRACT_TEXT}
+              </div>
+            )}
 
             {/* TABLE BASED SIGNATURE BLOCK JUST LIKE IN THE MOCKUP */}
             <div className="overflow-hidden page-break-inside-avoid">
-              <table className="w-full border-collapse border border-[#b4c6e7] text-sm">
-                <thead>
-                  <tr>
-                    <th className="border border-[#b4c6e7] bg-[#f8f9fc] p-4 text-center w-1/2 align-top">
-                      <div className="text-[#1e4e8c] font-bold text-base mb-1">ХОЛБОО</div>
-                      <div className="text-[#c00000] font-normal">Монгол эзэнтэй ЖДБ эрхлэгчдийн<br />нэгдсэн холбоо</div>
-                    </th>
-                    <th className="border border-[#b4c6e7] bg-[#f8f9fc] p-4 text-center w-1/2 align-top">
-                      <div className="text-[#1e4e8c] font-bold text-base mb-1">ГИШҮҮН</div>
-                      <div className="text-[#1e4e8c] font-normal">Байгууллагын нэр:</div>
-                      <div className="border-b border-[#1e4e8c] w-3/4 mx-auto mt-2 h-4 text-neutral-800">{memberData.name}</div>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="border border-[#b4c6e7] p-4 bg-[#f8f9fc] align-top relative overflow-visible">
-                      {/* Stamp — absolutely over the entire ХОЛБОО column */}
-                      {contractInfo?.adminStamp && (
-                        <img
-                          src={contractInfo.adminStamp}
-                          alt="Тамга"
-                          className="absolute object-contain mix-blend-multiply pointer-events-none z-10"
-                          style={{
-                            width: 180,
-                            height: 180,
-                            top: "30%",
-                            left: "50%",
-                            transform: "translate(-50%, -30%) rotate(-4deg)",
-                            opacity: 0.85,
-                          }}
-                        />
-                      )}
+              {/* Toggle header — hidden in print mode */}
+              {!isPrintMode && (
+                <button
+                  type="button"
+                  onClick={() => setShowSignature(prev => !prev)}
+                  className="w-full flex items-center justify-between px-4 py-3 mb-2 bg-[#f8f9fc] border border-[#b4c6e7] rounded-lg text-[#1e4e8c] font-semibold text-sm hover:bg-blue-50 transition-colors no-print"
+                >
+                  <span>✍️ Гарын үсэг зурах хэсэг</span>
+                  {showSignature ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+              )}
 
-                      <div className="border-b-2 border-[#1e4e8c] h-20 mb-1 relative flex items-end justify-center">
-                        {contractInfo?.adminSignature
-                          ? <img src={contractInfo.adminSignature} alt="Гарын үсэг" className="h-16 max-w-full object-contain mix-blend-multiply" />
-                          : <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/Signature_of_John_Hancock.svg" alt="" className="h-12 opacity-30 mix-blend-multiply" />
-                        }
-                      </div>
-                      <span className="text-[#c00000] font-normal text-xs">Гарын үсэг / Албан тушаал</span>
-
-                      <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 relative flex items-end justify-center">
-                        <span className="text-sm font-medium text-neutral-800">{contractInfo?.adminName || ""}</span>
-                      </div>
-                      <span className="text-neutral-500 font-normal text-xs">Овог нэр</span>
-
-                      <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 relative flex items-end justify-center">
-                        <span className="text-sm font-medium text-[#c00000]">{contractInfo?.adminTitle || ""}</span>
-                      </div>
-                      <span className="text-neutral-500 font-normal text-xs">Албан тушаал</span>
-
-                      <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 relative flex items-end justify-center">
-                        <span className="text-sm font-medium text-neutral-800">{today}</span>
-                      </div>
-                      <span className="text-[#c00000] font-normal text-xs">Огноо (он/сар/өдөр)</span>
-                    </td>
-
-                    <td className="border border-[#b4c6e7] p-4 bg-[#f8f9fc] align-top relative group">
-                      <div className="relative mb-1">
-                        {isPrintMode ? (
-                          <div className="border-b-2 border-[#1e4e8c] h-[140px] flex items-end justify-center">
-                            {contractInfo?.memberSignature && (
-                              <img src={contractInfo.memberSignature} alt="Гарын үсэг" className="h-[130px] max-w-full object-contain mix-blend-multiply" />
-                            )}
-                          </div>
-                        ) : (
-                        <div className="border-2 border-dashed border-[#1e4e8c]/40 rounded-lg bg-blue-50/30 relative" style={{ height: 140 }}>
-                          <canvas
-                            ref={canvasRef}
-                            width={600}
-                            height={140}
-                            className="absolute inset-0 w-full h-full touch-none"
-                            style={{ cursor: "crosshair" }}
-                            onMouseDown={startDrawing}
-                            onMouseMove={draw}
-                            onMouseUp={endDrawing}
-                            onMouseLeave={endDrawing}
-                            onTouchStart={startDrawing}
-                            onTouchMove={draw}
-                            onTouchEnd={endDrawing}
+              <div
+                className={`transition-all duration-300 ease-in-out overflow-hidden ${isPrintMode || showSignature ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+                  }`}
+              >
+                <table className="w-full border-collapse border border-[#b4c6e7] text-sm">
+                  <thead>
+                    <tr>
+                      <th className="border border-[#b4c6e7] bg-[#f8f9fc] p-4 text-center w-1/2 align-top">
+                        <div className="text-[#1e4e8c] font-bold text-base mb-1">ХОЛБОО</div>
+                        <div className="text-[#c00000] font-normal">Монгол эзэнтэй ЖДБ эрхлэгчдийн<br />нэгдсэн холбоо</div>
+                      </th>
+                      <th className="border border-[#b4c6e7] bg-[#f8f9fc] p-4 text-center w-1/2 align-top">
+                        <div className="text-[#1e4e8c] font-bold text-base mb-1">ГИШҮҮН</div>
+                        <div className="text-[#1e4e8c] font-normal">Байгууллагын нэр:</div>
+                        <div className="border-b border-[#1e4e8c] w-3/4 mx-auto mt-2 h-4 text-neutral-800">{memberData.name}</div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="border border-[#b4c6e7] p-4 bg-[#f8f9fc] align-top relative overflow-visible">
+                        {/* Stamp — absolutely over the entire ХОЛБОО column */}
+                        {contractInfo?.adminStamp && (
+                          <img
+                            src={contractInfo.adminStamp}
+                            alt="Тамга"
+                            className="absolute object-contain mix-blend-multiply pointer-events-none z-10"
+                            style={{
+                              width: 180,
+                              height: 180,
+                              top: "30%",
+                              left: "50%",
+                              transform: "translate(-50%, -30%) rotate(-4deg)",
+                              opacity: 0.85,
+                            }}
                           />
-                          {!isDrawing && (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-blue-300/70 pointer-events-none select-none">
-                              <PenTool className="w-6 h-6" />
-                              <span className="text-xs">Энд гарын үсэг зурна уу</span>
+                        )}
+
+                        <div className="border-b-2 border-[#1e4e8c] h-20 mb-1 relative flex items-end justify-center">
+                          {contractInfo?.adminSignature
+                            ? <img src={contractInfo.adminSignature} alt="Гарын үсэг" className="h-16 max-w-full object-contain mix-blend-multiply" />
+                            : <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/Signature_of_John_Hancock.svg" alt="" className="h-12 opacity-30 mix-blend-multiply" />
+                          }
+                        </div>
+                        <span className="text-[#c00000] font-normal text-xs">Гарын үсэг / Албан тушаал</span>
+
+                        <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 relative flex items-end justify-center">
+                          <span className="text-sm font-medium text-neutral-800">{contractInfo?.adminName || ""}</span>
+                        </div>
+                        <span className="text-neutral-500 font-normal text-xs">Овог нэр</span>
+
+                        <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 relative flex items-end justify-center">
+                          <span className="text-sm font-medium text-[#c00000]">{contractInfo?.adminTitle || ""}</span>
+                        </div>
+                        <span className="text-neutral-500 font-normal text-xs">Албан тушаал</span>
+
+                        <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 relative flex items-end justify-center">
+                          <span className="text-sm font-medium text-neutral-800">{today}</span>
+                        </div>
+                        <span className="text-[#c00000] font-normal text-xs">Огноо (он/сар/өдөр)</span>
+                      </td>
+
+                      <td className="border border-[#b4c6e7] p-4 bg-[#f8f9fc] align-top relative group">
+                        <div className="relative mb-1">
+                          {isPrintMode ? (
+                            <div className="border-b-2 border-[#1e4e8c] h-[140px] flex items-end justify-center">
+                              {contractInfo?.memberSignature && (
+                                <img src={contractInfo.memberSignature} alt="Гарын үсэг" className="h-[130px] max-w-full object-contain mix-blend-multiply" />
+                              )}
+                            </div>
+                          ) : (
+                            <div className="border-2 border-dashed border-[#1e4e8c]/40 rounded-lg bg-blue-50/30 relative" style={{ height: 140 }}>
+                              <canvas
+                                ref={canvasRef}
+                                width={600}
+                                height={140}
+                                className="absolute inset-0 w-full h-full touch-none"
+                                style={{ cursor: "crosshair" }}
+                                onMouseDown={startDrawing}
+                                onMouseMove={draw}
+                                onMouseUp={endDrawing}
+                                onMouseLeave={endDrawing}
+                                onTouchStart={startDrawing}
+                                onTouchMove={draw}
+                                onTouchEnd={endDrawing}
+                              />
+                              {!isDrawing && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-blue-300/70 pointer-events-none select-none">
+                                  <PenTool className="w-6 h-6" />
+                                  <span className="text-xs">Энд гарын үсэг зурна уу</span>
+                                </div>
+                              )}
+                              <button
+                                type="button"
+                                onClick={clearSignature}
+                                className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-white border border-neutral-200 rounded-lg text-xs text-neutral-500 hover:text-red-500 hover:border-red-200 transition-colors z-10 shadow-sm"
+                              >
+                                <Eraser className="w-3 h-3" /> Арилгах
+                              </button>
                             </div>
                           )}
-                          <button
-                            type="button"
-                            onClick={clearSignature}
-                            className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-white border border-neutral-200 rounded-lg text-xs text-neutral-500 hover:text-red-500 hover:border-red-200 transition-colors z-10 shadow-sm"
-                          >
-                            <Eraser className="w-3 h-3" /> Арилгах
-                          </button>
                         </div>
-                        )}
-                      </div>
-                      <span className="text-[#c00000] font-normal text-xs">Гарын үсэг / Албан тушаал</span>
+                        <span className="text-[#c00000] font-normal text-xs">Гарын үсэг / Албан тушаал</span>
 
-                      <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 flex items-end">
-                        <div className="w-full text-center text-neutral-800 font-medium text-sm">{memberData.director}</div>
-                      </div>
-                      <span className="text-neutral-500 font-normal text-xs">Овог нэр</span>
+                        <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 flex items-end">
+                          <div className="w-full text-center text-neutral-800 font-medium text-sm">{memberData.director}</div>
+                        </div>
+                        <span className="text-neutral-500 font-normal text-xs">Овог нэр</span>
 
-                      <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 flex items-end justify-center">
-                        {isPrintMode ? (
-                          <span className="text-sm font-medium text-neutral-800">{memberPosition}</span>
-                        ) : (
-                          <input
-                            type="text"
-                            value={memberPosition}
-                            onChange={e => setMemberPosition(e.target.value)}
-                            placeholder="Албан тушаал бичих..."
-                            className="w-full h-full bg-transparent border-none focus:ring-0 text-center text-sm text-neutral-800 p-0"
-                          />
-                        )}
-                      </div>
-                      <span className="text-neutral-500 font-normal text-xs">Албан тушаал</span>
+                        <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 flex items-end justify-center">
+                          {isPrintMode ? (
+                            <span className="text-sm font-medium text-neutral-800">{memberPosition}</span>
+                          ) : (
+                            <input
+                              type="text"
+                              value={memberPosition}
+                              onChange={e => setMemberPosition(e.target.value)}
+                              placeholder="Албан тушаал бичих..."
+                              className="w-full h-full bg-transparent border-none focus:ring-0 text-center text-sm text-neutral-800 p-0"
+                            />
+                          )}
+                        </div>
+                        <span className="text-neutral-500 font-normal text-xs">Албан тушаал</span>
 
-                      {/* Member stamp upload — TEMPORARILY DISABLED
+                        {/* Member stamp upload — TEMPORARILY DISABLED
                       <div className="mt-4">
                         <input
                           ref={stampInputRef}
@@ -587,17 +606,18 @@ export default function ContractSignPage() {
                         </div>
                       </div>
                       */}
-                      <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4"></div>
-                      <span className="text-[#c00000] font-normal text-xs">Тамга</span>
+                        <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4"></div>
+                        <span className="text-[#c00000] font-normal text-xs">Тамга</span>
 
-                      <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 relative flex items-end justify-center">
-                        <span className="text-sm font-medium text-neutral-800">{today}</span>
-                      </div>
-                      <span className="text-[#c00000] font-normal text-xs">Огноо (он/сар/өдөр)</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                        <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 relative flex items-end justify-center">
+                          <span className="text-sm font-medium text-neutral-800">{today}</span>
+                        </div>
+                        <span className="text-[#c00000] font-normal text-xs">Огноо (он/сар/өдөр)</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>{/* end collapsible */}
             </div>
 
             <div className="text-center text-sm mt-6 text-[#c00000] italic font-medium">

@@ -339,14 +339,27 @@ router.post("/contracts/:id/qpay", async (req, res) => {
       return res.status(404).json({ success: false, error: "Гэрээ олдсонгүй" });
     }
 
-    const PLANS: Record<string, number> = { "6m": 1800000, "12m": 3000000 };
-    const amount = PLANS[contract.feePlan || ""] || 1800000;
+    let amount = 1800000;
+    let descriptionText = "Төлбөр";
+    const headerData = contract.headerData as any;
+    if (headerData && Array.isArray(headerData.feePlans)) {
+      const plan = headerData.feePlans.find((p: any) => p.key === contract.feePlan);
+      if (plan) {
+        if (plan.price) amount = Number(plan.price);
+        if (plan.label) descriptionText = plan.label;
+      }
+    }
 
+    const memberData = contract.memberData as any;
+    const userName = memberData?.director || memberData?.name || "Тодорхойгүй";
+    const userPhone = memberData?.phone ? ` - ${memberData.phone}` : "";
+    const title = headerData?.contractTitle || "MGL Store гэрээний төлбөр";
+    
     const invoice = await createQPayInvoice({
       orderId: contract.id,
       orderNumber: `MGL-${contract.id.slice(0, 8).toUpperCase()}`,
       amount,
-      description: `MGL Store гишүүнчлэлийн хураамж - ${contract.feePlan === "12m" ? "12 сар" : "6 сар"}`,
+      description: `${title} - ${descriptionText} - ${userName}${userPhone}`,
       callbackConfig: { path: "/api/contracts/qpay/callback", query: { contractId: contract.id } },
     });
 
