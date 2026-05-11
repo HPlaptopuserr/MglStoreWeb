@@ -1,4 +1,4 @@
-import { API } from "@/lib/api";
+import { API, authFetch } from "@/lib/api";
 import type { PosProduct } from "../types/pos.types";
 
 type RawProduct = {
@@ -14,17 +14,28 @@ export async function getOwnProducts(
   organizationId: string,
   signal?: AbortSignal,
 ): Promise<PosProduct[]> {
-  const res = await fetch(
+  const res = await authFetch(
     `${API}/products?organizationId=${encodeURIComponent(organizationId)}`,
     {
       signal,
-      credentials: "include",
       cache: "no-store",
     },
   );
 
   if (!res.ok) {
-    throw new Error("Бараа татахад алдаа гарлаа");
+    const raw = await res.text().catch(() => "");
+    let message = "Бараа татахад алдаа гарлаа";
+
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        message = parsed?.message || parsed?.error || message;
+      } catch {
+        message = raw.slice(0, 160) || message;
+      }
+    }
+
+    throw new Error(`${message} (HTTP ${res.status})`);
   }
 
   const data = (await res.json()) as RawProduct[];

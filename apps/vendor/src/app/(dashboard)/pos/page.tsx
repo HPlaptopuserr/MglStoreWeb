@@ -39,6 +39,7 @@ import {
   usePosCart,
   useCreateSale,
   useOwnProducts,
+  usePosProducts,
   useCurrentShift,
   type CartLine,
   type CartTotals,
@@ -162,7 +163,10 @@ export default function PosDemoPage() {
   const progressTickerRef = useRef<number | null>(null);
   const successOverlayTimerRef = useRef<number | null>(null);
 
-  const { products, loading, error } = useOwnProducts(organizationId);
+  const registerBranchId = registerConfig?.branchId ?? "";
+  const posProductsState = usePosProducts(registerBranchId);
+  const ownProductsState = useOwnProducts(registerBranchId ? "" : organizationId);
+  const { products, loading, error } = registerBranchId ? posProductsState : ownProductsState;
   const { state, totals, addProduct, dispatch } = usePosCart();
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
   const { shift, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn } = useCurrentShift();
@@ -1347,17 +1351,43 @@ export default function PosDemoPage() {
         terminalId={registerConfig?.cardProviderType === "PUSH_ECR" ? registerConfig.cardTerminalId : null}
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-        <section className="xl:col-span-3 rounded-2xl border border-slate-200 bg-white p-5 space-y-5">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-7">
           <div className="flex items-center gap-2">
             <ScanLine className="text-violet-600" size={18} />
             <div>
-              <h1 className="text-lg font-bold text-slate-900">Barcode уншуулах</h1>
+              <h1 className="text-base font-bold text-slate-900">Barcode уншуулах</h1>
               <p className="text-sm text-slate-500">Бараа хайх / уншуулах</p>
             </div>
           </div>
 
-          <form onSubmit={handleManualSubmit} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Сагс</p>
+              <p className="text-lg font-black text-slate-900">{state.cart.length}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Нийт</p>
+              <p className="truncate text-lg font-black text-slate-900">₮ {totals.grandTotal.toLocaleString()}</p>
+            </div>
+            <div
+              className={`rounded-xl border px-3 py-2 ${
+                scanStatus === "success"
+                  ? "border-emerald-200 bg-emerald-50"
+                  : scanStatus === "not-found"
+                    ? "border-amber-200 bg-amber-50"
+                    : "border-violet-100 bg-violet-50"
+              }`}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Scanner</p>
+              <p className="truncate text-sm font-bold text-slate-900">{scanMessage || "Бэлэн"}</p>
+            </div>
+          </div>
+
+          <form
+            onSubmit={handleManualSubmit}
+            className="grid grid-cols-1 gap-3 rounded-2xl border border-violet-100 bg-violet-50/60 p-3 md:grid-cols-[1fr_auto]"
+          >
             <div className="relative">
               <Barcode size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-violet-500" />
               <input
@@ -1365,19 +1395,19 @@ export default function PosDemoPage() {
                 value={scanBuffer}
                 onChange={(e) => setScanBuffer(e.target.value)}
                 placeholder="Barcode уншуул эсвэл код оруул"
-                className="h-14 w-full rounded-2xl border-2 border-slate-300 bg-white pl-12 pr-4 text-base font-medium outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                className="h-12 w-full rounded-xl border-2 border-violet-200 bg-white pl-12 pr-4 text-base font-medium shadow-sm outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
               />
             </div>
             <button
               type="submit"
-              className="h-14 rounded-2xl bg-violet-600 px-6 text-base font-semibold text-white hover:bg-violet-700"
+              className="h-12 rounded-xl bg-violet-600 px-6 text-base font-semibold text-white shadow-sm transition hover:bg-violet-700"
             >
               Унших
             </button>
           </form>
 
           <div
-            className={`rounded-xl border px-4 py-3 flex items-center justify-between ${
+            className={`rounded-xl border px-4 py-2.5 flex items-center justify-between ${
               scanStatus === "success"
                 ? "border-emerald-200 bg-emerald-50"
                 : scanStatus === "not-found"
@@ -1399,22 +1429,22 @@ export default function PosDemoPage() {
             )}
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Scan result</p>
             {selectedByCode ? (
               <>
-                <h2 className="mt-1 text-lg font-bold text-slate-900">{selectedByCode.name}</h2>
+                <h2 className="mt-1 text-base font-bold text-slate-900">{selectedByCode.name}</h2>
                 <p className="text-xs text-slate-600 mt-1">Barcode / SKU: {selectedByCode.sku}</p>
                 <div className="mt-3 grid grid-cols-2 gap-3">
                   <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
                     <p className="text-[11px] uppercase tracking-wider text-slate-500">Үнэ</p>
-                    <p className="mt-1 text-2xl font-black text-emerald-700">
+                    <p className="mt-1 text-xl font-black text-emerald-700">
                       ₮ {selectedByCode.price.toLocaleString()}
                     </p>
                   </div>
                   <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
                     <p className="text-[11px] uppercase tracking-wider text-slate-500">Нөөц</p>
-                    <p className="mt-1 text-2xl font-black text-slate-800">{selectedByCode.stockQty}</p>
+                    <p className="mt-1 text-xl font-black text-slate-800">{selectedByCode.stockQty}</p>
                   </div>
                 </div>
                 <button
@@ -1448,23 +1478,33 @@ export default function PosDemoPage() {
             )}
           </div>
 
-          <div className="space-y-3">
-            <div className="relative">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Barcode эсвэл SKU, нэрээр хайх"
-                className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-violet-400"
-              />
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+            <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Барааны жагсаалт</h2>
+                <p className="text-xs text-slate-500">
+                  {filtered.length} бараа харагдаж байна
+                </p>
+              </div>
+              <div className="relative md:w-80">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Barcode, SKU, нэрээр хайх"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                />
+              </div>
             </div>
 
             {loading ? (
-              <div className="h-44 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center">
+              <div className="flex h-44 items-center justify-center rounded-xl border border-slate-200 bg-white">
                 <Loader2 className="animate-spin text-slate-400" size={20} />
               </div>
             ) : error ? (
-              <p className="text-sm text-rose-600">{error}</p>
+              <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+                {error}
+              </div>
             ) : (
               <PosProductGrid
                 products={filtered}
@@ -1481,7 +1521,7 @@ export default function PosDemoPage() {
           </div>
         </section>
 
-        <section className="xl:col-span-2 space-y-4">
+        <section className="xl:col-span-5 space-y-4 xl:sticky xl:top-4 xl:self-start">
           <PosCartPanel
             lines={state.cart}
             onRemove={(productId) => dispatch({ type: "remove-line", payload: productId })}
