@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { adminFetch, API } from "@/lib/api";
 import { DEFAULT_CONTRACT_TEXT, DEFAULT_FEE_PLANS } from "./contract-defaults";
+import { OrgInfoEditor, DEFAULT_ORG_CONTACT, type OrgContactInfo } from "./OrgInfoFields";
 
 
 // ─── Signature Input: draw or upload PNG ────────────────────────────────────
@@ -310,6 +311,7 @@ export function Contract() {
     defaultFeePlan: "",
     feePlans: DEFAULT_FEE_PLANS as { key: string; label: string; sublabel: string; price: number }[],
     memberFields: DEFAULT_MEMBER_FIELDS,
+    orgContact: { ...DEFAULT_ORG_CONTACT } as OrgContactInfo,
   });
   const [contracts, setContracts] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, signed: 0, pending: 0 });
@@ -347,6 +349,7 @@ export function Contract() {
                     memberFields: (hd?.memberFields?.length > 0 ? hd.memberFields : prev.memberFields),
                     content: hd?.content || prev.content,
                     contentIsHtml: hd?.contentIsHtml ?? prev.contentIsHtml,
+                    orgContact: hd?.orgContact || prev.orgContact,
                   }));
                 }
               })
@@ -819,6 +822,7 @@ function NewContractButton({ settings, setContracts, setStats }: {
             memberFields: settings.memberFields,
             content: settings.content || null,
             contentIsHtml: settings.contentIsHtml || false,
+            orgContact: settings.orgContact,
           },
         }),
       });
@@ -1075,6 +1079,7 @@ function ContractEditorTab({
             memberFields: settings.memberFields,
             content: settings.content || null,
             contentIsHtml: settings.contentIsHtml || false,
+            orgContact: settings.orgContact,
           },
         }),
       });
@@ -1177,6 +1182,14 @@ function ContractEditorTab({
               <input type="text" value={settings.headerContractTitle} onChange={e => setSettings({ ...settings, headerContractTitle: e.target.value })}
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+          </div>
+
+          {/* 1.1 Холбооны мэдээлэл — editable org contact info */}
+          <div className="mt-6 p-4 bg-white border border-[#b4c6e7] rounded-xl">
+            <OrgInfoEditor
+              value={settings.orgContact}
+              onChange={(v) => setSettings({ ...settings, orgContact: v })}
+            />
           </div>
 
           <div className="mt-6">

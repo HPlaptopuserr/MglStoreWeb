@@ -4,6 +4,8 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import { CheckCircle2, PenTool, Eraser, Loader2, QrCode, Smartphone, Download } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
 import { ContractPayment } from "../../../../../components/organisms/ContractPayment";
+import { OrgInfoTable } from "../../../../../components/organisms/OrgInfoTable";
+import type { OrgContactInfo } from "../../../../../components/organisms/OrgInfoTable";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
 const API = `${API_BASE}/api`;
@@ -29,6 +31,7 @@ export default function ContractSignPage() {
     adminSignature?: string; adminName?: string; adminTitle?: string; adminStamp?: string;
     isTemplate?: boolean; memberSignature?: string;
     contractContent?: string; contentIsHtml?: boolean;
+    orgContact?: OrgContactInfo | null;
     headerData?: {
       title?: string; subtitle?: string; contractTitle?: string;
       hasDuration?: boolean;
@@ -36,6 +39,7 @@ export default function ContractSignPage() {
       defaultFeePlan?: string;
       memberFields?: { key: string; label: string; required: boolean; enabled: boolean }[];
       content?: string; contentIsHtml?: boolean;
+      orgContact?: OrgContactInfo | null;
     } | null;
   } | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
@@ -92,6 +96,7 @@ export default function ContractSignPage() {
             headerData: d.contract.headerData ?? null,
             contractContent: (d.contract.headerData as any)?.content || null,
             contentIsHtml: (d.contract.headerData as any)?.contentIsHtml || false,
+            orgContact: (d.contract.headerData as any)?.orgContact || null,
           });
           const selectedPlanFromContract = isPrintMode
             ? d.contract.feePlan || d.contract.headerData?.defaultFeePlan || "6m"
@@ -255,7 +260,7 @@ export default function ContractSignPage() {
     }, 1000);
 
     return () => clearInterval(tick);
-  }, [step, qpayData, contractId]);
+  }, [step, qpayData, contractId, submissionId]);
 
   const checkPayment = useCallback(async () => {
     if (!qpayData || checkingPayment) return;
@@ -267,7 +272,7 @@ export default function ContractSignPage() {
       else alert("Төлбөр бүртгэгдэх хүртэл түр хүлээнэ үү.");
     } catch { alert("Алдаа гарлаа."); }
     finally { setCheckingPayment(false); }
-  }, [qpayData, checkingPayment, contractId]);
+  }, [qpayData, checkingPayment, contractId, submissionId]);
 
   if (step === "success") {
     const base = process.env.NEXT_PUBLIC_WEB_URL || window.location.origin;
@@ -395,16 +400,7 @@ export default function ContractSignPage() {
               Энэхүү гэрээг нэг талаас Монгол эзэнтэй жижиг дунд бизнес эрхлэгчдийн нэгдсэн холбоо (цаашид "Холбоо" гэх) болон нөгөө талаас доор дурдсан байгууллага (цаашид "Гишүүн" гэх) хооронд байгуулав.
             </p>
 
-            <div className="font-medium mb-2 text-[#c00000]">1.1 Холбооны мэдээлэл</div>
-            <table className="w-full text-sm border-collapse border border-[#b4c6e7] mb-6 font-sans">
-              <tbody>
-                <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c] w-1/3">Байгууллагын нэр:</td><td className="border border-[#b4c6e7] p-2 text-[#c00000]">ЭМ ЖИ ЭЛ БМБЧ ПЬЮР</td></tr>
-                <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Хаяг:</td><td className="border border-[#b4c6e7] p-2 text-[#c00000]">Улаанбаатар хот, БГД дүүрэг, 21 хороо, Горький 14-330</td></tr>
-                <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Утас:</td><td className="border border-[#b4c6e7] p-2">91601316, 95606060</td></tr>
-                <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">И-мэйл:</td><td className="border border-[#b4c6e7] p-2">Bigservice1316@gmail.com</td></tr>
-                <tr><td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Вэбсайт:</td><td className="border border-[#b4c6e7] p-2 text-[#c00000] underline">MGLSTORE.MN</td></tr>
-              </tbody>
-            </table>
+            <OrgInfoTable data={contractInfo?.orgContact} />
 
             <div className="font-medium mb-2 text-[#c00000]">1.2 Гишүүн байгууллагын мэдээлэл</div>
             <table className="w-full text-sm border-collapse border border-[#b4c6e7] mb-8 font-sans">
@@ -622,7 +618,7 @@ export default function ContractSignPage() {
         {/* Fee plan selector (shown only when contract is paid) */}
         {contractInfo?.isPaid && (
           <div className="no-print bg-white rounded-xl shadow-lg border border-neutral-200 p-5 mb-3">
-            <div className="font-semibold text-neutral-800 mb-3">Хураамжийн сонголт <span className="text-red-500">*</span></div>
+            <div className="font-semibold text-neutral-800 mb-3">Хөрөнгө оруулалтын сонголт <span className="text-red-500">*</span></div>
             <div className="grid grid-cols-2 gap-3">
               {FEE_PLANS.map(p => (
                 <button key={p.key} type="button" onClick={() => setSelectedFeePlan(p.key)}
