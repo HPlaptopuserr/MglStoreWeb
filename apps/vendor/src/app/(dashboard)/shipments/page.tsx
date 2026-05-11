@@ -27,6 +27,8 @@ import {
   Printer,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
+import { StockSuggestionBanner } from "@/components/organisms/StockSuggestionBanner";
+import { RequestFilter } from "@/components/organisms/RequestFilter";
 
 type StockRequestStatus =
   | "PENDING"
@@ -225,6 +227,8 @@ export default function StockRequestsPage() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [loadingPaymentDetail, setLoadingPaymentDetail] = useState(false);
 
+  const [filteredRequests, setFilteredRequests] = useState<StockRequest[]>([]);
+
   const [user, setUser] = useState<{
     id: string;
     organizationId: string;
@@ -248,7 +252,11 @@ export default function StockRequestsPage() {
         authFetch(`${API}/stock-requests?organizationId=${user?.organizationId}`),
         authFetch(`${API}/warehouses/organization/${user?.organizationId}`),
       ]);
-      if (requestsRes.ok) setRequests((await requestsRes.json()) || []);
+      if (requestsRes.ok) {
+        const reqs = (await requestsRes.json()) || [];
+        setRequests(reqs);
+        setFilteredRequests(reqs);
+      }
       if (warehousesRes.ok) setWarehouses((await warehousesRes.json()) || []);
     } catch (error) {
       console.error("Failed to fetch data:", error);
@@ -312,6 +320,11 @@ export default function StockRequestsPage() {
     } finally {
       setProductsLoading(false);
     }
+  };
+
+  const enterWarehouseById = (warehouseId: string) => {
+    const warehouse = warehouses.find((w) => w.id === warehouseId);
+    if (warehouse) enterWarehouse(warehouse);
   };
 
   const exitWarehouse = () => {
@@ -494,6 +507,13 @@ export default function StockRequestsPage() {
             бараа татах боломжтой.
           </p>
         </div>
+
+        {user?.organizationId && (
+          <StockSuggestionBanner
+            organizationId={user.organizationId}
+            onEnterWarehouse={enterWarehouseById}
+          />
+        )}
 
         {warehouses.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white py-16">
@@ -1489,24 +1509,32 @@ export default function StockRequestsPage() {
         ))}
       </div>
 
-      {requests.length === 0 ? (
+      <RequestFilter
+        requests={requests}
+        warehouses={warehouses}
+        onChange={(filtered) => setFilteredRequests(filtered as StockRequest[])}
+      />
+
+      {filteredRequests.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white py-16">
           <div className="mb-4 rounded-full bg-slate-100 p-4">
             <Package className="h-8 w-8 text-slate-300" />
           </div>
           <p className="text-lg font-semibold text-slate-600">
-            Хүсэлт байхгүй байна
+            {requests.length === 0 ? "Хүсэлт байхгүй байна" : "Шүүлтүүрт тохирох хүсэлт олдсонгүй"}
           </p>
-          <button
-            onClick={() => setViewMode("warehouses")}
-            className="mt-4 rounded-xl bg-[#FFAD02] px-6 py-2.5 text-sm font-bold text-white"
-          >
-            Хүсэлт илгээх
-          </button>
+          {requests.length === 0 ? (
+            <button
+              onClick={() => setViewMode("warehouses")}
+              className="mt-4 rounded-xl bg-[#FFAD02] px-6 py-2.5 text-sm font-bold text-white"
+            >
+              Хүсэлт илгээх
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-4">
-          {requests.map((request) => {
+          {filteredRequests.map((request) => {
             const config = statusConfig[request.status];
             const StatusIcon = config.icon;
             return (

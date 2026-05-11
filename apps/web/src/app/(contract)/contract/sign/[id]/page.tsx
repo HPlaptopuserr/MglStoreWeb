@@ -112,7 +112,12 @@ export default function ContractSignPage() {
     isPaid: boolean; feePlan: string | null;
     adminSignature?: string; adminName?: string; adminTitle?: string; adminStamp?: string;
     isTemplate?: boolean; memberSignature?: string;
-    headerData?: { title?: string; subtitle?: string; contractTitle?: string } | null;
+    headerData?: {
+      title?: string; subtitle?: string; contractTitle?: string;
+      hasDuration?: boolean;
+      feePlans?: { key: string; label: string; sublabel: string; price: number }[];
+      defaultFeePlan?: string;
+    } | null;
   } | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [memberPosition, setMemberPosition] = useState("");
@@ -124,10 +129,21 @@ export default function ContractSignPage() {
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [selectedFeePlan, setSelectedFeePlan] = useState("6m");
 
-  const FEE_PLANS = [
-    { key: "6m", label: "6 сар", price: 1_800_000 },
-    { key: "12m", label: "12 сар", price: 3_000_000 },
+  const DEFAULT_FEE_PLANS = [
+    { key: "6m", label: "6 сар", sublabel: "Хагас жил", price: 1_800_000 },
+    { key: "12m", label: "12 сар", sublabel: "Бүтэн жил", price: 3_000_000 },
   ];
+  const FEE_PLANS = (() => {
+    const stored: any[] = contractInfo?.headerData?.feePlans ?? [];
+    if (stored.length >= 2) return stored;
+    // merge stored into defaults so we always have at least 6m + 12m
+    const merged = [...DEFAULT_FEE_PLANS];
+    stored.forEach(p => {
+      const idx = merged.findIndex(d => d.key === p.key);
+      if (idx >= 0) merged[idx] = p; else merged.push(p);
+    });
+    return merged;
+  })();
 
   const [memberData, setMemberData] = useState({
     name: "", register: "", field: "", address: "", phone: "", email: "", website: "", director: ""
@@ -150,6 +166,11 @@ export default function ContractSignPage() {
             memberSignature: d.contract.memberSignature,
             headerData: d.contract.headerData ?? null,
           });
+          const selectedPlanFromContract = isPrintMode
+            ? d.contract.feePlan || d.contract.headerData?.defaultFeePlan || "6m"
+            : d.contract.headerData?.defaultFeePlan || d.contract.feePlan || "6m";
+
+          setSelectedFeePlan(selectedPlanFromContract);
           // In print mode: pre-fill memberData from stored JSON
           if (isPrintMode && d.contract.memberData) {
             const md = d.contract.memberData as any;
@@ -164,10 +185,11 @@ export default function ContractSignPage() {
               director: md.director || "",
             });
             if (md.position) setMemberPosition(md.position);
+            if (md.stamp) setMemberStamp(md.stamp);
           }
           // auto-print after data is ready
           if (isPrintMode) {
-            setTimeout(() => window.print(), 1200);
+            setTimeout(() => window.print(), 2500);
           }
         }
       })
@@ -451,8 +473,35 @@ export default function ContractSignPage() {
                 <tr>
                   <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Байршил:</td>
                   <td className="border border-[#b4c6e7] p-2">Улаанбаатар хот</td>
-                  <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">Гэрээний хугацаа:</td>
-                  <td className="border border-[#b4c6e7] p-2">{FEE_PLANS.find(p => p.key === selectedFeePlan)?.label ?? "—"}</td>
+                  <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c]">
+                      Гэрээний хугацаа:
+                    </td>
+
+                    <td className="border border-[#b4c6e7] p-0">
+                      {contractInfo?.headerData?.hasDuration === false ? (
+                        <span className="block px-2 py-2">—</span>
+                      ) : isPrintMode ? (
+                        <span className="block px-2 py-2">
+                          {FEE_PLANS.find(p => p.key === selectedFeePlan)?.label ?? "—"}
+                        </span>
+                      ) : (
+                        <select
+                          value={selectedFeePlan}
+                          onChange={(e) => setSelectedFeePlan(e.target.value)}
+                          className="w-full h-full px-2 py-2 bg-white border-0 outline-none text-sm font-medium text-neutral-900 cursor-pointer"
+                        >
+                          {FEE_PLANS.map((plan) => (
+                            <option key={plan.key} value={plan.key}>
+                              {plan.label}
+                              {plan.sublabel ? ` — ${plan.sublabel}` : ""}
+                              {contractInfo?.isPaid && plan.price
+                                ? ` — ${Number(plan.price).toLocaleString()}₮`
+                                : ""}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
                 </tr>
               </tbody>
             </table>
@@ -535,7 +584,24 @@ export default function ContractSignPage() {
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border border-[#b4c6e7] p-4 bg-[#f8f9fc] align-top relative">
+                    <td className="border border-[#b4c6e7] p-4 bg-[#f8f9fc] align-top relative overflow-visible">
+                      {/* Stamp overlaid over entire ХОЛБОО column */}
+                      {contractInfo?.adminStamp && (
+                        <img
+                          src={contractInfo.adminStamp}
+                          alt="Тамга"
+                          className="absolute object-contain mix-blend-multiply pointer-events-none z-10"
+                          style={{
+                            width: 180,
+                            height: 180,
+                            top: "30%",
+                            left: "50%",
+                            transform: "translate(-50%, -30%) rotate(-4deg)",
+                            opacity: 0.85,
+                          }}
+                        />
+                      )}
+
                       <div className="border-b-2 border-[#1e4e8c] h-16 mb-1 relative flex items-end justify-center">
                         {contractInfo?.adminSignature
                           ? <img src={contractInfo.adminSignature} alt="Гарын үсэг" className="h-14 max-w-full object-contain mix-blend-multiply" />
@@ -553,13 +619,6 @@ export default function ContractSignPage() {
                         <span className="text-sm font-medium text-[#c00000]">{contractInfo?.adminTitle || ""}</span>
                       </div>
                       <span className="text-neutral-500 font-normal text-xs">Албан тушаал</span>
-
-                      <div className="border-b-2 border-[#1e4e8c] h-16 mb-1 mt-4 flex items-end justify-center">
-                        {contractInfo?.adminStamp && (
-                          <img src={contractInfo.adminStamp} alt="Тамга" className="h-14 max-w-full object-contain mix-blend-multiply" />
-                        )}
-                      </div>
-                      <span className="text-[#c00000] font-normal text-xs">Тамга</span>
 
                       <div className="border-b-2 border-[#1e4e8c] h-8 mb-1 mt-4 relative flex items-end justify-center">
                         <span className="text-sm font-medium text-neutral-800">{today}</span>
@@ -715,17 +774,25 @@ export default function ContractSignPage() {
             </div>
           </label>
 
-          <button
-            type="submit"
-            disabled={!agreed || isSubmitting || !memberData.name || !memberData.register}
-            className="w-full md:w-auto px-8 py-3.5 bg-[#1e4e8c] text-white rounded-xl font-medium hover:bg-blue-800 focus:ring-4 focus:ring-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-sm"
-          >
-            {isSubmitting ? (
-              <><Loader2 className="w-5 h-5 animate-spin" /> Уншиж байна...</>
-            ) : (
-              <><CheckCircle2 className="w-5 h-5" /> Дараагийн</>
+          <div className="flex flex-col items-end gap-2">
+            {(!memberData.director || !memberPosition) && (
+              <p className="text-xs text-amber-600 font-medium">
+                {!memberData.director ? "Овог нэр оруулна уу · " : ""}
+                {!memberPosition ? "Албан тушаал оруулна уу" : ""}
+              </p>
             )}
-          </button>
+            <button
+              type="submit"
+              disabled={!agreed || isSubmitting || !memberData.name || !memberData.register || !memberData.director || !memberPosition}
+              className="w-full md:w-auto px-8 py-3.5 bg-[#1e4e8c] text-white rounded-xl font-medium hover:bg-blue-800 focus:ring-4 focus:ring-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-sm"
+            >
+              {isSubmitting ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Уншиж байна...</>
+              ) : (
+                <><CheckCircle2 className="w-5 h-5" /> Дараагийн</>
+              )}
+            </button>
+          </div>
         </div>
       </form>
     </div>

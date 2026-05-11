@@ -22,6 +22,14 @@ import {
   Truck,
   Wrench,
   ArrowRight,
+  CreditCard,
+  CheckCircle2,
+  XCircle,
+  Save,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Mail,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -29,7 +37,35 @@ import { API, API_BASE, adminFetch } from "@/lib/api";
 import { useAdminAuth } from "@/lib/admin-auth";
 
 type TabType = "partners" | "careers";
-type SectionType = "partner-career" | "stock" | "service";
+type SectionType = "partner-career" | "stock" | "service" | "card-terminal";
+
+type CardTerminalRequest = {
+  id: string;
+  organizationId: string;
+  contactName: string;
+  contactPhone: string;
+  contactEmail: string | null;
+  providerType: string;
+  businessNote: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  adminNote: string | null;
+  cardTerminalId: string | null;
+  terminalBridgeUrl: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  organization: { id: string; name: string; slug: string; phone: string | null; email: string | null; taxId: string };
+  reviewedBy: { id: string; email: string; profile: { fullName: string } | null } | null;
+};
+
+const CARD_PROVIDERS: Record<string, string> = {
+  MINUPOS: "Мину Пос",
+  MONPAY: "МонПэй",
+  GOLOMT: "Голомт банк",
+  TDB: "Худалдаа хөгжлийн банк (TDB)",
+  KHAAN: "Хаан банк",
+  KHAS: "Хас банк",
+  OTHER: "Бусад",
+};
 
 type PartnerRequest = {
   id: string;
@@ -151,6 +187,7 @@ export default function RequestsPage() {
   const canSeeJobApps = isFullAdmin || hasPermission("MANAGE_JOB_APPLICATIONS");
   const canSeeStock = isFullAdmin || hasPermission("MANAGE_STOCK");
   const canSeeService = isFullAdmin || hasPermission("MANAGE_SERVICES");
+  const canSeeCardTerminal = isFullAdmin || hasPermission("MANAGE_REGISTRATIONS");
 
   // Determine default section based on permissions
   const defaultSection: SectionType = canSeePartnerRequests || canSeeJobApps
@@ -174,9 +211,16 @@ export default function RequestsPage() {
   const [requests, setRequests] = useState<PartnerRequest[]>([]);
   const [jobApps, setJobApps] = useState<JobApplication[]>([]);
   const [stockRequests, setStockRequests] = useState<StockRequestSummary[]>([]);
-  const [serviceRequests, setServiceRequests] = useState<ServiceRequestSummary[]>(
-    [],
-  );
+  const [serviceRequests, setServiceRequests] = useState<ServiceRequestSummary[]>([]);
+  const [cardTerminalRequests, setCardTerminalRequests] = useState<CardTerminalRequest[]>([]);
+  const [cardTerminalFilter, setCardTerminalFilter] = useState("");
+  const [cardApproveOpen, setCardApproveOpen] = useState<string | null>(null);
+  const [cardAction, setCardAction] = useState<"APPROVED" | "REJECTED">("APPROVED");
+  const [cardTerminalId, setCardTerminalId] = useState("");
+  const [cardBridgeUrl, setCardBridgeUrl] = useState("");
+  const [cardAdminNote, setCardAdminNote] = useState("");
+  const [cardSaving, setCardSaving] = useState(false);
+  const [cardSaveError, setCardSaveError] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
   const [error, setError] = useState("");
@@ -277,13 +321,24 @@ export default function RequestsPage() {
             setServiceRequests(Array.isArray(data) ? data : []);
           }
         }
+
+        if (activeSection === "card-terminal" && canSeeCardTerminal) {
+          const url = cardTerminalFilter
+            ? `${API}/admin/card-terminal-requests?status=${cardTerminalFilter}`
+            : `${API}/admin/card-terminal-requests`;
+          const res = await adminFetch(url, { cache: "no-store" });
+          if (res.ok) {
+            const data = await res.json();
+            setCardTerminalRequests(Array.isArray(data) ? data : []);
+          }
+        }
       } catch (err) {
         console.error("Failed to fetch section data:", err);
       }
     };
 
     fetchSectionLists();
-  }, [activeSection]);
+  }, [activeSection, cardTerminalFilter]);
 
   const approveRequest = async (id: string) => {
     try {
@@ -357,15 +412,50 @@ export default function RequestsPage() {
     }
   };
 
+  const handleCardTerminalSave = async (requestId: string) => {
+    setCardSaveError(null);
+    if (cardAction === "APPROVED" && !cardTerminalId.trim()) {
+      setCardSaveError("Card Terminal ID оруулна уу");
+      return;
+    }
+    setCardSaving(true);
+    try {
+      const res = await adminFetch(`${API}/admin/card-terminal-requests/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: cardAction,
+          cardTerminalId: cardTerminalId.trim() || undefined,
+          terminalBridgeUrl: cardBridgeUrl.trim() || undefined,
+          adminNote: cardAdminNote.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setCardSaveError(data.message || "Алдаа гарлаа"); return; }
+      setCardApproveOpen(null);
+      setCardTerminalId("");
+      setCardBridgeUrl("");
+      setCardAdminNote("");
+      // re-fetch
+      const url = cardTerminalFilter
+        ? `${API}/admin/card-terminal-requests?status=${cardTerminalFilter}`
+        : `${API}/admin/card-terminal-requests`;
+      const refreshRes = await adminFetch(url, { cache: "no-store" });
+      if (refreshRes.ok) setCardTerminalRequests(await refreshRes.json());
+    } catch {
+      setCardSaveError("Сүлжээний алдаа гарлаа");
+    } finally {
+      setCardSaving(false);
+    }
+  };
+
   const totalText = useMemo(() => {
-    if (activeSection === "stock") {
-      return `Нийт бараа таталтын хүсэлт: ${stockRequests.length}`;
+    if (activeSection === "stock") return `Нийт бараа таталтын хүсэлт: ${stockRequests.length}`;
+    if (activeSection === "service") return `Нийт үйлчилгээний хүсэлт: ${serviceRequests.length}`;
+    if (activeSection === "card-terminal") {
+      const pending = cardTerminalRequests.filter((r) => r.status === "PENDING").length;
+      return `Card Terminal хүсэлт: ${cardTerminalRequests.length}${pending > 0 ? ` · ${pending} хүлээгдэж буй` : ""}`;
     }
-
-    if (activeSection === "service") {
-      return `Нийт үйлчилгээний хүсэлт: ${serviceRequests.length}`;
-    }
-
     const count = activeTab === "partners" ? requests.length : jobApps.length;
     const label = activeTab === "partners" ? "Түнш хүсэлт" : "Ажлын анкет";
     return `Нийт ${label}: ${count}`;
@@ -376,6 +466,7 @@ export default function RequestsPage() {
     requests.length,
     serviceRequests.length,
     stockRequests.length,
+    cardTerminalRequests,
   ]);
 
   const copyToClipboard = async () => {
@@ -521,8 +612,8 @@ export default function RequestsPage() {
           </div>
 
           {/* Section cards — only show sections the user can access */}
-          {([canSeePartnerRequests || canSeeJobApps, canSeeStock, canSeeService].filter(Boolean).length > 1) && (
-          <div className="mb-4 grid gap-3 md:grid-cols-3">
+          {([canSeePartnerRequests || canSeeJobApps, canSeeStock, canSeeService, canSeeCardTerminal].filter(Boolean).length > 1) && (
+          <div className="mb-4 grid gap-3 md:grid-cols-4">
             {(canSeePartnerRequests || canSeeJobApps) && (
             <button
               type="button"
@@ -585,6 +676,33 @@ export default function RequestsPage() {
               </div>
               <p className="text-xs text-emerald-800/90">
                 Маркетинг, зөвлөгөө зэрэг үйлчилгээний хүсэлтүүд
+              </p>
+            </button>
+            )}
+
+            {canSeeCardTerminal && (
+            <button
+              type="button"
+              onClick={() => setActiveSection("card-terminal")}
+              className={`group rounded-2xl border p-4 text-left transition-colors ${
+                activeSection === "card-terminal"
+                  ? "border-blue-300 bg-blue-50"
+                  : "border-slate-200 bg-white hover:bg-slate-50"
+              }`}
+            >
+              <div className="mb-2 flex items-center justify-between text-blue-700">
+                <div className="flex items-center gap-2">
+                  <CreditCard size={16} />
+                  <p className="text-sm font-bold">Card Terminal</p>
+                </div>
+                {cardTerminalRequests.filter((r) => r.status === "PENDING").length > 0 && (
+                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-black text-orange-600">
+                    {cardTerminalRequests.filter((r) => r.status === "PENDING").length}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-blue-800/90">
+                Vendor-уудын card terminal холболтын хүсэлтүүд
               </p>
             </button>
             )}
@@ -1232,6 +1350,223 @@ export default function RequestsPage() {
               </div>
             </div>
           )}
+          {activeSection === "card-terminal" && (
+            <div className="space-y-4">
+              {/* Filter */}
+              <div className="flex gap-2">
+                {[
+                  { value: "", label: "Бүгд" },
+                  { value: "PENDING", label: "Хүлээгдэж буй" },
+                  { value: "APPROVED", label: "Зөвшөөрөгдсөн" },
+                  { value: "REJECTED", label: "Татгалзсан" },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setCardTerminalFilter(opt.value)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                      cardTerminalFilter === opt.value
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {cardTerminalRequests.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center">
+                  <CreditCard className="mx-auto h-10 w-10 text-slate-300 mb-3" />
+                  <p className="text-sm text-slate-500">Хүсэлт байхгүй байна</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {cardTerminalRequests.map((req) => (
+                    <div key={req.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                      {/* Header */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <NextLink
+                              href={`/partners/${req.organizationId}`}
+                              className="font-bold text-slate-900 hover:text-blue-600 text-sm"
+                            >
+                              {req.organization.name}
+                            </NextLink>
+                            <span className="text-xs text-slate-400">·</span>
+                            <span className="text-sm text-slate-600">{CARD_PROVIDERS[req.providerType] ?? req.providerType}</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                            <span className="flex items-center gap-1">
+                              <Building2 size={12} />
+                              {req.organization.taxId}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Phone size={12} />
+                              {req.contactPhone}
+                            </span>
+                            {req.contactEmail && (
+                              <span className="flex items-center gap-1">
+                                <Mail size={12} />
+                                {req.contactEmail}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {req.status === "PENDING" && <Clock size={15} className="text-amber-500" />}
+                          {req.status === "APPROVED" && <CheckCircle2 size={15} className="text-emerald-500" />}
+                          {req.status === "REJECTED" && <XCircle size={15} className="text-red-500" />}
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                            req.status === "PENDING" ? "bg-amber-100 text-amber-700"
+                            : req.status === "APPROVED" ? "bg-emerald-100 text-emerald-700"
+                            : "bg-red-100 text-red-700"
+                          }`}>
+                            {req.status === "PENDING" ? "Хүлээгдэж буй" : req.status === "APPROVED" ? "Зөвшөөрөгдсөн" : "Татгалзсан"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {req.businessNote && (
+                        <p className="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
+                          {req.businessNote}
+                        </p>
+                      )}
+
+                      {req.status === "APPROVED" && req.cardTerminalId && (
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs space-y-1">
+                          <p className="font-bold text-emerald-800">Олгосон credentials</p>
+                          <p className="text-emerald-700">
+                            Terminal ID: <span className="font-mono bg-white px-1 rounded">{req.cardTerminalId}</span>
+                          </p>
+                          {req.terminalBridgeUrl && (
+                            <p className="text-emerald-700 break-all">
+                              Bridge URL: <span className="font-mono bg-white px-1 rounded">{req.terminalBridgeUrl}</span>
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {req.adminNote && (
+                        <p className="text-xs text-slate-500 italic">Тэмдэглэл: {req.adminNote}</p>
+                      )}
+
+                      <div className="flex items-center justify-between text-xs text-slate-400">
+                        <span>Илгээсэн: {new Date(req.createdAt).toLocaleString("mn-MN")}</span>
+                        {req.reviewedAt && (
+                          <span>Шийдвэрлэсэн: {new Date(req.reviewedAt).toLocaleString("mn-MN")}</span>
+                        )}
+                      </div>
+
+                      {/* Approve panel — only for PENDING */}
+                      {req.status === "PENDING" && (
+                        <div className="border-t border-slate-100 pt-3">
+                          <button
+                            onClick={() => {
+                              setCardApproveOpen(cardApproveOpen === req.id ? null : req.id);
+                              setCardSaveError(null);
+                              setCardTerminalId("");
+                              setCardBridgeUrl("");
+                              setCardAdminNote("");
+                              setCardAction("APPROVED");
+                            }}
+                            className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-800"
+                          >
+                            Шийдвэр гаргах
+                            {cardApproveOpen === req.id
+                              ? <ChevronUp size={15} />
+                              : <ChevronDown size={15} />}
+                          </button>
+
+                          {cardApproveOpen === req.id && (
+                            <div className="mt-3 space-y-3">
+                              {cardSaveError && (
+                                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
+                                  <AlertCircle size={15} className="text-red-500 shrink-0 mt-0.5" />
+                                  <p className="text-sm text-red-700">{cardSaveError}</p>
+                                </div>
+                              )}
+
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => setCardAction("APPROVED")}
+                                  className={`flex-1 py-1.5 rounded-xl text-sm font-semibold border transition-colors ${
+                                    cardAction === "APPROVED"
+                                      ? "bg-emerald-600 text-white border-emerald-600"
+                                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  Зөвшөөрөх
+                                </button>
+                                <button
+                                  onClick={() => setCardAction("REJECTED")}
+                                  className={`flex-1 py-1.5 rounded-xl text-sm font-semibold border transition-colors ${
+                                    cardAction === "REJECTED"
+                                      ? "bg-red-600 text-white border-red-600"
+                                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  Татгалзах
+                                </button>
+                              </div>
+
+                              {cardAction === "APPROVED" && (
+                                <>
+                                  <div>
+                                    <label className="block text-xs font-bold text-slate-600 mb-1">
+                                      Card Terminal ID <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={cardTerminalId}
+                                      onChange={(e) => setCardTerminalId(e.target.value)}
+                                      placeholder="Terminal ID"
+                                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-bold text-slate-600 mb-1">Bridge URL</label>
+                                    <input
+                                      type="url"
+                                      value={cardBridgeUrl}
+                                      onChange={(e) => setCardBridgeUrl(e.target.value)}
+                                      placeholder="http://... (заавал биш)"
+                                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                                    />
+                                  </div>
+                                </>
+                              )}
+
+                              <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">Admin тэмдэглэл</label>
+                                <textarea
+                                  value={cardAdminNote}
+                                  onChange={(e) => setCardAdminNote(e.target.value)}
+                                  placeholder="Vendor-т харагдах тайлбар..."
+                                  rows={2}
+                                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none"
+                                />
+                              </div>
+
+                              <button
+                                onClick={() => handleCardTerminalSave(req.id)}
+                                disabled={cardSaving}
+                                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+                              >
+                                {cardSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                Хадгалах
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       </main>
     </div>

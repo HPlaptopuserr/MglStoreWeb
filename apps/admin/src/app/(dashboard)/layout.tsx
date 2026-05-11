@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutGrid,
   Users,
+  Users2,
   Layers,
   Settings,
   Tag,
@@ -17,6 +18,7 @@ import {
   MessageSquare,
   Search,
   Bell,
+  FileText,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
 import { MobileDashboard } from "@/components/organisms";
@@ -91,6 +93,20 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     requires: ["MANAGE_CHAT"],
   },
   {
+    id: "association",
+    label: "Холбооны гишүүнчлэл",
+    icon: Users2,
+    href: "/association",
+    requires: ["MANAGE_REGISTRATIONS"],
+  },
+  {
+    id: "contracts",
+    label: "Гэрээний мэдээлэл",
+    icon: FileText,
+    href: "/contracts",
+    requires: ["VIEW_SYSTEM_DASHBOARD"],
+  },
+  {
     id: "sections",
     label: "Нэмэлт хэсгүүд",
     icon: Layers,
@@ -132,12 +148,14 @@ function DashboardShell({ children }: { children: ReactNode }) {
     if (pathname.startsWith("/partners")) return "Түншүүд";
     if (pathname.startsWith("/warehouses")) return "Агуулах";
     if (pathname.startsWith("/settings")) return "Тохиргоо";
+    if (pathname.startsWith("/contracts")) return "Хийгдсэн гэрээнүүд";
     if (pathname.startsWith("/sections")) return "Нэмэлт хэсгүүд";
     if (pathname.startsWith("/applications")) return "Ажлын анкет";
     if (pathname.startsWith("/investors")) return "Хөрөнгө оруулалт";
     if (pathname.startsWith("/services")) return "Үйлчилгээ";
     if (pathname.startsWith("/chat")) return "Чат удирдлага";
     if (pathname.startsWith("/categories")) return "Бизнесийн ангилал";
+    if (pathname.startsWith("/association")) return "Холбооны гишүүнчлэл";
     return "Admin";
   }, [pathname]);
 

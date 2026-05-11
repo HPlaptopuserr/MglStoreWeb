@@ -35,20 +35,30 @@ router.get("/contracts", requireAuth, async (_req, res) => {
       },
     });
 
-    const result = templates.map((c) => ({
-      id: c.id,
-      org: "Гэрээний загвар",
-      status: c.status,
-      createdBy: c.user?.profile?.fullName || c.user?.email || "Admin",
-      date: c.createdAt.toLocaleString("mn-MN"),
-      feePlan: c.feePlan,
-      isPaid: c.isPaid,
-      signedAt: c.signedAt,
-      pdfUrl: c.pdfUrl,
-      hasAdminSignature: !!c.adminSignature,
-      submissionCount: c._count.submissions,
-      signedCount: 0, // fetched separately in detail
-    }));
+    const result = templates.map((c) => {
+      const hd = c.headerData as any;
+      const feePlans: any[] = hd?.feePlans ?? [];
+      const planEntry = feePlans.find((p: any) => p.key === c.feePlan);
+      const feePlanLabel = planEntry
+        ? `${planEntry.label} — ${Number(planEntry.price).toLocaleString()}₮`
+        : c.feePlan ?? "—";
+
+      return {
+        id: c.id,
+        org: "Гэрээний загвар",
+        status: c.status,
+        createdBy: c.user?.profile?.fullName || c.user?.email || "Admin",
+        date: c.createdAt.toLocaleString("mn-MN"),
+        feePlan: c.feePlan,
+        feePlanLabel,
+        isPaid: c.isPaid,
+        signedAt: c.signedAt,
+        pdfUrl: c.pdfUrl,
+        hasAdminSignature: !!c.adminSignature,
+        submissionCount: c._count.submissions,
+        signedCount: 0,
+      };
+    });
 
     return res.json({ success: true, contracts: result });
   } catch (error) {
@@ -170,6 +180,57 @@ router.get("/contracts/:id", async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
+// GET /api/contracts/submissions/all  —  List ALL submissions across templates (admin)
+// ──────────────────────────────────────────────────────────────────────────────
+router.get("/contracts/submissions/all", requireAuth, async (_req, res) => {
+  try {
+    const submissions = await prisma.contract.findMany({
+      where: { isTemplate: false, templateId: { not: null } },
+      orderBy: { createdAt: "desc" },
+      include: {
+        template: {
+          select: { id: true, headerData: true, feePlan: true },
+        },
+      },
+    });
+
+    const result = submissions.map((s) => {
+      const member = s.memberData as any;
+      const hd = (s.headerData ?? (s.template as any)?.headerData) as any;
+      const feePlans: any[] = hd?.feePlans ?? [];
+      const planLabel = feePlans.find((p: any) => p.key === s.feePlan)?.label ?? s.feePlan ?? "—";
+      const planMonths = feePlans.find((p: any) => p.key === s.feePlan)?.months ?? null;
+      const expiresAt = s.signedAt && planMonths
+        ? new Date(new Date(s.signedAt).setMonth(new Date(s.signedAt).getMonth() + planMonths))
+        : null;
+
+      return {
+        id: s.id,
+        templateId: s.templateId,
+        org: member?.name || "Тодорхойгүй",
+        register: member?.register || null,
+        phone: member?.phone || null,
+        email: member?.email || null,
+        status: s.status,
+        isPaid: s.isPaid,
+        feePlan: s.feePlan,
+        feePlanLabel: planLabel,
+        signedAt: s.signedAt,
+        expiresAt,
+        createdAt: s.createdAt,
+        memberData: s.memberData,
+        headerData: hd,
+      };
+    });
+
+    return res.json({ success: true, submissions: result });
+  } catch (error) {
+    console.error("all submissions error", error);
+    return res.status(500).json({ success: false, error: "Серверийн алдаа" });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
 // GET /api/contracts/:id/submissions  —  List all submissions for a template (admin)
 // ──────────────────────────────────────────────────────────────────────────────
 router.get("/contracts/:id/submissions", requireAuth, async (req, res) => {
@@ -226,6 +287,7 @@ router.post("/contracts/:id/submit", async (req, res) => {
         adminName: template.adminName,
         adminTitle: template.adminTitle,
         adminStamp: template.adminStamp,
+        headerData: template.headerData || undefined,
         memberData: memberData || undefined,
         memberSignature: memberSignature || undefined,
       },

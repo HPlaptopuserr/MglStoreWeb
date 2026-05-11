@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Clock3, ShoppingBag, Star } from "lucide-react";
+import { Star, ShoppingBag, Clock, ChevronRight } from "lucide-react";
 import { toCategoryMN } from "@/lib/constants";
-import { getInvestorRingStyle } from "@/lib/utils";
+import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 
 interface StoreItem {
   id: string;
@@ -29,96 +29,88 @@ export function OrganizationCard({ company }: OrganizationCardProps) {
   return (
     <Link
       href={`/organizations/${company.slug}`}
-      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 hover:shadow-xl"
+      className="group flex flex-col rounded-3xl border border-slate-200 bg-white shadow-sm hover:shadow-xl hover:border-[#FFAD02]/40 transition-all duration-300 hover:-translate-y-1 overflow-hidden"
     >
-      <div className="relative h-36 w-full bg-gray-100 sm:h-44">
-        <div className="absolute inset-0 overflow-hidden">
-          <Image
-            src={company.banner}
-            alt={company.name}
-            fill
-            className="object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-        </div>
+      {/* Banner */}
+      <div className="relative h-32 w-full bg-slate-100 sm:h-40">
+        <Image
+          src={company.banner}
+          alt={company.name}
+          fill
+          className="object-cover transition-transform duration-700 group-hover:scale-105"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent" />
 
-        <div className="absolute right-3 top-3 z-10">
+        {/* Open badge */}
+        <div className="absolute top-3 right-3 z-10">
           <span
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold text-white shadow-sm ${
-              company.isOpen ? "bg-emerald-500" : "bg-gray-700"
+            className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full text-white ${
+              company.isOpen ? "bg-emerald-500" : "bg-slate-800/80 backdrop-blur-md"
             }`}
           >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                company.isOpen ? "bg-white" : "bg-gray-300"
-              }`}
-            />
             {company.isOpen ? "Нээлттэй" : "Хаалттай"}
           </span>
         </div>
-
-        <div className="absolute -bottom-6 left-4 z-10">
-          <div
-            className="rounded-full"
-            style={
-              company.isInvestor && company.investmentAmount
-                ? {
-                    ...getInvestorRingStyle(company.investmentAmount),
-                    borderRadius: "9999px",
-                  }
-                : undefined
-            }
-          >
-            <div className="relative h-14 w-14 overflow-hidden rounded-full border-2 border-white bg-white shadow-md">
-              <Image
-                src={company.logo}
-                alt={company.name}
-                fill
-                className="object-cover"
-              />
-            </div>
-          </div>
-        </div>
       </div>
 
-      <div className="flex flex-1 flex-col px-4 pb-4 pt-8">
-        <div className="mb-3 flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="line-clamp-1 text-[15px] font-bold text-gray-900 transition-colors group-hover:text-black">
-              {company.name}
-            </h3>
-            <p className="mt-1 text-xs text-gray-500">
-              {toCategoryMN(company.category)}
-            </p>
-          </div>
+      {/* Body */}
+      <div className="flex flex-col flex-1 px-4 pb-4 pt-3 relative z-10">
+        {/* Logo */}
+        <div className="-mt-10 mb-2.5">
+          <InvestorRingWrapper investmentAmount={company.isInvestor ? company.investmentAmount : null} rounded="full">
+            <div className="w-16 h-16 rounded-full bg-white shadow-md overflow-hidden sm:w-[72px] sm:h-[72px]">
+              <div className="relative w-full h-full rounded-full overflow-hidden bg-slate-100">
+                <Image
+                  src={company.logo}
+                  alt={company.name}
+                  fill
+                  className="object-cover"
+                  sizes="72px"
+                />
+              </div>
+            </div>
+          </InvestorRingWrapper>
+        </div>
 
-          <div className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-1">
-            <Star size={12} className="fill-[#FFAD02] text-[#FFAD02]" />
-            <span className="text-xs font-bold text-gray-800">
-              {company.rating.toFixed(1)}
+        {/* Name + rating */}
+        <div className="flex justify-between items-start mb-0.5 gap-1">
+          <h3 className="font-extrabold text-sm text-slate-900 line-clamp-1 group-hover:text-[#FFAD02] transition-colors sm:text-base">
+            {company.name}
+          </h3>
+          <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-lg shrink-0 mt-0.5">
+            <Star size={11} className="fill-amber-400 text-amber-400" />
+            <span className="text-[11px] font-bold text-amber-700">
+              {company.rating ? Number(company.rating).toFixed(1) : "5.0"}
             </span>
           </div>
         </div>
 
-        <div className="mb-4 flex items-center gap-2 text-[11px] text-gray-500">
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-2.5 py-1.5">
-            <Clock3 size={12} />
-            {company.deliveryTime}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-2.5 py-1.5">
-            <ShoppingBag size={12} />
-            {company.products?.length ?? 0} бараа
-          </span>
+        {/* Category */}
+        <p className="text-[11px] font-medium text-slate-400 mb-3 capitalize line-clamp-1">
+          {toCategoryMN(company.category)}
+        </p>
+
+        {/* Chips */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[11px] font-semibold text-slate-500">
+            <Clock size={11} className="text-slate-400" />
+            <span>{company.deliveryTime ?? "N/A"}</span>
+          </div>
+          <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[11px] font-semibold text-slate-500">
+            <ShoppingBag size={11} className="text-slate-400" />
+            <span>{company.products?.length ?? 0} бараа</span>
+          </div>
         </div>
 
-        <div className="mt-auto flex items-center justify-between border-t border-gray-100 pt-3">
-          <span className="text-sm font-semibold text-[#FFAD02] transition-colors group-hover:text-orange-600">
-            Дэлгүүр орох
-          </span>
-          <ArrowRight
-            size={16}
-            className="text-[#FFAD02] transition-transform group-hover:translate-x-1"
-          />
+        <div className="w-full h-px bg-slate-100 mt-auto mb-3" />
+
+        {/* CTA */}
+        <div className="flex items-center justify-between text-sm font-bold text-[#FFAD02] group-hover:text-amber-600 transition-colors">
+          <span>Дэлгэрэнгүй</span>
+          <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center">
+            <ChevronRight size={15} strokeWidth={3} className="text-[#FFAD02]" />
+          </div>
         </div>
       </div>
     </Link>

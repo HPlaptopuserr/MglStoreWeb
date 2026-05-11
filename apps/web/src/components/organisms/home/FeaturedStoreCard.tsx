@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Clock, Star, MapPin, ChevronRight, ShoppingBag } from "lucide-react";
 import type { CompanyCard } from "@mgl/types";
-import { getInvestorRingStyle } from "@/lib/utils";
+import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 
 interface FeaturedStoreCardProps {
   company: CompanyCard;
@@ -44,24 +44,19 @@ export const FeaturedStoreCard = ({
 
       <div className="flex flex-col flex-1 pb-6 px-6 bg-white relative z-10 rounded-b-3xl pt-3">
         {/* Logo */}
-        <div
-          className="-mt-10 mb-3 shrink-0 w-[76px] h-[76px] rounded-full"
-          style={
-            company.isInvestor && company.investmentAmount
-              ? { ...getInvestorRingStyle(company.investmentAmount), borderRadius: "9999px" }
-              : undefined
-          }
-        >
-          <div className="w-full h-full rounded-full border-[3px] border-white bg-white shadow-md overflow-hidden">
-            <div className="relative w-full h-full rounded-full overflow-hidden bg-slate-100">
-              <Image
-                src={company.logo}
-                alt={company.name}
-                fill
-                className="object-cover"
-              />
+        <div className="-mt-10 mb-3">
+          <InvestorRingWrapper investmentAmount={company.isInvestor ? company.investmentAmount : null} rounded="full">
+            <div className="w-[76px] h-[76px] rounded-full bg-white shadow-md overflow-hidden">
+              <div className="relative w-full h-full rounded-full overflow-hidden bg-slate-100">
+                <Image
+                  src={company.logo}
+                  alt={company.name}
+                  fill
+                  className="object-cover"
+                />
+              </div>
             </div>
-          </div>
+          </InvestorRingWrapper>
         </div>
 
         <div className="flex justify-between items-start mb-1">

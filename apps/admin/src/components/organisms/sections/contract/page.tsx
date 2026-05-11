@@ -7,101 +7,225 @@ import {
   Upload, ToggleLeft, ToggleRight, Users, ClipboardList, XCircle, FileText, Building, Phone, Mail, Globe, X, Trash2
 } from "lucide-react";
 import { adminFetch, API } from "@/lib/api";
+import { DEFAULT_CONTRACT_TEXT, DEFAULT_FEE_PLANS } from "./contract-defaults";
 
-const DEFAULT_CONTRACT_TEXT = `ХОЁР. ГЭРЭЕНИЙ ЗОРИЛГО
-2.1. Энэхүү гэрээний зорилго нь Гишүүн байгууллагыг Холбооны бүрэлдэхүүнд элсүүлэх, гишүүнчлэлийн эрх, үүрэг, хариуцлагыг тодорхойлж, талуудын харилцааг зохицуулахад оршино.
-2.2. Монгол эзэнтэй жижиг дунд бизнес эрхлэгчдийн нэгдсэн холбоо нь Монгол иргэний эзэмшилд байдаг жижиг, дунд бизнес эрхлэгчдийг нэгтгэж, тэдний эрх ашгийг хамгаалах, бизнесийн орчин бүрдүүлэх, хамтын хөгжлийг дэмжих зорилготой байгууллага мөн.
-2.3. Гишүүн байгууллага нь Холбооны дүрэм, журам болон энэхүү гэрээний нөхцөлийг дагаж мөрдөхийг зөвшөөрч, гишүүнчлэлд элсэхийг хүссэн тул тохиролцоонд хүрч гэрээ байгуулж байна.
 
-ГУРАВ. ГИШҮҮНЧЛЭЛИЙН ХУРААМЖ
-3.1. Гишүүн нь доорх хураамжийн нэг сонголтыг сонгон гэрээ байгуулснаас хойш 5 /тав/ ажлын өдрийн дотор Холбооны дансанд шилжүүлэх үүрэгтэй.
-☐ 6 сар (Хагас жилийн хураамж) 1,800,000₮
-☐ 12 сар (Бүтэн жилийн хураамж) 3,000,000₮
-3.2. Гишүүнчлэлийн хугацаа дуусахаас өмнө Гишүүн байгууллага дараагийн хугацааны хураамжийг төлсөн тохиолдолд гишүүнчлэл тасралтгүй үргэлжилнэ.
-3.3. Хугацааг дуусгавар болгохоос 14 /арван дөрөв/ хоногийн өмнө сунгаагүй тохиолдолд гишүүнчлэл автоматаар дуусгавар болно.
-3.4. Хураамжийг банкны шилжүүлгээр төлөх бөгөөд гүйлгээний утгад байгууллагын нэр болон гэрээний дугаарыг заавал бичнэ.
-3.5. Аль нэг шалтгаанаар гэрээ цуцлагдсан тохиолдолд төлсөн хураамж буцаан олгогдохгүй.
-3.6. Хураамжийн дүнд нэмэгдсэн өртгийн татвар (НӨАТ) орохгүй бөгөөд Гишүүн нь холбогдох татварыг өөрөө хариуцна.
+// ─── Signature Input: draw or upload PNG ────────────────────────────────────
+function SignatureInput({
+  label,
+  required,
+  onReady,
+  onClear,
+}: {
+  label?: string;
+  required?: boolean;
+  onReady: (dataUrl: string) => void;
+  onClear: () => void;
+}) {
+  const [mode, setMode] = useState<"draw" | "upload">("draw");
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fsCanvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const [hasDrawing, setHasDrawing] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-ДӨРӨВ. ГИШҮҮНИЙ ЭРХ, ҮҮРЭГ
-4.1. Гишүүн байгууллага нь гишүүнчлэлийн хураамжийг хугацаанд нь бүрэн төлсний үндсэн дээр дараах эрх эдэлнэ:
-4.1.1. Салбар төлөөлөн удирдах гишүүний бүх эрхийг ижил эдлэх
-4.1.2. Холбоонд төсөл хөтөлбөр санаачлах
-4.1.3. Холбооноос санаачилсан төсөл удирдах
-4.1.4. Холбооноос зарласан тендерт оролцох
-4.1.5. MGL store вэбсайтад 20 хүртэлх төрлийн бараа бүтээгдэхүүн байршуулах мөн байгууллагын танилцуулага тавих
-4.1.6. MGL-ын гишүүн байгууллага 20 хүртэлх бүтээгдэхүүн борлуулах
-4.1.7. Үйлдвэрүүдийн нэгж хувьцаанд 2 дахин их хөрөнгө оруулах
-4.1.8. Хүний нөөцийн болон хууль зүйн чиглэлээр үйлчилгээ авах
-4.2. Дээрх эрхүүд нь гишүүнчлэлийн хугацаанд л хүчинтэй бөгөөд гэрээ дуусгавар болсноор автоматаар зогсоно.
-4.3. Гишүүн байгууллага нь эрхээ бусдад шилжүүлэх, дамжуулах эрхгүй.
-4.4. Гишүүн нь дараах үүргийг хүлээнэ:
-4.4.1. ТУЗ-аас баталсан бодлогыг манлайлах
-4.4.2. Салбаруудын хоорондын үйл ажиллагааг уялдуулах
-4.4.3. Холбооны гишүүд дунд тендер зарлаж сонгон шалгаруулах
-4.4.4. Холбооны гишүүдийн ашгийг хамгаалах төлөөлөх зөвлөлийн эрх үйл ажиллагаанд идэвхтэй оролцох
-4.4.5. Гишүүнчлэлийн хураамжийг энэхүү гэрээнд заасан хугацаа болон нөхцөлийн дагуу бүрэн, цаг тухайд нь төлөх
-4.4.6. Холбооны дүрэм, журам, шийдвэр болон энэхүү гэрээний нөхцөлийг бүрэн дагаж мөрдөх
-4.4.7. MGL Store платформд байршуулсан бараа бүтээгдэхүүний мэдээллийг үнэн зөв, дутуу орхигдуулалгүй байршуулах
-4.4.8. Холбооны нэр, брэнд, лого, бусад оюуны өмчийг зөвшөөрлийн хүрээнд ашиглах
-4.4.9. Холбооны дотоод мэдээлэл, гишүүдийн хувийн болон байгууллагын мэдээллийг нууцлах
-4.4.10. Бусад гишүүдтэй харилцан хүндэтгэлтэй, шударга, ёс зүйтэй харилцах.
-4.4.11. Холбооны үйл ажиллагаа, зорилгын эсрэг чиглэсэн аливаа үйлдлээс татгалзах
-4.4.12. Гэрээ байгуулахад ашигласан мэдээлэл (хаяг, холбогдох этгээд гэх мэт) өөрчлөгдсөн тохиолдолд 14 хоногийн дотор Холбоонд мэдэгдэх
+  const initCtx = (canvas: HTMLCanvasElement | null) => {
+    const ctx = canvas?.getContext("2d");
+    if (ctx) { ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#1e3a5f"; }
+    return ctx;
+  };
 
-ТАВ. ХОЛБООНЫ ЭРХ, ҮҮРЭГ
-5.1. Холбооны эрх
-5.1.1. Гишүүнчлэлийн хураамжийн нөхцөлийг жил бүр тогтоох буюу өөрчлөх тохиолдолд 30 хоногийн өмнө мэдэгдэнэ.
-5.1.2. Гишүүн байгууллагын гэрээний үүргийн биелэлтийг хянах, шаардлагатай бол баримт бичиг, мэдээлэл хүсэх эрхтэй.
-5.1.3. Дүрэм, журмыг зөрчсөн гишүүнд анхааруулга өгөх, тодорхой хугацаанд эрхийг нь түдгэлзүүлэх буюу гишүүнчлэлийг цуцлах эрхтэй.
-5.1.4. MGL Store платформд байршуулсан стандарт хангаагүй, хуурамч мэдээлэл бүхий бараа бүтээгдэхүүнийг мэдэгдэлгүйгээр буулгах эрхтэй.
-5.2. Холбооны үүрэг
-5.2.1. Гишүүн байгууллагад энэхүү гэрээнд заасан бүх эрхийг бүрэн эдлүүлэх нөхцөлийг бүрдүүлэх.
-5.2.2. Гишүүний мэдээллийг нууцлах, гуравдагч этгээдэд дамжуулахгүй байх.
-5.2.3. Холбооны үйл ажиллагаа, шийдвэр, санхүүгийн байдлын талаар гишүүдэд ил тод мэдэгдэх.
-5.2.4. Гишүүдийн санал, гомдлыг хүлээн авч, 14 ажлын өдрийн дотор хариу өгөх.
-5.2.5. Гишүүнчлэлийн хураамж өөрчлөгдөх тохиолдолд 30 хоногийн өмнө бичгээр мэдэгдэх
-5.2.6. MGL Store платформыг жилийн 97%-иас дээш ажиллагаатай байхаар хангах
+  const getPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width;
+    const sy = canvas.height / rect.height;
+    const cx = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const cy = "touches" in e ? e.touches[0].clientY : e.clientY;
+    return { x: (cx - rect.left) * sx, y: (cy - rect.top) * sy };
+  };
 
-ЗУРГАА. НУУЦЛАЛ
-6.1. Талууд нь энэхүү гэрээтэй холбоотой болон гэрээний хэрэгжилтийн явцад олж авсан бизнесийн нууц, гишүүдийн мэдээлэл болон бусад нууцлалын мэдээллийг гуравдагч этгээдэд задруулахгүй байх үүрэгтэй.
-6.2. Нууцлалын үүрэг нь гэрээ дуусгавар болсноос хойш 3 (гурван) жилийн турш хүчин төгөлдөр байна.
-6.3. Монгол Улсын хууль тогтоомжоор шаардагдсан тохиолдолд мэдээлэл гаргаж өгөхийг нууцлалын зөрчил гэж үзэхгүй, гэвч нөгөө талд урьдчилан мэдэгдэх үүрэгтэй.
-6.4. Нууцлалыг зөрчсөн тал нь учирсан хохирлыг бүрэн хариуцах бөгөөд нэмж Холбоо нь нааш цааш тийш арга хэмжээ авах эрхтэй.
+  type CanvasRef = React.RefObject<HTMLCanvasElement | null>;
 
-ДОЛОО. ГЭРЭЭ ЦУЦЛАХ БОЛОН ГИШҮҮНЧЛЭЛ ЗОГСООХ
-7.1. Дараах тохиолдолд Холбоо нь Гишүүний эрхийг түр зогсоож болно:
-7.1.1. Хураамж төлөгдөөгүй буюу хугацаа хэтэрсэн тохиолдолд хугацааг дуусгавар болтол.
-7.1.2. Гэрээний үүргийг зөрчсөн тохиолдолд зөрчил арилах хүртэл.
-7.1.3. Холбооны нэр хүндэд хохирол учруулсан буюу учруулж болзошгүй нөхцөл үүссэн тохиолдолд.
-7.2. Дараах тохиолдолд гэрээ дуусгавар болно:
-7.2.1. Гишүүнчлэлийн хугацаа дуусч, цаг тухайд нь сунгагдаагүй тохиолдолд.
-7.2.2. Гишүүн байгууллага 30 (гуч) хоногийн өмнө бичгээр мэдэгдэн гэрээг цуцласан тохиолдолд.
-7.2.3. Холбоо нь дараах тохиолдолд гишүүнчлэлийг цуцлах эрхтэй: хураамжийн өрийг 30 хоног давсан; дүрэм журмыг давтан зөрчсөн; байгууллага татан буугдсан; хууль бус үйл ажиллагаа явуулсан нь тогтоогдсон.
-7.2.4. Харилцан тохиролцсоны үндсэн дээр.
-7.2.5. Гэрээ дуусгавар болсон тохиолдолд Гишүүн нь Холбооны бүх эрхийн хэрэглэлт, платформ хандах эрхийг нэн даруй зогсоох үүрэгтэй.
-7.2.6. Гэрээ дуусгавар болсон тохиолдолд төлсөн хураамж буцаан олгогдохгүй.
+  const onStart = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>, ref: CanvasRef) => {
+    e.preventDefault();
+    const canvas = ref.current; if (!canvas) return;
+    const ctx = initCtx(canvas);
+    if (!ctx) return;
+    const { x, y } = getPos(e, canvas);
+    ctx.beginPath(); ctx.moveTo(x, y);
+    drawing.current = true;
+  };
 
-НАЙМ. МАРГААН ШИЙДВЭРЛЭХ
-8.1. Энэхүү гэрээтэй холбоотой аливаа маргааныг талууд эхлээд харилцан яриа, хэлэлцээрийн замаар шийдвэрлэхийг эрмэлзэнэ.
-8.2. Маргааны тухай нэг тал нөгөөд бичгээр мэдэгдснээс хойш 30 (гуч) хоногийн дотор харилцан тохиролцоонд хүрч чадаагүй тохиолдолд маргааныг Монгол Улсын Арбитрийн хуульд заасны дагуу арбитрын журмаар шийдвэрлэнэ.
-8.3. Арбитрын шийдвэр нь эцэслэн шийдэгдсэн, хоёр талд тус адил заавал биелүүлэх шинжтэй байна.
-8.4. Арбитрын ажиллагааны хугацаанд гэрээний хэрэгжилт тасалдахгүй үргэлжилнэ.
+  const onMove = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>, ref: CanvasRef) => {
+    e.preventDefault();
+    if (!drawing.current) return;
+    const canvas = ref.current; if (!canvas) return;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    const { x, y } = getPos(e, canvas);
+    ctx.lineTo(x, y); ctx.stroke();
+    setHasDrawing(true);
+  };
 
-ЕС. БУСАД НӨХЦӨЛ
-9.1. Энэхүү гэрээ нь Монгол Улсын хуулийн дагуу зохицуулагдана.
-9.2. Гэрээнд нэмэлт өөрчлөлт оруулах бол талуудын бичгэн тохиролцоогоор хийх бөгөөд нэмэлт, өөрчлөлт нь гэрээний салшгүй хэсэг болно.
-9.3. Гэрээний аль нэг заалт хүчингүй болсон нь бусад заалтуудын хүчин төгөлдөр байдалд нөлөөлөхгүй.
-9.4. Энэхүү гэрээг 2 (хоёр) хувь үйлдэж, тал бүр нэг хувийг хадгална. Хоёр хувь нь тус адил хүчинтэй.
-9.5. Гэрээтэй холбоотой бүх мэдэгдэл, захидал харилцааг гэрээнд заасан хаяг болон и-мэйлээр явуулна. Мэдэгдэл нь и-мэйлээр явуулсан өдрөөс, бичгээр илгээсэн бол хүлээн авсан өдрөөс эхлэн хүчинтэй тооцогдоно.
-9.6. Монгол хэл дээр үйлдэгдсэн гэрээний хувь нь эх хувь байна.`;
+  const onEnd = (ref: CanvasRef, otherRef: CanvasRef) => {
+    drawing.current = false;
+    const src = ref.current;
+    const dst = otherRef.current;
+    if (src && dst) {
+      const ctx = dst.getContext("2d");
+      if (ctx) { ctx.clearRect(0, 0, dst.width, dst.height); ctx.drawImage(src, 0, 0, dst.width, dst.height); }
+    }
+    if (ref.current) onReady(ref.current.toDataURL("image/png"));
+  };
 
-const DEFAULT_FEE_PLANS = [
-  { key: "6m", label: "6 сар", sublabel: "Хагас жил", price: 1_800_000 },
-  { key: "12m", label: "12 сар", sublabel: "Бүтэн жил", price: 3_000_000 },
-];
+  const clearDraw = () => {
+    [canvasRef, fsCanvasRef].forEach(r => {
+      if (r.current) r.current.getContext("2d")?.clearRect(0, 0, r.current.width, r.current.height);
+    });
+    setHasDrawing(false);
+    onClear();
+  };
 
-// ─── Signature canvas hook ───────────────────────────────────────────────────
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const url = ev.target?.result as string;
+      setUploadedUrl(url);
+      onReady(url);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      {label && (
+        <label className="text-sm font-medium text-neutral-700">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+      )}
+
+      {/* Mode tabs */}
+      <div className="flex gap-1 bg-neutral-100 p-1 rounded-lg w-max">
+        <button type="button" onClick={() => { setMode("draw"); onClear(); setUploadedUrl(null); }}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${mode === "draw" ? "bg-white text-blue-700 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}>
+          <PenTool className="w-3.5 h-3.5" /> Гараар зурах
+        </button>
+        <button type="button" onClick={() => { setMode("upload"); onClear(); clearDraw(); }}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${mode === "upload" ? "bg-white text-blue-700 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}>
+          <Upload className="w-3.5 h-3.5" /> PNG upload
+        </button>
+      </div>
+
+      {mode === "draw" && (
+        <div className="relative">
+          <div className="border-2 border-dashed border-neutral-300 rounded-xl bg-neutral-50 relative" style={{ height: 140 }}>
+            <canvas
+              ref={canvasRef} width={800} height={140}
+              className="absolute inset-0 w-full h-full touch-none"
+              style={{ cursor: "crosshair" }}
+              onMouseDown={e => onStart(e, canvasRef)}
+              onMouseMove={e => onMove(e, canvasRef)}
+              onMouseUp={() => onEnd(canvasRef, fsCanvasRef)}
+              onMouseLeave={() => onEnd(canvasRef, fsCanvasRef)}
+              onTouchStart={e => onStart(e, canvasRef)}
+              onTouchMove={e => onMove(e, canvasRef)}
+              onTouchEnd={() => onEnd(canvasRef, fsCanvasRef)}
+            />
+            {!hasDrawing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-neutral-400 pointer-events-none select-none">
+                <PenTool className="w-5 h-5" />
+                <span className="text-xs">Энд гарын үсэг зурна уу</span>
+              </div>
+            )}
+            <div className="absolute top-2 right-2 flex gap-1.5">
+              {hasDrawing && (
+                <button type="button" onClick={clearDraw}
+                  className="flex items-center gap-1 px-2 py-1 bg-white border border-neutral-200 rounded-lg text-xs text-neutral-500 hover:text-red-500 shadow-sm">
+                  <Eraser className="w-3 h-3" /> Арилгах
+                </button>
+              )}
+              <button type="button" onClick={() => setFullscreen(true)}
+                className="flex items-center gap-1 px-2 py-1 bg-white border border-neutral-200 rounded-lg text-xs text-neutral-500 hover:text-blue-600 shadow-sm">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" /></svg>
+                Томруулах
+              </button>
+            </div>
+          </div>
+          {!hasDrawing && <p className="text-xs text-red-500 mt-1">Гарын үсэг зурахгүйгээр хадгалах боломжгүй</p>}
+        </div>
+      )}
+
+      {mode === "upload" && (
+        <div>
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleUpload} />
+          {uploadedUrl ? (
+            <div className="border-2 border-neutral-200 rounded-xl bg-neutral-50 p-4 flex items-center gap-4">
+              <img src={uploadedUrl} alt="Гарын үсэг" className="h-16 max-w-[200px] object-contain mix-blend-multiply" />
+              <button type="button" onClick={() => { setUploadedUrl(null); onClear(); }}
+                className="text-xs text-red-400 hover:text-red-600 border border-red-200 rounded-lg px-2 py-1">
+                Хасах
+              </button>
+            </div>
+          ) : (
+            <div onClick={() => fileRef.current?.click()}
+              className="border-2 border-dashed border-neutral-300 rounded-xl bg-neutral-50 h-24 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors gap-2">
+              <Upload className="w-6 h-6 text-neutral-400" />
+              <span className="text-sm text-neutral-500">PNG / JPG файл сонгох</span>
+              <span className="text-xs text-neutral-400">Гарын үсгийн зургийг энд дарж upload хийнэ үү</span>
+            </div>
+          )}
+          {!uploadedUrl && <p className="text-xs text-red-500 mt-1">Гарын үсэг оруулахгүйгээр хадгалах боломжгүй</p>}
+        </div>
+      )}
+
+      {/* Fullscreen drawing modal */}
+      {fullscreen && (
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col">
+          <div className="flex items-center justify-between px-6 py-3 border-b border-neutral-200 bg-neutral-50">
+            <span className="font-semibold text-neutral-800">Гарын үсэг зурах</span>
+            <div className="flex gap-2">
+              {hasDrawing && (
+                <button type="button" onClick={clearDraw}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-neutral-200 rounded-lg text-sm text-neutral-600 hover:text-red-500">
+                  <Eraser className="w-4 h-4" /> Арилгах
+                </button>
+              )}
+              <button type="button" onClick={() => { onEnd(fsCanvasRef, canvasRef); setFullscreen(false); }}
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                <Check className="w-4 h-4" /> Хадгалах
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 relative bg-neutral-50">
+            <canvas
+              ref={fsCanvasRef} width={2000} height={800}
+              className="absolute inset-0 w-full h-full touch-none"
+              style={{ cursor: "crosshair" }}
+              onMouseDown={e => onStart(e, fsCanvasRef)}
+              onMouseMove={e => onMove(e, fsCanvasRef)}
+              onMouseUp={() => {}}
+              onMouseLeave={() => {}}
+              onTouchStart={e => onStart(e, fsCanvasRef)}
+              onTouchMove={e => onMove(e, fsCanvasRef)}
+              onTouchEnd={() => {}}
+            />
+            {!hasDrawing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-neutral-300 pointer-events-none select-none">
+                <PenTool className="w-16 h-16" />
+                <span className="text-xl">Энд гарын үсэг зурна уу</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// legacy hook kept for ContractPreviewTab
 function useSignatureCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -169,6 +293,7 @@ export function Contract() {
     content: DEFAULT_CONTRACT_TEXT,
     contentIsHtml: false,
     isPaid: false,
+    hasDuration: true,
     defaultFeePlan: "6m",
     feePlans: DEFAULT_FEE_PLANS as { key: string; label: string; sublabel: string; price: number }[],
   });
@@ -260,8 +385,9 @@ function ContractDetailModal({ contractId, onClose, settings }: { contractId: st
 
   const member = detail?.memberData as any;
   const feePlanLabel = (key: string | null) => {
-    const p = settings.feePlans.find((f: any) => f.key === key);
-    return p ? `${p.label} — ${p.price.toLocaleString()}₮` : "—";
+    const storedPlans: any[] = (detail?.headerData as any)?.feePlans ?? settings.feePlans;
+    const p = storedPlans.find((f: any) => f.key === key);
+    return p ? `${p.label} — ${Number(p.price).toLocaleString()}₮` : key ?? "—";
   };
   const base = process.env.NEXT_PUBLIC_WEB_URL || "https://mglstore.mn";
 
@@ -361,8 +487,13 @@ function ContractDetailModal({ contractId, onClose, settings }: { contractId: st
             {!detail.isTemplate && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="border border-[#b4c6e7] rounded-xl overflow-hidden">
-                  <div className="px-3 py-2 bg-[#f0f4ff] border-b border-[#b4c6e7]">
+                  <div className="px-3 py-2 bg-[#f0f4ff] border-b border-[#b4c6e7] flex items-center justify-between">
                     <span className="text-xs font-semibold text-[#1e4e8c]">ХОЛБООНЫ ГАРЫН ҮСЭГ</span>
+                    {detail.adminSignature && (
+                      <a href={detail.adminSignature} download="admin-signature.png" className="text-xs text-[#1e4e8c] hover:underline flex items-center gap-1">
+                        <Download className="w-3 h-3" /> PNG
+                      </a>
+                    )}
                   </div>
                   <div className="p-3 bg-neutral-50 h-24 flex items-center justify-center">
                     {detail.adminSignature
@@ -372,8 +503,13 @@ function ContractDetailModal({ contractId, onClose, settings }: { contractId: st
                   {detail.adminTitle && <div className="px-3 py-2 text-xs text-center text-[#c00000] border-t border-[#b4c6e7]">{detail.adminTitle}</div>}
                 </div>
                 <div className="border border-[#b4c6e7] rounded-xl overflow-hidden">
-                  <div className="px-3 py-2 bg-[#f0f4ff] border-b border-[#b4c6e7]">
+                  <div className="px-3 py-2 bg-[#f0f4ff] border-b border-[#b4c6e7] flex items-center justify-between">
                     <span className="text-xs font-semibold text-[#1e4e8c]">ГИШҮҮНИЙ ГАРЫН ҮСЭГ</span>
+                    {detail.memberSignature && (
+                      <a href={detail.memberSignature} download={`signature-${member?.name || contractId}.png`} className="text-xs text-[#1e4e8c] hover:underline flex items-center gap-1">
+                        <Download className="w-3 h-3" /> PNG
+                      </a>
+                    )}
                   </div>
                   <div className="p-3 bg-neutral-50 h-24 flex items-center justify-center">
                     {detail.memberSignature
@@ -513,10 +649,7 @@ function ContractHistoryTab({
     }
   };
 
-  const feePlanLabel = (key: string | null) => {
-    const p = settings.feePlans.find((f: any) => f.key === key);
-    return p ? `${p.label} — ${p.price.toLocaleString()}₮` : "—";
-  };
+  const feePlanLabel = (c: any) => c.feePlanLabel || c.feePlan || "—";
 
   return (
     <>
@@ -555,7 +688,7 @@ function ContractHistoryTab({
                     {c.status === "TAMPERED" && <span className="px-2.5 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold">Алдаатай</span>}
                     {c.isPaid && <span className="ml-1.5 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">Төлбөртэй</span>}
                   </td>
-                  <td className="px-6 py-4 text-sm text-neutral-600">{feePlanLabel(c.feePlan)}</td>
+                  <td className="px-6 py-4 text-sm text-neutral-600">{feePlanLabel(c)}</td>
                   <td className="px-6 py-4 text-sm text-neutral-600">{c.createdBy}</td>
                   <td className="px-6 py-4 text-sm text-neutral-500">{c.date}</td>
                   <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
@@ -600,102 +733,156 @@ function NewContractButton({ settings, setContracts, setStats }: {
   setStats: React.Dispatch<React.SetStateAction<any>>,
 }) {
   const [open, setOpen] = useState(false);
-  const [feePlan, setFeePlan] = useState(settings.defaultFeePlan || "6m");
+  const [feePlan, setFeePlan] = useState(settings.defaultFeePlan || settings.feePlans?.[0]?.key || "6m");
   const [creating, setCreating] = useState(false);
-  const sig = useSignatureCanvas();
+  const [adminSignature, setAdminSignature] = useState("");
+
+  useEffect(() => {
+    setFeePlan(settings.defaultFeePlan || settings.feePlans?.[0]?.key || "6m");
+  }, [settings.defaultFeePlan, settings.feePlans]);
 
   const handleCreate = async () => {
-    if (!sig.hasSignature) { alert("Гарын үсэг зурна уу"); return; }
+    if (!adminSignature) {
+      alert("Гарын үсэг оруулна уу");
+      return;
+    }
+
     setCreating(true);
+
     try {
+      const selectedPlan = settings.hasDuration
+        ? (settings.isPaid ? feePlan : settings.defaultFeePlan)
+        : null;
+
       const res = await adminFetch(`${API}/contracts`, {
         method: "POST",
         body: JSON.stringify({
-          feePlan: settings.isPaid ? feePlan : null,
+          feePlan: selectedPlan,
           isPaid: settings.isPaid,
-          adminSignature: sig.getDataUrl(),
+          adminSignature,
           adminName: settings.presidentName,
           adminTitle: settings.presidentTitle,
           headerData: {
             title: settings.headerTitle || null,
             subtitle: settings.headerSubtitle || null,
             contractTitle: settings.headerContractTitle || null,
+            hasDuration: settings.hasDuration,
+            feePlans: settings.feePlans,
+            defaultFeePlan: settings.defaultFeePlan,
           },
         }),
       });
+
       const data = await res.json();
+
       if (data.success) {
         setContracts(prev => [data.contract, ...prev]);
-        setStats((s: any) => ({ ...s, total: s.total + 1, pending: s.pending + 1 }));
+        setStats((s: any) => ({
+          ...s,
+          total: s.total + 1,
+          pending: s.pending + 1,
+        }));
         setOpen(false);
-        sig.clear();
+        setAdminSignature("");
       } else {
         alert(data.error || "Алдаа гарлаа");
       }
-    } catch { alert("Гэрээ үүсгэхэд алдаа гарлаа"); }
-    finally { setCreating(false); }
+    } catch {
+      alert("Гэрээ үүсгэхэд алдаа гарлаа");
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-        <Plus className="w-4 h-4" /> Шинэ гэрээ үүсгэх
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+      >
+        <Plus className="w-4 h-4" />
+        Шинэ гэрээ үүсгэх
       </button>
 
       {open && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-5">
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={e => e.target === e.currentTarget && setOpen(false)}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-lg text-neutral-900">Шинэ гэрээ үүсгэх</h3>
-              <button onClick={() => setOpen(false)} className="p-2 hover:bg-neutral-100 rounded-lg"><XCircle className="w-5 h-5 text-neutral-400" /></button>
+              <h3 className="font-bold text-lg text-neutral-900">
+                Шинэ гэрээ үүсгэх
+              </h3>
+
+              <button
+                onClick={() => setOpen(false)}
+                className="p-2 hover:bg-neutral-100 rounded-lg"
+              >
+                <XCircle className="w-5 h-5 text-neutral-400" />
+              </button>
             </div>
 
-            {settings.isPaid && (
+            {settings.hasDuration && (
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">Хураамжийн сонголт</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Гэрээний хугацаа
+                </label>
+
                 <div className="grid grid-cols-2 gap-3">
                   {settings.feePlans.map((p: any) => (
-                    <button key={p.key} type="button" onClick={() => setFeePlan(p.key)}
-                      className={`flex flex-col items-center p-4 border-2 rounded-xl text-sm transition-colors ${feePlan === p.key ? "border-blue-500 bg-blue-50 text-blue-700" : "border-neutral-200 hover:border-neutral-300"}`}>
-                      <span className="font-bold text-base">{p.label}</span>
-                      <span className="text-xs text-neutral-500">{p.sublabel}</span>
-                      <span className="font-semibold mt-1">{p.price.toLocaleString()}₮</span>
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => setFeePlan(p.key)}
+                      className={`flex flex-col items-center p-4 border-2 rounded-xl text-sm transition-colors ${
+                        feePlan === p.key
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-neutral-200 hover:border-neutral-300"
+                      }`}
+                    >
+                      <span className="font-bold text-base">
+                        {p.label || "Нэргүй хугацаа"}
+                      </span>
+
+                      <span className="text-xs text-neutral-500">
+                        {p.sublabel || "Тайлбаргүй"}
+                      </span>
+
+                      {settings.isPaid && (
+                        <span className="font-semibold mt-1">
+                          {Number(p.price || 0).toLocaleString()}₮
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Гарын үсэг <span className="text-red-500">*</span>
-                <span className="text-xs text-neutral-400 ml-2">(заавал шаардлагатай)</span>
-              </label>
-              <div className="border-2 border-dashed border-neutral-300 rounded-xl bg-neutral-50 relative" style={{ height: 120 }}>
-                <canvas
-                  ref={sig.ref} width={600} height={120}
-                  className="absolute inset-0 w-full h-full touch-none"
-                  style={{ cursor: "crosshair" }}
-                  onMouseDown={sig.start} onMouseMove={sig.move} onMouseUp={sig.end} onMouseLeave={sig.end}
-                  onTouchStart={sig.start} onTouchMove={sig.move} onTouchEnd={sig.end}
-                />
-                {!sig.hasSignature && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-neutral-400 pointer-events-none select-none">
-                    <PenTool className="w-5 h-5" />
-                    <span className="text-xs">Энд гарын үсэг зурна уу</span>
-                  </div>
-                )}
-                {sig.hasSignature && (
-                  <button type="button" onClick={sig.clear} className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-white border border-neutral-200 rounded-lg text-xs text-neutral-500 hover:text-red-500 z-10 shadow-sm">
-                    <Eraser className="w-3 h-3" /> Арилгах
-                  </button>
-                )}
-              </div>
-            </div>
+            <SignatureInput
+              label="Гарын үсэг"
+              required
+              onReady={setAdminSignature}
+              onClear={() => setAdminSignature("")}
+            />
 
-            <button onClick={handleCreate} disabled={creating || !sig.hasSignature}
-              className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
-              {creating ? <><Loader2 className="w-4 h-4 animate-spin" /> Үүсгэж байна...</> : <><Plus className="w-4 h-4" /> Гэрээ үүсгэх</>}
+            <button
+              onClick={handleCreate}
+              disabled={creating || !adminSignature}
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {creating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Үүсгэж байна...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Гэрээ үүсгэх
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -717,9 +904,63 @@ function ContractEditorTab({
   const [saving, setSaving] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [adminStamp, setAdminStamp] = useState<string | null>(null);
+  const [adminSignature, setAdminSignature] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const stampRef = useRef<HTMLInputElement>(null);
-  const sig = useSignatureCanvas();
+
+
+  const updateFeePlan = (index: number, field: "label" | "sublabel" | "price", value: string) => {
+    setSettings((prev: any) => {
+      const nextPlans = [...prev.feePlans];
+
+      nextPlans[index] = {
+        ...nextPlans[index],
+        [field]: field === "price" ? Number(value.replace(/\D/g, "")) : value,
+      };
+
+      return {
+        ...prev,
+        feePlans: nextPlans,
+        defaultFeePlan: prev.defaultFeePlan || nextPlans[0]?.key || "",
+      };
+    });
+  };
+
+  const addFeePlan = () => {
+    setSettings((prev: any) => {
+      const newKey = `plan_${Date.now()}`;
+
+      return {
+        ...prev,
+        feePlans: [
+          ...prev.feePlans,
+          {
+            key: newKey,
+            label: "",
+            sublabel: "",
+            price: 0,
+          },
+        ],
+        defaultFeePlan: prev.defaultFeePlan || newKey,
+      };
+    });
+  };
+
+  const removeFeePlan = (index: number) => {
+    setSettings((prev: any) => {
+      const removedKey = prev.feePlans[index]?.key;
+      const nextPlans = prev.feePlans.filter((_: any, i: number) => i !== index);
+
+      return {
+        ...prev,
+        feePlans: nextPlans,
+        defaultFeePlan:
+          prev.defaultFeePlan === removedKey
+            ? nextPlans[0]?.key || ""
+            : prev.defaultFeePlan,
+      };
+    });
+  };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -752,15 +993,24 @@ function ContractEditorTab({
   };
 
   const handleSave = async () => {
-    if (!sig.hasSignature) { alert("Гэрээ байгуулагчийн гарын үсэг зурна уу"); return; }
+    if (!adminSignature) {
+      alert("Гэрээ байгуулагчийн гарын үсэг оруулна уу");
+      return;
+    }
+
     setSaving(true);
+
     try {
+      const selectedPlan = settings.hasDuration
+        ? settings.defaultFeePlan
+        : null;
+
       const res = await adminFetch(`${API}/contracts`, {
         method: "POST",
         body: JSON.stringify({
-          feePlan: settings.isPaid ? settings.defaultFeePlan : null,
+          feePlan: selectedPlan,
           isPaid: settings.isPaid,
-          adminSignature: sig.getDataUrl(),
+          adminSignature,
           adminName: settings.presidentName || null,
           adminTitle: settings.presidentTitle || null,
           adminStamp: adminStamp || null,
@@ -768,20 +1018,33 @@ function ContractEditorTab({
             title: settings.headerTitle || null,
             subtitle: settings.headerSubtitle || null,
             contractTitle: settings.headerContractTitle || null,
+            hasDuration: settings.hasDuration,
+            feePlans: settings.feePlans,
+            defaultFeePlan: settings.defaultFeePlan,
           },
         }),
       });
+
       const data = await res.json();
+
       if (data.success) {
         setContracts(prev => [data.contract, ...prev]);
-        setStats((s: any) => ({ ...s, total: s.total + 1, pending: s.pending + 1 }));
+        setStats((s: any) => ({
+          ...s,
+          total: s.total + 1,
+          pending: s.pending + 1,
+        }));
+
         alert("Гэрээний тохиргоо хадгалагдаж, шинэ линк үүслээ!");
         setActiveTab("history");
       } else {
         alert(data.error || "Алдаа гарлаа");
       }
-    } catch { alert("Алдаа гарлаа"); }
-    finally { setSaving(false); }
+    } catch {
+      alert("Алдаа гарлаа");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -866,89 +1129,184 @@ function ContractEditorTab({
 
       {/* Payment settings */}
       <div className="p-6 border-b border-neutral-100 bg-neutral-50/20">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <div className="font-medium text-neutral-800">Хураамжийн тохиргоо</div>
-            <div className="text-sm text-neutral-500 mt-0.5">Гэрээнд төлбөр шаардах эсэхийг тохируулна</div>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-neutral-800">
+              Хураамж & Хугацааны тохиргоо
+            </div>
+            <div className="text-sm text-neutral-500 mt-0.5">
+              Гэрээнд төлбөр болон хугацааг тохируулна
+            </div>
           </div>
-          <button type="button" onClick={() => setSettings({ ...settings, isPaid: !settings.isPaid })}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all ${settings.isPaid ? "border-blue-500 bg-blue-50 text-blue-700" : "border-neutral-200 text-neutral-600"}`}>
-            {settings.isPaid ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
-            {settings.isPaid ? "Төлбөртэй" : "Төлбөргүй"}
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setSettings({
+                  ...settings,
+                  hasDuration: !settings.hasDuration,
+                })
+              }
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
+                settings.hasDuration
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                  : "border-neutral-200 text-neutral-400"
+              }`}
+            >
+              {settings.hasDuration ? (
+                <ToggleRight className="w-5 h-5" />
+              ) : (
+                <ToggleLeft className="w-5 h-5" />
+              )}
+              Хугацаа
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setSettings({
+                  ...settings,
+                  isPaid: !settings.isPaid,
+                })
+              }
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all ${
+                settings.isPaid
+                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  : "border-neutral-200 text-neutral-600"
+              }`}
+            >
+              {settings.isPaid ? (
+                <ToggleRight className="w-5 h-5" />
+              ) : (
+                <ToggleLeft className="w-5 h-5" />
+              )}
+              {settings.isPaid ? "Төлбөртэй" : "Төлбөргүй"}
+            </button>
+          </div>
         </div>
 
-        {settings.isPaid && (
-          <div className="flex flex-col gap-4">
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-3">Хураамжийн төлөвлөгөө засах</label>
-              <div className="flex flex-col gap-3">
-                {settings.feePlans.map((p: any, idx: number) => (
-                  <div key={p.key} className="flex items-center gap-3 p-3 border border-neutral-200 rounded-xl bg-neutral-50/50">
-                    <div className="flex flex-col gap-1 flex-1">
-                      <input
-                        value={p.label}
-                        onChange={e => {
-                          const updated = settings.feePlans.map((fp: any, i: number) => i === idx ? { ...fp, label: e.target.value } : fp);
-                          setSettings({ ...settings, feePlans: updated });
-                        }}
-                        placeholder="Нэр (жш: 6 сар)"
-                        className="px-3 py-1.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                      />
-                      <input
-                        value={p.sublabel}
-                        onChange={e => {
-                          const updated = settings.feePlans.map((fp: any, i: number) => i === idx ? { ...fp, sublabel: e.target.value } : fp);
-                          setSettings({ ...settings, feePlans: updated });
-                        }}
-                        placeholder="Тайлбар (жш: Хагас жил)"
-                        className="px-3 py-1.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                      />
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          value={p.price}
-                          min={0}
-                          step={10000}
-                          onChange={e => {
-                            const updated = settings.feePlans.map((fp: any, i: number) => i === idx ? { ...fp, price: Number(e.target.value) } : fp);
-                            setSettings({ ...settings, feePlans: updated });
-                          }}
-                          className="w-32 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-mono"
-                        />
-                        <span className="text-sm text-neutral-500">₮</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button type="button" onClick={() => setSettings({ ...settings, defaultFeePlan: p.key })}
-                          className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${settings.defaultFeePlan === p.key ? "border-blue-500 bg-blue-50 text-blue-700 font-semibold" : "border-neutral-200 text-neutral-500 hover:border-blue-300"}`}>
-                          {settings.defaultFeePlan === p.key ? "✓ Анхдагч" : "Анхдагч"}
-                        </button>
-                        {settings.feePlans.length > 1 && (
-                          <button type="button" onClick={() => {
-                            const updated = settings.feePlans.filter((_: any, i: number) => i !== idx);
-                            setSettings({ ...settings, feePlans: updated, defaultFeePlan: updated[0]?.key || "" });
-                          }} className="text-xs px-2 py-0.5 rounded-full border border-red-200 text-red-400 hover:bg-red-50 transition-colors">
-                            Устгах
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <button type="button"
-                  onClick={() => {
-                    const newKey = `plan_${Date.now()}`;
-                    setSettings({
-                      ...settings,
-                      feePlans: [...settings.feePlans, { key: newKey, label: "", sublabel: "", price: 0 }],
-                    });
-                  }}
-                  className="flex items-center gap-2 px-4 py-2.5 border-2 border-dashed border-neutral-300 rounded-xl text-sm text-neutral-500 hover:border-blue-400 hover:text-blue-600 transition-colors">
-                  <Plus className="w-4 h-4" /> Шинэ сонголт нэмэх
-                </button>
+        {settings.hasDuration && (
+          <div className="mt-1 p-4 bg-white border border-emerald-200 rounded-xl shadow-sm">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-emerald-500 rounded-full" />
+                <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+                  Гэрээний хугацаа
+                </span>
               </div>
+
+              <button
+                type="button"
+                onClick={addFeePlan}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Хугацаа нэмэх
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {settings.feePlans.map((plan: any, index: number) => (
+                <div
+                  key={plan.key}
+                  className="grid grid-cols-1 md:grid-cols-12 gap-3 p-4 bg-neutral-50 border border-neutral-200 rounded-xl"
+                >
+                  <div className="md:col-span-3 flex flex-col gap-1">
+                    <label className="text-xs font-medium text-neutral-500 pl-1">
+                      Хугацаа
+                    </label>
+                    <input
+                      type="text"
+                      value={plan.label ?? ""}
+                      onChange={e => updateFeePlan(index, "label", e.target.value)}
+                      placeholder="жш: 6 сар"
+                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 bg-white transition-colors placeholder:text-neutral-300"
+                    />
+                  </div>
+
+                  <div className="md:col-span-3 flex flex-col gap-1">
+                    <label className="text-xs font-medium text-neutral-500 pl-1">
+                      Тайлбар
+                    </label>
+                    <input
+                      type="text"
+                      value={plan.sublabel ?? ""}
+                      onChange={e => updateFeePlan(index, "sublabel", e.target.value)}
+                      placeholder="жш: Хагас жил"
+                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 bg-white transition-colors placeholder:text-neutral-300"
+                    />
+                  </div>
+
+                  <div className="md:col-span-3 flex flex-col gap-1">
+                    <label className="text-xs font-medium text-neutral-500 pl-1">
+                      Үнэ
+                    </label>
+                    <input
+                      type="text"
+                      value={plan.price ? Number(plan.price).toLocaleString() : ""}
+                      onChange={e => updateFeePlan(index, "price", e.target.value)}
+                      placeholder="жш: 1800000"
+                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 bg-white transition-colors placeholder:text-neutral-300"
+                    />
+                  </div>
+
+                  <div className="md:col-span-3 flex items-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings({
+                          ...settings,
+                          defaultFeePlan: plan.key,
+                        })
+                      }
+                      className={`flex-1 px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
+                        settings.defaultFeePlan === plan.key
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                          : "border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+                      }`}
+                    >
+                      {settings.defaultFeePlan === plan.key ? "Үндсэн" : "Үндсэн болгох"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => removeFeePlan(index)}
+                      disabled={settings.feePlans.length <= 1}
+                      className="px-3 py-2.5 border border-red-200 text-red-500 bg-white rounded-lg text-sm hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+                Dropdown дээр сонгогдох үндсэн хугацаа
+              </label>
+
+              <select
+                value={settings.defaultFeePlan}
+                onChange={e =>
+                  setSettings({
+                    ...settings,
+                    defaultFeePlan: e.target.value,
+                  })
+                }
+                className="w-full px-3 py-2.5 border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                {settings.feePlans.map((plan: any) => (
+                  <option key={plan.key} value={plan.key}>
+                    {plan.label || "Нэргүй хугацаа"}
+                    {plan.sublabel ? ` — ${plan.sublabel}` : ""}
+                    {settings.isPaid && plan.price
+                      ? ` — ${Number(plan.price).toLocaleString()}₮`
+                      : ""}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         )}
@@ -990,26 +1348,12 @@ function ContractEditorTab({
 
       {/* Admin signature */}
       <div className="p-6 border-t border-neutral-100">
-        <label className="block text-sm font-medium text-neutral-700 mb-2">
-          Гэрээ байгуулагчийн гарын үсэг <span className="text-red-500">*</span>
-        </label>
-        <div className="border-2 border-dashed border-neutral-300 rounded-xl bg-neutral-50 relative max-w-sm" style={{ height: 120 }}>
-          <canvas ref={sig.ref} width={600} height={120}
-            className="absolute inset-0 w-full h-full touch-none" style={{ cursor: "crosshair" }}
-            onMouseDown={sig.start} onMouseMove={sig.move} onMouseUp={sig.end} onMouseLeave={sig.end}
-            onTouchStart={sig.start} onTouchMove={sig.move} onTouchEnd={sig.end} />
-          {!sig.hasSignature && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-neutral-400 pointer-events-none select-none">
-              <PenTool className="w-5 h-5" /><span className="text-xs">Энд гарын үсэг зурна уу</span>
-            </div>
-          )}
-          {sig.hasSignature && (
-            <button type="button" onClick={sig.clear} className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-white border border-neutral-200 rounded-lg text-xs text-neutral-500 hover:text-red-500 z-10 shadow-sm">
-              <Eraser className="w-3 h-3" /> Арилгах
-            </button>
-          )}
-        </div>
-        {!sig.hasSignature && <p className="text-xs text-red-500 mt-1">Гарын үсэг зурахгүйгээр хадгалах боломжгүй</p>}
+        <SignatureInput
+          label="Гэрээ байгуулагчийн гарын үсэг"
+          required
+          onReady={setAdminSignature}
+          onClear={() => setAdminSignature("")}
+        />
       </div>
     </div>
   );

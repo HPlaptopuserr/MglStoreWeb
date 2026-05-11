@@ -1,17 +1,7 @@
+import type { QPayInvoice } from "@mgl/types";
 import { posRequest } from "./_pos-client";
 
-export type QPayInvoiceStatus = "PENDING" | "PAID" | "EXPIRED";
-
-export type QPayInvoice = {
-  invoiceId: string;
-  amount: number;
-  qrText: string;
-  qrImage: string;
-  status: QPayInvoiceStatus;
-  expiresAt: string;
-  paidAt?: string;
-  createdAt: string;
-};
+export type { QPayInvoice, QPayInvoiceStatus } from "@mgl/types";
 
 export function createQPayInvoice(payload: {
   amount: number;

@@ -155,18 +155,24 @@ export function QrGeneratorPanel({ showHeader = true }: QrGeneratorPanelProps) {
                 {copied ? "Хуулсан" : "Линк хуулах"}
               </button>
 
-              <a
-                href={validForm ? normalizedFormUrl : undefined}
-                target="_blank"
-                rel="noreferrer"
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
-                  validForm
-                    ? "bg-violet-600 text-white hover:bg-violet-700"
-                    : "pointer-events-none bg-slate-200 text-slate-500"
-                }`}
-              >
-                <ExternalLink size={15} /> Линк нээх
-              </a>
+              {validForm ? (
+                <a
+                  href={normalizedFormUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors bg-violet-600 text-white hover:bg-violet-700"
+                >
+                  <ExternalLink size={15} /> Линк нээх
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold bg-slate-200 text-slate-500 cursor-not-allowed opacity-60"
+                >
+                  <ExternalLink size={15} /> Линк нээх
+                </button>
+              )}
             </div>
           </div>
         </section>

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { getInvestorRingStyle } from "@/lib/utils";
+import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 
 interface InvestorCardProps {
   name: string;
@@ -69,26 +69,25 @@ export function InvestorCard({
         </span>
       </div>
 
-      <div
-        className={`relative rounded-2xl mt-2`}
-        style={getInvestorRingStyle(investmentLevel) || {}}
-      >
-        <div
-          className={`relative ${style.logoSize} rounded-2xl bg-white/10 backdrop-blur-sm overflow-hidden border border-white/10`}
-        >
-        {logoUrl ? (
-          <Image
-            src={logoUrl}
-            alt={name}
-            fill
-            className="object-contain p-2"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-white/40">
-            {name.charAt(0)}
+      <div className="mt-2">
+        <InvestorRingWrapper investmentAmount={investmentLevel} rounded="xl">
+          <div
+            className={`relative ${style.logoSize} rounded-2xl bg-white/10 backdrop-blur-sm overflow-hidden`}
+          >
+            {logoUrl ? (
+              <Image
+                src={logoUrl}
+                alt={name}
+                fill
+                className="object-contain p-2"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-white/40">
+                {name.charAt(0)}
+              </div>
+            )}
           </div>
-        )}
-        </div>
+        </InvestorRingWrapper>
       </div>
 
       <h3

@@ -14,6 +14,8 @@ import {
   ChevronRight,
   Tag,
   Package,
+  CreditCard,
+  Building2,
 } from "lucide-react";
 
 export interface NavItem {
@@ -74,6 +76,12 @@ export function AdminSidebar({
           icon: Users,
           href: "/requests",
         },
+        {
+          id: "association",
+          label: "Гишүүнчлэл",
+          icon: Building2,
+          href: "/association",
+        },
       ],
     },
     {
@@ -85,6 +93,12 @@ export function AdminSidebar({
           label: "Түншүүд",
           icon: Users,
           href: "/partners",
+        },
+        {
+          id: "card-terminal-requests",
+          label: "Card Terminal хүсэлт",
+          icon: CreditCard,
+          href: "/partners/card-terminal-requests",
         },
         {
           id: "warehouses",

@@ -1,0 +1,192 @@
+// ─── Payment method ───────────────────────────────────────────────────────────
+
+export type SalePaymentMethod = "CASH" | "CARD" | "QR";
+
+// ─── QPay ────────────────────────────────────────────────────────────────────
+
+export type QPayInvoiceStatus = "PENDING" | "PAID" | "EXPIRED";
+
+export interface QPayInvoice {
+  invoiceId: string;
+  amount: number;
+  qrText: string;
+  qrImage: string;
+  status: QPayInvoiceStatus;
+  expiresAt: string;
+  paidAt?: string;
+  createdAt: string;
+}
+
+// ─── Card / PushECR ──────────────────────────────────────────────────────────
+
+export type CardAttemptStatus = "PENDING" | "APPROVED" | "DECLINED" | "FAILED";
+
+export interface CardAttempt {
+  attemptId: string;
+  amount: number;
+  terminalId: string;
+  status: CardAttemptStatus;
+  transactionId?: string;
+  message?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PushEcrResult {
+  succeed: boolean;
+  message?: string;
+}
+
+export interface SettlementResult {
+  succeed: boolean;
+  message?: string;
+  count?: number;
+  amount?: number;
+}
+
+// ─── Register config ──────────────────────────────────────────────────────────
+
+export interface RegisterConfig {
+  id: string;
+  name: string;
+  label: string | null;
+  cardEnabled: boolean;
+  cardProviderType: string | null;
+  cardTerminalId: string | null;
+  terminalBridgeUrl: string | null;
+  qpayEnabled: boolean;
+  effectiveQpayEnabled: boolean;
+  qpayMerchantId: string | null;
+  qpayTerminalId: string | null;
+  isActive: boolean;
+  branchId: string;
+  organizationId: string;
+  branch: { id: string; name: string };
+}
+
+// ─── Cart ────────────────────────────────────────────────────────────────────
+
+export interface PosProduct {
+  id: string;
+  sku: string;
+  name: string;
+  price: number;
+  stockQty: number;
+  taxRate?: number;
+  isActive: boolean;
+}
+
+export interface CartLine {
+  productId: string;
+  name: string;
+  unitPrice: number;
+  qty: number;
+  stockQty: number;
+  taxRate: number;
+  discountAmount: number;
+}
+
+export interface PosCart {
+  lines: CartLine[];
+  note?: string;
+}
+
+export interface CartTotals {
+  subTotal: number;
+  taxTotal: number;
+  discountTotal: number;
+  grandTotal: number;
+}
+
+// ─── Sale ────────────────────────────────────────────────────────────────────
+
+export interface SalePaymentLine {
+  method: SalePaymentMethod;
+  amount: number;
+  attemptId?: string;
+  transactionId?: string;
+  invoiceId?: string;
+}
+
+export interface SalePayload {
+  shiftId: string;
+  branchId: string;
+  registerId?: string;
+  organizationId?: string;
+  clientSaleId?: string;
+  paymentMethod: string;
+  paymentBreakdown?: SalePaymentLine[];
+  totalPaid?: number;
+  remaining?: number;
+  status?: "PARTIAL" | "PAID";
+  lines: Array<{
+    productId: string;
+    qty: number;
+    unitPrice: number;
+    discountAmount: number;
+    taxRate: number;
+  }>;
+  note?: string;
+}
+
+// ─── Shift ───────────────────────────────────────────────────────────────────
+
+export type ShiftStatus = "OPEN" | "CLOSED";
+
+export interface PosShift {
+  id: string;
+  cashierId: string;
+  cashierName: string;
+  branchId: string;
+  openedAt: string;
+  closedAt: string | null;
+  openingCash: number;
+  closingCash: number | null;
+  expectedCash: number;
+  status: ShiftStatus;
+}
+
+export interface OpenShiftPayload {
+  branchId: string;
+  openingCash: number;
+}
+
+export interface CloseShiftPayload {
+  shiftId: string;
+  closingCash: number;
+  note?: string;
+}
+
+// ─── Receipt ─────────────────────────────────────────────────────────────────
+
+export interface ReceiptLine {
+  productId: string;
+  name: string;
+  qty: number;
+  unitPrice: number;
+  taxAmount: number;
+  lineTotal: number;
+}
+
+export interface PosReceipt {
+  id: string;
+  receiptNo: string;
+  branchName: string;
+  cashierName: string;
+  paymentMethod: string;
+  paymentBreakdown?: Array<{
+    method: string;
+    amount: number;
+    transactionId?: string;
+    invoiceId?: string;
+    attemptId?: string;
+    traceno?: string | null;
+    terminalId?: string | null;
+  }>;
+  createdAt: string;
+  lines: ReceiptLine[];
+  subTotal: number;
+  taxTotal: number;
+  discountTotal: number;
+  grandTotal: number;
+}

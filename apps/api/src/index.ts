@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import contractRoutes from "./routes/contract/contract.routes";
 import {
   authRoutes,
+  associationRoutes,
   investorRoutes,
   orgJoinRoutes,
   orgMemberRoutes,
@@ -25,6 +26,7 @@ import {
   warehousesRoutes,
   dashboardRoutes,
   siteSettingsRoutes,
+  teamRoutes,
   formRoutes,
   attendanceRoutes,
   chatRoutes,
@@ -33,6 +35,9 @@ import {
   vendorOrderRoutes,
   vendorMerchantRoutes,
   vendorUpgradeRoutes,
+  vendorCardTerminalRoutes,
+  upgradePlansRoutes,
+  adminGrantPlanRoutes,
 } from "./routes";
 
 const app = express();
@@ -96,6 +101,7 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 app.use("/api", partnerRequestRoutes);
+app.use("/api", associationRoutes);
 app.use("/api", partnerRoutes);
 app.use("/api", orgJoinRoutes);
 app.use("/api", orgMemberRoutes);
@@ -111,6 +117,7 @@ app.use("/api", vendorSetupRoutes);
 app.use("/api", warehouseSetupRoutes);
 app.use("/api", investorRoutes);
 app.use("/api", siteSettingsRoutes);
+app.use("/api", teamRoutes);
 app.use("/api", productsRoutes);
 app.use("/api", servicePostsRoutes);
 app.use("/api", formRoutes);
@@ -121,6 +128,9 @@ app.use("/api", storeCheckoutRoutes);
 app.use("/api", vendorOrderRoutes);
 app.use("/api", vendorMerchantRoutes);
 app.use("/api", vendorUpgradeRoutes);
+app.use("/api", vendorCardTerminalRoutes);
+app.use("/api", upgradePlansRoutes);
+app.use("/api", adminGrantPlanRoutes);
 app.use("/api", contractRoutes);
 
 app.get("/", (_req, res) => {

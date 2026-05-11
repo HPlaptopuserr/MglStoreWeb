@@ -15,7 +15,20 @@ import {
   ShieldCheck,
   Truck,
   HeartHandshake,
+  QrCode,
+  MessageCircle,
+  Headphones,
+  Contact,
+  FileQuestion,
 } from "lucide-react";
+
+const quickLinks = [
+  { icon: QrCode, label: "APP татах", href: "#" },
+  { icon: MessageCircle, label: "Санал хүсэлт", href: "#" },
+  { icon: Headphones, label: "Admin-тай холбогдох", href: "#" },
+  { icon: Contact, label: "Хамтарч ажиллах", href: "/company/partnership" },
+  { icon: FileQuestion, label: "Нийтлэг асуулт", href: "#" },
+];
 
 export const Footer = () => {
   return (
@@ -110,7 +123,7 @@ export const Footer = () => {
       {/* ── Main Footer Links ── */}
       <div className="bg-gray-950 px-4 pt-12 pb-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
             {/* Brand column */}
             <div className="col-span-2 sm:col-span-2 md:col-span-4 lg:col-span-1 lg:pr-8">
               <Link href="/" className="inline-flex items-center gap-2">
@@ -148,6 +161,27 @@ export const Footer = () => {
               </div>
             </div>
 
+            <div>
+              <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-500">
+                Шуурхай холбоос
+              </h4>
+              <ul className="space-y-2.5">
+                {quickLinks.map((link) => (
+                  <li key={link.label}>
+                    <Link
+                      href={link.href}
+                      className="group flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-white"
+                    >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-gray-500 transition-colors group-hover:bg-amber-500/15 group-hover:text-amber-400">
+                        <link.icon className="h-3.5 w-3.5" />
+                      </span>
+                      <span>{link.label}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
             {/* Дэлгүүр хэсэх */}
             <div>
               <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-500">
@@ -181,6 +215,7 @@ export const Footer = () => {
               <ul className="space-y-2.5">
                 {[
                   { label: "Бидний тухай", href: "#" },
+                  { label: "Баг хамт олон", href: "/company/team" },
                   { label: "Хамтран ажиллах", href: "/company/partnership" },
                   { label: "Ажлын байр", href: "/company/careers" },
                   { label: "Мэдээ", href: "#" },

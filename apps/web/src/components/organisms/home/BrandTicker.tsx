@@ -5,7 +5,7 @@ import { Crown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { API } from "@/lib/api";
-import { getInvestorRingStyle } from "@/lib/utils";
+import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 
 interface Investor {
   id: string;
@@ -47,22 +47,14 @@ export const BrandTicker = () => {
       <div className="relative flex overflow-hidden group">
         <div className="flex animate-marquee whitespace-nowrap gap-12 min-w-full items-center">
           {items.map((inv, i) => {
-            const ringStyle = getInvestorRingStyle(inv.investmentLevel);
             return (
               <Link
                 key={`${inv.id}-${i}`}
                 href={`/organizations/${inv.slug}`}
                 className="flex items-center gap-3 shrink-0 group/item hover:scale-105 transition-transform"
               >
-                <div
-                  className="rounded-full shrink-0"
-                  style={
-                    ringStyle
-                      ? { ...ringStyle, borderRadius: "9999px" }
-                      : undefined
-                  }
-                >
-                  <div className="w-10 h-10 rounded-full border-2 border-white bg-white overflow-hidden">
+                <InvestorRingWrapper investmentAmount={inv.investmentLevel} rounded="full">
+                  <div className="w-10 h-10 rounded-full bg-white overflow-hidden">
                     <div className="relative w-full h-full rounded-full overflow-hidden bg-slate-100">
                       {inv.logoUrl ? (
                         <Image
@@ -78,7 +70,7 @@ export const BrandTicker = () => {
                       )}
                     </div>
                   </div>
-                </div>
+                </InvestorRingWrapper>
                 <span className="text-lg font-bold text-slate-300 group-hover/item:text-amber-500 transition-colors">
                   {inv.name}
                 </span>

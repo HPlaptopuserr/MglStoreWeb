@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Settings2,
   FileSignature,
+  UserSquare2,
 } from "lucide-react";
 import type { CardColorScheme } from "@mgl/ui";
 import type { SectionKey } from "./types";
@@ -24,6 +25,7 @@ export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType
   { key: "hr", label: "Хүний нөөц", icon: Users, requires: "MANAGE_USERS" },
   { key: "forms", label: "Маягт үүсгэгч", icon: ClipboardList, requires: "MANAGE_FORMS" },
   { key: "contract", label: "Цахим гэрээ", icon: FileSignature },
+  { key: "team", label: "Баг хамт олон", icon: UserSquare2, requires: "MANAGE_SITE_SETTINGS" },
 ];
 
 export const SCHEME_ORDER: CardColorScheme[] = [

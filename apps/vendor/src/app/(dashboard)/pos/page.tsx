@@ -1041,6 +1041,25 @@ export default function PosDemoPage() {
               </div>
             )}
 
+            {/* QPay status info */}
+            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <Info size={13} className="text-slate-400 shrink-0" />
+                <span>QPay төлбөр:</span>
+                {registerConfig?.effectiveQpayEnabled ? (
+                  <span className="font-semibold text-emerald-600">Идэвхтэй</span>
+                ) : (
+                  <span className="font-semibold text-amber-600">Тохируулаагүй</span>
+                )}
+              </div>
+              <a
+                href="/dashboard/profile?tab=merchant"
+                className="text-xs font-semibold text-violet-600 hover:underline shrink-0"
+              >
+                QPay тохиргоо →
+              </a>
+            </div>
+
             {registerConfig && (
               <button
                 type="button"
@@ -1091,8 +1110,8 @@ export default function PosDemoPage() {
             {registerConfig.cardEnabled && (
               <span className="rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700 text-[11px] px-2 py-0.5">Card ✓</span>
             )}
-            {registerConfig.qpayEnabled && (
-              <span className="rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700 text-[11px] px-2 py-0.5">QPay ✓</span>
+            {registerConfig.effectiveQpayEnabled && (
+              <span className="rounded-full bg-sky-100 border border-sky-300 text-sky-700 text-[11px] px-2 py-0.5">QPay ✓</span>
             )}
           </div>
           <button

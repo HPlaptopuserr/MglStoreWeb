@@ -105,11 +105,11 @@ export function PosRegistersSection() {
 
   /* fetch orgs on mount */
   useEffect(() => {
-    adminFetch(`${API}/partners?limit=10000`)
+    adminFetch(`${API}/partners?minimal=true`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const list = Array.isArray(data) ? data : data?.data || data?.partners || [];
-        setOrgs(list.map((p: any) => ({ id: p.id, name: p.name, slug: p.slug })));
+        setOrgs(list.map((p: any) => ({ id: p.id, name: p.name, slug: p.slug ?? "" })));
       })
       .catch(() => setError("Байгууллагын жагсаалт авахад алдаа гарлаа."))
       .finally(() => setLoadingOrgs(false));

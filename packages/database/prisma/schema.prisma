@@ -34,6 +34,7 @@ model User {
   organizationMemberships      OrganizationMember[]
   passwordResetTokens          PasswordResetToken[]     @relation("UserPasswordResetTokens")
   reviewedPosRegisters         PosRegister[]            @relation("PosRegisterReviewedBy")
+  reviewedCardTerminalRequests CardTerminalRequest[]    @relation("CardTerminalRequestReviewedBy")
   posts                        Post[]                   @relation("PostAuthor")
   reviewedProductRequests      ProductRequest[]         @relation("ReviewedProductRequests")
   submittedProductRequests     ProductRequest[]         @relation("SubmittedProductRequests")
@@ -349,6 +350,7 @@ model Organization {
   posSales                     PosSale[]
   contracts                    Contract[]
   upgradePlans                 OrgUpgradePlan[]
+  cardTerminalRequests         CardTerminalRequest[]
 
   @@index([type])
   @@index([status])
@@ -357,25 +359,81 @@ model Organization {
   @@index([subdomainEnabled])
 }
 
-model OrgUpgradePlan {
-  id             String            @id @default(uuid())
-  organizationId String
-  planType       String
-  invoiceId      String            @unique
-  invoiceNo      String            @unique
-  qrText         String
-  amount         Decimal           @db.Decimal(18, 2)
-  status         PlanPaymentStatus @default(PENDING)
-  paidAt         DateTime?
-  expiresAt      DateTime?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+model CardTerminalRequest {
+  id               String                     @id @default(uuid())
+  organizationId   String
+  contactName      String
+  contactPhone     String
+  contactEmail     String?
+  providerType     String                     // e.g. "MONPAY", "GOLOMT", "TDB", etc.
+  businessNote     String?
+  status           CardTerminalRequestStatus  @default(PENDING)
+  adminNote        String?
+  // credentials set by admin after card terminal company approves
+  cardTerminalId   String?
+  terminalBridgeUrl String?
+  reviewedById     String?
+  reviewedAt       DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  organization     Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewedBy       User?                      @relation("CardTerminalRequestReviewedBy", fields: [reviewedById], references: [id])
 
   @@index([organizationId])
   @@index([status])
+  @@index([createdAt])
+}
+
+model OrgUpgradePlan {
+  id               String            @id @default(uuid())
+  organizationId   String
+  planId           String?
+  planType         String
+  invoiceId        String            @unique
+  invoiceNo        String            @unique
+  qrText           String            @default("")
+  amount           Decimal           @db.Decimal(18, 2)
+  status           PlanPaymentStatus @default(PENDING)
+  paidAt           DateTime?
+  expiresAt        DateTime?
+  grantedByAdmin   Boolean           @default(false)
+  grantNote        String?
+  grantedById      String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan             UpgradePlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([planId])
+  @@index([status])
   @@index([invoiceId])
   @@index([createdAt])
+}
+
+model UpgradePlan {
+  id             String           @id @default(uuid())
+  code           String           @unique
+  name           String
+  description    String?
+  price          Decimal          @db.Decimal(18, 2)
+  durationDays   Int
+  maxProducts    Int
+  maxImages      Int
+  maxCategories  Int
+  hasBanner      Boolean          @default(false)
+  hasAnalytics   Boolean          @default(false)
+  isTrial        Boolean          @default(false)
+  badge          String?
+  isRecommended  Boolean          @default(false)
+  isActive       Boolean          @default(true)
+  sortOrder      Int              @default(0)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  invoices       OrgUpgradePlan[]
+
+  @@index([isActive])
+  @@index([sortOrder])
 }
 
 model ServicePost {
@@ -1452,6 +1510,13 @@ enum ApprovalStatus {
   CANCELLED
 }
 
+enum AssociationMembershipType {
+  BASIC
+  ACTIVE
+  BRANCH_COUNCIL
+  GOVERNING_COUNCIL
+}
+
 enum OnboardingSource {
   ADMIN
   SELF_SERVICE
@@ -1463,6 +1528,12 @@ enum ProductApprovalStatus {
   REJECTED
   CHANGES_REQUESTED
   CANCELLED
+}
+
+enum CardTerminalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum AuditAction {
@@ -1497,6 +1568,9 @@ enum AuditAction {
   POS_SALE_CREATED
   POS_REGISTER_CREATED
   POS_QPAY_INVOICE_CREATED
+  CARD_TERMINAL_REQUEST_CREATED
+  CARD_TERMINAL_REQUEST_APPROVED
+  CARD_TERMINAL_REQUEST_REJECTED
 }
 
 enum PosActivationStatus {
@@ -1805,5 +1879,51 @@ model ContractAuditLog {
 
   @@index([contractId])
   @@index([timestamp])
+}
+
+model AssociationMemberRegistration {
+  id               String                    @id @default(uuid())
+  lastName         String
+  firstName        String
+  education        String?
+  profession       String?
+  organizationName String
+  businessActivity String?
+  foundedYear      String?
+  address          String
+  experience       String?
+  phone            String
+  membershipType   AssociationMembershipType
+  durationMonths   Int?
+  status           ApprovalStatus            @default(PENDING)
+  adminNote        String?
+  reviewedAt       DateTime?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  @@index([status])
+  @@index([membershipType])
+  @@index([createdAt])
+  @@index([phone])
+}
+
+model TeamMember {
+  id          String   @id @default(uuid())
+  name        String
+  role        String
+  department  String?
+  bio         String?
+  avatarUrl   String?
+  email       String?
+  linkedinUrl String?
+  experience  String?
+  skills      String[]
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([order])
 }
 

@@ -1,29 +1,7 @@
+import type { CardAttempt, PushEcrResult, SettlementResult } from "@mgl/types";
 import { posRequest } from "./_pos-client";
 
-export type CardAttemptStatus = "PENDING" | "APPROVED" | "DECLINED" | "FAILED";
-
-export type CardAttempt = {
-  attemptId: string;
-  amount: number;
-  terminalId: string;
-  status: CardAttemptStatus;
-  transactionId?: string;
-  message?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type PushEcrResult = {
-  succeed: boolean;
-  message?: string;
-};
-
-export type SettlementResult = {
-  succeed: boolean;
-  message?: string;
-  count?: number;
-  amount?: number;
-};
+export type { CardAttempt, CardAttemptStatus, PushEcrResult, SettlementResult } from "@mgl/types";
 
 export function createCardAttempt(payload: {
   amount: number;
@@ -66,7 +44,6 @@ export function voidPushEcr(payload: {
   });
 }
 
-/** Өдрийн нэгтгэл — ээлж хаахаас өмнө эсвэл гараар дуудна */
 export function settlePushEcr(
   terminalId: string,
   skipPrint = false,

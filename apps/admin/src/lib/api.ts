@@ -35,5 +35,5 @@ export function adminFetch(
     Object.assign(headers, extra);
   }
 
-  return fetch(input, { ...init, headers });
+  return fetch(input, { ...init, headers, cache: "no-store" });
 }

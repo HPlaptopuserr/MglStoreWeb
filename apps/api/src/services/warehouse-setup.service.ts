@@ -110,7 +110,7 @@ export async function registerWarehouseOperator(params: {
     return newUser;
   });
 
-  const baseUrl = process.env.WAREHOUSE_APP_URL || "http://localhost:3003";
+  const baseUrl = process.env.WAREHOUSE_APP_URL || "https://warehouse.mglstore.mn";
   const setupLink = `${baseUrl}/setup?token=${token}`;
 
   return {
@@ -289,7 +289,7 @@ export async function regenerateWarehouseSetupToken(
     });
   });
 
-  const baseUrl = process.env.WAREHOUSE_APP_URL || "http://localhost:3003";
+  const baseUrl = process.env.WAREHOUSE_APP_URL || "https://warehouse.mglstore.mn";
   const setupLink = `${baseUrl}/setup?token=${newToken}`;
 
   return { setupLink, expiresAt };
