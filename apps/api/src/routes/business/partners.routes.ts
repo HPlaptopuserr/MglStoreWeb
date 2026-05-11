@@ -641,7 +641,10 @@ router.get("/partners/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const partner = await prisma.organization.findFirst({
-      where: { OR: [{ id }, { slug: id }], deletedAt: null },
+      where: {
+        OR: [{ id }, { slug: id }],
+        deletedAt: null,
+      },
       include: {
         _count: {
           select: {

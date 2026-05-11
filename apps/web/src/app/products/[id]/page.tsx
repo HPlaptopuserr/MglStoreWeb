@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
+import { Check, Heart, Share2, Store } from "lucide-react";
+import { ProductCard } from "@mgl/ui";
 import { API } from "@/lib/api";
 import { addToCart } from "@/lib/cart";
 
@@ -61,6 +63,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const [loading, setLoading] = useState(true);
   const [activeImg, setActiveImg] = useState(0);
   const [wishlisted, setWishlisted] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+  const [vendorProducts, setVendorProducts] = useState<Product[]>([]);
 
   useEffect(() => {
     fetch(`${API}/products/${id}`)
@@ -69,6 +74,39 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       .catch(() => setLoading(false));
   }, [id]);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("mgl:wishlist");
+      const ids = raw ? (JSON.parse(raw) as string[]) : [];
+      setWishlisted(ids.includes(id));
+    } catch {
+      setWishlisted(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (!product) return;
+
+    const loadRecommendations = async () => {
+      const [relatedRes, vendorRes] = await Promise.all([
+        product.businessCategory?.id
+          ? fetch(`${API}/products?businessCategoryId=${encodeURIComponent(product.businessCategory.id)}`)
+          : Promise.resolve(null),
+        fetch(`${API}/products?organizationId=${encodeURIComponent(product.organization.id)}`),
+      ]);
+      const relatedData = product.businessCategory?.id && relatedRes?.ok ? await relatedRes.json() : [];
+      const vendorData = vendorRes?.ok ? await vendorRes.json() : [];
+
+      setRelatedProducts((Array.isArray(relatedData) ? relatedData : []).filter((item) => item.id !== product.id).slice(0, 4));
+      setVendorProducts((Array.isArray(vendorData) ? vendorData : []).filter((item) => item.id !== product.id).slice(0, 4));
+    };
+
+    loadRecommendations().catch(() => {
+      setRelatedProducts([]);
+      setVendorProducts([]);
+    });
+  }, [product]);
+
   const discount = product?.discounts?.[0];
   const discountedPrice = product ? (discount ? Math.round(product.price * (1 - discount.percent / 100)) : product.price) : 0;
   const originalPrice = product && discount ? product.price : null;
@@ -76,6 +114,62 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const countdown = useCountdown(discount?.validUntil);
   const images = product?.images ?? [];
   const isOutOfStock = product?.stock === 0;
+
+  const toggleWishlist = () => {
+    if (!product) return;
+    let ids: string[] = [];
+    try {
+      const raw = localStorage.getItem("mgl:wishlist");
+      ids = raw ? (JSON.parse(raw) as string[]) : [];
+    } catch {
+      ids = [];
+    }
+    const next = ids.includes(product.id)
+      ? ids.filter((item) => item !== product.id)
+      : [...ids, product.id];
+    localStorage.setItem("mgl:wishlist", JSON.stringify(next));
+    setWishlisted(next.includes(product.id));
+  };
+
+  const shareProduct = async () => {
+    if (!product) return;
+    const url = `${window.location.origin}/products/${product.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: product.name, text: product.description ?? product.name, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShareCopied(true);
+        window.setTimeout(() => setShareCopied(false), 1800);
+      }
+    } catch {
+      // User cancelled the native share sheet.
+    }
+  };
+
+  const renderProductGrid = (items: Product[]) => (
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {items.map((item) => {
+        const itemDiscount = item.discounts?.[0]?.percent;
+        const original = itemDiscount ? item.price : undefined;
+        const final = itemDiscount ? Math.round(item.price * (1 - itemDiscount / 100)) : item.price;
+
+        return (
+          <ProductCard
+            key={item.id}
+            href={`/products/${item.id}`}
+            image={item.images?.[0]?.url}
+            price={final}
+            originalPrice={original}
+            name={item.name}
+            category={item.businessCategory?.name}
+            storeName={item.organization?.name}
+            stock={item.stock ?? undefined}
+          />
+        );
+      })}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -314,20 +408,22 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                 {isOutOfStock ? "Нөөц дууссан" : "Сагслах"}
               </button>
               <button
-                onClick={() => setWishlisted((w) => !w)}
+                onClick={toggleWishlist}
                 className={`w-full h-9 border text-sm flex items-center justify-center gap-2 transition-all ${
                   wishlisted
                     ? "border-red-300 bg-red-50 text-red-500"
                     : "border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700"
                 }`}
-              >
-                <svg
-                  className={`w-4 h-4 transition-all ${wishlisted ? "fill-red-500 stroke-red-400" : "fill-none stroke-current"}`}
-                  strokeWidth="1.5" viewBox="0 0 24 24"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-                </svg>
+                <Heart className={`w-4 h-4 transition-all ${wishlisted ? "fill-red-500 stroke-red-400" : "fill-none stroke-current"}`} />
                 {wishlisted ? "Хадгалсан" : "Хадгалах"}
+              </button>
+              <button
+                onClick={shareProduct}
+                className="mt-2 flex h-9 w-full items-center justify-center gap-2 border border-gray-200 text-sm text-gray-500 transition-all hover:border-gray-400 hover:text-gray-700"
+              >
+                {shareCopied ? <Check className="h-4 w-4 text-green-600" /> : <Share2 className="h-4 w-4" />}
+                {shareCopied ? "Холбоос хуулсан" : "Хуваалцах"}
               </button>
             </div>
 
@@ -375,6 +471,38 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             Дэлгүүрт зочлох &rsaquo;
           </Link>
         </div>
+
+        {vendorProducts.length > 0 && (
+          <section className="mt-8">
+            <div className="mb-4 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Vendor products</p>
+                <h2 className="text-xl font-black text-gray-950">Энэ дэлгүүрийн бусад бараа</h2>
+              </div>
+              <Link href={`/organizations/${product.organization.id}`} className="text-sm font-bold text-orange-600 hover:text-orange-700">
+                Дэлгүүр харах
+              </Link>
+            </div>
+            {renderProductGrid(vendorProducts)}
+          </section>
+        )}
+
+        {relatedProducts.length > 0 && (
+          <section className="mt-8">
+            <div className="mb-4 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Similar products</p>
+                <h2 className="text-xl font-black text-gray-950">Төстэй бараа</h2>
+              </div>
+              {product.businessCategory && (
+                <Link href={`/products?category=${product.businessCategory.slug}`} className="text-sm font-bold text-orange-600 hover:text-orange-700">
+                  Ангилал харах
+                </Link>
+              )}
+            </div>
+            {renderProductGrid(relatedProducts)}
+          </section>
+        )}
 
       </div>
     </div>

@@ -19,6 +19,7 @@ import {
   MessageCircle,
   Headphones,
   Contact,
+  ClipboardList,
   FileQuestion,
 } from "lucide-react";
 
@@ -27,7 +28,15 @@ const quickLinks = [
   { icon: MessageCircle, label: "Санал хүсэлт", href: "#" },
   { icon: Headphones, label: "Admin-тай холбогдох", href: "#" },
   { icon: Contact, label: "Хамтарч ажиллах", href: "/company/partnership" },
+  { icon: ClipboardList, label: "Маягт & QR", href: "/apply" },
   { icon: FileQuestion, label: "Нийтлэг асуулт", href: "#" },
+];
+
+const helpLinks = [
+  { label: "Тусламжийн төв", href: "#" },
+  { label: "Хүргэлтийн мэдээлэл", href: "#" },
+  { label: "Буцаалтын бодлого", href: "#" },
+  { label: "Түгээмэл асуулт", href: "#" },
 ];
 
 export const Footer = () => {
@@ -123,7 +132,7 @@ export const Footer = () => {
       {/* ── Main Footer Links ── */}
       <div className="bg-gray-950 px-4 pt-12 pb-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5">
             {/* Brand column */}
             <div className="col-span-2 sm:col-span-2 md:col-span-4 lg:col-span-1 lg:pr-8">
               <Link href="/" className="inline-flex items-center gap-2">
@@ -159,6 +168,7 @@ export const Footer = () => {
                   </Link>
                 ))}
               </div>
+
             </div>
 
             <div>
@@ -239,12 +249,7 @@ export const Footer = () => {
                 Тусламж
               </h4>
               <ul className="space-y-2.5">
-                {[
-                  { label: "Тусламжийн төв", href: "#" },
-                  { label: "Хүргэлтийн мэдээлэл", href: "#" },
-                  { label: "Буцаалтын бодлого", href: "#" },
-                  { label: "Түгээмэл асуулт", href: "#" },
-                ].map((link) => (
+                {helpLinks.map((link) => (
                   <li key={link.label}>
                     <Link
                       href={link.href}
@@ -255,6 +260,7 @@ export const Footer = () => {
                   </li>
                 ))}
               </ul>
+
 
               <div className="mt-6 space-y-2.5">
                 <a

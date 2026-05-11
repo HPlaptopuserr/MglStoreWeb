@@ -35,6 +35,41 @@ const categoryIcons: Record<string, LucideIcon> = {
   other: Store,
 };
 
+const normalizeGroupedCategories = (payload: unknown): GroupedCategory[] => {
+  const maybeArray = Array.isArray(payload)
+    ? payload
+    : typeof payload === "object" && payload !== null
+      ? Array.isArray((payload as { data?: unknown }).data)
+        ? (payload as { data: unknown[] }).data
+        : Array.isArray((payload as { categories?: unknown }).categories)
+          ? (payload as { categories: unknown[] }).categories
+          : Array.isArray((payload as { items?: unknown }).items)
+            ? (payload as { items: unknown[] }).items
+            : []
+      : [];
+
+  return maybeArray
+    .filter((item): item is GroupedCategory => {
+      if (typeof item !== "object" || item === null) return false;
+      const category = item as Partial<GroupedCategory>;
+      return (
+        typeof category.category === "string" &&
+        typeof category.label === "string" &&
+        Array.isArray(category.partners)
+      );
+    })
+    .map((category) => ({
+      ...category,
+      partners: category.partners.filter(
+        (partner) =>
+          partner &&
+          typeof partner.id === "string" &&
+          typeof partner.name === "string" &&
+          typeof partner.slug === "string",
+      ),
+    }));
+};
+
 export const PartnerMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [categories, setCategories] = useState<GroupedCategory[]>([]);
@@ -44,8 +79,9 @@ export const PartnerMenu = () => {
   useEffect(() => {
     fetch(`${API}/partners/grouped`)
       .then((res) => res.json())
-      .then((data: GroupedCategory[]) => {
-        const sorted = data.sort((a, b) => b.partners.length - a.partners.length);
+      .then((payload: unknown) => {
+        const data = normalizeGroupedCategories(payload);
+        const sorted = [...data].sort((a, b) => b.partners.length - a.partners.length);
         setCategories(sorted);
         setTotalCount(data.reduce((sum, cat) => sum + cat.partners.length, 0));
       })

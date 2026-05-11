@@ -89,7 +89,7 @@ export const ProductCarousel = ({
 
       <div
         ref={scrollRef}
-        className="flex gap-1.5 overflow-x-auto pb-4 scrollbar-hide scroll-smooth"
+        className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide scroll-smooth"
       >
         {products.map((product, idx) => (
           <ProductCarouselItem

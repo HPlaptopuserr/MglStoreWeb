@@ -19,7 +19,7 @@ export const ProductCarouselItem = ({ product, idx, onClick }: Props) => {
   return (
     <div
       onClick={onClick}
-      className="shrink-0 w-[calc(48%-3px)] sm:w-[calc(26.667%-4px)] md:w-[calc(20%-5px)] cursor-pointer"
+      className="w-[82%] shrink-0 cursor-pointer sm:w-[46%] lg:w-[31%] xl:w-[23.5%]"
     >
       <ProductCard
         image={mainImage}

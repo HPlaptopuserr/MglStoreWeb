@@ -3,13 +3,14 @@
 import React, { Suspense, useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
 import { ProductCard } from "@mgl/ui";
 import { API } from "@/lib/api";
 
 const PRODUCTS_PER_PAGE = 16;
 
-type SortKey = "newest" | "price_asc" | "price_desc" | "discount";
+type SortKey = "newest" | "price_asc" | "price_desc" | "discount" | "name_asc";
+type StockKey = "all" | "in_stock" | "low_stock" | "sold_out";
 
 interface ApiCategory {
   id: string;
@@ -26,7 +27,7 @@ interface ApiProduct {
   price: number;
   stock?: number;
   images: { id: string; url: string }[];
-  organization: { id: string; name: string } | null;
+  organization: { id: string; name: string; logoUrl?: string | null } | null;
   discounts: { percent: number }[];
   businessCategoryId: string | null;
   businessCategory: { id: string; name: string; slug?: string } | null;
@@ -35,9 +36,17 @@ interface ApiProduct {
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "newest", label: "Шинэ эхэнд" },
-  { key: "price_asc", label: "Үнэ: Бага → Их" },
-  { key: "price_desc", label: "Үнэ: Их → Бага" },
+  { key: "price_asc", label: "Үнэ: багаас их" },
+  { key: "price_desc", label: "Үнэ: ихээс бага" },
   { key: "discount", label: "Хямдралтай эхэнд" },
+  { key: "name_asc", label: "Нэрээр A-Z" },
+];
+
+const STOCK_OPTIONS: { key: StockKey; label: string; description: string }[] = [
+  { key: "all", label: "Бүх төлөв", description: "Нөөц харгалзахгүй" },
+  { key: "in_stock", label: "Нөөцтэй", description: "Зөвхөн авах боломжтой" },
+  { key: "low_stock", label: "Цөөн үлдсэн", description: "5 болон түүнээс бага" },
+  { key: "sold_out", label: "Дууссан", description: "Нөөцгүй бараа" },
 ];
 
 function buildProductsUrl(categoryId: string | null, search: string) {
@@ -81,6 +90,8 @@ function ProductsContent() {
   const [discountOnly, setDiscountOnly] = useState(false);
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
+  const [selectedOrganization, setSelectedOrganization] = useState("");
+  const [stockFilter, setStockFilter] = useState<StockKey>("all");
   const [searchQuery, setSearchQuery] = useState(searchParam);
   const [debouncedSearch, setDebouncedSearch] = useState(searchParam);
   const filterPanelRef = useRef<HTMLDivElement>(null);
@@ -189,6 +200,8 @@ function ProductsContent() {
     setDiscountOnly(false);
     setPriceMin("");
     setPriceMax("");
+    setSelectedOrganization("");
+    setStockFilter("all");
     setSearchQuery("");
     setDebouncedSearch("");
     setSortKey("newest");
@@ -200,9 +213,27 @@ function ProductsContent() {
     discountOnly,
     priceMin !== "",
     priceMax !== "",
+    selectedOrganization !== "",
+    stockFilter !== "all",
     searchQuery !== "",
     sortKey !== "newest",
   ].filter(Boolean).length;
+
+  const availableOrganizations = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; count: number }>();
+
+    for (const product of apiProducts) {
+      if (!product.organization) continue;
+      const current = byId.get(product.organization.id);
+      byId.set(product.organization.id, {
+        id: product.organization.id,
+        name: product.organization.name,
+        count: (current?.count ?? 0) + 1,
+      });
+    }
+
+    return [...byId.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [apiProducts]);
 
   // Apply filters + sort client-side
   const processedProducts = useMemo(() => {
@@ -230,6 +261,21 @@ function ProductsContent() {
       list = list.filter((p) => p.discounts.length > 0);
     }
 
+    if (selectedOrganization) {
+      list = list.filter((p) => p.organization?.id === selectedOrganization);
+    }
+
+    if (stockFilter === "in_stock") {
+      list = list.filter((p) => (p.stock ?? 0) > 0);
+    } else if (stockFilter === "low_stock") {
+      list = list.filter((p) => {
+        const stock = p.stock ?? 0;
+        return stock > 0 && stock <= 5;
+      });
+    } else if (stockFilter === "sold_out") {
+      list = list.filter((p) => (p.stock ?? 0) <= 0);
+    }
+
     // Price range
     const min = priceMin !== "" ? parseFloat(priceMin) : null;
     const max = priceMax !== "" ? parseFloat(priceMax) : null;
@@ -247,6 +293,9 @@ function ProductsContent() {
       case "discount":
         list.sort((a, b) => (b.discounts[0]?.percent ?? 0) - (a.discounts[0]?.percent ?? 0));
         break;
+      case "name_asc":
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        break;
       case "newest":
       default:
         list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -254,12 +303,13 @@ function ProductsContent() {
     }
 
     return list;
-  }, [apiProducts, searchQuery, discountOnly, priceMin, priceMax, sortKey]);
+  }, [apiProducts, searchQuery, discountOnly, selectedOrganization, stockFilter, priceMin, priceMax, sortKey]);
 
-  // Reset page on filter change
   const totalPages = Math.max(1, Math.ceil(processedProducts.length / PRODUCTS_PER_PAGE));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => { setCurrentPage(1); }, [processedProducts.length, discountOnly, priceMin, priceMax, sortKey]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [processedProducts.length, discountOnly, priceMin, priceMax, selectedOrganization, stockFilter, sortKey]);
 
   const displayProducts = processedProducts.slice(
     (currentPage - 1) * PRODUCTS_PER_PAGE,
@@ -272,6 +322,7 @@ function ProductsContent() {
   };
 
   const activeCategoryName = apiCategories.find((c) => c.id === activeCategory)?.name;
+  const activeOrganizationName = availableOrganizations.find((org) => org.id === selectedOrganization)?.name;
 
   // Price bounds for hints
   const prices = apiProducts.map((p) => p.price);
@@ -301,13 +352,11 @@ function ProductsContent() {
         </div>
 
         {/* Search bar */}
-        <div className="mb-6 relative max-w-md">
-          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-          </svg>
+        <div className="mb-6 relative max-w-xl">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Бараа хайх..."
+            placeholder="Бараа, SKU, дэлгүүр эсвэл ангилал хайх..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
             onKeyDown={(e) => {
@@ -325,9 +374,7 @@ function ProductsContent() {
               }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
+              <X className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -389,9 +436,7 @@ function ProductsContent() {
                   : "text-black border-black hover:bg-black hover:text-white"
               }`}
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path d="M4 6h16M7 12h10M10 18h4" />
-              </svg>
+              <SlidersHorizontal className="h-3.5 w-3.5" />
               Шүүлт & Эрэмбэ
               {activeFilterCount > 0 && (
                 <span className="ml-0.5 w-4 h-4 rounded-full bg-[#FFAD02] text-black text-[10px] font-black flex items-center justify-center">
@@ -402,7 +447,7 @@ function ProductsContent() {
 
             {/* Dropdown panel */}
             {filterPanelOpen && (
-              <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-200 shadow-xl z-50">
+              <div className="absolute right-0 top-full z-50 mt-2 max-h-[75vh] w-[min(92vw,28rem)] overflow-y-auto border border-gray-200 bg-white shadow-xl">
                 {/* Panel header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                   <span className="text-xs font-bold uppercase tracking-wider text-black">Шүүлт & Эрэмбэ</span>
@@ -435,6 +480,58 @@ function ProductsContent() {
                             </svg>
                           )}
                           <span className={sortKey === opt.key ? "" : "ml-[22px]"}>{opt.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-100" />
+
+                  <div>
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">Дэлгүүр</p>
+                    <select
+                      value={selectedOrganization}
+                      onChange={(e) => {
+                        setSelectedOrganization(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="w-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none transition-colors focus:border-black"
+                    >
+                      <option value="">Бүх дэлгүүр</option>
+                      {availableOrganizations.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.name} ({org.count})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">Нөөц</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {STOCK_OPTIONS.map((option) => (
+                        <button
+                          key={option.key}
+                          type="button"
+                          onClick={() => {
+                            setStockFilter(option.key);
+                            setCurrentPage(1);
+                          }}
+                          className={`min-h-16 border px-3 py-2 text-left transition-colors ${
+                            stockFilter === option.key
+                              ? "border-black bg-black text-white"
+                              : "border-gray-200 text-gray-700 hover:border-black"
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5 text-xs font-bold">
+                            {stockFilter === option.key && <Check className="h-3.5 w-3.5" />}
+                            {option.label}
+                          </span>
+                          <span className={`mt-1 block text-[11px] ${
+                            stockFilter === option.key ? "text-white/70" : "text-gray-400"
+                          }`}>
+                            {option.description}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -538,6 +635,18 @@ function ProductsContent() {
                 <button onClick={() => { setPriceMin(""); setPriceMax(""); }} className="ml-1 text-gray-400 hover:text-black">×</button>
               </span>
             )}
+            {selectedOrganization && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
+                {activeOrganizationName}
+                <button onClick={() => setSelectedOrganization("")} className="ml-1 text-gray-400 hover:text-black">×</button>
+              </span>
+            )}
+            {stockFilter !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
+                {STOCK_OPTIONS.find((option) => option.key === stockFilter)?.label}
+                <button onClick={() => setStockFilter("all")} className="ml-1 text-gray-400 hover:text-black">×</button>
+              </span>
+            )}
             {searchQuery && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
                 "{searchQuery}"
@@ -564,9 +673,9 @@ function ProductsContent() {
       {/* Product Grid */}
       <div className="container mx-auto px-4 lg:px-8 pb-12 mt-6">
         {productsLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="aspect-square bg-gray-100 animate-pulse" />
+              <div key={i} className="h-80 animate-pulse rounded-lg bg-gray-100" />
             ))}
           </div>
         ) : displayProducts.length === 0 ? (
@@ -575,7 +684,7 @@ function ProductsContent() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
             </svg>
             <p className="text-gray-400 text-sm font-medium">
-              {searchQuery || discountOnly || priceMin || priceMax
+              {searchQuery || discountOnly || priceMin || priceMax || selectedOrganization || stockFilter !== "all"
                 ? "Шүүлтэд тохирох бараа олдсонгүй"
                 : "Энэ ангилалд бараа байхгүй байна"}
             </p>
@@ -589,7 +698,7 @@ function ProductsContent() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {displayProducts.map((product) => {
               const discount = product.discounts?.[0]?.percent;
               const originalPrice = discount ? product.price : undefined;
