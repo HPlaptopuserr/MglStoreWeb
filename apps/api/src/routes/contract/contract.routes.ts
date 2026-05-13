@@ -355,6 +355,13 @@ router.post("/contracts/:id/qpay", async (req, res) => {
     const userPhone = memberData?.phone ? ` - ${memberData.phone}` : "";
     const title = headerData?.contractTitle || "MGL Store гэрээний төлбөр";
     
+    console.log(`[Contract QPay] Creating invoice for contract ${contract.id}:`, {
+      amount,
+      feePlan: contract.feePlan,
+      hasHeaderData: !!headerData,
+      hasMemberData: !!memberData,
+    });
+
     const invoice = await createQPayInvoice({
       orderId: contract.id,
       orderNumber: `MGL-${contract.id.slice(0, 8).toUpperCase()}`,
@@ -363,11 +370,17 @@ router.post("/contracts/:id/qpay", async (req, res) => {
       callbackConfig: { path: "/api/contracts/qpay/callback", query: { contractId: contract.id } },
     });
 
+    if (!invoice.invoice_id) {
+      console.error("[Contract QPay] Invalid invoice response - missing invoice_id:", invoice);
+      return res.status(500).json({ success: false, error: "QPay invoice ID үүсгэгдсэнгүй" });
+    }
+
     await prisma.contract.update({
       where: { id: contract.id },
       data: { qpayInvoiceId: invoice.invoice_id },
     });
 
+    console.log(`[Contract QPay] Invoice created successfully:`, invoice.invoice_id);
     return res.json({
       success: true,
       invoiceId: invoice.invoice_id,
@@ -377,8 +390,9 @@ router.post("/contracts/:id/qpay", async (req, res) => {
       amount,
     });
   } catch (error) {
-    console.error("contract qpay error", error);
-    return res.status(500).json({ success: false, error: "QPay invoice үүсгэхэд алдаа гарлаа" });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("contract qpay error:", errorMessage, error);
+    return res.status(500).json({ success: false, error: `QPay алдаа: ${errorMessage}` });
   }
 });
 

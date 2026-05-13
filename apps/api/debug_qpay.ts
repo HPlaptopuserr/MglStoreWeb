@@ -1,4 +1,3 @@
-import fetch from "node-fetch"; // or built-in fetch if Node >= 18
 import { config } from "dotenv";
 import * as path from "path";
 

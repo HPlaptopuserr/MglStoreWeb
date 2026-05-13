@@ -616,7 +616,7 @@ export default function ContractSignPage() {
         </div>
 
         {/* Fee plan selector (shown only when contract is paid) */}
-        {contractInfo?.isPaid && (
+{/*         {contractInfo?.isPaid && (
           <div className="no-print bg-white rounded-xl shadow-lg border border-neutral-200 p-5 mb-3">
             <div className="font-semibold text-neutral-800 mb-3">Хөрөнгө оруулалтын сонголт <span className="text-red-500">*</span></div>
             <div className="grid grid-cols-2 gap-3">
@@ -630,7 +630,7 @@ export default function ContractSignPage() {
             </div>
           </div>
         )}
-
+ */}
         {/* Action Bar */}
         <div className="no-print bg-white rounded-xl shadow-lg border border-neutral-200 p-6 flex flex-col md:flex-row items-center justify-between gap-6 sticky bottom-6 z-50">
           <label className="flex items-start gap-3 cursor-pointer group flex-1">

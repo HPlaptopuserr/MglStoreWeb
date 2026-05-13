@@ -71,6 +71,12 @@ async function fetchNewToken(
   const credentials = Buffer.from(`${username}:${password}`).toString("base64");
   const bodyPayload = terminalId ? JSON.stringify({ terminal_id: terminalId }) : undefined;
 
+  console.log(`[QPay] Fetching new token from ${baseUrl}/auth/token`, {
+    username,
+    hasPassword: !!password,
+    terminalId,
+  });
+
   const res = await fetch(`${baseUrl}/auth/token`, {
     method: "POST",
     headers: {
@@ -82,7 +88,11 @@ async function fetchNewToken(
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error("QPay auth failed:", res.status, errText);
+    console.error(`[QPay] Token fetch failed (${res.status}):`, errText, {
+      username,
+      baseUrl,
+      terminalId,
+    });
     throw new Error(`QPay auth failed: ${res.status} - ${errText}`);
   }
 
@@ -93,6 +103,7 @@ async function fetchNewToken(
     refresh_token: string;
   };
 
+  console.log(`[QPay] Token fetched successfully, expires in ${data.expires_in}s`);
   return {
     token: data.access_token,
     expiresAt: Date.now() + data.expires_in * 1000,
@@ -177,6 +188,10 @@ export async function createQPayInvoice(params: {
   const baseUrl = resolveBaseUrl(params.merchantContext);
   const { invoiceCode: defaultInvoiceCode, publicUrl } = env();
 
+  if (!publicUrl || publicUrl === "https://api.mglstore.mn") {
+    console.warn("[QPay] API_PUBLIC_URL may not be configured correctly:", publicUrl);
+  }
+
   const callbackPath = params.callbackConfig?.path || "/api/store/qpay/callback";
   const callbackQuery = new URLSearchParams({ orderId: params.orderId });
 
@@ -187,7 +202,7 @@ export async function createQPayInvoice(params: {
   }
 
   const callbackUrl = `${publicUrl}${callbackPath}?${callbackQuery.toString()}`;
-  console.log("[QPay] callbackUrl length:", callbackUrl.length, "url:", callbackUrl);
+  console.log("[QPay] callbackUrl:", callbackUrl, "length:", callbackUrl.length);
 
   // ── QuickQR branch ──────────────────────────────────────────
   // QuickQR uses merchant_id + bank_accounts instead of invoice_code
@@ -247,7 +262,23 @@ export async function createQPayInvoice(params: {
     (params.merchantContext?.invoiceCode || "").trim() || defaultInvoiceCode;
 
   if (!invoiceCode) {
-    throw new Error("QPay invoice code is not configured");
+    const { clientId } = env();
+    console.error("[QPay] Missing invoice code configuration", {
+      QPAY_INVOICE_CODE: process.env.QPAY_INVOICE_CODE,
+      clientId,
+      hasContext: !!params.merchantContext,
+      contextInvoiceCode: params.merchantContext?.invoiceCode,
+    });
+    throw new Error("QPay invoice code (QPAY_INVOICE_CODE) is not configured in environment variables");
+  }
+
+  const { clientId, clientSecret } = env();
+  if (!clientId || !clientSecret) {
+    console.error("[QPay] Missing credentials", {
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+    });
+    throw new Error("QPay credentials (QPAY_CLIENT_ID, QPAY_CLIENT_SECRET) are not configured");
   }
 
   const body = {
@@ -258,6 +289,14 @@ export async function createQPayInvoice(params: {
     amount: params.amount,
     callback_url: callbackUrl,
   };
+
+  console.log("[QPay] Sending invoice creation request", {
+    baseUrl,
+    invoiceCode,
+    orderId: params.orderId,
+    amount: params.amount,
+    callbackUrl,
+  });
 
   const res = await authorizedFetch(
     `${baseUrl}/invoice`,
@@ -271,11 +310,16 @@ export async function createQPayInvoice(params: {
 
   if (!res.ok) {
     const errBody = await res.text();
-    console.error("QPay create invoice failed:", res.status, errBody);
+    console.error("QPay create invoice failed:", res.status, errBody, {
+      baseUrl,
+      invoiceCode,
+      orderId: params.orderId,
+    });
     throw new Error(`QPay create invoice failed: ${res.status} - ${errBody}`);
   }
 
   const data = (await res.json()) as Record<string, unknown>;
+  console.log("[QPay] Invoice created successfully", { invoice_id: data.invoice_id });
   return {
     invoice_id: String(data.invoice_id || data.id || ""),
     qr_text: String(data.qr_text || ""),
