@@ -1828,6 +1828,7 @@ enum ContractStatus {
   SIGNED
   EXPIRED
   TAMPERED
+  REFUNDED
 }
 
 model Contract {
