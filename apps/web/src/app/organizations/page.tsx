@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API } from "@/lib/api";
 import { useBusinessCategories } from "@/hooks/useBusinessCategories";
+import { getLocalAreaFromText, isLocalAreaSlug } from "@mgl/ui";
 
 import { OrganizationsHero } from "@/components/organisms/organizations/OrganizationsHero";
 import { InvestorsSection } from "@/components/organisms/organizations/InvestorsSection";
 import { OrganizationCategoryFilter } from "@/components/organisms/organizations/OrganizationCategoryFilter";
+import { OrganizationLocationFilter } from "@/components/organisms/organizations/OrganizationLocationFilter";
 import { OrganizationsSectionHeader } from "@/components/organisms/organizations/OrganizationsSectionHeader";
 import { OrganizationsGrid } from "@/components/organisms/organizations/OrganizationsGrid";
 import { OrganizationsLoadingGrid } from "@/components/organisms/organizations/OrganizationsLoadingGrid";
@@ -22,6 +24,7 @@ interface ApiPartner {
   bannerUrl?: string;
   status: string;
   businessCategory?: string;
+  address?: string | null;
   type?: string;
   isInvestor?: boolean;
   investorTier?: "TOP" | "STRATEGIC" | "INVESTOR" | null;
@@ -54,6 +57,9 @@ export interface StoreItem {
   deliveryTime: string;
   products: string[];
   categorySlugs: string[];
+  address?: string | null;
+  localAreaSlug?: string;
+  localAreaLabel?: string;
   isInvestor?: boolean;
   investmentAmount?: number;
 }
@@ -74,6 +80,7 @@ function mapPartner(p: ApiPartner): StoreItem {
   const parsedSlugs = parseCategorySlugs(p.businessCategory);
   const fallbackType = p.type ? normalizeCategoryKey(p.type) : "business";
   const categorySlugs = parsedSlugs.length > 0 ? parsedSlugs : [fallbackType];
+  const localArea = getLocalAreaFromText(p.address);
   return {
     id: p.id,
     name: p.name,
@@ -86,6 +93,9 @@ function mapPartner(p: ApiPartner): StoreItem {
     rating: 5.0,
     deliveryTime: "N/A",
     products: [],
+    address: p.address,
+    localAreaSlug: localArea?.slug,
+    localAreaLabel: localArea?.label,
     isInvestor: p.isInvestor || false,
     investmentAmount: p.investmentAmount || 0,
   };
@@ -96,6 +106,7 @@ export default function OrganizationsPage() {
   const [investors, setInvestors] = useState<Investor[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
+  const [activeLocation, setActiveLocation] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
@@ -105,6 +116,20 @@ export default function OrganizationsPage() {
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const location = params.get("location");
+    const category = params.get("category");
+    const search = params.get("search") ?? params.get("q");
+
+    if (location && isLocalAreaSlug(location)) setActiveLocation(location);
+    if (category) setActiveFilter(category);
+    if (search) {
+      setSearchQuery(search);
+      setDebouncedSearch(search);
+    }
+  }, []);
 
   // Debounce search input
   useEffect(() => {
@@ -121,7 +146,7 @@ export default function OrganizationsPage() {
   // Reset page when filter changes
   useEffect(() => {
     setPage(1);
-  }, [activeFilter]);
+  }, [activeFilter, activeLocation]);
 
   const buildUrl = useCallback(
     (p: number) => {
@@ -132,10 +157,21 @@ export default function OrganizationsPage() {
       });
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (activeFilter !== "all") params.set("category", activeFilter);
+      if (activeLocation !== "all") params.set("location", activeLocation);
       return `${API}/partners?${params.toString()}`;
     },
-    [debouncedSearch, activeFilter],
+    [debouncedSearch, activeFilter, activeLocation],
   );
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (activeFilter !== "all") params.set("category", activeFilter);
+    if (activeLocation !== "all") params.set("location", activeLocation);
+    if (debouncedSearch) params.set("search", debouncedSearch);
+
+    const nextUrl = params.toString() ? `/organizations?${params.toString()}` : "/organizations";
+    window.history.replaceState(null, "", nextUrl);
+  }, [activeFilter, activeLocation, debouncedSearch]);
 
   // Initial / filter change fetch
   useEffect(() => {
@@ -220,6 +256,10 @@ export default function OrganizationsPage() {
           onChange={setActiveFilter}
         />
       )}
+      <OrganizationLocationFilter
+        activeLocation={activeLocation}
+        onChange={setActiveLocation}
+      />
 
       <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6">
         <OrganizationsSectionHeader resultCount={total} />

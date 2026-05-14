@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { Star, ShoppingBag, Clock, ChevronRight } from "lucide-react";
+import { Star, ShoppingBag, MapPin, ChevronRight } from "lucide-react";
 import { toCategoryMN } from "@/lib/constants";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 
@@ -17,6 +17,7 @@ interface StoreItem {
   rating: number;
   deliveryTime: string;
   products: string[];
+  localAreaLabel?: string;
   isInvestor?: boolean;
   investmentAmount?: number;
 }
@@ -94,8 +95,8 @@ export function OrganizationCard({ company }: OrganizationCardProps) {
         {/* Chips */}
         <div className="flex flex-wrap gap-1.5 mb-4">
           <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[11px] font-semibold text-slate-500">
-            <Clock size={11} className="text-slate-400" />
-            <span>{company.deliveryTime ?? "N/A"}</span>
+            <MapPin size={11} className="text-slate-400" />
+            <span>{company.localAreaLabel ?? "Монгол"}</span>
           </div>
           <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[11px] font-semibold text-slate-500">
             <ShoppingBag size={11} className="text-slate-400" />

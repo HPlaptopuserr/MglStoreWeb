@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { getServicePostCategories } from "@mgl/ui";
 
 export interface ServicePost {
   id: string;
@@ -25,6 +26,7 @@ interface ServiceCardProps {
 export function ServiceCard({ post }: ServiceCardProps) {
   const [imgError, setImgError] = useState(false);
   const thumb = !imgError && post.images[0]?.url ? post.images[0].url : null;
+  const categories = getServicePostCategories(post.tags);
 
   return (
     <article className="group relative flex h-full min-h-[285px] min-w-0 flex-col items-center overflow-visible bg-white px-5 pb-6 pt-[104px] text-center shadow-[0_18px_40px_rgba(15,23,42,0.26)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_26px_52px_rgba(15,23,42,0.32)]">
@@ -60,6 +62,19 @@ export function ServiceCard({ post }: ServiceCardProps) {
         <h3 className="line-clamp-2 min-h-[40px] max-w-full break-words text-base font-extrabold leading-tight text-slate-950">
           {post.title}
         </h3>
+
+        {categories.length > 0 && (
+          <div className="mt-3 flex max-w-full flex-wrap justify-center gap-1.5">
+            {categories.slice(0, 2).map((category) => (
+              <span
+                key={category}
+                className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-[#c94f00]"
+              >
+                {category}
+              </span>
+            ))}
+          </div>
+        )}
 
         <p className="mt-3 line-clamp-3 min-h-[58px] max-w-full break-words text-[13px] italic leading-relaxed text-slate-500 [overflow-wrap:anywhere]">
           {post.description || post.organization.name}

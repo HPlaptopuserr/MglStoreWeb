@@ -49,6 +49,36 @@ const categoryLabels: Record<string, string> = {
   other: "Бусад",
 };
 
+const partnerLocationAliases: Record<string, string[]> = {
+  ulaanbaatar: ["Улаанбаатар", "УБ", "UB", "Ulaanbaatar", "Ulan Bator"],
+  erdenet: ["Эрдэнэт", "Орхон", "Erdenet", "Orkhon"],
+  darkhan: ["Дархан", "Дархан-Уул", "Darkhan", "Darkhan-Uul"],
+  bulgan: ["Булган", "Bulgan"],
+  arkhangai: ["Архангай", "Arkhangai"],
+  "bayan-ulgii": ["Баян-Өлгий", "Баян Өлгий", "Bayan-Ulgii", "Bayan-Olgii"],
+  bayankhongor: ["Баянхонгор", "Bayankhongor"],
+  "govi-altai": ["Говь-Алтай", "Говь Алтай", "Govi-Altai"],
+  "govi-sumber": ["Говьсүмбэр", "Говьсумбэр", "Govisumber", "Govi-Sumber"],
+  dornogovi: ["Дорноговь", "Dornogovi"],
+  dornod: ["Дорнод", "Dornod"],
+  dundgovi: ["Дундговь", "Dundgovi"],
+  zavkhan: ["Завхан", "Zavkhan"],
+  uvurkhangai: ["Өвөрхангай", "Ovorhangai", "Uvurkhangai"],
+  umnugovi: ["Өмнөговь", "Omnogovi", "Umnugovi"],
+  sukhbaatar: ["Сүхбаатар", "Sukhbaatar"],
+  selenge: ["Сэлэнгэ", "Selenge"],
+  tuv: ["Төв аймаг", "Tuv", "Tov"],
+  uvs: ["Увс", "Uvs"],
+  khovd: ["Ховд", "Khovd"],
+  khuvsgul: ["Хөвсгөл", "Khuvsgul", "Huvsgul"],
+  khentii: ["Хэнтий", "Khentii", "Hentii"],
+};
+
+function getPartnerLocationAliases(value: string) {
+  const key = value.trim().toLowerCase();
+  return partnerLocationAliases[key] ?? (value.trim() ? [value.trim()] : []);
+}
+
 // 500m radius validation removed - branches can now be located at any distance
 const VENDOR_APP_URL =
   process.env.VENDOR_APP_URL || "https://vendor.mglstore.mn";
@@ -519,22 +549,54 @@ router.get("/partners", async (req, res) => {
     const search = String(req.query.search || "").trim();
     const statusFilter = String(req.query.status || "").trim();
     const category = String(req.query.category || "").trim();
+    const location = String(req.query.location || "").trim();
     const skip = (page - 1) * limit;
 
     const where: any = { deletedAt: null };
+    const andFilters: any[] = [];
 
     if (statusFilter) where.status = statusFilter;
-    if (category) where.businessCategory = { contains: category, mode: "insensitive" };
-    if (search) {
-      where.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { slug: { contains: search, mode: "insensitive" } },
-        { email: { contains: search, mode: "insensitive" } },
-        { taxId: { contains: search, mode: "insensitive" } },
-        { phone: { contains: search, mode: "insensitive" } },
-        { businessCategory: { contains: search, mode: "insensitive" } },
-      ];
+    if (category) andFilters.push({ businessCategory: { contains: category, mode: "insensitive" } });
+    if (location) {
+      const aliases = getPartnerLocationAliases(location);
+      if (aliases.length > 0) {
+        andFilters.push({
+          OR: aliases.flatMap((alias) => [
+            { address: { contains: alias, mode: "insensitive" } },
+            {
+              branches: {
+                some: {
+                  deletedAt: null,
+                  address: { contains: alias, mode: "insensitive" },
+                },
+              },
+            },
+          ]),
+        });
+      }
     }
+    if (search) {
+      andFilters.push({
+        OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { slug: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+          { taxId: { contains: search, mode: "insensitive" } },
+          { phone: { contains: search, mode: "insensitive" } },
+          { address: { contains: search, mode: "insensitive" } },
+          { businessCategory: { contains: search, mode: "insensitive" } },
+          {
+            branches: {
+              some: {
+                deletedAt: null,
+                address: { contains: search, mode: "insensitive" },
+              },
+            },
+          },
+        ],
+      });
+    }
+    if (andFilters.length > 0) where.AND = andFilters;
 
     const [total, partners] = await prisma.$transaction([
       prisma.organization.count({ where }),

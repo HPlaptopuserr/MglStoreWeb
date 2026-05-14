@@ -3,6 +3,12 @@
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
+import {
+  getServicePostCategories,
+  isServiceCategory,
+  SERVICE_CATEGORY_OPTIONS,
+  type ServiceCategory,
+} from "@mgl/ui";
 import { API } from "@/lib/api";
 import { ServiceCard } from "@/app/services/_components/ServiceCard";
 
@@ -44,11 +50,12 @@ function ServicesContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tagParam = searchParams.get("tag");
+  const currentCategory = isServiceCategory(tagParam) ? tagParam : null;
 
   const [posts, setPosts] = useState<ServicePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTag, setActiveTag] = useState<string | null>(tagParam);
+  const [activeTag, setActiveTag] = useState<ServiceCategory | null>(currentCategory);
   const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
@@ -67,17 +74,23 @@ function ServicesContent() {
   }, []);
 
   useEffect(() => {
-    setActiveTag(tagParam);
-  }, [tagParam]);
+    setActiveTag(currentCategory);
+  }, [currentCategory]);
 
-  // Collect all unique tags
-  const allTags = useMemo(() => {
-    const set = new Set<string>();
-    posts.forEach((p) => p.tags.forEach((t) => set.add(t)));
-    return Array.from(set).sort();
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    SERVICE_CATEGORY_OPTIONS.forEach((category) => counts.set(category, 0));
+
+    posts.forEach((post) => {
+      getServicePostCategories(post.tags).forEach((category) => {
+        counts.set(category, (counts.get(category) ?? 0) + 1);
+      });
+    });
+
+    return counts;
   }, [posts]);
 
-  const handleTagClick = (tag: string | null) => {
+  const handleTagClick = (tag: ServiceCategory | null) => {
     setActiveTag(tag);
     setShowMore(false);
     router.push(tag ? `/services?tag=${encodeURIComponent(tag)}` : "/services", { scroll: false });
@@ -88,15 +101,22 @@ function ServicesContent() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
-        (p) =>
-          p.title.toLowerCase().includes(q) ||
-          (p.description || "").toLowerCase().includes(q) ||
-          p.organization.name.toLowerCase().includes(q) ||
-          p.tags.some((t) => t.toLowerCase().includes(q)),
+        (p) => {
+          const categories = getServicePostCategories(p.tags);
+          return (
+            p.title.toLowerCase().includes(q) ||
+            (p.description || "").toLowerCase().includes(q) ||
+            p.organization.name.toLowerCase().includes(q) ||
+            categories.some((category) => category.toLowerCase().includes(q)) ||
+            p.tags.some((t) => t.toLowerCase().includes(q))
+          );
+        },
       );
     }
     if (activeTag) {
-      list = list.filter((p) => p.tags.includes(activeTag));
+      list = list.filter((p) =>
+        getServicePostCategories(p.tags).includes(activeTag),
+      );
     }
     return list;
   }, [posts, searchQuery, activeTag]);
@@ -150,9 +170,12 @@ function ServicesContent() {
           )}
         </div>
 
-        {/* Tag filter tabs */}
-        {allTags.length > 0 && (
-          <div className="flex-1 min-w-0 flex items-center gap-0 overflow-x-auto scrollbar-hide border-b border-gray-200 -mb-px mb-6">
+        {/* Category filter tabs */}
+        <div className="mb-6">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400">
+            Үйлчилгээний ангилал
+          </p>
+          <div className="flex-1 min-w-0 flex items-center gap-0 overflow-x-auto scrollbar-hide border-b border-gray-200 -mb-px">
             <button
               onClick={() => handleTagClick(null)}
               className={`relative px-4 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap transition-colors ${
@@ -162,7 +185,7 @@ function ServicesContent() {
               Бүгд
               {!activeTag && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFAD02]" />}
             </button>
-            {allTags.map((tag) => (
+            {SERVICE_CATEGORY_OPTIONS.map((tag) => (
               <button
                 key={tag}
                 onClick={() => handleTagClick(tag)}
@@ -171,11 +194,14 @@ function ServicesContent() {
                 }`}
               >
                 {tag}
+                <span className="ml-1 text-[10px] text-gray-300">
+                  {categoryCounts.get(tag) ?? 0}
+                </span>
                 {activeTag === tag && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFAD02]" />}
               </button>
             ))}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Grid */}

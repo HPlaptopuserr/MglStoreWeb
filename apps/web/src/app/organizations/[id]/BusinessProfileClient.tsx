@@ -28,6 +28,7 @@ import {
   Zap,
   CheckCircle2,
 } from "lucide-react";
+import { getServicePostCategories } from "@mgl/ui";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 import { ProductDetailOverlay } from "@/components/organisms/ProductDetailOverlay";
 import { ServiceDetailOverlay } from "@/app/services/_components/ServiceDetailOverlay";
@@ -327,6 +328,7 @@ function ServicesSection({ posts }: { posts: ServicePost[] }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {posts.map((post) => {
           const thumb = post.images?.[0]?.url;
+          const categories = getServicePostCategories(post.tags);
           return (
             <motion.button
               key={post.id}
@@ -367,9 +369,9 @@ function ServicesSection({ posts }: { posts: ServicePost[] }) {
                     {post.description}
                   </p>
                 )}
-                {post.tags.length > 0 && (
+                {categories.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {post.tags.slice(0, 3).map((tag) => (
+                    {categories.slice(0, 3).map((tag) => (
                       <span
                         key={tag}
                         className="inline-flex items-center gap-1 text-[10px] font-semibold bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full"

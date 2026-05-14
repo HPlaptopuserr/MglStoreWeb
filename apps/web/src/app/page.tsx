@@ -1,5 +1,6 @@
 import { HeroSection } from "@/components/organisms/home/HeroSection";
 import Categories from "@/components/organisms/home/CategoryRail";
+import { LocationRail } from "@/components/organisms/home/LocationRail";
 import { BrandTicker } from "@/components/organisms/home/BrandTicker";
 import { ProductGrid } from "@/components/organisms/home/grid/ProductGrid";
 import { ServiceGrid } from "@/app/services/_components/ServiceGrid";
@@ -22,6 +23,7 @@ export default function HomePage() {
       <BrandTicker />
       <FeaturedStoresSection />
       <Categories />
+      <LocationRail />
       <ProductGrid />
       <ServiceGrid />
         <InvestorSection />

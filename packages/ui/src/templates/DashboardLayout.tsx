@@ -42,7 +42,7 @@ export function DashboardLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans">
+    <div className="flex min-h-screen w-full overflow-x-hidden bg-slate-50 font-sans">
       {isAdmin && (
         <AdminSidebar
           {...sidebarProps}
@@ -64,7 +64,7 @@ export function DashboardLayout({
         />
       )}
 
-      <div className="flex min-h-screen flex-1 flex-col bg-slate-50">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-slate-50">
         {isVendor && (
           <VendorHeader
             userName={organizationName || userName}
@@ -72,7 +72,7 @@ export function DashboardLayout({
           />
         )}
         <main
-          className={`overflow-x-hidden ${
+          className={`min-w-0 overflow-x-hidden ${
             isAdmin
               ? "px-4 pt-6 pb-10 sm:px-10 sm:pt-8"
               : isVendorPosRoute
@@ -87,7 +87,7 @@ export function DashboardLayout({
                 : isVendorPosRoute
                   ? "max-w-[1480px]"
                   : "max-w-6xl"
-            } mx-auto`}
+            } mx-auto w-full min-w-0`}
           >
             {children}
           </div>

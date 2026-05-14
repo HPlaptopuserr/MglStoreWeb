@@ -4,3 +4,4 @@ export * from "./molecules";
 export * from "./organisms";
 export * from "./templates";
 export * from "./lib";
+export * from "./constants";

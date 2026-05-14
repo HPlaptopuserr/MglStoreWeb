@@ -16,6 +16,7 @@ import {
   Tag,
   X,
 } from "lucide-react";
+import { getServicePostCategories } from "@mgl/ui";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -84,7 +85,7 @@ export function ServiceDetailOverlay({ postId, onClose }: Props) {
 
   const images = post?.images ?? [];
   const activeImage = images[activeImg]?.url ?? images[0]?.url;
-  const tags = post?.tags ?? [];
+  const categories = getServicePostCategories(post?.tags ?? []);
   const viewCount = post?.viewCount ?? 0;
   const createdAtLabel = post?.createdAt
     ? new Date(post.createdAt).toLocaleDateString("mn-MN")
@@ -295,9 +296,9 @@ export function ServiceDetailOverlay({ postId, onClose }: Props) {
                     </span>
                   </div>
 
-                  {tags.length > 0 && (
+                  {categories.length > 0 && (
                     <div className="mt-4 flex flex-wrap gap-2">
-                      {tags.map((tag) => (
+                      {categories.map((tag) => (
                         <Link
                           key={tag}
                           href={`/services?tag=${encodeURIComponent(tag)}`}

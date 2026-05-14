@@ -3,6 +3,7 @@
 import React, { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Eye, Loader2, Megaphone, Phone, Send, Store, Tag } from "lucide-react";
+import { getServicePostCategories } from "@mgl/ui";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -69,6 +70,7 @@ export default function ServiceDetailPage({
 
   const images = post.images ?? [];
   const activeImage = images[activeImg]?.url ?? images[0]?.url;
+  const categories = getServicePostCategories(post.tags);
 
   const handleSendRequest = async () => {
     if (!post || requesting) return;
@@ -200,9 +202,9 @@ export default function ServiceDetailPage({
                 </span>
               </div>
 
-              {post.tags.length > 0 && (
+              {categories.length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {post.tags.map((tag) => (
+                  {categories.map((tag) => (
                     <Link
                       key={tag}
                       href={`/services?tag=${encodeURIComponent(tag)}`}

@@ -25,6 +25,7 @@ import {
   Mail,
   Phone,
 } from "lucide-react";
+import { SERVICE_CATEGORY_OPTIONS } from "@mgl/ui";
 import { API, authFetch } from "@/lib/api";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
@@ -70,7 +71,7 @@ type FormState = {
   title: string;
   description: string;
   priceText: string;
-  tags: string;
+  tags: string[];
   images: string[];
   isActive: boolean;
 };
@@ -79,7 +80,7 @@ const EMPTY_FORM: FormState = {
   title: "",
   description: "",
   priceText: "",
-  tags: "",
+  tags: [],
   images: [],
   isActive: true,
 };
@@ -140,7 +141,7 @@ function ImageUploadGrid({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
+      <div className="mb-2 flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between">
         <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
           Зурагнууд ({images.length}/{MAX_IMAGES})
         </label>
@@ -149,7 +150,7 @@ function ImageUploadGrid({
         )}
       </div>
 
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
         {slots.map((_, idx) => {
           const img = images[idx];
           const isFirst = idx === 0;
@@ -289,7 +290,7 @@ export default function ServicePostsPage() {
       title: p.title,
       description: p.description || "",
       priceText: p.priceText || "",
-      tags: p.tags.join(", "),
+      tags: p.tags,
       images: p.images.map((img) => img.url),
       isActive: p.isActive,
     });
@@ -302,6 +303,18 @@ export default function ServicePostsPage() {
     setFormOpen(false);
     setEditingId(null);
     setForm(EMPTY_FORM);
+  };
+
+  const toggleServiceCategory = (category: string) => {
+    setForm((current) => {
+      const selected = current.tags.includes(category);
+      return {
+        ...current,
+        tags: selected
+          ? current.tags.filter((tag) => tag !== category)
+          : [...current.tags, category],
+      };
+    });
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -317,17 +330,12 @@ export default function ServicePostsPage() {
       return;
     }
 
-    const parsedTags = form.tags
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-
     const payload = {
       organizationId: orgId,
       title: form.title.trim(),
       description: form.description.trim() || null,
       priceText: form.priceText.trim() || null,
-      tags: parsedTags,
+      tags: form.tags,
       images: form.images,
       isActive: form.isActive,
     };
@@ -453,7 +461,7 @@ export default function ServicePostsPage() {
       {/* Toast */}
       {toast && (
         <div
-          className={`fixed top-5 right-5 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-semibold text-white transition-all ${
+          className={`fixed left-4 right-4 top-4 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-semibold text-white transition-all sm:left-auto sm:right-5 ${
             toast.type === "success" ? "bg-amber-500" : "bg-red-500"
           }`}
         >
@@ -463,16 +471,16 @@ export default function ServicePostsPage() {
       )}
 
       {/* Header */}
-      <div className="bg-white border-b border-slate-100 px-8 py-6 flex items-center gap-4">
+      <div className="flex flex-col gap-4 border-b border-slate-100 bg-white px-4 py-4 sm:flex-row sm:items-center sm:px-6 sm:py-6 lg:px-8">
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-slate-900">Үйлчилгээний постууд</h1>
+          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Үйлчилгээний постууд</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             Байгууллагынхаа үзүүлэх үйлчилгээнүүдийг энд бүртгэж, харуулна
           </p>
         </div>
         <button
           onClick={openAdd}
-          className="flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white text-sm font-bold rounded-xl hover:bg-amber-700 transition-colors shadow-sm"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-amber-700 sm:w-auto"
         >
           <Plus size={16} />
           Шинэ пост нэмэх
@@ -480,7 +488,7 @@ export default function ServicePostsPage() {
       </div>
 
       {/* Stats bar */}
-      <div className="bg-white border-b border-slate-100 px-8 py-3 flex items-center gap-8">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-100 bg-white px-4 py-3 sm:px-6 lg:gap-x-8 lg:px-8">
         <div className="flex items-center gap-2">
           <Megaphone size={15} className="text-amber-500" />
           <span className="text-sm text-slate-600">
@@ -514,13 +522,13 @@ export default function ServicePostsPage() {
       </div>
 
       {/* Content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-visible lg:flex-row lg:overflow-hidden">
         {/* Left panel: list */}
         <div
-          className={`flex flex-col transition-all duration-300 ${selectedPost ? "w-[420px] border-r border-slate-200" : "flex-1"}`}
+          className={`flex flex-col transition-all duration-300 ${selectedPost ? "hidden lg:flex lg:w-[420px] lg:border-r lg:border-slate-200" : "flex-1"}`}
         >
           {/* Search bar */}
-          <div className="px-6 py-4 bg-white border-b border-slate-100">
+          <div className="border-b border-slate-100 bg-white px-4 py-4 sm:px-6">
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -542,7 +550,7 @@ export default function ServicePostsPage() {
           </div>
 
           {/* Post list */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-24 text-slate-400">
                 <Loader2 size={32} className="animate-spin mb-3" />
@@ -593,8 +601,8 @@ export default function ServicePostsPage() {
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-800 leading-snug line-clamp-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <p className="min-w-0 break-words text-sm font-semibold leading-snug text-slate-800 line-clamp-2">
                           {post.title}
                         </p>
                         <span
@@ -643,7 +651,7 @@ export default function ServicePostsPage() {
                   </div>
 
                   {/* Actions row */}
-                  <div className="border-t border-slate-100 px-4 py-2 flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-2">
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); handleToggleActive(post); }}
@@ -687,9 +695,9 @@ export default function ServicePostsPage() {
 
         {/* Right panel: post detail preview */}
         {selectedPost && (
-          <div className="flex-1 overflow-y-auto bg-white p-8">
-            <div className="flex items-start justify-between mb-6">
-              <h2 className="text-xl font-bold text-slate-900 leading-snug max-w-lg">
+          <div className="flex-1 overflow-y-auto bg-white p-4 sm:p-6 lg:p-8">
+            <div className="mb-6 flex items-start justify-between gap-3">
+              <h2 className="min-w-0 max-w-lg break-words text-lg font-bold leading-snug text-slate-900 sm:text-xl">
                 {selectedPost.title}
               </h2>
               <button
@@ -707,7 +715,7 @@ export default function ServicePostsPage() {
                     key={img.id}
                     src={img.url}
                     alt={`Зураг ${i + 1}`}
-                    className={`rounded-2xl object-cover shrink-0 ${i === 0 ? "w-56 h-56" : "w-28 h-28"}`}
+                    className={`shrink-0 rounded-2xl object-cover ${i === 0 ? "h-40 w-40 sm:h-56 sm:w-56" : "h-24 w-24 sm:h-28 sm:w-28"}`}
                   />
                 ))}
               </div>
@@ -766,7 +774,7 @@ export default function ServicePostsPage() {
 
                     return (
                       <div key={request.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-900 line-clamp-1">{request.title}</p>
                             <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
@@ -774,7 +782,7 @@ export default function ServicePostsPage() {
                               {requesterName}
                             </p>
                           </div>
-                          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold ${REQUEST_STATUS_CLASS[request.status]}`}>
+                          <span className={`self-start rounded-full border px-2.5 py-1 text-xs font-bold sm:shrink-0 ${REQUEST_STATUS_CLASS[request.status]}`}>
                             {request.statusLabel || REQUEST_STATUS_LABELS[request.status]}
                           </span>
                         </div>
@@ -787,7 +795,7 @@ export default function ServicePostsPage() {
 
                         <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
                           {request.requestedBy?.email && (
-                            <span className="flex items-center gap-1">
+                            <span className="flex min-w-0 items-center gap-1 break-all">
                               <Mail size={12} />
                               {request.requestedBy.email}
                             </span>
@@ -854,17 +862,17 @@ export default function ServicePostsPage() {
               )}
             </div>
 
-            <div className="flex gap-3 pt-4 border-t border-slate-100">
+            <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row">
               <button
                 onClick={() => openEdit(selectedPost)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white text-sm font-bold rounded-xl hover:bg-amber-700 transition-colors"
+                className="flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-amber-700"
               >
                 <Pencil size={14} />
                 Засах
               </button>
               <button
                 onClick={() => handleDelete(selectedPost.id)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-white text-red-500 border border-red-200 text-sm font-bold rounded-xl hover:bg-red-50 transition-colors"
+                className="flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-5 py-2.5 text-sm font-bold text-red-500 transition-colors hover:bg-red-50"
               >
                 <Trash2 size={14} />
                 Устгах
@@ -883,10 +891,10 @@ export default function ServicePostsPage() {
           />
           <div
             ref={drawerRef}
-            className="fixed right-0 top-0 h-full w-full max-w-lg bg-white z-50 shadow-2xl flex flex-col overflow-hidden"
+            className="fixed inset-y-0 right-0 z-50 flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl sm:max-w-lg"
           >
             {/* Drawer header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 shrink-0">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-5 sm:px-6">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">
                   {editingId ? "Пост засах" : "Шинэ пост нэмэх"}
@@ -904,7 +912,7 @@ export default function ServicePostsPage() {
             </div>
 
             {/* Drawer form */}
-            <form className="flex-1 overflow-y-auto px-6 py-6 space-y-5" onSubmit={handleSave}>
+            <form className="flex-1 space-y-5 overflow-y-auto px-4 py-6 sm:px-6" onSubmit={handleSave}>
               {/* Title */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
@@ -958,23 +966,46 @@ export default function ServicePostsPage() {
                 </p>
               </div>
 
-              {/* Tags */}
+              {/* Service categories */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Түлхүүр үгс
+                  Үйлчилгээний төрөл
                 </label>
-                <div className="relative">
-                  <Tag size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={form.tags}
-                    onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
-                    placeholder="нягтлан, татвар, санхүү (таслалаар тусгаарлана)"
-                    className="w-full h-11 pl-9 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition-all"
-                  />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {SERVICE_CATEGORY_OPTIONS.map((category) => {
+                    const checked = form.tags.includes(category);
+
+                    return (
+                      <label
+                        key={category}
+                        className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                          checked
+                            ? "border-amber-300 bg-amber-50 text-amber-700"
+                            : "border-slate-200 bg-slate-50 text-slate-600 hover:border-amber-200 hover:bg-amber-50/60"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleServiceCategory(category)}
+                          className="sr-only"
+                        />
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                            checked
+                              ? "border-amber-500 bg-amber-500 text-white"
+                              : "border-slate-300 bg-white"
+                          }`}
+                        >
+                          {checked && <Check size={13} />}
+                        </span>
+                        <span className="min-w-0 break-words">{category}</span>
+                      </label>
+                    );
+                  })}
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Хамааралтай түлхүүр үгсийг таслалаар тусгаарлан оруулна уу
+                  Постод хамаарах нэг эсвэл хэд хэдэн үйлчилгээг сонгоно уу.
                 </p>
               </div>
 
@@ -1007,7 +1038,7 @@ export default function ServicePostsPage() {
             </form>
 
             {/* Drawer footer */}
-            <div className="px-6 py-4 border-t border-slate-100 flex items-center gap-3 shrink-0 bg-white">
+            <div className="flex shrink-0 flex-col gap-3 border-t border-slate-100 bg-white px-4 py-4 sm:flex-row sm:items-center sm:px-6">
               <button
                 type="button"
                 onClick={closeForm}
