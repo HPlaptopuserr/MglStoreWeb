@@ -1854,6 +1854,8 @@ model Contract {
   adminTitle       String?
   adminStamp       String?
   qpayInvoiceId    String?
+  systemQrInvoiceId String?
+  paymentSystem    String?        @default("QPAY")
   memberData       Json?
   memberSignature  String?
   headerData       Json?

@@ -1,9 +1,11 @@
 import React from "react";
 import { QrCode, Loader2, Smartphone, CheckCircle2 } from "lucide-react";
 
+import { QRCodeCanvas } from "qrcode.react";
+
 interface QPayData {
   invoiceId: string;
-  qrImage: string;
+  qrImage?: string;
   qrText: string;
   urls: any[];
   amount: number;
@@ -36,10 +38,14 @@ export function ContractPayment({
         <div className="p-6 flex flex-col items-center gap-5">
           {qpayData.qrImage ? (
             <img
-              src={`data:image/png;base64,${qpayData.qrImage}`}
+              src={qpayData.qrImage.startsWith('data:') ? qpayData.qrImage : `data:image/png;base64,${qpayData.qrImage}`}
               alt="QPay QR"
               className="w-52 h-52 rounded-xl border-2 border-neutral-200 shadow-sm"
             />
+          ) : qpayData.qrText ? (
+            <div className="p-2 bg-white rounded-xl border-2 border-neutral-200 shadow-sm">
+              <QRCodeCanvas value={qpayData.qrText} size={192} />
+            </div>
           ) : (
             <div className="w-52 h-52 bg-neutral-100 rounded-xl border-2 border-neutral-200 flex items-center justify-center text-neutral-400 text-sm">
               QR код ачааллаж байна...

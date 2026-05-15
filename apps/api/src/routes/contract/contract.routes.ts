@@ -2,6 +2,7 @@ import { Router, type Router as ExpressRouter } from "express";
 import { requireAuth } from "../../middleware/auth";
 import { prisma } from "@mgl/database";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
+import { createSystemQrInvoice, checkSystemQrPayment } from "../../services/systemqr";
 
 const router: ExpressRouter = Router();
 
@@ -427,6 +428,119 @@ router.get("/contracts/:id/qpay/check", async (req, res) => {
 // POST /api/contracts/qpay/callback  —  QPay webhook
 // ──────────────────────────────────────────────────────────────────────────────
 router.post("/contracts/qpay/callback", async (req, res) => {
+  try {
+    const { contractId } = req.query as { contractId: string };
+    if (contractId) {
+      await prisma.contract.update({
+        where: { id: contractId },
+        data: { status: "SIGNED", signedAt: new Date() },
+      });
+    }
+    return res.json({ success: true });
+  } catch {
+    return res.status(500).json({ success: false });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// POST /api/contracts/:id/systemqr  —  Create SystemQR invoice (public)
+// ──────────────────────────────────────────────────────────────────────────────
+router.post("/contracts/:id/systemqr", async (req, res) => {
+  try {
+    const contract = await prisma.contract.findUnique({ where: { id: req.params.id } });
+    if (!contract) {
+      return res.status(404).json({ success: false, error: "Гэрээ олдсонгүй" });
+    }
+
+    let amount = 1800000;
+    const headerData = contract.headerData as any;
+    if (headerData && Array.isArray(headerData.feePlans)) {
+      const plan = headerData.feePlans.find((p: any) => p.key === contract.feePlan);
+      if (plan && plan.price) {
+        amount = Number(plan.price);
+      }
+    }
+
+    const systemQrConfig = headerData?.systemQr;
+    if (!systemQrConfig || !systemQrConfig.enabled || !systemQrConfig.merchantCode) {
+      return res.status(400).json({ success: false, error: "Гэрээнд SystemQR тохируулагдаагүй байна" });
+    }
+
+    const referenceNumber = `MGL-${contract.id.slice(0, 8).toUpperCase()}`;
+
+    const invoice = await createSystemQrInvoice(
+      {
+        merchantCode: systemQrConfig.merchantCode,
+        amount,
+        referenceNumber,
+        webhook: `${process.env.API_URL || "https://mglstore.mn/api"}/contracts/systemqr/callback?contractId=${contract.id}`,
+      },
+      systemQrConfig.username,
+      systemQrConfig.password
+    );
+
+    await prisma.contract.update({
+      where: { id: contract.id },
+      data: { systemQrInvoiceId: invoice.invoiceId, paymentSystem: "SYSTEMQR" },
+    });
+
+    return res.json({
+      success: true,
+      invoiceId: invoice.invoiceId,
+      qrText: invoice.qrText,
+      qrImage: "", // SystemQR does not return a base64 image, frontend will generate
+      urls: invoice.urls,
+      amount,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("contract systemqr error:", errorMessage, error);
+    return res.status(500).json({ success: false, error: `SystemQR алдаа: ${errorMessage}` });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// GET /api/contracts/:id/systemqr/check  —  Check SystemQR payment status (public)
+// ──────────────────────────────────────────────────────────────────────────────
+router.get("/contracts/:id/systemqr/check", async (req, res) => {
+  try {
+    const contract = await prisma.contract.findUnique({ where: { id: req.params.id } });
+    if (!contract || !contract.systemQrInvoiceId) {
+      return res.status(404).json({ success: false, error: "Invoice олдсонгүй" });
+    }
+
+    const systemQrConfig = (contract.headerData as any)?.systemQr;
+    if (!systemQrConfig || !systemQrConfig.merchantCode) {
+      return res.status(400).json({ success: false, error: "SystemQR тохиргоо олдсонгүй" });
+    }
+
+    const result = await checkSystemQrPayment(
+      {
+        merchantCode: systemQrConfig.merchantCode,
+        invoiceNumber: contract.systemQrInvoiceId,
+      },
+      systemQrConfig.username,
+      systemQrConfig.password
+    );
+
+    if (result.paid && contract.status !== "SIGNED") {
+      await prisma.contract.update({
+        where: { id: contract.id },
+        data: { status: "SIGNED", signedAt: new Date() },
+      });
+    }
+
+    return res.json({ success: true, isPaid: result.paid, paidAmount: result.paid ? "төлөгдсөн" : 0 });
+  } catch (error) {
+    console.error("contract systemqr check error", error);
+    return res.status(500).json({ success: false, error: "Төлбөр шалгахад алдаа гарлаа" });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// POST /api/contracts/systemqr/callback  —  SystemQR webhook
+// ──────────────────────────────────────────────────────────────────────────────
+router.post("/contracts/systemqr/callback", async (req, res) => {
   try {
     const { contractId } = req.query as { contractId: string };
     if (contractId) {

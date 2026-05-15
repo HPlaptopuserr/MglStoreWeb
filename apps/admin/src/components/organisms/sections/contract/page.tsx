@@ -312,6 +312,12 @@ export function Contract() {
     feePlans: DEFAULT_FEE_PLANS as { key: string; label: string; sublabel: string; price: number }[],
     memberFields: DEFAULT_MEMBER_FIELDS,
     orgContact: { ...DEFAULT_ORG_CONTACT } as OrgContactInfo,
+    systemQr: {
+      enabled: false,
+      username: "",
+      password: "",
+      merchantCode: "",
+    },
   });
   const [contracts, setContracts] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, signed: 0, pending: 0 });
@@ -350,6 +356,7 @@ export function Contract() {
                     content: hd?.content || prev.content,
                     contentIsHtml: hd?.contentIsHtml ?? prev.contentIsHtml,
                     orgContact: hd?.orgContact || prev.orgContact,
+                    systemQr: hd?.systemQr || prev.systemQr,
                   }));
                 }
               })
@@ -823,6 +830,7 @@ function NewContractButton({ settings, setContracts, setStats }: {
             content: settings.content || null,
             contentIsHtml: settings.contentIsHtml || false,
             orgContact: settings.orgContact,
+            systemQr: settings.systemQr,
           },
         }),
       });
@@ -1080,6 +1088,7 @@ function ContractEditorTab({
             content: settings.content || null,
             contentIsHtml: settings.contentIsHtml || false,
             orgContact: settings.orgContact,
+            systemQr: settings.systemQr,
           },
         }),
       });
@@ -1469,6 +1478,97 @@ function ContractEditorTab({
                   ))}
                 </select>
               </div>
+            </div>
+          )}
+          
+          {/* SystemQR config */}
+          {(settings.hasDuration || settings.isPaid) && (
+            <div className="mt-4 p-4 bg-white border border-blue-200 rounded-xl shadow-sm">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-4 bg-blue-500 rounded-full" />
+                  <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+                    SystemQR төлбөрийн тохиргоо
+                  </span>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSettings({
+                      ...settings,
+                      systemQr: { ...settings.systemQr, enabled: !settings.systemQr?.enabled },
+                    })
+                  }
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    settings.systemQr?.enabled
+                      ? "bg-blue-100 text-blue-700"
+                      : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
+                  }`}
+                >
+                  {settings.systemQr?.enabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                  {settings.systemQr?.enabled ? "Идэвхтэй" : "Идэвхгүй"}
+                </button>
+              </div>
+
+              {settings.systemQr?.enabled && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-neutral-500 pl-1">
+                      Merchant Username
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.systemQr?.username || ""}
+                      onChange={e =>
+                        setSettings((prev: any) => ({
+                          ...prev,
+                          systemQr: { ...prev.systemQr, username: e.target.value },
+                        }))
+                      }
+                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-neutral-500 pl-1">
+                      Merchant Password
+                    </label>
+                    <input
+                      type="password"
+                      value={settings.systemQr?.password || ""}
+                      onChange={e =>
+                        setSettings((prev: any) => ({
+                          ...prev,
+                          systemQr: { ...prev.systemQr, password: e.target.value },
+                        }))
+                      }
+                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-neutral-500 pl-1">
+                      Sub-Merchant Code
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.systemQr?.merchantCode || ""}
+                      onChange={e =>
+                        setSettings((prev: any) => ({
+                          ...prev,
+                          systemQr: { ...prev.systemQr, merchantCode: e.target.value },
+                        }))
+                      }
+                      placeholder="e.g. TEST_1695617811883"
+                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <p className="text-xs text-neutral-400 mt-1">
+                      Хэрэв эдгээр талбаруудыг хоосон орхивол үндсэн SystemQR (env) тохиргоог ашиглана. Sub-Merchant Code-г заавал оруулна уу.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

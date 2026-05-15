@@ -11,6 +11,7 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "target": "es2021",
+    "lib": ["ES2021", "DOM"],
     "strict": true,
     "noEmit": false
   },
