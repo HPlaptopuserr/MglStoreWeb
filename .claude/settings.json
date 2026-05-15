@@ -10,7 +10,11 @@
       "Read(//home/guser/.ssh/**)",
       "Bash(pnpm --filter api exec tsc --noEmit)",
       "Bash(pnpm --filter vendor exec tsc --noEmit)",
-      "Bash(pnpm --filter admin exec tsc --noEmit)"
+      "Bash(pnpm --filter admin exec tsc --noEmit)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(flutter --version)",
+      "Bash(/snap/bin/flutter --version)",
+      "Bash(fvm flutter *)"
     ]
   }
 }
