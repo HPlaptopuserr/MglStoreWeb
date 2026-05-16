@@ -18,6 +18,10 @@ import {
 } from "./_shared";
 
 const router: ExpressRouter = Router();
+const BRIDGE_CARD_PROVIDERS = new Set(["ANDROID_PGW", "QPOSLANE", "GANTIGO", "IDPAY"]);
+const isBridgeCardProvider = (provider: string | null | undefined) =>
+  Boolean(provider && BRIDGE_CARD_PROVIDERS.has(provider));
+const isTerminalIdOptionalProvider = (provider: string | null | undefined) => provider === "ANDROID_PGW";
 
 router.get("/pos/register-config", async (req, res) => {
   const actor = await requirePosUser(req, res);
@@ -47,6 +51,13 @@ router.get("/pos/register-config", async (req, res) => {
         branchId: true,
         organizationId: true,
         branch: { select: { id: true, name: true } },
+        organization: {
+          select: {
+            minuAgentEnabled: true,
+            minuAgentUsername: true,
+            minuAgentBranchId: true,
+          },
+        },
       },
     });
 
@@ -67,7 +78,14 @@ router.get("/pos/register-config", async (req, res) => {
     });
     const effectiveQpayEnabled = register.qpayEnabled || (org?.qpayEnabled ?? false);
 
-    return res.json({ ...register, effectiveQpayEnabled });
+    const { organization, ...safeRegister } = register;
+    return res.json({
+      ...safeRegister,
+      effectiveQpayEnabled,
+      minuAgentEnabled: organization.minuAgentEnabled,
+      minuAgentUsername: organization.minuAgentUsername,
+      minuAgentBranchId: organization.minuAgentBranchId,
+    });
   } catch (error) {
     console.error("get pos register-config error", error);
     return res.status(500).json({ message: "POS config авахад алдаа гарлаа" });
@@ -267,9 +285,25 @@ router.get("/pos/registers/mine", async (req, res) => {
         isActive: true,
         activationStatus: true,
         branch: { select: { id: true, name: true } },
+        organization: {
+          select: {
+            minuAgentEnabled: true,
+            minuAgentUsername: true,
+            minuAgentPassword: true,
+            minuAgentBranchId: true,
+            minuAgentConnectedAt: true,
+          },
+        },
       },
     });
-    return res.json(registers);
+    return res.json(registers.map(({ organization, ...register }) => ({
+      ...register,
+      minuAgentEnabled: organization.minuAgentEnabled,
+      minuAgentUsername: organization.minuAgentUsername,
+      minuAgentBranchId: organization.minuAgentBranchId,
+      minuAgentConnectedAt: organization.minuAgentConnectedAt,
+      minuAgentPasswordSet: !!organization.minuAgentPassword,
+    })));
   } catch (error) {
     console.error("list own registers error", error);
     return res.status(500).json({ message: "POS жагсаалт авахад алдаа гарлаа" });
@@ -407,6 +441,9 @@ router.post("/admin/pos-registers", async (req, res) => {
     qpayEnabled,
     qpayMerchantId,
     qpayTerminalId,
+    minuAgentUsername,
+    minuAgentPassword,
+    minuAgentBranchId,
   } = req.body as {
     organizationId?: string;
     branchId?: string;
@@ -419,6 +456,9 @@ router.post("/admin/pos-registers", async (req, res) => {
     qpayEnabled?: boolean;
     qpayMerchantId?: string;
     qpayTerminalId?: string;
+    minuAgentUsername?: string;
+    minuAgentPassword?: string;
+    minuAgentBranchId?: string;
   };
 
   const normalizedName = normalizeRegisterName(name);
@@ -439,8 +479,16 @@ router.post("/admin/pos-registers", async (req, res) => {
     }
   }
 
-  if (cardEnabled === true && (!cardProviderType || !cardTerminalId)) {
-    return res.status(400).json({ message: "cardEnabled=true үед cardProviderType, cardTerminalId шаардлагатай" });
+  if (cardEnabled === true && !cardProviderType) {
+    return res.status(400).json({ message: "cardEnabled=true үед cardProviderType шаардлагатай" });
+  }
+
+  if (cardEnabled === true && !isTerminalIdOptionalProvider(cardProviderType) && !cardTerminalId) {
+    return res.status(400).json({ message: "cardEnabled=true үед cardTerminalId шаардлагатай" });
+  }
+
+  if (cardEnabled === true && isBridgeCardProvider(cardProviderType) && !terminalBridgeUrl) {
+    return res.status(400).json({ message: "Bridge provider үед terminalBridgeUrl шаардлагатай" });
   }
 
   if (cardEnabled === false && (cardProviderType || cardTerminalId || terminalBridgeUrl)) {
@@ -469,6 +517,31 @@ router.post("/admin/pos-registers", async (req, res) => {
       return res.status(400).json({ message: "Сонгосон салбар энэ байгууллагад хамаарахгүй байна" });
     }
 
+    const hasMinuCredentialInput = [minuAgentUsername, minuAgentPassword, minuAgentBranchId].some((value) =>
+      String(value || "").trim(),
+    );
+    let nextMinuUsername = "";
+    let nextMinuPassword = "";
+    let nextMinuBranchId = "";
+    if (cardEnabled === true && cardProviderType === "MINU_AGENT" && hasMinuCredentialInput) {
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: {
+          minuAgentUsername: true,
+          minuAgentPassword: true,
+          minuAgentBranchId: true,
+        },
+      });
+      nextMinuUsername = String(minuAgentUsername ?? org?.minuAgentUsername ?? "").trim();
+      nextMinuPassword = String(minuAgentPassword || org?.minuAgentPassword || "").trim();
+      nextMinuBranchId = String(minuAgentBranchId ?? org?.minuAgentBranchId ?? "").trim();
+      if (!nextMinuUsername || !nextMinuPassword || !nextMinuBranchId) {
+        return res.status(400).json({
+          message: "MINU_AGENT үед Minu username, password, branchId шаардлагатай",
+        });
+      }
+    }
+
     const register = await prisma.posRegister.create({
       data: {
         organizationId,
@@ -488,6 +561,19 @@ router.post("/admin/pos-registers", async (req, res) => {
       },
       include: { branch: { select: { id: true, name: true } } },
     });
+
+    if (cardEnabled === true && cardProviderType === "MINU_AGENT" && hasMinuCredentialInput) {
+      await prisma.organization.update({
+        where: { id: organizationId },
+        data: {
+          minuAgentEnabled: true,
+          minuAgentUsername: nextMinuUsername,
+          minuAgentPassword: nextMinuPassword,
+          minuAgentBranchId: nextMinuBranchId,
+          minuAgentConnectedAt: new Date(),
+        },
+      });
+    }
 
     void prisma.auditLog.create({
       data: {
@@ -534,6 +620,9 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     qpayEnabled,
     qpayMerchantId,
     qpayTerminalId,
+    minuAgentUsername,
+    minuAgentPassword,
+    minuAgentBranchId,
     isActive,
   } = req.body as {
     name?: string;
@@ -545,6 +634,9 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     qpayEnabled?: boolean;
     qpayMerchantId?: string;
     qpayTerminalId?: string;
+    minuAgentUsername?: string;
+    minuAgentPassword?: string;
+    minuAgentBranchId?: string;
     isActive?: boolean;
   };
 
@@ -583,8 +675,16 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
           ? terminalBridgeUrl || null
           : existing.terminalBridgeUrl;
 
-    if (nextCardEnabled && (!nextCardProviderType || !nextCardTerminalId)) {
-      return res.status(400).json({ message: "Card идэвхтэй үед provider болон terminal заавал байна" });
+    if (nextCardEnabled && !nextCardProviderType) {
+      return res.status(400).json({ message: "Card идэвхтэй үед provider заавал байна" });
+    }
+
+    if (nextCardEnabled && !isTerminalIdOptionalProvider(nextCardProviderType) && !nextCardTerminalId) {
+      return res.status(400).json({ message: "Card идэвхтэй үед terminal заавал байна" });
+    }
+
+    if (nextCardEnabled && isBridgeCardProvider(nextCardProviderType) && !nextTerminalBridgeUrl) {
+      return res.status(400).json({ message: "Bridge provider үед terminalBridgeUrl заавал байна" });
     }
 
     const nextQpayEnabled = qpayEnabled !== undefined ? Boolean(qpayEnabled) : existing.qpayEnabled;
@@ -603,6 +703,31 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
 
     if (nextQpayEnabled && (!nextQpayMerchantId || !nextQpayTerminalId)) {
       return res.status(400).json({ message: "QPay идэвхтэй үед merchant болон terminal заавал байна" });
+    }
+
+    const hasMinuCredentialInput = [minuAgentUsername, minuAgentPassword, minuAgentBranchId].some((value) =>
+      String(value || "").trim(),
+    );
+    let nextMinuUsername = "";
+    let nextMinuPassword = "";
+    let nextMinuBranchId = "";
+    if (nextCardEnabled && nextCardProviderType === "MINU_AGENT" && hasMinuCredentialInput) {
+      const org = await prisma.organization.findUnique({
+        where: { id: existing.organizationId },
+        select: {
+          minuAgentUsername: true,
+          minuAgentPassword: true,
+          minuAgentBranchId: true,
+        },
+      });
+      nextMinuUsername = String(minuAgentUsername ?? org?.minuAgentUsername ?? "").trim();
+      nextMinuPassword = String(minuAgentPassword || org?.minuAgentPassword || "").trim();
+      nextMinuBranchId = String(minuAgentBranchId ?? org?.minuAgentBranchId ?? "").trim();
+      if (!nextMinuUsername || !nextMinuPassword || !nextMinuBranchId) {
+        return res.status(400).json({
+          message: "MINU_AGENT үед Minu username, password, branchId шаардлагатай",
+        });
+      }
     }
 
     const updated = await prisma.posRegister.update({
@@ -626,6 +751,21 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
       },
       include: { branch: { select: { id: true, name: true } } },
     });
+
+    if (nextCardEnabled && nextCardProviderType === "MINU_AGENT" && hasMinuCredentialInput) {
+      await prisma.organization.update({
+        where: { id: existing.organizationId },
+        data: {
+          minuAgentEnabled: true,
+          minuAgentUsername: nextMinuUsername,
+          ...(String(minuAgentPassword || "").trim()
+            ? { minuAgentPassword: String(minuAgentPassword).trim() }
+            : {}),
+          minuAgentBranchId: nextMinuBranchId,
+          minuAgentConnectedAt: new Date(),
+        },
+      });
+    }
 
     void prisma.auditLog.create({
       data: {

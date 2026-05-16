@@ -10,12 +10,56 @@
  *
  * Supported BRIDGE_PROVIDER values:
  *   mock     — simulated approval (default, for dev/testing)
- *   (more providers can be added in src/providers/)
+ *   android-pgw - Android PGW serial terminal bridge
  */
 import express, { type Request, type Response } from "express";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import type { CardTerminalProvider, ChargeResult } from "./providers/provider.interface";
+import { AndroidPgwProvider } from "./providers/android-pgw.provider";
 import { MockTerminalProvider } from "./providers/mock.provider";
+
+function loadEnvFile(filePath: string) {
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, "utf8");
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex === -1) continue;
+
+    const key = line.slice(0, separatorIndex).trim();
+    let value = line.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    if (!(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
+
+function loadBridgeEnv() {
+  const envPaths = [
+    path.resolve(__dirname, "../../../.env"),
+    path.resolve(__dirname, "../.env"),
+    path.resolve(__dirname, "../bridge.env"),
+    path.resolve(process.cwd(), ".env"),
+    path.resolve(process.cwd(), "bridge.env"),
+  ];
+
+  for (const envPath of [...new Set(envPaths)]) {
+    loadEnvFile(envPath);
+  }
+}
+
+loadBridgeEnv();
 
 const PORT = parseInt(process.env.BRIDGE_PORT ?? "7420", 10);
 const PROVIDER = (process.env.BRIDGE_PROVIDER ?? "mock").toLowerCase();
@@ -35,6 +79,10 @@ const timingSafeEqualHex = (provided: string, expected: string): boolean => {
 
 function buildProvider(): CardTerminalProvider {
   switch (PROVIDER) {
+    case "android-pgw":
+    case "android_pgw":
+      console.log("[bridge] Using AndroidPgwProvider");
+      return new AndroidPgwProvider();
     case "mock":
     default:
       console.log("[bridge] Using MockTerminalProvider — replace with hardware SDK for production");
@@ -50,6 +98,7 @@ app.use((_req: Request, res: Response, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type,x-mgl-bridge-signature");
+  res.header("Access-Control-Allow-Private-Network", "true");
   if (_req.method === "OPTIONS") {
     res.status(204).end();
     return;
@@ -60,8 +109,15 @@ app.use((_req: Request, res: Response, next) => {
 app.use(express.json());
 
 /* ─── Health check ──────────────────────────────────────────────── */
-app.get("/health", (_req: Request, res: Response) => {
-  res.json({ ok: true, provider: PROVIDER, port: PORT, signingEnabled: Boolean(BRIDGE_SHARED_SECRET) });
+app.get("/health", async (_req: Request, res: Response) => {
+  const providerHealth = provider.health ? await provider.health() : { ok: true };
+  res.status(providerHealth.ok ? 200 : 503).json({
+    ...providerHealth,
+    ok: providerHealth.ok,
+    provider: PROVIDER,
+    port: PORT,
+    signingEnabled: Boolean(BRIDGE_SHARED_SECRET),
+  });
 });
 
 /* ─── Charge ────────────────────────────────────────────────────── */

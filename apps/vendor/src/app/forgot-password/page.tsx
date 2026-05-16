@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { ForgotPasswordFlow } from "@mgl/ui";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+  "https://mgl-api.onrender.com";
 
 export default function VendorForgotPasswordPage() {
   const router = useRouter();

@@ -36,6 +36,10 @@ type PosRegister = {
   qpayEnabled: boolean;
   qpayMerchantId: string | null;
   qpayTerminalId: string | null;
+  minuAgentEnabled?: boolean;
+  minuAgentUsername?: string | null;
+  minuAgentBranchId?: string | null;
+  minuAgentPasswordSet?: boolean;
   isActive: boolean;
   activationStatus: string;
   createdAt: string;
@@ -52,6 +56,9 @@ type FormState = {
   qpayEnabled: boolean;
   qpayMerchantId: string;
   qpayTerminalId: string;
+  minuAgentUsername: string;
+  minuAgentPassword: string;
+  minuAgentBranchId: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -65,9 +72,17 @@ const EMPTY_FORM: FormState = {
   qpayEnabled: false,
   qpayMerchantId: "",
   qpayTerminalId: "",
+  minuAgentUsername: "",
+  minuAgentPassword: "",
+  minuAgentBranchId: "",
 };
 
-const CARD_PROVIDERS = ["PUSH_ECR", "QPOSLANE", "GANTIGO", "IDPAY"];
+const CLOUD_CARD_PROVIDERS = ["MINU_AGENT", "PUSH_ECR"];
+const BRIDGE_CARD_PROVIDERS = ["ANDROID_PGW", "QPOSLANE", "GANTIGO", "IDPAY"];
+const CARD_PROVIDERS = [...CLOUD_CARD_PROVIDERS, ...BRIDGE_CARD_PROVIDERS];
+const isCloudCardProvider = (provider: string) => CLOUD_CARD_PROVIDERS.includes(provider);
+const isBridgeCardProvider = (provider: string) => BRIDGE_CARD_PROVIDERS.includes(provider);
+const isTerminalIdOptionalProvider = (provider: string) => provider === "ANDROID_PGW";
 const getPosVisibilityKey = (organizationId: string) =>
   `pos-enabled-${organizationId}`;
 
@@ -173,6 +188,9 @@ export function PosRegistersSection() {
       qpayEnabled: r.qpayEnabled,
       qpayMerchantId: r.qpayMerchantId ?? "",
       qpayTerminalId: r.qpayTerminalId ?? "",
+      minuAgentUsername: r.minuAgentUsername ?? "",
+      minuAgentPassword: "",
+      minuAgentBranchId: r.minuAgentBranchId ?? "",
     });
     setEditingId(r.id);
     setFormOpen(true);
@@ -325,8 +343,16 @@ export function PosRegistersSection() {
       setError("Нэр болон салбар сонгоно уу.");
       return;
     }
-    if (form.cardEnabled && (!form.cardProviderType || !form.cardTerminalId.trim())) {
-      setError("Карт идэвхтэй үед Провайдер болон Terminal ID заавал бөглөнө үү.");
+    if (form.cardEnabled && !form.cardProviderType) {
+      setError("Карт идэвхтэй үед Провайдер заавал сонгоно уу.");
+      return;
+    }
+    if (form.cardEnabled && !isTerminalIdOptionalProvider(form.cardProviderType) && !form.cardTerminalId.trim()) {
+      setError("Карт идэвхтэй үед Terminal ID / Serial заавал бөглөнө үү.");
+      return;
+    }
+    if (form.cardEnabled && isBridgeCardProvider(form.cardProviderType) && !form.terminalBridgeUrl.trim()) {
+      setError("Bridge provider сонгосон үед Bridge URL заавал бөглөнө үү.");
       return;
     }
     if (form.qpayEnabled && (!form.qpayMerchantId.trim() || !form.qpayTerminalId.trim())) {
@@ -353,7 +379,9 @@ export function PosRegistersSection() {
         cardEnabled: form.cardEnabled,
         cardProviderType: form.cardProviderType || null,
         cardTerminalId: form.cardTerminalId.trim() || null,
-        terminalBridgeUrl: form.cardProviderType === "PUSH_ECR" ? null : (form.terminalBridgeUrl.trim() || null),
+        terminalBridgeUrl: isCloudCardProvider(form.cardProviderType)
+          ? null
+          : (form.terminalBridgeUrl.trim() || null),
         qpayEnabled: form.qpayEnabled,
         qpayMerchantId: form.qpayMerchantId.trim() || null,
         qpayTerminalId: form.qpayTerminalId.trim() || null,
@@ -741,7 +769,7 @@ export function PosRegistersSection() {
                           value={form.cardProviderType}
                           onChange={(e) => {
                             set("cardProviderType", e.target.value);
-                            if (e.target.value === "PUSH_ECR") {
+                            if (isCloudCardProvider(e.target.value)) {
                               set("terminalBridgeUrl", "");
                               setBridgeCheckMessage(null);
                             }
@@ -756,15 +784,15 @@ export function PosRegistersSection() {
                         <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       </div>
                     </Field>
-                    <Field label="Terminal ID / Serial">
+                    <Field label={isTerminalIdOptionalProvider(form.cardProviderType) ? "Terminal ID / Serial (optional)" : "Terminal ID / Serial"}>
                       <input
                         value={form.cardTerminalId}
                         onChange={(e) => set("cardTerminalId", e.target.value)}
-                        placeholder="SN1234"
+                        placeholder={isTerminalIdOptionalProvider(form.cardProviderType) ? "Terminal-аас автоматаар ирнэ" : "SN1234"}
                         className={INPUT}
                       />
                     </Field>
-                    {form.cardProviderType !== "PUSH_ECR" && <Field label="Bridge URL" className="col-span-2">
+                    {!isCloudCardProvider(form.cardProviderType) && <Field label="Bridge URL" className="col-span-2">
                       <input
                         value={form.terminalBridgeUrl}
                         onChange={(e) => {

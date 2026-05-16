@@ -12,6 +12,15 @@ type MerchantStatus = {
   orgName: string;
 };
 
+type MinuAgentStatus = {
+  isConnected: boolean;
+  username: string | null;
+  branchId: string | null;
+  passwordSet: boolean;
+  connectedAt: string | null;
+  orgName: string;
+};
+
 type BankAccount = {
   account_bank_code: string;
   account_number: string;
@@ -52,10 +61,20 @@ const BANK_OPTIONS = [
   { code: "990000", name: "Мобифинанс" },
 ];
 
+type MerchantSettingsMode = "qpay" | "terminal";
+
 /* ── Component ──────────────────────────────────────────── */
-export function MerchantSettingsSection({ organizationId }: { organizationId?: string }) {
+export function MerchantSettingsSection({
+  organizationId,
+  mode = "qpay",
+}: {
+  organizationId?: string;
+  mode?: MerchantSettingsMode;
+}) {
   const [merchantStatus, setMerchantStatus] = useState<MerchantStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [minuStatus, setMinuStatus] = useState<MinuAgentStatus | null>(null);
+  const [isQpayLoading, setIsQpayLoading] = useState(true);
+  const [isMinuLoading, setIsMinuLoading] = useState(true);
   const [tab, setTab] = useState<"register" | "manual">("register");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -97,12 +116,22 @@ export function MerchantSettingsSection({ organizationId }: { organizationId?: s
   const [invoiceCode, setInvoiceCode] = useState("");
   const [recoveryRegNum, setRecoveryRegNum] = useState("");
   const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [minuUsername, setMinuUsername] = useState("");
+  const [minuPassword, setMinuPassword] = useState("");
+  const [minuBranchId, setMinuBranchId] = useState("");
 
   useEffect(() => {
+    if (!organizationId) return;
+
+    if (mode === "terminal") {
+      loadMinuStatus();
+      return;
+    }
+
     loadMerchantStatus();
     loadCities();
     loadBankAccounts();
-  }, []);
+  }, [mode, organizationId]);
 
   useEffect(() => {
     if (city) loadDistricts(city);
@@ -126,7 +155,7 @@ export function MerchantSettingsSection({ organizationId }: { organizationId?: s
   };
 
   const loadMerchantStatus = async () => {
-    setIsLoading(true);
+    setIsQpayLoading(true);
     try {
       const res = await authFetch(`${API}/vendor/merchant/status${orgQuery}`);
       if (res.ok) {
@@ -134,7 +163,24 @@ export function MerchantSettingsSection({ organizationId }: { organizationId?: s
         if (data.success) setMerchantStatus(data);
       }
     } finally {
-      setIsLoading(false);
+      setIsQpayLoading(false);
+    }
+  };
+
+  const loadMinuStatus = async () => {
+    setIsMinuLoading(true);
+    try {
+      const res = await authFetch(`${API}/vendor/merchant/minu/status${orgQuery}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setMinuStatus(data);
+          setMinuUsername(data.username || "");
+          setMinuBranchId(data.branchId || "");
+        }
+      }
+    } catch {} finally {
+      setIsMinuLoading(false);
     }
   };
 
@@ -329,6 +375,71 @@ export function MerchantSettingsSection({ organizationId }: { organizationId?: s
     }
   };
 
+  const handleMinuConnect = async () => {
+    if (!minuUsername.trim() || !minuBranchId.trim()) {
+      setMessage({ type: "error", text: "Minu username болон branchId шаардлагатай" });
+      return;
+    }
+    if (!minuPassword.trim() && !minuStatus?.passwordSet) {
+      setMessage({ type: "error", text: "Minu password шаардлагатай" });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await authFetch(`${API}/vendor/merchant/minu/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: minuUsername.trim(),
+          ...(minuPassword.trim() ? { password: minuPassword.trim() } : {}),
+          branchId: minuBranchId.trim(),
+          ...(organizationId ? { organizationId } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: "success", text: data.message });
+        setMinuPassword("");
+        await loadMinuStatus();
+      } else {
+        setMessage({ type: "error", text: data.message || "Minu Agent холбоход алдаа гарлаа" });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Серверийн алдаа" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleMinuDisconnect = async () => {
+    if (!confirm("Minu Agent merchant салгахыг зөвшөөрч байна уу?")) return;
+    setIsSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await authFetch(`${API}/vendor/merchant/minu/disconnect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(organizationId ? { organizationId } : {}),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: "success", text: data.message });
+        setMinuUsername("");
+        setMinuPassword("");
+        setMinuBranchId("");
+        await loadMinuStatus();
+      } else {
+        setMessage({ type: "error", text: data.message || "Minu Agent салгахад алдаа гарлаа" });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Серверийн алдаа" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   /* ── Bank account helpers ─────────────────────────────── */
   const addBankAccount = () => {
     setBankAccounts((prev) => [
@@ -352,12 +463,115 @@ export function MerchantSettingsSection({ organizationId }: { organizationId?: s
     );
   };
 
+  const renderMinuSection = () => (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-bold text-slate-900">Minu POS terminal merchant</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Картын terminal төлбөр тухайн дэлгүүрийн Minu merchant дээр бүртгэлтэй данс руу орно.
+          </p>
+        </div>
+        {minuStatus?.isConnected ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+            <Check className="h-3.5 w-3.5" />
+            Холбогдсон
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+            <AlertCircle className="h-3.5 w-3.5" />
+            Холбоогүй
+          </span>
+        )}
+      </div>
+
+      {minuStatus?.isConnected && (
+        <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          Username: <span className="font-mono font-bold">{minuStatus.username}</span>
+          <span className="mx-2 text-emerald-500">·</span>
+          Branch ID: <span className="font-mono font-bold">{minuStatus.branchId}</span>
+          {minuStatus.connectedAt && (
+            <span className="ml-2 text-xs text-emerald-600">
+              {new Date(minuStatus.connectedAt).toLocaleDateString("mn-MN")}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <Field label="Minu username">
+          <input
+            type="text"
+            value={minuUsername}
+            onChange={(e) => setMinuUsername(e.target.value)}
+            placeholder="Merchant username"
+            className={inputCls}
+          />
+        </Field>
+        <Field label="Minu branchId">
+          <input
+            type="text"
+            value={minuBranchId}
+            onChange={(e) => setMinuBranchId(e.target.value)}
+            placeholder="Branch ID"
+            className={inputCls}
+          />
+        </Field>
+        <Field label="Minu password">
+          <input
+            type="password"
+            value={minuPassword}
+            onChange={(e) => setMinuPassword(e.target.value)}
+            placeholder={minuStatus?.passwordSet ? "Хадгалагдсан. Солих бол шинээр бичнэ." : "Merchant password"}
+            className={inputCls}
+          />
+        </Field>
+        <div className="flex items-end gap-2">
+          <button
+            type="button"
+            onClick={handleMinuConnect}
+            disabled={isSubmitting || !minuUsername.trim() || !minuBranchId.trim()}
+            className="flex-1 rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
+          >
+            {minuStatus?.isConnected ? "Minu тохиргоо шинэчлэх" : "Minu холбох"}
+          </button>
+          {minuStatus?.isConnected && (
+            <button
+              type="button"
+              onClick={handleMinuDisconnect}
+              disabled={isSubmitting}
+              className="rounded-lg bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+            >
+              Салгах
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   /* ── Render ───────────────────────────────────────────── */
+  const isLoading = mode === "terminal" ? isMinuLoading : isQpayLoading;
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
         <span className="ml-2 text-sm text-slate-500">Ачаалж байна...</span>
+      </div>
+    );
+  }
+
+  if (mode === "terminal") {
+    return (
+      <div className="space-y-6">
+        {renderMinuSection()}
+
+        {message && (
+          <div className={`rounded-lg p-3 text-sm ${message.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
+            {message.text}
+          </div>
+        )}
       </div>
     );
   }

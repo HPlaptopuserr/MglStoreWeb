@@ -1,6 +1,8 @@
 // Re-export everything from the dedicated modules — no duplicate type definitions here.
 export {
   createCardAttempt,
+  chargeClientBridge,
+  submitClientBridgeResult,
   getCardAttemptStatus,
   cancelPushEcr,
   voidPushEcr,
@@ -10,6 +12,7 @@ export {
 export type {
   CardAttempt,
   CardAttemptStatus,
+  ClientBridgeChargeResult,
   PushEcrResult,
   SettlementResult,
 } from "./card-terminal";

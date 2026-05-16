@@ -22,9 +22,11 @@ import {
   Zap,
   ReceiptText,
 } from "lucide-react";
+import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+  "https://mgl-api.onrender.com";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Хүлээгдэж буй",
@@ -125,6 +127,7 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showPos, setShowPos] = useState(false);
 
   useEffect(() => {
     try {
@@ -136,6 +139,18 @@ export default function Dashboard() {
       }
     } catch {}
   }, []);
+
+  useEffect(() => {
+    if (!orgId) return;
+    fetch(`${API_BASE}/api/site-settings`, { cache: "no-store" })
+      .then(async (r) => {
+        const settings = r.ok
+          ? ((await r.json()) as Record<string, unknown>)
+          : {};
+        setShowPos(isFeatureEnabled(settings, POS_FEATURE_KEY, orgId));
+      })
+      .catch(() => setShowPos(false));
+  }, [orgId]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -190,13 +205,15 @@ export default function Dashboard() {
             <ReceiptText size={15} />
             Борлуулалт
           </Link>
-          <Link
-            href="/pos"
-            className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
-          >
-            <Barcode size={15} />
-            POS Demo
-          </Link>
+          {showPos && (
+            <Link
+              href="/pos"
+              className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
+            >
+              <Barcode size={15} />
+              POS касс
+            </Link>
+          )}
           {(data?.pendingPayments?.count ?? 0) > 0 && (
             <Link
               href="/shipments"

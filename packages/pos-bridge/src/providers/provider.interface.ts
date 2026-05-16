@@ -6,6 +6,11 @@
  */
 export interface CardTerminalProvider {
   /**
+   * Optional device-level health check.
+   */
+  health?(): Promise<ProviderHealth>;
+
+  /**
    * Attempt a card payment.
    * Resolves with the result once the terminal confirms or declines.
    */
@@ -23,4 +28,11 @@ export type ChargeResult = {
   status: "APPROVED" | "DECLINED" | "FAILED";
   transactionId?: string;
   message?: string;
+  [key: string]: unknown;
+};
+
+export type ProviderHealth = {
+  ok: boolean;
+  message?: string;
+  [key: string]: unknown;
 };

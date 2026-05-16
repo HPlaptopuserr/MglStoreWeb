@@ -1,0 +1,6 @@
+ALTER TABLE "Organization"
+  ADD COLUMN IF NOT EXISTS "minuAgentEnabled" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "minuAgentUsername" TEXT,
+  ADD COLUMN IF NOT EXISTS "minuAgentPassword" TEXT,
+  ADD COLUMN IF NOT EXISTS "minuAgentBranchId" TEXT,
+  ADD COLUMN IF NOT EXISTS "minuAgentConnectedAt" TIMESTAMP(3);

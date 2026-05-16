@@ -36,7 +36,7 @@ export function ReceiptPreview({ receipt }: Props) {
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
+    <section className="min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-900">Receipt Preview</h3>
         {cardLine && !voidResult?.succeed && (
@@ -57,7 +57,7 @@ export function ReceiptPreview({ receipt }: Props) {
         </div>
       )}
 
-      <pre className="mt-3 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+      <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
         {formatReceipt(receipt)}
       </pre>
     </section>

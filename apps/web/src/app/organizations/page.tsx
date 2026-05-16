@@ -112,9 +112,11 @@ export default function OrganizationsPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [filtersReady, setFiltersReady] = useState(false);
   const { categories: businessCategories } = useBusinessCategories();
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchSequenceRef = useRef(0);
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
   useEffect(() => {
@@ -129,6 +131,7 @@ export default function OrganizationsPage() {
       setSearchQuery(search);
       setDebouncedSearch(search);
     }
+    setFiltersReady(true);
   }, []);
 
   // Debounce search input
@@ -164,6 +167,7 @@ export default function OrganizationsPage() {
   );
 
   useEffect(() => {
+    if (!filtersReady) return;
     const params = new URLSearchParams();
     if (activeFilter !== "all") params.set("category", activeFilter);
     if (activeLocation !== "all") params.set("location", activeLocation);
@@ -171,10 +175,13 @@ export default function OrganizationsPage() {
 
     const nextUrl = params.toString() ? `/organizations?${params.toString()}` : "/organizations";
     window.history.replaceState(null, "", nextUrl);
-  }, [activeFilter, activeLocation, debouncedSearch]);
+  }, [filtersReady, activeFilter, activeLocation, debouncedSearch]);
 
   // Initial / filter change fetch
   useEffect(() => {
+    if (!filtersReady) return;
+    const requestId = fetchSequenceRef.current + 1;
+    fetchSequenceRef.current = requestId;
     setIsLoading(true);
     setStores([]);
 
@@ -187,6 +194,7 @@ export default function OrganizationsPage() {
 
         if (partnersRes.ok) {
           const raw = await partnersRes.json();
+          if (fetchSequenceRef.current !== requestId) return;
           const data: ApiPartner[] = Array.isArray(raw) ? raw : raw?.data || [];
           const pagination = raw?.pagination;
           setStores(data.map(mapPartner));
@@ -197,18 +205,21 @@ export default function OrganizationsPage() {
 
         if (investorsRes?.ok) {
           const invData = await investorsRes.json();
+          if (fetchSequenceRef.current !== requestId) return;
           if (Array.isArray(invData)) setInvestors(invData);
         }
       } catch (error) {
         console.error("Error fetching data:", error);
       } finally {
-        setIsLoading(false);
+        if (fetchSequenceRef.current === requestId) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchPartners();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildUrl]);
+  }, [filtersReady, buildUrl]);
 
   const handleLoadMore = async () => {
     const nextPage = page + 1;

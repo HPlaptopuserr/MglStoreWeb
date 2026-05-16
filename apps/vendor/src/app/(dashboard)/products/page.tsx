@@ -47,6 +47,7 @@ interface Product {
   id: string;
   name: string;
   sku: string | null;
+  barcode: string | null;
   description: string | null;
   price: number;
   stock: number;
@@ -60,6 +61,7 @@ interface Product {
 type FormState = {
   name: string;
   sku: string;
+  barcode: string;
   description: string;
   price: string;
   stock: string;
@@ -70,6 +72,7 @@ type FormState = {
 const EMPTY_FORM: FormState = {
   name: "",
   sku: "",
+  barcode: "",
   description: "",
   price: "",
   stock: "0",
@@ -460,6 +463,7 @@ export default function ProductsPage() {
     setForm({
       name: p.name,
       sku: p.sku || "",
+      barcode: p.barcode || "",
       description: p.description || "",
       price: String(p.price),
       stock: String(p.stock),
@@ -493,6 +497,7 @@ export default function ProductsPage() {
         organizationId: orgId,
         name: form.name.trim(),
         sku: form.sku.trim() || null,
+        barcode: form.barcode.trim() || null,
         description: form.description.trim() || null,
         price,
         stock: stockNum,
@@ -561,7 +566,8 @@ export default function ProductsPage() {
     const query = searchQuery.toLowerCase();
     const matchSearch =
       p.name.toLowerCase().includes(query) ||
-      (p.sku || "").toLowerCase().includes(query);
+      (p.sku || "").toLowerCase().includes(query) ||
+      (p.barcode || "").toLowerCase().includes(query);
 
     const matchStatus =
       statusFilter === "all" ||
@@ -774,6 +780,16 @@ export default function ProductsPage() {
                 </div>
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Barcode</label>
+                <input
+                  className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
+                  placeholder="Scanner-аар уншуулах barcode"
+                  value={form.barcode}
+                  onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))}
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -892,6 +908,9 @@ export default function ProductsPage() {
                 <h2 className="text-xl font-black text-slate-900">{selectedProduct.name}</h2>
                 {selectedProduct.sku && (
                   <p className="text-xs font-mono text-slate-400 mt-0.5">SKU: {selectedProduct.sku}</p>
+                )}
+                {selectedProduct.barcode && (
+                  <p className="text-xs font-mono text-slate-400 mt-0.5">Barcode: {selectedProduct.barcode}</p>
                 )}
               </div>
 

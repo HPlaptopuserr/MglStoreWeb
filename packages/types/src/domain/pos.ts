@@ -58,6 +58,10 @@ export interface RegisterConfig {
   effectiveQpayEnabled: boolean;
   qpayMerchantId: string | null;
   qpayTerminalId: string | null;
+  minuAgentEnabled?: boolean;
+  minuAgentUsername?: string | null;
+  minuAgentBranchId?: string | null;
+  minuAgentPasswordSet?: boolean;
   isActive: boolean;
   branchId: string;
   organizationId: string;
@@ -69,6 +73,7 @@ export interface RegisterConfig {
 export interface PosProduct {
   id: string;
   sku: string;
+  barcode?: string | null;
   name: string;
   price: number;
   stockQty: number;

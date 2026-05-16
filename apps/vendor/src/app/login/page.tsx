@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-const url = process.env.NEXT_PUBLIC_URL || "http://localhost:3000";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+  "https://mgl-api.onrender.com";
+const url = process.env.NEXT_PUBLIC_URL || "https://mglstore.mn";
 
 export default function VendorLoginPage() {
   const [identifier, setIdentifier] = useState("");

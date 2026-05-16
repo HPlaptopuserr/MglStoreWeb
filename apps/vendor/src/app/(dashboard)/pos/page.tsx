@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 function MobileBlock() {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center md:hidden">
@@ -48,6 +49,8 @@ import {
   type SalePaymentLine,
   formatReceipt,
   createCardAttempt,
+  chargeClientBridge,
+  submitClientBridgeResult,
   getCardAttemptStatus,
   cancelPushEcr,
   createQPayInvoice,
@@ -57,6 +60,7 @@ import {
   type RegisterConfig,
 } from "@/features/pos";
 import { API, authFetch } from "@/lib/api";
+import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
 
 type PosView = "register" | "checkout";
 
@@ -79,6 +83,18 @@ type CustomerDisplayPayload = {
 };
 
 const SCAN_GAP_MS = 80;
+const LONG_RUNNING_CARD_PROVIDERS = new Set(["PUSH_ECR", "MINU_AGENT", "ANDROID_PGW"]);
+const terminalNeedsWaitingOverlay = (provider?: string | null) =>
+  Boolean(provider && LONG_RUNNING_CARD_PROVIDERS.has(provider));
+const getEffectiveCardProvider = (register?: RegisterConfig | null) =>
+  register?.cardProviderType || (register?.minuAgentEnabled ? "MINU_AGENT" : null);
+
+const productMatchesCode = (product: { id: string; sku?: string | null; barcode?: string | null }, code: string) => {
+  const normalized = code.trim().toLowerCase();
+  return [product.sku, product.barcode, product.id].some(
+    (value) => String(value || "").trim().toLowerCase() === normalized,
+  );
+};
 
 const escapeHtml = (value: string): string =>
   value
@@ -119,7 +135,9 @@ const printReceipt = (receipt: PosReceipt) => {
 };
 
 export default function PosDemoPage() {
+  const router = useRouter();
   const [organizationId, setOrganizationId] = useState("");
+  const [posAccess, setPosAccess] = useState<"checking" | "enabled" | "disabled">("checking");
   const [scanBuffer, setScanBuffer] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [lastScannedCode, setLastScannedCode] = useState("");
@@ -155,6 +173,7 @@ export default function PosDemoPage() {
   const [shiftFetched, setShiftFetched] = useState(false);
 
   const scannerInputRef = useRef<HTMLInputElement>(null);
+  const paymentSectionRef = useRef<HTMLElement>(null);
   const customerWindowRef = useRef<Window | null>(null);
   const syncChannelRef = useRef<BroadcastChannel | null>(null);
   const keyBufferRef = useRef("");
@@ -163,9 +182,10 @@ export default function PosDemoPage() {
   const progressTickerRef = useRef<number | null>(null);
   const successOverlayTimerRef = useRef<number | null>(null);
 
-  const registerBranchId = registerConfig?.branchId ?? "";
+  const posEnabled = posAccess === "enabled";
+  const registerBranchId = posEnabled ? (registerConfig?.branchId ?? "") : "";
   const posProductsState = usePosProducts(registerBranchId);
-  const ownProductsState = useOwnProducts(registerBranchId ? "" : organizationId);
+  const ownProductsState = useOwnProducts(registerBranchId || !posEnabled ? "" : organizationId);
   const { products, loading, error } = registerBranchId ? posProductsState : ownProductsState;
   const { state, totals, addProduct, dispatch } = usePosCart();
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
@@ -223,27 +243,69 @@ export default function PosDemoPage() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem("vendor_user");
-      if (!raw) return;
+      if (!raw) {
+        setPosAccess("disabled");
+        return;
+      }
       const parsed = JSON.parse(raw);
       if (parsed.organizationId) {
         setOrganizationId(parsed.organizationId);
+      } else {
+        setPosAccess("disabled");
       }
-    } catch {}
+    } catch {
+      setPosAccess("disabled");
+    }
   }, []);
+
+  useEffect(() => {
+    if (!organizationId) return;
+    let cancelled = false;
+
+    setPosAccess("checking");
+
+    fetch(`${API}/site-settings`, { cache: "no-store" })
+      .then(async (r) => {
+        const settings = r.ok
+          ? ((await r.json()) as Record<string, unknown>)
+          : {};
+        if (cancelled) return;
+        setPosAccess(
+          isFeatureEnabled(settings, POS_FEATURE_KEY, organizationId)
+            ? "enabled"
+            : "disabled",
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setPosAccess("disabled");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
+
+  useEffect(() => {
+    if (posAccess === "disabled") {
+      router.replace("/dashboard");
+    }
+  }, [posAccess, router]);
 
   // Fetch current open shift on load
   useEffect(() => {
+    if (!posEnabled) return;
     if (shiftFetched) return;
     const token = localStorage.getItem("vendor_token");
     if (!token) return;
     setShiftFetched(true);
     void loadShift();
-  }, [shiftFetched, loadShift]);
+  }, [posEnabled, shiftFetched, loadShift]);
 
   const [orgRegisters, setOrgRegisters] = useState<RegisterConfig[]>([]);
   const [showRegisterPicker, setShowRegisterPicker] = useState(false);
 
   useEffect(() => {
+    if (!posEnabled) return;
     const registerId = localStorage.getItem("pos_register_id");
     if (registerId) {
       fetchRegisterConfig(registerId)
@@ -254,10 +316,11 @@ export default function PosDemoPage() {
           setRegisterConfig(null);
         });
     }
-  }, []);
+  }, [posEnabled]);
 
   // Auto-discover org registers when no register is loaded yet
   useEffect(() => {
+    if (!posEnabled) return;
     if (registerConfig) return; // already connected
     if (!organizationId) return;
     const token = localStorage.getItem("vendor_token");
@@ -280,7 +343,7 @@ export default function PosDemoPage() {
         }
       })
       .catch(() => {});
-  }, [organizationId, registerConfig]);
+  }, [organizationId, posEnabled, registerConfig]);
 
 
   // Load branches whenever setup panel opens
@@ -362,8 +425,9 @@ export default function PosDemoPage() {
   };
 
   useEffect(() => {
+    if (!posEnabled) return;
     scannerInputRef.current?.focus();
-  }, []);
+  }, [posEnabled]);
 
   useEffect(() => {
     return () => {
@@ -375,12 +439,13 @@ export default function PosDemoPage() {
   }, []);
 
   useEffect(() => {
+    if (!posEnabled) return;
     syncChannelRef.current = new BroadcastChannel(CUSTOMER_DISPLAY_CHANNEL);
     return () => {
       syncChannelRef.current?.close();
       syncChannelRef.current = null;
     };
-  }, []);
+  }, [posEnabled]);
 
   const lowerSearch = searchInput.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -388,7 +453,8 @@ export default function PosDemoPage() {
     return products.filter(
       (item) =>
         item.name.toLowerCase().includes(lowerSearch) ||
-        item.sku.toLowerCase().includes(lowerSearch),
+        item.sku.toLowerCase().includes(lowerSearch) ||
+        String(item.barcode || "").toLowerCase().includes(lowerSearch),
     );
   }, [products, lowerSearch]);
 
@@ -421,9 +487,7 @@ export default function PosDemoPage() {
     if (!lastScannedCode) return null;
     const normalized = lastScannedCode.trim().toLowerCase();
     return (
-      products.find((item) => item.sku.trim().toLowerCase() === normalized) ||
-      products.find((item) => item.id.trim().toLowerCase() === normalized) ||
-      null
+      products.find((item) => productMatchesCode(item, normalized)) || null
     );
   }, [products, lastScannedCode]);
 
@@ -432,13 +496,11 @@ export default function PosDemoPage() {
     if (!normalized) return;
 
     setLastScannedCode(normalized);
-    setSearchInput(normalized);
 
-    const found =
-      products.find((item) => item.sku.trim().toLowerCase() === normalized.toLowerCase()) ||
-      products.find((item) => item.id.trim().toLowerCase() === normalized.toLowerCase());
+    const found = products.find((item) => productMatchesCode(item, normalized));
 
     if (!found) {
+      setSearchInput(normalized);
       setScanMessage(`Код олдсонгүй: ${normalized}`);
       setScanStatus("not-found");
       return;
@@ -451,12 +513,25 @@ export default function PosDemoPage() {
       return;
     }
 
+    setSearchInput("");
+    setScanBuffer("");
     setScanMessage(`Амжилттай сагсанд нэмэгдлээ: ${found.name}`);
     setScanStatus("success");
+    scannerInputRef.current?.focus();
+    paymentSectionRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   };
 
   useEffect(() => {
+    if (!posEnabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTypingField =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        Boolean(target?.isContentEditable);
+
+      if (isTypingField) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.key === "Shift") return;
 
@@ -485,7 +560,7 @@ export default function PosDemoPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [products]);
+  }, [posEnabled, products]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -578,22 +653,74 @@ export default function PosDemoPage() {
       startProgressTicker("Карт уншуулна уу");
 
       try {
+        const freshRegisterConfig = registerConfig?.id
+          ? await fetchRegisterConfig(registerConfig.id)
+          : registerConfig;
+
+        if (!freshRegisterConfig) {
+          throw new Error("POS register тохиргоо олдсонгүй");
+        }
+
+        setRegisterConfig(freshRegisterConfig);
+
+        const effectiveCardProvider = getEffectiveCardProvider(freshRegisterConfig);
+        const terminalId = freshRegisterConfig.cardTerminalId ?? "terminal-1";
+        const useClientBridge =
+          effectiveCardProvider === "ANDROID_PGW" &&
+          Boolean(freshRegisterConfig.terminalBridgeUrl);
+        const shouldSendBridgeUrl =
+          Boolean(freshRegisterConfig.terminalBridgeUrl) &&
+          effectiveCardProvider !== "MINU_AGENT" &&
+          effectiveCardProvider !== "PUSH_ECR";
+
+        if (effectiveCardProvider === "ANDROID_PGW" && !freshRegisterConfig.terminalBridgeUrl) {
+          throw new Error(
+            "ANDROID_PGW Bridge URL тохируулаагүй байна. POS Register дээр http://127.0.0.1:7420 оруулна уу."
+          );
+        }
+
         const attempt = await createCardAttempt({
           amount: safeAmount,
-          terminalId: registerConfig?.cardTerminalId ?? "terminal-1",
-          bridgeUrl: registerConfig?.terminalBridgeUrl ?? undefined,
-          registerId: registerConfig?.id,
+          terminalId,
+          bridgeUrl: shouldSendBridgeUrl ? freshRegisterConfig.terminalBridgeUrl! : undefined,
+          registerId: freshRegisterConfig.id,
           organizationId,
+          clientBridge: useClientBridge,
         });
 
-        const isPushEcr = registerConfig?.cardProviderType === "PUSH_ECR";
-        const maxPolls = isPushEcr ? 150 : 8; // 150×800ms=120s for Push ECR
         let approvedAttempt = attempt;
-        for (let i = 0; i < maxPolls; i += 1) {
-          if (approvedAttempt.status === "APPROVED") break;
-          if (approvedAttempt.status === "DECLINED" || approvedAttempt.status === "FAILED") break;
-          await new Promise((resolve) => setTimeout(resolve, 800));
-          approvedAttempt = await getCardAttemptStatus(attempt.attemptId);
+        if (useClientBridge) {
+          try {
+            const bridgeResult = await chargeClientBridge({
+              bridgeUrl: freshRegisterConfig.terminalBridgeUrl!,
+              attemptId: attempt.attemptId,
+              amount: safeAmount,
+              terminalId,
+            });
+            approvedAttempt = await submitClientBridgeResult({
+              attemptId: attempt.attemptId,
+              result: bridgeResult,
+            });
+          } catch (bridgeError: any) {
+            const message = bridgeError?.message || "Card terminal холболтын алдаа гарлаа";
+            approvedAttempt = await submitClientBridgeResult({
+              attemptId: attempt.attemptId,
+              result: { status: "FAILED", message },
+            }).catch(() => ({
+              ...attempt,
+              status: "FAILED" as const,
+              message,
+            }));
+          }
+        } else {
+          const isLongRunningTerminal = terminalNeedsWaitingOverlay(effectiveCardProvider);
+          const maxPolls = isLongRunningTerminal ? 150 : 8; // 150x800ms=120s for terminal-side card flows
+          for (let i = 0; i < maxPolls; i += 1) {
+            if (approvedAttempt.status === "APPROVED") break;
+            if (approvedAttempt.status === "DECLINED" || approvedAttempt.status === "FAILED") break;
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            approvedAttempt = await getCardAttemptStatus(attempt.attemptId);
+          }
         }
 
         if (approvedAttempt.status !== "APPROVED") {
@@ -621,12 +748,12 @@ export default function PosDemoPage() {
         setScanStatus("success");
         setScanMessage("Card төлбөр амжилттай баталгаажлаа");
         showSuccessOverlay("Карт төлбөр амжилттай");
-      } catch {
+      } catch (error: any) {
         clearProgressTicker();
         setPaymentEntries((prev) => prev.filter((item) => item.id !== pendingId));
         setAutoCheckoutActive(false);
         setScanStatus("not-found");
-        setScanMessage("Card terminal холболтын алдаа гарлаа");
+        setScanMessage(error?.message || "Card terminal холболтын алдаа гарлаа");
       } finally {
         setIsCardProcessing(false);
       }
@@ -863,10 +990,23 @@ export default function PosDemoPage() {
     }, 1000);
   };
 
+  if (!posEnabled) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center bg-slate-50 px-6 text-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+          <p className="text-sm font-medium text-slate-500">
+            POS кассын эрх шалгаж байна...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <MobileBlock />
-    <div className="hidden md:block space-y-6 p-4 sm:p-6 bg-slate-50 min-h-screen">
+    <div className="hidden h-screen overflow-hidden bg-slate-100 p-3 md:flex md:flex-col md:gap-3">
       {/* ── Register setup banner ────────────────────────────────── */}
       {!registerConfig && !showSetupPanel && !showRegisterPicker && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
@@ -1057,7 +1197,7 @@ export default function PosDemoPage() {
                 )}
               </div>
               <a
-                href="/dashboard/profile?tab=merchant"
+                href="/dashboard/profile?tab=qpay"
                 className="text-xs font-semibold text-violet-600 hover:underline shrink-0"
               >
                 QPay тохиргоо →
@@ -1236,7 +1376,7 @@ export default function PosDemoPage() {
                     disabled={shiftLoading}
                     onClick={async () => {
                       try {
-                        const termId = registerConfig?.cardProviderType === "PUSH_ECR"
+                        const termId = getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
                           ? registerConfig.cardTerminalId
                           : undefined;
                         await closeShiftFn(
@@ -1296,32 +1436,39 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      {isCardProcessing && registerConfig?.cardProviderType === "PUSH_ECR" && (
+      {isCardProcessing && terminalNeedsWaitingOverlay(getEffectiveCardProvider(registerConfig)) && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
           <div className="rounded-3xl border border-blue-300/40 bg-white px-10 py-8 text-center shadow-2xl w-80">
             <Loader2 className="mx-auto h-14 w-14 animate-spin text-blue-500" />
             <p className="mt-4 text-lg font-bold text-slate-900">Картаар төлж байна</p>
             <p className="mt-1 text-sm text-slate-500">Терминал дээр карт уншуулна уу</p>
-            <button
-              type="button"
-              onClick={handleCancelPushEcr}
-              disabled={isCancellingCard}
-              className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-            >
-              {isCancellingCard ? <Loader2 size={14} className="animate-spin" /> : null}
-              Цуцлах
-            </button>
+            {getEffectiveCardProvider(registerConfig) === "PUSH_ECR" && (
+              <button
+                type="button"
+                onClick={handleCancelPushEcr}
+                disabled={isCancellingCard}
+                className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {isCancellingCard ? <Loader2 size={14} className="animate-spin" /> : null}
+                Цуцлах
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      <div className="flex items-center gap-2 px-1">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-500">MGLStore POS</p>
+          <h1 className="text-lg font-black tracking-tight text-slate-950">Кассын дэлгэц</h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setView("register")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
             view === "register"
-              ? "bg-violet-600 text-white shadow"
+              ? "bg-slate-950 text-white shadow"
               : "bg-white border border-slate-200 text-slate-600 hover:border-violet-300"
           }`}
         >
@@ -1331,7 +1478,7 @@ export default function PosDemoPage() {
         <button
           type="button"
           onClick={openCustomerDisplay}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
             displayOpened
               ? "bg-amber-500 text-black shadow"
               : "bg-white border border-slate-200 text-slate-600 hover:border-amber-300"
@@ -1340,28 +1487,33 @@ export default function PosDemoPage() {
           <Monitor size={14} />
           {displayOpened ? "Customer display нээлттэй" : "Customer display нээх"}
         </button>
+        </div>
       </div>
 
       <PosHeader
-        title="Barcode уншуулах"
+        title="Борлуулалтын касс"
         branchName={registerConfig?.branch.name ?? "Салбар"}
         registerName={registerConfig?.name ?? "POS"}
         cashierName="Vendor Cashier"
         shiftStatus="Нээлттэй"
-        terminalId={registerConfig?.cardProviderType === "PUSH_ECR" ? registerConfig.cardTerminalId : null}
+        terminalId={
+          terminalNeedsWaitingOverlay(getEffectiveCardProvider(registerConfig))
+            ? registerConfig?.cardTerminalId ?? null
+            : null
+        }
       />
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:col-span-7">
-          <div className="flex items-center gap-2">
-            <ScanLine className="text-violet-600" size={18} />
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="flex min-h-0 flex-col gap-3">
+          <div className="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
+            <ScanLine className="text-amber-500" size={20} />
             <div>
-              <h1 className="text-base font-bold text-slate-900">Barcode уншуулах</h1>
-              <p className="text-sm text-slate-500">Бараа хайх / уншуулах</p>
+              <h1 className="text-base font-black text-slate-950">Barcode уншуулах</h1>
+              <p className="text-sm text-slate-500">Бараа хайх, уншуулах, сагсанд нэмэх</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid shrink-0 grid-cols-3 gap-2">
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Сагс</p>
               <p className="text-lg font-black text-slate-900">{state.cart.length}</p>
@@ -1386,28 +1538,28 @@ export default function PosDemoPage() {
 
           <form
             onSubmit={handleManualSubmit}
-            className="grid grid-cols-1 gap-3 rounded-2xl border border-violet-100 bg-violet-50/60 p-3 md:grid-cols-[1fr_auto]"
+            className="grid shrink-0 grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[1fr_auto]"
           >
             <div className="relative">
-              <Barcode size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-violet-500" />
+              <Barcode size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 ref={scannerInputRef}
                 value={scanBuffer}
                 onChange={(e) => setScanBuffer(e.target.value)}
                 placeholder="Barcode уншуул эсвэл код оруул"
-                className="h-12 w-full rounded-xl border-2 border-violet-200 bg-white pl-12 pr-4 text-base font-medium shadow-sm outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                className="h-12 w-full rounded-xl border-2 border-slate-200 bg-slate-50 pl-12 pr-4 text-base font-black tracking-wide text-slate-950 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-4 focus:ring-amber-100"
               />
             </div>
             <button
               type="submit"
-              className="h-12 rounded-xl bg-violet-600 px-6 text-base font-semibold text-white shadow-sm transition hover:bg-violet-700"
+              className="h-12 rounded-xl bg-slate-950 px-7 text-sm font-black text-white shadow-sm transition hover:bg-slate-800"
             >
               Унших
             </button>
           </form>
 
           <div
-            className={`rounded-xl border px-4 py-2.5 flex items-center justify-between ${
+            className={`hidden rounded-xl border px-4 py-2.5 items-center justify-between ${
               scanStatus === "success"
                 ? "border-emerald-200 bg-emerald-50"
                 : scanStatus === "not-found"
@@ -1429,12 +1581,14 @@ export default function PosDemoPage() {
             )}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="hidden rounded-xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Scan result</p>
             {selectedByCode ? (
               <>
                 <h2 className="mt-1 text-base font-bold text-slate-900">{selectedByCode.name}</h2>
-                <p className="text-xs text-slate-600 mt-1">Barcode / SKU: {selectedByCode.sku}</p>
+                <p className="text-xs text-slate-600 mt-1">
+                  Barcode / SKU: {selectedByCode.barcode || selectedByCode.sku}
+                </p>
                 <div className="mt-3 grid grid-cols-2 gap-3">
                   <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
                     <p className="text-[11px] uppercase tracking-wider text-slate-500">Үнэ</p>
@@ -1478,27 +1632,27 @@ export default function PosDemoPage() {
             )}
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-            <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="mb-2 flex shrink-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className="text-sm font-bold text-slate-900">Барааны жагсаалт</h2>
+                <h2 className="text-sm font-black text-slate-950">Барааны жагсаалт</h2>
                 <p className="text-xs text-slate-500">
                   {filtered.length} бараа харагдаж байна
                 </p>
               </div>
-              <div className="relative md:w-80">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <div className="relative md:w-96">
+                <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Barcode, SKU, нэрээр хайх"
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold outline-none transition focus:border-amber-400 focus:bg-white focus:ring-4 focus:ring-amber-100"
                 />
               </div>
             </div>
 
             {loading ? (
-              <div className="flex h-44 items-center justify-center rounded-xl border border-slate-200 bg-white">
+              <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
                 <Loader2 className="animate-spin text-slate-400" size={20} />
               </div>
             ) : error ? (
@@ -1521,7 +1675,7 @@ export default function PosDemoPage() {
           </div>
         </section>
 
-        <section className="xl:col-span-5 space-y-4 xl:sticky xl:top-4 xl:self-start">
+        <section ref={paymentSectionRef} className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto_auto] gap-3 overflow-hidden">
           <PosCartPanel
             lines={state.cart}
             onRemove={(productId) => dispatch({ type: "remove-line", payload: productId })}

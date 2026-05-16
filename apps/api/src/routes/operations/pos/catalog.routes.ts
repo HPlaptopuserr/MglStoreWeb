@@ -56,6 +56,7 @@ router.get("/pos/products", async (req, res) => {
       select: {
         id: true,
         sku: true,
+        barcode: true,
         name: true,
         price: true,
         stock: true,
@@ -67,6 +68,7 @@ router.get("/pos/products", async (req, res) => {
     const response = products.map((p) => ({
       id: p.id,
       sku: p.sku || "",
+      barcode: p.barcode || null,
       name: p.name,
       price: Number(p.price),
       stockQty: p.stock,

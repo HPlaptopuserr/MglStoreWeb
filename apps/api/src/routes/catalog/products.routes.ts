@@ -450,6 +450,7 @@ router.post(
       name,
       description,
       sku,
+      barcode,
       price,
       costPrice,
       stock,
@@ -497,6 +498,7 @@ router.post(
     }
 
     const normalizedSku = sku ? String(sku).trim() : null;
+    const normalizedBarcode = barcode ? String(barcode).trim() : null;
     if (normalizedSku) {
       const existingSku = await prisma.product.findFirst({
         where: {
@@ -530,6 +532,7 @@ router.post(
         name: String(name).trim(),
         description: description ? String(description).trim() : null,
         sku: normalizedSku,
+        barcode: normalizedBarcode,
         price: priceNum,
         costPrice: costPriceNum,
         stock: stockNum,
@@ -578,6 +581,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       name,
       description,
       sku,
+      barcode,
       price,
       costPrice,
       stock,
@@ -596,6 +600,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (name !== undefined) data.name = String(name).trim();
     if (description !== undefined) data.description = description ? String(description).trim() : null;
     if (sku !== undefined) data.sku = sku ? String(sku).trim() : null;
+    if (barcode !== undefined) data.barcode = barcode ? String(barcode).trim() : null;
     if (price !== undefined) {
       const p = parseFloat(String(price));
       if (isNaN(p) || p < 0) return res.status(400).json({ message: "Үнэ буруу байна" });

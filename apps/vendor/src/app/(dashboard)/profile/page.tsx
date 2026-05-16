@@ -55,6 +55,8 @@ type ProfileFormData = {
   operatingYears: number;
 };
 
+type ProfileTab = "profile" | "qpay" | "terminal";
+
 export default function ProfilePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -90,8 +92,13 @@ export default function ProfilePage() {
   });
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"profile" | "merchant">(
-    searchParams?.get("tab") === "merchant" ? "merchant" : "profile"
+  const initialTab = searchParams?.get("tab");
+  const [activeTab, setActiveTab] = useState<ProfileTab>(
+    initialTab === "qpay" || initialTab === "merchant"
+      ? "qpay"
+      : initialTab === "terminal"
+        ? "terminal"
+        : "profile",
   );
 
   const uploadOrgImage = async (file: File): Promise<string | null> => {
@@ -176,9 +183,10 @@ export default function ProfilePage() {
 
         // Fetch this org directly by ID to avoid pagination issues
         if (orgId) {
-          const partnerRes = await authFetch(`${API}/partners/${orgId}`, {
-            cache: "no-store",
-          });
+          const partnerRes = await authFetch(
+            `${API}/partners/${orgId}?includeProducts=false`,
+            { cache: "no-store" },
+          );
           if (partnerRes.ok) {
             const found = await partnerRes.json();
             setPartner(found);
@@ -563,22 +571,41 @@ export default function ProfilePage() {
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab("merchant")}
-          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${activeTab === "merchant"
+          onClick={() => setActiveTab("qpay")}
+          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${activeTab === "qpay"
               ? "border-b-2 border-indigo-500 text-indigo-600"
               : "text-slate-500 hover:text-slate-700"
             }`}
         >
-          QPay Мерчант тохиргоо
+          QPay тохиргоо
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("terminal")}
+          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${activeTab === "terminal"
+              ? "border-b-2 border-indigo-500 text-indigo-600"
+              : "text-slate-500 hover:text-slate-700"
+            }`}
+        >
+          Terminal тохиргоо
         </button>
       </div>
 
-      {activeTab === "merchant" && (
+      {activeTab === "qpay" && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
           <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-6">
             QPay Multimerchant тохиргоо
           </h3>
-          <MerchantSettingsSection organizationId={partner?.id} />
+          <MerchantSettingsSection organizationId={partner?.id} mode="qpay" />
+        </div>
+      )}
+
+      {activeTab === "terminal" && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-6">
+            POS terminal тохиргоо
+          </h3>
+          <MerchantSettingsSection organizationId={partner?.id} mode="terminal" />
         </div>
       )}
 

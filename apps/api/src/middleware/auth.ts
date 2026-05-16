@@ -128,11 +128,15 @@ export function requireAnyPlatformPermission(...permissions: Permission[]) {
  * Attaches organizationId to auth payload. Use after requireAuth.
  */
 export async function resolveOrganization(userId: string): Promise<{ organizationId: string; orgRole: string } | null> {
-  const membership = await prisma.organizationMember.findFirst({
-    where: { userId, isActive: true, isPrimary: true },
-    select: { organizationId: true, role: true },
-  });
-  if (membership) return { organizationId: membership.organizationId, orgRole: membership.role };
+  try {
+    const membership = await prisma.organizationMember.findFirst({
+      where: { userId, isActive: true, isPrimary: true },
+      select: { organizationId: true, role: true },
+    });
+    if (membership) return { organizationId: membership.organizationId, orgRole: membership.role };
+  } catch (error) {
+    console.error("[resolveOrganization primary lookup error]", error);
+  }
 
   // Fallback: first active membership
   const fallback = await prisma.organizationMember.findFirst({

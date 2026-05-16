@@ -8,8 +8,27 @@ import {
 } from "../../services/vendor-merchant.service";
 import { getQPayCityList, getQPayDistrictList } from "../../services/qpay";
 import { prisma } from "@mgl/database";
+import { getMinuAgentToken } from "../../services/minu-pos-agent";
 
 const router: ExpressRouter = Router();
+
+function minuConnectErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+
+  if (/column.*minuAgent|minuAgent.*does not exist|unknown arg.*minuAgent/i.test(message)) {
+    return "Minu Agent database migration ороогүй байна. API database migrate хийсний дараа дахин холбоно уу.";
+  }
+
+  if (/login|credential|password|unauthorized|401|403|invalid/i.test(message)) {
+    return "Minu username эсвэл password буруу байна, эсвэл Agent эрх идэвхгүй байна.";
+  }
+
+  if (/fetch failed|timeout|ECONN|ENOTFOUND|Minu API HTTP/i.test(message)) {
+    return `Minu API холбогдохгүй байна: ${message}`;
+  }
+
+  return message || "Minu Agent холбоход алдаа гарлаа";
+}
 
 async function resolveOrganizationId(userId: string, explicitOrgId?: string): Promise<string | null> {
   if (explicitOrgId) {
@@ -48,6 +67,145 @@ router.get("/vendor/merchant/status", requireAuth, async (req, res) => {
       success: false,
       error: "Серверийн алдаа",
     });
+  }
+});
+
+/**
+ * GET /api/vendor/merchant/minu/status
+ * Get Minu Agent merchant connection status for current vendor.
+ */
+router.get("/vendor/merchant/minu/status", requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).userId as string;
+    const explicitOrgId = req.query.organizationId as string | undefined;
+    const organizationId = await resolveOrganizationId(userId, explicitOrgId);
+
+    if (!organizationId) {
+      return res.status(404).json({ success: false, error: "Байгууллага олдсонгүй" });
+    }
+
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        name: true,
+        minuAgentEnabled: true,
+        minuAgentUsername: true,
+        minuAgentPassword: true,
+        minuAgentBranchId: true,
+        minuAgentConnectedAt: true,
+      },
+    });
+
+    return res.json({
+      success: true,
+      isConnected: !!(org?.minuAgentEnabled && org.minuAgentUsername && org.minuAgentPassword && org.minuAgentBranchId),
+      username: org?.minuAgentUsername || null,
+      branchId: org?.minuAgentBranchId || null,
+      passwordSet: !!org?.minuAgentPassword,
+      connectedAt: org?.minuAgentConnectedAt?.toISOString() || null,
+      orgName: org?.name || "",
+    });
+  } catch (error) {
+    console.error("minu merchant status error", error);
+    return res.status(500).json({ success: false, error: "Серверийн алдаа" });
+  }
+});
+
+/**
+ * POST /api/vendor/merchant/minu/connect
+ * Store vendor's own Minu Agent merchant credentials.
+ */
+router.post("/vendor/merchant/minu/connect", requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).userId as string;
+    const { username, password, branchId, organizationId: explicitOrgId } = req.body as {
+      username?: string;
+      password?: string;
+      branchId?: string;
+      organizationId?: string;
+    };
+
+    const organizationId = await resolveOrganizationId(userId, explicitOrgId);
+    if (!organizationId) {
+      return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+    }
+
+    const existing = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { minuAgentPassword: true },
+    });
+
+    const nextUsername = String(username || "").trim();
+    const nextPassword = String(password || existing?.minuAgentPassword || "").trim();
+    const nextBranchId = String(branchId || "").trim();
+
+    if (!nextUsername || !nextPassword || !nextBranchId) {
+      return res.status(400).json({
+        success: false,
+        message: "Minu username, password, branchId шаардлагатай",
+      });
+    }
+
+    try {
+      await getMinuAgentToken({
+        username: nextUsername,
+        password: nextPassword,
+        branchId: nextBranchId,
+      });
+    } catch (error) {
+      console.error("minu agent login verify error", error);
+      return res.status(400).json({
+        success: false,
+        message: minuConnectErrorMessage(error),
+      });
+    }
+
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        minuAgentEnabled: true,
+        minuAgentUsername: nextUsername,
+        ...(String(password || "").trim() ? { minuAgentPassword: nextPassword } : {}),
+        minuAgentBranchId: nextBranchId,
+        minuAgentConnectedAt: new Date(),
+      },
+    });
+
+    return res.json({ success: true, message: "Minu Agent merchant амжилттай холбогдлоо" });
+  } catch (error) {
+    console.error("minu merchant connect error", error);
+    return res.status(500).json({ success: false, message: minuConnectErrorMessage(error) });
+  }
+});
+
+/**
+ * POST /api/vendor/merchant/minu/disconnect
+ */
+router.post("/vendor/merchant/minu/disconnect", requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).userId as string;
+    const explicitOrgId = req.body?.organizationId as string | undefined;
+    const organizationId = await resolveOrganizationId(userId, explicitOrgId);
+
+    if (!organizationId) {
+      return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+    }
+
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        minuAgentEnabled: false,
+        minuAgentUsername: null,
+        minuAgentPassword: null,
+        minuAgentBranchId: null,
+        minuAgentConnectedAt: null,
+      },
+    });
+
+    return res.json({ success: true, message: "Minu Agent merchant салгагдлаа" });
+  } catch (error) {
+    console.error("minu merchant disconnect error", error);
+    return res.status(500).json({ success: false, message: "Minu Agent салгахад алдаа гарлаа" });
   }
 });
 

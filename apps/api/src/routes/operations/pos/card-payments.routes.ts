@@ -7,17 +7,84 @@ import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
+  checkMinuAgentTransaction,
+  createMinuAgentInvoice,
+  type MinuAgentContext,
+} from "../../../services/minu-pos-agent";
+import {
   requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
   parseBridgeResultStatus, parseQPaySuccess, parseOptionalDate,
   makePushEcrReferral, pushEcrHeaders, pushEcrBaseUrl,
   allowPosSimulation, isProdLikeEnv, bridgeSharedSecret,
-  pushEcrDefaultTerminalId, MONEY_EPSILON,
+  bridgeChargeTimeoutMs, pushEcrDefaultTerminalId, MONEY_EPSILON,
   type AuthUser, type ApiError, type SaleLineInput, type SalePaymentLineInput,
   type CreateSaleBody, type PushEcrPurchaseResponse, toApiError, parseAuthClaims, runtimeEnv,
 } from "./_shared";
 
 const router: ExpressRouter = Router();
+const LOCAL_BRIDGE_CARD_PROVIDERS = new Set(["ANDROID_PGW", "QPOSLANE", "GANTIGO", "IDPAY"]);
+
+type CardAttemptResponseSource = {
+  id: string;
+  amount: unknown;
+  terminalId: string;
+  bridgeUrl: string | null;
+  status: PosPaymentStatus;
+  transactionId: string | null;
+  message: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+const firstString = (...values: unknown[]) => {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const toCardAttemptResponse = (attempt: CardAttemptResponseSource) => ({
+  attemptId: attempt.id,
+  amount: Number(attempt.amount),
+  terminalId: attempt.terminalId,
+  bridgeUrl: attempt.bridgeUrl,
+  status: attempt.status,
+  transactionId: attempt.transactionId || undefined,
+  message: attempt.message || undefined,
+  createdAt: attempt.createdAt.toISOString(),
+  updatedAt: attempt.updatedAt.toISOString(),
+});
+
+async function getMinuAgentContextForRegister(registerId: string | null): Promise<MinuAgentContext | null> {
+  if (!registerId) return null;
+
+  const register = await prisma.posRegister.findUnique({
+    where: { id: registerId },
+    select: {
+      organization: {
+        select: {
+          minuAgentEnabled: true,
+          minuAgentUsername: true,
+          minuAgentPassword: true,
+          minuAgentBranchId: true,
+        },
+      },
+    },
+  });
+
+  const org = register?.organization;
+  if (!org?.minuAgentEnabled || !org.minuAgentUsername || !org.minuAgentPassword || !org.minuAgentBranchId) {
+    return null;
+  }
+
+  return {
+    username: org.minuAgentUsername,
+    password: org.minuAgentPassword,
+    branchId: org.minuAgentBranchId,
+  };
+}
 
 router.post("/pos/payments/card/authorize", async (req, res) => {
   const actor = await requirePosUser(req, res);
@@ -28,20 +95,35 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
   const bridgeUrl: string | null = req.body?.bridgeUrl || null;
   const registerId: string | null = req.body?.registerId || null;
   const bodyOrganizationId: string | null = req.body?.organizationId || null;
+  const clientBridge = req.body?.clientBridge === true;
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ message: "CARD amount буруу байна" });
   }
 
-  // Detect Push ECR provider early so we can skip bridge validation
+  // Detect cloud terminal providers early so we can skip local bridge validation
+  let cardProviderType: string | null = null;
   let isPushEcr = false;
+  let isMinuAgent = false;
+  let isAndroidPgw = false;
   if (registerId) {
     const regForProvider = await prisma.posRegister.findUnique({
       where: { id: registerId },
-      select: { cardProviderType: true },
+      select: {
+        cardProviderType: true,
+        organization: { select: { minuAgentEnabled: true } },
+      },
     });
-    isPushEcr = regForProvider?.cardProviderType === "PUSH_ECR";
+    cardProviderType = regForProvider?.cardProviderType ?? null;
+    isPushEcr = cardProviderType === "PUSH_ECR";
+    isMinuAgent =
+      cardProviderType === "MINU_AGENT" ||
+      (!cardProviderType && regForProvider?.organization.minuAgentEnabled === true);
+    isAndroidPgw = cardProviderType === "ANDROID_PGW";
   }
+  const isLocalBridgeProvider = Boolean(
+    cardProviderType && LOCAL_BRIDGE_CARD_PROVIDERS.has(cardProviderType)
+  );
 
   if (bridgeUrl !== null) {
     try {
@@ -54,14 +136,28 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     }
   }
 
-  if (!bridgeUrl && !allowPosSimulation && !isPushEcr) {
+  if (!bridgeUrl && isLocalBridgeProvider) {
+    return res.status(400).json({
+      message: `${cardProviderType} terminalBridgeUrl тохируулаагүй байна. POS Register дээр Bridge URL оруулна уу.`,
+    });
+  }
+
+  if (!bridgeUrl && !allowPosSimulation && !isPushEcr && !isMinuAgent) {
     return res.status(400).json({
       message:
         "Card simulation идэвхгүй байна. terminalBridgeUrl тохируулж bridge-р authorize хийнэ үү.",
     });
   }
 
-  if (bridgeUrl && isProdLikeEnv && !bridgeSharedSecret) {
+  const usesLocalBridge = Boolean(bridgeUrl && !isPushEcr && !isMinuAgent);
+
+  if (clientBridge && !isAndroidPgw) {
+    return res.status(400).json({
+      message: "clientBridge горим зөвхөн ANDROID_PGW terminal дээр дэмжигдэнэ",
+    });
+  }
+
+  if (usesLocalBridge && isProdLikeEnv && !bridgeSharedSecret && !clientBridge) {
     return res.status(500).json({
       message: "POS bridge shared secret тохируулаагүй байна",
     });
@@ -70,6 +166,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
   try {
     let effectiveOrganizationId: string | null = null;
     let registerCardTerminalId: string | null = null;
+    let minuAgentContext: MinuAgentContext | null = null;
     if (registerId) {
       const register = await prisma.posRegister.findUnique({
         where: { id: registerId },
@@ -79,6 +176,14 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           activationStatus: true,
           isActive: true,
           cardTerminalId: true,
+          organization: {
+            select: {
+              minuAgentEnabled: true,
+              minuAgentUsername: true,
+              minuAgentPassword: true,
+              minuAgentBranchId: true,
+            },
+          },
         },
       });
 
@@ -94,6 +199,20 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
 
       registerCardTerminalId = register.cardTerminalId || null;
       effectiveOrganizationId = register.organizationId;
+
+      if (isMinuAgent) {
+        const org = register.organization;
+        if (!org.minuAgentEnabled || !org.minuAgentUsername || !org.minuAgentPassword || !org.minuAgentBranchId) {
+          return res.status(400).json({
+            message: "Энэ байгууллагын Minu Agent merchant тохиргоо бүрэн биш байна",
+          });
+        }
+        minuAgentContext = {
+          username: org.minuAgentUsername,
+          password: org.minuAgentPassword,
+          branchId: org.minuAgentBranchId,
+        };
+      }
     }
 
     if (!effectiveOrganizationId) {
@@ -113,7 +232,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
         organizationId: effectiveOrganizationId || null,
         initiatedById: actor?.id || null,
         terminalId,
-        bridgeUrl: bridgeUrl || null,
+        bridgeUrl: usesLocalBridge ? bridgeUrl : null,
         amount,
         status: PosPaymentStatus.PENDING,
       },
@@ -128,7 +247,18 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       },
     });
 
-    if (bridgeUrl) {
+    if (usesLocalBridge && clientBridge) {
+      await prisma.cardPaymentAttempt.update({
+        where: { id: attempt.id },
+        data: {
+          providerPayload: {
+            provider: "ANDROID_PGW",
+            mode: "client-bridge",
+            terminalId,
+          } as object,
+        },
+      });
+    } else if (usesLocalBridge) {
       // Forward to local bridge; bridge translates to terminal native protocol.
       void (async () => {
         try {
@@ -142,7 +272,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
                 : {}),
             },
             body: requestPayload,
-            signal: AbortSignal.timeout(30_000),
+            signal: AbortSignal.timeout(bridgeChargeTimeoutMs),
           });
           const responseText = await bridgeRes.text();
           if (!bridgeRes.ok) {
@@ -230,7 +360,55 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           });
         }
       })();
-    } else if (allowPosSimulation) {
+    } else if (isMinuAgent) {
+      const effectiveTerminalId = terminalId !== "terminal-1" ? terminalId : (registerCardTerminalId || terminalId);
+      const invoice = `MGL-${attempt.id.replace(/-/g, "").slice(0, 24).toUpperCase()}`;
+
+      void (async () => {
+        try {
+          if (!effectiveTerminalId || effectiveTerminalId === "terminal-1") {
+            throw new Error("Minu terminalId тохируулаагүй байна. POS Register дээр terminalId оруулна уу.");
+          }
+
+          const minuResult = await createMinuAgentInvoice({
+            context: minuAgentContext!,
+            terminalId: effectiveTerminalId,
+            amount,
+            invoice,
+            purchaseType: "card",
+          });
+
+          await prisma.cardPaymentAttempt.update({
+            where: { id: attempt.id },
+            data: {
+              terminalId: effectiveTerminalId,
+              message: minuResult.message || "Minu terminal руу төлбөр илгээгдлээ",
+              providerPayload: {
+                provider: "MINU_AGENT",
+                invoice,
+                terminalId: effectiveTerminalId,
+                branchId: minuAgentContext?.branchId || null,
+                createInvoice: minuResult.raw,
+              } as object,
+            },
+          });
+        } catch (err) {
+          await prisma.cardPaymentAttempt.update({
+            where: { id: attempt.id },
+            data: {
+              status: PosPaymentStatus.FAILED,
+              message: err instanceof Error ? err.message : "Minu Agent холболт амжилтгүй боллоо",
+              providerPayload: {
+                provider: "MINU_AGENT",
+                invoice,
+                terminalId: effectiveTerminalId,
+                branchId: minuAgentContext?.branchId || null,
+              } as object,
+            },
+          });
+        }
+      })();
+    } else if (allowPosSimulation && !isPushEcr && !isMinuAgent && !isLocalBridgeProvider) {
       setTimeout(() => {
         void prisma.cardPaymentAttempt.update({
           where: { id: attempt.id },
@@ -244,18 +422,67 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       }, 1800);
     }
 
-    return res.status(201).json({
-      attemptId: attempt.id,
-      amount: Number(attempt.amount),
-      terminalId: attempt.terminalId,
-      bridgeUrl: attempt.bridgeUrl,
-      status: attempt.status,
-      createdAt: attempt.createdAt.toISOString(),
-      updatedAt: attempt.updatedAt.toISOString(),
-    });
+    return res.status(201).json(toCardAttemptResponse(attempt));
   } catch (error) {
     console.error("card authorize error", error);
     return res.status(500).json({ message: "Card authorize хийхэд алдаа гарлаа" });
+  }
+});
+
+router.post("/pos/payments/card/client-bridge-result", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const attemptId = String(req.body?.attemptId || "").trim();
+  const result = req.body?.result;
+
+  if (!attemptId || !result || typeof result !== "object" || Array.isArray(result)) {
+    return res.status(400).json({ message: "attemptId болон terminal result шаардлагатай" });
+  }
+
+  try {
+    const attempt = await prisma.cardPaymentAttempt.findUnique({ where: { id: attemptId } });
+    if (!attempt) return res.status(404).json({ message: "Card attempt олдсонгүй" });
+
+    if (actor.role !== "ADMIN" && attempt.organizationId && !(await hasOrgMembership(actor.id, attempt.organizationId))) {
+      return res.status(403).json({ message: "Өөр байгууллагын card attempt шинэчлэх боломжгүй" });
+    }
+
+    if (attempt.status !== PosPaymentStatus.PENDING) {
+      return res.json(toCardAttemptResponse(attempt));
+    }
+
+    const bridgeData = result as Record<string, unknown>;
+    const statusText = firstString(bridgeData.status, bridgeData.Status).toUpperCase();
+    const newStatus = parseBridgeResultStatus(statusText);
+    const transactionId = firstString(
+      bridgeData.transactionId,
+      bridgeData.rrn,
+      bridgeData.RRN,
+      bridgeData.invoice,
+      bridgeData.traceNo,
+    );
+    const traceNo = firstString(bridgeData.traceno, bridgeData.traceNo, bridgeData.rrn, bridgeData.RRN);
+    const message = firstString(bridgeData.message, bridgeData.desc, bridgeData.description);
+
+    const updated = await prisma.cardPaymentAttempt.update({
+      where: { id: attempt.id },
+      data: {
+        status: newStatus,
+        transactionId: transactionId || null,
+        traceno: traceNo || null,
+        message: message || null,
+        providerPayload: {
+          ...bridgeData,
+          mode: "client-bridge",
+        } as object,
+      },
+    });
+
+    return res.json(toCardAttemptResponse(updated));
+  } catch (error) {
+    console.error("client bridge result error", error);
+    return res.status(500).json({ message: "Card terminal үр дүн хадгалахад алдаа гарлаа" });
   }
 });
 
@@ -423,16 +650,66 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
     if (actor.role !== "ADMIN" && attempt.organizationId && !(await hasOrgMembership(actor.id, attempt.organizationId))) {
       return res.status(403).json({ message: "Өөр байгууллагын card attempt харах боломжгүй" });
     }
+    let freshAttempt = attempt;
+    const payload = attempt.providerPayload as Record<string, unknown> | null;
+    if (
+      attempt.status === PosPaymentStatus.PENDING &&
+      payload?.provider === "MINU_AGENT" &&
+      typeof payload.invoice === "string"
+    ) {
+      try {
+        const minuAgentContext = await getMinuAgentContextForRegister(attempt.registerId);
+        if (!minuAgentContext) {
+          throw new Error("Minu Agent merchant тохиргоо олдсонгүй");
+        }
+        const minuStatus = await checkMinuAgentTransaction(minuAgentContext, payload.invoice);
+        if (minuStatus.approved) {
+          freshAttempt = await prisma.cardPaymentAttempt.update({
+            where: { id: attempt.id },
+            data: {
+              status: PosPaymentStatus.APPROVED,
+              transactionId: minuStatus.transactionId || null,
+              traceno: minuStatus.entity?.rrn || null,
+              message: minuStatus.message || "Minu terminal payment approved",
+              providerPayload: {
+                ...payload,
+                checkTxn: minuStatus.raw,
+              } as object,
+            },
+          });
+        } else if (!minuStatus.pending) {
+          freshAttempt = await prisma.cardPaymentAttempt.update({
+            where: { id: attempt.id },
+            data: {
+              status: PosPaymentStatus.DECLINED,
+              message: minuStatus.message || `Minu terminal status: ${minuStatus.status}`,
+              providerPayload: {
+                ...payload,
+                checkTxn: minuStatus.raw,
+              } as object,
+            },
+          });
+        }
+      } catch (err) {
+        freshAttempt = await prisma.cardPaymentAttempt.update({
+          where: { id: attempt.id },
+          data: {
+            message: err instanceof Error ? err.message : "Minu status шалгахад алдаа гарлаа",
+          },
+        });
+      }
+    }
+
     return res.json({
-      attemptId: attempt.id,
-      amount: Number(attempt.amount),
-      terminalId: attempt.terminalId,
-      bridgeUrl: attempt.bridgeUrl,
-      status: attempt.status,
-      transactionId: attempt.transactionId,
-      message: attempt.message,
-      createdAt: attempt.createdAt.toISOString(),
-      updatedAt: attempt.updatedAt.toISOString(),
+      attemptId: freshAttempt.id,
+      amount: Number(freshAttempt.amount),
+      terminalId: freshAttempt.terminalId,
+      bridgeUrl: freshAttempt.bridgeUrl,
+      status: freshAttempt.status,
+      transactionId: freshAttempt.transactionId,
+      message: freshAttempt.message,
+      createdAt: freshAttempt.createdAt.toISOString(),
+      updatedAt: freshAttempt.updatedAt.toISOString(),
     });
   } catch (error) {
     console.error("card status error", error);

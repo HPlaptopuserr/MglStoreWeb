@@ -4,6 +4,7 @@ import type { PosProduct } from "../types/pos.types";
 type RawProduct = {
   id: string;
   sku: string | null;
+  barcode?: string | null;
   name: string;
   price: number;
   stock: number;
@@ -47,6 +48,7 @@ export async function getOwnProducts(
     .map((item) => ({
       id: item.id,
       sku: item.sku || item.id,
+      barcode: item.barcode || null,
       name: item.name,
       price: Number(item.price) || 0,
       stockQty: Number(item.stock) || 0,

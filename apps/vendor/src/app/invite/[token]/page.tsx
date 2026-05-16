@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "http://localhost:4000";
+  "https://mgl-api.onrender.com";
 
 export default function VendorInvitePage() {
   const params = useParams();

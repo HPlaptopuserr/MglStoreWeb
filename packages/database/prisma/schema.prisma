@@ -322,6 +322,11 @@ model Organization {
   qpayBankAccounts             Json?
   qpayEnabled                  Boolean                 @default(false)
   qpayConnectedAt              DateTime?
+  minuAgentEnabled             Boolean                 @default(false)
+  minuAgentUsername            String?
+  minuAgentPassword            String?
+  minuAgentBranchId            String?
+  minuAgentConnectedAt         DateTime?
   subdomainEnabled             Boolean                 @default(false)
   planType                     String?
   planActivatedAt              DateTime?

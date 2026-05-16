@@ -3,8 +3,16 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@mgl/ui";
+import {
+  isFeatureEnabled,
+  POS_FEATURE_KEY,
+  SERVICE_POSTS_FEATURE_KEY,
+  SUPPLY_PRODUCTS_FEATURE_KEY,
+} from "@/lib/vendor-features";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+  "https://mgl-api.onrender.com";
 
 export default function VendorDashboardLayout({
   children,
@@ -13,7 +21,7 @@ export default function VendorDashboardLayout({
 }) {
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
-  const [showPos, setShowPos] = useState(true);
+  const [showPos, setShowPos] = useState(false);
   const [showSupplyProducts, setShowSupplyProducts] = useState(false);
   const [showServicePosts, setShowServicePosts] = useState(true);
   const [userData, setUserData] = useState({
@@ -61,27 +69,22 @@ export default function VendorDashboardLayout({
       });
     }
 
-    // Vendor UI should not call admin-only register list endpoint.
-    // Keep POS menu visibility based on org POS toggle; register readiness is handled inside POS page.
     if (organizationId) {
-      fetch(`${API_URL}/api/site-settings`)
+      fetch(`${API_URL}/api/site-settings`, { cache: "no-store" })
         .then(async (settingRes) => {
           const settings = settingRes.ok
-            ? ((await settingRes.json()) as Record<string, string>)
+            ? ((await settingRes.json()) as Record<string, unknown>)
             : {};
-          const raw = settings[`pos-enabled-${organizationId}`];
-          const posEnabled =
-            raw === undefined || raw === "1" || raw === "true" || raw === "on";
-          setShowPos(posEnabled);
-
-          const rawSupply = settings[`supply-products-enabled-${organizationId}`];
-          setShowSupplyProducts(rawSupply === "1" || rawSupply === "true" || rawSupply === "on");
-
-          const rawService = settings[`service-posts-enabled-${organizationId}`];
-          setShowServicePosts(rawService === undefined || rawService === "1" || rawService === "true" || rawService === "on");
+          setShowPos(isFeatureEnabled(settings, POS_FEATURE_KEY, organizationId));
+          setShowSupplyProducts(
+            isFeatureEnabled(settings, SUPPLY_PRODUCTS_FEATURE_KEY, organizationId),
+          );
+          setShowServicePosts(
+            isFeatureEnabled(settings, SERVICE_POSTS_FEATURE_KEY, organizationId, true),
+          );
         })
         .catch(() => {
-          setShowPos(true);
+          setShowPos(false);
           setShowSupplyProducts(false);
           setShowServicePosts(true);
         });

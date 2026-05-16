@@ -76,7 +76,9 @@ const partnerLocationAliases: Record<string, string[]> = {
 
 function getPartnerLocationAliases(value: string) {
   const key = value.trim().toLowerCase();
-  return partnerLocationAliases[key] ?? (value.trim() ? [value.trim()] : []);
+  if (!key) return [];
+  const aliases = partnerLocationAliases[key] ?? [];
+  return Array.from(new Set([value.trim(), key, key.replace(/[-_]/g, " "), ...aliases].filter(Boolean)));
 }
 
 // 500m radius validation removed - branches can now be located at any distance
@@ -567,7 +569,10 @@ router.get("/partners", async (req, res) => {
               branches: {
                 some: {
                   deletedAt: null,
-                  address: { contains: alias, mode: "insensitive" },
+                  OR: [
+                    { name: { contains: alias, mode: "insensitive" } },
+                    { address: { contains: alias, mode: "insensitive" } },
+                  ],
                 },
               },
             },
@@ -589,7 +594,10 @@ router.get("/partners", async (req, res) => {
             branches: {
               some: {
                 deletedAt: null,
-                address: { contains: search, mode: "insensitive" },
+                OR: [
+                  { name: { contains: search, mode: "insensitive" } },
+                  { address: { contains: search, mode: "insensitive" } },
+                ],
               },
             },
           },
@@ -702,20 +710,41 @@ router.get("/partners", async (req, res) => {
 router.get("/partners/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    const includeProducts = req.query.includeProducts !== "false";
     const partner = await prisma.organization.findFirst({
       where: {
         OR: [{ id }, { slug: id }],
         deletedAt: null,
       },
-      include: {
-        _count: {
-          select: {
-            members: true,
-            products: true,
-            branches: true,
-            orders: true,
-          },
-        },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        taxId: true,
+        type: true,
+        status: true,
+        isVerified: true,
+        businessCategory: true,
+        email: true,
+        phone: true,
+        logoUrl: true,
+        bannerUrl: true,
+        address: true,
+        description: true,
+        shortDescription: true,
+        openingHours: true,
+        deliveryText: true,
+        deliveryPrice: true,
+        rating: true,
+        reviewCount: true,
+        customerCount: true,
+        operatingYears: true,
+        createdAt: true,
+        subdomainEnabled: true,
+        planType: true,
+        planActivatedAt: true,
+        planExpiresAt: true,
+        trialUsed: true,
         investorProfile: {
           select: {
             id: true,
@@ -725,17 +754,40 @@ router.get("/partners/:id", async (req, res) => {
             publiclyVisible: true,
           },
         },
-        products: {
-          where: { isActive: true, deletedAt: null },
-          include: { images: true, category: true },
-          orderBy: { createdAt: "desc" },
-        },
+        ...(includeProducts
+          ? {
+              products: {
+                where: { isActive: true, deletedAt: null },
+                select: {
+                  id: true,
+                  name: true,
+                  price: true,
+                  costPrice: true,
+                  stock: true,
+                  images: {
+                    select: { url: true },
+                  },
+                  category: {
+                    select: { name: true },
+                  },
+                },
+                orderBy: { createdAt: "desc" },
+              },
+            }
+          : {}),
       },
     });
 
     if (!partner) {
       return res.status(404).json({ message: "Байгууллага олдсонгүй" });
     }
+
+    const [usersCount, productsCount, branchesCount, ordersCount] = await Promise.all([
+      prisma.organizationMember.count({ where: { organizationId: partner.id } }),
+      prisma.product.count({ where: { organizationId: partner.id, deletedAt: null } }),
+      prisma.branch.count({ where: { organizationId: partner.id } }),
+      prisma.order.count({ where: { organizationId: partner.id } }),
+    ]);
 
     return res.json({
       id: partner.id,
@@ -772,19 +824,19 @@ router.get("/partners/:id", async (req, res) => {
       planExpiresAt: partner.planExpiresAt,
       trialUsed: (partner as any).trialUsed,
       stats: {
-        users: partner._count.members,
-        products: partner._count.products,
-        branches: partner._count.branches,
-        orders: partner._count.orders,
+        users: usersCount,
+        products: productsCount,
+        branches: branchesCount,
+        orders: ordersCount,
       },
-      products: partner.products.map((p) => ({
+      products: ((partner as any).products || []).map((p: any) => ({
         id: p.id,
         title: p.name,
         name: p.name,
         price: Number(p.price),
         originalPrice: p.costPrice ? Number(p.costPrice) : undefined,
         image: p.images?.[0]?.url,
-        images: p.images?.map((img) => img.url),
+        images: p.images?.map((img: any) => img.url),
         category: p.category?.name,
         stock: p.stock,
       })),

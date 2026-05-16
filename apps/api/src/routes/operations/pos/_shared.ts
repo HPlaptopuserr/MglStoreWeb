@@ -12,6 +12,10 @@ export const runtimeEnv = String(process.env.APP_ENV || process.env.NODE_ENV || 
 export const isProdLikeEnv = runtimeEnv === "production" || runtimeEnv === "staging";
 export const allowPosSimulation = process.env.POS_ALLOW_SIMULATION === "true" && runtimeEnv === "development";
 export const bridgeSharedSecret = String(process.env.POS_BRIDGE_SHARED_SECRET || "").trim();
+export const bridgeChargeTimeoutMs = (() => {
+  const value = Number(process.env.POS_BRIDGE_CHARGE_TIMEOUT_MS || 120_000);
+  return Number.isFinite(value) && value > 0 ? value : 120_000;
+})();
 
 export const pushEcrBaseUrl = (process.env.PUSH_ECR_BASE_URL || "https://push.easypay.mn:8443").replace(/\/$/, "");
 export const pushEcrApiKey = process.env.PUSH_ECR_API_KEY || "";
