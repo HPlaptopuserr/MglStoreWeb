@@ -28,8 +28,12 @@ export function ProductFormModal({
   onClose,
   onSave,
 }: Props) {
-  const duplicateProduct = form.sku
-    ? products.find((p) => p.sku?.toLowerCase() === form.sku.toLowerCase() && p.id !== editingId)
+  const duplicateProduct = (form.sku || form.barcode)
+    ? products.find((p) => {
+        const skuMatch = form.sku && p.sku?.toLowerCase() === form.sku.toLowerCase();
+        const barcodeMatch = form.barcode && p.barcode?.toLowerCase() === form.barcode.toLowerCase();
+        return (skuMatch || barcodeMatch) && p.id !== editingId;
+      })
     : undefined;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -97,7 +101,7 @@ export function ProductFormModal({
                           <AlertTriangle size={16} className="text-amber-500 mt-0.5 shrink-0" />
                           <div className="flex-1">
                             <p className="text-sm font-bold text-amber-800 leading-tight">Бүртгэлтэй код олдлоо!</p>
-                            <p className="text-xs text-amber-600 mt-0.5">Энэ код <span className="font-bold">{duplicateProduct.name}</span> бараанд ашиглагдаж байна.</p>
+                            <p className="text-xs text-amber-600 mt-0.5">Энэ SKU эсвэл Barcode <span className="font-bold">{duplicateProduct.name}</span> бараанд ашиглагдаж байна.</p>
                           </div>
                         </div>
                         {onSwitchToEdit && (
@@ -111,6 +115,19 @@ export function ProductFormModal({
                         )}
                       </div>
                     )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Баркод (Barcode)</label>
+                    <div className="relative">
+                      <PackageSearch size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all placeholder:text-slate-400"
+                        placeholder="Жишээ: 865604212512"
+                        value={form.barcode}
+                        onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))}
+                      />
+                    </div>
                   </div>
                 </div>
 

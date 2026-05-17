@@ -12,8 +12,8 @@ import { CardsSection } from "@/components/organisms/sections/cards/CardsSection
 import { FormBuilderTool, QrGeneratorPanel } from "@/components/organisms";
 import { PosRegistersSection } from "@/components/organisms/sections/pos/PosRegistersSection";
 import { VendorFeaturesSection } from "@/components/organisms/sections/vendor-features/VendorFeaturesSection";
+import { MglServicesSection } from "@/components/organisms/sections/mgl-services/MglServicesSection";
 import { HrSection } from "@/components/organisms/sections/hr/HrSection";
-import { Contract } from "@/components/organisms/sections/contract/page";
 import { TeamSection } from "@/components/organisms/sections/team/TeamSection";
 import { useAdminAuth } from "@/lib/admin-auth";
 
@@ -33,18 +33,22 @@ export default function SectionsPage() {
     setBanners,
     categories,
     setCategories,
+    mglServices,
+    setMglServices,
     showBranchMapOnWeb,
     saving,
     saved,
     branchMapVisibilitySaving,
     saveBanners,
     saveCategories,
+    saveMglServices,
     toggleBranchMapOnWeb,
   } = useSiteSettings();
 
   const handleSave = async () => {
     if (active === "banner") await saveBanners(banners);
     else if (active === "categories") await saveCategories(categories);
+    else if (active === "mgl-services") await saveMglServices(mglServices);
   };
 
   return (
@@ -75,8 +79,8 @@ export default function SectionsPage() {
           {active === "qr" && <QrGeneratorPanel showHeader={false} />}
           {active === "pos" && <PosRegistersSection />}
           {active === "vendor-features" && <VendorFeaturesSection />}
+          {active === "mgl-services" && <MglServicesSection mglServices={mglServices} setMglServices={setMglServices} onSave={() => saveMglServices(mglServices)} saving={saving} saved={saved} />}
           {active === "hr" && <HrSection />}
-          {active === "contract" && <Contract />}
           {active === "team" && <TeamSection />}
         </div>
       ) : (

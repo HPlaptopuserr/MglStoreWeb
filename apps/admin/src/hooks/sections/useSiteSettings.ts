@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react";
 import { API, adminFetch } from "@/lib/api";
 
+import { ServiceCategory } from "@/lib/sections/types";
+
 export function useSiteSettings() {
   const [banners, setBanners] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [mglServices, setMglServices] = useState<ServiceCategory[]>([]);
   const [showBranchMapOnWeb, setShowBranchMapOnWeb] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -28,6 +31,13 @@ export function useSiteSettings() {
           try {
             const parsed = JSON.parse(data["home-categories"]);
             if (Array.isArray(parsed)) setCategories(parsed);
+          } catch {}
+        }
+
+        if (data["mgl-services"]) {
+          try {
+            const parsed = JSON.parse(data["mgl-services"]);
+            if (Array.isArray(parsed)) setMglServices(parsed);
           } catch {}
         }
 
@@ -67,6 +77,20 @@ export function useSiteSettings() {
     setSaving(false);
   };
 
+  const saveMglServices = async (currentServices: ServiceCategory[]) => {
+    setSaving(true);
+    try {
+      await adminFetch(`${API}/site-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ "mgl-services": JSON.stringify(currentServices) }),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {}
+    setSaving(false);
+  };
+
   const toggleBranchMapOnWeb = async () => {
     const nextValue = !showBranchMapOnWeb;
     setShowBranchMapOnWeb(nextValue);
@@ -91,12 +115,15 @@ export function useSiteSettings() {
     setBanners,
     categories,
     setCategories,
+    mglServices,
+    setMglServices,
     showBranchMapOnWeb,
     saving,
     saved,
     branchMapVisibilitySaving,
     saveBanners,
     saveCategories,
+    saveMglServices,
     toggleBranchMapOnWeb,
   };
 }

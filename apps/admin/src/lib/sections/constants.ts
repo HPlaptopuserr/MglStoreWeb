@@ -24,7 +24,7 @@ export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType
   { key: "vendor-features", label: "Vendor тохиргоо", icon: Settings2, requires: "MANAGE_SITE_SETTINGS" },
   { key: "hr", label: "Хүний нөөц", icon: Users, requires: "MANAGE_USERS" },
   { key: "forms", label: "Маягт үүсгэгч", icon: ClipboardList, requires: "MANAGE_FORMS" },
-  { key: "contract", label: "Цахим гэрээ", icon: FileSignature },
+  { key: "mgl-services", label: "MGL Үйлчилгээ", icon: Settings2, requires: "MANAGE_SITE_SETTINGS" },
   { key: "team", label: "Баг хамт олон", icon: UserSquare2, requires: "MANAGE_SITE_SETTINGS" },
 ];
 

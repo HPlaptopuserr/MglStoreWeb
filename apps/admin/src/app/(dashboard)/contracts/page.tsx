@@ -4,9 +4,10 @@ import React, { useEffect, useState, useMemo } from "react";
 import {
   Search, Filter, Download, RefreshCw, FileText,
   CheckCircle2, Clock, ChevronUp, ChevronDown, X,
-  Building, Phone, Mail, Calendar, AlertTriangle,
+  Building, Phone, Mail, Calendar, AlertTriangle, Layers
 } from "lucide-react";
 import { adminFetch } from "@/lib/api";
+import { Contract } from "@/components/organisms/sections/contract/page";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
 const API = `${API_BASE}/api`;
@@ -162,7 +163,7 @@ function DetailPanel({ sub, onClose }: { sub: Submission; onClose: () => void })
   );
 }
 
-export default function ContractsPage() {
+function SubmissionsList() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -251,13 +252,8 @@ export default function ContractsPage() {
     <div className="flex flex-col gap-6">
       {selected && <DetailPanel sub={selected} onClose={() => setSelected(null)} />}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Гэрээний мэдээлэл</h1>
-          <p className="text-neutral-500 mt-0.5 text-sm">Нийт байгуулсан гэрээний жагсаалт, хугацаа, статус</p>
-        </div>
-        <button onClick={load} className="flex items-center gap-2 px-4 py-2 border border-neutral-200 rounded-lg text-sm text-neutral-600 hover:bg-neutral-50 transition-colors">
+      <div className="flex items-center justify-end">
+        <button onClick={load} className="flex items-center gap-2 px-4 py-2 border border-neutral-200 rounded-lg text-sm text-neutral-600 hover:bg-neutral-50 transition-colors bg-white">
           <RefreshCw className="w-4 h-4" /> Шинэчлэх
         </button>
       </div>
@@ -394,6 +390,42 @@ export default function ContractsPage() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+export default function ContractsPage() {
+  const [activeTab, setActiveTab] = useState<"submissions" | "templates">("submissions");
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Гэрээний удирдлага</h1>
+          <p className="text-neutral-500 mt-0.5 text-sm">Байгуулсан гэрээ болон гэрээний загвар тохиргоо</p>
+        </div>
+        <div className="flex items-center gap-1 bg-neutral-100 p-1.5 rounded-xl w-max">
+          <button 
+            onClick={() => setActiveTab("submissions")} 
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "submissions" ? "bg-white text-blue-700 shadow-sm" : "text-neutral-600 hover:text-neutral-900"}`}
+          >
+            <FileText className="w-4 h-4" /> Байгуулсан гэрээнүүд
+          </button>
+          <button 
+            onClick={() => setActiveTab("templates")} 
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "templates" ? "bg-white text-blue-700 shadow-sm" : "text-neutral-600 hover:text-neutral-900"}`}
+          >
+            <Layers className="w-4 h-4" /> Цахим гэрээ (Загвар)
+          </button>
+        </div>
+      </div>
+      
+      {activeTab === "submissions" && <SubmissionsList />}
+      {activeTab === "templates" && (
+        <div className="bg-white border border-neutral-200 p-6 rounded-2xl shadow-sm">
+          <Contract />
+        </div>
+      )}
     </div>
   );
 }

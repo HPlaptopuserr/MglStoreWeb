@@ -633,7 +633,7 @@ export default function ProductsPage() {
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 font-bold">
                     <th className="px-6 py-4">Бараа</th>
-                    <th className="px-6 py-4">SKU / Код</th>
+                    <th className="px-6 py-4">SKU / Barcode</th>
                     <th className="px-6 py-4">Ангилал</th>
                     <th className="px-6 py-4 text-right">Үнэ</th>
                     <th className="px-6 py-4 text-right">Авсан үнэ</th>
@@ -671,11 +671,17 @@ export default function ProductsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {product.sku ? (
-                           <span className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded-md">{product.sku}</span>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
+                        <div className="flex flex-col gap-1">
+                          {product.sku ? (
+                             <span className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded-md w-fit" title="SKU">SKU: {product.sku}</span>
+                          ) : null}
+                          {product.barcode ? (
+                             <span className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded-md w-fit" title="Barcode">BC: {product.barcode}</span>
+                          ) : null}
+                          {!product.sku && !product.barcode && (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         {product.businessCategory ? (

@@ -5,6 +5,7 @@ import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
+import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 
 const bannerUpload = multer({
   storage: multer.memoryStorage(),
@@ -121,5 +122,59 @@ router.post(
     }
   },
 );
+
+// POST /site-settings/mgl-services/qpay — MGL үйлчилгээ захиалах үед QPay нэхэмжлэх үүсгэх
+router.post("/site-settings/mgl-services/qpay", async (req, res) => {
+  try {
+    const { total, items } = req.body;
+    if (!total || isNaN(Number(total))) {
+      res.status(400).json({ success: false, message: "Буруу үнийн дүн" });
+      return;
+    }
+    
+    const orderId = crypto.randomUUID();
+    const orderNumber = `SVC-${Date.now().toString().slice(-6)}`;
+    const description = `MGL Store Үйлчилгээ: ${items?.length} төрөл`;
+
+    const invoice = await createQPayInvoice({
+      orderId,
+      orderNumber,
+      amount: Number(total),
+      description,
+    });
+
+    res.json({
+      success: true,
+      orderId,
+      orderNumber,
+      invoiceId: invoice.invoice_id,
+      qrText: invoice.qr_text,
+      qrImage: invoice.qr_image,
+      urls: invoice.urls,
+    });
+  } catch (error: any) {
+    console.error("mgl-services qpay create error", error);
+    res.status(500).json({ success: false, message: error.message || "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
+  }
+});
+
+// GET /site-settings/mgl-services/qpay/check — Төлбөр шалгах
+router.get("/site-settings/mgl-services/qpay/check", async (req, res) => {
+  try {
+    const { invoiceId } = req.query;
+    if (!invoiceId || typeof invoiceId !== "string") {
+      res.status(400).json({ success: false, message: "invoiceId шаардлагатай" });
+      return;
+    }
+
+    const result = await checkQPayPayment(invoiceId);
+    const isPaid = result.count > 0;
+
+    res.json({ success: true, isPaid, paidAmount: result.paid_amount });
+  } catch (error) {
+    console.error("mgl-services qpay check error", error);
+    res.status(500).json({ success: false, message: "Төлбөр шалгахад алдаа гарлаа" });
+  }
+});
 
 export default router;
