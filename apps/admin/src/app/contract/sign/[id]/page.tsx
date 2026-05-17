@@ -113,6 +113,9 @@ export default function ContractSignPage() {
             });
             if (md.position) setMemberPosition(md.position);
           }
+          if (d.contract.status === "SIGNED" && !isPrintMode) {
+            setStep("success");
+          }
           // auto-print after data is ready
           if (isPrintMode) {
             setTimeout(() => window.print(), 1200);

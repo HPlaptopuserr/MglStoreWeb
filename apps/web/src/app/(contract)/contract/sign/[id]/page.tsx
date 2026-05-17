@@ -40,6 +40,7 @@ export default function ContractSignPage() {
       memberFields?: { key: string; label: string; required: boolean; enabled: boolean }[];
       content?: string; contentIsHtml?: boolean;
       orgContact?: OrgContactInfo | null;
+      systemQr?: { enabled: boolean; username?: string; password?: string; merchantCode?: string; } | null;
     } | null;
   } | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
@@ -118,6 +119,9 @@ export default function ContractSignPage() {
             });
             if (md.position) setMemberPosition(md.position);
             if (md.stamp) setMemberStamp(md.stamp);
+          }
+          if (d.contract.status === "SIGNED" && !isPrintMode) {
+            setStep("success");
           }
           // auto-print after data is ready
           if (isPrintMode) {
@@ -211,8 +215,12 @@ export default function ContractSignPage() {
       setSubmissionId(activeId);
 
       if (contractInfo?.isPaid) {
-        // Create QPay invoice for the active ID (submission or legacy contract)
-        const res = await fetch(`${API}/contracts/${activeId}/qpay`, {
+        // Create QPay or SystemQR invoice for the active ID
+        const paymentSystemUrl = contractInfo?.headerData?.systemQr?.enabled
+          ? `${API}/contracts/${activeId}/systemqr`
+          : `${API}/contracts/${activeId}/qpay`;
+
+        const res = await fetch(paymentSystemUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
@@ -221,7 +229,7 @@ export default function ContractSignPage() {
           setQpayData({ invoiceId: data.invoiceId, qrImage: data.qrImage, qrText: data.qrText, urls: data.urls || [], amount: data.amount });
           setStep("qpay");
         } else {
-          alert("QPay invoice үүсгэхэд алдаа: " + (data.error || ""));
+          alert("Төлбөрийн invoice үүсгэхэд алдаа: " + (data.error || ""));
         }
       } else {
         setStep("success");
@@ -239,6 +247,10 @@ export default function ContractSignPage() {
     let countdown = 5;
     setPollCountdown(5);
 
+    const checkUrl = contractInfo?.headerData?.systemQr?.enabled
+      ? `${API}/contracts/${submissionId || contractId}/systemqr/check`
+      : `${API}/contracts/${submissionId || contractId}/qpay/check`;
+
     const tick = setInterval(() => {
       countdown -= 1;
       setPollCountdown(countdown);
@@ -247,7 +259,7 @@ export default function ContractSignPage() {
         countdown = 5;
         setPollCountdown(5);
         // silently check payment
-        fetch(`${API}/contracts/${submissionId || contractId}/qpay/check`)
+        fetch(checkUrl)
           .then(r => r.json())
           .then(data => {
             if (data.isPaid) {
@@ -260,19 +272,23 @@ export default function ContractSignPage() {
     }, 1000);
 
     return () => clearInterval(tick);
-  }, [step, qpayData, contractId, submissionId]);
+  }, [step, qpayData, contractId, submissionId, contractInfo?.headerData?.systemQr?.enabled]);
 
   const checkPayment = useCallback(async () => {
     if (!qpayData || checkingPayment) return;
     setCheckingPayment(true);
     try {
-      const res = await fetch(`${API}/contracts/${submissionId || contractId}/qpay/check`);
+      const checkUrl = contractInfo?.headerData?.systemQr?.enabled
+        ? `${API}/contracts/${submissionId || contractId}/systemqr/check`
+        : `${API}/contracts/${submissionId || contractId}/qpay/check`;
+
+      const res = await fetch(checkUrl);
       const data = await res.json();
       if (data.isPaid) setStep("success");
       else alert("Төлбөр бүртгэгдэх хүртэл түр хүлээнэ үү.");
     } catch { alert("Алдаа гарлаа."); }
     finally { setCheckingPayment(false); }
-  }, [qpayData, checkingPayment, contractId, submissionId]);
+  }, [qpayData, checkingPayment, contractId, submissionId, contractInfo?.headerData?.systemQr?.enabled]);
 
   if (step === "success") {
     const base = process.env.NEXT_PUBLIC_WEB_URL || window.location.origin;
