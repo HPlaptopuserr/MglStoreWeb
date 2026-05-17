@@ -16,6 +16,7 @@ export interface Product {
   id: string;
   name: string;
   sku: string | null;
+  barcode: string | null;
   description: string | null;
   price: number;
   costPrice: number | null;
@@ -30,6 +31,7 @@ export interface Product {
 export interface FormState {
   name: string;
   sku: string;
+  barcode: string;
   description: string;
   price: string;
   costPrice: string;

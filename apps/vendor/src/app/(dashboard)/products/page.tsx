@@ -413,143 +413,8 @@ export default function ProductsPage() {
         />
       )}
 
-      {/* Add/Edit Form Modal Extracted Component */}
+      {/* Add/Edit Form Modal */}
       {formOpen && (
-<<<<<<< HEAD
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-top-4">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-              <div>
-                <h2 className="text-lg font-black text-slate-900">
-                  {editingId ? "Бараа засах" : "Шинэ бараа нэмэх"}
-                </h2>
-                <p className="text-xs font-medium text-slate-400 mt-0.5">Мэдээллийг бүрэн оруулна уу</p>
-              </div>
-              <button
-                onClick={closeForm}
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSave} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Барааны нэр <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    required
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
-                    placeholder="Жишээ: Самар гоймон"
-                    value={form.name}
-                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">SKU / Код</label>
-                  <input
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
-                    placeholder="Жишээ: GM-001-BLK"
-                    value={form.sku}
-                    onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Barcode</label>
-                <input
-                  className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
-                  placeholder="Scanner-аар уншуулах barcode"
-                  value={form.barcode}
-                  onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Үнэ (₮) <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <Banknote size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      required
-                      type="number"
-                      min="0"
-                      step="1"
-                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
-                      placeholder="0"
-                      value={form.price}
-                      onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Нөөц (ширхэг)</label>
-                  <div className="relative">
-                    <BarChart2 size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="number"
-                      min="0"
-                      max="2147483647"
-                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all"
-                      placeholder="0"
-                      value={form.stock}
-                      onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Ангилал</label>
-                <CategorySelector
-                  categories={categories}
-                  value={form.businessCategoryId}
-                  onChange={(id) => setForm((f) => ({ ...f, businessCategoryId: id }))}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Тайлбар</label>
-                <textarea
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all resize-none"
-                  placeholder="Барааны дэлгэрэнгүй тайлбар..."
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                />
-              </div>
-
-              <ImageUploadGrid
-                images={form.images}
-                onChange={(imgs) => setForm((f) => ({ ...f, images: imgs }))}
-              />
-
-              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={closeForm}
-                  className="h-10 px-5 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-                >
-                  Болих
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex items-center gap-2 h-10 px-7 rounded-xl bg-amber-600 text-white text-sm font-bold shadow-lg shadow-amber-500/25 hover:bg-amber-700 disabled:opacity-60 transition-colors"
-                >
-                  {saving && <Loader2 size={15} className="animate-spin" />}
-                  {editingId ? "Хадгалах" : "Нэмэх"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-=======
         <ProductFormModal
           form={form}
           setForm={setForm}
@@ -561,7 +426,6 @@ export default function ProductsPage() {
           onClose={closeForm}
           onSave={handleSave}
         />
->>>>>>> 986507c ( add product)
       )}
 
       {/* Product Detail Drawer */}

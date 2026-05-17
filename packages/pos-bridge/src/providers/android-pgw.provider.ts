@@ -229,8 +229,8 @@ export class AndroidPgwProvider implements CardTerminalProvider {
   private async discoverConnectedPath(excludePath?: string): Promise<string> {
     const ports = await SerialPort.list();
     const candidates = ports
-      .map((port) => port.path)
-      .filter((path) => path && path !== excludePath);
+      .map((port: any) => port.path)
+      .filter((path: string) => path && path !== excludePath);
 
     if (!candidates.length) {
       throw new Error("No Android PGW serial ports detected. Reconnect USB and check Windows Device Manager.");
@@ -302,19 +302,19 @@ export class AndroidPgwProvider implements CardTerminalProvider {
         }
       });
 
-      port.on("error", (error) => finish(error));
+      port.on("error", (error: Error | null | undefined) => finish(error || undefined));
 
-      port.open((openError) => {
+      port.open((openError: Error | null | undefined) => {
         if (openError) {
           finish(openError);
           return;
         }
-        port.write(payload, (writeError) => {
+        port.write(payload, (writeError: Error | null | undefined) => {
           if (writeError) {
             finish(writeError);
             return;
           }
-          port.drain((drainError) => {
+          port.drain((drainError: Error | null | undefined) => {
             if (drainError) finish(drainError);
           });
         });
