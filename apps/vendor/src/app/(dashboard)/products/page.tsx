@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Plus,
   Search,
   X,
-  ImageIcon,
   Package,
   Tag,
-  ChevronRight,
-  ChevronDown,
   Pencil,
   Trash2,
   Loader2,
@@ -17,7 +14,6 @@ import {
   AlertCircle,
   ToggleLeft,
   ToggleRight,
-  Banknote,
   BarChart2,
   Layers,
   FileSpreadsheet,
@@ -26,48 +22,14 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
-import { ExcelImportModal } from "@/features/products";
-
-/* ─── Types ──────────────────────────────────────────────────────────── */
-interface ProductImage {
-  id: string;
-  url: string;
-}
-
-interface BusinessCategory {
-  id: string;
-  name: string;
-  slug: string;
-  parentId: string | null;
-  level: number;
-  children?: BusinessCategory[];
-}
-
-interface Product {
-  id: string;
-  name: string;
-  sku: string | null;
-  barcode: string | null;
-  description: string | null;
-  price: number;
-  stock: number;
-  isActive: boolean;
-  images: ProductImage[];
-  businessCategoryId: string | null;
-  businessCategory: { id: string; name: string } | null;
-  createdAt: string;
-}
-
-type FormState = {
-  name: string;
-  sku: string;
-  barcode: string;
-  description: string;
-  price: string;
-  stock: string;
-  businessCategoryId: string;
-  images: string[];
-};
+import { 
+  ExcelImportModal, 
+  ProductFormModal,
+  Product,
+  BusinessCategory,
+  FormState,
+  PlanStatus
+} from "@/features/products";
 
 const EMPTY_FORM: FormState = {
   name: "",
@@ -75,284 +37,12 @@ const EMPTY_FORM: FormState = {
   barcode: "",
   description: "",
   price: "",
+  costPrice: "",
   stock: "0",
   businessCategoryId: "",
   images: [],
 };
 
-const MAX_IMAGES = 5;
-
-/* ─── Category Selector ──────────────────────────────────────────────── */
-function CategorySelector({
-  categories,
-  value,
-  onChange,
-}: {
-  categories: BusinessCategory[];
-  value: string;
-  onChange: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const findLabel = (cats: BusinessCategory[], id: string): string => {
-    for (const c of cats) {
-      if (c.id === id) return c.name;
-      if (c.children) {
-        const found = findLabel(c.children, id);
-        if (found) return found;
-      }
-    }
-    return "";
-  };
-
-  const selectedLabel = value ? findLabel(categories, value) : "";
-
-  const toggleExpand = (id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const renderNode = (cat: BusinessCategory, depth = 0) => {
-    const hasChildren = cat.children && cat.children.length > 0;
-    const isExpanded = expanded.has(cat.id);
-    const isSelected = value === cat.id;
-
-    return (
-      <div key={cat.id}>
-        <button
-          type="button"
-          onClick={() => {
-            if (hasChildren) toggleExpand(cat.id);
-            else {
-              onChange(cat.id);
-              setOpen(false);
-            }
-          }}
-          className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors text-left hover:bg-amber-50 ${isSelected ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-700"}`}
-          style={{ paddingLeft: `${16 + depth * 20}px` }}
-        >
-          {hasChildren ? (
-            isExpanded ? (
-              <ChevronDown size={14} className="text-slate-400 shrink-0" />
-            ) : (
-              <ChevronRight size={14} className="text-slate-400 shrink-0" />
-            )
-          ) : (
-            <span className="w-3.5 shrink-0" />
-          )}
-          <span className="flex-1">{cat.name}</span>
-          {isSelected && <CheckCircle2 size={14} className="text-amber-600 shrink-0" />}
-        </button>
-        {hasChildren && isExpanded && (
-          <div>{cat.children!.map((child) => renderNode(child, depth + 1))}</div>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`w-full flex items-center justify-between gap-2 h-11 px-4 rounded-xl border text-sm transition-all outline-none ${open
-            ? "border-amber-500 ring-2 ring-amber-100 bg-white"
-            : "border-slate-200 bg-slate-50 hover:bg-white hover:border-slate-300"
-          }`}
-      >
-        <span className={selectedLabel ? "text-slate-900 font-medium" : "text-slate-400"}>
-          {selectedLabel || "Ангилал сонгох..."}
-        </span>
-        <ChevronDown
-          size={16}
-          className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-64 overflow-y-auto">
-          <button
-            type="button"
-            onClick={() => { onChange(""); setOpen(false); }}
-            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:bg-slate-50 border-b border-slate-100"
-          >
-            <X size={14} />
-            Ангилалгүй
-          </button>
-          {categories.map((cat) => renderNode(cat))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Image Upload Grid ──────────────────────────────────────────────── */
-function ImageUploadGrid({
-  images,
-  onChange,
-}: {
-  images: string[];
-  onChange: (images: string[]) => void;
-}) {
-  const [dragging, setDragging] = useState<number | null>(null);
-  const [uploading, setUploading] = useState(false);
-
-  const uploadToServer = async (file: File): Promise<string | null> => {
-    const formData = new FormData();
-    formData.append("image", file);
-    try {
-      const res = await authFetch(`${API}/products/upload-image`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
-      return data.url as string;
-    } catch {
-      return null;
-    }
-  };
-
-  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    e.target.value = "";
-
-    setUploading(true);
-    const current = [...images];
-    for (const file of files) {
-      if (current.length >= MAX_IMAGES) break;
-      const url = await uploadToServer(file);
-      if (url) current.push(url);
-    }
-    onChange(current.slice(0, MAX_IMAGES));
-    setUploading(false);
-  };
-
-  const removeImage = (idx: number) => {
-    onChange(images.filter((_, i) => i !== idx));
-  };
-
-  const moveImage = (from: number, to: number) => {
-    const next = [...images];
-    const [item] = next.splice(from, 1);
-    next.splice(to, 0, item);
-    onChange(next);
-  };
-
-  const slots = Array.from({ length: MAX_IMAGES });
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Зурагнууд ({images.length}/{MAX_IMAGES})
-        </label>
-        {images.length > 0 && (
-          <span className="text-[10px] text-slate-400">Үндсэн зураг: эхний зураг</span>
-        )}
-      </div>
-
-      <div className="grid grid-cols-5 gap-2">
-        {slots.map((_, idx) => {
-          const img = images[idx];
-          const isFirst = idx === 0;
-
-          if (img) {
-            return (
-              <div
-                key={idx}
-                draggable
-                onDragStart={() => setDragging(idx)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => {
-                  if (dragging !== null && dragging !== idx) {
-                    moveImage(dragging, idx);
-                  }
-                  setDragging(null);
-                }}
-                className={`relative group aspect-square rounded-xl overflow-hidden border-2 cursor-grab active:cursor-grabbing transition-all ${isFirst ? "border-amber-400" : "border-slate-200"
-                  } ${dragging === idx ? "opacity-50 scale-95" : ""}`}
-              >
-                <img
-                  src={img}
-                  alt={`Зураг ${idx + 1}`}
-                  className="w-full h-full object-cover"
-                />
-                {isFirst && (
-                  <div className="absolute top-1 left-1 bg-amber-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
-                    Үндсэн
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeImage(idx)}
-                  className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            );
-          }
-
-          const canAdd = idx === images.length && !uploading;
-          const isUploadingSlot = idx === images.length && uploading;
-          return (
-            <label
-              key={idx}
-              className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-colors ${canAdd
-                  ? "border-slate-300 hover:border-amber-400 hover:bg-amber-50 cursor-pointer"
-                  : isUploadingSlot
-                    ? "border-amber-300 bg-amber-50"
-                    : "border-slate-100 bg-slate-50/50 cursor-not-allowed"
-                }`}
-            >
-              {isUploadingSlot ? (
-                <>
-                  <Loader2 size={18} className="text-amber-500 animate-spin mb-1" />
-                  <span className="text-[10px] font-bold text-amber-500">Хуулж байна...</span>
-                </>
-              ) : canAdd ? (
-                <>
-                  <ImageIcon size={18} className="text-slate-300 mb-1" />
-                  <span className="text-[10px] font-bold text-slate-400">Нэмэх</span>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    multiple
-                    className="hidden"
-                    onChange={handleInputChange}
-                  />
-                </>
-              ) : (
-                <span className="text-[10px] text-slate-200">{idx + 1}</span>
-              )}
-            </label>
-          );
-        })}
-      </div>
-      <p className="text-[11px] text-slate-400 mt-2">
-        Зурагнуудыг чирэх замаар дахин эрэмбэлж болно. Эхний зураг үндсэн зураг болно.
-      </p>
-    </div>
-  );
-}
-
-/* ─── Main Page ──────────────────────────────────────────────────────── */
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<BusinessCategory[]>([]);
@@ -368,16 +58,9 @@ export default function ProductsPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
-  // ─── Plan status ───────────────────────────────────────────────────────
-  const [planStatus, setPlanStatus] = useState<{
-    isActive: boolean;
-    planType: string | null;
-    planExpiresAt: string | null;
-    trialUsed: boolean;
-    currentPlan: { maxProducts: number; name: string; isTrial: boolean } | null;
-  } | null>(null);
+  const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
 
-  const isPlanActive = planStatus?.isActive ?? true; // optimistic
+  const isPlanActive = planStatus?.isActive ?? true;
   const daysLeft = planStatus?.planExpiresAt
     ? Math.ceil((new Date(planStatus.planExpiresAt).getTime() - Date.now()) / 86_400_000)
     : null;
@@ -432,7 +115,6 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
     fetchCategories();
-    // Fetch plan status
     const orgId = getOrgId();
     const statusUrl = orgId
       ? `${API}/vendor/upgrade/status?organizationId=${encodeURIComponent(orgId)}`
@@ -450,7 +132,7 @@ export default function ProductsPage() {
           });
         }
       })
-      .catch(() => {/* ignore */});
+      .catch(() => {});
   }, [fetchProducts, fetchCategories]);
 
   const openAdd = () => {
@@ -466,6 +148,7 @@ export default function ProductsPage() {
       barcode: p.barcode || "",
       description: p.description || "",
       price: String(p.price),
+      costPrice: p.costPrice != null ? String(p.costPrice) : "",
       stock: String(p.stock),
       businessCategoryId: p.businessCategoryId || "",
       images: p.images.map((img) => img.url),
@@ -488,6 +171,13 @@ export default function ProductsPage() {
     if (!form.name.trim()) return showToast("error", "Барааны нэр оруулна уу");
     const price = parseFloat(form.price);
     if (isNaN(price) || price < 0) return showToast("error", "Үнэ буруу байна");
+    
+    let costPrice: number | null = null;
+    if (form.costPrice.trim() !== "") {
+      costPrice = parseFloat(form.costPrice);
+      if (isNaN(costPrice) || costPrice < 0) return showToast("error", "Авсан үнэ буруу байна");
+    }
+
     const stockNum = parseInt(form.stock) || 0;
     if (stockNum < 0 || stockNum > 2_147_483_647) return showToast("error", "Нөөц 0-2,147,483,647 хооронд байх ёстой");
 
@@ -500,6 +190,7 @@ export default function ProductsPage() {
         barcode: form.barcode.trim() || null,
         description: form.description.trim() || null,
         price,
+        costPrice,
         stock: stockNum,
         businessCategoryId: form.businessCategoryId || null,
         images: form.images,
@@ -519,7 +210,7 @@ export default function ProductsPage() {
         throw new Error(err.message || "Алдаа гарлаа");
       }
 
-      showToast("success", editingId ? "Бараа шинэчлэгдлээ" : "Бараа нэмэгдлээ");
+      showToast("success", editingId ? "Бараа шинэчлэгдлээ" : "Бараа амжилттай нэмэгдлээ");
       closeForm();
       fetchProducts();
     } catch (err) {
@@ -583,12 +274,12 @@ export default function ProductsPage() {
       {toast && (
         <div
           className={`fixed top-5 right-5 z-[100] flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm font-semibold shadow-2xl shadow-black/10 border transition-all animate-in slide-in-from-top-2 ${toast.type === "success"
-              ? "bg-white border-amber-200 text-amber-700"
+              ? "bg-white border-emerald-200 text-emerald-700"
               : "bg-white border-red-200 text-red-600"
             }`}
         >
           {toast.type === "success" ? (
-            <CheckCircle2 size={18} className="text-amber-500" />
+            <CheckCircle2 size={18} className="text-emerald-500" />
           ) : (
             <AlertCircle size={18} className="text-red-500" />
           )}
@@ -596,7 +287,7 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Plan expired / trial warning banner */}
+      {/* Plan Status Banners */}
       {planStatus && (
         <>
           {!isPlanActive && (
@@ -606,12 +297,8 @@ export default function ProductsPage() {
                 <p className="text-sm font-bold text-red-700">Таны план дууссан байна</p>
                 <p className="text-xs text-red-500">Бараа нэмэх, засах боломжгүй. Дахин идэвхжүүлэхийн тулд сунгана уу.</p>
               </div>
-              <a
-                href="/upgrade"
-                className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 transition-colors shrink-0"
-              >
-                <Crown size={14} />
-                Сунгах
+              <a href="/upgrade" className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 transition-colors shrink-0">
+                <Crown size={14} /> Сунгах
               </a>
             </div>
           )}
@@ -622,12 +309,8 @@ export default function ProductsPage() {
                 <p className="text-sm font-bold text-amber-700">Үнэгүй туршилт: {daysLeft} хоног үлдсэн</p>
                 <p className="text-xs text-amber-500">Планаа сунгаж, бүх боломжуудыг ашиглаарай.</p>
               </div>
-              <a
-                href="/upgrade"
-                className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition-colors shrink-0"
-              >
-                <Crown size={14} />
-                Сунгах
+              <a href="/upgrade" className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 transition-colors shrink-0">
+                <Crown size={14} /> Сунгах
               </a>
             </div>
           )}
@@ -638,12 +321,8 @@ export default function ProductsPage() {
                 <p className="text-sm font-bold text-orange-700">Барааны хязгаарт хүрлээ ({productLimit})</p>
                 <p className="text-xs text-orange-500">Дахин бараа нэмэхийн тулд планаа сунгана уу.</p>
               </div>
-              <a
-                href="/upgrade"
-                className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-xs font-bold text-white hover:bg-orange-600 transition-colors shrink-0"
-              >
-                <Crown size={14} />
-                Сунгах
+              <a href="/upgrade" className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-xs font-bold text-white hover:bg-orange-600 transition-colors shrink-0">
+                <Crown size={14} /> Сунгах
               </a>
             </div>
           )}
@@ -657,9 +336,7 @@ export default function ProductsPage() {
             <h1 className="text-3xl font-black tracking-tight text-slate-900">Бараа</h1>
             {isPlanActive && planStatus?.currentPlan && (
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                planStatus.currentPlan.isTrial
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-emerald-100 text-emerald-700"
+                planStatus.currentPlan.isTrial ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
               }`}>
                 {planStatus.currentPlan.name}
                 {productLimit !== -1 && ` · ${products.length}/${productLimit}`}
@@ -672,7 +349,7 @@ export default function ProductsPage() {
           <div className="relative flex-1 md:w-72">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
-              className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
+              className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm"
               placeholder="Нэр, SKU хайх..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -682,7 +359,7 @@ export default function ProductsPage() {
             onClick={() => canAddProduct && setImportOpen(true)}
             disabled={!canAddProduct}
             title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
-            className={`flex items-center gap-2 h-10 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+            className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
               canAddProduct
                 ? "bg-emerald-600 shadow-emerald-500/25 hover:bg-emerald-700"
                 : "bg-slate-300 cursor-not-allowed shadow-none"
@@ -695,33 +372,33 @@ export default function ProductsPage() {
             onClick={() => canAddProduct && openAdd()}
             disabled={!canAddProduct}
             title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
-            className={`flex items-center gap-2 h-10 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+            className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
               canAddProduct
-                ? "bg-amber-600 shadow-amber-500/25 hover:bg-amber-700"
+                ? "bg-indigo-600 shadow-indigo-500/25 hover:bg-indigo-700"
                 : "bg-slate-300 cursor-not-allowed shadow-none"
             }`}
           >
             {canAddProduct ? <Plus size={16} /> : <Lock size={16} />}
-            Бараа нэмэх
+            Шинэ бараа
           </button>
         </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Нийт бараа", value: products.length, icon: Package, color: "bg-amber-50 text-amber-600" },
-          { label: "Идэвхтэй", value: products.filter((p) => p.isActive).length, icon: ToggleRight, color: "bg-amber-50 text-amber-600" },
+          { label: "Нийт бараа", value: products.length, icon: Package, color: "bg-indigo-50 text-indigo-600" },
+          { label: "Идэвхтэй", value: products.filter((p) => p.isActive).length, icon: ToggleRight, color: "bg-emerald-50 text-emerald-600" },
           { label: "Нийт нөөц", value: products.reduce((s, p) => s + p.stock, 0), icon: BarChart2, color: "bg-amber-50 text-amber-600" },
-          { label: "Ангилалтай", value: products.filter((p) => p.businessCategoryId).length, icon: Layers, color: "bg-amber-50 text-amber-600" },
+          { label: "Ангилалтай", value: products.filter((p) => p.businessCategoryId).length, icon: Layers, color: "bg-blue-50 text-blue-600" },
         ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3 shadow-sm">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-              <Icon size={18} />
+          <div key={label} className="bg-white rounded-2xl border border-slate-100 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color}`}>
+              <Icon size={20} />
             </div>
             <div>
-              <div className="text-xl font-black text-slate-900">{value}</div>
-              <div className="text-xs font-medium text-slate-500">{label}</div>
+              <div className="text-2xl font-black text-slate-900">{value}</div>
+              <div className="text-xs font-medium text-slate-500 mt-0.5">{label}</div>
             </div>
           </div>
         ))}
@@ -736,8 +413,9 @@ export default function ProductsPage() {
         />
       )}
 
-      {/* Add/Edit Form Modal */}
+      {/* Add/Edit Form Modal Extracted Component */}
       {formOpen && (
+<<<<<<< HEAD
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 bg-black/40 backdrop-blur-sm">
           <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-top-4">
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
@@ -871,12 +549,25 @@ export default function ProductsPage() {
             </form>
           </div>
         </div>
+=======
+        <ProductFormModal
+          form={form}
+          setForm={setForm}
+          editingId={editingId}
+          saving={saving}
+          categories={categories}
+          products={products}
+          onSwitchToEdit={openEdit}
+          onClose={closeForm}
+          onSave={handleSave}
+        />
+>>>>>>> 986507c ( add product)
       )}
 
       {/* Product Detail Drawer */}
       {selectedProduct && !formOpen && (
         <div
-          className="fixed inset-0 z-40 flex justify-end bg-black/30 backdrop-blur-sm"
+          className="fixed inset-0 z-40 flex justify-end bg-slate-900/40 backdrop-blur-sm animate-in fade-in"
           onClick={() => setSelectedProduct(null)}
         >
           <div
@@ -888,26 +579,26 @@ export default function ProductsPage() {
                 <img
                   src={selectedProduct.images[0].url}
                   alt={selectedProduct.name}
-                  className="w-full h-56 object-cover"
+                  className="w-full h-64 object-cover"
                 />
               ) : (
-                <div className="w-full h-56 bg-slate-100 flex items-center justify-center">
-                  <Package size={40} className="text-slate-300" />
+                <div className="w-full h-64 bg-slate-50 flex items-center justify-center border-b border-slate-100">
+                  <Package size={48} className="text-slate-300" />
                 </div>
               )}
               <button
                 onClick={() => setSelectedProduct(null)}
-                className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm"
+                className="absolute top-4 right-4 w-8 h-8 bg-black/40 hover:bg-black/60 text-white backdrop-blur-md rounded-full flex items-center justify-center shadow-sm transition-colors"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-6 space-y-6">
               <div>
-                <h2 className="text-xl font-black text-slate-900">{selectedProduct.name}</h2>
+                <h2 className="text-2xl font-black text-slate-900 leading-tight">{selectedProduct.name}</h2>
                 {selectedProduct.sku && (
-                  <p className="text-xs font-mono text-slate-400 mt-0.5">SKU: {selectedProduct.sku}</p>
+                  <p className="text-sm font-mono text-slate-500 mt-1">SKU: {selectedProduct.sku}</p>
                 )}
                 {selectedProduct.barcode && (
                   <p className="text-xs font-mono text-slate-400 mt-0.5">Barcode: {selectedProduct.barcode}</p>
@@ -915,60 +606,84 @@ export default function ProductsPage() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="text-2xl font-black text-amber-600">
-                  ₮{Number(selectedProduct.price).toLocaleString()}
-                </span>
-                <span className={`text-xs font-bold px-2 py-1 rounded-full ${selectedProduct.isActive ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-500"}`}>
+                <span className={`text-xs font-bold px-3 py-1 rounded-full ${selectedProduct.isActive ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"}`}>
                   {selectedProduct.isActive ? "Идэвхтэй" : "Идэвхгүй"}
                 </span>
               </div>
+              
+              <div className="flex flex-col gap-1">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Зарагдах үнэ</div>
+                <span className="text-3xl font-black text-indigo-600">
+                  ₮{Number(selectedProduct.price).toLocaleString()}
+                </span>
+              </div>
+              
+              {selectedProduct.costPrice != null && (
+                <div className="flex flex-col gap-1">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Авсан үнэ (Өртөг)</div>
+                  <span className="text-xl font-bold text-slate-600">
+                    ₮{Number(selectedProduct.costPrice).toLocaleString()}
+                  </span>
+                </div>
+              )}
 
               {selectedProduct.businessCategory && (
-                <div className="flex items-center gap-2 text-sm">
-                  <Tag size={14} className="text-slate-400" />
-                  <span className="font-medium text-slate-600">{selectedProduct.businessCategory.name}</span>
+                <div className="flex items-center gap-2 text-sm bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <Tag size={16} className="text-indigo-400" />
+                  <span className="font-semibold text-slate-700">{selectedProduct.businessCategory.name}</span>
                 </div>
               )}
 
               {selectedProduct.description && (
-                <p className="text-sm text-slate-600 leading-relaxed">{selectedProduct.description}</p>
-              )}
-
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
-                <BarChart2 size={14} />
-                Нөөц: <span className="font-bold text-slate-800">{selectedProduct.stock} ширхэг</span>
-              </div>
-
-              {selectedProduct.images.length > 1 && (
-                <div className="grid grid-cols-4 gap-2">
-                  {selectedProduct.images.slice(1).map((img) => (
-                    <img key={img.id} src={img.url} alt="" className="w-full aspect-square object-cover rounded-lg border border-slate-100" />
-                  ))}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Тайлбар</h4>
+                  <p className="text-sm text-slate-600 leading-relaxed">{selectedProduct.description}</p>
                 </div>
               )}
 
-              <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
+                  <BarChart2 size={18} className="text-indigo-500" />
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-slate-500">Үлдэгдэл нөөц</div>
+                  <div className="text-sm font-black text-slate-900">{selectedProduct.stock} ширхэг</div>
+                </div>
+              </div>
+
+              {selectedProduct.images.length > 1 && (
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Бусад зурагнууд</h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    {selectedProduct.images.slice(1).map((img) => (
+                      <img key={img.id} src={img.url} alt="" className="w-full aspect-square object-cover rounded-xl border border-slate-100 shadow-sm" />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 pt-6 border-t border-slate-100">
                 <button
                   onClick={() => openEdit(selectedProduct)}
-                  className="flex items-center justify-center gap-2 h-10 rounded-xl bg-amber-600 text-white text-sm font-bold"
+                  className="flex items-center justify-center gap-2 h-11 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-lg shadow-indigo-500/25 hover:bg-indigo-700 transition-colors"
                 >
-                  <Pencil size={14} />
-                  Засах
+                  <Pencil size={16} />
+                  Мэдээлэл засах
                 </button>
                 <button
                   onClick={() => handleToggleActive(selectedProduct)}
-                  className="flex items-center justify-center gap-2 h-10 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                  className="flex items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
                 >
-                  {selectedProduct.isActive ? <ToggleLeft size={16} /> : <ToggleRight size={16} />}
+                  {selectedProduct.isActive ? <ToggleLeft size={18} className="text-slate-400" /> : <ToggleRight size={18} className="text-emerald-500" />}
                   {selectedProduct.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх"}
                 </button>
                 <button
                   onClick={() => handleDelete(selectedProduct.id)}
                   disabled={deletingId === selectedProduct.id}
-                  className="flex items-center justify-center gap-2 h-10 rounded-xl border border-red-200 text-red-500 text-sm font-bold hover:bg-red-50 disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 h-11 rounded-xl border border-red-100 bg-red-50 text-red-600 text-sm font-bold hover:bg-red-100 disabled:opacity-50 transition-colors mt-2"
                 >
-                  {deletingId === selectedProduct.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                  Устгах
+                  {deletingId === selectedProduct.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                  Барааг устгах
                 </button>
               </div>
             </div>
@@ -978,15 +693,15 @@ export default function ProductsPage() {
 
       {/* Product List */}
       <div>
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-slate-900">Миний бараа</h2>
-            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-              {filtered.length}
+        <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-bold text-slate-900">Миний бараа</h2>
+            <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-bold text-indigo-700">
+              {filtered.length} олдлоо
             </span>
           </div>
 
-          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
             {[
               { key: "all", label: "Бүгд", count: products.length },
               {
@@ -1003,126 +718,162 @@ export default function ProductsPage() {
               <button
                 key={btn.key}
                 onClick={() => setStatusFilter(btn.key as "all" | "active" | "inactive")}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === btn.key
-                    ? "bg-amber-500 text-black"
-                    : "text-slate-500 hover:text-slate-700"
+                className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${statusFilter === btn.key
+                    ? "bg-indigo-600 text-white shadow-md"
+                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
                   }`}
               >
                 {btn.label}
-                <span className="ml-1 opacity-70">{btn.count}</span>
+                <span className={`ml-2 text-xs ${statusFilter === btn.key ? "text-indigo-200" : "opacity-60"}`}>
+                  {btn.count}
+                </span>
               </button>
             ))}
           </div>
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-24">
-            <Loader2 size={32} className="animate-spin text-amber-400" />
+          <div className="flex justify-center py-32 bg-white rounded-3xl border border-slate-200">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 size={32} className="animate-spin text-indigo-500" />
+              <p className="text-sm font-medium text-slate-500">Ачаалж байна...</p>
+            </div>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white py-24 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-50">
-              <Package size={28} className="text-slate-300" />
+          <div className="rounded-3xl border border-slate-200 bg-white py-32 text-center shadow-sm">
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-slate-50 border border-slate-100">
+              <Package size={32} className="text-slate-300" />
             </div>
-            <h3 className="text-base font-semibold text-slate-800">
-              {searchQuery ? "Хайлтад тохирох бараа олдсонгүй" : "Бараа байхгүй байна"}
+            <h3 className="text-xl font-bold text-slate-800 mb-2">
+              {searchQuery ? "Хайлтад тохирох бараа олдсонгүй" : "Та хараахан бараа нэмээгүй байна"}
             </h3>
+            <p className="text-sm text-slate-500 max-w-md mx-auto mb-8">
+              {searchQuery 
+                ? "Өөр түлхүүр үгээр хайгаад үзнэ үү эсвэл шүүлтүүрээ шалгана уу." 
+                : "Эхний бараагаа бүртгэж борлуулалтаа эхлүүлээрэй. Excel файл ашиглан олноор нь оруулах боломжтой."}
+            </p>
             {!searchQuery && (
               <button
                 onClick={openAdd}
-                className="mt-4 inline-flex items-center gap-2 h-10 px-6 rounded-xl bg-amber-600 text-white text-sm font-bold"
+                className="inline-flex items-center gap-2 h-12 px-8 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-lg shadow-indigo-500/25 hover:bg-indigo-700 transition-colors"
               >
-                <Plus size={15} />
-                Эхний бараагаа нэмэх
+                <Plus size={18} />
+                Бараа бүртгэх
               </button>
             )}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-sm">
+              <table className="w-full min-w-[1000px] text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3 font-semibold">Бараа</th>
-                    <th className="px-4 py-3 font-semibold">SKU</th>
-                    <th className="px-4 py-3 font-semibold">Ангилал</th>
-                    <th className="px-4 py-3 text-right font-semibold">Үнэ</th>
-                    <th className="px-4 py-3 text-right font-semibold">Нөөц</th>
-                    <th className="px-4 py-3 font-semibold">Төлөв</th>
-                    <th className="px-4 py-3 text-right font-semibold">Үйлдэл</th>
+                  <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 font-bold">
+                    <th className="px-6 py-4">Бараа</th>
+                    <th className="px-6 py-4">SKU / Код</th>
+                    <th className="px-6 py-4">Ангилал</th>
+                    <th className="px-6 py-4 text-right">Үнэ</th>
+                    <th className="px-6 py-4 text-right">Авсан үнэ</th>
+                    <th className="px-6 py-4 text-right">Нөөц</th>
+                    <th className="px-6 py-4">Төлөв</th>
+                    <th className="px-6 py-4 text-right">Үйлдэл</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {filtered.map((product) => (
                     <tr
                       key={product.id}
-                      className="cursor-pointer border-b border-slate-50 transition-colors last:border-0 hover:bg-amber-50/40"
+                      className="cursor-pointer transition-colors hover:bg-indigo-50/40 group"
                       onClick={() => setSelectedProduct(product)}
                     >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
                             {product.images.length > 0 ? (
                               <img
                                 src={product.images[0].url}
                                 alt={product.name}
-                                className="h-full w-full object-cover"
+                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                               />
                             ) : (
-                              <Package size={16} className="text-slate-300" />
+                              <Package size={20} className="text-slate-300" />
                             )}
                           </div>
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-slate-900">{product.name}</p>
+                            <p className="truncate text-sm font-bold text-slate-900">{product.name}</p>
                             {product.description && (
-                              <p className="truncate text-xs text-slate-400">{product.description}</p>
+                              <p className="truncate text-xs font-medium text-slate-400 mt-0.5">{product.description}</p>
                             )}
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                        {product.sku || "—"}
+                      <td className="px-6 py-4">
+                        {product.sku ? (
+                           <span className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded-md">{product.sku}</span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {product.businessCategory?.name || "Ангилалгүй"}
+                      <td className="px-6 py-4">
+                        {product.businessCategory ? (
+                          <div className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                            <Tag size={14} className="text-indigo-400" />
+                            {product.businessCategory.name}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-sm">Ангилалгүй</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                        ₮{Number(product.price).toLocaleString()}
+                      <td className="px-6 py-4 text-right">
+                        <span className="font-bold text-slate-900">
+                          ₮{Number(product.price).toLocaleString()}
+                        </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-700">
-                        {product.stock}
+                      <td className="px-6 py-4 text-right">
+                        {product.costPrice != null ? (
+                          <span className="font-medium text-slate-600">
+                            ₮{Number(product.costPrice).toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-6 py-4 text-right">
+                        <span className={`font-bold ${product.stock > 10 ? 'text-slate-700' : product.stock > 0 ? 'text-amber-600' : 'text-red-500'}`}>
+                          {product.stock}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${product.isActive
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-slate-100 text-slate-500"
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${product.isActive
+                              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20"
+                              : "bg-slate-100 text-slate-500 ring-1 ring-slate-400/20"
                             }`}
                         >
+                          <div className={`w-1.5 h-1.5 rounded-full ${product.isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
                           {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               openEdit(product);
                             }}
-                            className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                            aria-label="Засах"
+                            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                            title="Засах"
                           >
-                            <Pencil size={14} />
+                            <Pencil size={16} />
                           </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleActive(product);
                             }}
-                            className="rounded-md p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                            aria-label="Төлөв өөрчлөх"
+                            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                            title={product.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх"}
                           >
-                            {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
+                            {product.isActive ? <ToggleLeft size={16} /> : <ToggleRight size={16} />}
                           </button>
                           <button
                             onClick={(e) => {
@@ -1130,13 +881,13 @@ export default function ProductsPage() {
                               handleDelete(product.id);
                             }}
                             disabled={deletingId === product.id}
-                            className="rounded-md p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            aria-label="Устгах"
+                            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            title="Устгах"
                           >
                             {deletingId === product.id ? (
-                              <Loader2 size={14} className="animate-spin" />
+                              <Loader2 size={16} className="animate-spin text-red-500" />
                             ) : (
-                              <Trash2 size={14} />
+                              <Trash2 size={16} />
                             )}
                           </button>
                         </div>

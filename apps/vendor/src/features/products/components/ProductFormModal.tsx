@@ -1,0 +1,247 @@
+"use client";
+
+import { X, Banknote, BarChart2, Loader2, PackageSearch, Type, AlignLeft, AlertTriangle, ArrowRight } from "lucide-react";
+import { BusinessCategory, FormState, Product } from "../types";
+import { CategorySelector } from "./CategorySelector";
+import { ImageUploadGrid } from "./ImageUploadGrid";
+
+interface Props {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  editingId: string | null;
+  saving: boolean;
+  categories: BusinessCategory[];
+  products?: Product[];
+  onSwitchToEdit?: (p: Product) => void;
+  onClose: () => void;
+  onSave: (e: React.FormEvent) => void;
+}
+
+export function ProductFormModal({
+  form,
+  setForm,
+  editingId,
+  saving,
+  categories,
+  products = [],
+  onSwitchToEdit,
+  onClose,
+  onSave,
+}: Props) {
+  const duplicateProduct = form.sku
+    ? products.find((p) => p.sku?.toLowerCase() === form.sku.toLowerCase() && p.id !== editingId)
+    : undefined;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 flex flex-col max-h-[90vh]">
+        
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-6 py-5 border-b border-slate-100 bg-white z-10 shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+              {editingId ? "Бараа засах" : "Шинэ бараа бүртгэх"}
+            </h2>
+            <p className="text-sm font-medium text-slate-500 mt-1">
+              Барааны дэлгэрэнгүй мэдээллийг доорх талбаруудад оруулна уу
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="hidden sm:flex w-10 h-10 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Form Body */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <form id="product-form" onSubmit={onSave} className="p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              
+              {/* Left Column: Basic Info */}
+              <div className="lg:col-span-7 space-y-6">
+                
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <Type size={16} className="text-indigo-500" />
+                    Үндсэн мэдээлэл
+                  </h3>
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Барааны нэр <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      required
+                      className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all placeholder:text-slate-400"
+                      placeholder="Жишээ: Цэвэр ус 0.5л"
+                      value={form.name}
+                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">SKU / Код</label>
+                    <div className="relative">
+                      <PackageSearch size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all placeholder:text-slate-400"
+                        placeholder="Жишээ: WAT-001"
+                        value={form.sku}
+                        onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                      />
+                    </div>
+                    {duplicateProduct && (
+                      <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mt-2 animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle size={16} className="text-amber-500 mt-0.5 shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-sm font-bold text-amber-800 leading-tight">Бүртгэлтэй код олдлоо!</p>
+                            <p className="text-xs text-amber-600 mt-0.5">Энэ код <span className="font-bold">{duplicateProduct.name}</span> бараанд ашиглагдаж байна.</p>
+                          </div>
+                        </div>
+                        {onSwitchToEdit && (
+                          <button
+                            type="button"
+                            onClick={() => onSwitchToEdit(duplicateProduct)}
+                            className="flex items-center justify-center gap-1.5 w-full bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold py-2 rounded-lg transition-colors"
+                          >
+                            Тус барааны мэдээллийг засах <ArrowRight size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-2">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <Banknote size={16} className="text-emerald-500" />
+                    Үнэ & Нөөц
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Авсан үнэ (₮)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₮</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          className="w-full h-12 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all font-medium"
+                          placeholder="0"
+                          value={form.costPrice}
+                          onChange={(e) => setForm((f) => ({ ...f, costPrice: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Зарах үнэ (₮) <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₮</span>
+                        <input
+                          required
+                          type="number"
+                          min="0"
+                          step="1"
+                          className="w-full h-12 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all font-medium"
+                          placeholder="0"
+                          value={form.price}
+                          onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">Нөөц (ширхэг)</label>
+                      <div className="relative">
+                        <BarChart2 size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="number"
+                          min="0"
+                          max="2147483647"
+                          className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all font-medium"
+                          placeholder="0"
+                          value={form.stock}
+                          onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-2">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <AlignLeft size={16} className="text-amber-500" />
+                    Дэлгэрэнгүй
+                  </h3>
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Тайлбар</label>
+                    <textarea
+                      rows={4}
+                      className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all resize-none placeholder:text-slate-400"
+                      placeholder="Барааны тухай дэлгэрэнгүй тайлбар..."
+                      value={form.description}
+                      onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Right Column: Media & Classification */}
+              <div className="lg:col-span-5 space-y-6">
+                
+                <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-5">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Ангилал</label>
+                    <CategorySelector
+                      categories={categories}
+                      value={form.businessCategoryId}
+                      onChange={(id) => setForm((f) => ({ ...f, businessCategoryId: id }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
+                  <ImageUploadGrid
+                    images={form.images}
+                    onChange={(imgs) => setForm((f) => ({ ...f, images: imgs }))}
+                  />
+                </div>
+                
+              </div>
+            </div>
+          </form>
+        </div>
+
+        {/* Footer actions */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 px-6 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-200 hover:text-slate-900 transition-colors"
+          >
+            Болих
+          </button>
+          <button
+            type="submit"
+            form="product-form"
+            disabled={saving}
+            className="flex items-center gap-2 h-11 px-8 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-lg shadow-indigo-500/25 hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-60 disabled:hover:bg-indigo-600 disabled:active:scale-100 transition-all"
+          >
+            {saving && <Loader2 size={18} className="animate-spin" />}
+            {editingId ? "Хадгалах" : "Бүртгэх"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
