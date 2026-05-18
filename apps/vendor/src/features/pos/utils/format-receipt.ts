@@ -32,17 +32,5 @@ export function formatReceipt(receipt: PosReceipt): string {
         ]
       : [];
 
-  const ebarimt =
-    receipt.ebarimt && receipt.ebarimt.status !== "DISABLED"
-      ? [
-          "--------------------------------",
-          `eBarimt: ${receipt.ebarimt.status}`,
-          ...(receipt.ebarimt.billId ? [`Bill ID: ${receipt.ebarimt.billId}`] : []),
-          ...(receipt.ebarimt.lottery ? [`Lottery: ${receipt.ebarimt.lottery}`] : []),
-          ...(receipt.ebarimt.qrData ? [`QR: ${receipt.ebarimt.qrData}`] : []),
-          ...(receipt.ebarimt.error ? [`Error: ${receipt.ebarimt.error}`] : []),
-        ]
-      : [];
-
-  return [...header, ...lines, ...footer, ...breakdown, ...ebarimt].join("\n");
+  return [...header, ...lines, ...footer, ...breakdown].join("\n");
 }

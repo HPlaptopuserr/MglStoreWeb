@@ -1,12 +1,10 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus } from "@mgl/database";
+import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
-import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
-import { issueEbarimtReceipt, type EbarimtPaymentLine } from "../../../services/ebarimt.service";
 import {
   requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
@@ -19,179 +17,6 @@ import {
 } from "./_shared";
 
 const router: ExpressRouter = Router();
-
-type TerminalEbarimtResult = {
-  billId: string | null;
-  qrData: string | null;
-  lottery: string | null;
-  source: string;
-};
-
-const firstString = (...values: unknown[]) => {
-  for (const value of values) {
-    const text = String(value ?? "").trim();
-    if (text) return text;
-  }
-  return "";
-};
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value && typeof value === "object" && !Array.isArray(value));
-
-const parseLooseKeyValueText = (raw: string) => {
-  const result: Record<string, unknown> = {};
-  const pairPattern = /([A-Za-z][A-Za-z0-9_]*)\s*[:=]\s*("(?:\\.|[^"])*"|[^,}\r\n>]*)/g;
-  let match: RegExpExecArray | null;
-  while ((match = pairPattern.exec(raw))) {
-    result[match[1]] = match[2].trim().replace(/^"(.*)"$/, "$1");
-  }
-  return result;
-};
-
-function extractTerminalEbarimt(payload: unknown): TerminalEbarimtResult | null {
-  if (!isRecord(payload)) return null;
-
-  const candidates: Record<string, unknown>[] = [payload];
-  for (const key of ["parsed", "ebarimt", "eBarimt", "ebarimtReceipt", "receipt", "taxReceipt", "checkTxn"]) {
-    const nested = payload[key];
-    if (isRecord(nested)) candidates.push(nested);
-  }
-
-  const raw = firstString(payload.raw, payload.rawText);
-  if (raw) candidates.push(parseLooseKeyValueText(raw));
-
-  for (const candidate of candidates) {
-    const billId = firstString(
-      candidate.ebarimtBillId,
-      candidate.billId,
-      candidate.bill_id,
-      candidate.ebillId,
-      candidate.ebarimt_id,
-      candidate.ebarimtId,
-    );
-    const qrData = firstString(
-      candidate.ebarimtQrData,
-      candidate.qrData,
-      candidate.qr_data,
-      candidate.qrText,
-      candidate.qr_text,
-      candidate.qrCode,
-      candidate.qr_code,
-    );
-    const lottery = firstString(
-      candidate.ebarimtLottery,
-      candidate.lottery,
-      candidate.lotteryNo,
-      candidate.lottery_no,
-      candidate.luckyNo,
-    );
-
-    if (billId || qrData || lottery) {
-      return {
-        billId: billId || null,
-        qrData: qrData || null,
-        lottery: lottery || null,
-        source: firstString(candidate.ebarimtSource, candidate.source) || "CARD_TERMINAL",
-      };
-    }
-  }
-
-  return null;
-}
-
-function mapSaleEbarimt(sale: {
-  ebarimtStatus: string;
-  ebarimtBillId: string | null;
-  ebarimtQrData: string | null;
-  ebarimtLottery: string | null;
-  ebarimtError: string | null;
-  ebarimtSentAt: Date | null;
-  ebarimtRetryCount: number;
-}) {
-  return {
-    status: sale.ebarimtStatus,
-    billId: sale.ebarimtBillId,
-    qrData: sale.ebarimtQrData,
-    lottery: sale.ebarimtLottery,
-    error: sale.ebarimtError,
-    sentAt: sale.ebarimtSentAt?.toISOString() || null,
-    retryCount: sale.ebarimtRetryCount,
-  };
-}
-
-async function issueAndStoreEbarimtReceipt(saleId: string, payments: EbarimtPaymentLine[]) {
-  const sale = await prisma.posSale.findUnique({
-    where: { id: saleId },
-    include: {
-      lines: true,
-      organization: {
-        select: {
-          ebarimtEnabled: true,
-          ebarimtTin: true,
-          ebarimtBranchNo: true,
-          ebarimtPosNo: true,
-          ebarimtServiceUrl: true,
-        },
-      },
-    },
-  });
-
-  if (!sale) return null;
-
-  const result = await issueEbarimtReceipt(
-    {
-      enabled: sale.organization.ebarimtEnabled,
-      tin: sale.organization.ebarimtTin,
-      branchNo: sale.organization.ebarimtBranchNo,
-      posNo: sale.organization.ebarimtPosNo,
-      serviceUrl: sale.organization.ebarimtServiceUrl,
-    },
-    {
-      saleId: sale.id,
-      receiptNo: sale.receiptNo,
-      createdAt: sale.createdAt,
-      grandTotal: Number(sale.grandTotal),
-      taxTotal: Number(sale.taxTotal),
-      payments,
-      lines: sale.lines.map((line) => ({
-        productId: line.productId,
-        productName: line.productName,
-        productSku: line.productSku,
-        qty: line.qty,
-        unitPrice: Number(line.unitPrice),
-        taxAmount: Number(line.taxAmount),
-        discount: Number(line.discount),
-        lineTotal: Number(line.lineTotal),
-      })),
-    },
-  );
-
-  const updated = await prisma.posSale.update({
-    where: { id: sale.id },
-    data: {
-      ebarimtStatus: result.status,
-      ebarimtBillId: result.billId || null,
-      ebarimtQrData: result.qrData || null,
-      ebarimtLottery: result.lottery || null,
-      ebarimtError: result.error || null,
-      ebarimtPayload: result.payload ? (result.payload as Prisma.InputJsonValue) : undefined,
-      ebarimtResponse: result.response ? (result.response as Prisma.InputJsonValue) : undefined,
-      ebarimtSentAt: result.sentAt || null,
-      ...(result.status !== "DISABLED" ? { ebarimtRetryCount: { increment: 1 } } : {}),
-    },
-    select: {
-      ebarimtStatus: true,
-      ebarimtBillId: true,
-      ebarimtQrData: true,
-      ebarimtLottery: true,
-      ebarimtError: true,
-      ebarimtSentAt: true,
-      ebarimtRetryCount: true,
-    },
-  });
-
-  return mapSaleEbarimt(updated);
-}
 
 router.post("/pos/sales", async (req, res) => {
   try {
@@ -397,7 +222,7 @@ router.post("/pos/sales", async (req, res) => {
       const cardLines = normalizedPayments.filter((item) => item.method === PaymentMethod.CARD);
       const qpayLines = normalizedPayments.filter((item) => item.method === PaymentMethod.QPAY);
 
-      const cardAttemptMap = new Map<string, { traceno: string | null; terminalId: string; ebarimt: TerminalEbarimtResult | null }>();
+      const cardAttemptMap = new Map<string, { traceno: string | null; terminalId: string }>();
       for (const cardLine of cardLines) {
         const attemptId = String(cardLine.attemptId || cardLine.transactionId || "").trim();
         if (!attemptId) {
@@ -406,11 +231,7 @@ router.post("/pos/sales", async (req, res) => {
 
         const attempt = await tx.cardPaymentAttempt.findUnique({ where: { id: attemptId } });
         if (!attempt) throw toApiError(404, `Card attempt олдсонгүй: ${attemptId}`);
-        cardAttemptMap.set(attemptId, {
-          traceno: attempt.traceno,
-          terminalId: attempt.terminalId,
-          ebarimt: extractTerminalEbarimt(attempt.providerPayload),
-        });
+        cardAttemptMap.set(attemptId, { traceno: attempt.traceno, terminalId: attempt.terminalId });
         if (attempt.status !== PosPaymentStatus.APPROVED) {
           throw toApiError(409, `Card attempt ${attemptId} approved биш байна`);
         }
@@ -537,8 +358,6 @@ router.post("/pos/sales", async (req, res) => {
         return methods.length === 1 ? methods[0] : "MIXED";
       })();
 
-      const terminalEbarimt = Array.from(cardAttemptMap.values()).find((item) => item.ebarimt)?.ebarimt ?? null;
-
       // Resolve shiftId: use provided if valid, otherwise find/create for this cashier
       let resolvedShiftId: string = body.shiftId || "";
 
@@ -601,22 +420,6 @@ router.post("/pos/sales", async (req, res) => {
           taxTotal,
           discountTotal,
           grandTotal,
-          ...(terminalEbarimt
-            ? {
-                ebarimtStatus: "SENT",
-                ebarimtBillId: terminalEbarimt.billId,
-                ebarimtQrData: terminalEbarimt.qrData,
-                ebarimtLottery: terminalEbarimt.lottery,
-                ebarimtError: null,
-                ebarimtResponse: {
-                  source: terminalEbarimt.source,
-                  billId: terminalEbarimt.billId,
-                  qrData: terminalEbarimt.qrData,
-                  lottery: terminalEbarimt.lottery,
-                },
-                ebarimtSentAt: new Date(),
-              }
-            : {}),
           note: body.note || null,
           lines: {
             create: lineDetails.map((ld) => ({
@@ -655,19 +458,6 @@ router.post("/pos/sales", async (req, res) => {
           }
           return item;
         }),
-        ...(terminalEbarimt
-          ? {
-              ebarimt: {
-                status: "SENT",
-                billId: terminalEbarimt.billId,
-                qrData: terminalEbarimt.qrData,
-                lottery: terminalEbarimt.lottery,
-                error: null,
-                sentAt: fullSale.ebarimtSentAt?.toISOString() || null,
-                retryCount: fullSale.ebarimtRetryCount,
-              },
-            }
-          : {}),
         createdAt: fullSale.createdAt.toISOString(),
         lines: fullSale.lines.map((l) => ({
           productId: l.productId,
@@ -693,30 +483,8 @@ router.post("/pos/sales", async (req, res) => {
         data: { response: saleResponse as object },
       });
 
-      return { saleResponse, saleId: fullSale.id, effectiveOrganizationId, grandTotal, terminalEbarimt };
+      return { saleResponse, effectiveOrganizationId, grandTotal };
     });
-
-    const ebarimt = result.terminalEbarimt
-      ? (result.saleResponse as { ebarimt?: ReturnType<typeof mapSaleEbarimt> }).ebarimt ?? null
-      : await issueAndStoreEbarimtReceipt(
-          result.saleId,
-          normalizedPayments.map((item) => ({ method: item.method || "CASH", amount: item.amount })),
-        );
-    const responseWithEbarimt = ebarimt
-      ? { ...result.saleResponse, ebarimt }
-      : result.saleResponse;
-
-    if (ebarimt) {
-      await prisma.posSaleIdempotency.update({
-        where: {
-          organizationId_clientSaleId: {
-            organizationId: result.effectiveOrganizationId,
-            clientSaleId,
-          },
-        },
-        data: { response: responseWithEbarimt as object },
-      });
-    }
 
     void prisma.auditLog.create({
       data: {
@@ -731,12 +499,11 @@ router.post("/pos/sales", async (req, res) => {
           organizationId: result.effectiveOrganizationId,
           paymentBreakdown: normalizedPayments,
           grandTotal: result.grandTotal,
-          ebarimtStatus: ebarimt?.status || "DISABLED",
         },
       },
     });
 
-    res.status(201).json(responseWithEbarimt);
+    res.status(201).json(result.saleResponse);
   } catch (error) {
     const maybeKnownError = error as { code?: string };
     if (maybeKnownError?.code === "P2002") {
@@ -775,58 +542,5 @@ router.post("/pos/sales", async (req, res) => {
 /* ─────────────────────────────────────────────────────────────────────────
  * Shift management — open / close / current
  * ─────────────────────────────────────────────────────────────────────── */
-
-router.post("/pos/sales/:id/ebarimt/retry", async (req, res) => {
-  try {
-    const actor = await requirePosUser(req, res);
-    if (!actor) return;
-
-    const sale = await prisma.posSale.findUnique({
-      where: { id: req.params.id },
-      select: {
-        id: true,
-        organizationId: true,
-        status: true,
-        paymentMethod: true,
-        grandTotal: true,
-        ebarimtStatus: true,
-        ebarimtBillId: true,
-        ebarimtQrData: true,
-        ebarimtLottery: true,
-        ebarimtError: true,
-        ebarimtSentAt: true,
-        ebarimtRetryCount: true,
-      },
-    });
-
-    if (!sale) {
-      return res.status(404).json({ message: "POS sale олдсонгүй" });
-    }
-
-    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, sale.organizationId))) {
-      return res.status(403).json({ message: "Энэ байгууллагын баримт дахин илгээх эрхгүй" });
-    }
-
-    if (sale.status !== PosSaleStatus.COMPLETED) {
-      return res.status(409).json({ message: "Зөвхөн дууссан борлуулалтын eBarimt-ийг дахин илгээнэ" });
-    }
-
-    if (sale.ebarimtStatus === "SENT" && req.body?.force !== true) {
-      return res.json({ success: true, ebarimt: mapSaleEbarimt(sale) });
-    }
-
-    const ebarimt = await issueAndStoreEbarimtReceipt(sale.id, [
-      { method: sale.paymentMethod, amount: Number(sale.grandTotal) },
-    ]);
-
-    return res.status(ebarimt?.status === "SENT" ? 200 : 400).json({
-      success: ebarimt?.status === "SENT",
-      ebarimt,
-    });
-  } catch (error) {
-    console.error("retry ebarimt receipt error", error);
-    return res.status(500).json({ message: "eBarimt дахин илгээхэд алдаа гарлаа" });
-  }
-});
 
 export default router;

@@ -21,17 +21,6 @@ type MinuAgentStatus = {
   orgName: string;
 };
 
-type EbarimtStatus = {
-  isConnected: boolean;
-  enabled: boolean;
-  tin: string | null;
-  branchNo: string | null;
-  posNo: string | null;
-  serviceUrl: string | null;
-  connectedAt: string | null;
-  orgName: string;
-};
-
 type BankAccount = {
   account_bank_code: string;
   account_number: string;
@@ -72,7 +61,7 @@ const BANK_OPTIONS = [
   { code: "990000", name: "Мобифинанс" },
 ];
 
-type MerchantSettingsMode = "qpay" | "terminal" | "ebarimt";
+type MerchantSettingsMode = "qpay" | "terminal";
 
 /* ── Component ──────────────────────────────────────────── */
 export function MerchantSettingsSection({
@@ -84,10 +73,8 @@ export function MerchantSettingsSection({
 }) {
   const [merchantStatus, setMerchantStatus] = useState<MerchantStatus | null>(null);
   const [minuStatus, setMinuStatus] = useState<MinuAgentStatus | null>(null);
-  const [ebarimtStatus, setEbarimtStatus] = useState<EbarimtStatus | null>(null);
   const [isQpayLoading, setIsQpayLoading] = useState(true);
   const [isMinuLoading, setIsMinuLoading] = useState(true);
-  const [isEbarimtLoading, setIsEbarimtLoading] = useState(true);
   const [tab, setTab] = useState<"register" | "manual">("register");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -132,21 +119,12 @@ export function MerchantSettingsSection({
   const [minuUsername, setMinuUsername] = useState("");
   const [minuPassword, setMinuPassword] = useState("");
   const [minuBranchId, setMinuBranchId] = useState("");
-  const [ebarimtTin, setEbarimtTin] = useState("");
-  const [ebarimtBranchNo, setEbarimtBranchNo] = useState("");
-  const [ebarimtPosNo, setEbarimtPosNo] = useState("");
-  const [ebarimtServiceUrl, setEbarimtServiceUrl] = useState("");
 
   useEffect(() => {
     if (!organizationId) return;
 
     if (mode === "terminal") {
       loadMinuStatus();
-      return;
-    }
-
-    if (mode === "ebarimt") {
-      loadEbarimtStatus();
       return;
     }
 
@@ -203,25 +181,6 @@ export function MerchantSettingsSection({
       }
     } catch {} finally {
       setIsMinuLoading(false);
-    }
-  };
-
-  const loadEbarimtStatus = async () => {
-    setIsEbarimtLoading(true);
-    try {
-      const res = await authFetch(`${API}/vendor/merchant/ebarimt/status${orgQuery}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setEbarimtStatus(data);
-          setEbarimtTin(data.tin || "");
-          setEbarimtBranchNo(data.branchNo || "");
-          setEbarimtPosNo(data.posNo || "");
-          setEbarimtServiceUrl(data.serviceUrl || "");
-        }
-      }
-    } catch {} finally {
-      setIsEbarimtLoading(false);
     }
   };
 
@@ -481,89 +440,6 @@ export function MerchantSettingsSection({
     }
   };
 
-  const handleEbarimtConnect = async () => {
-    if (!ebarimtTin.trim() || !ebarimtBranchNo.trim() || !ebarimtPosNo.trim() || !ebarimtServiceUrl.trim()) {
-      setMessage({ type: "error", text: "eBarimt TIN, branchNo, posNo, serviceUrl шаардлагатай" });
-      return;
-    }
-
-    setIsSubmitting(true);
-    setMessage(null);
-    try {
-      const res = await authFetch(`${API}/vendor/merchant/ebarimt/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tin: ebarimtTin.trim(),
-          branchNo: ebarimtBranchNo.trim(),
-          posNo: ebarimtPosNo.trim(),
-          serviceUrl: ebarimtServiceUrl.trim(),
-          ...(organizationId ? { organizationId } : {}),
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMessage({ type: "success", text: data.message });
-        await loadEbarimtStatus();
-      } else {
-        setMessage({ type: "error", text: data.message || "eBarimt тохиргоо хадгалахад алдаа гарлаа" });
-      }
-    } catch {
-      setMessage({ type: "error", text: "Серверийн алдаа" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleEbarimtTest = async () => {
-    setIsSubmitting(true);
-    setMessage(null);
-    try {
-      const res = await authFetch(`${API}/vendor/merchant/ebarimt/test`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(organizationId ? { organizationId } : {}),
-      });
-      const data = await res.json();
-      setMessage({
-        type: data.success ? "success" : "error",
-        text: data.message || (data.success ? "eBarimt холбогдож байна" : "eBarimt холбогдсонгүй"),
-      });
-    } catch {
-      setMessage({ type: "error", text: "Серверийн алдаа" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleEbarimtDisconnect = async () => {
-    if (!confirm("eBarimt тохиргоо салгахыг зөвшөөрч байна уу?")) return;
-    setIsSubmitting(true);
-    setMessage(null);
-    try {
-      const res = await authFetch(`${API}/vendor/merchant/ebarimt/disconnect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(organizationId ? { organizationId } : {}),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMessage({ type: "success", text: data.message });
-        setEbarimtTin("");
-        setEbarimtBranchNo("");
-        setEbarimtPosNo("");
-        setEbarimtServiceUrl("");
-        await loadEbarimtStatus();
-      } else {
-        setMessage({ type: "error", text: data.message || "eBarimt тохиргоо салгахад алдаа гарлаа" });
-      }
-    } catch {
-      setMessage({ type: "error", text: "Серверийн алдаа" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   /* ── Bank account helpers ─────────────────────────────── */
   const addBankAccount = () => {
     setBankAccounts((prev) => [
@@ -675,74 +551,7 @@ export function MerchantSettingsSection({
   );
 
   /* ── Render ───────────────────────────────────────────── */
-  const renderEbarimtSection = () => (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-sm font-bold text-slate-900">eBarimt POS API</p>
-          <p className="mt-1 text-sm text-slate-500">
-            POS борлуулалт бүрийн eBarimt баримтыг тухайн байгууллагын TIN, branchNo, posNo тохиргоогоор илгээнэ.
-          </p>
-        </div>
-        {ebarimtStatus?.isConnected ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-            <Check className="h-3.5 w-3.5" />
-            Холбогдсон
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
-            <AlertCircle className="h-3.5 w-3.5" />
-            Холбоогүй
-          </span>
-        )}
-      </div>
-
-      {ebarimtStatus?.isConnected && (
-        <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          TIN: <span className="font-mono font-bold">{ebarimtStatus.tin}</span>
-          <span className="mx-2 text-emerald-500">·</span>
-          Branch: <span className="font-mono font-bold">{ebarimtStatus.branchNo}</span>
-          <span className="mx-2 text-emerald-500">·</span>
-          POS: <span className="font-mono font-bold">{ebarimtStatus.posNo}</span>
-        </div>
-      )}
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Field label="TIN">
-          <input type="text" value={ebarimtTin} onChange={(e) => setEbarimtTin(e.target.value)} placeholder="Байгууллагын TIN / регистр" className={inputCls} />
-        </Field>
-        <Field label="Branch No">
-          <input type="text" value={ebarimtBranchNo} onChange={(e) => setEbarimtBranchNo(e.target.value)} placeholder="001" className={inputCls} />
-        </Field>
-        <Field label="POS No">
-          <input type="text" value={ebarimtPosNo} onChange={(e) => setEbarimtPosNo(e.target.value)} placeholder="001" className={inputCls} />
-        </Field>
-        <Field label="Service URL">
-          <input type="url" value={ebarimtServiceUrl} onChange={(e) => setEbarimtServiceUrl(e.target.value)} placeholder="http://127.0.0.1:7080" className={inputCls} />
-        </Field>
-      </div>
-
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-        <button type="button" onClick={handleEbarimtConnect} disabled={isSubmitting || !ebarimtTin.trim() || !ebarimtBranchNo.trim() || !ebarimtPosNo.trim() || !ebarimtServiceUrl.trim()} className="flex-1 rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-slate-800 disabled:opacity-50">
-          {ebarimtStatus?.isConnected ? "eBarimt тохиргоо шинэчлэх" : "eBarimt холбох"}
-        </button>
-        <button type="button" onClick={handleEbarimtTest} disabled={isSubmitting || !ebarimtStatus?.isConnected} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50">
-          Холболт шалгах
-        </button>
-        {ebarimtStatus?.isConnected && (
-          <button type="button" onClick={handleEbarimtDisconnect} disabled={isSubmitting} className="rounded-lg bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50">
-            Салгах
-          </button>
-        )}
-      </div>
-
-      <p className="mt-3 text-xs text-slate-500">
-        Cloud API дээр localhost URL нь Render-ийн өөрийн localhost болно. Production дээр eBarimt service-г API хүрч чадах URL эсвэл local bridge-ээр гаргах шаардлагатай.
-      </p>
-    </div>
-  );
-
-  const isLoading = mode === "terminal" ? isMinuLoading : mode === "ebarimt" ? isEbarimtLoading : isQpayLoading;
+  const isLoading = mode === "terminal" ? isMinuLoading : isQpayLoading;
 
   if (isLoading) {
     return (
@@ -757,20 +566,6 @@ export function MerchantSettingsSection({
     return (
       <div className="space-y-6">
         {renderMinuSection()}
-
-        {message && (
-          <div className={`rounded-lg p-3 text-sm ${message.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
-            {message.text}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (mode === "ebarimt") {
-    return (
-      <div className="space-y-6">
-        {renderEbarimtSection()}
 
         {message && (
           <div className={`rounded-lg p-3 text-sm ${message.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
