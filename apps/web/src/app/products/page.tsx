@@ -11,6 +11,7 @@ const PRODUCTS_PER_PAGE = 16;
 
 type SortKey = "newest" | "price_asc" | "price_desc" | "discount" | "name_asc";
 type StockKey = "all" | "in_stock" | "low_stock" | "sold_out";
+type SupplyKey = "all" | "stock" | "preorder";
 
 interface ApiCategory {
   id: string;
@@ -26,6 +27,9 @@ interface ApiProduct {
   barcode?: string | null;
   price: number;
   stock?: number;
+  supplyType?: "IN_STOCK" | "CHINA_PREORDER";
+  preorderLeadTimeDays?: number | null;
+  preorderNote?: string | null;
   images: { id: string; url: string }[];
   organization: { id: string; name: string; logoUrl?: string | null } | null;
   discounts: { percent: number }[];
@@ -49,11 +53,18 @@ const STOCK_OPTIONS: { key: StockKey; label: string; description: string }[] = [
   { key: "sold_out", label: "Дууссан", description: "Нөөцгүй бараа" },
 ];
 
-function buildProductsUrl(categoryId: string | null, search: string) {
+const SUPPLY_OPTIONS: { key: SupplyKey; label: string; description: string }[] = [
+  { key: "all", label: "Бүх бараа", description: "Каталог бүхэлдээ" },
+  { key: "stock", label: "Бэлэн бараа", description: "Нөөцтэй бараанууд" },
+  { key: "preorder", label: "Захиалгаар", description: "Урьдчилсан захиалгатай бараа" },
+];
+
+function buildProductsUrl(categoryId: string | null, search: string, supplyType: SupplyKey = "all") {
   const params = new URLSearchParams();
   if (categoryId) params.set("category", categoryId);
   const query = search.trim();
   if (query) params.set("search", query);
+  if (supplyType !== "all") params.set("type", supplyType);
   const qs = params.toString();
   return qs ? `/products?${qs}` : "/products";
 }
@@ -77,6 +88,9 @@ function ProductsContent() {
   const router = useRouter();
   const categoryParam = searchParams.get("category");
   const searchParam = (searchParams.get("search") ?? searchParams.get("q") ?? "").trim();
+  const typeParam = searchParams.get("type");
+  const supplyParam: SupplyKey =
+    typeParam === "preorder" ? "preorder" : typeParam === "stock" ? "stock" : "all";
 
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([]);
@@ -92,6 +106,7 @@ function ProductsContent() {
   const [priceMax, setPriceMax] = useState("");
   const [selectedOrganization, setSelectedOrganization] = useState("");
   const [stockFilter, setStockFilter] = useState<StockKey>("all");
+  const [supplyFilter, setSupplyFilter] = useState<SupplyKey>(supplyParam);
   const [searchQuery, setSearchQuery] = useState(searchParam);
   const [debouncedSearch, setDebouncedSearch] = useState(searchParam);
   const filterPanelRef = useRef<HTMLDivElement>(null);
@@ -176,8 +191,9 @@ function ProductsContent() {
     setActiveCategory(resolvedCategoryParam);
     setSearchQuery(searchParam);
     setDebouncedSearch(searchParam);
+    setSupplyFilter(supplyParam);
     setCurrentPage(1);
-  }, [resolvedCategoryParam, searchParam]);
+  }, [resolvedCategoryParam, searchParam, supplyParam]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -189,11 +205,17 @@ function ProductsContent() {
   const handleCategoryClick = (catId: string | null) => {
     setActiveCategory(catId);
     setCurrentPage(1);
-    router.push(buildProductsUrl(catId, searchQuery), { scroll: false });
+    router.push(buildProductsUrl(catId, searchQuery, supplyFilter), { scroll: false });
+  };
+
+  const handleSupplyClick = (nextSupply: SupplyKey) => {
+    setSupplyFilter(nextSupply);
+    setCurrentPage(1);
+    router.push(buildProductsUrl(activeCategory, searchQuery, nextSupply), { scroll: false });
   };
 
   const submitSearch = () => {
-    router.replace(buildProductsUrl(activeCategory, searchQuery), { scroll: false });
+    router.replace(buildProductsUrl(activeCategory, searchQuery, supplyFilter), { scroll: false });
   };
 
   const clearFilters = () => {
@@ -202,6 +224,7 @@ function ProductsContent() {
     setPriceMax("");
     setSelectedOrganization("");
     setStockFilter("all");
+    setSupplyFilter("all");
     setSearchQuery("");
     setDebouncedSearch("");
     setSortKey("newest");
@@ -215,9 +238,16 @@ function ProductsContent() {
     priceMax !== "",
     selectedOrganization !== "",
     stockFilter !== "all",
+    supplyFilter !== "all",
     searchQuery !== "",
     sortKey !== "newest",
   ].filter(Boolean).length;
+
+  const supplyCounts = useMemo(() => ({
+    all: apiProducts.length,
+    stock: apiProducts.filter((p) => p.supplyType !== "CHINA_PREORDER").length,
+    preorder: apiProducts.filter((p) => p.supplyType === "CHINA_PREORDER").length,
+  }), [apiProducts]);
 
   const availableOrganizations = useMemo(() => {
     const byId = new Map<string, { id: string; name: string; count: number }>();
@@ -265,15 +295,21 @@ function ProductsContent() {
       list = list.filter((p) => p.organization?.id === selectedOrganization);
     }
 
+    if (supplyFilter === "stock") {
+      list = list.filter((p) => p.supplyType !== "CHINA_PREORDER");
+    } else if (supplyFilter === "preorder") {
+      list = list.filter((p) => p.supplyType === "CHINA_PREORDER");
+    }
+
     if (stockFilter === "in_stock") {
-      list = list.filter((p) => (p.stock ?? 0) > 0);
+      list = list.filter((p) => p.supplyType === "CHINA_PREORDER" || (p.stock ?? 0) > 0);
     } else if (stockFilter === "low_stock") {
       list = list.filter((p) => {
         const stock = p.stock ?? 0;
-        return stock > 0 && stock <= 5;
+        return p.supplyType !== "CHINA_PREORDER" && stock > 0 && stock <= 5;
       });
     } else if (stockFilter === "sold_out") {
-      list = list.filter((p) => (p.stock ?? 0) <= 0);
+      list = list.filter((p) => p.supplyType !== "CHINA_PREORDER" && (p.stock ?? 0) <= 0);
     }
 
     // Price range
@@ -303,13 +339,13 @@ function ProductsContent() {
     }
 
     return list;
-  }, [apiProducts, searchQuery, discountOnly, selectedOrganization, stockFilter, priceMin, priceMax, sortKey]);
+  }, [apiProducts, searchQuery, discountOnly, selectedOrganization, supplyFilter, stockFilter, priceMin, priceMax, sortKey]);
 
   const totalPages = Math.max(1, Math.ceil(processedProducts.length / PRODUCTS_PER_PAGE));
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [processedProducts.length, discountOnly, priceMin, priceMax, selectedOrganization, stockFilter, sortKey]);
+  }, [processedProducts.length, discountOnly, priceMin, priceMax, selectedOrganization, supplyFilter, stockFilter, sortKey]);
 
   const displayProducts = processedProducts.slice(
     (currentPage - 1) * PRODUCTS_PER_PAGE,
@@ -323,6 +359,12 @@ function ProductsContent() {
 
   const activeCategoryName = apiCategories.find((c) => c.id === activeCategory)?.name;
   const activeOrganizationName = availableOrganizations.find((org) => org.id === selectedOrganization)?.name;
+  const activeSupplyName = SUPPLY_OPTIONS.find((option) => option.key === supplyFilter)?.label;
+  const pageTitle = supplyFilter === "preorder"
+    ? "Захиалгын бараа"
+    : supplyFilter === "stock"
+      ? "Бэлэн бараа бүтээгдэхүүн"
+      : activeCategoryName ?? "Бүх бараа бүтээгдэхүүн";
 
   // Price bounds for hints
   const prices = apiProducts.map((p) => p.price);
@@ -338,13 +380,13 @@ function ProductsContent() {
           <span>/</span>
           <Link href="/products" className="hover:underline">Дэлгүүр</Link>
           <span>/</span>
-          <span className="text-gray-400">{activeCategoryName ?? "Бүх бараа"}</span>
+          <span className="text-gray-400">{pageTitle}</span>
         </nav>
 
         {/* Title */}
         <div className="mb-6">
           <h1 className="text-2xl md:text-4xl font-black tracking-tight text-black uppercase">
-            {activeCategoryName ?? "Бүх бараа бүтээгдэхүүн"}{" "}
+            {pageTitle}{" "}
             <span className="text-[#FFAD02] text-sm md:text-base font-bold align-middle">
               ({processedProducts.length})
             </span>
@@ -370,13 +412,41 @@ function ProductsContent() {
                 setSearchQuery("");
                 setDebouncedSearch("");
                 setCurrentPage(1);
-                router.replace(buildProductsUrl(activeCategory, ""), { scroll: false });
+                router.replace(buildProductsUrl(activeCategory, "", supplyFilter), { scroll: false });
               }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
             >
               <X className="h-4 w-4" />
             </button>
           )}
+        </div>
+
+        {/* Product type tabs */}
+        <div className="mb-6 grid gap-2 sm:grid-cols-3">
+          {SUPPLY_OPTIONS.map((option) => {
+            const count = supplyCounts[option.key];
+            const active = supplyFilter === option.key;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => handleSupplyClick(option.key)}
+                className={`border px-4 py-3 text-left transition-colors ${
+                  active
+                    ? "border-black bg-black text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-black"
+                }`}
+              >
+                <span className="flex items-center justify-between gap-3 text-sm font-bold">
+                  {option.label}
+                  <span className={active ? "text-[#FFAD02]" : "text-gray-400"}>{count}</span>
+                </span>
+                <span className={`mt-1 block text-xs ${active ? "text-white/70" : "text-gray-400"}`}>
+                  {option.description}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Category tabs + filter button row */}
@@ -647,6 +717,17 @@ function ProductsContent() {
                 <button onClick={() => setStockFilter("all")} className="ml-1 text-gray-400 hover:text-black">×</button>
               </span>
             )}
+            {supplyFilter !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
+                {activeSupplyName}
+                <button
+                  onClick={() => handleSupplyClick("all")}
+                  className="ml-1 text-gray-400 hover:text-black"
+                >
+                  ×
+                </button>
+              </span>
+            )}
             {searchQuery && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
                 "{searchQuery}"
@@ -655,7 +736,7 @@ function ProductsContent() {
                     setSearchQuery("");
                     setDebouncedSearch("");
                     setCurrentPage(1);
-                    router.replace(buildProductsUrl(activeCategory, ""), { scroll: false });
+                    router.replace(buildProductsUrl(activeCategory, "", supplyFilter), { scroll: false });
                   }}
                   className="ml-1 text-gray-400 hover:text-black"
                 >
@@ -684,7 +765,7 @@ function ProductsContent() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
             </svg>
             <p className="text-gray-400 text-sm font-medium">
-              {searchQuery || discountOnly || priceMin || priceMax || selectedOrganization || stockFilter !== "all"
+              {searchQuery || discountOnly || priceMin || priceMax || selectedOrganization || supplyFilter !== "all" || stockFilter !== "all"
                 ? "Шүүлтэд тохирох бараа олдсонгүй"
                 : "Энэ ангилалд бараа байхгүй байна"}
             </p>
@@ -716,6 +797,8 @@ function ProductsContent() {
                     originalPrice={originalPrice}
                     storeName={product.organization?.name}
                     stock={product.stock}
+                    isPreorder={product.supplyType === "CHINA_PREORDER"}
+                    preorderLeadTimeDays={product.preorderLeadTimeDays}
                   />
                 </div>
               );

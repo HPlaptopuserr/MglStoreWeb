@@ -33,6 +33,7 @@ type CardAttemptResponseSource = {
   status: PosPaymentStatus;
   transactionId: string | null;
   message: string | null;
+  providerPayload?: Prisma.JsonValue | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -45,6 +46,70 @@ const firstString = (...values: unknown[]) => {
   return "";
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+const parseLooseKeyValueText = (raw: string) => {
+  const result: Record<string, unknown> = {};
+  const pairPattern = /([A-Za-z][A-Za-z0-9_]*)\s*[:=]\s*("(?:\\.|[^"])*"|[^,}\r\n>]*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pairPattern.exec(raw))) {
+    result[match[1]] = match[2].trim().replace(/^"(.*)"$/, "$1");
+  }
+  return result;
+};
+
+const extractAttemptEbarimt = (payload: unknown) => {
+  if (!isRecord(payload)) return null;
+
+  const candidates: Record<string, unknown>[] = [payload];
+  for (const key of ["parsed", "ebarimt", "eBarimt", "ebarimtReceipt", "receipt", "taxReceipt", "checkTxn"]) {
+    const nested = payload[key];
+    if (isRecord(nested)) candidates.push(nested);
+  }
+
+  const raw = firstString(payload.raw, payload.rawText);
+  if (raw) candidates.push(parseLooseKeyValueText(raw));
+
+  for (const candidate of candidates) {
+    const billId = firstString(
+      candidate.ebarimtBillId,
+      candidate.billId,
+      candidate.bill_id,
+      candidate.ebillId,
+      candidate.ebarimt_id,
+      candidate.ebarimtId,
+    );
+    const qrData = firstString(
+      candidate.ebarimtQrData,
+      candidate.qrData,
+      candidate.qr_data,
+      candidate.qrText,
+      candidate.qr_text,
+      candidate.qrCode,
+      candidate.qr_code,
+    );
+    const lottery = firstString(
+      candidate.ebarimtLottery,
+      candidate.lottery,
+      candidate.lotteryNo,
+      candidate.lottery_no,
+      candidate.luckyNo,
+    );
+
+    if (billId || qrData || lottery) {
+      return {
+        billId: billId || null,
+        qrData: qrData || null,
+        lottery: lottery || null,
+        source: firstString(candidate.ebarimtSource, candidate.source) || "CARD_TERMINAL",
+      };
+    }
+  }
+
+  return null;
+};
+
 const toCardAttemptResponse = (attempt: CardAttemptResponseSource) => ({
   attemptId: attempt.id,
   amount: Number(attempt.amount),
@@ -53,6 +118,7 @@ const toCardAttemptResponse = (attempt: CardAttemptResponseSource) => ({
   status: attempt.status,
   transactionId: attempt.transactionId || undefined,
   message: attempt.message || undefined,
+  ebarimt: extractAttemptEbarimt(attempt.providerPayload),
   createdAt: attempt.createdAt.toISOString(),
   updatedAt: attempt.updatedAt.toISOString(),
 });

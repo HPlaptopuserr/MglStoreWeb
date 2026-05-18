@@ -181,6 +181,7 @@ export class AndroidPgwProvider implements CardTerminalProvider {
       pan: parsed.pan ?? null,
       amount: parsed.amount ?? amount,
       data: parsed.data ?? params.attemptId,
+      parsed,
     };
   }
 

@@ -21,6 +21,9 @@ export interface Product {
   price: number;
   costPrice: number | null;
   stock: number;
+  supplyType: "IN_STOCK" | "CHINA_PREORDER";
+  preorderLeadTimeDays: number | null;
+  preorderNote: string | null;
   isActive: boolean;
   images: ProductImage[];
   businessCategoryId: string | null;
@@ -36,6 +39,9 @@ export interface FormState {
   price: string;
   costPrice: string;
   stock: string;
+  supplyType: "IN_STOCK" | "CHINA_PREORDER";
+  preorderLeadTimeDays: string;
+  preorderNote: string;
   businessCategoryId: string;
   images: string[];
 }

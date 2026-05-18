@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Boxes,
   Megaphone,
+  PackageSearch,
   ScanLine,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
@@ -26,6 +27,7 @@ type FeatureToggle = {
 const FEATURES = [
   { suffix: "pos-enabled", label: "POS касс", icon: ScanLine, defaultEnabled: false },
   { suffix: "supply-products-enabled", label: "Нэгдсэн бараа", icon: Boxes, defaultEnabled: false },
+  { suffix: "preorder-products-enabled", label: "Захиалгын бараа", icon: PackageSearch, defaultEnabled: false },
   { suffix: "service-posts-enabled", label: "Үйлчилгээний постууд", icon: Megaphone, defaultEnabled: true },
 ];
 

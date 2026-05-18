@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useCallback } from "react";
 import {
@@ -22,6 +22,10 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
+import {
+  isFeatureEnabled,
+  PREORDER_PRODUCTS_FEATURE_KEY,
+} from "@/lib/vendor-features";
 import { 
   ExcelImportModal, 
   ProductFormModal,
@@ -39,8 +43,19 @@ const EMPTY_FORM: FormState = {
   price: "",
   costPrice: "",
   stock: "0",
+  supplyType: "IN_STOCK",
+  preorderLeadTimeDays: "14",
+  preorderNote: "",
   businessCategoryId: "",
   images: [],
+};
+
+const PREORDER_FORM: FormState = {
+  ...EMPTY_FORM,
+  stock: "0",
+  supplyType: "CHINA_PREORDER",
+  preorderLeadTimeDays: "14",
+  preorderNote: "",
 };
 
 export default function ProductsPage() {
@@ -55,6 +70,9 @@ export default function ProductsPage() {
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "stock" | "preorder">("all");
+  const [showPreorderProducts, setShowPreorderProducts] = useState(false);
+  const [preorderFeatureLoaded, setPreorderFeatureLoaded] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -116,6 +134,21 @@ export default function ProductsPage() {
     fetchProducts();
     fetchCategories();
     const orgId = getOrgId();
+    if (orgId) {
+      authFetch(`${API}/site-settings`)
+        .then(async (r) => {
+          const settings = r.ok
+            ? ((await r.json()) as Record<string, unknown>)
+            : {};
+          setShowPreorderProducts(
+            isFeatureEnabled(settings, PREORDER_PRODUCTS_FEATURE_KEY, orgId),
+          );
+        })
+        .catch(() => setShowPreorderProducts(false))
+        .finally(() => setPreorderFeatureLoaded(true));
+    } else {
+      setPreorderFeatureLoaded(true);
+    }
     const statusUrl = orgId
       ? `${API}/vendor/upgrade/status?organizationId=${encodeURIComponent(orgId)}`
       : `${API}/vendor/upgrade/status`;
@@ -135,8 +168,38 @@ export default function ProductsPage() {
       .catch(() => {});
   }, [fetchProducts, fetchCategories]);
 
+  useEffect(() => {
+    if (preorderFeatureLoaded && !showPreorderProducts && typeFilter === "preorder") {
+      setTypeFilter("all");
+    }
+  }, [preorderFeatureLoaded, showPreorderProducts, typeFilter]);
+
+  useEffect(() => {
+    const normalizeType = (value: unknown): "all" | "stock" | "preorder" =>
+      value === "preorder" ? "preorder" : value === "stock" ? "stock" : "all";
+
+    if (typeof window !== "undefined") {
+      const initialType = new URLSearchParams(window.location.search).get("type");
+      setTypeFilter(normalizeType(initialType));
+    }
+
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: string | null }>).detail;
+      setTypeFilter(normalizeType(detail?.type));
+    };
+
+    window.addEventListener("vendor-product-type-change", handler);
+    return () => window.removeEventListener("vendor-product-type-change", handler);
+  }, []);
+
   const openAdd = () => {
     setForm(EMPTY_FORM);
+    setEditingId(null);
+    setFormOpen(true);
+  };
+
+  const openAddPreorder = () => {
+    setForm(PREORDER_FORM);
     setEditingId(null);
     setFormOpen(true);
   };
@@ -150,6 +213,9 @@ export default function ProductsPage() {
       price: String(p.price),
       costPrice: p.costPrice != null ? String(p.costPrice) : "",
       stock: String(p.stock),
+      supplyType: p.supplyType || "IN_STOCK",
+      preorderLeadTimeDays: p.preorderLeadTimeDays != null ? String(p.preorderLeadTimeDays) : "14",
+      preorderNote: p.preorderNote || "",
       businessCategoryId: p.businessCategoryId || "",
       images: p.images.map((img) => img.url),
     });
@@ -178,8 +244,13 @@ export default function ProductsPage() {
       if (isNaN(costPrice) || costPrice < 0) return showToast("error", "Авсан үнэ буруу байна");
     }
 
-    const stockNum = parseInt(form.stock) || 0;
+    const stockNum = form.supplyType === "CHINA_PREORDER" ? 0 : parseInt(form.stock) || 0;
     if (stockNum < 0 || stockNum > 2_147_483_647) return showToast("error", "Нөөц 0-2,147,483,647 хооронд байх ёстой");
+
+    const leadTimeDays = form.preorderLeadTimeDays.trim() ? parseInt(form.preorderLeadTimeDays, 10) : null;
+    if (leadTimeDays !== null && (isNaN(leadTimeDays) || leadTimeDays < 0 || leadTimeDays > 365)) {
+      return showToast("error", "Ирэх хоног 0-365 хооронд байх ёстой");
+    }
 
     setSaving(true);
     try {
@@ -192,6 +263,9 @@ export default function ProductsPage() {
         price,
         costPrice,
         stock: stockNum,
+        supplyType: form.supplyType,
+        preorderLeadTimeDays: form.supplyType === "CHINA_PREORDER" ? leadTimeDays : null,
+        preorderNote: form.supplyType === "CHINA_PREORDER" ? form.preorderNote.trim() || null : null,
         businessCategoryId: form.businessCategoryId || null,
         images: form.images,
       };
@@ -253,7 +327,15 @@ export default function ProductsPage() {
     }
   };
 
-  const filtered = products.filter((p) => {
+  const isPreorderView =
+    preorderFeatureLoaded && showPreorderProducts && typeFilter === "preorder";
+  const visibleProducts = products.filter((p) =>
+    isPreorderView
+      ? p.supplyType === "CHINA_PREORDER"
+      : p.supplyType !== "CHINA_PREORDER",
+  );
+
+  const filtered = visibleProducts.filter((p) => {
     const query = searchQuery.toLowerCase();
     const matchSearch =
       p.name.toLowerCase().includes(query) ||
@@ -345,7 +427,7 @@ export default function ProductsPage() {
           </div>
           <p className="mt-0.5 text-sm font-medium text-slate-500">Таны бараа бүтээгдэхүүний каталог</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1 md:w-72">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -355,42 +437,61 @@ export default function ProductsPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button
-            onClick={() => canAddProduct && setImportOpen(true)}
-            disabled={!canAddProduct}
-            title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
-            className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
-              canAddProduct
-                ? "bg-emerald-600 shadow-emerald-500/25 hover:bg-emerald-700"
-                : "bg-slate-300 cursor-not-allowed shadow-none"
-            }`}
-          >
-            {canAddProduct ? <FileSpreadsheet size={16} /> : <Lock size={16} />}
-            Excel импорт
-          </button>
-          <button
-            onClick={() => canAddProduct && openAdd()}
-            disabled={!canAddProduct}
-            title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
-            className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
-              canAddProduct
-                ? "bg-indigo-600 shadow-indigo-500/25 hover:bg-indigo-700"
-                : "bg-slate-300 cursor-not-allowed shadow-none"
-            }`}
-          >
-            {canAddProduct ? <Plus size={16} /> : <Lock size={16} />}
-            Шинэ бараа
-          </button>
+          {!isPreorderView && (
+            <button
+              onClick={() => canAddProduct && setImportOpen(true)}
+              disabled={!canAddProduct}
+              title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
+              className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+                canAddProduct
+                  ? "bg-emerald-600 shadow-emerald-500/25 hover:bg-emerald-700"
+                  : "bg-slate-300 cursor-not-allowed shadow-none"
+              }`}
+            >
+              {canAddProduct ? <FileSpreadsheet size={16} /> : <Lock size={16} />}
+              Excel импорт
+            </button>
+          )}
+          {isPreorderView && (
+            <button
+              onClick={() => canAddProduct && openAddPreorder()}
+              disabled={!canAddProduct}
+              title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
+              className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+                canAddProduct
+                  ? "bg-blue-600 shadow-blue-500/25 hover:bg-blue-700"
+                  : "bg-slate-300 cursor-not-allowed shadow-none"
+              }`}
+            >
+              {canAddProduct ? <Package size={16} /> : <Lock size={16} />}
+              Захиалгын бараа
+            </button>
+          )}
+          {!isPreorderView && (
+            <button
+              onClick={() => canAddProduct && openAdd()}
+              disabled={!canAddProduct}
+              title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
+              className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+                canAddProduct
+                  ? "bg-indigo-600 shadow-indigo-500/25 hover:bg-indigo-700"
+                  : "bg-slate-300 cursor-not-allowed shadow-none"
+              }`}
+            >
+              {canAddProduct ? <Plus size={16} /> : <Lock size={16} />}
+              Шинэ бараа
+            </button>
+          )}
         </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Нийт бараа", value: products.length, icon: Package, color: "bg-indigo-50 text-indigo-600" },
-          { label: "Идэвхтэй", value: products.filter((p) => p.isActive).length, icon: ToggleRight, color: "bg-emerald-50 text-emerald-600" },
-          { label: "Нийт нөөц", value: products.reduce((s, p) => s + p.stock, 0), icon: BarChart2, color: "bg-amber-50 text-amber-600" },
-          { label: "Ангилалтай", value: products.filter((p) => p.businessCategoryId).length, icon: Layers, color: "bg-blue-50 text-blue-600" },
+          { label: "Нийт бараа", value: visibleProducts.length, icon: Package, color: "bg-indigo-50 text-indigo-600" },
+          { label: "Идэвхтэй", value: visibleProducts.filter((p) => p.isActive).length, icon: ToggleRight, color: "bg-emerald-50 text-emerald-600" },
+          { label: "Нийт нөөц", value: visibleProducts.reduce((s, p) => s + p.stock, 0), icon: BarChart2, color: "bg-amber-50 text-amber-600" },
+          { label: "Ангилалтай", value: visibleProducts.filter((p) => p.businessCategoryId).length, icon: Layers, color: "bg-blue-50 text-blue-600" },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-white rounded-2xl border border-slate-100 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color}`}>
@@ -473,6 +574,11 @@ export default function ProductsPage() {
                 <span className={`text-xs font-bold px-3 py-1 rounded-full ${selectedProduct.isActive ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"}`}>
                   {selectedProduct.isActive ? "Идэвхтэй" : "Идэвхгүй"}
                 </span>
+                {selectedProduct.supplyType === "CHINA_PREORDER" && (
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                    Хятадаас захиалгаар
+                  </span>
+                )}
               </div>
               
               <div className="flex flex-col gap-1">
@@ -502,6 +608,16 @@ export default function ProductsPage() {
                 <div className="space-y-2">
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Тайлбар</h4>
                   <p className="text-sm text-slate-600 leading-relaxed">{selectedProduct.description}</p>
+                </div>
+              )}
+
+              {selectedProduct.supplyType === "CHINA_PREORDER" && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="font-bold">Захиалгаар ирэх бараа</p>
+                  <p className="mt-1">Ирэх хугацаа: {selectedProduct.preorderLeadTimeDays ?? 14} хоног</p>
+                  {selectedProduct.preorderNote && (
+                    <p className="mt-1 text-blue-700">{selectedProduct.preorderNote}</p>
+                  )}
                 </div>
               )}
 
@@ -559,40 +675,44 @@ export default function ProductsPage() {
       <div>
         <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-bold text-slate-900">Миний бараа</h2>
+            <h2 className="text-lg font-bold text-slate-900">
+              {isPreorderView ? "Захиалгын бараа" : "Миний бараа"}
+            </h2>
             <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-bold text-indigo-700">
               {filtered.length} олдлоо
             </span>
           </div>
 
-          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-            {[
-              { key: "all", label: "Бүгд", count: products.length },
-              {
-                key: "active",
-                label: "Идэвхтэй",
-                count: products.filter((p) => p.isActive).length,
-              },
-              {
-                key: "inactive",
-                label: "Идэвхгүй",
-                count: products.filter((p) => !p.isActive).length,
-              },
-            ].map((btn) => (
-              <button
-                key={btn.key}
-                onClick={() => setStatusFilter(btn.key as "all" | "active" | "inactive")}
-                className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${statusFilter === btn.key
-                    ? "bg-indigo-600 text-white shadow-md"
-                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-                  }`}
-              >
-                {btn.label}
-                <span className={`ml-2 text-xs ${statusFilter === btn.key ? "text-indigo-200" : "opacity-60"}`}>
-                  {btn.count}
-                </span>
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+              {[
+                { key: "all", label: "Бүгд", count: visibleProducts.length },
+                {
+                  key: "active",
+                  label: "Идэвхтэй",
+                  count: visibleProducts.filter((p) => p.isActive).length,
+                },
+                {
+                  key: "inactive",
+                  label: "Идэвхгүй",
+                  count: visibleProducts.filter((p) => !p.isActive).length,
+                },
+              ].map((btn) => (
+                <button
+                  key={btn.key}
+                  onClick={() => setStatusFilter(btn.key as "all" | "active" | "inactive")}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${statusFilter === btn.key
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                    }`}
+                >
+                  {btn.label}
+                  <span className={`ml-2 text-xs ${statusFilter === btn.key ? "text-indigo-200" : "opacity-60"}`}>
+                    {btn.count}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -609,20 +729,26 @@ export default function ProductsPage() {
               <Package size={32} className="text-slate-300" />
             </div>
             <h3 className="text-xl font-bold text-slate-800 mb-2">
-              {searchQuery ? "Хайлтад тохирох бараа олдсонгүй" : "Та хараахан бараа нэмээгүй байна"}
+              {searchQuery
+                ? "Хайлтад тохирох бараа олдсонгүй"
+                : isPreorderView
+                  ? "Та хараахан захиалгын бараа нэмээгүй байна"
+                  : "Та хараахан бараа нэмээгүй байна"}
             </h3>
             <p className="text-sm text-slate-500 max-w-md mx-auto mb-8">
               {searchQuery 
                 ? "Өөр түлхүүр үгээр хайгаад үзнэ үү эсвэл шүүлтүүрээ шалгана уу." 
-                : "Эхний бараагаа бүртгэж борлуулалтаа эхлүүлээрэй. Excel файл ашиглан олноор нь оруулах боломжтой."}
+                : isPreorderView
+                  ? "Захиалгаар ирэх бараагаа тусад нь бүртгэж web дээр захиалгаар харуулна."
+                  : "Эхний бараагаа бүртгэж борлуулалтаа эхлүүлээрэй. Excel файл ашиглан олноор нь оруулах боломжтой."}
             </p>
             {!searchQuery && (
               <button
-                onClick={openAdd}
+                onClick={isPreorderView ? openAddPreorder : openAdd}
                 className="inline-flex items-center gap-2 h-12 px-8 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-lg shadow-indigo-500/25 hover:bg-indigo-700 transition-colors"
               >
                 <Plus size={18} />
-                Бараа бүртгэх
+                {isPreorderView ? "Захиалгын бараа бүртгэх" : "Бараа бүртгэх"}
               </button>
             )}
           </div>
@@ -666,6 +792,11 @@ export default function ProductsPage() {
                             <p className="truncate text-sm font-bold text-slate-900">{product.name}</p>
                             {product.description && (
                               <p className="truncate text-xs font-medium text-slate-400 mt-0.5">{product.description}</p>
+                            )}
+                            {product.supplyType === "CHINA_PREORDER" && (
+                              <span className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                                Хятадаас захиалгаар
+                              </span>
                             )}
                           </div>
                         </div>

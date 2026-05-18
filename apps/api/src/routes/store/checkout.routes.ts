@@ -75,6 +75,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         sku: true,
         price: true,
         stock: true,
+        supplyType: true,
         organizationId: true,
       },
     });
@@ -102,7 +103,8 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         return res.status(400).json({ message: `Бараа олдсонгүй: ${line.productId}` });
       }
       const qty = Math.max(1, Math.floor(Number(line.qty) || 1));
-      if (product.stock < qty) {
+      const isPreorder = product.supplyType === "CHINA_PREORDER";
+      if (!isPreorder && product.stock < qty) {
         return res
           .status(400)
           .json({ message: `${product.name} барааны нөөц хүрэлцэхгүй (${product.stock} ширхэг)` });
@@ -142,6 +144,9 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     const order = await prisma.$transaction(async (tx) => {
       // Decrement stock through unified adjustStock (warehouse-aware + ledger)
       for (const item of orderItemsData) {
+        const product = productMap.get(item.productId);
+        if (product?.supplyType === "CHINA_PREORDER") continue;
+
         const warehouseId = await resolveOrgWarehouse(tx, orgIds[0], item.productId);
         await adjustStock(tx, {
           productId: item.productId,

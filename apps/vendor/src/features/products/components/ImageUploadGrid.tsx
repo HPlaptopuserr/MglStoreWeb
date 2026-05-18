@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ImageIcon, X, Loader2, GripHorizontal } from "lucide-react";
+import { ImageIcon, X, Loader2, GripHorizontal, AlertCircle } from "lucide-react";
 import { authFetch, API } from "@/lib/api";
 
 interface Props {
@@ -13,8 +13,59 @@ interface Props {
 export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
   const [dragging, setDragging] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
-  const uploadToServer = async (file: File): Promise<string | null> => {
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  const compressImageToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const maxSide = 1400;
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas context unavailable"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Image load failed"));
+      };
+
+      img.src = objectUrl;
+    });
+
+  const fileToLocalPreview = async (file: File) => {
+    if (file.type.startsWith("image/") && file.type !== "image/gif") {
+      try {
+        return await compressImageToDataUrl(file);
+      } catch {
+        return readFileAsDataUrl(file);
+      }
+    }
+    return readFileAsDataUrl(file);
+  };
+
+  const uploadToServer = async (file: File): Promise<{ url: string | null; error?: string }> => {
     const formData = new FormData();
     formData.append("image", file);
     try {
@@ -22,11 +73,14 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
         method: "POST",
         body: formData,
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return { url: null, error: err.message || `HTTP ${res.status}` };
+      }
       const data = await res.json();
-      return data.url as string;
-    } catch {
-      return null;
+      return { url: data.url as string };
+    } catch (error) {
+      return { url: null, error: error instanceof Error ? error.message : "Upload failed" };
     }
   };
 
@@ -36,14 +90,38 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
     e.target.value = "";
 
     setUploading(true);
+    setUploadError("");
     const current = [...images];
+    let fallbackUsed = false;
+    let failedMessage = "";
+
     for (const file of files) {
       if (current.length >= maxImages) break;
-      const url = await uploadToServer(file);
-      if (url) current.push(url);
+      const uploaded = await uploadToServer(file);
+      if (uploaded.url) {
+        current.push(uploaded.url);
+        continue;
+      }
+
+      failedMessage = uploaded.error || failedMessage;
+      try {
+        const localPreview = await fileToLocalPreview(file);
+        if (localPreview) {
+          current.push(localPreview);
+          fallbackUsed = true;
+        }
+      } catch {
+        // Keep going so one bad file does not block the rest.
+      }
     }
+
     onChange(current.slice(0, maxImages));
     setUploading(false);
+    if (fallbackUsed) {
+      setUploadError("Сервер upload ажиллахгүй байгаа тул зураг түр форм дотор хадгалагдлаа. Render дээр Supabase тохиргоо шалгах хэрэгтэй.");
+    } else if (failedMessage) {
+      setUploadError(`Зураг upload хийхэд алдаа гарлаа: ${failedMessage}`);
+    }
   };
 
   const removeImage = (idx: number) => {
@@ -169,6 +247,12 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
         <GripHorizontal size={14} className="text-slate-400" />
         Зурагнуудыг чирэх замаар дахин эрэмбэлж болно.
       </p>
+      {uploadError && (
+        <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-medium text-amber-700">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {uploadError}
+        </p>
+      )}
     </div>
   );
 }

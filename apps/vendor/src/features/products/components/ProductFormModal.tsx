@@ -28,6 +28,7 @@ export function ProductFormModal({
   onClose,
   onSave,
 }: Props) {
+  const isPreorder = form.supplyType === "CHINA_PREORDER";
   const duplicateProduct = (form.sku || form.barcode)
     ? products.find((p) => {
         const skuMatch = form.sku && p.sku?.toLowerCase() === form.sku.toLowerCase();
@@ -43,10 +44,12 @@ export function ProductFormModal({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-6 py-5 border-b border-slate-100 bg-white z-10 shrink-0">
           <div>
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-              {editingId ? "Бараа засах" : "Шинэ бараа бүртгэх"}
+              {editingId ? "Бараа засах" : isPreorder ? "Захиалгын бараа бүртгэх" : "Шинэ бараа бүртгэх"}
             </h2>
             <p className="text-sm font-medium text-slate-500 mt-1">
-              Барааны дэлгэрэнгүй мэдээллийг доорх талбаруудад оруулна уу
+              {isPreorder
+                ? "Хятадаас захиалгаар ирэх барааны мэдээллийг тусад нь бүртгэнэ."
+                : "Бэлэн байгаа барааны мэдээллийг доорх талбаруудад оруулна уу"}
             </p>
           </div>
           <button
@@ -137,7 +140,7 @@ export function ProductFormModal({
                     Үнэ & Нөөц
                   </h3>
                   
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                  <div className={`grid grid-cols-1 gap-5 ${isPreorder ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-slate-700">
                         Авсан үнэ (₮)
@@ -175,23 +178,66 @@ export function ProductFormModal({
                       </div>
                     </div>
                     
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-slate-700">Нөөц (ширхэг)</label>
-                      <div className="relative">
-                        <BarChart2 size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                    {!isPreorder && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">Нөөц (ширхэг)</label>
+                        <div className="relative">
+                          <BarChart2 size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="number"
+                            min="0"
+                            max="2147483647"
+                            className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all font-medium"
+                            placeholder="0"
+                            value={form.stock}
+                            onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {isPreorder && (
+                <div className="space-y-4 pt-2">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <PackageSearch size={16} className="text-blue-500" />
+                    Захиалгын мэдээлэл
+                  </h3>
+
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 space-y-4">
+                    <div className="rounded-xl border border-blue-100 bg-white px-4 py-3">
+                      <p className="text-sm font-bold text-blue-800">Хятадаас захиалгаар ирэх бараа</p>
+                      <p className="mt-1 text-xs font-medium leading-5 text-blue-600">
+                        Энэ бараа POS кассын бэлэн нөөцөд орохгүй. Web дээр захиалгаар ирэх хэсэгт тусдаа харагдана.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[140px_1fr]">
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">Ирэх хоног</label>
                         <input
                           type="number"
                           min="0"
-                          max="2147483647"
-                          className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all font-medium"
-                          placeholder="0"
-                          value={form.stock}
-                          onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                          max="365"
+                          className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                          value={form.preorderLeadTimeDays}
+                          onChange={(e) => setForm((f) => ({ ...f, preorderLeadTimeDays: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">Нэмэлт тайлбар</label>
+                        <input
+                          className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                          placeholder="Жишээ: Урьдчилгаа төлөөд 14-21 хоногт ирнэ"
+                          value={form.preorderNote}
+                          onChange={(e) => setForm((f) => ({ ...f, preorderNote: e.target.value }))}
                         />
                       </div>
                     </div>
                   </div>
                 </div>
+                )}
 
                 <div className="space-y-4 pt-2">
                   <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">

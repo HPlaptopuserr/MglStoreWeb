@@ -17,6 +17,7 @@ export interface DashboardLayoutProps extends Partial<SidebarProps> {
   onSignOut?: () => void;
   showPos?: boolean;
   showSupplyProducts?: boolean;
+  showPreorderProducts?: boolean;
   showServicePosts?: boolean;
 }
 
@@ -30,6 +31,7 @@ export function DashboardLayout({
   onSignOut,
   showPos,
   showSupplyProducts,
+  showPreorderProducts,
   showServicePosts,
   ...sidebarProps
 }: DashboardLayoutProps) {
@@ -58,6 +60,7 @@ export function DashboardLayout({
           onSignOut={onSignOut}
           showPos={showPos}
           showSupplyProducts={showSupplyProducts}
+          showPreorderProducts={showPreorderProducts}
           showServicePosts={showServicePosts}
           mobileOpen={mobileMenuOpen}
           onMobileClose={() => setMobileMenuOpen(false)}

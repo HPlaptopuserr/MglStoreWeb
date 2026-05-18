@@ -54,6 +54,9 @@ interface FullProduct {
   sku?: string | null;
   price: number;
   stock?: number | null;
+  supplyType?: "IN_STOCK" | "CHINA_PREORDER";
+  preorderLeadTimeDays?: number | null;
+  preorderNote?: string | null;
   images: ProductImage[];
   businessCategory?: BusinessCategory | null;
   organization: Organization;
@@ -133,8 +136,9 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
   }, [productId]);
 
   const images = product?.images ?? [];
-  const isOutOfStock = product?.stock === 0;
-  const maxQty = Math.min(product?.stock ?? 99, 99);
+  const isPreorder = product?.supplyType === "CHINA_PREORDER";
+  const isOutOfStock = !isPreorder && product?.stock === 0;
+  const maxQty = Math.min(isPreorder ? 99 : product?.stock ?? 99, 99);
 
   const handleAddToCart = useCallback(() => {
     if (!product || isOutOfStock) return;
@@ -365,7 +369,13 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                 </div>
 
                 {/* Stock indicator */}
-                {product.stock != null && (
+                {isPreorder ? (
+                  <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+                    <p className="font-bold">Захиалгаар</p>
+                    <p className="mt-1">Ирэх хугацаа: {product.preorderLeadTimeDays ?? 14} хоног</p>
+                    {product.preorderNote && <p className="mt-1 text-blue-700">{product.preorderNote}</p>}
+                  </div>
+                ) : product.stock != null && (
                   <div className="flex items-center gap-2 mb-4">
                     <div className={`w-2 h-2 rounded-full ${product.stock > 0 ? "bg-green-500" : "bg-red-500"}`} />
                     <span className={`text-sm font-medium ${product.stock > 0 ? "text-green-700" : "text-red-600"}`}>
@@ -410,7 +420,7 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                     }`}
                   >
                     <ShoppingCart className="w-4 h-4" />
-                    {addedToCart ? "Нэмэгдлээ!" : isOutOfStock ? "Нөөц дууссан" : "Сагсанд нэмэх"}
+                    {addedToCart ? "Нэмэгдлээ!" : isOutOfStock ? "Нөөц дууссан" : isPreorder ? "Захиалах" : "Сагсанд нэмэх"}
                   </button>
 
                   <button

@@ -8,6 +8,7 @@ type RawProduct = {
   name: string;
   price: number;
   stock: number;
+  supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   isActive: boolean;
 };
 
@@ -44,7 +45,7 @@ export async function getOwnProducts(
   if (!Array.isArray(data)) return [];
 
   return data
-    .filter((item) => item.isActive)
+    .filter((item) => item.isActive && item.supplyType !== "CHINA_PREORDER")
     .map((item) => ({
       id: item.id,
       sku: item.sku || item.id,

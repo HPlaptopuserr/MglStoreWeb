@@ -55,7 +55,7 @@ type ProfileFormData = {
   operatingYears: number;
 };
 
-type ProfileTab = "profile" | "qpay" | "terminal";
+type ProfileTab = "profile" | "qpay" | "terminal" | "ebarimt";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -98,7 +98,9 @@ export default function ProfilePage() {
       ? "qpay"
       : initialTab === "terminal"
         ? "terminal"
-        : "profile",
+        : initialTab === "ebarimt"
+          ? "ebarimt"
+          : "profile",
   );
 
   const uploadOrgImage = async (file: File): Promise<string | null> => {
@@ -589,6 +591,16 @@ export default function ProfilePage() {
         >
           Terminal тохиргоо
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("ebarimt")}
+          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${activeTab === "ebarimt"
+              ? "border-b-2 border-indigo-500 text-indigo-600"
+              : "text-slate-500 hover:text-slate-700"
+            }`}
+        >
+          eBarimt тохиргоо
+        </button>
       </div>
 
       {activeTab === "qpay" && (
@@ -606,6 +618,15 @@ export default function ProfilePage() {
             POS terminal тохиргоо
           </h3>
           <MerchantSettingsSection organizationId={partner?.id} mode="terminal" />
+        </div>
+      )}
+
+      {activeTab === "ebarimt" && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-6">
+            eBarimt POS API тохиргоо
+          </h3>
+          <MerchantSettingsSection organizationId={partner?.id} mode="ebarimt" />
         </div>
       )}
 

@@ -1,6 +1,7 @@
 export const POS_FEATURE_KEY = "pos-enabled";
 export const SUPPLY_PRODUCTS_FEATURE_KEY = "supply-products-enabled";
 export const SERVICE_POSTS_FEATURE_KEY = "service-posts-enabled";
+export const PREORDER_PRODUCTS_FEATURE_KEY = "preorder-products-enabled";
 
 const TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
 

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
+  PackageSearch,
   Boxes,
   Truck,
   LogOut,
@@ -32,6 +33,7 @@ const navigation = [
   { name: "Захиалгууд", href: "/orders", icon: ShoppingCart },
   { name: "POS касс", href: "/pos", icon: ScanLine, posOnly: true },
   { name: "Өөрийн бүтээгдэхүүн", href: "/products", icon: Package },
+  { name: "Захиалгын бараа", href: "/products?type=preorder", icon: PackageSearch, preorderOnly: true },
   { name: "Нэгдсэн бараа", href: "/supply-products", icon: Boxes, supplyOnly: true },
   { name: "Үйлчилгээний постууд", href: "/service-posts", icon: Megaphone, serviceOnly: true },
   { name: "Буцаалт", href: "/returns", icon: RotateCcw },
@@ -46,6 +48,7 @@ export interface VendorSidebarProps {
   onSignOut?: () => void;
   showPos?: boolean;
   showSupplyProducts?: boolean;
+  showPreorderProducts?: boolean;
   showServicePosts?: boolean;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
@@ -55,21 +58,34 @@ export function VendorSidebar({
   onSignOut,
   showPos = false,
   showSupplyProducts = false,
+  showPreorderProducts = false,
   showServicePosts = false,
   mobileOpen = false,
   onMobileClose,
 }: VendorSidebarProps) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [productType, setProductType] = useState<string | null>(null);
 
   // Close mobile drawer on route change
   useEffect(() => {
     onMobileClose?.();
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const syncProductType = () => {
+      if (typeof window === "undefined") return;
+      setProductType(new URLSearchParams(window.location.search).get("type"));
+    };
+    syncProductType();
+    window.addEventListener("popstate", syncProductType);
+    return () => window.removeEventListener("popstate", syncProductType);
+  }, [pathname]);
+
   const filteredNavigation = navigation.filter((item) => {
     if ((item as any).posOnly) return showPos;
     if ((item as any).supplyOnly) return showSupplyProducts;
+    if ((item as any).preorderOnly) return showPreorderProducts;
     if ((item as any).serviceOnly) return showServicePosts;
     return true;
   });
@@ -125,13 +141,32 @@ export function VendorSidebar({
             </p>
           )}
           {nav.map((item) => {
-            const isActive =
-              pathname === item.href || pathname.startsWith(item.href + "/");
+            const isPreorderItem = (item as any).preorderOnly;
+            const isProductItem = item.href === "/products";
+            const isActive = isPreorderItem
+              ? pathname === "/products" && productType === "preorder"
+              : isProductItem
+                ? pathname === "/products" && productType !== "preorder"
+                : pathname === item.href || pathname.startsWith(item.href + "/");
             const isPosActive = isActive && item.href === "/pos";
             return (
               <Link
                 key={item.name}
                 href={item.href}
+                onClick={() => {
+                  if (item.href.startsWith("/products")) {
+                    const [, query = ""] = item.href.split("?");
+                    const nextType = new URLSearchParams(query).get("type");
+                    setProductType(nextType);
+                    if (typeof window !== "undefined") {
+                      window.dispatchEvent(
+                        new CustomEvent("vendor-product-type-change", {
+                          detail: { type: nextType },
+                        }),
+                      );
+                    }
+                  }
+                }}
                 title={collapsed ? item.name : undefined}
                 className={cn(
                   "group flex items-center rounded-lg text-sm font-medium transition-all duration-200",

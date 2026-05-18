@@ -16,6 +16,8 @@ export const ProductCard = ({
   tag,
   tags,
   stock,
+  isPreorder = false,
+  preorderLeadTimeDays,
   storeName,
   isPrime = false,
   wishlistActive = false,
@@ -29,13 +31,15 @@ export const ProductCard = ({
   const discountPercent = hasDiscount
     ? Math.round(((originalPrice - price) / originalPrice) * 100)
     : 0;
-  const soldOut = typeof stock === "number" && stock <= 0;
-  const lowStock = typeof stock === "number" && stock > 0 && stock <= 5;
+  const soldOut = !isPreorder && typeof stock === "number" && stock <= 0;
+  const lowStock = !isPreorder && typeof stock === "number" && stock > 0 && stock <= 5;
   const primaryTag = tag || tags?.[0];
   const hasCartAction = typeof onAddToCart === "function";
 
   const badge = hasDiscount
     ? { label: `-${discountPercent}%`, className: "bg-red-500 text-white" }
+    : isPreorder
+      ? { label: preorderLeadTimeDays ? `${preorderLeadTimeDays} хоног` : "Захиалгаар", className: "bg-blue-500 text-white" }
     : isPrime
       ? { label: "PRIME", className: "bg-black text-white" }
       : lowStock
@@ -124,6 +128,12 @@ export const ProductCard = ({
           <span className="mt-1 inline-flex min-w-0 items-center gap-1 truncate text-sm text-gray-400">
             <Store className="h-3.5 w-3.5 shrink-0 text-gray-300" />
             {storeName}
+          </span>
+        )}
+
+        {isPreorder && (
+          <span className="mt-2 w-fit rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
+            Захиалгаар
           </span>
         )}
 

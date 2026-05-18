@@ -31,6 +31,9 @@ export const ProductCarouselItem = ({ product, idx, onClick }: Props) => {
         }
         originalPrice={originalPrice}
         storeName={product.organization?.name}
+        stock={product.stock}
+        isPreorder={product.supplyType === "CHINA_PREORDER"}
+        preorderLeadTimeDays={product.preorderLeadTimeDays}
         isPrime={idx % 5 === 0}
         onAddToCart={() =>
           addToCart({

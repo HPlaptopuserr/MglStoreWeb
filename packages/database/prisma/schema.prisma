@@ -327,6 +327,12 @@ model Organization {
   minuAgentPassword            String?
   minuAgentBranchId            String?
   minuAgentConnectedAt         DateTime?
+  ebarimtEnabled               Boolean                 @default(false)
+  ebarimtTin                   String?
+  ebarimtBranchNo              String?
+  ebarimtPosNo                 String?
+  ebarimtServiceUrl            String?
+  ebarimtConnectedAt           DateTime?
   subdomainEnabled             Boolean                 @default(false)
   planType                     String?
   planActivatedAt              DateTime?
@@ -651,6 +657,9 @@ model Product {
   /// Updated by POS sales and inventory operations. Do not treat as source of truth
   /// when warehouse management is active for this product.
   stock                Int                         @default(0)
+  supplyType           ProductSupplyType           @default(IN_STOCK)
+  preorderLeadTimeDays Int?
+  preorderNote         String?
   isActive             Boolean                     @default(true)
   categoryId           String?
   createdAt            DateTime                    @default(now())
@@ -677,6 +686,7 @@ model Product {
   @@index([deletedAt])
   @@index([name])
   @@index([barcode])
+  @@index([supplyType])
 }
 
 model ProductRequest {
@@ -1414,6 +1424,11 @@ enum ProductRequestType {
   UPDATE
 }
 
+enum ProductSupplyType {
+  IN_STOCK
+  CHINA_PREORDER
+}
+
 /// Operational capabilities assigned to organization members.
 /// Used for fine-grained permission checks beyond the structural OrgRole.
 enum Capability {
@@ -1778,6 +1793,15 @@ model PosSale {
   discountTotal  Decimal       @db.Decimal(18, 2)
   grandTotal     Decimal       @db.Decimal(18, 2)
   note           String?
+  ebarimtStatus  String        @default("DISABLED")
+  ebarimtBillId  String?
+  ebarimtQrData  String?
+  ebarimtLottery String?
+  ebarimtError   String?
+  ebarimtPayload Json?
+  ebarimtResponse Json?
+  ebarimtSentAt  DateTime?
+  ebarimtRetryCount Int        @default(0)
   voidedAt       DateTime?
   voidReason     String?
   voidedById     String?
@@ -1795,6 +1819,7 @@ model PosSale {
   @@index([shiftId])
   @@index([cashierId])
   @@index([status])
+  @@index([ebarimtStatus])
   @@index([createdAt])
 }
 

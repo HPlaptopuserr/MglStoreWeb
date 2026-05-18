@@ -19,6 +19,33 @@ import {
 
 const router: ExpressRouter = Router();
 
+const normalizeSupplyType = (value: unknown) =>
+  String(value || "").trim().toUpperCase() === "CHINA_PREORDER" ? "CHINA_PREORDER" : "IN_STOCK";
+
+const normalizePreorderLeadTimeDays = (value: unknown) => {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = parseInt(String(value), 10);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 365) return undefined;
+  return parsed;
+};
+
+const PREORDER_PRODUCTS_FEATURE_KEY = "preorder-products-enabled";
+const TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
+
+async function isOrgFeatureEnabled(
+  organizationId: string,
+  featureKey: string,
+  defaultEnabled = false,
+) {
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: `${featureKey}-${organizationId}` },
+    select: { value: true },
+  });
+  const raw = setting?.value;
+  if (raw === undefined || raw === null || raw === "") return defaultEnabled;
+  return TRUE_VALUES.has(String(raw).trim().toLowerCase());
+}
+
 /* ─── GET /products/health — check env config ───────────────────────── */
 router.get("/products/health", (_req, res) => {
   return res.json({
@@ -454,6 +481,9 @@ router.post(
       price,
       costPrice,
       stock,
+      supplyType,
+      preorderLeadTimeDays,
+      preorderNote,
       businessCategoryId: inputCategoryId,
       images, // string[] — base64 or URL
     } = req.body;
@@ -497,6 +527,18 @@ router.post(
       return res.status(400).json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
     }
 
+    const normalizedSupplyType = normalizeSupplyType(supplyType);
+    if (
+      normalizedSupplyType === "CHINA_PREORDER" &&
+      !(await isOrgFeatureEnabled(organizationId, PREORDER_PRODUCTS_FEATURE_KEY))
+    ) {
+      return res.status(403).json({ message: "Захиалгын бараа бүртгэх эрх нээгдээгүй байна" });
+    }
+    const normalizedLeadTimeDays = normalizePreorderLeadTimeDays(preorderLeadTimeDays);
+    if (normalizedLeadTimeDays === undefined) {
+      return res.status(400).json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
+    }
+
     const normalizedSku = sku ? String(sku).trim() : null;
     const normalizedBarcode = barcode ? String(barcode).trim() : null;
     if (normalizedSku) {
@@ -536,6 +578,12 @@ router.post(
         price: priceNum,
         costPrice: costPriceNum,
         stock: stockNum,
+        supplyType: normalizedSupplyType,
+        preorderLeadTimeDays: normalizedSupplyType === "CHINA_PREORDER" ? normalizedLeadTimeDays : null,
+        preorderNote:
+          normalizedSupplyType === "CHINA_PREORDER" && preorderNote
+            ? String(preorderNote).trim()
+            : null,
         businessCategoryId: businessCategoryId || null,
         isActive: true,
         images: {
@@ -585,6 +633,9 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       price,
       costPrice,
       stock,
+      supplyType,
+      preorderLeadTimeDays,
+      preorderNote,
       businessCategoryId,
       isActive,
       images, // full replacement: string[]
@@ -612,6 +663,28 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       if (isNaN(s) || s < 0 || s > 2_147_483_647) return res.status(400).json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
       data.stock = s;
     }
+    if (supplyType !== undefined) {
+      const nextSupplyType = normalizeSupplyType(supplyType);
+      if (
+        nextSupplyType === "CHINA_PREORDER" &&
+        !(await isOrgFeatureEnabled(existing.organizationId, PREORDER_PRODUCTS_FEATURE_KEY))
+      ) {
+        return res.status(403).json({ message: "Захиалгын бараа бүртгэх эрх нээгдээгүй байна" });
+      }
+      data.supplyType = nextSupplyType;
+      if (nextSupplyType !== "CHINA_PREORDER") {
+        data.preorderLeadTimeDays = null;
+        data.preorderNote = null;
+      }
+    }
+    if (preorderLeadTimeDays !== undefined) {
+      const leadTimeDays = normalizePreorderLeadTimeDays(preorderLeadTimeDays);
+      if (leadTimeDays === undefined) {
+        return res.status(400).json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
+      }
+      data.preorderLeadTimeDays = leadTimeDays;
+    }
+    if (preorderNote !== undefined) data.preorderNote = preorderNote ? String(preorderNote).trim() : null;
     if (businessCategoryId !== undefined) data.businessCategoryId = businessCategoryId || null;
     if (isActive !== undefined) data.isActive = Boolean(isActive);
 

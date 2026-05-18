@@ -6,6 +6,7 @@ import { DashboardLayout } from "@mgl/ui";
 import {
   isFeatureEnabled,
   POS_FEATURE_KEY,
+  PREORDER_PRODUCTS_FEATURE_KEY,
   SERVICE_POSTS_FEATURE_KEY,
   SUPPLY_PRODUCTS_FEATURE_KEY,
 } from "@/lib/vendor-features";
@@ -23,6 +24,7 @@ export default function VendorDashboardLayout({
   const [isReady, setIsReady] = useState(false);
   const [showPos, setShowPos] = useState(false);
   const [showSupplyProducts, setShowSupplyProducts] = useState(false);
+  const [showPreorderProducts, setShowPreorderProducts] = useState(false);
   const [showServicePosts, setShowServicePosts] = useState(true);
   const [userData, setUserData] = useState({
     name: "Vendor",
@@ -79,6 +81,9 @@ export default function VendorDashboardLayout({
           setShowSupplyProducts(
             isFeatureEnabled(settings, SUPPLY_PRODUCTS_FEATURE_KEY, organizationId),
           );
+          setShowPreorderProducts(
+            isFeatureEnabled(settings, PREORDER_PRODUCTS_FEATURE_KEY, organizationId),
+          );
           setShowServicePosts(
             isFeatureEnabled(settings, SERVICE_POSTS_FEATURE_KEY, organizationId, true),
           );
@@ -86,6 +91,7 @@ export default function VendorDashboardLayout({
         .catch(() => {
           setShowPos(false);
           setShowSupplyProducts(false);
+          setShowPreorderProducts(false);
           setShowServicePosts(true);
         });
     }
@@ -112,6 +118,7 @@ export default function VendorDashboardLayout({
       organizationName={userData.organizationName}
       showPos={showPos}
       showSupplyProducts={showSupplyProducts}
+      showPreorderProducts={showPreorderProducts}
       showServicePosts={showServicePosts}
     >
       {children}

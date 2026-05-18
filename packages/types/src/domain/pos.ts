@@ -28,6 +28,12 @@ export interface CardAttempt {
   status: CardAttemptStatus;
   transactionId?: string;
   message?: string;
+  ebarimt?: {
+    billId?: string | null;
+    qrData?: string | null;
+    lottery?: string | null;
+    source?: string | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -194,4 +200,13 @@ export interface PosReceipt {
   taxTotal: number;
   discountTotal: number;
   grandTotal: number;
+  ebarimt?: {
+    status: string;
+    billId?: string | null;
+    qrData?: string | null;
+    lottery?: string | null;
+    error?: string | null;
+    sentAt?: string | null;
+    retryCount?: number;
+  };
 }

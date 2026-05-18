@@ -1,8 +1,30 @@
 @echo off
-setlocal
+setlocal EnableExtensions
 
 cd /d "%~dp0"
 title MGL POS Bridge Installer
+
+set "INSTALL_DIR=%LOCALAPPDATA%\MGLStore\pos-bridge"
+
+if /I not "%~1"=="--installed" (
+  if /I not "%CD%"=="%INSTALL_DIR%" (
+    echo [SETUP] Bridge-iig cashier PC deer suulgaj baina...
+    echo [SETUP] Source: %CD%
+    echo [SETUP] Target: %INSTALL_DIR%
+    echo.
+
+    if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+    robocopy "%CD%" "%INSTALL_DIR%" /MIR /XD ".git" ".turbo" "release" /XF "bridge.env" >nul
+    if errorlevel 8 (
+      echo [ERROR] Bridge files huulahad aldaa garlaa.
+      pause
+      exit /b 1
+    )
+
+    call "%INSTALL_DIR%\install-android-pgw.cmd" --installed
+    exit /b %ERRORLEVEL%
+  )
+)
 
 echo.
 echo ==========================================
@@ -10,14 +32,21 @@ echo   MGL POS Bridge - Android PGW Installer
 echo ==========================================
 echo.
 
-where node >nul 2>nul
-if errorlevel 1 (
-  echo [ERROR] Node.js oldsongui.
-  echo Node.js LTS suulgaad dahin ajilluulna uu.
-  echo https://nodejs.org/
-  echo.
-  pause
-  exit /b 1
+set "NODE_EXE=%CD%\runtime\node.exe"
+if exist "%NODE_EXE%" (
+  echo [OK] Bundled Node runtime baina.
+) else (
+  where node >nul 2>nul
+  if errorlevel 1 (
+    echo [ERROR] Node.js oldsongui.
+    echo Developer machine deer package-windows.cmd ajilluulaad portable package uusgene uu,
+    echo esvel ene PC deer Node.js LTS suulgaad dahin ajilluulna uu.
+    echo https://nodejs.org/
+    echo.
+    pause
+    exit /b 1
+  )
+  echo [OK] System Node.js baina.
 )
 
 if not exist "bridge.env" (
@@ -45,8 +74,8 @@ if not exist "dist\index.js" (
   if errorlevel 1 (
     echo [ERROR] pnpm oldsongui tul bridge build hiij chadsangui.
     echo Developer machine deer:
-    echo   pnpm --filter @mgl/pos-bridge build
-    echo gej build hiigeed ene folder-iig cashier PC ruu huulna uu.
+    echo   pnpm --filter @mgl/pos-bridge package:windows
+    echo gej portable package uusgeed cashier PC ruu huulna uu.
     echo.
     pause
     exit /b 1

@@ -6,6 +6,7 @@ import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
+import { returnEbarimtReceipt } from "../../../services/ebarimt.service";
 import {
   requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
@@ -52,6 +53,7 @@ router.get("/pos/products", async (req, res) => {
         organizationId: branch.organizationId,
         isActive: true,
         deletedAt: null,
+        supplyType: "IN_STOCK",
       },
       select: {
         id: true,
@@ -138,6 +140,15 @@ router.get("/pos/receipts", async (req, res) => {
       taxTotal: Number(sale.taxTotal),
       discountTotal: Number(sale.discountTotal),
       grandTotal: Number(sale.grandTotal),
+      ebarimt: {
+        status: sale.ebarimtStatus,
+        billId: sale.ebarimtBillId,
+        qrData: sale.ebarimtQrData,
+        lottery: sale.ebarimtLottery,
+        error: sale.ebarimtError,
+        sentAt: sale.ebarimtSentAt?.toISOString() || null,
+        retryCount: sale.ebarimtRetryCount,
+      },
     }));
 
     res.status(200).json(receipts);
@@ -209,6 +220,15 @@ router.get("/pos/sales/history", async (req, res) => {
       taxTotal: Number(sale.taxTotal),
       discountTotal: Number(sale.discountTotal),
       grandTotal: Number(sale.grandTotal),
+      ebarimt: {
+        status: sale.ebarimtStatus,
+        billId: sale.ebarimtBillId,
+        qrData: sale.ebarimtQrData,
+        lottery: sale.ebarimtLottery,
+        error: sale.ebarimtError,
+        sentAt: sale.ebarimtSentAt?.toISOString() || null,
+        retryCount: sale.ebarimtRetryCount,
+      },
       createdAt: sale.createdAt.toISOString(),
       lines: sale.lines.map((line) => ({
         productId: line.productId,
@@ -315,7 +335,18 @@ router.post("/pos/sales/:id/void", async (req, res) => {
 
     const sale = await prisma.posSale.findUnique({
       where: { id: saleId },
-      include: { lines: true },
+      include: {
+        lines: true,
+        organization: {
+          select: {
+            ebarimtEnabled: true,
+            ebarimtTin: true,
+            ebarimtBranchNo: true,
+            ebarimtPosNo: true,
+            ebarimtServiceUrl: true,
+          },
+        },
+      },
     });
     if (!sale) {
       return res.status(404).json({ message: "Борлуулалт олдсонгүй" });
@@ -361,6 +392,30 @@ router.post("/pos/sales/:id/void", async (req, res) => {
       }
     });
 
+    let ebarimtVoid: { ok: boolean; error?: string | null } | null = null;
+    if (sale.ebarimtStatus === "SENT" && sale.ebarimtBillId) {
+      const returned = await returnEbarimtReceipt(
+        {
+          enabled: sale.organization.ebarimtEnabled,
+          tin: sale.organization.ebarimtTin,
+          branchNo: sale.organization.ebarimtBranchNo,
+          posNo: sale.organization.ebarimtPosNo,
+          serviceUrl: sale.organization.ebarimtServiceUrl,
+        },
+        sale.ebarimtBillId,
+        sale.createdAt,
+      );
+      ebarimtVoid = { ok: returned.ok, error: returned.error || null };
+      await prisma.posSale.update({
+        where: { id: saleId },
+        data: {
+          ebarimtStatus: returned.ok ? "VOIDED" : "VOID_PENDING",
+          ebarimtError: returned.ok ? null : returned.error || "eBarimt буцаалт амжилтгүй",
+          ebarimtResponse: returned.response ? (returned.response as Prisma.InputJsonValue) : undefined,
+        },
+      });
+    }
+
     void prisma.auditLog.create({
       data: {
         userId: actor.id,
@@ -371,11 +426,16 @@ router.post("/pos/sales/:id/void", async (req, res) => {
           receiptNo: sale.receiptNo,
           voidReason: reason,
           action: "VOID",
+          ebarimtVoid,
         },
       },
     });
 
-    res.status(200).json({ ok: true, message: "Борлуулалт амжилттай цуцлагдлаа" });
+    res.status(200).json({
+      ok: true,
+      message: "Борлуулалт амжилттай цуцлагдлаа",
+      ebarimtVoid,
+    });
   } catch (error) {
     console.error("void sale error", error);
     const maybeApiError = error as Partial<ApiError>;

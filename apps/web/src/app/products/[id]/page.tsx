@@ -19,6 +19,9 @@ interface Product {
   sku?: string | null;
   price: number;
   stock?: number | null;
+  supplyType?: "IN_STOCK" | "CHINA_PREORDER";
+  preorderLeadTimeDays?: number | null;
+  preorderNote?: string | null;
   images: ProductImage[];
   businessCategory?: BusinessCategory | null;
   organization: Organization;
@@ -113,7 +116,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const savings = originalPrice ? originalPrice - discountedPrice : 0;
   const countdown = useCountdown(discount?.validUntil);
   const images = product?.images ?? [];
-  const isOutOfStock = product?.stock === 0;
+  const isPreorder = product?.supplyType === "CHINA_PREORDER";
+  const isOutOfStock = !isPreorder && product?.stock === 0;
 
   const toggleWishlist = () => {
     if (!product) return;
@@ -165,6 +169,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             category={item.businessCategory?.name}
             storeName={item.organization?.name}
             stock={item.stock ?? undefined}
+            isPreorder={item.supplyType === "CHINA_PREORDER"}
+            preorderLeadTimeDays={item.preorderLeadTimeDays}
           />
         );
       })}
@@ -356,7 +362,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
               )}
 
               {/* Stock */}
-              {product.stock != null && (
+              {isPreorder ? (
+                <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+                  <p className="font-bold">Захиалгаар</p>
+                  <p className="mt-1">Ирэх хугацаа: {product.preorderLeadTimeDays ?? 14} хоног</p>
+                  {product.preorderNote && <p className="mt-1 text-blue-700">{product.preorderNote}</p>}
+                </div>
+              ) : product.stock != null && (
                 <p className="text-sm text-gray-600 mb-3">
                   Үлдэгдэл: <span className={`font-bold ${product.stock > 0 ? "text-gray-900" : "text-red-500"}`}>{product.stock > 0 ? product.stock : "Дууссан"}</span>
                 </p>
@@ -405,7 +417,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
                 </svg>
-                {isOutOfStock ? "Нөөц дууссан" : "Сагслах"}
+                {isOutOfStock ? "Нөөц дууссан" : isPreorder ? "Захиалах" : "Сагслах"}
               </button>
               <button
                 onClick={toggleWishlist}

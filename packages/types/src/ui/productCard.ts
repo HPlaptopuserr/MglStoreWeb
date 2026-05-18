@@ -15,6 +15,8 @@ export interface ProductCardProps {
   rating?: number;
   reviews?: number;
   stock?: number;
+  isPreorder?: boolean;
+  preorderLeadTimeDays?: number | null;
 
   storeName?: string;
 

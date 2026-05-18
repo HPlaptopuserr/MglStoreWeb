@@ -12,6 +12,9 @@ interface ApiProduct {
   id: string;
   name: string;
   price: number;
+  stock?: number | null;
+  supplyType?: "IN_STOCK" | "CHINA_PREORDER";
+  preorderLeadTimeDays?: number | null;
   images: { id: string; url: string }[];
   organization: { id: string; name: string; logoUrl?: string } | null;
   discounts: { percent: number }[];
