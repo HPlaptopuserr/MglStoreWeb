@@ -53,9 +53,11 @@ export function SectionsLayout({
       </div>
 
       {/* Two-panel layout */}
-      <div className="flex gap-0 rounded-3xl border border-slate-100 shadow-sm overflow-hidden bg-white" style={{ height: "calc(100vh - 180px)" }}>
-        <SectionsSidebar active={active} onSelect={setActive} visibleSections={visibleSections} />
-        <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
+      <div className="flex gap-0 rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden bg-white min-h-[600px]">
+        <div className="w-[280px] shrink-0 border-r border-slate-100 bg-slate-50/30">
+          <SectionsSidebar active={active} onSelect={setActive} visibleSections={visibleSections} />
+        </div>
+        <div className="flex flex-1 flex-col">{children}</div>
       </div>
     </div>
   );
