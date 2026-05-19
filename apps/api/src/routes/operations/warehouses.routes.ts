@@ -361,11 +361,26 @@ router.get("/warehouses/:id/detail", async (req, res) => {
               select: {
                 id: true,
                 name: true,
+                description: true,
                 sku: true,
+                barcode: true,
+                unit: true,
                 price: true,
+                costPrice: true,
+                businessCategoryId: true,
+                supplyType: true,
+                preorderLeadTimeDays: true,
+                preorderNote: true,
+                isActive: true,
                 images: {
-                  take: 1,
-                  select: { url: true },
+                  select: { id: true, url: true },
+                },
+                businessCategory: {
+                  select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                  },
                 },
                 category: {
                   select: {
@@ -585,7 +600,17 @@ router.patch(
         expiryDate,
         note,
         name,
+        description,
+        sku,
+        barcode,
+        unit,
         price,
+        costPrice,
+        businessCategoryId,
+        supplyType,
+        preorderLeadTimeDays,
+        preorderNote,
+        isActive,
       } = req.body;
 
       const updateData: any = {};
@@ -606,6 +631,10 @@ router.patch(
         }
         productUpdateData.name = trimmedName;
       }
+      if (description !== undefined) productUpdateData.description = description ? String(description).trim() : null;
+      if (sku !== undefined) productUpdateData.sku = sku ? String(sku).trim() : null;
+      if (barcode !== undefined) productUpdateData.barcode = barcode ? String(barcode).trim() : null;
+      if (unit !== undefined) productUpdateData.unit = unit ? String(unit).trim() : null;
       if (price !== undefined) {
         const parsedPrice = Number(price);
         if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
@@ -613,6 +642,26 @@ router.patch(
         }
         productUpdateData.price = parsedPrice;
       }
+      if (costPrice !== undefined) {
+        const parsedCostPrice = costPrice === null || costPrice === "" ? null : Number(costPrice);
+        if (parsedCostPrice !== null && (!Number.isFinite(parsedCostPrice) || parsedCostPrice < 0)) {
+          return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
+        }
+        productUpdateData.costPrice = parsedCostPrice;
+      }
+      if (businessCategoryId !== undefined) productUpdateData.businessCategoryId = businessCategoryId || null;
+      if (supplyType !== undefined) productUpdateData.supplyType = supplyType;
+      if (preorderLeadTimeDays !== undefined) {
+        const parsedLeadTime = preorderLeadTimeDays === null || preorderLeadTimeDays === ""
+          ? null
+          : Number(preorderLeadTimeDays);
+        if (parsedLeadTime !== null && (!Number.isInteger(parsedLeadTime) || parsedLeadTime < 0 || parsedLeadTime > 365)) {
+          return res.status(400).json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
+        }
+        productUpdateData.preorderLeadTimeDays = parsedLeadTime;
+      }
+      if (preorderNote !== undefined) productUpdateData.preorderNote = preorderNote ? String(preorderNote).trim() : null;
+      if (isActive !== undefined) productUpdateData.isActive = Boolean(isActive);
 
       const targetInventory = await prisma.warehouseInventory.findUnique({
         where: { warehouseId_productId: { warehouseId, productId } },
@@ -658,8 +707,27 @@ router.patch(
               select: {
                 id: true,
                 name: true,
+                description: true,
                 sku: true,
+                barcode: true,
+                unit: true,
                 price: true,
+                costPrice: true,
+                businessCategoryId: true,
+                supplyType: true,
+                preorderLeadTimeDays: true,
+                preorderNote: true,
+                isActive: true,
+                images: {
+                  select: { id: true, url: true },
+                },
+                businessCategory: {
+                  select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                  },
+                },
               },
             },
           },
@@ -685,7 +753,12 @@ router.patch(
       });
 
       res.json(inventory);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === "P2002") {
+        return res.status(409).json({
+          message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна",
+        });
+      }
       console.error("update warehouse inventory error", error);
       res.status(500).json({
         message: "Агуулахийн бүртгэл шинэчлэхэд алдаа гарлаа",

@@ -15,6 +15,8 @@ import {
   Barcode,
   MapPin,
   Trash2,
+  Edit3,
+  Save,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 
@@ -26,12 +28,21 @@ type InventoryItem = {
   location: string | null;
   batchNumber: string | null;
   expiryDate: string | null;
+  note?: string | null;
   product: {
     id: string;
     name: string;
+    description: string | null;
     sku: string | null;
+    barcode: string | null;
+    unit: string | null;
     price: string;
-    barcode?: string;
+    costPrice: string | null;
+    businessCategoryId: string | null;
+    supplyType: string;
+    preorderLeadTimeDays: number | null;
+    preorderNote: string | null;
+    isActive: boolean;
   };
 };
 
@@ -40,10 +51,44 @@ type WarehouseOption = {
   name: string;
 };
 
+type Category = {
+  id: string;
+  name: string;
+  level: number;
+};
+
 type StockStatus = "all" | "healthy" | "low" | "out";
+
+type EditInventoryForm = {
+  name: string;
+  description: string;
+  sku: string;
+  barcode: string;
+  unit: string;
+  price: string;
+  costPrice: string;
+  businessCategoryId: string;
+  supplyType: string;
+  preorderLeadTimeDays: string;
+  preorderNote: string;
+  isActive: boolean;
+  quantity: string;
+  minQuantity: string;
+  maxQuantity: string;
+  location: string;
+  batchNumber: string;
+  expiryDate: string;
+  note: string;
+};
+
+const toDateInputValue = (value: string | null) => {
+  if (!value) return "";
+  return new Date(value).toISOString().slice(0, 10);
+};
 
 export default function InventoryPage() {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("");
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +97,8 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockStatus>("all");
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [editForm, setEditForm] = useState<EditInventoryForm | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -78,6 +125,21 @@ export default function InventoryPage() {
       }
     };
     load();
+  }, []);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await wmsFetch(`${API}/business-categories`);
+        if (res.ok) {
+          const data = await res.json();
+          setCategories(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    loadCategories();
   }, []);
 
   // Load inventory when warehouse changes (with auto-retry on network error)
@@ -139,6 +201,134 @@ export default function InventoryPage() {
       alert("Устгахад алдаа гарлаа");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const openEdit = (item: InventoryItem) => {
+    setEditForm({
+      name: item.product.name,
+      description: item.product.description || "",
+      sku: item.product.sku || "",
+      barcode: item.product.barcode || "",
+      unit: item.product.unit || "",
+      price: String(Number(item.product.price)),
+      costPrice: item.product.costPrice == null ? "" : String(Number(item.product.costPrice)),
+      businessCategoryId: item.product.businessCategoryId || "",
+      supplyType: item.product.supplyType || "IN_STOCK",
+      preorderLeadTimeDays: item.product.preorderLeadTimeDays == null ? "" : String(item.product.preorderLeadTimeDays),
+      preorderNote: item.product.preorderNote || "",
+      isActive: item.product.isActive,
+      quantity: String(item.quantity),
+      minQuantity: String(item.minQuantity),
+      maxQuantity: item.maxQuantity == null ? "" : String(item.maxQuantity),
+      location: item.location || "",
+      batchNumber: item.batchNumber || "",
+      expiryDate: toDateInputValue(item.expiryDate),
+      note: item.note || "",
+    });
+  };
+
+  const openDetail = (item: InventoryItem) => {
+    setEditForm(null);
+    setDeleteConfirm(false);
+    setSelectedItem(item);
+  };
+
+  const closeDetail = () => {
+    setSelectedItem(null);
+    setEditForm(null);
+    setDeleteConfirm(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedItem || !editForm) return;
+
+    const quantity = Number(editForm.quantity);
+    const minQuantity = Number(editForm.minQuantity);
+    const maxQuantity = editForm.maxQuantity === "" ? null : Number(editForm.maxQuantity);
+    const price = Number(editForm.price);
+    const costPrice = editForm.costPrice === "" ? null : Number(editForm.costPrice);
+    const preorderLeadTimeDays = editForm.preorderLeadTimeDays === ""
+      ? null
+      : Number(editForm.preorderLeadTimeDays);
+
+    if (!editForm.name.trim()) {
+      alert("Барааны нэр оруулна уу");
+      return;
+    }
+    if (
+      !Number.isFinite(quantity) ||
+      quantity < 0 ||
+      !Number.isFinite(minQuantity) ||
+      minQuantity < 0 ||
+      (maxQuantity !== null && (!Number.isFinite(maxQuantity) || maxQuantity < 0)) ||
+      !Number.isFinite(price) ||
+      price < 0 ||
+      (costPrice !== null && (!Number.isFinite(costPrice) || costPrice < 0)) ||
+      (preorderLeadTimeDays !== null &&
+        (!Number.isInteger(preorderLeadTimeDays) ||
+          preorderLeadTimeDays < 0 ||
+          preorderLeadTimeDays > 365))
+    ) {
+      alert("Тоо хэмжээ болон үнэ зөв оруулна уу");
+      return;
+    }
+
+    setSavingEdit(true);
+    try {
+      const res = await wmsFetch(
+        `${API}/warehouses/${selectedWarehouseId}/inventory/${selectedItem.product.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: editForm.name.trim(),
+            description: editForm.description.trim() || null,
+            sku: editForm.sku.trim() || null,
+            barcode: editForm.barcode.trim() || null,
+            unit: editForm.unit || null,
+            price,
+            costPrice,
+            businessCategoryId: editForm.businessCategoryId || null,
+            supplyType: editForm.supplyType,
+            preorderLeadTimeDays,
+            preorderNote: editForm.preorderNote.trim() || null,
+            isActive: editForm.isActive,
+            quantity,
+            minQuantity,
+            maxQuantity,
+            location: editForm.location.trim() || null,
+            batchNumber: editForm.batchNumber.trim() || null,
+            expiryDate: editForm.expiryDate || null,
+            note: editForm.note.trim() || null,
+          }),
+        },
+      );
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        alert(data?.message || "Бараа засахад алдаа гарлаа");
+        return;
+      }
+
+      const updated = await res.json();
+      const nextItem: InventoryItem = {
+        ...selectedItem,
+        ...updated,
+        product: {
+          ...selectedItem.product,
+          ...updated.product,
+        },
+      };
+
+      setInventory((prev) =>
+        prev.map((item) => (item.id === selectedItem.id ? nextItem : item)),
+      );
+      setSelectedItem(nextItem);
+      setEditForm(null);
+    } catch {
+      alert("Бараа засахад алдаа гарлаа");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -328,7 +518,7 @@ export default function InventoryPage() {
                   return (
                     <tr
                       key={item.id}
-                      onClick={() => setSelectedItem(item)}
+                      onClick={() => openDetail(item)}
                       className="border-b border-slate-50 cursor-pointer transition-colors last:border-0 hover:bg-blue-50"
                     >
                       <td className="px-4 py-3">
@@ -460,17 +650,302 @@ export default function InventoryPage() {
 
       {/* Detail Modal */}
       {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="relative w-full max-w-2xl rounded-xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4">
+          <div className="relative max-h-[calc(100vh-1.5rem)] w-full max-w-4xl overflow-y-auto rounded-xl bg-white shadow-2xl sm:max-h-[calc(100vh-2rem)]">
             {/* Close button */}
             <button
-              onClick={() => setSelectedItem(null)}
+              onClick={closeDetail}
               className="absolute right-4 top-4 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             >
               <X className="h-5 w-5" />
             </button>
 
             {/* Modal content */}
+            {editForm ? (
+              <div className="space-y-4 p-5 sm:p-6">
+                <div className="space-y-2 border-b border-slate-100 pb-6">
+                  <h2 className="text-2xl font-bold text-slate-900">
+                    Бараа засах
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    {selectedItem.product.sku || "SKU байхгүй"}
+                  </p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Барааны нэр
+                    </label>
+                    <input
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Өртөг үнэ
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editForm.costPrice}
+                      onChange={(e) => setEditForm({ ...editForm, costPrice: e.target.value })}
+                      placeholder="0"
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Нийлүүлэлтийн төрөл
+                    </label>
+                    <select
+                      value={editForm.supplyType}
+                      onChange={(e) => setEditForm({ ...editForm, supplyType: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="IN_STOCK">Бэлэн</option>
+                      <option value="CHINA_PREORDER">Захиалгаар</option>
+                    </select>
+                  </div>
+
+                  {editForm.supplyType === "CHINA_PREORDER" && (
+                    <>
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Ирэх хоног
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="365"
+                          value={editForm.preorderLeadTimeDays}
+                          onChange={(e) => setEditForm({ ...editForm, preorderLeadTimeDays: e.target.value })}
+                          className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Захиалгын тэмдэглэл
+                        </label>
+                        <input
+                          value={editForm.preorderNote}
+                          onChange={(e) => setEditForm({ ...editForm, preorderNote: e.target.value })}
+                          className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      SKU
+                    </label>
+                    <input
+                      value={editForm.sku}
+                      onChange={(e) => setEditForm({ ...editForm, sku: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 font-mono text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Barcode
+                    </label>
+                    <input
+                      value={editForm.barcode}
+                      onChange={(e) => setEditForm({ ...editForm, barcode: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 font-mono text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Хэмжих нэгж
+                    </label>
+                    <select
+                      value={editForm.unit}
+                      onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="">Сонгох</option>
+                      <option value="ш">ш</option>
+                      <option value="кг">кг</option>
+                      <option value="гр">гр</option>
+                      <option value="л">л</option>
+                      <option value="мл">мл</option>
+                      <option value="хайрцаг">хайрцаг</option>
+                      <option value="багц">багц</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Ангилал
+                    </label>
+                    <select
+                      value={editForm.businessCategoryId}
+                      onChange={(e) => setEditForm({ ...editForm, businessCategoryId: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="">Ангилалгүй</option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {"—".repeat(category.level)} {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Тайлбар
+                    </label>
+                    <textarea
+                      value={editForm.description}
+                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      rows={2}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Үнэ
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editForm.price}
+                      onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Гар дээрх тоо
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editForm.quantity}
+                      onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Хамгийн бага
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editForm.minQuantity}
+                      onChange={(e) => setEditForm({ ...editForm, minQuantity: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Хамгийн их
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editForm.maxQuantity}
+                      onChange={(e) => setEditForm({ ...editForm, maxQuantity: e.target.value })}
+                      placeholder="Хязгаарлалтгүй"
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Байрлал
+                    </label>
+                    <input
+                      value={editForm.location}
+                      onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                      placeholder="A-1-3"
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Batch Number
+                    </label>
+                    <input
+                      value={editForm.batchNumber}
+                      onChange={(e) => setEditForm({ ...editForm, batchNumber: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Дуусах хугацаа
+                    </label>
+                    <input
+                      type="date"
+                      value={editForm.expiryDate}
+                      onChange={(e) => setEditForm({ ...editForm, expiryDate: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Тэмдэглэл
+                    </label>
+                    <input
+                      value={editForm.note}
+                      onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={editForm.isActive}
+                      onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                    />
+                    Идэвхтэй бараа
+                  </label>
+                </div>
+
+                <div className="sticky bottom-0 -mx-5 -mb-5 flex gap-3 border-t border-slate-100 bg-white px-5 py-4 sm:-mx-6 sm:-mb-6 sm:px-6">
+                  <button
+                    onClick={() => setEditForm(null)}
+                    disabled={savingEdit}
+                    className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Болих
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={savingEdit}
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {savingEdit ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Хадгалах
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className="space-y-6 p-8">
               {/* Header */}
               <div className="space-y-2 border-b border-slate-100 pb-6">
@@ -593,10 +1068,17 @@ export default function InventoryPage() {
               {/* Footer */}
               <div className="flex gap-3 border-t border-slate-100 pt-6">
                 <button
-                  onClick={() => setSelectedItem(null)}
+                  onClick={closeDetail}
                   className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50"
                 >
                   Хаах
+                </button>
+                <button
+                  onClick={() => openEdit(selectedItem)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-4 py-2.5 font-medium text-blue-600 hover:bg-blue-100"
+                >
+                  <Edit3 className="h-4 w-4" />
+                  Засах
                 </button>
                 <button
                   onClick={() => setDeleteConfirm(true)}
@@ -607,6 +1089,7 @@ export default function InventoryPage() {
                 </button>
               </div>
             </div>
+            )}
           </div>
         </div>
       )}
