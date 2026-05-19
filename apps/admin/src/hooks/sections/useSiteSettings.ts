@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { API, adminFetch } from "@/lib/api";
 
 import { ServiceCategory } from "@/lib/sections/types";
@@ -8,7 +8,16 @@ import { ServiceCategory } from "@/lib/sections/types";
 export function useSiteSettings() {
   const [banners, setBanners] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [mglServices, setMglServices] = useState<ServiceCategory[]>([]);
+  const [mglServices, setMglServicesRaw] = useState<ServiceCategory[]>([]);
+  const mglServicesRef = useRef<ServiceCategory[]>([]);
+
+  const setMglServices = (update: ServiceCategory[] | ((prev: ServiceCategory[]) => ServiceCategory[])) => {
+    setMglServicesRaw((prev) => {
+      const next = typeof update === "function" ? update(prev) : update;
+      mglServicesRef.current = next;
+      return next;
+    });
+  };
   const [showBranchMapOnWeb, setShowBranchMapOnWeb] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -37,7 +46,10 @@ export function useSiteSettings() {
         if (data["mgl-services"]) {
           try {
             const parsed = JSON.parse(data["mgl-services"]);
-            if (Array.isArray(parsed)) setMglServices(parsed);
+            if (Array.isArray(parsed)) {
+              setMglServicesRaw(parsed);
+              mglServicesRef.current = parsed;
+            }
           } catch {}
         }
 
@@ -77,13 +89,15 @@ export function useSiteSettings() {
     setSaving(false);
   };
 
-  const saveMglServices = async (currentServices: ServiceCategory[]) => {
+  const saveMglServices = async (currentServices?: ServiceCategory[]) => {
+    // Always use the ref to get the latest value, avoiding stale closures
+    const toSave = currentServices ?? mglServicesRef.current;
     setSaving(true);
     try {
       await adminFetch(`${API}/site-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ "mgl-services": JSON.stringify(currentServices) }),
+        body: JSON.stringify({ "mgl-services": JSON.stringify(toSave) }),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);

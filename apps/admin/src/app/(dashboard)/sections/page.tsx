@@ -48,7 +48,7 @@ export default function SectionsPage() {
   const handleSave = async () => {
     if (active === "banner") await saveBanners(banners);
     else if (active === "categories") await saveCategories(categories);
-    else if (active === "mgl-services") await saveMglServices(mglServices);
+    else if (active === "mgl-services") await saveMglServices();
   };
 
   return (
@@ -79,7 +79,7 @@ export default function SectionsPage() {
           {active === "qr" && <QrGeneratorPanel showHeader={false} />}
           {active === "pos" && <PosRegistersSection />}
           {active === "vendor-features" && <VendorFeaturesSection />}
-          {active === "mgl-services" && <MglServicesSection mglServices={mglServices} setMglServices={setMglServices} onSave={() => saveMglServices(mglServices)} saving={saving} saved={saved} />}
+          {active === "mgl-services" && <MglServicesSection mglServices={mglServices} setMglServices={setMglServices} onSave={() => saveMglServices()} saving={saving} saved={saved} key="mgl-services" />}
           {active === "hr" && <HrSection />}
           {active === "team" && <TeamSection />}
         </div>

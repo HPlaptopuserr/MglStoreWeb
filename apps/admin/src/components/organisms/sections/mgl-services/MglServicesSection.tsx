@@ -29,7 +29,7 @@ function compressImage(file: File): Promise<Blob> {
 
 interface Props {
   mglServices: ServiceCategory[];
-  setMglServices: React.Dispatch<React.SetStateAction<ServiceCategory[]>>;
+  setMglServices: (update: ServiceCategory[] | ((prev: ServiceCategory[]) => ServiceCategory[])) => void;
   onSave?: () => void;
   saving?: boolean;
   saved?: boolean;
