@@ -43,6 +43,8 @@ export default function ContractSignPage() {
       systemQr?: { enabled: boolean; username?: string; password?: string; merchantCode?: string; } | null;
     } | null;
   } | null>(null);
+  const [isContractLoading, setIsContractLoading] = useState(true);
+  const [contractError, setContractError] = useState<string | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [memberPosition, setMemberPosition] = useState("");
   const [memberStamp, setMemberStamp] = useState<string | null>(null);
@@ -81,8 +83,16 @@ export default function ContractSignPage() {
 
   useEffect(() => {
     setToday(new Date().toLocaleDateString("mn-MN"));
+    setIsContractLoading(true);
+    setContractError(null);
     fetch(`${API}/contracts/${contractId}`)
-      .then(r => r.json())
+      .then(async r => {
+        const data = await r.json().catch(() => null);
+        if (!r.ok || !data?.success) {
+          throw new Error(data?.error || "Гэрээ олдсонгүй");
+        }
+        return data;
+      })
       .then(d => {
         if (d.success) {
           setContractInfo({
@@ -129,7 +139,10 @@ export default function ContractSignPage() {
           }
         }
       })
-      .catch(() => { });
+      .catch((error) => {
+        setContractError(error instanceof Error ? error.message : "Гэрээ ачаалахад алдаа гарлаа");
+      })
+      .finally(() => setIsContractLoading(false));
   }, [contractId, isPrintMode]);
 
   const getCanvasPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -234,7 +247,7 @@ export default function ContractSignPage() {
       } else {
         setStep("success");
       }
-    } catch { alert("Алдаа гарлаа. Дахин оролдоно уу."); }
+    } catch (error) { alert(error instanceof Error ? error.message : "Алдаа гарлаа. Дахин оролдоно уу."); }
     finally { setIsSubmitting(false); }
   };
 
@@ -289,6 +302,35 @@ export default function ContractSignPage() {
     } catch { alert("Алдаа гарлаа."); }
     finally { setCheckingPayment(false); }
   }, [qpayData, checkingPayment, contractId, submissionId, contractInfo?.headerData?.systemQr?.enabled]);
+
+  if (isContractLoading) {
+    return (
+      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-6">
+        <div className="bg-white rounded-2xl border border-neutral-200 p-8 shadow-sm flex items-center gap-3 text-neutral-700">
+          <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+          <span>Гэрээ ачаалж байна...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (contractError) {
+    return (
+      <div className="min-h-screen bg-neutral-100 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white rounded-2xl border border-red-100 p-8 shadow-sm text-center">
+          <h1 className="text-xl font-bold text-neutral-900 mb-2">Гэрээ олдсонгүй</h1>
+          <p className="text-sm text-neutral-600 mb-6">{contractError}</p>
+          <button
+            type="button"
+            onClick={() => window.location.href = "/"}
+            className="px-5 py-3 rounded-xl bg-[#1e4e8c] text-white font-medium"
+          >
+            Нүүр хуудас руу буцах
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (step === "success") {
     const base = process.env.NEXT_PUBLIC_WEB_URL || window.location.origin;
