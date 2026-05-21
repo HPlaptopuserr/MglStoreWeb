@@ -771,10 +771,17 @@ router.patch(
 router.delete(
   "/warehouses/:warehouseId/inventory/:productId",
   requireAuth,
-  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
   async (req, res) => {
     try {
       const { warehouseId, productId } = req.params;
+
+      const targetInventory = await prisma.warehouseInventory.findUnique({
+        where: { warehouseId_productId: { warehouseId, productId } },
+        select: { productId: true },
+      });
+      if (!targetInventory) {
+        return res.status(404).json({ message: "Агуулахын бараа олдсонгүй" });
+      }
 
       await prisma.$transaction(async (tx) => {
         // Get quantity before delete for ledger
