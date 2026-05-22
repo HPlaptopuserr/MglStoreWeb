@@ -156,6 +156,7 @@ export default function PosDemoPage() {
     text: "",
   });
   const [registerConfig, setRegisterConfig] = useState<RegisterConfig | null>(null);
+  const [showPosSettings, setShowPosSettings] = useState(false);
   const [showSetupPanel, setShowSetupPanel] = useState(false);
   // self-registration form
   const [setupTab, setSetupTab] = useState<"new" | "existing">("new");
@@ -1448,70 +1449,92 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-500">MGLStore POS</p>
-          <h1 className="text-lg font-black tracking-tight text-slate-950">Кассын дэлгэц</h1>
+      <div className="flex h-11 shrink-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-2 shadow-sm">
+        <div className="flex h-full min-w-0 items-center gap-1 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setView("register")}
+            className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-black transition-colors ${
+              view === "register"
+                ? "bg-blue-600 text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+            }`}
+          >
+            <ScanBarcode size={15} />
+            Касс
+          </button>
+          <button
+            type="button"
+            onClick={openCustomerDisplay}
+            className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-bold transition-colors ${
+              displayOpened
+                ? "bg-amber-100 text-amber-800"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+            }`}
+          >
+            <Monitor size={15} />
+            Customer display
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowShiftPanel((value) => !value)}
+            className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-bold transition-colors ${
+              shift
+                ? "text-emerald-700 hover:bg-emerald-50"
+                : "text-amber-700 hover:bg-amber-50"
+            }`}
+          >
+            <CheckCircle2 size={15} />
+            {shift ? "Ээлж нээлттэй" : "Ээлж нээх"}
+          </button>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setView("register")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
-            view === "register"
-              ? "bg-slate-950 text-white shadow"
-              : "bg-white border border-slate-200 text-slate-600 hover:border-violet-300"
-          }`}
-        >
-          <ScanBarcode size={14} />
-          Касс
-        </button>
-        <button
-          type="button"
-          onClick={openCustomerDisplay}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
-            displayOpened
-              ? "bg-amber-500 text-black shadow"
-              : "bg-white border border-slate-200 text-slate-600 hover:border-amber-300"
-          }`}
-        >
-          <Monitor size={14} />
-          {displayOpened ? "Customer display нээлттэй" : "Customer display нээх"}
-        </button>
+
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="hidden items-center gap-1.5 text-xs font-semibold text-slate-600 lg:inline-flex">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Онлайн
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowPosSettings((value) => !value)}
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-bold transition-colors ${
+              showPosSettings
+                ? "bg-slate-900 text-white"
+                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <Settings size={15} />
+            Тохиргоо
+          </button>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-amber-400">
-            <ScanBarcode size={18} />
+      {showPosSettings && (
+        <div className="grid shrink-0 grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm xl:grid-cols-4">
+          <div className="rounded-lg bg-slate-50 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Салбар</p>
+            <p className="truncate font-black text-slate-900">{registerConfig?.branch.name ?? "Салбар"}</p>
           </div>
-          <div className="min-w-0">
-            <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">Register</p>
-            <h2 className="truncate text-lg font-black text-slate-950">Борлуулалтын касс</h2>
+          <div className="rounded-lg bg-slate-50 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Касс</p>
+            <p className="truncate font-black text-slate-900">{registerConfig?.name ?? "POS"}</p>
           </div>
-        </div>
-        <div className="hidden min-w-0 flex-1 items-center justify-end gap-2 lg:flex">
-          <div className="min-w-32 rounded-lg bg-slate-50 px-4 py-2">
-            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Салбар</p>
-            <p className="truncate text-sm font-black text-slate-950">{registerConfig?.branch.name ?? "Салбар"}</p>
+          <div className="rounded-lg bg-slate-50 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Кассчин</p>
+            <p className="truncate font-black text-slate-900">Vendor Cashier</p>
           </div>
-          <div className="min-w-28 rounded-lg bg-slate-50 px-4 py-2">
-            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Касс</p>
-            <p className="truncate text-sm font-black text-slate-950">{registerConfig?.name ?? "POS"}</p>
-          </div>
-          <div className="min-w-32 rounded-lg bg-slate-50 px-4 py-2">
-            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Кассчин</p>
-            <p className="truncate text-sm font-black text-slate-950">Vendor Cashier</p>
-          </div>
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-700">
-            <p className="text-[10px] font-black uppercase tracking-wide">Ээлж</p>
-            <p className="text-sm font-black">Нээлттэй</p>
+          <div
+            className={`rounded-lg border px-3 py-2 ${
+              shift ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"
+            }`}
+          >
+            <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">Ээлж</p>
+            <p className="font-black">{shift ? "Нээлттэй" : "Нээх хэрэгтэй"}</p>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_390px] gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="flex min-h-0 flex-col gap-3">
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
