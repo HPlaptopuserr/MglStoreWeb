@@ -1,4 +1,4 @@
-import { Banknote, CreditCard, QrCode, WalletCards } from "lucide-react";
+import { Banknote, CreditCard, MoreHorizontal, QrCode } from "lucide-react";
 import type { CartTotals } from "../types/pos.types";
 import { PAYMENT_METHODS, type PaymentMethod } from "../constants/payment-methods";
 
@@ -23,69 +23,59 @@ export function PosPaymentPanel({
     QR: QrCode,
   } as const;
 
+  const shortcuts = {
+    CASH: "F9",
+    CARD: "F10",
+    QR: "F11",
+  } as const;
+
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-slate-950 text-white shadow-sm">
-      <div className="border-b border-white/10 px-4 py-2.5">
-        <h3 className="inline-flex items-center gap-2 text-sm font-black">
-          <WalletCards size={17} className="text-amber-400" />
-          Төлбөр авах
-        </h3>
-      </div>
-
-      <div className="space-y-3 p-3">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Нийт төлөх</p>
-          <p className="mt-1 text-3xl font-black leading-none tracking-tight text-amber-400 tabular-nums">
-            ₮{totals.grandTotal.toLocaleString()}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2 rounded-xl bg-white/5 p-1.5">
-          {PAYMENT_METHODS.map((method) => {
-            const isActive = paymentMethod === method.value;
-            const Icon = paymentIcon[method.value];
-            return (
-              <button
-                key={method.value}
-                type="button"
-                onClick={() => onChangeMethod(method.value as PaymentMethod)}
-                className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg text-xs font-black transition-colors ${
-                  isActive
-                    ? "bg-amber-400 text-black shadow"
-                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <Icon size={18} />
-                {method.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="space-y-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs">
-          <div className="flex items-center justify-between text-slate-300">
-            <span>Дүн</span>
-            <span className="font-bold text-white">₮{totals.subTotal.toLocaleString()}</span>
-          </div>
-          <div className="flex items-center justify-between text-slate-300">
-            <span>Хөнгөлөлт</span>
-            <span className="font-bold text-white">₮{totals.discountTotal.toLocaleString()}</span>
-          </div>
-          <div className="flex items-center justify-between text-slate-300">
-            <span>Татвар</span>
-            <span className="font-bold text-white">₮{totals.taxTotal.toLocaleString()}</span>
-          </div>
-        </div>
-
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="grid grid-cols-4 gap-2">
+        {PAYMENT_METHODS.map((method) => {
+          const isActive = paymentMethod === method.value;
+          const Icon = paymentIcon[method.value];
+          return (
+            <button
+              key={method.value}
+              type="button"
+              onClick={() => onChangeMethod(method.value as PaymentMethod)}
+              className={`flex h-14 flex-col items-center justify-center rounded-lg border text-xs font-black transition-colors ${
+                isActive
+                  ? "border-blue-600 bg-blue-50 text-blue-700"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50"
+              }`}
+            >
+              <Icon size={18} />
+              <span className="mt-1">
+                {method.value === "QR" ? "QR төлбөр" : method.label}
+              </span>
+              <span className="text-[10px] font-bold opacity-70">{shortcuts[method.value]}</span>
+            </button>
+          );
+        })}
         <button
           type="button"
-          disabled={disabled}
-          onClick={onSubmit}
-          className="flex h-12 w-full items-center justify-center rounded-xl bg-amber-400 px-4 text-sm font-black text-black transition-colors hover:bg-amber-300 active:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-14 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-black text-slate-600 hover:bg-slate-50"
         >
-          Төлбөр авах
+          <MoreHorizontal size={18} />
+          <span className="mt-1">Бусад</span>
         </button>
       </div>
+
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onSubmit}
+        className="mt-3 flex h-11 w-full items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <span className="flex-1 text-center">Төлбөр авах</span>
+        <span className="text-xs opacity-80">F12</span>
+      </button>
+
+      <p className="mt-2 text-right text-[10px] font-semibold text-slate-400">
+        Нийт төлөх: ₮{totals.grandTotal.toLocaleString()}
+      </p>
     </section>
   );
 }

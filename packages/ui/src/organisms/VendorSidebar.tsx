@@ -46,6 +46,9 @@ const navigation = [
 
 export interface VendorSidebarProps {
   onSignOut?: () => void;
+  userName?: string;
+  userRole?: string;
+  userInitials?: string;
   showPos?: boolean;
   showSupplyProducts?: boolean;
   showPreorderProducts?: boolean;
@@ -56,6 +59,9 @@ export interface VendorSidebarProps {
 
 export function VendorSidebar({
   onSignOut,
+  userName = "Vendor",
+  userRole = "Vendor",
+  userInitials,
   showPos = false,
   showSupplyProducts = false,
   showPreorderProducts = false,
@@ -66,6 +72,8 @@ export function VendorSidebar({
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [productType, setProductType] = useState<string | null>(null);
+  const profileInitials =
+    userInitials || userName.trim().slice(0, 2).toUpperCase() || "V";
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -200,6 +208,30 @@ export function VendorSidebar({
       <div
         className={`border-t border-white/10 ${collapsed ? "p-3" : "p-4"} space-y-2`}
       >
+        <Link
+          href="/profile"
+          title={collapsed ? "Профайл" : undefined}
+          className={cn(
+            "group flex items-center rounded-lg text-sm transition-all duration-200",
+            collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5",
+            pathname === "/profile"
+              ? "bg-white/15 text-white"
+              : "text-white/70 hover:bg-white/10 hover:text-white",
+          )}
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-xs font-black text-black">
+            {profileInitials}
+          </span>
+          {!collapsed && (
+            <span className="min-w-0">
+              <span className="block truncate font-bold">{userName}</span>
+              <span className="block truncate text-[11px] text-white/45">
+                {userRole}
+              </span>
+            </span>
+          )}
+        </Link>
+
         {up.map((item) => {
           const isActive =
             pathname === item.href || pathname.startsWith(item.href + "/");

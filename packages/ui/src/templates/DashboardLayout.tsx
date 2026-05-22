@@ -58,6 +58,9 @@ export function DashboardLayout({
       {isVendor && (
         <VendorSidebar
           onSignOut={onSignOut}
+          userName={organizationName || userName}
+          userRole={userRole}
+          userInitials={userInitials}
           showPos={showPos}
           showSupplyProducts={showSupplyProducts}
           showPreorderProducts={showPreorderProducts}
@@ -68,9 +71,8 @@ export function DashboardLayout({
       )}
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-slate-50">
-        {isVendor && (
+        {isVendor && !isVendorPosRoute && (
           <VendorHeader
-            userName={organizationName || userName}
             onMenuToggle={() => setMobileMenuOpen((o) => !o)}
           />
         )}
@@ -79,7 +81,7 @@ export function DashboardLayout({
             isAdmin
               ? "px-4 pt-6 pb-10 sm:px-10 sm:pt-8"
               : isVendorPosRoute
-                ? "px-3 pt-4 pb-6 sm:px-4"
+                ? "px-3 pt-2 pb-6 sm:px-4"
                 : "px-4 pt-5 pb-10 sm:px-6 sm:pt-6"
           }`}
         >
