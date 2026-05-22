@@ -1631,70 +1631,6 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      {showPosSettings && registerConfig && registerConfig.isActive && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-emerald-800">
-            <CheckCircle2 size={14} className="text-emerald-600" />
-            <span className="font-semibold">{registerConfig.name}</span>
-            {registerConfig.label && <span className="text-emerald-600">· {registerConfig.label}</span>}
-            <span className="text-emerald-500">· {registerConfig.branch.name}</span>
-            {registerConfig.cardEnabled && (
-              <span className="rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700 text-[11px] px-2 py-0.5">Card ✓</span>
-            )}
-            {registerConfig.effectiveQpayEnabled && (
-              <span className="rounded-full bg-sky-100 border border-sky-300 text-sky-700 text-[11px] px-2 py-0.5">QPay ✓</span>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowSetupPanel((v) => !v)}
-            className="text-slate-400 hover:text-slate-600"
-          >
-            <Settings size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* ── Shift status / open shift banner ───────────────────── */}
-      {showPosSettings && registerConfig?.isActive && (
-        <div
-          className={`rounded-xl border px-4 py-2.5 flex items-center justify-between gap-3 ${
-            shift
-              ? "border-teal-200 bg-teal-50"
-              : "border-amber-200 bg-amber-50"
-          }`}
-        >
-          <div className="flex items-center gap-2 text-sm">
-            {shift ? (
-              <>
-                <CheckCircle2 size={14} className="text-teal-600" />
-                <span className="font-semibold text-teal-800">Ээлж нээлттэй</span>
-                <span className="text-teal-600 text-xs">
-                  · {new Date(shift.openedAt).toLocaleTimeString("mn-MN", { hour: "2-digit", minute: "2-digit" })} нээгдсэн
-                </span>
-              </>
-            ) : (
-              <>
-                <AlertTriangle size={14} className="text-amber-600" />
-                <span className="font-semibold text-amber-800">Ээлж нээгдээгүй байна</span>
-                <span className="text-amber-600 text-xs">· Борлуулалт хийхийн тулд эхлээд ээлж нээнэ үү</span>
-              </>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowShiftPanel((v) => !v)}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
-              shift
-                ? "bg-teal-100 text-teal-700 hover:bg-teal-200"
-                : "bg-amber-500 text-white hover:bg-amber-600"
-            }`}
-          >
-            {shift ? "Ээлж хаах" : "Ээлж нээх"}
-          </button>
-        </div>
-      )}
-
       {/* ── Shift open/close panel ─────────────────────────────── */}
       {showShiftPanel && registerConfig?.isActive && (
         <div className="rounded-2xl border border-teal-200 bg-white shadow-sm overflow-hidden">
@@ -1895,6 +1831,18 @@ export default function PosDemoPage() {
           <div className="rounded-lg bg-slate-50 px-3 py-2">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Касс</p>
             <p className="truncate font-black text-slate-900">{registerConfig?.name ?? "POS"}</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {registerConfig?.cardEnabled && (
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  Card
+                </span>
+              )}
+              {registerConfig?.effectiveQpayEnabled && (
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">
+                  QPay
+                </span>
+              )}
+            </div>
           </div>
           <button
             type="button"
@@ -1914,7 +1862,16 @@ export default function PosDemoPage() {
             }`}
           >
             <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Ээлж</span>
-            {shift ? "Нээлттэй" : "Нээх хэрэгтэй"}
+            {shift ? (
+              <>
+                <span className="block">Нээлттэй</span>
+                <span className="mt-0.5 block text-[11px] font-semibold opacity-80">
+                  {new Date(shift.openedAt).toLocaleTimeString("mn-MN", { hour: "2-digit", minute: "2-digit" })} нээгдсэн
+                </span>
+              </>
+            ) : (
+              "Нээх хэрэгтэй"
+            )}
           </button>
         </div>
       )}
