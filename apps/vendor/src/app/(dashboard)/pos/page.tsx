@@ -18,6 +18,7 @@ function MobileBlock() {
 
 import {
   Barcode,
+  Filter,
   Search,
   ScanLine,
   ScanBarcode,
@@ -30,8 +31,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  PosHeader,
-  PosProductGrid,
   PosCartPanel,
   PosPaymentPanel,
   PosCheckoutView,
@@ -482,14 +481,6 @@ export default function PosDemoPage() {
     remaining === 0 &&
     !hasPendingPayment &&
     !isCardProcessing;
-
-  const selectedByCode = useMemo(() => {
-    if (!lastScannedCode) return null;
-    const normalized = lastScannedCode.trim().toLowerCase();
-    return (
-      products.find((item) => productMatchesCode(item, normalized)) || null
-    );
-  }, [products, lastScannedCode]);
 
   const processScan = (code: string) => {
     const normalized = code.trim();
@@ -1490,55 +1481,66 @@ export default function PosDemoPage() {
         </div>
       </div>
 
-      <PosHeader
-        title="Борлуулалтын касс"
-        branchName={registerConfig?.branch.name ?? "Салбар"}
-        registerName={registerConfig?.name ?? "POS"}
-        cashierName="Vendor Cashier"
-        shiftStatus="Нээлттэй"
-        terminalId={
-          terminalNeedsWaitingOverlay(getEffectiveCardProvider(registerConfig))
-            ? registerConfig?.cardTerminalId ?? null
-            : null
-        }
-      />
+      <div className="flex shrink-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-amber-400">
+            <ScanBarcode size={18} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-400">Register</p>
+            <h2 className="truncate text-lg font-black text-slate-950">Борлуулалтын касс</h2>
+          </div>
+        </div>
+        <div className="hidden min-w-0 flex-1 items-center justify-end gap-2 lg:flex">
+          <div className="min-w-32 rounded-lg bg-slate-50 px-4 py-2">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Салбар</p>
+            <p className="truncate text-sm font-black text-slate-950">{registerConfig?.branch.name ?? "Салбар"}</p>
+          </div>
+          <div className="min-w-28 rounded-lg bg-slate-50 px-4 py-2">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Касс</p>
+            <p className="truncate text-sm font-black text-slate-950">{registerConfig?.name ?? "POS"}</p>
+          </div>
+          <div className="min-w-32 rounded-lg bg-slate-50 px-4 py-2">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Кассчин</p>
+            <p className="truncate text-sm font-black text-slate-950">Vendor Cashier</p>
+          </div>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-700">
+            <p className="text-[10px] font-black uppercase tracking-wide">Ээлж</p>
+            <p className="text-sm font-black">Нээлттэй</p>
+          </div>
+        </div>
+      </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="flex min-h-0 flex-col gap-3">
-          <div className="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
-            <ScanLine className="text-amber-500" size={20} />
-            <div>
-              <h1 className="text-base font-black text-slate-950">Barcode уншуулах</h1>
-              <p className="text-sm text-slate-500">Бараа хайх, уншуулах, сагсанд нэмэх</p>
+          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                  <ScanLine size={20} />
+                </div>
+                <div>
+                  <h1 className="text-base font-black text-slate-950">Barcode уншуулах</h1>
+                  <p className="text-xs font-medium text-slate-500">Уншуулсан бараа сагсанд шууд нэмэгдэнэ</p>
+                </div>
+              </div>
+              <div
+                className={`min-w-56 rounded-xl border px-3 py-2 ${
+                  scanStatus === "success"
+                    ? "border-emerald-200 bg-emerald-50"
+                    : scanStatus === "not-found"
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-slate-200 bg-slate-50"
+                }`}
+              >
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Scanner</p>
+                <p className="truncate text-sm font-bold text-slate-900">{scanMessage || "Бэлэн"}</p>
+              </div>
             </div>
-          </div>
-
-          <div className="grid shrink-0 grid-cols-3 gap-2">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Сагс</p>
-              <p className="text-lg font-black text-slate-900">{state.cart.length}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Нийт</p>
-              <p className="truncate text-lg font-black text-slate-900">₮ {totals.grandTotal.toLocaleString()}</p>
-            </div>
-            <div
-              className={`rounded-xl border px-3 py-2 ${
-                scanStatus === "success"
-                  ? "border-emerald-200 bg-emerald-50"
-                  : scanStatus === "not-found"
-                    ? "border-amber-200 bg-amber-50"
-                    : "border-violet-100 bg-violet-50"
-              }`}
-            >
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Scanner</p>
-              <p className="truncate text-sm font-bold text-slate-900">{scanMessage || "Бэлэн"}</p>
-            </div>
-          </div>
 
           <form
             onSubmit={handleManualSubmit}
-            className="grid shrink-0 grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[1fr_auto]"
+            className="grid shrink-0 grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto]"
           >
             <div className="relative">
               <Barcode size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1546,17 +1548,31 @@ export default function PosDemoPage() {
                 ref={scannerInputRef}
                 value={scanBuffer}
                 onChange={(e) => setScanBuffer(e.target.value)}
-                placeholder="Barcode уншуул эсвэл код оруул"
-                className="h-12 w-full rounded-xl border-2 border-slate-200 bg-slate-50 pl-12 pr-4 text-base font-black tracking-wide text-slate-950 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-4 focus:ring-amber-100"
+                placeholder="Barcode уншуулах эсвэл гараар оруулах"
+                className="h-12 w-full rounded-lg border-2 border-blue-500 bg-white pl-12 pr-4 text-base font-bold tracking-wide text-slate-950 outline-none transition focus:ring-4 focus:ring-blue-100"
               />
             </div>
             <button
+              type="button"
+              onClick={() => {
+                setScanBuffer("");
+                setLastScannedCode("");
+                setScanMessage("");
+                setScanStatus("idle");
+                scannerInputRef.current?.focus();
+              }}
+              className="h-12 rounded-lg border border-slate-200 bg-white px-6 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
+            >
+              Цэвэрлэх
+            </button>
+            <button
               type="submit"
-              className="h-12 rounded-xl bg-slate-950 px-7 text-sm font-black text-white shadow-sm transition hover:bg-slate-800"
+              className="h-12 rounded-lg bg-blue-600 px-8 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
             >
               Унших
             </button>
           </form>
+          </div>
 
           <div
             className={`hidden rounded-xl border px-4 py-2.5 items-center justify-between ${
@@ -1581,74 +1597,48 @@ export default function PosDemoPage() {
             )}
           </div>
 
-          <div className="hidden rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Scan result</p>
-            {selectedByCode ? (
-              <>
-                <h2 className="mt-1 text-base font-bold text-slate-900">{selectedByCode.name}</h2>
-                <p className="text-xs text-slate-600 mt-1">
-                  Barcode / SKU: {selectedByCode.barcode || selectedByCode.sku}
-                </p>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
-                    <p className="text-[11px] uppercase tracking-wider text-slate-500">Үнэ</p>
-                    <p className="mt-1 text-xl font-black text-emerald-700">
-                      ₮ {selectedByCode.price.toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
-                    <p className="text-[11px] uppercase tracking-wider text-slate-500">Нөөц</p>
-                    <p className="mt-1 text-xl font-black text-slate-800">{selectedByCode.stockQty}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const result = addProduct(selectedByCode);
-                    if (!result.ok) {
-                      setScanMessage(`Нөөц хүрэлцэхгүй: ${selectedByCode.name}`);
-                      setScanStatus("not-found");
-                    }
-                  }}
-                  disabled={
-                    selectedByCode.stockQty <= 0 ||
-                    (state.cart.find((line) => line.productId === selectedByCode.id)?.qty ?? 0) >=
-                      selectedByCode.stockQty
-                  }
-                  className="mt-3 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {selectedByCode.stockQty <= 0
-                    ? "Нөөц дууссан"
-                    : (state.cart.find((line) => line.productId === selectedByCode.id)?.qty ?? 0) >=
-                          selectedByCode.stockQty
-                      ? "Нөөц хүрсэн"
-                      : "Сагсанд нэмэх"}
-                </button>
-              </>
-            ) : (
-              <div className="mt-2 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
-                Barcode эсвэл SKU
-              </div>
-            )}
-          </div>
-
           <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="mb-2 flex shrink-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="mb-3 flex shrink-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className="text-sm font-black text-slate-950">Барааны жагсаалт</h2>
+                <h2 className="text-base font-black text-slate-950">Барааны жагсаалт</h2>
                 <p className="text-xs text-slate-500">
                   {filtered.length} бараа харагдаж байна
                 </p>
               </div>
-              <div className="relative md:w-96">
-                <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Barcode, SKU, нэрээр хайх"
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold outline-none transition focus:border-amber-400 focus:bg-white focus:ring-4 focus:ring-amber-100"
-                />
+              <div className="flex flex-1 items-center justify-end gap-2">
+                <div className="relative w-full max-w-sm">
+                  <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    placeholder="Barcode, SKU, нэрээр хайх"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  <Filter size={15} />
+                  Шүүлтүүр
+                </button>
               </div>
+            </div>
+
+            <div className="mb-3 flex shrink-0 items-center gap-2 overflow-x-auto">
+              {["Бүгд", "Түгээмэл", "Сүү, сүүн бүтээгдэхүүн", "Ундаа", "Хүнс", "Гоо сайхан", "Бусад"].map((category, index) => (
+                <button
+                  key={category}
+                  type="button"
+                  className={`h-8 shrink-0 rounded-lg px-3 text-xs font-bold ${
+                    index === 0
+                      ? "bg-blue-600 text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {category}
+                </button>
+              ))}
             </div>
 
             {loading ? (
@@ -1659,25 +1649,74 @@ export default function PosDemoPage() {
               <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
                 {error}
               </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center">
+                <div>
+                  <p className="text-sm font-bold text-slate-700">Бараа олдсонгүй</p>
+                  <p className="mt-1 text-xs text-slate-500">Нэр, SKU эсвэл barcode-оо шалгаарай</p>
+                </div>
+              </div>
             ) : (
-              <PosProductGrid
-                products={filtered}
-                cartLines={state.cart}
-                onSelect={(product) => {
-                  const result = addProduct(product);
-                  if (!result.ok) {
-                    setScanMessage(`Нөөц хүрэлцэхгүй: ${product.name}`);
-                    setScanStatus("not-found");
-                  }
-                }}
-              />
+              <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-black uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="w-12 px-3 py-3">№</th>
+                      <th className="px-3 py-3">SKU / Barcode</th>
+                      <th className="px-3 py-3">Барааны нэр</th>
+                      <th className="px-3 py-3 text-right">Үнэ</th>
+                      <th className="px-3 py-3 text-right">Нөөц</th>
+                      <th className="px-3 py-3 text-center">Нэгж</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filtered.map((product, index) => {
+                      const inCartQty = state.cart.find((line) => line.productId === product.id)?.qty ?? 0;
+                      const isOutOfStock = product.stockQty <= 0 || inCartQty >= product.stockQty;
+                      return (
+                        <tr
+                          key={product.id}
+                          onClick={() => {
+                            if (isOutOfStock) return;
+                            const result = addProduct(product);
+                            if (!result.ok) {
+                              setScanMessage(`Нөөц хүрэлцэхгүй: ${product.name}`);
+                              setScanStatus("not-found");
+                            }
+                          }}
+                          className={`cursor-pointer transition-colors ${
+                            inCartQty > 0 ? "bg-blue-50" : "hover:bg-slate-50"
+                          } ${isOutOfStock ? "opacity-50" : ""}`}
+                        >
+                          <td className="px-3 py-3 font-semibold text-slate-500">{index + 1}</td>
+                          <td className="px-3 py-3 font-mono text-xs text-slate-600">
+                            {product.barcode || product.sku}
+                            {product.barcode && <p className="mt-0.5 text-[11px] text-slate-400">SKU: {product.sku}</p>}
+                          </td>
+                          <td className="px-3 py-3 font-bold text-slate-900">{product.name}</td>
+                          <td className="px-3 py-3 text-right font-bold tabular-nums text-slate-900">
+                            {product.price.toLocaleString()}
+                          </td>
+                          <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-700">
+                            {product.stockQty}
+                          </td>
+                          <td className="px-3 py-3 text-center text-slate-600">ш</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </section>
 
-        <section ref={paymentSectionRef} className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto_auto] gap-3 overflow-hidden">
+        <section ref={paymentSectionRef} className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto_auto] gap-3 pr-1">
           <PosCartPanel
+            className="min-h-[300px]"
             lines={state.cart}
+            totals={totals}
+            onClear={() => dispatch({ type: "clear-cart" })}
             onRemove={(productId) => dispatch({ type: "remove-line", payload: productId })}
             onSetQty={(productId, qty) => {
               if (qty <= 0) {
