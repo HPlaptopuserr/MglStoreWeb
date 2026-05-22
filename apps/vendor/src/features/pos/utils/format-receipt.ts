@@ -1,5 +1,7 @@
 import type { PosReceipt } from "../types/receipt.types";
 
+const formatMoney = (value: number) => `₮${Math.round(value).toLocaleString("mn-MN")}`;
+
 export function formatReceipt(receipt: PosReceipt): string {
   const header = [
     `Receipt: ${receipt.receiptNo}`,
@@ -10,15 +12,15 @@ export function formatReceipt(receipt: PosReceipt): string {
   ];
 
   const lines = receipt.lines.map(
-    (line) => `${line.name} x${line.qty}  ${line.lineTotal.toFixed(2)}`,
+    (line) => `${line.name} x${line.qty}  ${formatMoney(line.lineTotal)}`,
   );
 
   const footer = [
     "--------------------------------",
-    `Subtotal: ${receipt.subTotal.toFixed(2)}`,
-    `Tax: ${receipt.taxTotal.toFixed(2)}`,
-    `Discount: -${receipt.discountTotal.toFixed(2)}`,
-    `TOTAL: ${receipt.grandTotal.toFixed(2)}`,
+    `Subtotal: ${formatMoney(receipt.subTotal)}`,
+    `Tax: ${formatMoney(receipt.taxTotal)}`,
+    `Discount: -${formatMoney(receipt.discountTotal)}`,
+    `TOTAL: ${formatMoney(receipt.grandTotal)}`,
     `Payment: ${receipt.paymentMethod}`,
   ];
 
@@ -27,10 +29,26 @@ export function formatReceipt(receipt: PosReceipt): string {
       ? [
           "Payment Breakdown:",
           ...receipt.paymentBreakdown.map(
-            (item) => `- ${item.method}: ${item.amount.toFixed(2)}`,
+            (item) => `- ${item.method}: ${formatMoney(item.amount)}`,
           ),
         ]
       : [];
 
-  return [...header, ...lines, ...footer, ...breakdown].join("\n");
+  const ebarimt =
+    receipt.ebarimt?.status === "SUCCESS"
+      ? [
+          "--------------------------------",
+          "eBarimt: SUCCESS",
+          receipt.ebarimt.lottery ? `Lottery: ${receipt.ebarimt.lottery}` : "",
+          receipt.ebarimt.billId ? `Bill ID: ${receipt.ebarimt.billId}` : "",
+        ].filter(Boolean)
+      : receipt.ebarimt?.status === "FAILED"
+        ? [
+            "--------------------------------",
+            "eBarimt: FAILED",
+            receipt.ebarimt.error ? `Error: ${receipt.ebarimt.error}` : "",
+          ].filter(Boolean)
+        : [];
+
+  return [...header, ...lines, ...footer, ...breakdown, ...ebarimt].join("\n");
 }

@@ -263,7 +263,7 @@ export function PosCheckoutView({
             <button
               type="button"
               onClick={onResetPayments}
-              disabled={paymentEntries.length === 0}
+              disabled={disabled || paymentEntries.length === 0}
               className="rounded-xl border border-zinc-700 px-3 py-3 text-xs font-bold text-zinc-300 hover:border-zinc-500 disabled:opacity-40"
             >
               Төлбөрүүд цэвэрлэх
@@ -327,7 +327,7 @@ export function PosCheckoutView({
                       {entry.method} • ₮{entry.amount.toLocaleString()}
                     </p>
                     <div className="flex items-center gap-2">
-                      {entry.status === "pending" ? (
+                      {entry.status === "pending" && entry.method === "QR" ? (
                         <button
                           type="button"
                           onClick={() => onMarkQPayPaid(entry.id)}
@@ -335,6 +335,8 @@ export function PosCheckoutView({
                         >
                           QPay батлах
                         </button>
+                      ) : entry.status === "pending" ? (
+                        <span className="text-[10px] font-bold text-amber-400">Хүлээгдэж байна</span>
                       ) : (
                         <span className="text-[10px] font-bold text-emerald-400">Баталгаажсан</span>
                       )}

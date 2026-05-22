@@ -40,11 +40,17 @@ type ClientBridgeHealth = {
   [key: string]: unknown;
 };
 
-async function getClientBridgeHealth(bridgeUrl: string): Promise<ClientBridgeHealth> {
+async function getClientBridgeHealth(bridgeUrl: string, signal?: AbortSignal): Promise<ClientBridgeHealth> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 8_000);
+  const abortFromCaller = () => controller.abort();
 
   try {
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    signal?.addEventListener("abort", abortFromCaller, { once: true });
+
     const res = await fetch(`${bridgeUrl}/health`, {
       method: "GET",
       signal: controller.signal,
@@ -63,6 +69,7 @@ async function getClientBridgeHealth(bridgeUrl: string): Promise<ClientBridgeHea
     }
     throw error;
   } finally {
+    signal?.removeEventListener("abort", abortFromCaller);
     window.clearTimeout(timeout);
   }
 }
@@ -72,9 +79,10 @@ export async function chargeClientBridge(payload: {
   attemptId: string;
   amount: number;
   terminalId: string;
+  signal?: AbortSignal;
 }): Promise<ClientBridgeChargeResult> {
   const bridgeUrl = payload.bridgeUrl.replace(/\/$/, "");
-  const health = await getClientBridgeHealth(bridgeUrl);
+  const health = await getClientBridgeHealth(bridgeUrl, payload.signal);
   const provider = String(health.provider || "").toLowerCase();
 
   if (provider && provider !== "android-pgw") {
@@ -87,8 +95,14 @@ export async function chargeClientBridge(payload: {
 
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 120_000);
+  const abortFromCaller = () => controller.abort();
 
   try {
+    if (payload.signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    payload.signal?.addEventListener("abort", abortFromCaller, { once: true });
+
     const res = await fetch(`${bridgeUrl}/charge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -122,6 +136,7 @@ export async function chargeClientBridge(payload: {
     }
     throw error;
   } finally {
+    payload.signal?.removeEventListener("abort", abortFromCaller);
     window.clearTimeout(timeout);
   }
 }

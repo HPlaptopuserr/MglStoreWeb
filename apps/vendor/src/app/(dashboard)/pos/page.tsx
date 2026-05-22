@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
+import { QRCodeSVG } from "qrcode.react";
 function MobileBlock() {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center md:hidden">
@@ -18,15 +21,16 @@ function MobileBlock() {
 
 import {
   Barcode,
-  Filter,
   Search,
   ScanLine,
   ScanBarcode,
   AlertTriangle,
   CheckCircle2,
+  Filter,
   Loader2,
   Monitor,
   Info,
+  RefreshCw,
   Settings,
   X,
 } from "lucide-react";
@@ -56,6 +60,10 @@ import {
   getQPayInvoiceStatus,
   confirmQPayInvoice,
   fetchRegisterConfig,
+  getReceipts,
+  issueLocalEbarimtReceipt,
+  attachEbarimtReceipt,
+  type AttachEbarimtPayload,
   type RegisterConfig,
 } from "@/features/pos";
 import { API, authFetch } from "@/lib/api";
@@ -81,18 +89,69 @@ type CustomerDisplayPayload = {
   ts: number;
 };
 
+type CardPaymentRun = {
+  pendingId: string;
+  terminalId?: string;
+  provider?: string | null;
+  abortController: AbortController;
+  cancelled: boolean;
+};
+
+function mapEbarimtPayload(payload: AttachEbarimtPayload): NonNullable<PosReceipt["ebarimt"]> {
+  return {
+    status: payload.status,
+    billId: payload.billId ?? null,
+    receiptId: payload.receiptId ?? null,
+    qrData: payload.qrData ?? null,
+    lottery: payload.lottery ?? null,
+    date: payload.date ?? null,
+    error: payload.error ?? null,
+    syncedAt: new Date().toISOString(),
+  };
+}
+
 const SCAN_GAP_MS = 80;
+const EBARIMT_ENABLED = process.env.NEXT_PUBLIC_EBARIMT_ENABLED === "true";
 const LONG_RUNNING_CARD_PROVIDERS = new Set(["PUSH_ECR", "MINU_AGENT", "ANDROID_PGW"]);
 const terminalNeedsWaitingOverlay = (provider?: string | null) =>
   Boolean(provider && LONG_RUNNING_CARD_PROVIDERS.has(provider));
 const getEffectiveCardProvider = (register?: RegisterConfig | null) =>
   register?.cardProviderType || (register?.minuAgentEnabled ? "MINU_AGENT" : null);
+const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
+const formatMoney = (value: number) => `₮${Math.round(Number(value) || 0).toLocaleString("mn-MN")}`;
+
+const normalizeProductCode = (value: string) => value.trim().replace(/\s+/g, "").toLowerCase();
 
 const productMatchesCode = (product: { id: string; sku?: string | null; barcode?: string | null }, code: string) => {
-  const normalized = code.trim().toLowerCase();
+  const normalized = normalizeProductCode(code);
   return [product.sku, product.barcode, product.id].some(
-    (value) => String(value || "").trim().toLowerCase() === normalized,
+    (value) => normalizeProductCode(String(value || "")) === normalized,
   );
+};
+
+const validateCardRegisterConfig = (register: RegisterConfig | null) => {
+  if (!register) {
+    throw new Error("POS register тохиргоо олдсонгүй");
+  }
+  if (!register.cardEnabled) {
+    throw new Error("Энэ касс дээр картын төлбөр идэвхгүй байна");
+  }
+
+  const provider = getEffectiveCardProvider(register);
+  if (!provider) {
+    throw new Error("Картын terminal provider тохируулаагүй байна");
+  }
+  if (provider === "ANDROID_PGW" && !register.terminalBridgeUrl) {
+    throw new Error("ANDROID_PGW Bridge URL тохируулаагүй байна. POS Register дээр http://127.0.0.1:7420 оруулна уу.");
+  }
+  if ((provider === "PUSH_ECR" || provider === "MINU_AGENT") && !register.cardTerminalId) {
+    throw new Error(`${provider} terminalId тохируулаагүй байна`);
+  }
+  if (!LONG_RUNNING_CARD_PROVIDERS.has(provider) && !register.terminalBridgeUrl) {
+    throw new Error(`${provider} Bridge URL тохируулаагүй байна`);
+  }
+
+  return provider;
 };
 
 const escapeHtml = (value: string): string =>
@@ -103,6 +162,28 @@ const escapeHtml = (value: string): string =>
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+const renderEbarimtQrMarkup = (value?: string | null) => {
+  const qrValue = String(value || "").trim();
+  if (typeof document === "undefined" || !qrValue) return "";
+
+  const container = document.createElement("div");
+  container.style.position = "fixed";
+  container.style.left = "-9999px";
+  container.style.top = "-9999px";
+  document.body.appendChild(container);
+
+  const root = createRoot(container);
+  try {
+    flushSync(() => {
+      root.render(<QRCodeSVG value={qrValue} size={160} level="M" includeMargin />);
+    });
+    return container.innerHTML;
+  } finally {
+    root.unmount();
+    container.remove();
+  }
+};
+
 const printReceipt = (receipt: PosReceipt) => {
   if (typeof window === "undefined") return;
 
@@ -110,6 +191,11 @@ const printReceipt = (receipt: PosReceipt) => {
   if (!popup) return;
 
   const content = escapeHtml(formatReceipt(receipt));
+  const ebarimtQrData =
+    receipt.ebarimt?.status === "SUCCESS" && receipt.ebarimt.qrData
+      ? receipt.ebarimt.qrData
+      : "";
+  const qrMarkup = renderEbarimtQrMarkup(ebarimtQrData);
   popup.document.write(`
     <html>
       <head>
@@ -117,10 +203,15 @@ const printReceipt = (receipt: PosReceipt) => {
         <style>
           body { font-family: monospace; margin: 0; padding: 12px; color: #111; }
           pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.45; }
+          .ebarimt-qr { margin-top: 10px; text-align: center; }
+          .ebarimt-qr svg { width: 160px; height: 160px; }
+          .ebarimt-qr-title { margin: 0 0 6px; font-family: sans-serif; font-size: 12px; font-weight: 700; }
+          .ebarimt-qr-fallback { white-space: normal; word-break: break-all; font-family: monospace; font-size: 10px; }
         </style>
       </head>
       <body>
         <pre>${content}</pre>
+        ${ebarimtQrData ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR</p>${qrMarkup || `<p class="ebarimt-qr-fallback">${escapeHtml(ebarimtQrData)}</p>`}</div>` : ""}
         <script>
           window.onload = function () {
             window.print();
@@ -181,15 +272,41 @@ export default function PosDemoPage() {
   const clientSaleIdRef = useRef<string | null>(null);
   const progressTickerRef = useRef<number | null>(null);
   const successOverlayTimerRef = useRef<number | null>(null);
+  const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
 
   const posEnabled = posAccess === "enabled";
   const registerBranchId = posEnabled ? (registerConfig?.branchId ?? "") : "";
   const posProductsState = usePosProducts(registerBranchId);
   const ownProductsState = useOwnProducts(registerBranchId || !posEnabled ? "" : organizationId);
   const { products, loading, error } = registerBranchId ? posProductsState : ownProductsState;
+  const reloadProducts = registerBranchId ? posProductsState.reload : ownProductsState.reload;
   const { state, totals, addProduct, dispatch } = usePosCart();
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
   const { shift, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn } = useCurrentShift();
+  const [receiptHistory, setReceiptHistory] = useState<PosReceipt[]>([]);
+  const [selectedReceiptId, setSelectedReceiptId] = useState("");
+  const [receiptHistoryLoading, setReceiptHistoryLoading] = useState(false);
+  const [receiptHistoryError, setReceiptHistoryError] = useState("");
+  const [receiptReloadToken, setReceiptReloadToken] = useState(0);
+
+  const selectedReceipt = useMemo(
+    () => receiptHistory.find((receipt) => receipt.id === selectedReceiptId) || null,
+    [receiptHistory, selectedReceiptId],
+  );
+  const receiptForPreview = selectedReceipt || lastReceipt;
+  const reloadReceiptHistory = useCallback(() => {
+    setReceiptReloadToken((value) => value + 1);
+  }, []);
+
+  const handleReceiptVoided = useCallback(
+    (message: string) => {
+      reloadProducts();
+      reloadReceiptHistory();
+      setScanStatus("success");
+      setScanMessage(message);
+    },
+    [reloadProducts, reloadReceiptHistory],
+  );
 
   const clearProgressTicker = () => {
     if (progressTickerRef.current !== null) {
@@ -214,16 +331,33 @@ export default function PosDemoPage() {
     }, 2000);
   };
 
-  const handleCancelPushEcr = async () => {
-    const terminalId = registerConfig?.cardTerminalId;
-    if (!terminalId) return;
+  const handleCancelCardPayment = async () => {
+    const activeRun = cardPaymentRunRef.current;
+    if (!activeRun) {
+      setIsCardProcessing(false);
+      return;
+    }
+
+    activeRun.cancelled = true;
+    activeRun.abortController.abort();
     setIsCancellingCard(true);
     try {
-      await cancelPushEcr(terminalId);
+      if (activeRun.provider === "PUSH_ECR" && activeRun.terminalId) {
+        await cancelPushEcr(activeRun.terminalId);
+      }
     } catch {
       /* ignore — terminal will timeout on its own */
     } finally {
+      setPaymentEntries((prev) => prev.filter((item) => item.id !== activeRun.pendingId));
+      clearProgressTicker();
+      setAutoCheckoutActive(false);
+      setScanStatus("not-found");
+      setScanMessage("Картын төлбөр цуцлагдлаа");
+      setIsCardProcessing(false);
       setIsCancellingCard(false);
+      if (cardPaymentRunRef.current === activeRun) {
+        cardPaymentRunRef.current = null;
+      }
     }
   };
 
@@ -300,6 +434,49 @@ export default function PosDemoPage() {
     setShiftFetched(true);
     void loadShift();
   }, [posEnabled, shiftFetched, loadShift]);
+
+  useEffect(() => {
+    if (!shift?.id) {
+      setReceiptHistory([]);
+      setSelectedReceiptId("");
+      setReceiptHistoryError("");
+      return;
+    }
+
+    const controller = new AbortController();
+    setReceiptHistoryLoading(true);
+    setReceiptHistoryError("");
+
+    getReceipts(shift.id, controller.signal)
+      .then((items) => {
+        setReceiptHistory((previous) => {
+          const previousById = new Map(previous.map((receipt) => [receipt.id, receipt]));
+          return items.map((receipt) => {
+            const previousReceipt = previousById.get(receipt.id);
+            if (!receipt.ebarimt && previousReceipt?.ebarimt) {
+              return { ...receipt, ebarimt: previousReceipt.ebarimt };
+            }
+            return receipt;
+          });
+        });
+        setSelectedReceiptId((current) =>
+          current && items.some((receipt) => receipt.id === current)
+            ? current
+            : items[0]?.id || "",
+        );
+      })
+      .catch((error: any) => {
+        if (error?.name === "AbortError") return;
+        setReceiptHistoryError(error?.message || "Баримтын жагсаалт авахад алдаа гарлаа");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setReceiptHistoryLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [shift?.id, receiptReloadToken]);
 
   const [orgRegisters, setOrgRegisters] = useState<RegisterConfig[]>([]);
   const [showRegisterPicker, setShowRegisterPicker] = useState(false);
@@ -431,6 +608,11 @@ export default function PosDemoPage() {
 
   useEffect(() => {
     return () => {
+      if (cardPaymentRunRef.current) {
+        cardPaymentRunRef.current.cancelled = true;
+        cardPaymentRunRef.current.abortController.abort();
+        cardPaymentRunRef.current = null;
+      }
       clearProgressTicker();
       if (successOverlayTimerRef.current !== null) {
         window.clearTimeout(successOverlayTimerRef.current);
@@ -460,14 +642,16 @@ export default function PosDemoPage() {
 
   const confirmedPaid = useMemo(
     () =>
-      paymentEntries
-        .filter((item) => item.status === "confirmed")
-        .reduce((sum, item) => sum + item.amount, 0),
+      roundMoney(
+        paymentEntries
+          .filter((item) => item.status === "confirmed")
+          .reduce((sum, item) => sum + item.amount, 0),
+      ),
     [paymentEntries],
   );
 
   const remaining = useMemo(
-    () => Math.max(0, totals.grandTotal - confirmedPaid),
+    () => Math.max(0, roundMoney(totals.grandTotal - confirmedPaid)),
     [totals.grandTotal, confirmedPaid],
   );
 
@@ -479,9 +663,24 @@ export default function PosDemoPage() {
   const canFinalizeSale =
     state.cart.length > 0 &&
     paymentEntries.length > 0 &&
-    remaining === 0 &&
+    remaining <= 0 &&
     !hasPendingPayment &&
     !isCardProcessing;
+
+  const canFinalizeCashSale =
+    state.cart.length > 0 &&
+    paymentMethod === "CASH" &&
+    remaining > 0 &&
+    !hasPendingPayment &&
+    !isCardProcessing;
+
+  const selectedByCode = useMemo(() => {
+    if (!lastScannedCode) return null;
+    const normalized = lastScannedCode.trim().toLowerCase();
+    return (
+      products.find((item) => productMatchesCode(item, normalized)) || null
+    );
+  }, [products, lastScannedCode]);
 
   const processScan = (code: string) => {
     const normalized = code.trim();
@@ -562,13 +761,53 @@ export default function PosDemoPage() {
 
   const handleCreateDemoSale = async () => {
     if (state.cart.length === 0) return;
-    if (!canFinalizeSale) {
+    if (!registerConfig?.branchId) {
+      setScanStatus("not-found");
+      setScanMessage("POS кассын салбар сонгогдоогүй байна. POS кассаа сонгоод дахин оролдоно уу.");
+      setShowSetupPanel(true);
+      return;
+    }
+
+    let confirmedPayments = paymentEntries.filter((item) => item.status === "confirmed");
+    let canSubmitSale = canFinalizeSale;
+
+    if (!canSubmitSale && paymentMethod === "CASH" && !hasPendingPayment && !isCardProcessing) {
+      const confirmedTotal = roundMoney(
+        confirmedPayments.reduce((sum, item) => sum + item.amount, 0),
+      );
+      const cashRemaining = Math.max(0, roundMoney(totals.grandTotal - confirmedTotal));
+
+      if (cashRemaining > 0) {
+        const cashEntry: CheckoutPaymentEntry = {
+          id: `CASH-${Date.now()}`,
+          method: "CASH",
+          amount: cashRemaining,
+          status: "confirmed",
+        };
+        confirmedPayments = [...confirmedPayments, cashEntry];
+        setPaymentEntries((prev) => [...prev, cashEntry]);
+        canSubmitSale = true;
+      }
+    }
+
+    if (!canSubmitSale) {
       setScanStatus("not-found");
       setScanMessage("Split payment гүйцээгүй байна. Үлдэгдэл төлбөрөө дуусгана уу.");
       return;
     }
 
-    const confirmedPayments = paymentEntries.filter((item) => item.status === "confirmed");
+    const confirmedTotal = roundMoney(
+      confirmedPayments.reduce((sum, item) => sum + item.amount, 0),
+    );
+    const saleRemaining = Math.max(0, roundMoney(totals.grandTotal - confirmedTotal));
+
+    if (saleRemaining > 0) {
+      setScanStatus("not-found");
+      setScanMessage("Split payment Ð³Ò¯Ð¹Ñ†ÑÑÐ³Ò¯Ð¹ Ð±Ð°Ð¹Ð½Ð°. Ò®Ð»Ð´ÑÐ³Ð´ÑÐ» Ñ‚Ó©Ð»Ð±Ó©Ñ€Ó©Ó© Ð´ÑƒÑƒÑÐ³Ð°Ð½Ð° ÑƒÑƒ.");
+      setScanMessage("Төлбөр бүрэн бүртгэгдээгүй байна. Үлдэгдэл төлбөрөө дуусгана уу.");
+      return;
+    }
+
     const paymentBreakdown: SalePaymentLine[] = confirmedPayments.map((item) => ({
       method: item.method,
       amount: item.amount,
@@ -592,8 +831,8 @@ export default function PosDemoPage() {
         clientSaleId: clientSaleIdRef.current,
         paymentMethod: finalMethod,
         paymentBreakdown,
-        totalPaid: confirmedPaid,
-        remaining,
+        totalPaid: confirmedTotal,
+        remaining: saleRemaining,
         status: "PAID",
         lines: state.cart.map((line) => ({
           productId: line.productId,
@@ -605,16 +844,53 @@ export default function PosDemoPage() {
         note: "POS checkout",
       });
 
+      let finalReceipt = receipt;
+      let finalMessage = "Төлбөр амжилттай";
+
+      if (EBARIMT_ENABLED) {
+        try {
+          setScanStatus("idle");
+          setScanMessage("eBarimt баримт үүсгэж байна...");
+          const ebarimtPayload = await issueLocalEbarimtReceipt(receipt, paymentBreakdown, registerConfig);
+          finalReceipt = { ...receipt, ebarimt: mapEbarimtPayload(ebarimtPayload) };
+          try {
+            const saved = await attachEbarimtReceipt(receipt.id, ebarimtPayload);
+            finalReceipt = { ...receipt, ebarimt: saved.ebarimt || finalReceipt.ebarimt };
+          } catch (saveError) {
+            console.warn("eBarimt receipt created locally but failed to attach to sale", saveError);
+          }
+          finalMessage = "Төлбөр болон eBarimt баримт амжилттай";
+        } catch (ebarimtError: any) {
+          const errorMessage = ebarimtError?.message || "eBarimt баримт үүсгэхэд алдаа гарлаа";
+          finalReceipt = {
+            ...receipt,
+            ebarimt: {
+              status: "FAILED",
+              error: errorMessage,
+              syncedAt: new Date().toISOString(),
+            },
+          };
+          finalMessage = `Төлбөр амжилттай. eBarimt: ${errorMessage}`;
+          await attachEbarimtReceipt(receipt.id, {
+            status: "FAILED",
+            error: errorMessage,
+          }).catch(() => {});
+        }
+      }
+
       setQpayModal(null);
       setPaymentEntries([]);
       clientSaleIdRef.current = null;
       dispatch({ type: "clear-cart" });
       setView("register");
       setScanStatus("success");
-      setScanMessage("Split payment амжилттай дууслаа");
+      setScanMessage(finalMessage);
       showSuccessOverlay("Төлбөр амжилттай");
 
-      printReceipt(receipt);
+      setReceiptHistory((items) => [finalReceipt, ...items.filter((item) => item.id !== finalReceipt.id)]);
+      setSelectedReceiptId(finalReceipt.id);
+      reloadReceiptHistory();
+      printReceipt(finalReceipt);
     } catch (e: any) {
       const message = e?.message || "Гүйлгээ батлах үед алдаа гарлаа.";
       // Keep cart intact so cashier can adjust qty and retry when stock changed elsewhere.
@@ -626,11 +902,17 @@ export default function PosDemoPage() {
   };
 
   const addPaymentEntry = async (method: PaymentMethod, amount: number) => {
-    const safeAmount = Math.max(0, Math.min(amount, remaining));
+    const safeAmount = roundMoney(Math.max(0, Math.min(amount, remaining)));
     if (safeAmount <= 0) return;
 
     if (method === "CARD") {
       const pendingId = `CARD-${Date.now()}`;
+      const cardRun: CardPaymentRun = {
+        pendingId,
+        abortController: new AbortController(),
+        cancelled: false,
+      };
+      cardPaymentRunRef.current = cardRun;
       setPaymentEntries((prev) => [
         ...prev,
         {
@@ -643,11 +925,14 @@ export default function PosDemoPage() {
 
       setIsCardProcessing(true);
       startProgressTicker("Карт уншуулна уу");
+      const isCardRunCancelled = () => cardRun.cancelled || cardPaymentRunRef.current !== cardRun;
 
       try {
         const freshRegisterConfig = registerConfig?.id
           ? await fetchRegisterConfig(registerConfig.id)
           : registerConfig;
+
+        if (isCardRunCancelled()) return;
 
         if (!freshRegisterConfig) {
           throw new Error("POS register тохиргоо олдсонгүй");
@@ -655,8 +940,11 @@ export default function PosDemoPage() {
 
         setRegisterConfig(freshRegisterConfig);
 
-        const effectiveCardProvider = getEffectiveCardProvider(freshRegisterConfig);
+        const effectiveCardProvider = validateCardRegisterConfig(freshRegisterConfig);
         const terminalId = freshRegisterConfig.cardTerminalId ?? "terminal-1";
+        cardRun.provider = effectiveCardProvider;
+        cardRun.terminalId = terminalId;
+
         const useClientBridge =
           effectiveCardProvider === "ANDROID_PGW" &&
           Boolean(freshRegisterConfig.terminalBridgeUrl);
@@ -680,6 +968,8 @@ export default function PosDemoPage() {
           clientBridge: useClientBridge,
         });
 
+        if (isCardRunCancelled()) return;
+
         let approvedAttempt = attempt;
         if (useClientBridge) {
           try {
@@ -688,12 +978,15 @@ export default function PosDemoPage() {
               attemptId: attempt.attemptId,
               amount: safeAmount,
               terminalId,
+              signal: cardRun.abortController.signal,
             });
+            if (isCardRunCancelled()) return;
             approvedAttempt = await submitClientBridgeResult({
               attemptId: attempt.attemptId,
               result: bridgeResult,
             });
           } catch (bridgeError: any) {
+            if (isCardRunCancelled()) return;
             const message = bridgeError?.message || "Card terminal холболтын алдаа гарлаа";
             approvedAttempt = await submitClientBridgeResult({
               attemptId: attempt.attemptId,
@@ -708,19 +1001,28 @@ export default function PosDemoPage() {
           const isLongRunningTerminal = terminalNeedsWaitingOverlay(effectiveCardProvider);
           const maxPolls = isLongRunningTerminal ? 150 : 8; // 150x800ms=120s for terminal-side card flows
           for (let i = 0; i < maxPolls; i += 1) {
+            if (isCardRunCancelled()) return;
             if (approvedAttempt.status === "APPROVED") break;
             if (approvedAttempt.status === "DECLINED" || approvedAttempt.status === "FAILED") break;
             await new Promise((resolve) => setTimeout(resolve, 800));
+            if (isCardRunCancelled()) return;
             approvedAttempt = await getCardAttemptStatus(attempt.attemptId);
           }
         }
+
+        if (isCardRunCancelled()) return;
 
         if (approvedAttempt.status !== "APPROVED") {
           clearProgressTicker();
           setPaymentEntries((prev) => prev.filter((item) => item.id !== pendingId));
           setAutoCheckoutActive(false);
           setScanStatus("not-found");
-          setScanMessage(approvedAttempt.message || "Card төлбөр цуцлагдлаа");
+          setScanMessage(
+            approvedAttempt.message ||
+              (approvedAttempt.status === "PENDING"
+                ? "Terminal төлбөр баталгаажаагүй байна. Дахин оролдоно уу."
+                : "Card төлбөр цуцлагдлаа"),
+          );
           return;
         }
 
@@ -741,13 +1043,17 @@ export default function PosDemoPage() {
         setScanMessage("Card төлбөр амжилттай баталгаажлаа");
         showSuccessOverlay("Карт төлбөр амжилттай");
       } catch (error: any) {
+        if (isCardRunCancelled()) return;
         clearProgressTicker();
         setPaymentEntries((prev) => prev.filter((item) => item.id !== pendingId));
         setAutoCheckoutActive(false);
         setScanStatus("not-found");
         setScanMessage(error?.message || "Card terminal холболтын алдаа гарлаа");
       } finally {
-        setIsCardProcessing(false);
+        if (cardPaymentRunRef.current === cardRun) {
+          cardPaymentRunRef.current = null;
+          setIsCardProcessing(false);
+        }
       }
 
       return;
@@ -765,7 +1071,7 @@ export default function PosDemoPage() {
   };
 
   const requestQPay = async (amount: number) => {
-    const safeAmount = Math.max(0, Math.min(amount, remaining));
+    const safeAmount = roundMoney(Math.max(0, Math.min(amount, remaining)));
     if (safeAmount <= 0) return;
 
     try {
@@ -841,6 +1147,12 @@ export default function PosDemoPage() {
   };
 
   const resetPaymentEntries = () => {
+    if (cardPaymentRunRef.current) {
+      cardPaymentRunRef.current.cancelled = true;
+      cardPaymentRunRef.current.abortController.abort();
+      cardPaymentRunRef.current = null;
+    }
+    setIsCardProcessing(false);
     setAutoCheckoutActive(false);
     setPaymentEntries([]);
     setQpayModal(null);
@@ -856,11 +1168,16 @@ export default function PosDemoPage() {
 
   const startAutoCheckoutFlow = async () => {
     if (state.cart.length === 0) return;
+    if (!registerConfig?.branchId) {
+      setScanStatus("not-found");
+      setScanMessage("POS кассын салбар сонгогдоогүй байна. POS кассаа сонгоод дахин оролдоно уу.");
+      setShowSetupPanel(true);
+      return;
+    }
 
     setQpayModal(null);
     setPaymentEntries([]);
     setView("checkout");
-    setAutoCheckoutActive(true);
 
     const total = totals.grandTotal;
     if (total <= 0) {
@@ -869,6 +1186,7 @@ export default function PosDemoPage() {
     }
 
     if (paymentMethod === "QR") {
+      setAutoCheckoutActive(true);
       setScanStatus("idle");
       setScanMessage("QPay QR үүсгэж байна...");
       await requestQPay(total);
@@ -876,13 +1194,22 @@ export default function PosDemoPage() {
     }
 
     if (paymentMethod === "CARD") {
+      setAutoCheckoutActive(true);
       setScanStatus("idle");
       setScanMessage("Card terminal руу хүсэлт илгээж байна...");
       await addPaymentEntry("CARD", total);
       return;
     }
 
-    await addPaymentEntry("CASH", total);
+    setAutoCheckoutActive(false);
+    setPaymentEntries([
+      {
+        id: `CASH-${Date.now()}`,
+        method: "CASH",
+        amount: roundMoney(total),
+        status: "confirmed",
+      },
+    ]);
   };
 
   useEffect(() => {
@@ -982,6 +1309,73 @@ export default function PosDemoPage() {
     }, 1000);
   };
 
+  const receiptHistoryPanel = (
+    <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900">Сүүлийн баримтууд</h3>
+          <p className="text-[11px] text-slate-500">Refresh хийсэн ч current ээлжээс дахин татна</p>
+        </div>
+        <button
+          type="button"
+          onClick={reloadReceiptHistory}
+          className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+        >
+          Шинэчлэх
+        </button>
+      </div>
+
+      {receiptHistoryError && (
+        <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+          {receiptHistoryError}
+        </div>
+      )}
+
+      <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
+        {receiptHistoryLoading && receiptHistory.length === 0 ? (
+          <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Баримт ачаалж байна...
+          </div>
+        ) : receiptHistory.length === 0 ? (
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            Энэ ээлж дээр борлуулалт алга байна.
+          </div>
+        ) : (
+          receiptHistory.map((receipt) => {
+            const isSelected = receipt.id === receiptForPreview?.id;
+            const isVoided = receipt.status === "VOIDED";
+            return (
+              <button
+                key={receipt.id}
+                type="button"
+                onClick={() => setSelectedReceiptId(receipt.id)}
+                className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                  isSelected
+                    ? "border-amber-300 bg-amber-50"
+                    : "border-slate-200 bg-white hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-slate-900">#{receipt.receiptNo}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    isVoided ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
+                  }`}>
+                    {isVoided ? "Буцаагдсан" : "Амжилттай"}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                  <span>{new Date(receipt.createdAt).toLocaleString("mn-MN")}</span>
+                  <span className="font-bold text-slate-800">{formatMoney(receipt.grandTotal)}</span>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
   if (!posEnabled) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-slate-50 px-6 text-center">
@@ -998,7 +1392,8 @@ export default function PosDemoPage() {
   return (
     <>
       <MobileBlock />
-    <div className="hidden h-screen overflow-hidden bg-slate-100 p-3 md:flex md:flex-col md:gap-3">
+    <div className="hidden min-h-screen bg-slate-50 p-4 md:block">
+      <div className="mx-auto flex h-[calc(100vh-2rem)] max-w-[1800px] flex-col gap-3 overflow-hidden">
       {/* ── Register setup banner ────────────────────────────────── */}
       {!registerConfig && !showSetupPanel && !showRegisterPicker && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
@@ -1236,7 +1631,7 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      {registerConfig && registerConfig.isActive && (
+      {showPosSettings && registerConfig && registerConfig.isActive && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-emerald-800">
             <CheckCircle2 size={14} className="text-emerald-600" />
@@ -1261,7 +1656,7 @@ export default function PosDemoPage() {
       )}
 
       {/* ── Shift status / open shift banner ───────────────────── */}
-      {registerConfig?.isActive && (
+      {showPosSettings && registerConfig?.isActive && (
         <div
           className={`rounded-xl border px-4 py-2.5 flex items-center justify-between gap-3 ${
             shift
@@ -1408,7 +1803,7 @@ export default function PosDemoPage() {
           onRemovePayment={removePaymentEntry}
           onResetPayments={resetPaymentEntries}
           onFinalize={handleCreateDemoSale}
-          canFinalize={canFinalizeSale}
+          canFinalize={canFinalizeSale || canFinalizeCashSale}
           onBack={() => {
             clearProgressTicker();
             setAutoCheckoutActive(false);
@@ -1434,70 +1829,52 @@ export default function PosDemoPage() {
             <Loader2 className="mx-auto h-14 w-14 animate-spin text-blue-500" />
             <p className="mt-4 text-lg font-bold text-slate-900">Картаар төлж байна</p>
             <p className="mt-1 text-sm text-slate-500">Терминал дээр карт уншуулна уу</p>
-            {getEffectiveCardProvider(registerConfig) === "PUSH_ECR" && (
-              <button
-                type="button"
-                onClick={handleCancelPushEcr}
-                disabled={isCancellingCard}
-                className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-              >
-                {isCancellingCard ? <Loader2 size={14} className="animate-spin" /> : null}
-                Цуцлах
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleCancelCardPayment}
+              disabled={isCancellingCard}
+              className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {isCancellingCard ? <Loader2 size={14} className="animate-spin" /> : null}
+              Цуцлах
+            </button>
           </div>
         </div>
       )}
 
-      <div className="flex h-11 shrink-0 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-2 shadow-sm">
-        <div className="flex h-full min-w-0 items-center gap-1 overflow-x-auto">
+      <div className="flex h-11 shrink-0 items-center justify-between rounded-xl border border-slate-200 bg-white px-2 shadow-sm">
+        <div className="flex h-full items-center gap-1">
+          {["Борлуулалт", "Борлуулалтын түүх", "Өдрийн хаалт"].map((tab, index) => (
+            <button
+              key={tab}
+              type="button"
+              className={`h-9 rounded-lg px-4 text-sm font-bold transition-colors ${
+                index === 0
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
           <button
             type="button"
-            onClick={() => setView("register")}
-            className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-black transition-colors ${
-              view === "register"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
-            }`}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+            aria-label="Нэмэх"
           >
-            <ScanBarcode size={15} />
-            Касс
-          </button>
-          <button
-            type="button"
-            onClick={openCustomerDisplay}
-            className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-bold transition-colors ${
-              displayOpened
-                ? "bg-amber-100 text-amber-800"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
-            }`}
-          >
-            <Monitor size={15} />
-            Customer display
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowShiftPanel((value) => !value)}
-            className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-bold transition-colors ${
-              shift
-                ? "text-emerald-700 hover:bg-emerald-50"
-                : "text-amber-700 hover:bg-amber-50"
-            }`}
-          >
-            <CheckCircle2 size={15} />
-            {shift ? "Ээлж нээлттэй" : "Ээлж нээх"}
+            +
           </button>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3">
-          <span className="hidden items-center gap-1.5 text-xs font-semibold text-slate-600 lg:inline-flex">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             Онлайн
           </span>
           <button
             type="button"
             onClick={() => setShowPosSettings((value) => !value)}
-            className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-bold transition-colors ${
+            className={`flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-bold transition-colors ${
               showPosSettings
                 ? "bg-slate-900 text-white"
                 : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -1519,25 +1896,33 @@ export default function PosDemoPage() {
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Касс</p>
             <p className="truncate font-black text-slate-900">{registerConfig?.name ?? "POS"}</p>
           </div>
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Кассчин</p>
-            <p className="truncate font-black text-slate-900">Vendor Cashier</p>
-          </div>
-          <div
-            className={`rounded-lg border px-3 py-2 ${
-              shift ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"
+          <button
+            type="button"
+            onClick={openCustomerDisplay}
+            className={`rounded-lg px-3 py-2 text-left font-black transition-colors ${
+              displayOpened ? "bg-amber-100 text-amber-800" : "bg-slate-50 text-slate-700 hover:bg-slate-100"
             }`}
           >
-            <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">Ээлж</p>
-            <p className="font-black">{shift ? "Нээлттэй" : "Нээх хэрэгтэй"}</p>
-          </div>
+            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Customer display</span>
+            {displayOpened ? "Нээлттэй" : "Нээх"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowShiftPanel((value) => !value)}
+            className={`rounded-lg px-3 py-2 text-left font-black transition-colors ${
+              shift ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Ээлж</span>
+            {shift ? "Нээлттэй" : "Нээх хэрэгтэй"}
+          </button>
         </div>
       )}
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_390px] gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="flex min-h-0 flex-col gap-3">
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="hidden mb-3 flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
                   <ScanLine size={20} />
@@ -1620,6 +2005,57 @@ export default function PosDemoPage() {
             )}
           </div>
 
+          <div className="hidden rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Scan result</p>
+            {selectedByCode ? (
+              <>
+                <h2 className="mt-1 text-base font-bold text-slate-900">{selectedByCode.name}</h2>
+                <p className="text-xs text-slate-600 mt-1">
+                  Barcode / SKU: {selectedByCode.barcode || selectedByCode.sku}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-wider text-slate-500">Үнэ</p>
+                    <p className="mt-1 text-xl font-black text-emerald-700">
+                      ₮ {selectedByCode.price.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-wider text-slate-500">Нөөц</p>
+                    <p className="mt-1 text-xl font-black text-slate-800">{selectedByCode.stockQty}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const result = addProduct(selectedByCode);
+                    if (!result.ok) {
+                      setScanMessage(`Нөөц хүрэлцэхгүй: ${selectedByCode.name}`);
+                      setScanStatus("not-found");
+                    }
+                  }}
+                  disabled={
+                    selectedByCode.stockQty <= 0 ||
+                    (state.cart.find((line) => line.productId === selectedByCode.id)?.qty ?? 0) >=
+                      selectedByCode.stockQty
+                  }
+                  className="mt-3 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {selectedByCode.stockQty <= 0
+                    ? "Нөөц дууссан"
+                    : (state.cart.find((line) => line.productId === selectedByCode.id)?.qty ?? 0) >=
+                          selectedByCode.stockQty
+                      ? "Нөөц хүрсэн"
+                      : "Сагсанд нэмэх"}
+                </button>
+              </>
+            ) : (
+              <div className="mt-2 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+                Barcode эсвэл SKU
+              </div>
+            )}
+          </div>
+
           <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="mb-3 flex shrink-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
@@ -1629,22 +2065,30 @@ export default function PosDemoPage() {
                 </p>
               </div>
               <div className="flex flex-1 items-center justify-end gap-2">
-                <div className="relative w-full max-w-sm">
-                  <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    placeholder="Barcode, SKU, нэрээр хайх"
-                    className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 hover:bg-slate-50"
-                >
-                  <Filter size={15} />
-                  Шүүлтүүр
-                </button>
+              <div className="relative w-full max-w-sm">
+                <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Barcode, SKU, нэрээр хайх"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+              <button
+                type="button"
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 hover:bg-slate-50"
+              >
+                <Filter size={15} />
+                Шүүлтүүр
+              </button>
+              <button
+                type="button"
+                onClick={reloadProducts}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 hover:bg-slate-50"
+              >
+                <RefreshCw size={15} />
+                Сэргээх
+              </button>
               </div>
             </div>
 
@@ -1735,41 +2179,138 @@ export default function PosDemoPage() {
         </section>
 
         <section ref={paymentSectionRef} className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto_auto] gap-3 pr-1">
-          <PosCartPanel
-            className="min-h-[300px]"
-            lines={state.cart}
-            totals={totals}
-            onClear={() => dispatch({ type: "clear-cart" })}
-            onRemove={(productId) => dispatch({ type: "remove-line", payload: productId })}
-            onSetQty={(productId, qty) => {
-              if (qty <= 0) {
-                dispatch({ type: "remove-line", payload: productId });
-                return;
-              }
-              dispatch({ type: "set-qty", payload: { productId, qty } });
-            }}
-          />
+            <PosCartPanel
+              className="min-h-[300px]"
+              lines={state.cart}
+              totals={totals}
+              onClear={() => dispatch({ type: "clear-cart" })}
+              onRemove={(productId) => dispatch({ type: "remove-line", payload: productId })}
+              onSetQty={(productId, qty) => {
+                if (qty <= 0) {
+                  dispatch({ type: "remove-line", payload: productId });
+                  return;
+                }
+                dispatch({ type: "set-qty", payload: { productId, qty } });
+              }}
+            />
 
-          <PosPaymentPanel
-            totals={totals}
-            paymentMethod={paymentMethod}
-            onChangeMethod={handlePaymentMethodChange}
-            onSubmit={() => {
-              void startAutoCheckoutFlow();
-            }}
-            disabled={state.cart.length === 0 || saleLoading || isCardProcessing || autoFinalizing || (registerConfig !== null && !registerConfig.isActive)}
-          />
+            {saleError && (
+              <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700">
+                {saleError}
+              </div>
+            )}
 
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-            <div className="flex items-center gap-2 text-sm text-slate-700">
-              <ScanBarcode size={16} className="text-slate-400" />
-              <span>Сагсны мөр: {state.cart.length}</span>
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex h-10 items-end border-b border-slate-100 px-4">
+                <button
+                  type="button"
+                  className="h-10 border-b-2 border-blue-600 px-3 text-xs font-black text-blue-600"
+                >
+                  eBarimt
+                </button>
+                <button
+                  type="button"
+                  className="h-10 px-3 text-xs font-bold text-slate-500"
+                >
+                  Төлбөр
+                </button>
+              </div>
+              <div className="p-3">
+                {receiptForPreview?.ebarimt?.status === "SUCCESS" && receiptForPreview.ebarimt.qrData ? (
+                  <>
+                    <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                      <span className="text-slate-500">Баримтын дугаар:</span>
+                      <span className="font-black text-emerald-600">
+                        {receiptForPreview.ebarimt.lottery || receiptForPreview.ebarimt.billId || receiptForPreview.receiptNo}
+                      </span>
+                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">
+                        Амжилттай
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-[130px_minmax(0,1fr)] gap-3">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
+                        <p className="mb-1 text-[11px] font-bold text-slate-600">E-barimt QR</p>
+                        <div className="inline-flex rounded bg-white p-1">
+                          <QRCodeSVG value={receiptForPreview.ebarimt.qrData} size={104} level="M" includeMargin />
+                        </div>
+                        <p className="mt-1 text-[10px] leading-tight text-slate-500">
+                          Энэ баримтыг ebarimt апп-аар уншуулна уу.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5 text-xs text-slate-600">
+                        <div className="flex justify-between gap-2">
+                          <span>ДДТД:</span>
+                          <span className="text-right font-semibold text-slate-900">
+                            {receiptForPreview.ebarimt.billId || "-"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span>Касс:</span>
+                          <span className="text-right font-semibold text-slate-900">{registerConfig?.name ?? "POS"}</span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span>Кассчин:</span>
+                          <span className="text-right font-semibold text-slate-900">{receiptForPreview.cashierName}</span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span>Салбар:</span>
+                          <span className="text-right font-semibold text-slate-900">{receiptForPreview.branchName}</span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span>Огноо:</span>
+                          <span className="text-right font-semibold text-slate-900">
+                            {new Date(receiptForPreview.createdAt).toLocaleString("mn-MN")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex min-h-28 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 text-center">
+                    <div>
+                      <p className="text-sm font-black text-slate-700">eBarimt QR</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {EBARIMT_ENABLED
+                          ? "Гүйлгээ батлагдсаны дараа баримтын QR энд харагдана."
+                          : "eBarimt одоогоор идэвхгүй байна."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-            {saleError && <p className="mt-2 text-xs text-rose-600">{saleError}</p>}
-          </div>
 
-          <ReceiptPreview receipt={lastReceipt} />
+            <PosPaymentPanel
+              totals={totals}
+              paymentMethod={paymentMethod}
+              onChangeMethod={handlePaymentMethodChange}
+              onSubmit={() => {
+                void startAutoCheckoutFlow();
+              }}
+              disabled={
+                state.cart.length === 0 ||
+                saleLoading ||
+                isCardProcessing ||
+                autoFinalizing ||
+                !registerConfig?.branchId ||
+                registerConfig.isActive === false
+              }
+            />
+
+            <div className="hidden min-h-0 overflow-y-auto">
+              {receiptForPreview && state.cart.length === 0 && (
+                <ReceiptPreview
+                  receipt={receiptForPreview}
+                  className="min-h-[260px] shrink-0"
+                  onVoided={handleReceiptVoided}
+                />
+              )}
+              {state.cart.length === 0 &&
+                (receiptHistory.length > 0 || receiptHistoryLoading || receiptHistoryError) &&
+                receiptHistoryPanel}
+            </div>
         </section>
+      </div>
       </div>
     </div>
     </>

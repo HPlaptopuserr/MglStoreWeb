@@ -110,16 +110,27 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     const regForProvider = await prisma.posRegister.findUnique({
       where: { id: registerId },
       select: {
+        cardEnabled: true,
         cardProviderType: true,
         organization: { select: { minuAgentEnabled: true } },
       },
     });
+    if (!regForProvider) {
+      return res.status(404).json({ message: "POS register олдсонгүй" });
+    }
     cardProviderType = regForProvider?.cardProviderType ?? null;
     isPushEcr = cardProviderType === "PUSH_ECR";
     isMinuAgent =
       cardProviderType === "MINU_AGENT" ||
       (!cardProviderType && regForProvider?.organization.minuAgentEnabled === true);
     isAndroidPgw = cardProviderType === "ANDROID_PGW";
+
+    if (!regForProvider.cardEnabled) {
+      return res.status(400).json({ message: "Энэ POS register дээр картын төлбөр идэвхгүй байна" });
+    }
+    if (!cardProviderType && !isMinuAgent) {
+      return res.status(400).json({ message: "Картын terminal provider тохируулаагүй байна" });
+    }
   }
   const isLocalBridgeProvider = Boolean(
     cardProviderType && LOCAL_BRIDGE_CARD_PROVIDERS.has(cardProviderType)

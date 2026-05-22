@@ -3,6 +3,7 @@ export type {
   SalePaymentLine,
   SalePayload,
   PosProduct,
+  RegisterConfig,
   CartLine,
   PosCart,
   CartTotals,

@@ -2,6 +2,7 @@ import { Router, type Router as ExpressRouter } from "express";
 import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
+import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
@@ -17,6 +18,43 @@ import {
 } from "./_shared";
 
 const router: ExpressRouter = Router();
+
+type PosSaleEbarimtFields = {
+  ebarimtStatus: string | null;
+  ebarimtBillId: string | null;
+  ebarimtReceiptId: string | null;
+  ebarimtQrData: string | null;
+  ebarimtLottery: string | null;
+  ebarimtDate: Date | null;
+  ebarimtError: string | null;
+  ebarimtSyncedAt: Date | null;
+};
+
+const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) =>
+  sale.ebarimtStatus ||
+  sale.ebarimtBillId ||
+  sale.ebarimtReceiptId ||
+  sale.ebarimtQrData ||
+  sale.ebarimtLottery ||
+  sale.ebarimtError
+    ? {
+        status: sale.ebarimtStatus,
+        billId: sale.ebarimtBillId,
+        receiptId: sale.ebarimtReceiptId,
+        qrData: sale.ebarimtQrData,
+        lottery: sale.ebarimtLottery,
+        date: sale.ebarimtDate?.toISOString() ?? null,
+        error: sale.ebarimtError,
+        syncedAt: sale.ebarimtSyncedAt?.toISOString() ?? null,
+      }
+    : null;
+
+const parseEbarimtDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  const normalized = String(value).trim().replace(" ", "T");
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
 
 router.post("/pos/sales", async (req, res) => {
   try {
@@ -434,12 +472,30 @@ router.post("/pos/sales", async (req, res) => {
             })),
           },
         },
+        select: { id: true },
       });
 
       const fullSale = await tx.posSale.findUniqueOrThrow({
         where: { id: posSale.id },
-        include: {
-          lines: true,
+        select: {
+          id: true,
+          receiptNo: true,
+          paymentMethod: true,
+          createdAt: true,
+          subtotal: true,
+          taxTotal: true,
+          discountTotal: true,
+          grandTotal: true,
+          lines: {
+            select: {
+              productId: true,
+              productName: true,
+              qty: true,
+              unitPrice: true,
+              taxAmount: true,
+              lineTotal: true,
+            },
+          },
           cashier: { select: { email: true } },
           branch: { select: { name: true } },
         },
@@ -451,6 +507,7 @@ router.post("/pos/sales", async (req, res) => {
         branchName: fullSale.branch.name,
         cashierName: fullSale.cashier.email,
         paymentMethod: fullSale.paymentMethod,
+        ebarimt: null,
         paymentBreakdown: normalizedPayments.map((item) => {
           if (item.method === PaymentMethod.CARD && item.attemptId) {
             const attemptMeta = cardAttemptMap.get(String(item.attemptId));
@@ -542,5 +599,94 @@ router.post("/pos/sales", async (req, res) => {
 /* ─────────────────────────────────────────────────────────────────────────
  * Shift management — open / close / current
  * ─────────────────────────────────────────────────────────────────────── */
+
+router.post("/pos/sales/:id/ebarimt", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const saleId = String(req.params.id || "").trim();
+    if (!saleId) {
+      return res.status(400).json({ message: "saleId шаардлагатай" });
+    }
+
+    const sale = await prisma.posSale.findUnique({
+      where: { id: saleId },
+      select: { id: true, organizationId: true, receiptNo: true },
+    });
+    if (!sale) {
+      return res.status(404).json({ message: "POS борлуулалт олдсонгүй" });
+    }
+
+    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, sale.organizationId))) {
+      return res.status(403).json({ message: "Энэ борлуулалтын eBarimt мэдээлэл засах эрхгүй" });
+    }
+
+    const body = req.body as {
+      status?: string;
+      billId?: string | null;
+      receiptId?: string | null;
+      qrData?: string | null;
+      lottery?: string | null;
+      date?: string | null;
+      error?: string | null;
+      payload?: unknown;
+    };
+
+    const cleanText = (value: unknown) => {
+      const text = String(value ?? "").trim();
+      return text || null;
+    };
+    const status = cleanText(body.status)?.toUpperCase() || (body.error ? "FAILED" : "SUCCESS");
+
+    const updated = await prisma.posSale.update({
+      where: { id: sale.id },
+      data: {
+        ebarimtStatus: status,
+        ebarimtBillId: cleanText(body.billId),
+        ebarimtReceiptId: cleanText(body.receiptId),
+        ebarimtQrData: cleanText(body.qrData),
+        ebarimtLottery: cleanText(body.lottery),
+        ebarimtDate: parseEbarimtDate(body.date),
+        ebarimtError: cleanText(body.error),
+        ...(body.payload !== undefined
+          ? { ebarimtPayload: body.payload as Prisma.InputJsonValue }
+          : {}),
+        ebarimtSyncedAt: new Date(),
+      },
+      select: {
+        ebarimtStatus: true,
+        ebarimtBillId: true,
+        ebarimtReceiptId: true,
+        ebarimtQrData: true,
+        ebarimtLottery: true,
+        ebarimtDate: true,
+        ebarimtError: true,
+        ebarimtSyncedAt: true,
+      },
+    });
+
+    const idempotency = await prisma.posSaleIdempotency.findUnique({
+      where: { receiptNo: sale.receiptNo },
+      select: { response: true },
+    });
+    if (idempotency?.response && typeof idempotency.response === "object") {
+      await prisma.posSaleIdempotency.update({
+        where: { receiptNo: sale.receiptNo },
+        data: {
+          response: {
+            ...(idempotency.response as Record<string, unknown>),
+            ebarimt: mapEbarimtReceipt(updated),
+          },
+        },
+      });
+    }
+
+    return res.json({ ebarimt: mapEbarimtReceipt(updated) });
+  } catch (error) {
+    console.error("attach ebarimt receipt error", error);
+    return res.status(500).json({ message: "eBarimt мэдээлэл хадгалахад алдаа гарлаа" });
+  }
+});
 
 export default router;

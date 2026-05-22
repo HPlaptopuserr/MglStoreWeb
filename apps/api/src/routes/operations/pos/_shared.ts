@@ -164,7 +164,7 @@ export const parseBridgeResultStatus = (status?: string): PosPaymentStatus => {
 
 export const parseQPaySuccess = (statusValue: unknown): boolean => {
   const status = String(statusValue || "").trim().toUpperCase();
-  return ["PAID", "SUCCESS", "SUCCEEDED", "COMPLETED"].includes(status);
+  return ["000", "PAID", "SUCCESS", "SUCCEEDED", "COMPLETED"].includes(status);
 };
 
 export const parseOptionalDate = (value: unknown): Date | null => {
