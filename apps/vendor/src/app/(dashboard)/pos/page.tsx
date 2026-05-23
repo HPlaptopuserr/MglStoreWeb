@@ -69,7 +69,7 @@ import {
 import { API, authFetch } from "@/lib/api";
 import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
 
-type PosView = "register" | "checkout";
+type PosView = "register" | "checkout" | "history";
 
 const CUSTOMER_DISPLAY_CHANNEL = "mgl-pos-customer-display";
 
@@ -240,6 +240,7 @@ export default function PosDemoPage() {
   const [qpayModal, setQpayModal] = useState<QPayModalPayload | null>(null);
   const [isCardProcessing, setIsCardProcessing] = useState(false);
   const [isCancellingCard, setIsCancellingCard] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>("Бүгд");
   const [autoCheckoutActive, setAutoCheckoutActive] = useState(false);
   const [autoFinalizing, setAutoFinalizing] = useState(false);
   const [successOverlay, setSuccessOverlay] = useState<{ visible: boolean; text: string }>({
@@ -629,16 +630,25 @@ export default function PosDemoPage() {
     };
   }, [posEnabled]);
 
+  const categories = useMemo(() => {
+    const cats = new Set(products.map(p => p.categoryName || "Бусад"));
+    return ["Бүгд", ...Array.from(cats).sort()];
+  }, [products]);
+
   const lowerSearch = searchInput.trim().toLowerCase();
   const filtered = useMemo(() => {
-    if (!lowerSearch) return products;
-    return products.filter(
+    let result = products;
+    if (selectedCategory !== "Бүгд") {
+      result = result.filter((item) => (item.categoryName || "Бусад") === selectedCategory);
+    }
+    if (!lowerSearch) return result;
+    return result.filter(
       (item) =>
         item.name.toLowerCase().includes(lowerSearch) ||
         item.sku.toLowerCase().includes(lowerSearch) ||
         String(item.barcode || "").toLowerCase().includes(lowerSearch),
     );
-  }, [products, lowerSearch]);
+  }, [products, lowerSearch, selectedCategory]);
 
   const confirmedPaid = useMemo(
     () =>
@@ -1780,17 +1790,33 @@ export default function PosDemoPage() {
 
       <div className="flex h-11 shrink-0 items-center justify-between rounded-xl border border-slate-200 bg-white px-2 shadow-sm">
         <div className="flex h-full items-center gap-1">
-          {["Борлуулалт", "Борлуулалтын түүх", "Өдрийн хаалт"].map((tab, index) => (
+          {(
+            [
+              { id: "register", label: "Борлуулалт" },
+              { id: "history", label: "Борлуулалтын түүх" },
+              { id: "shift", label: "Өдрийн хаалт" },
+            ] as const
+          ).map((tab) => (
             <button
-              key={tab}
+              key={tab.id}
               type="button"
+              onClick={() => {
+                if (tab.id === "shift") {
+                  setShowShiftPanel(true);
+                } else {
+                  setView(tab.id as PosView);
+                  if (tab.id === "history") {
+                    reloadReceiptHistory();
+                  }
+                }
+              }}
               className={`h-9 rounded-lg px-4 text-sm font-bold transition-colors ${
-                index === 0
+                (tab.id === "shift" ? showShiftPanel : view === tab.id || (view === "checkout" && tab.id === "register"))
                   ? "bg-blue-600 text-white shadow-sm"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
               }`}
             >
-              {tab}
+              {tab.label}
             </button>
           ))}
           <button
@@ -1877,6 +1903,34 @@ export default function PosDemoPage() {
       )}
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_390px] gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
+        {view === "history" ? (
+          <section className="flex min-h-0 flex-col gap-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex-1 min-h-0 flex flex-col md:flex-row gap-4">
+              <div className="w-full md:w-1/3 flex flex-col overflow-hidden">
+                <div className="flex-1 overflow-y-auto pr-2">
+                  {receiptHistoryPanel}
+                </div>
+              </div>
+              <div className="w-full md:w-2/3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col overflow-hidden p-4">
+                <div className="flex-1 overflow-y-auto">
+                  {receiptForPreview ? (
+                    <div className="max-w-md mx-auto bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                      <ReceiptPreview
+                        receipt={receiptForPreview}
+                        className="w-full"
+                        onVoided={handleReceiptVoided}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-slate-500 text-sm font-medium">
+                      Баримт сонгоно уу
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : (
         <section className="flex min-h-0 flex-col gap-3">
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="hidden mb-3 flex-wrap items-center justify-between gap-3">
@@ -2049,15 +2103,16 @@ export default function PosDemoPage() {
               </div>
             </div>
 
-            <div className="mb-3 flex shrink-0 items-center gap-2 overflow-x-auto">
-              {["Бүгд", "Түгээмэл", "Сүү, сүүн бүтээгдэхүүн", "Ундаа", "Хүнс", "Гоо сайхан", "Бусад"].map((category, index) => (
+            <div className="mb-3 flex shrink-0 items-center gap-2 overflow-x-auto pb-2">
+              {categories.map((category) => (
                 <button
                   key={category}
                   type="button"
-                  className={`h-8 shrink-0 rounded-lg px-3 text-xs font-bold ${
-                    index === 0
+                  onClick={() => setSelectedCategory(category)}
+                  className={`h-8 shrink-0 rounded-lg px-3 text-xs font-bold transition-colors ${
+                    selectedCategory === category
                       ? "bg-blue-600 text-white"
-                      : "bg-white text-slate-600 hover:bg-slate-50"
+                      : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"
                   }`}
                 >
                   {category}
@@ -2134,6 +2189,7 @@ export default function PosDemoPage() {
             )}
           </div>
         </section>
+        )}
 
         <section ref={paymentSectionRef} className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto_auto] gap-3 pr-1">
             <PosCartPanel
@@ -2253,19 +2309,6 @@ export default function PosDemoPage() {
                 registerConfig.isActive === false
               }
             />
-
-            <div className="hidden min-h-0 overflow-y-auto">
-              {receiptForPreview && state.cart.length === 0 && (
-                <ReceiptPreview
-                  receipt={receiptForPreview}
-                  className="min-h-[260px] shrink-0"
-                  onVoided={handleReceiptVoided}
-                />
-              )}
-              {state.cart.length === 0 &&
-                (receiptHistory.length > 0 || receiptHistoryLoading || receiptHistoryError) &&
-                receiptHistoryPanel}
-            </div>
         </section>
       </div>
       </div>

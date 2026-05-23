@@ -41,7 +41,7 @@ type SuggestionGroup = {
 
 interface StockSuggestionBannerProps {
   organizationId: string;
-  onEnterWarehouse: (warehouseId: string) => void;
+  onEnterWarehouse: (warehouseId: string, items?: LowStockItem[]) => void;
 }
 
 export function StockSuggestionBanner({
@@ -134,32 +134,31 @@ export function StockSuggestionBanner({
         : "bg-amber-100 text-amber-700";
 
   return (
-    <div className={`overflow-hidden rounded-2xl border ${urgencyColor}`}>
+    <div className={`overflow-hidden rounded-2xl border ${urgencyColor} shadow-sm transition-all duration-300`}>
       {/* Header */}
-      <button
+      <div
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between px-5 py-4"
+        className="flex w-full cursor-pointer items-center justify-between px-5 py-4 hover:bg-white/40 transition-colors"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <div
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${badgeColor}`}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/30 text-white`}
           >
-            <TrendingDown className="h-5 w-5" />
+            <Sparkles className="h-5 w-5" />
           </div>
           <div className="text-left">
             <div className="flex items-center gap-2">
-              <p className={`text-sm font-bold ${headerColor}`}>
-                Бараа нөхөх санал
+              <p className={`text-sm font-black ${headerColor}`}>
+                AI Бараа нөхөх санал
               </p>
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${badgeColor}`}
               >
-                <Sparkles className="h-3 w-3" />
                 {totalLow} бараа
               </span>
             </div>
-            <p className={`text-xs ${headerColor} opacity-70`}>
-              Босго давсан барааг цаг тухайд нь нөхөж, тасалдлаас сэргийлнэ
+            <p className={`text-xs ${headerColor} opacity-70 font-medium mt-0.5`}>
+              Дутагдалтай барааг автоматаар нөхөж тасалдалгүй ажиллана уу
             </p>
           </div>
         </div>
@@ -169,10 +168,10 @@ export function StockSuggestionBanner({
               e.stopPropagation();
               load();
             }}
-            className={`rounded-lg p-1.5 opacity-60 transition-opacity hover:opacity-100 ${headerColor}`}
+            className={`rounded-xl p-2 opacity-60 transition-all hover:bg-white hover:opacity-100 ${headerColor} shadow-sm`}
             title="Шинэчлэх"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className="h-4 w-4" />
           </button>
           {expanded ? (
             <ChevronUp className={`h-5 w-5 ${headerColor} opacity-60`} />
@@ -180,7 +179,7 @@ export function StockSuggestionBanner({
             <ChevronDown className={`h-5 w-5 ${headerColor} opacity-60`} />
           )}
         </div>
-      </button>
+      </div>
 
       {/* Body */}
       {expanded && (
@@ -194,25 +193,25 @@ export function StockSuggestionBanner({
             return (
               <div
                 key={group.warehouseId}
-                className="overflow-hidden rounded-xl border border-white/80 bg-white/60 backdrop-blur-sm"
+                className="overflow-hidden rounded-2xl border border-white/80 bg-white/60 backdrop-blur-md shadow-sm hover:shadow-md transition-shadow"
               >
                 {/* Group header */}
-                <div className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center justify-between px-4 py-3.5">
                   <button
                     onClick={() => toggleGroup(group.warehouseId)}
                     className="flex flex-1 items-center gap-3 text-left"
                   >
                     <div>
-                      <p className="text-sm font-bold text-slate-800">
+                      <p className="text-sm font-bold text-slate-900">
                         {group.warehouseName}
                       </p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-500 mt-0.5 font-medium">
                         {group.warehouseCity} •{" "}
-                        <span className="font-medium text-orange-600">
+                        <span className="font-semibold text-indigo-600">
                           {group.items.length} бараа дутагдалтай
                         </span>
                         {criticalCount > 0 && (
-                          <span className="ml-1 font-medium text-red-600">
+                          <span className="ml-1 font-semibold text-red-500">
                             ({criticalCount} дуусчихсан)
                           </span>
                         )}
@@ -225,11 +224,11 @@ export function StockSuggestionBanner({
                     )}
                   </button>
                   <button
-                    onClick={() => onEnterWarehouse(group.warehouseId)}
-                    className="ml-3 inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#FFAD02] px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#E09D00] hover:shadow-md"
+                    onClick={() => onEnterWarehouse(group.warehouseId, group.items)}
+                    className="ml-4 inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.02] hover:shadow-indigo-500/40"
                   >
-                    Татах хүсэлт
-                    <ArrowRight className="h-3.5 w-3.5" />
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Автомат татах
                   </button>
                 </div>
 

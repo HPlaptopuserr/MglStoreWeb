@@ -5,9 +5,10 @@ import { Bell, Menu } from "lucide-react";
 
 interface VendorHeaderProps {
   onMenuToggle?: () => void;
+  notificationComponent?: React.ReactNode;
 }
 
-export function VendorHeader({ onMenuToggle }: VendorHeaderProps) {
+export function VendorHeader({ onMenuToggle, notificationComponent }: VendorHeaderProps) {
   const pathname = usePathname();
   const isProfilePage = pathname === "/profile";
 
@@ -31,13 +32,11 @@ export function VendorHeader({ onMenuToggle }: VendorHeaderProps) {
       </div>
 
       <div className="ml-3 flex items-center gap-2 sm:gap-3">
-        <button className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700">
-          <Bell className="h-4 w-4" />
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-            3
-          </span>
-        </button>
-
+        {notificationComponent || (
+          <button className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700">
+            <Bell className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </header>
   );

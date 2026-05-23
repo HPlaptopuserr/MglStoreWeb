@@ -25,6 +25,8 @@ import {
   Receipt,
   CreditCard,
   Printer,
+  Sparkles,
+  TrendingUp,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
 import { StockSuggestionBanner } from "@/components/organisms/StockSuggestionBanner";
@@ -306,7 +308,7 @@ export default function StockRequestsPage() {
     }
   }, [viewMode, user?.organizationId]);
 
-  const enterWarehouse = async (warehouse: Warehouse) => {
+  const enterWarehouse = async (warehouse: Warehouse, autoItems?: any[]) => {
     setSelectedWarehouse(warehouse);
     setProductsLoading(true);
     setViewMode("browse");
@@ -314,7 +316,36 @@ export default function StockRequestsPage() {
       const res = await authFetch(
         `${API}/stock-requests/warehouse/${warehouse.id}/products`,
       );
-      if (res.ok) setWarehouseProducts((await res.json()) || []);
+      if (res.ok) {
+        const fetchedProducts = (await res.json()) || [];
+        setWarehouseProducts(fetchedProducts);
+
+        if (autoItems && autoItems.length > 0) {
+          const newCartItems: CartItem[] = [];
+          for (const suggested of autoItems) {
+            const matched = fetchedProducts.find((p: any) => p.product.id === suggested.product.id);
+            if (matched) {
+              const requestQty = Math.max(
+                5,
+                (suggested.alertThreshold || 0) * 2 - (suggested.quantity || 0)
+              );
+              newCartItems.push({
+                productId: matched.product.id,
+                quantity: requestQty,
+                name: matched.product.name,
+                sku: matched.product.sku,
+                price: matched.product.price,
+                available: matched.quantity,
+                image: matched.product.images[0]?.url || null,
+              });
+            }
+          }
+          if (newCartItems.length > 0) {
+            setCart(newCartItems);
+            setViewMode("cart");
+          }
+        }
+      }
     } catch (error) {
       console.error("Failed to fetch warehouse products:", error);
     } finally {
@@ -322,9 +353,9 @@ export default function StockRequestsPage() {
     }
   };
 
-  const enterWarehouseById = (warehouseId: string) => {
+  const enterWarehouseById = (warehouseId: string, autoItems?: any[]) => {
     const warehouse = warehouses.find((w) => w.id === warehouseId);
-    if (warehouse) enterWarehouse(warehouse);
+    if (warehouse) enterWarehouse(warehouse, autoItems);
   };
 
   const exitWarehouse = () => {
@@ -441,20 +472,106 @@ export default function StockRequestsPage() {
 
   const categories = Array.from(
     new Set(
-      warehouseProducts.map((p) => p.product.category?.name).filter(Boolean),
+      warehouseProducts.map((p: any) => p.product.category?.name || p.product.businessCategory?.name).filter(Boolean),
     ),
   ) as string[];
 
-  const filteredProducts = warehouseProducts.filter((item) => {
+  const filteredProducts = warehouseProducts.filter((item: any) => {
     const matchesSearch =
       item.product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
       item.product.sku?.toLowerCase().includes(productSearch.toLowerCase());
+    
+    const itemCategory = item.product.category?.name || item.product.businessCategory?.name;
     const matchesCategory =
-      !selectedCategory || item.product.category?.name === selectedCategory;
+      !selectedCategory || itemCategory === selectedCategory;
+      
     return matchesSearch && matchesCategory;
   });
 
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  const renderProductCard = (item: WarehouseInventoryItem, isHorizontal = false) => {
+    const cartQty = getCartItemQuantity(item.product.id);
+    const isInCart = cartQty > 0;
+    return (
+      <div
+        key={item.id}
+        className={`rounded-2xl border bg-white p-3 transition-all flex flex-col ${
+          isHorizontal ? "w-[160px] sm:w-[180px] shrink-0" : ""
+        } ${
+          isInCart
+            ? "border-[#FFAD02] ring-2 ring-[#FFAD02]/20"
+            : "border-slate-100"
+        }`}
+      >
+        <div className="relative mb-3 aspect-square overflow-hidden rounded-xl bg-slate-100 shrink-0">
+          {item.product.images[0]?.url ? (
+            <img
+              src={item.product.images[0].url}
+              alt={item.product.name}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <Package className="h-10 w-10 text-slate-300" />
+            </div>
+          )}
+          {(item.product.category || (item.product as any).businessCategory) && (
+            <span className="absolute left-2 top-2 max-w-[70%] truncate rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-slate-600 backdrop-blur-sm">
+              {item.product.category?.name || (item.product as any).businessCategory?.name}
+            </span>
+          )}
+          <span className="absolute right-2 top-2 rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold text-white">
+            {item.quantity} ш
+          </span>
+        </div>
+
+        <h3 className="line-clamp-2 text-sm font-semibold text-slate-800 h-10 mb-1">
+          {item.product.name}
+        </h3>
+        {item.product.sku && (
+          <p className="mt-0.5 text-xs text-slate-400 truncate">
+            {item.product.sku}
+          </p>
+        )}
+        <p className="mt-auto pt-1 text-sm font-bold text-[#FFAD02]">
+          {Number(item.product.price).toLocaleString()}₮
+        </p>
+
+        {isInCart ? (
+          <div className="mt-3 flex items-center justify-between rounded-xl bg-[#FFAD02]/10 p-1">
+            <button
+              onClick={() => updateCartQuantity(item.product.id, cartQty - 1)}
+              className="rounded-lg bg-white p-1.5 text-[#FFAD02] shadow-sm hover:bg-[#FFAD02] hover:text-white"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <span className="text-sm font-bold text-[#FFAD02]">
+              {cartQty}
+            </span>
+            <button
+              onClick={() => {
+                if (cartQty < item.quantity) {
+                  updateCartQuantity(item.product.id, cartQty + 1);
+                }
+              }}
+              disabled={cartQty >= item.quantity}
+              className="rounded-lg bg-white p-1.5 text-[#FFAD02] shadow-sm hover:bg-[#FFAD02] hover:text-white disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => addToCart(item)}
+            className="mt-3 w-full rounded-xl bg-slate-100 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-[#FFAD02] hover:text-white"
+          >
+            Сонгох
+          </button>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -664,89 +781,48 @@ export default function StockRequestsPage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {filteredProducts.map((item) => {
-                const cartQty = getCartItemQuantity(item.product.id);
-                const isInCart = cartQty > 0;
-                return (
-                  <div
-                    key={item.id}
-                    className={`rounded-2xl border bg-white p-3 transition-all ${
-                      isInCart
-                        ? "border-[#FFAD02] ring-2 ring-[#FFAD02]/20"
-                        : "border-slate-100"
-                    }`}
-                  >
-                    <div className="relative mb-3 aspect-square overflow-hidden rounded-xl bg-slate-100">
-                      {item.product.images[0]?.url ? (
-                        <img
-                          src={item.product.images[0].url}
-                          alt={item.product.name}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <Package className="h-10 w-10 text-slate-300" />
-                        </div>
-                      )}
-                      {item.product.category && (
-                        <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-slate-600 backdrop-blur-sm">
-                          {item.product.category.name}
-                        </span>
-                      )}
-                      <span className="absolute right-2 top-2 rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                        {item.quantity} ш
-                      </span>
-                    </div>
-
-                    <h3 className="line-clamp-2 text-sm font-semibold text-slate-800">
-                      {item.product.name}
-                    </h3>
-                    {item.product.sku && (
-                      <p className="mt-0.5 text-xs text-slate-400">
-                        {item.product.sku}
-                      </p>
-                    )}
-                    <p className="mt-1 text-sm font-bold text-[#FFAD02]">
-                      {Number(item.product.price).toLocaleString()}₮
-                    </p>
-
-                    {isInCart ? (
-                      <div className="mt-3 flex items-center justify-between rounded-xl bg-[#FFAD02]/10 p-1">
-                        <button
-                          onClick={() =>
-                            updateCartQuantity(item.product.id, cartQty - 1)
-                          }
-                          className="rounded-lg bg-white p-1.5 text-[#FFAD02] shadow-sm hover:bg-[#FFAD02] hover:text-white"
-                        >
-                          <Minus className="h-4 w-4" />
-                        </button>
-                        <span className="text-sm font-bold text-[#FFAD02]">
-                          {cartQty}
-                        </span>
-                        <button
-                          onClick={() => {
-                            if (cartQty < item.quantity) {
-                              updateCartQuantity(item.product.id, cartQty + 1);
-                            }
-                          }}
-                          disabled={cartQty >= item.quantity}
-                          className="rounded-lg bg-white p-1.5 text-[#FFAD02] shadow-sm hover:bg-[#FFAD02] hover:text-white disabled:opacity-50"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
+            <div className="space-y-8">
+              {!productSearch && !selectedCategory && (
+                <div className="space-y-6">
+                  {/* Шинээр нэмэгдсэн */}
+                  {warehouseProducts.length > 0 && (
+                    <div>
+                      <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800">
+                        <Sparkles className="h-4 w-4 text-indigo-500" />
+                        Шинээр нэмэгдсэн
+                      </h2>
+                      <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
+                        {warehouseProducts.slice(-6).reverse().map((item) => renderProductCard(item, true))}
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => addToCart(item)}
-                        className="mt-3 w-full rounded-xl bg-slate-100 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-[#FFAD02] hover:text-white"
-                      >
-                        Сонгох
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+                    </div>
+                  )}
+
+                  {/* Санал болгох бараа */}
+                  {warehouseProducts.filter((i) => i.quantity <= i.minQuantity).length > 0 && (
+                    <div>
+                      <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800">
+                        <TrendingUp className="h-4 w-4 text-emerald-500" />
+                        Санал болгох бараа
+                      </h2>
+                      <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
+                        {warehouseProducts
+                          .filter((i) => i.quantity <= i.minQuantity)
+                          .slice(0, 6)
+                          .map((item) => renderProductCard(item, true))}
+                      </div>
+                    </div>
+                  )}
+
+                  <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800 border-t pt-6 border-slate-100">
+                    <Package className="h-4 w-4 text-slate-400" />
+                    Бүх бараа
+                  </h2>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {filteredProducts.map((item) => renderProductCard(item, false))}
+              </div>
             </div>
           )}
         </div>

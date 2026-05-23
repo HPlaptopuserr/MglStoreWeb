@@ -194,6 +194,7 @@ router.get("/stock-requests", requireAuth, async (req, res) => {
           },
         },
         payment: true,
+        dispatch: true,
       },
       orderBy: {
         requestedAt: "desc",
@@ -815,6 +816,12 @@ router.get(
                 select: { url: true },
               },
               category: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              businessCategory: {
                 select: {
                   id: true,
                   name: true,

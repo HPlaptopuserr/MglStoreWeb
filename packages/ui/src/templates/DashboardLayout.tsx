@@ -19,6 +19,7 @@ export interface DashboardLayoutProps extends Partial<SidebarProps> {
   showSupplyProducts?: boolean;
   showPreorderProducts?: boolean;
   showServicePosts?: boolean;
+  notificationComponent?: ReactNode;
 }
 
 export function DashboardLayout({
@@ -33,6 +34,7 @@ export function DashboardLayout({
   showSupplyProducts,
   showPreorderProducts,
   showServicePosts,
+  notificationComponent,
   ...sidebarProps
 }: DashboardLayoutProps) {
   const pathname = usePathname();
@@ -74,6 +76,7 @@ export function DashboardLayout({
         {isVendor && !isVendorPosRoute && (
           <VendorHeader
             onMenuToggle={() => setMobileMenuOpen((o) => !o)}
+            notificationComponent={notificationComponent}
           />
         )}
         <main

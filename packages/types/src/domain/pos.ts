@@ -80,6 +80,7 @@ export interface PosProduct {
   expiryDate?: string | null;
   taxRate?: number;
   isActive: boolean;
+  categoryName?: string | null;
 }
 
 export interface CartLine {

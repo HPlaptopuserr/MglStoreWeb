@@ -68,6 +68,8 @@ router.get("/pos/products", async (req, res) => {
         price: true,
         stock: true,
         isActive: true,
+        category: { select: { name: true } },
+        businessCategory: { select: { name: true } },
         warehouseInventories: {
           where: {
             quantity: { gt: 0 },
@@ -97,6 +99,7 @@ router.get("/pos/products", async (req, res) => {
           stockQty: p.stock,
           expiryDate: expiryDate?.toISOString() ?? null,
           isActive: p.isActive,
+          categoryName: p.category?.name || p.businessCategory?.name || null,
         };
       })
       .sort((a, b) => {
