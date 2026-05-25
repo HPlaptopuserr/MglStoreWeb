@@ -12,6 +12,7 @@ import { CardsSection } from "@/components/organisms/sections/cards/CardsSection
 import { FormBuilderTool, QrGeneratorPanel } from "@/components/organisms";
 import { PosRegistersSection } from "@/components/organisms/sections/pos/PosRegistersSection";
 import { VendorFeaturesSection } from "@/components/organisms/sections/vendor-features/VendorFeaturesSection";
+import { ProjectsSection } from "@/components/organisms/sections/projects/ProjectsSection";
 import { HrSection } from "@/components/organisms/sections/hr/HrSection";
 import { Contract } from "@/components/organisms/sections/contract/page";
 import { useAdminAuth } from "@/lib/admin-auth";
@@ -32,18 +33,22 @@ export default function SectionsPage() {
     setBanners,
     categories,
     setCategories,
+    projects,
+    setProjects,
     showBranchMapOnWeb,
     saving,
     saved,
     branchMapVisibilitySaving,
     saveBanners,
     saveCategories,
+    saveProjects,
     toggleBranchMapOnWeb,
   } = useSiteSettings();
 
   const handleSave = async () => {
     if (active === "banner") await saveBanners(banners);
     else if (active === "categories") await saveCategories(categories);
+    else if (active === "projects") await saveProjects();
   };
 
   return (
@@ -61,7 +66,10 @@ export default function SectionsPage() {
             <BannerSection banners={banners} setBanners={setBanners} />
           )}
           {active === "categories" && (
-            <CategoriesSection categories={categories} setCategories={setCategories} />
+            <CategoriesSection
+              categories={categories}
+              setCategories={setCategories}
+            />
           )}
           {active === "branches" && (
             <BranchesSection
@@ -74,6 +82,15 @@ export default function SectionsPage() {
           {active === "qr" && <QrGeneratorPanel showHeader={false} />}
           {active === "pos" && <PosRegistersSection />}
           {active === "vendor-features" && <VendorFeaturesSection />}
+          {active === "projects" && (
+            <ProjectsSection
+              projects={projects}
+              setProjects={setProjects}
+              onSave={() => saveProjects()}
+              saving={saving}
+              saved={saved}
+            />
+          )}
           {active === "hr" && <HrSection />}
           {active === "contract" && <Contract />}
         </div>

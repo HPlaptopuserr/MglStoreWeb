@@ -1,4 +1,27 @@
-export type SectionKey = "banner" | "categories" | "branches" | "cards" | "qr" | "pos" | "vendor-features" | "hr" | "forms" | "contract";
+export type SectionKey =
+  | "banner"
+  | "categories"
+  | "branches"
+  | "cards"
+  | "qr"
+  | "pos"
+  | "vendor-features"
+  | "hr"
+  | "forms"
+  | "contract"
+  | "projects";
+
+export interface ProjectItem {
+  id: string;
+  title: string;
+  category: string;
+  summary: string;
+  details: string;
+  price: number;
+  imageUrl?: string;
+  tags?: string[];
+  isActive: boolean;
+}
 
 export type CardPartner = {
   id: string;

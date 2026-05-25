@@ -15,6 +15,7 @@ import {
   Loader2,
   Settings,
   Package,
+  FolderKanban,
 } from "lucide-react";
 import Image from "next/image";
 import { SearchBar } from "../../molecules/SearchBar";
@@ -315,6 +316,17 @@ export const Header = () => {
           <div className="flex h-12 items-center gap-8">
             <MegaMenu />
             <PartnerMenu />
+            <Link
+              href="/projects"
+              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                pathname.startsWith("/projects")
+                  ? "bg-cyan-50 text-cyan-700"
+                  : "text-gray-600 hover:bg-cyan-50 hover:text-cyan-700"
+              }`}
+            >
+              <FolderKanban size={14} />
+              Төслүүд
+            </Link>
           </div>
 
           {categories.length > 0 && (
