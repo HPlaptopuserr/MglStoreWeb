@@ -1,3 +1,9 @@
+export interface ServiceOption {
+  id: string;
+  name: string;
+  price: number;
+}
+
 export interface ServiceItem {
   id: string;
   name: string;
@@ -5,6 +11,7 @@ export interface ServiceItem {
   price: number;
   priceLabel?: string;
   features?: string[];
+  options?: ServiceOption[];
 }
 
 export interface ServiceSubCategory {

@@ -90,7 +90,7 @@ router.get("/products", async (req, res) => {
     const where: any = {
       deletedAt: null,
       isActive: true,
-      organization: { is: { deletedAt: null, status: "ACTIVE" } },
+      organization: { deletedAt: null, status: "ACTIVE" },
     };
     if (organizationId) where.organizationId = organizationId;
     if (businessCategoryId) where.businessCategoryId = businessCategoryId;
@@ -101,15 +101,13 @@ router.get("/products", async (req, res) => {
         { description: { contains: search, mode: "insensitive" } },
         { sku: { contains: search, mode: "insensitive" } },
         { barcode: { contains: search, mode: "insensitive" } },
-        { organization: { is: { name: { contains: search, mode: "insensitive" } } } },
+        { organization: { name: { contains: search, mode: "insensitive" } } },
         {
           businessCategory: {
-            is: {
-              OR: [
-                { name: { contains: search, mode: "insensitive" } },
-                { slug: { contains: search, mode: "insensitive" } },
-              ],
-            },
+            OR: [
+              { name: { contains: search, mode: "insensitive" } },
+              { slug: { contains: search, mode: "insensitive" } },
+            ],
           },
         },
       ];

@@ -1787,6 +1787,15 @@ model PosSale {
   discountTotal  Decimal       @db.Decimal(18, 2)
   grandTotal     Decimal       @db.Decimal(18, 2)
   note           String?
+  ebarimtStatus  String?
+  ebarimtBillId  String?
+  ebarimtReceiptId String?
+  ebarimtQrData  String?
+  ebarimtLottery String?
+  ebarimtDate    DateTime?
+  ebarimtError   String?
+  ebarimtPayload Json?
+  ebarimtSyncedAt DateTime?
   voidedAt       DateTime?
   voidReason     String?
   voidedById     String?

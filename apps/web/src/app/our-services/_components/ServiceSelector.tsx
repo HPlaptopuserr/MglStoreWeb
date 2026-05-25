@@ -20,16 +20,42 @@ export function ServiceSelector({ categories, loading }: Props) {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [qpayData, setQpayData] = useState<any>(null);
 
-  const toggleItem = (id: string, price: number) => {
+  const toggleItem = (id: string, price: number, parentId?: string) => {
     const newSet = new Set(selectedItems);
     const newPrices = { ...selectedPrices };
     
-    if (newSet.has(id)) {
-      newSet.delete(id);
-      delete newPrices[id];
+    if (parentId) {
+      // It's a mutually exclusive option (radio)
+      // Unselect any other option from the same parent
+      Array.from(newSet).forEach(selectedId => {
+        if (selectedId.startsWith(`${parentId}_`) && selectedId !== id) {
+          newSet.delete(selectedId);
+          delete newPrices[selectedId];
+        }
+      });
+      // Also ensure parent itself is not selected
+      if (newSet.has(parentId)) {
+        newSet.delete(parentId);
+        delete newPrices[parentId];
+      }
+      
+      // Toggle logic for the option
+      if (newSet.has(id)) {
+        newSet.delete(id);
+        delete newPrices[id];
+      } else {
+        newSet.add(id);
+        newPrices[id] = Number(price) || 0;
+      }
     } else {
-      newSet.add(id);
-      newPrices[id] = price;
+      // Normal multiple selection checkbox
+      if (newSet.has(id)) {
+        newSet.delete(id);
+        delete newPrices[id];
+      } else {
+        newSet.add(id);
+        newPrices[id] = Number(price) || 0;
+      }
     }
     
     setSelectedItems(newSet);
@@ -37,7 +63,7 @@ export function ServiceSelector({ categories, loading }: Props) {
   };
 
   const totalPrice = useMemo(() => {
-    return Object.values(selectedPrices).reduce((sum, price) => sum + price, 0);
+    return Object.values(selectedPrices).reduce((sum, price) => sum + (Number(price) || 0), 0);
   }, [selectedPrices]);
 
   if (loading) {

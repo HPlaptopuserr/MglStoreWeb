@@ -1,6 +1,6 @@
 "use client";
 
-import { Star, ShoppingBag } from "lucide-react";
+import { ShoppingBag, Star } from "lucide-react";
 import type { CartLine, CartTotals } from "../types/pos.types";
 
 type Props = {
@@ -13,57 +13,54 @@ export function PosCustomerDisplay({ lines, totals, storeName = "MGLSTORE" }: Pr
   const savings = totals.discountTotal;
 
   return (
-    <div className="fixed inset-0 z-50 bg-zinc-950 flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="flex items-center justify-between px-8 py-4 border-b border-zinc-800 shrink-0">
+    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-slate-50 text-slate-950">
+      <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-8 py-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <span className="text-xl font-black tracking-tight text-amber-400">{storeName}</span>
-          <span className="text-xs font-semibold text-emerald-300 bg-emerald-950 border border-emerald-800 px-2.5 py-0.5 rounded-full">
+          <span className="text-xl font-black tracking-tight text-slate-950">{storeName}</span>
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
             Тавтай морилно уу
           </span>
         </div>
-        <div className="text-xs text-zinc-600">Terminal #1</div>
+        <div className="text-xs font-semibold text-slate-400">Terminal #1</div>
       </header>
 
-      {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: Current sale items */}
         <div className="flex-1 overflow-y-auto px-8 py-6">
-          <p className="text-sm font-bold text-zinc-300 mb-1">Одоогийн худалдан авалт</p>
-          <p className="text-xs text-zinc-600 mb-6">{lines.length} бараа</p>
+          <p className="mb-1 text-sm font-bold text-slate-800">Одоогийн худалдан авалт</p>
+          <p className="mb-6 text-xs text-slate-500">{lines.length} бараа</p>
 
           {lines.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-40 text-zinc-700">
+            <div className="flex h-40 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white text-slate-400">
               <ShoppingBag size={36} className="mb-3" />
-              <p className="text-sm">Бараа нэмэгдэж байна...</p>
+              <p className="text-sm font-semibold">Бараа нэмэгдэхийг хүлээж байна</p>
             </div>
           ) : (
             <div className="space-y-4">
               {lines.map((line) => (
-                <div key={line.productId} className="flex items-center gap-4">
-                  {/* Avatar */}
-                  <div className="w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xl font-black text-amber-500 shrink-0 select-none">
+                <div
+                  key={line.productId}
+                  className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                >
+                  <div className="flex h-12 w-12 shrink-0 select-none items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-xl font-black text-amber-600">
                     {line.name.charAt(0).toUpperCase()}
                   </div>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{line.name}</p>
-                    <p className="text-xs text-zinc-500 mt-0.5">Тоо: {line.qty}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-950">{line.name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">Тоо: {line.qty}</p>
                     {line.discountAmount > 0 && (
-                      <p className="text-xs text-emerald-400 mt-0.5 font-semibold">
-                        ▼ ₮{(line.discountAmount * line.qty).toLocaleString()} хэмнэлт
+                      <p className="mt-0.5 text-xs font-semibold text-emerald-600">
+                        -₮{(line.discountAmount * line.qty).toLocaleString()} хэмнэлт
                       </p>
                     )}
                   </div>
 
-                  {/* Line total */}
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-bold text-zinc-200 tabular-nums">
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-bold tabular-nums text-slate-900">
                       ₮{(line.qty * line.unitPrice).toLocaleString()}
                     </p>
                     {line.discountAmount > 0 && (
-                      <p className="text-xs text-zinc-600 line-through tabular-nums">
+                      <p className="text-xs tabular-nums text-slate-400 line-through">
                         ₮{(line.qty * (line.unitPrice + line.discountAmount)).toLocaleString()}
                       </p>
                     )}
@@ -74,52 +71,48 @@ export function PosCustomerDisplay({ lines, totals, storeName = "MGLSTORE" }: Pr
           )}
         </div>
 
-        {/* Right: Summary panel */}
-        <div className="w-[300px] shrink-0 border-l border-zinc-800 px-6 py-6 flex flex-col gap-4 overflow-y-auto">
-          {/* Totals */}
-          <div className="rounded-2xl bg-zinc-900 border border-zinc-800 px-5 py-5 space-y-2.5">
-            <div className="flex justify-between text-sm text-zinc-500">
+        <div className="flex w-[300px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-slate-200 bg-white px-6 py-6">
+          <div className="space-y-2.5 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-5">
+            <div className="flex justify-between text-sm text-slate-500">
               <span>Дүн</span>
               <span className="tabular-nums">₮{totals.subTotal.toLocaleString()}</span>
             </div>
             {totals.taxTotal > 0 && (
-              <div className="flex justify-between text-sm text-zinc-500">
+              <div className="flex justify-between text-sm text-slate-500">
                 <span>НӨАТ</span>
                 <span className="tabular-nums">₮{totals.taxTotal.toLocaleString()}</span>
               </div>
             )}
             {savings > 0 && (
-              <div className="flex justify-between text-sm text-emerald-400 font-semibold">
+              <div className="flex justify-between text-sm font-semibold text-emerald-600">
                 <span>Хөнгөлөлт</span>
                 <span className="tabular-nums">-₮{savings.toLocaleString()}</span>
               </div>
             )}
-            <div className="pt-3 border-t border-zinc-700 text-center">
-              <p className="text-[10px] uppercase tracking-widest text-zinc-600">Нийт</p>
-              <p className="text-4xl font-black text-amber-400 tabular-nums mt-1 leading-none">
+            <div className="border-t border-slate-200 pt-3 text-center">
+              <p className="text-[10px] uppercase tracking-widest text-slate-400">Нийт</p>
+              <p className="mt-1 text-4xl font-black leading-none tabular-nums text-amber-500">
                 ₮{totals.grandTotal.toLocaleString()}
               </p>
             </div>
           </div>
 
-          {/* Savings badge */}
           {savings > 0 && (
-            <div className="rounded-2xl bg-emerald-950 border border-emerald-800 px-5 py-4 text-center">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-500">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">
                 Өнөөдрийн хэмнэлт
               </p>
-              <p className="text-3xl font-black text-emerald-300 mt-1 tabular-nums">
+              <p className="mt-1 text-3xl font-black tabular-nums text-emerald-700">
                 ₮{savings.toLocaleString()}
               </p>
             </div>
           )}
 
-          {/* Loyalty */}
-          <div className="rounded-2xl bg-amber-950 border border-amber-800 px-5 py-4 flex items-start gap-3">
-            <Star size={16} className="text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+            <Star size={16} className="mt-0.5 shrink-0 text-amber-500" />
             <div>
-              <p className="text-xs font-bold text-amber-400">Loyalty Points</p>
-              <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+              <p className="text-xs font-bold text-amber-700">Loyalty Points</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-amber-700">
                 Худалдан авалт бүрээс оноо цуглуулаарай
               </p>
             </div>
@@ -127,8 +120,7 @@ export function PosCustomerDisplay({ lines, totals, storeName = "MGLSTORE" }: Pr
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="shrink-0 px-8 py-3 border-t border-zinc-800 flex justify-between text-xs text-zinc-700">
+      <footer className="flex shrink-0 justify-between border-t border-slate-200 bg-white px-8 py-3 text-xs text-slate-400">
         <span>Нууцлалын бодлого • Үйлчилгээний нөхцөл</span>
         <span>© 2025 MGL Store Industrial & Commerce</span>
       </footer>

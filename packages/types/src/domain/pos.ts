@@ -77,8 +77,10 @@ export interface PosProduct {
   name: string;
   price: number;
   stockQty: number;
+  expiryDate?: string | null;
   taxRate?: number;
   isActive: boolean;
+  categoryName?: string | null;
 }
 
 export interface CartLine {
@@ -179,6 +181,18 @@ export interface PosReceipt {
   branchName: string;
   cashierName: string;
   paymentMethod: string;
+  status?: string;
+  voidedAt?: string | null;
+  ebarimt?: {
+    status?: string | null;
+    billId?: string | null;
+    receiptId?: string | null;
+    qrData?: string | null;
+    lottery?: string | null;
+    date?: string | null;
+    error?: string | null;
+    syncedAt?: string | null;
+  } | null;
   paymentBreakdown?: Array<{
     method: string;
     amount: number;

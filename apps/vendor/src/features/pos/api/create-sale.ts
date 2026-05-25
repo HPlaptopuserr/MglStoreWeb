@@ -4,6 +4,8 @@ import { assertNonEmptyString, sanitizeReceiptNote } from "../utils/pos-security
 import { PosApiError, posRequest } from "./_pos-client";
 
 export function createSale(payload: SalePayload): Promise<PosReceipt> {
+  const shiftId = payload.shiftId?.trim() || "";
+
   const safeBreakdown = payload.paymentBreakdown?.map((line) => ({
     method: assertNonEmptyString(
       line.method,
@@ -17,7 +19,7 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
 
   const safePayload: SalePayload = {
     ...payload,
-    shiftId: assertNonEmptyString(payload.shiftId, "shiftId"),
+    shiftId,
     branchId: assertNonEmptyString(payload.branchId, "branchId"),
     registerId: payload.registerId,
     organizationId: payload.organizationId,

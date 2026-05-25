@@ -2182,14 +2182,14 @@ router.post("/pos/sales/:id/void", async (req, res) => {
           productId: line.productId,
           warehouseId: warehouseId ?? undefined,
           change: line.qty, // positive = return to stock
-          reason: InventoryReason.ORDER,
+          reason: InventoryReason.RETURN,
           note: `Void sale ${sale.receiptNo}`,
           createdById: actor.id,
           referenceId: sale.receiptNo,
           referenceType: "POS_VOID",
         });
       }
-    });
+    }, { timeout: 15_000 });
 
     void prisma.auditLog.create({
       data: {
@@ -2205,14 +2205,14 @@ router.post("/pos/sales/:id/void", async (req, res) => {
       },
     });
 
-    res.status(200).json({ ok: true, message: "Борлуулалт амжилттай цуцлагдлаа" });
+    res.status(200).json({ ok: true, message: "Буцаалт амжилттай хийгдлээ" });
   } catch (error) {
     console.error("void sale error", error);
     const maybeApiError = error as Partial<ApiError>;
     if (maybeApiError?.status && maybeApiError?.message) {
       return res.status(maybeApiError.status).json({ message: maybeApiError.message });
     }
-    res.status(500).json({ message: "Борлуулалт цуцлахад алдаа гарлаа" });
+    res.status(500).json({ message: "Буцаалт хийхэд алдаа гарлаа" });
   }
 });
 

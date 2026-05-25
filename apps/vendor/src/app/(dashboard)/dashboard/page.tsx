@@ -420,7 +420,7 @@ export default function Dashboard() {
                   <h2 className="text-base font-semibold text-slate-900">Сүүлийн хүсэлтүүд</h2>
                 </div>
                 <Link
-                  href="/shipments"
+                  href="/requests"
                   className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-700 transition-colors"
                 >
                   Бүгд <ChevronRight size={14} />

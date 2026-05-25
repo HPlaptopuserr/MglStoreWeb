@@ -10,18 +10,18 @@ type Props = {
 export function SectionsSidebar({ active, onSelect, visibleSections }: Props) {
   const items = visibleSections ?? SECTIONS;
   return (
-    <aside className="w-56 shrink-0 border-r border-slate-100 bg-slate-50 flex flex-col pt-4 pb-6 gap-1 px-3">
+    <aside className="w-full h-full flex flex-col pt-6 pb-6 gap-1 px-4">
       {items.map(({ key, label, icon: Icon }) => (
         <button
           key={key}
           onClick={() => onSelect(key)}
-          className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-xl text-sm font-semibold transition-all text-left ${
+          className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left ${
             active === key
-              ? "bg-violet-600 text-white shadow-sm"
-              : "text-slate-600 hover:bg-slate-100"
+              ? "bg-violet-600 text-white shadow-md shadow-violet-200"
+              : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900"
           }`}
         >
-          <Icon size={16} />
+          <Icon size={18} />
           {label}
         </button>
       ))}

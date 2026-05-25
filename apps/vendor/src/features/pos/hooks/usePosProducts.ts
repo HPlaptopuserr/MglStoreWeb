@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getPosProducts } from "../api/get-pos-products";
 import type { PosProduct } from "../types/pos.types";
 
@@ -6,6 +6,8 @@ export function usePosProducts(branchId: string) {
   const [products, setProducts] = useState<PosProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const reload = useCallback(() => setReloadToken((value) => value + 1), []);
 
   useEffect(() => {
     if (!branchId) {
@@ -26,7 +28,7 @@ export function usePosProducts(branchId: string) {
       .finally(() => setLoading(false));
 
     return () => ac.abort();
-  }, [branchId]);
+  }, [branchId, reloadToken]);
 
-  return { products, loading, error };
+  return { products, loading, error, reload };
 }

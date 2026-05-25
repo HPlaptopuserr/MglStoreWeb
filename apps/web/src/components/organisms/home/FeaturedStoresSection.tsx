@@ -29,7 +29,11 @@ export const FeaturedStoresSection = () => {
     const fetchStores = async () => {
       try {
         const res = await fetch(`${API}/partners?status=ACTIVE&limit=50`);
-        if (!res.ok) throw new Error("Failed to fetch stores");
+        if (!res.ok) {
+          console.warn("Failed to fetch stores, status:", res.status);
+          setStores([]);
+          return;
+        }
         const raw = await res.json();
         const data = Array.isArray(raw) ? raw : raw?.data || [];
 

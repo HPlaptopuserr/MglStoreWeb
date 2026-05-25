@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight, Settings, Info, ImagePlus, Loader2, Save, Check, ArrowUp, ArrowDown } from "lucide-react";
-import { ServiceCategory, ServiceSubCategory, ServiceItem } from "@/lib/sections/types";
+import { ServiceCategory, ServiceSubCategory, ServiceItem, ServiceOption } from "@/lib/sections/types";
 import { API, adminFetch } from "@/lib/api";
 
 const generateId = () => Math.random().toString(36).substring(2, 10);
@@ -172,6 +172,92 @@ export function MglServicesSection({ mglServices, setMglServices, onSave, saving
     }
   };
 
+  const addOption = (catId: string, subId: string, itemId: string) => {
+    setMglServices(mglServices.map(c => {
+      if (c.id === catId) {
+        return {
+          ...c,
+          subCategories: c.subCategories.map(sub => {
+            if (sub.id === subId) {
+              return {
+                ...sub,
+                items: sub.items.map(item => {
+                  if (item.id === itemId) {
+                    return {
+                      ...item,
+                      options: [...(item.options || []), { id: generateId(), name: "Шинэ сонголт", price: 0 }]
+                    };
+                  }
+                  return item;
+                })
+              };
+            }
+            return sub;
+          })
+        };
+      }
+      return c;
+    }));
+  };
+
+  const updateOption = (catId: string, subId: string, itemId: string, optionId: string, field: keyof ServiceOption, value: any) => {
+    setMglServices(mglServices.map(c => {
+      if (c.id === catId) {
+        return {
+          ...c,
+          subCategories: c.subCategories.map(sub => {
+            if (sub.id === subId) {
+              return {
+                ...sub,
+                items: sub.items.map(item => {
+                  if (item.id === itemId) {
+                    return {
+                      ...item,
+                      options: (item.options || []).map(opt => opt.id === optionId ? { ...opt, [field]: value } : opt)
+                    };
+                  }
+                  return item;
+                })
+              };
+            }
+            return sub;
+          })
+        };
+      }
+      return c;
+    }));
+  };
+
+  const removeOption = (catId: string, subId: string, itemId: string, optionId: string) => {
+    if (confirm("Устгах уу?")) {
+      setMglServices(mglServices.map(c => {
+        if (c.id === catId) {
+          return {
+            ...c,
+            subCategories: c.subCategories.map(sub => {
+              if (sub.id === subId) {
+                return {
+                  ...sub,
+                  items: sub.items.map(item => {
+                    if (item.id === itemId) {
+                      return {
+                        ...item,
+                        options: (item.options || []).filter(opt => opt.id !== optionId)
+                      };
+                    }
+                    return item;
+                  })
+                };
+              }
+              return sub;
+            })
+          };
+        }
+        return c;
+      }));
+    }
+  };
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -327,32 +413,42 @@ export function MglServicesSection({ mglServices, setMglServices, onSave, saving
                               </button>
                               <div className="flex gap-3">
                                 <div className="flex-1">
-                                  <label className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Үйлчилгээний нэр</label>
-                                  <input
-                                    value={item.name}
-                                    onChange={(e) => updateItem(cat.id, sub.id, item.id, "name", e.target.value)}
-                                    className="w-full border-none focus:outline-none font-medium text-sm p-0"
-                                    placeholder="Нэр..."
-                                  />
+                                  <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Үйлчилгээний нэр</label>
+                                  <div className="bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                                    <input
+                                      value={item.name}
+                                      onChange={(e) => updateItem(cat.id, sub.id, item.id, "name", e.target.value)}
+                                      className="w-full border-none focus:outline-none font-semibold text-sm bg-transparent p-0 text-slate-800"
+                                      placeholder="Үйлчилгээний нэр..."
+                                    />
+                                  </div>
                                 </div>
-                                <div className="w-32">
-                                  <label className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Үнэ (₮)</label>
-                                  <input
-                                    type="number"
-                                    value={item.price}
-                                    onChange={(e) => updateItem(cat.id, sub.id, item.id, "price", Number(e.target.value))}
-                                    className="w-full border-none focus:outline-none font-medium text-sm p-0"
-                                    placeholder="0"
-                                  />
+                                <div className="w-36">
+                                  <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Үнэ</label>
+                                  <div className="relative bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                                    <input
+                                      type="text"
+                                      value={item.price ? item.price.toLocaleString() : ""}
+                                      onChange={(e) => {
+                                        const val = e.target.value.replace(/[^0-9]/g, '');
+                                        updateItem(cat.id, sub.id, item.id, "price", val ? Number(val) : 0);
+                                      }}
+                                      className="w-full border-none focus:outline-none font-bold text-sm bg-transparent p-0 pr-4 text-slate-800 text-right"
+                                      placeholder="0"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">₮</span>
+                                  </div>
                                 </div>
-                                <div className="w-40 pr-6">
-                                  <label className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Текстийн харагдац</label>
-                                  <input
-                                    value={item.priceLabel || ""}
-                                    onChange={(e) => updateItem(cat.id, sub.id, item.id, "priceLabel", e.target.value)}
-                                    className="w-full border-none focus:outline-none text-sm p-0 text-slate-500"
-                                    placeholder="Ж нь: 30,000₮ - 60,000₮"
-                                  />
+                                <div className="w-48 pr-2">
+                                  <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Текстийн харагдац</label>
+                                  <div className="bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                                    <input
+                                      value={item.priceLabel || ""}
+                                      onChange={(e) => updateItem(cat.id, sub.id, item.id, "priceLabel", e.target.value)}
+                                      className="w-full border-none focus:outline-none text-sm bg-transparent p-0 text-slate-600"
+                                      placeholder="Жнь: 30,000₮ - 60,000₮"
+                                    />
+                                  </div>
                                 </div>
                               </div>
                               
@@ -367,6 +463,48 @@ export function MglServicesSection({ mglServices, setMglServices, onSave, saving
                                   rows={2}
                                   placeholder="Мөр мөрөөр бичнэ үү..."
                                 />
+                              </div>
+
+                              <div className="mt-2 border-t border-slate-100 pt-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <label className="text-[10px] uppercase font-bold text-slate-400">Нэмэлт сонголтууд (Сонгох боломжтой үнэ)</label>
+                                  <button onClick={() => addOption(cat.id, sub.id, item.id)} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1 font-medium bg-blue-50 px-2 py-1 rounded">
+                                    <Plus size={12} /> Сонголт нэмэх
+                                  </button>
+                                </div>
+                                
+                                {item.options && item.options.length > 0 && (
+                                  <div className="space-y-2 mt-2">
+                                    {item.options.map(opt => (
+                                      <div key={opt.id} className="flex gap-3 items-center bg-white p-2 rounded-xl border border-slate-200 group/opt hover:border-blue-200 hover:shadow-sm transition-all">
+                                        <div className="flex-1 bg-slate-50 rounded-lg px-3 py-1.5 border border-transparent focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                                          <input
+                                            value={opt.name}
+                                            onChange={(e) => updateOption(cat.id, sub.id, item.id, opt.id, "name", e.target.value)}
+                                            className="w-full text-xs font-semibold border-none focus:outline-none bg-transparent p-0 text-slate-800"
+                                            placeholder="Сонголтын нэр (Жнь: Хувилбар 1)"
+                                          />
+                                        </div>
+                                        <div className="w-36 relative bg-slate-50 rounded-lg px-3 py-1.5 border border-transparent focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                                          <input
+                                            type="text"
+                                            value={opt.price ? opt.price.toLocaleString() : ""}
+                                            onChange={(e) => {
+                                              const val = e.target.value.replace(/[^0-9]/g, '');
+                                              updateOption(cat.id, sub.id, item.id, opt.id, "price", val ? Number(val) : 0);
+                                            }}
+                                            className="w-full text-xs font-bold border-none focus:outline-none bg-transparent p-0 pr-4 text-slate-800 text-right"
+                                            placeholder="0"
+                                          />
+                                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 pointer-events-none">₮</span>
+                                        </div>
+                                        <button onClick={() => removeOption(cat.id, sub.id, item.id, opt.id)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 opacity-0 group-hover/opt:opacity-100 transition-all rounded-md mr-1">
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           ))}

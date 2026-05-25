@@ -12,6 +12,9 @@ import {
   RotateCcw,
   Sparkles,
   Truck,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
 
@@ -23,23 +26,153 @@ type StockRequest = {
   status: StockRequestStatus;
   requestedAt: string;
   warehouse?: { name: string };
+  dispatch?: {
+    status: string;
+    driverName: string | null;
+    driverPhone: string | null;
+    vehicleNumber: string | null;
+    dispatchedAt: string | null;
+    deliveredAt: string | null;
+  } | null;
+  payment?: {
+    totalAmount: number;
+  } | null;
+  items?: any[];
 };
 
-const STOCK_STATUS_LABEL: Record<StockRequestStatus, string> = {
-  PENDING: "Хүлээгдэж буй",
-  APPROVED: "Зөвшөөрөгдсөн",
-  REJECTED: "Татгалзсан",
-  PROCESSING: "Боловсруулж буй",
-  COMPLETED: "Дууссан",
-  CANCELLED: "Цуцлагдсан",
-};
+function formatMNT(amount: number) {
+  return new Intl.NumberFormat("mn-MN").format(Math.round(amount)) + "₮";
+}
 
-function statusBadge(status: string) {
-  if (status === "PENDING") return "text-amber-700 bg-amber-100";
-  if (status === "APPROVED" || status === "PROCESSING") return "text-blue-700 bg-blue-100";
-  if (status === "COMPLETED") return "text-emerald-700 bg-emerald-100";
-  if (status === "REJECTED" || status === "CANCELLED") return "text-red-700 bg-red-100";
-  return "text-slate-700 bg-slate-100";
+function timeAgo(date: string) {
+  const diff = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins} мин өмнө`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} цаг өмнө`;
+  const days = Math.floor(hrs / 24);
+  return `${days} өдрийн өмнө`;
+}
+
+/* ════════════════════════════════════════════
+   4-Level Dispatch Status Stepper
+   ════════════════════════════════════════════ */
+const DISPATCH_STEPS = [
+  { key: "PENDING", label: "Хүлээгдэж буй", icon: Clock },
+  { key: "CONFIRMED", label: "Баталгаажсан", icon: CheckCircle2 },
+  { key: "DISPATCHED", label: "Илгээгдсэн", icon: Truck },
+  { key: "DELIVERED", label: "Хүргэгдсэн", icon: CheckCircle2 },
+] as const;
+
+function getDispatchLevel(
+  requestStatus: string,
+  dispatch: { status: string } | null | undefined,
+): number {
+  if (requestStatus === "REJECTED" || requestStatus === "CANCELLED") return -1;
+  if (requestStatus === "PENDING") return 0; // Not yet approved
+  if (!dispatch) return 0;
+  switch (dispatch.status) {
+    case "PENDING":
+      return 1;
+    case "CONFIRMED":
+      return 2;
+    case "DISPATCHED":
+      return 3;
+    case "DELIVERED":
+      return 4;
+    case "CANCELLED":
+      return -1;
+    default:
+      return 0;
+  }
+}
+
+function DispatchStepper({
+  status,
+  dispatch,
+}: {
+  status: string;
+  dispatch: {
+    status: string;
+    driverName: string | null;
+    driverPhone: string | null;
+    vehicleNumber: string | null;
+    dispatchedAt: string | null;
+    deliveredAt: string | null;
+  } | null | undefined;
+}) {
+  const level = getDispatchLevel(status, dispatch || null);
+
+  // Cancelled / rejected — show red badge
+  if (level === -1) {
+    const isCancelled = status === "CANCELLED" || dispatch?.status === "CANCELLED";
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 mt-3">
+        <AlertCircle size={14} className="text-red-500" />
+        <span className="text-xs font-bold text-red-600">
+          {isCancelled ? "Цуцлагдсан" : "Татгалзсан"}
+        </span>
+      </div>
+    );
+  }
+
+  // Pending request (not yet approved)
+  if (status === "PENDING") {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 mt-3">
+        <Clock size={14} className="text-amber-500 animate-pulse" />
+        <span className="text-xs font-bold text-amber-600">
+          Админ зөвшөөрөлтөө хүлээж байна
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-0 mt-3">
+      {DISPATCH_STEPS.map((step, idx) => {
+        const stepNum = idx + 1;
+        const isCompleted = level >= stepNum;
+        const isCurrent = level === stepNum;
+        const StepIcon = step.icon;
+        return (
+          <div key={step.key} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center">
+              <div
+                className={`flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all ${
+                  isCompleted
+                    ? "border-emerald-500 bg-emerald-500 text-white"
+                    : isCurrent
+                      ? "border-[#FFAD02] bg-[#FFAD02] text-black animate-pulse"
+                      : "border-slate-200 bg-white text-slate-300"
+                }`}
+              >
+                <StepIcon size={13} />
+              </div>
+              <span
+                className={`mt-1 text-[10px] font-bold text-center leading-tight ${
+                  isCompleted
+                    ? "text-emerald-600"
+                    : isCurrent
+                      ? "text-[#FFAD02]"
+                      : "text-slate-300"
+                }`}
+              >
+                {step.label}
+              </span>
+            </div>
+            {idx < DISPATCH_STEPS.length - 1 && (
+              <div
+                className={`mx-1 h-0.5 flex-1 rounded-full transition-all ${
+                  level > stepNum ? "bg-emerald-400" : "bg-slate-200"
+                }`}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /* ── Main Page ──────────────────────────────────────────── */
@@ -179,42 +312,64 @@ export default function RequestsHubPage() {
         ))}
       </section>
 
-      {/* Recent stock requests */}
+      {/* Recent stock requests detailed list */}
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-black text-slate-900">Сүүлийн бараа таталтууд</h3>
-          <ClipboardList className="h-5 w-5 text-slate-400" />
+        <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+              <ClipboardList className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-900">Бүх бараа таталтууд</h3>
+              <p className="text-xs text-slate-500">Түүхчилсэн жагсаалт ба явц</p>
+            </div>
+          </div>
         </div>
         {stockRequests.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center">
+            <Truck size={32} className="mx-auto mb-3 text-slate-300" />
             <p className="text-sm font-medium text-slate-500">Одоогоор хүсэлт бүртгэгдээгүй байна.</p>
+            <Link
+              href="/shipments"
+              className="mt-3 inline-flex text-xs font-bold text-[#FFAD02] hover:underline"
+            >
+              Шинэ хүсэлт үүсгэх →
+            </Link>
           </div>
         ) : (
-          <div className="space-y-2">
-            {stockRequests.slice(0, 8).map((r) => (
-              <Link
+          <div className="space-y-4">
+            {stockRequests.map((r) => (
+              <div
                 key={r.id}
-                href="/shipments"
-                className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-3.5 transition-colors hover:border-amber-200 hover:bg-amber-50/40"
+                className="rounded-2xl border border-slate-100 bg-white p-5 transition-colors hover:border-amber-200 hover:bg-amber-50/20 shadow-sm"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                    <Truck className="h-4 w-4" />
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-4 min-w-0">
+                    <div className="hidden shrink-0 sm:flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                      <Truck className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0 pt-1">
+                      <p className="text-base font-black text-slate-900 truncate">
+                        #{r.requestNumber}
+                      </p>
+                      <p className="mt-0.5 text-xs font-medium text-slate-500">
+                        {r.warehouse?.name || "Агуулах"} · {r.items?.length || 0} бүтээгдэхүүн
+                        {r.payment?.totalAmount ? ` · ${formatMNT(r.payment.totalAmount)}` : ""}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">#{r.requestNumber}</p>
-                    <p className="text-[11px] text-slate-400">{r.warehouse?.name || "Агуулах"}</p>
+                  <div className="text-right shrink-0 ml-4 pt-1">
+                    <span className="text-xs font-semibold text-slate-400 block mb-1">
+                      {timeAgo(r.requestedAt)}
+                    </span>
+                    <span className="text-[10px] text-slate-300">
+                      {new Date(r.requestedAt).toLocaleDateString("mn-MN")}
+                    </span>
                   </div>
                 </div>
-                <div className="text-right shrink-0 ml-2">
-                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold ${statusBadge(r.status)}`}>
-                    {STOCK_STATUS_LABEL[r.status]}
-                  </span>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {new Date(r.requestedAt).toLocaleDateString("mn-MN")}
-                  </p>
-                </div>
-              </Link>
+                
+                <DispatchStepper status={r.status} dispatch={r.dispatch} />
+              </div>
             ))}
           </div>
         )}

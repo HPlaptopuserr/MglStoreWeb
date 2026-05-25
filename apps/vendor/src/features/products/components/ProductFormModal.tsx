@@ -4,6 +4,7 @@ import { X, Banknote, BarChart2, Loader2, PackageSearch, Type, AlignLeft, AlertT
 import { BusinessCategory, FormState, Product } from "../types";
 import { CategorySelector } from "./CategorySelector";
 import { ImageUploadGrid } from "./ImageUploadGrid";
+import { VendorSkuGenerator } from "./VendorSkuGenerator";
 
 interface Props {
   form: FormState;
@@ -88,16 +89,12 @@ export function ProductFormModal({
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">SKU / Код</label>
-                    <div className="relative">
-                      <PackageSearch size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all placeholder:text-slate-400"
-                        placeholder="Жишээ: WAT-001"
-                        value={form.sku}
-                        onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-                      />
-                    </div>
+                    <VendorSkuGenerator
+                      productName={form.name}
+                      products={products}
+                      value={form.sku || ""}
+                      onChange={(sku) => setForm((f) => ({ ...f, sku }))}
+                    />
                     {duplicateProduct && (
                       <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mt-2 animate-in fade-in slide-in-from-top-2">
                         <div className="flex items-start gap-2">

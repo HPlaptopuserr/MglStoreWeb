@@ -19,6 +19,12 @@ import {
 
 const router: ExpressRouter = Router();
 
+const getExpirySortValue = (value?: Date | string | null) => {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const time = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+};
+
 router.get("/pos/products", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
@@ -62,19 +68,45 @@ router.get("/pos/products", async (req, res) => {
         price: true,
         stock: true,
         isActive: true,
+        category: { select: { name: true } },
+        businessCategory: { select: { name: true } },
+        warehouseInventories: {
+          where: {
+            quantity: { gt: 0 },
+            expiryDate: { not: null },
+          },
+          select: {
+            expiryDate: true,
+          },
+          orderBy: {
+            expiryDate: "asc",
+          },
+          take: 1,
+        },
       },
       orderBy: { name: "asc" },
     });
 
-    const response = products.map((p) => ({
-      id: p.id,
-      sku: p.sku || "",
-      barcode: p.barcode || null,
-      name: p.name,
-      price: Number(p.price),
-      stockQty: p.stock,
-      isActive: p.isActive,
-    }));
+    const response = products
+      .map((p) => {
+        const expiryDate = p.warehouseInventories[0]?.expiryDate ?? null;
+        return {
+          id: p.id,
+          sku: p.sku || "",
+          barcode: p.barcode || null,
+          name: p.name,
+          price: Number(p.price),
+          stockQty: p.stock,
+          expiryDate: expiryDate?.toISOString() ?? null,
+          isActive: p.isActive,
+          categoryName: p.category?.name || p.businessCategory?.name || null,
+        };
+      })
+      .sort((a, b) => {
+        const expiryDiff = getExpirySortValue(a.expiryDate) - getExpirySortValue(b.expiryDate);
+        if (expiryDiff !== 0) return expiryDiff;
+        return a.name.localeCompare(b.name);
+      });
 
     res.status(200).json(response);
   } catch (error) {
@@ -112,13 +144,68 @@ router.get("/pos/receipts", async (req, res) => {
 
     const sales = await prisma.posSale.findMany({
       where: { shiftId },
-      include: {
-        lines: true,
+      select: {
+        id: true,
+        receiptNo: true,
+        paymentMethod: true,
+        status: true,
+        voidedAt: true,
+        createdAt: true,
+        subtotal: true,
+        taxTotal: true,
+        discountTotal: true,
+        grandTotal: true,
+        lines: {
+          select: {
+            productId: true,
+            productName: true,
+            qty: true,
+            unitPrice: true,
+            taxAmount: true,
+            lineTotal: true,
+          },
+        },
         cashier: { select: { email: true } },
         branch: { select: { name: true } },
       },
       orderBy: { createdAt: "desc" },
     });
+
+    const receiptNumbers = sales.map((sale) => sale.receiptNo);
+    const [cardAttempts, qpayInvoices] = await Promise.all([
+      prisma.cardPaymentAttempt.findMany({
+        where: { saleReference: { in: receiptNumbers } },
+        select: {
+          id: true,
+          saleReference: true,
+          amount: true,
+          transactionId: true,
+          traceno: true,
+          terminalId: true,
+        },
+      }),
+      prisma.qPayInvoice.findMany({
+        where: { saleReference: { in: receiptNumbers } },
+        select: {
+          id: true,
+          saleReference: true,
+          amount: true,
+          paymentId: true,
+        },
+      }),
+    ]);
+
+    const cardByReceipt = new Map<string, typeof cardAttempts>();
+    for (const attempt of cardAttempts) {
+      const key = attempt.saleReference || "";
+      cardByReceipt.set(key, [...(cardByReceipt.get(key) || []), attempt]);
+    }
+
+    const qpayByReceipt = new Map<string, typeof qpayInvoices>();
+    for (const invoice of qpayInvoices) {
+      const key = invoice.saleReference || "";
+      qpayByReceipt.set(key, [...(qpayByReceipt.get(key) || []), invoice]);
+    }
 
     const receipts = sales.map((sale) => ({
       id: sale.id,
@@ -126,6 +213,28 @@ router.get("/pos/receipts", async (req, res) => {
       branchName: sale.branch.name,
       cashierName: sale.cashier.email,
       paymentMethod: sale.paymentMethod,
+      status: sale.status,
+      voidedAt: sale.voidedAt?.toISOString() ?? null,
+      ebarimt: null,
+      paymentBreakdown: [
+        ...(cardByReceipt.get(sale.receiptNo) || []).map((attempt) => ({
+          method: "CARD",
+          amount: Number(attempt.amount),
+          attemptId: attempt.id,
+          transactionId: attempt.transactionId || undefined,
+          traceno: attempt.traceno,
+          terminalId: attempt.terminalId,
+        })),
+        ...(qpayByReceipt.get(sale.receiptNo) || []).map((invoice) => ({
+          method: "QPAY",
+          amount: Number(invoice.amount),
+          invoiceId: invoice.id,
+          transactionId: invoice.paymentId || invoice.id,
+        })),
+        ...(cardByReceipt.has(sale.receiptNo) || qpayByReceipt.has(sale.receiptNo)
+          ? []
+          : [{ method: sale.paymentMethod, amount: Number(sale.grandTotal) }]),
+      ],
       createdAt: sale.createdAt.toISOString(),
       lines: sale.lines.map((line) => ({
         productId: line.productId,
@@ -186,8 +295,28 @@ router.get("/pos/sales/history", async (req, res) => {
       prisma.posSale.count({ where }),
       prisma.posSale.findMany({
         where,
-        include: {
-          lines: { include: { product: { select: { name: true, sku: true } } } },
+        select: {
+          id: true,
+          receiptNo: true,
+          paymentMethod: true,
+          status: true,
+          subtotal: true,
+          taxTotal: true,
+          discountTotal: true,
+          grandTotal: true,
+          createdAt: true,
+          lines: {
+            select: {
+              productId: true,
+              productName: true,
+              productSku: true,
+              qty: true,
+              unitPrice: true,
+              taxAmount: true,
+              discount: true,
+              lineTotal: true,
+            },
+          },
           cashier: { select: { email: true, profile: { select: { fullName: true } } } },
           branch: { select: { name: true } },
           register: { select: { name: true } },
@@ -206,6 +335,7 @@ router.get("/pos/sales/history", async (req, res) => {
       cashierName: sale.cashier.profile?.fullName || sale.cashier.email,
       paymentMethod: sale.paymentMethod,
       status: sale.status,
+      ebarimt: null,
       subtotal: Number(sale.subtotal),
       taxTotal: Number(sale.taxTotal),
       discountTotal: Number(sale.discountTotal),
@@ -353,14 +483,14 @@ router.post("/pos/sales/:id/void", async (req, res) => {
           productId: line.productId,
           warehouseId: warehouseId ?? undefined,
           change: line.qty, // positive = return to stock
-          reason: InventoryReason.ORDER,
+          reason: InventoryReason.RETURN,
           note: `Void sale ${sale.receiptNo}`,
           createdById: actor.id,
           referenceId: sale.receiptNo,
           referenceType: "POS_VOID",
         });
       }
-    });
+    }, { timeout: 15_000 });
 
     void prisma.auditLog.create({
       data: {
@@ -376,14 +506,14 @@ router.post("/pos/sales/:id/void", async (req, res) => {
       },
     });
 
-    res.status(200).json({ ok: true, message: "Борлуулалт амжилттай цуцлагдлаа" });
+    res.status(200).json({ ok: true, message: "Буцаалт амжилттай хийгдлээ" });
   } catch (error) {
     console.error("void sale error", error);
     const maybeApiError = error as Partial<ApiError>;
     if (maybeApiError?.status && maybeApiError?.message) {
       return res.status(maybeApiError.status).json({ message: maybeApiError.message });
     }
-    res.status(500).json({ message: "Борлуулалт цуцлахад алдаа гарлаа" });
+    res.status(500).json({ message: "Буцаалт хийхэд алдаа гарлаа" });
   }
 });
 
