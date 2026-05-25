@@ -377,12 +377,14 @@ export default function ContractSignPage() {
   return (
     <div className="min-h-screen bg-neutral-100/50 py-10 px-4 sm:px-6">
 
-      <div className="max-w-[850px] mx-auto mb-6 flex justify-between items-end no-print">
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-800">Гэрээ баталгаажуулах</h1>
-          <p className="text-neutral-500 mt-1">Доорх мэдээллийг бөглөж гэрээг цахимаар байгуулна уу.</p>
+      {!isPrintMode && (
+        <div className="max-w-[850px] mx-auto mb-6 flex justify-between items-end no-print">
+          <div>
+            <h1 className="text-2xl font-bold text-neutral-800">Гэрээ баталгаажуулах</h1>
+            <p className="text-neutral-500 mt-1">Доорх мэдээллийг бөглөж гэрээг цахимаар байгуулна уу.</p>
+          </div>
         </div>
-      </div>
+      )}
 
       <form onSubmit={handleProceedToPayment} className="max-w-[850px] mx-auto">
         {/* A4 Paper container */}
@@ -690,41 +692,43 @@ export default function ContractSignPage() {
         )}
  */}
         {/* Action Bar */}
-        <div className="no-print bg-white rounded-xl shadow-lg border border-neutral-200 p-6 flex flex-col md:flex-row items-center justify-between gap-6 sticky bottom-6 z-50">
-          <label className="flex items-start gap-3 cursor-pointer group flex-1">
-            <div className="flex-shrink-0 mt-0.5">
-              <input
-                type="checkbox"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
-                className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
-              />
-            </div>
-            <div className="text-sm text-neutral-600 group-hover:text-neutral-900 transition-colors leading-relaxed">
-              Би дээрх гэрээний нөхцөлүүдийг уншиж танилцсан бөгөөд бүрэн хүлээн зөвшөөрч цахим гарын үсэг зурж баталгаажуулж байна.
-            </div>
-          </label>
+        {!isPrintMode && (
+          <div className="no-print bg-white rounded-xl shadow-lg border border-neutral-200 p-6 flex flex-col md:flex-row items-center justify-between gap-6 sticky bottom-6 z-50">
+            <label className="flex items-start gap-3 cursor-pointer group flex-1">
+              <div className="flex-shrink-0 mt-0.5">
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                  className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                />
+              </div>
+              <div className="text-sm text-neutral-600 group-hover:text-neutral-900 transition-colors leading-relaxed">
+                Би дээрх гэрээний нөхцөлүүдийг уншиж танилцсан бөгөөд бүрэн хүлээн зөвшөөрч цахим гарын үсэг зурж баталгаажуулж байна.
+              </div>
+            </label>
 
-          <div className="flex flex-col items-end gap-2">
-            {(!memberData.director || !memberPosition) && (
-              <p className="text-xs text-amber-600 font-medium">
-                {!memberData.director ? "Овог нэр оруулна уу · " : ""}
-                {!memberPosition ? "Албан тушаал оруулна уу" : ""}
-              </p>
-            )}
-            <button
-              type="submit"
-              disabled={!agreed || isSubmitting || !memberData.name || !memberData.register || !memberData.director || !memberPosition}
-              className="w-full md:w-auto px-8 py-3.5 bg-[#1e4e8c] text-white rounded-xl font-medium hover:bg-blue-800 focus:ring-4 focus:ring-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-sm"
-            >
-              {isSubmitting ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /> Уншиж байна...</>
-              ) : (
-                <><CheckCircle2 className="w-5 h-5" /> Дараагийн</>
+            <div className="flex flex-col items-end gap-2">
+              {(!memberData.director || !memberPosition) && (
+                <p className="text-xs text-amber-600 font-medium">
+                  {!memberData.director ? "Овог нэр оруулна уу · " : ""}
+                  {!memberPosition ? "Албан тушаал оруулна уу" : ""}
+                </p>
               )}
-            </button>
+              <button
+                type="submit"
+                disabled={!agreed || isSubmitting || !memberData.name || !memberData.register || !memberData.director || !memberPosition}
+                className="w-full md:w-auto px-8 py-3.5 bg-[#1e4e8c] text-white rounded-xl font-medium hover:bg-blue-800 focus:ring-4 focus:ring-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-sm"
+              >
+                {isSubmitting ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Уншиж байна...</>
+                ) : (
+                  <><CheckCircle2 className="w-5 h-5" /> Дараагийн</>
+                )}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </form>
     </div>
   );

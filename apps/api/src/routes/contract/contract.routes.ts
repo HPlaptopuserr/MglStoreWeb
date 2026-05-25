@@ -3,6 +3,10 @@ import { requireAuth } from "../../middleware/auth";
 import { prisma } from "@mgl/database";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import { createSystemQrInvoice, checkSystemQrPayment } from "../../services/systemqr";
+import multer from "multer";
+import path from "path";
+import crypto from "crypto";
+import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 
 const router: ExpressRouter = Router();
 
@@ -186,7 +190,10 @@ router.get("/contracts/:id", async (req, res) => {
 router.get("/contracts/submissions/all", requireAuth, async (_req, res) => {
   try {
     const submissions = await prisma.contract.findMany({
-      where: { isTemplate: false, templateId: { not: null } },
+      where: {
+        isTemplate: false,
+        status: "SIGNED",
+      },
       orderBy: { createdAt: "desc" },
       include: {
         template: {
@@ -201,9 +208,11 @@ router.get("/contracts/submissions/all", requireAuth, async (_req, res) => {
       const feePlans: any[] = hd?.feePlans ?? [];
       const planLabel = feePlans.find((p: any) => p.key === s.feePlan)?.label ?? s.feePlan ?? "—";
       const planMonths = feePlans.find((p: any) => p.key === s.feePlan)?.months ?? null;
-      const expiresAt = s.signedAt && planMonths
-        ? new Date(new Date(s.signedAt).setMonth(new Date(s.signedAt).getMonth() + planMonths))
-        : null;
+      const expiresAt = member?.expiresAt
+        ? new Date(member.expiresAt)
+        : s.signedAt && planMonths
+          ? new Date(new Date(s.signedAt).setMonth(new Date(s.signedAt).getMonth() + planMonths))
+          : null;
 
       return {
         id: s.id,
@@ -221,6 +230,9 @@ router.get("/contracts/submissions/all", requireAuth, async (_req, res) => {
         createdAt: s.createdAt,
         memberData: s.memberData,
         headerData: hd,
+        pdfUrl: s.pdfUrl,
+        contractNumber: member?.contractNumber || null,
+        contractName: member?.contractName || null,
       };
     });
 
@@ -554,5 +566,171 @@ router.post("/contracts/systemqr/callback", async (req, res) => {
     return res.status(500).json({ success: false });
   }
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// POST /api/contracts/scanned/register  —  Register a scanned contract (admin)
+// ──────────────────────────────────────────────────────────────────────────────
+const scannedUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+    if (allowed.includes(file.mimetype) || file.originalname.endsWith(".pdf") || file.originalname.endsWith(".jpg") || file.originalname.endsWith(".png") || file.originalname.endsWith(".webp")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Зөвхөн PDF болон JPG, PNG, WebP зургууд зөвшөөрөгдөнө"));
+    }
+  },
+});
+
+router.post(
+  "/contracts/scanned/register",
+  requireAuth,
+  scannedUpload.single("file"),
+  async (req, res) => {
+    try {
+      const userId = ((req as any).user?.userId || (req as any).user?.id || (req as any).userId) as string | undefined;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: "Хэрэглэгч тодорхойгүй байна" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: "Сканнердсан гэрээний файл оруулах шаардлагатай" });
+      }
+
+      const {
+        templateId,
+        org,
+        register,
+        phone,
+        email,
+        director,
+        position,
+        feePlan,
+        feePlanLabel,
+        signedAt,
+        expiresAt,
+        contractNumber,
+        contractName,
+      } = req.body;
+
+      if (!org) {
+        return res.status(400).json({ success: false, error: "Байгууллагын нэр шаардлагатай" });
+      }
+
+      // Upload file to Supabase
+      const ext = path.extname(req.file.originalname).toLowerCase() || ".pdf";
+      const fileName = `contracts/${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
+      
+      const { error: uploadError } = await getSupabase().storage
+        .from(PRODUCT_IMAGES_BUCKET)
+        .upload(fileName, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error("Scanned contract upload error:", uploadError);
+        return res.status(500).json({ success: false, error: "Файл сервер рүү хуулахад алдаа гарлаа" });
+      }
+
+      const { data: publicUrlData } = getSupabase().storage
+        .from(PRODUCT_IMAGES_BUCKET)
+        .getPublicUrl(fileName);
+
+      const pdfUrl = publicUrlData.publicUrl;
+
+      // Prepare memberData JSON
+      const memberData = {
+        name: org,
+        register: register || null,
+        phone: phone || null,
+        email: email || null,
+        director: director || null,
+        position: position || null,
+        contractNumber: contractNumber || null,
+        contractName: contractName || null,
+        expiresAt: expiresAt || null,
+      };
+
+      // Let's see if we have duration
+      let calculatedExpiresAt = expiresAt ? new Date(expiresAt) : null;
+      let effectiveFeePlan = feePlan || null;
+      let effectiveHeaderData = null;
+
+      if (templateId) {
+        const template = await prisma.contract.findUnique({ where: { id: templateId } });
+        if (template) {
+          effectiveHeaderData = template.headerData;
+          if (!effectiveFeePlan) {
+            effectiveFeePlan = template.feePlan;
+          }
+          if (!calculatedExpiresAt && effectiveFeePlan) {
+            const hd = template.headerData as any;
+            const feePlans: any[] = hd?.feePlans ?? [];
+            const planMonths = feePlans.find((p: any) => p.key === effectiveFeePlan)?.months ?? null;
+            if (planMonths) {
+              const signDate = signedAt ? new Date(signedAt) : new Date();
+              calculatedExpiresAt = new Date(signDate.setMonth(signDate.getMonth() + planMonths));
+            }
+          }
+        }
+      }
+
+      const submission = await prisma.contract.create({
+        data: {
+          userId,
+          templateId: templateId || null,
+          isTemplate: false,
+          feePlan: effectiveFeePlan,
+          isPaid: false,
+          status: "SIGNED",
+          signedAt: signedAt ? new Date(signedAt) : new Date(),
+          version: "v1.2-scanned",
+          pdfUrl,
+          memberData: memberData as any,
+          headerData: effectiveHeaderData as any,
+        },
+        include: {
+          template: {
+            select: { id: true, headerData: true, feePlan: true },
+          },
+        },
+      });
+
+      const planLabel = feePlanLabel || (effectiveFeePlan ? (effectiveHeaderData as any)?.feePlans?.find((p: any) => p.key === effectiveFeePlan)?.label : null) || effectiveFeePlan || "—";
+
+      return res.json({
+        success: true,
+        submission: {
+          id: submission.id,
+          templateId: submission.templateId,
+          org: (submission.memberData as any)?.name || "Тодорхойгүй",
+          register: (submission.memberData as any)?.register || null,
+          phone: (submission.memberData as any)?.phone || null,
+          email: (submission.memberData as any)?.email || null,
+          status: submission.status,
+          isPaid: submission.isPaid,
+          feePlan: submission.feePlan,
+          feePlanLabel: planLabel,
+          signedAt: submission.signedAt,
+          expiresAt: calculatedExpiresAt,
+          createdAt: submission.createdAt,
+          memberData: submission.memberData,
+          headerData: submission.headerData,
+          pdfUrl: submission.pdfUrl,
+        },
+      });
+    } catch (err: any) {
+      console.error("Scanned contract registration error:", err);
+      return res.status(500).json({ success: false, error: err.message || "Гэрээ бүртгэхэд алдаа гарлаа" });
+    }
+  }
+);
 
 export default router;

@@ -512,7 +512,7 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
 
 /* ─── PATCH /admin/users/:id/role ─── change user system role ── */
 import { ADMIN_ROLES } from "@mgl/types";
-const VALID_ROLES = ["SUPER_ADMIN", "ADMIN", "HR_ADMIN", "CONTENT_ADMIN", "PARTNER_ADMIN", "WAREHOUSE_ADMIN", "FINANCE_ADMIN", "SERVICE_ADMIN", "USER"] as const;
+const VALID_ROLES = ["SUPER_ADMIN", "ADMIN", "HR_ADMIN", "CONTENT_ADMIN", "PARTNER_ADMIN", "WAREHOUSE_ADMIN", "FINANCE_ADMIN", "SERVICE_ADMIN", "LAWYER", "USER"] as const;
 
 router.patch("/admin/users/:id/role", requireAuth, requirePlatformPermission(Permission.MANAGE_ADMIN_STAFF), async (req, res) => {
   try {
@@ -562,7 +562,7 @@ router.patch("/admin/users/:id/role", requireAuth, requirePlatformPermission(Per
 });
 
 /* ─── POST /admin/users ─── create admin user (SUPER_ADMIN only) ── */
-const ASSIGNABLE_ROLES = ["ADMIN", "HR_ADMIN", "CONTENT_ADMIN", "PARTNER_ADMIN", "WAREHOUSE_ADMIN", "FINANCE_ADMIN", "SERVICE_ADMIN"] as const;
+const ASSIGNABLE_ROLES = ["ADMIN", "HR_ADMIN", "CONTENT_ADMIN", "PARTNER_ADMIN", "WAREHOUSE_ADMIN", "FINANCE_ADMIN", "SERVICE_ADMIN", "LAWYER"] as const;
 
 router.post("/admin/users", requireAuth, requirePlatformPermission(Permission.MANAGE_ADMIN_STAFF), async (req, res) => {
   try {

@@ -17,7 +17,6 @@ import type { SectionKey } from "./types";
 
 export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; requires?: string }[] = [
   { key: "banner", label: "Промо баннер", icon: ImagePlus },
-  { key: "categories", label: "Ангилалууд", icon: Tag },
   { key: "branches", label: "Салбар байршил", icon: MapPin },
   { key: "cards", label: "Карт хэвлэх", icon: CreditCard },
   { key: "qr", label: "QR Generator", icon: Wrench },
