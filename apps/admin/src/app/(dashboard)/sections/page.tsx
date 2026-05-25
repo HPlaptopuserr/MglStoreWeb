@@ -13,6 +13,7 @@ import { FormBuilderTool, QrGeneratorPanel } from "@/components/organisms";
 import { PosRegistersSection } from "@/components/organisms/sections/pos/PosRegistersSection";
 import { VendorFeaturesSection } from "@/components/organisms/sections/vendor-features/VendorFeaturesSection";
 import { MglServicesSection } from "@/components/organisms/sections/mgl-services/MglServicesSection";
+import { ProjectsSection } from "@/components/organisms/sections/projects/ProjectsSection";
 import { HrSection } from "@/components/organisms/sections/hr/HrSection";
 import { TeamSection } from "@/components/organisms/sections/team/TeamSection";
 import { useAdminAuth } from "@/lib/admin-auth";
@@ -35,6 +36,8 @@ export default function SectionsPage() {
     setCategories,
     mglServices,
     setMglServices,
+    projects,
+    setProjects,
     showBranchMapOnWeb,
     saving,
     saved,
@@ -42,6 +45,7 @@ export default function SectionsPage() {
     saveBanners,
     saveCategories,
     saveMglServices,
+    saveProjects,
     toggleBranchMapOnWeb,
   } = useSiteSettings();
 
@@ -49,6 +53,7 @@ export default function SectionsPage() {
     if (active === "banner") await saveBanners(banners);
     else if (active === "categories") await saveCategories(categories);
     else if (active === "mgl-services") await saveMglServices();
+    else if (active === "projects") await saveProjects();
   };
 
   return (
@@ -66,7 +71,10 @@ export default function SectionsPage() {
             <BannerSection banners={banners} setBanners={setBanners} />
           )}
           {active === "categories" && (
-            <CategoriesSection categories={categories} setCategories={setCategories} />
+            <CategoriesSection
+              categories={categories}
+              setCategories={setCategories}
+            />
           )}
           {active === "branches" && (
             <BranchesSection
@@ -79,7 +87,25 @@ export default function SectionsPage() {
           {active === "qr" && <QrGeneratorPanel showHeader={false} />}
           {active === "pos" && <PosRegistersSection />}
           {active === "vendor-features" && <VendorFeaturesSection />}
-          {active === "mgl-services" && <MglServicesSection mglServices={mglServices} setMglServices={setMglServices} onSave={() => saveMglServices()} saving={saving} saved={saved} key="mgl-services" />}
+          {active === "mgl-services" && (
+            <MglServicesSection
+              mglServices={mglServices}
+              setMglServices={setMglServices}
+              onSave={() => saveMglServices()}
+              saving={saving}
+              saved={saved}
+              key="mgl-services"
+            />
+          )}
+          {active === "projects" && (
+            <ProjectsSection
+              projects={projects}
+              setProjects={setProjects}
+              onSave={() => saveProjects()}
+              saving={saving}
+              saved={saved}
+            />
+          )}
           {active === "hr" && <HrSection />}
           {active === "team" && <TeamSection />}
         </div>
