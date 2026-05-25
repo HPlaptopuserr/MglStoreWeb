@@ -140,15 +140,28 @@ export function useSiteSettings() {
     const toSave = currentProjects ?? projectsRef.current;
     setSaving(true);
     try {
-      await adminFetch(`${API}/site-settings`, {
+      const res = await adminFetch(`${API}/site-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ "paid-projects": JSON.stringify(toSave) }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Төслийг хадгалахад алдаа гарлаа");
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch {}
-    setSaving(false);
+      return true;
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Төслийг хадгалахад алдаа гарлаа",
+      );
+      return false;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const toggleBranchMapOnWeb = async () => {

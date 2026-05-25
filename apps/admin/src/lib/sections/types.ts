@@ -1,16 +1,4 @@
-export type SectionKey =
-  | "banner"
-  | "categories"
-  | "branches"
-  | "cards"
-  | "qr"
-  | "pos"
-  | "vendor-features"
-  | "hr"
-  | "forms"
-  | "team"
-  | "mgl-services"
-  | "projects";
+export type SectionKey = "banner" | "categories" | "branches" | "cards" | "qr" | "pos" | "vendor-features" | "hr" | "forms" | "team" | "mgl-services" | "projects";
 
 export interface ServiceOption {
   id: string;

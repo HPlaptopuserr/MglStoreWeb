@@ -82,14 +82,7 @@ export const CATEGORY_COLORS = [
 ];
 
 import type { LucideIcon } from "lucide-react";
-import {
-  Store,
-  Tag,
-  Briefcase,
-  Wrench,
-  QrCode,
-  FolderKanban,
-} from "lucide-react";
+import { Store, Tag, Briefcase, Wrench, QrCode, FolderKanban } from "lucide-react";
 
 export interface NavLink {
   href: string;

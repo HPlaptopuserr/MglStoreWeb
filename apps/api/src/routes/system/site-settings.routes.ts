@@ -40,7 +40,8 @@ type ProjectAccessPayload = {
 };
 
 const PROJECT_ACCESS_TOKEN_TTL_MS = 30 * 60 * 1000;
-const projectAccessSecret = process.env.JWT_SECRET || process.env.QPAY_CLIENT_SECRET || "dev-project-access-secret";
+const projectAccessSecret =
+  process.env.JWT_SECRET || process.env.QPAY_CLIENT_SECRET || "dev-project-access-secret";
 
 async function getPaidProjects(): Promise<PaidProject[]> {
   const setting = await prisma.siteSetting.findUnique({ where: { key: "paid-projects" } });
@@ -81,7 +82,10 @@ function verifyProjectAccessToken(token?: string): ProjectAccessPayload | null {
   const expected = signProjectAccessPayload(encoded);
   const providedBuffer = Buffer.from(signature);
   const expectedBuffer = Buffer.from(expected);
-  if (providedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(providedBuffer, expectedBuffer)) {
+  if (
+    providedBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+  ) {
     return null;
   }
 
@@ -93,6 +97,7 @@ function verifyProjectAccessToken(token?: string): ProjectAccessPayload | null {
     return null;
   }
 }
+
 // GET all site settings as key-value object (public read for web/vendor)
 router.get("/site-settings", async (_req, res) => {
   try {
@@ -136,6 +141,7 @@ router.get(
     }
   },
 );
+
 // PUT upsert a single setting
 router.put("/site-settings/:key", requireAuth, requirePlatformPermission(Permission.MANAGE_SITE_SETTINGS), async (req, res) => {
   const { key } = req.params;
@@ -221,6 +227,59 @@ router.post(
   },
 );
 
+// GET /site-settings/projects — public summary list only
+router.get("/site-settings/projects", async (_req, res) => {
+  try {
+    const projects = await getPaidProjects();
+    res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+    res.json({ success: true, projects: getPublicProjects(projects) });
+  } catch (error) {
+    console.error("get public projects error", error);
+    res.status(500).json({ success: false, message: "Төслийн жагсаалт авахад алдаа гарлаа" });
+  }
+});
+
+// GET /site-settings/projects/:projectId/detail — full detail after payment check
+router.get("/site-settings/projects/:projectId/detail", async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const invoiceId = typeof req.query.invoiceId === "string" ? req.query.invoiceId : "";
+    const accessToken = typeof req.query.accessToken === "string" ? req.query.accessToken : "";
+
+    const projects = await getPaidProjects();
+    const project = projects.find((item) => item.id === projectId && item.isActive !== false);
+    if (!project) {
+      res.status(404).json({ success: false, message: "Төсөл олдсонгүй" });
+      return;
+    }
+
+    const amount = Math.max(0, Number(project.price) || 0);
+    if (amount > 0) {
+      const payload = verifyProjectAccessToken(accessToken);
+      if (
+        !payload ||
+        payload.projectId !== project.id ||
+        payload.invoiceId !== invoiceId ||
+        Math.max(0, Number(payload.amount) || 0) !== amount
+      ) {
+        res.status(403).json({ success: false, message: "Төслийн төлбөрийн эрх баталгаажаагүй байна" });
+        return;
+      }
+
+      const payment = await checkQPayPayment(invoiceId);
+      if (payment.count <= 0) {
+        res.status(402).json({ success: false, message: "Төслийн төлбөр төлөгдөөгүй байна" });
+        return;
+      }
+    }
+
+    res.json({ success: true, project });
+  } catch (error) {
+    console.error("get project detail error", error);
+    res.status(500).json({ success: false, message: "Төслийн дэлгэрэнгүй авахад алдаа гарлаа" });
+  }
+});
+
 // POST /site-settings/mgl-services/qpay — MGL үйлчилгээ захиалах үед QPay нэхэмжлэх үүсгэх
 router.post("/site-settings/mgl-services/qpay", async (req, res) => {
   try {
@@ -272,59 +331,6 @@ router.get("/site-settings/mgl-services/qpay/check", async (req, res) => {
   } catch (error) {
     console.error("mgl-services qpay check error", error);
     res.status(500).json({ success: false, message: "Төлбөр шалгахад алдаа гарлаа" });
-  }
-});
-
-// GET /site-settings/projects — public summary list only
-router.get("/site-settings/projects", async (_req, res) => {
-  try {
-    const projects = await getPaidProjects();
-    res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
-    res.json({ success: true, projects: getPublicProjects(projects) });
-  } catch (error) {
-    console.error("get public projects error", error);
-    res.status(500).json({ success: false, message: "Төслийн жагсаалт авахад алдаа гарлаа" });
-  }
-});
-
-// GET /site-settings/projects/:projectId/detail — full detail after payment check
-router.get("/site-settings/projects/:projectId/detail", async (req, res) => {
-  try {
-    const { projectId } = req.params;
-    const invoiceId = typeof req.query.invoiceId === "string" ? req.query.invoiceId : "";
-    const accessToken = typeof req.query.accessToken === "string" ? req.query.accessToken : "";
-
-    const projects = await getPaidProjects();
-    const project = projects.find((item) => item.id === projectId && item.isActive !== false);
-    if (!project) {
-      res.status(404).json({ success: false, message: "Төсөл олдсонгүй" });
-      return;
-    }
-
-    const amount = Math.max(0, Number(project.price) || 0);
-    if (amount > 0) {
-      const payload = verifyProjectAccessToken(accessToken);
-      if (
-        !payload ||
-        payload.projectId !== project.id ||
-        payload.invoiceId !== invoiceId ||
-        Math.max(0, Number(payload.amount) || 0) !== amount
-      ) {
-        res.status(403).json({ success: false, message: "Төслийн төлбөрийн эрх баталгаажаагүй байна" });
-        return;
-      }
-
-      const payment = await checkQPayPayment(invoiceId);
-      if (payment.count <= 0) {
-        res.status(402).json({ success: false, message: "Төслийн төлбөр төлөгдөөгүй байна" });
-        return;
-      }
-    }
-
-    res.json({ success: true, project });
-  } catch (error) {
-    console.error("get project detail error", error);
-    res.status(500).json({ success: false, message: "Төслийн дэлгэрэнгүй авахад алдаа гарлаа" });
   }
 });
 
@@ -395,4 +401,5 @@ router.get("/site-settings/projects/qpay/check", async (req, res) => {
     res.status(500).json({ success: false, message: "Төслийн төлбөр шалгахад алдаа гарлаа" });
   }
 });
+
 export default router;

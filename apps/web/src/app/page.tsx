@@ -45,6 +45,22 @@ export default function HomePage() {
         </div>
       </div>
 
+      <div className="bg-black text-white my-12">
+        <div className="container mx-auto px-4 lg:px-8 py-16 flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="max-w-2xl">
+            <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight mb-4">
+              MGL Store <span className="text-[#FFAD02]">Төсөл</span>
+            </h2>
+            <p className="text-white/80 text-base md:text-lg">
+              Таны бизнес, байгууллагад хэрэгтэй бэлэн төслийн хураангуй болон дэлгэрэнгүй материалыг нэг дороос сонгон аваарай.
+            </p>
+          </div>
+          <Link href="/projects" className="shrink-0 bg-[#FFAD02] text-black px-8 py-4 rounded-full font-bold uppercase tracking-widest text-sm flex items-center gap-2 hover:bg-white transition-colors">
+            Төсөл сонгох <ArrowRight className="w-5 h-5" />
+          </Link>
+        </div>
+      </div>
+
       <InvestorSection />
 
       <div className="container mx-auto px-4 lg:px-8">

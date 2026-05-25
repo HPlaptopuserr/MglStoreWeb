@@ -101,7 +101,7 @@ export default function SectionsPage() {
             <ProjectsSection
               projects={projects}
               setProjects={setProjects}
-              onSave={() => saveProjects()}
+              onSave={saveProjects}
               saving={saving}
               saved={saved}
             />
