@@ -236,6 +236,240 @@ function buildDailySparkline(dates: Date[], days: number): number[] {
   return buckets;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfToday() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function round1(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function getExpiryRiskLevel(score: number, daysUntilExpiry: number) {
+  if (daysUntilExpiry < 0 || score >= 80) return "critical";
+  if (score >= 60) return "high";
+  if (score >= 35) return "medium";
+  return "low";
+}
+
+function getExpiryRiskScore(params: {
+  daysUntilExpiry: number;
+  quantity: number;
+  dailyVelocity: number;
+}) {
+  const { daysUntilExpiry, quantity, dailyVelocity } = params;
+  const sellThroughDays =
+    dailyVelocity > 0 ? quantity / dailyVelocity : Number.POSITIVE_INFINITY;
+
+  let score = 0;
+  if (daysUntilExpiry < 0) score += 70;
+  else if (daysUntilExpiry <= 7) score += 48;
+  else if (daysUntilExpiry <= 14) score += 36;
+  else if (daysUntilExpiry <= 30) score += 24;
+  else if (daysUntilExpiry <= 60) score += 10;
+
+  if (quantity >= 100) score += 16;
+  else if (quantity >= 50) score += 10;
+  else if (quantity >= 20) score += 6;
+
+  if (dailyVelocity <= 0) {
+    score += quantity > 0 ? 34 : 0;
+  } else if (sellThroughDays > Math.max(daysUntilExpiry, 1)) {
+    score += 30;
+  } else if (sellThroughDays > Math.max(daysUntilExpiry * 0.7, 1)) {
+    score += 16;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(score)));
+}
+
+function buildExpiryRecommendation(params: {
+  daysUntilExpiry: number;
+  quantity: number;
+  dailyVelocity: number;
+  sellThroughDays: number | null;
+}) {
+  const { daysUntilExpiry, quantity, dailyVelocity, sellThroughDays } = params;
+  if (daysUntilExpiry < 0) {
+    return "Хугацаа дууссан байж болзошгүй. Вэбээс түр нууж, буцаалт эсвэл устгалын шийдвэр шалгаарай.";
+  }
+  if (daysUntilExpiry <= 7) {
+    return dailyVelocity > 0 && sellThroughDays !== null && sellThroughDays <= daysUntilExpiry
+      ? "FEFO урсгал ажиллаж байна. Нүүр хуудсанд илүү байршуулж борлуулалтыг барина."
+      : "7 хоногийн flash хямдрал, bundle эсвэл нүүр хуудсын онцлох байрлал санал болго.";
+  }
+  if (daysUntilExpiry <= 14) {
+    return "2 долоо хоногийн дотор дуусна. Хямдрал эсвэл багц санал гаргаж эргэлтийг нэм.";
+  }
+  if (dailyVelocity <= 0 && quantity > 0) {
+    return "Сүүлийн 30 хоногт борлуулалтгүй. Зураг, үнэ, тайлбар эсвэл зарын сувгийг шинэчил.";
+  }
+  return "Борлуулалтын хурд боломжийн байна. FEFO эрэмбэ, вэб байршуулалтыг хэвээр хадгал.";
+}
+
+async function buildVendorExpiryInsights(organizationId: string) {
+  const today = startOfToday();
+  const thirtyDaysAgo = new Date(today.getTime() - 30 * DAY_MS);
+
+  const inventory = await prisma.warehouseInventory.findMany({
+    where: {
+      quantity: { gt: 0 },
+      expiryDate: { not: null },
+      product: {
+        organizationId,
+        deletedAt: null,
+        isActive: true,
+        supplyType: "IN_STOCK",
+      },
+    },
+    orderBy: [{ expiryDate: "asc" }, { quantity: "desc" }],
+    select: {
+      id: true,
+      quantity: true,
+      expiryDate: true,
+      warehouse: { select: { name: true } },
+      product: {
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          price: true,
+          images: { select: { url: true }, take: 1 },
+        },
+      },
+    },
+  });
+
+  const productIds = Array.from(
+    new Set(inventory.map((item: (typeof inventory)[number]) => item.product.id)),
+  );
+
+  const [onlineSales, posSales] = productIds.length
+    ? await Promise.all([
+        prisma.orderItem.groupBy({
+          by: ["productId"],
+          where: {
+            productId: { in: productIds },
+            order: {
+              organizationId,
+              deletedAt: null,
+              status: { not: "CANCELLED" },
+              createdAt: { gte: thirtyDaysAgo },
+            },
+          },
+          _sum: { quantity: true },
+        }),
+        prisma.posSaleLine.groupBy({
+          by: ["productId"],
+          where: {
+            productId: { in: productIds },
+            sale: {
+              organizationId,
+              status: "COMPLETED",
+              createdAt: { gte: thirtyDaysAgo },
+            },
+          },
+          _sum: { qty: true },
+        }),
+      ])
+    : [[], []];
+
+  const salesByProductId = new Map<string, number>();
+  for (const item of onlineSales) {
+    salesByProductId.set(item.productId, item._sum.quantity ?? 0);
+  }
+  for (const item of posSales) {
+    salesByProductId.set(
+      item.productId,
+      (salesByProductId.get(item.productId) ?? 0) + (item._sum.qty ?? 0),
+    );
+  }
+
+  const products = inventory
+    .map((item: (typeof inventory)[number]) => {
+      const expiryDate = item.expiryDate!;
+      const daysUntilExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / DAY_MS);
+      const salesLast30Days = salesByProductId.get(item.product.id) ?? 0;
+      const dailyVelocity = round1(salesLast30Days / 30);
+      const sellThroughDays =
+        dailyVelocity > 0 ? round1(item.quantity / dailyVelocity) : null;
+      const riskScore = getExpiryRiskScore({
+        daysUntilExpiry,
+        quantity: item.quantity,
+        dailyVelocity,
+      });
+      const riskLevel = getExpiryRiskLevel(riskScore, daysUntilExpiry);
+
+      return {
+        inventoryId: item.id,
+        productId: item.product.id,
+        name: item.product.name,
+        sku: item.product.sku,
+        imageUrl: item.product.images[0]?.url ?? null,
+        warehouseName: item.warehouse.name,
+        quantity: item.quantity,
+        expiryDate: expiryDate.toISOString(),
+        daysUntilExpiry,
+        salesLast30Days,
+        dailyVelocity,
+        sellThroughDays,
+        riskScore,
+        riskLevel,
+        stockValue: Number(item.product.price) * item.quantity,
+        recommendation: buildExpiryRecommendation({
+          daysUntilExpiry,
+          quantity: item.quantity,
+          dailyVelocity,
+          sellThroughDays,
+        }),
+      };
+    })
+    .filter((item) => item.riskScore >= 35 || item.daysUntilExpiry <= 30)
+    .sort((a, b) => {
+      if (b.riskScore !== a.riskScore) return b.riskScore - a.riskScore;
+      return a.daysUntilExpiry - b.daysUntilExpiry;
+    });
+
+  const criticalCount = products.filter((item) => item.riskLevel === "critical").length;
+  const highCount = products.filter((item) => item.riskLevel === "high").length;
+  const urgentCount = products.filter(
+    (item) => item.daysUntilExpiry >= 0 && item.daysUntilExpiry <= 14,
+  ).length;
+  const stagnantCount = products.filter((item) => item.salesLast30Days === 0).length;
+  const riskValue = products.reduce((sum, item) => sum + item.stockValue, 0);
+
+  const recommendations: string[] = [];
+  if (criticalCount > 0) {
+    recommendations.push(`${criticalCount} бараанд шууд арга хэмжээ хэрэгтэй.`);
+  }
+  if (urgentCount > 0) {
+    recommendations.push(`${urgentCount} бараа 14 хоногийн дотор дуусна.`);
+  }
+  if (stagnantCount > 0) {
+    recommendations.push(`${stagnantCount} бараа сүүлийн 30 хоногт борлуулалтгүй байна.`);
+  }
+  if (recommendations.length === 0) {
+    recommendations.push("Одоогоор дуусах хугацааны өндөр эрсдэлтэй бараа бага байна.");
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    windowDays: 30,
+    totalAtRisk: products.length,
+    criticalCount,
+    highCount,
+    urgentCount,
+    stagnantCount,
+    riskValue,
+    highestRiskScore: products[0]?.riskScore ?? 0,
+    recommendations,
+    products: products.slice(0, 5),
+  };
+}
+
 /* ─── GET /vendor/dashboard/stats?organizationId=xxx ─── */
 router.get("/vendor/dashboard/stats", requireAuth, requireOrgPermission({ from: "query" }, Permission.VIEW_ORG_DASHBOARD), async (req, res) => {
   try {
@@ -260,6 +494,7 @@ router.get("/vendor/dashboard/stats", requireAuth, requireOrgPermission({ from: 
       recentStockRequests,
       pendingPayments,
       recentServiceRequests,
+      expiryInsights,
     ] = await Promise.all([
       // Products
       prisma.product.count({
@@ -351,6 +586,8 @@ router.get("/vendor/dashboard/stats", requireAuth, requireOrgPermission({ from: 
           createdAt: true,
         },
       }),
+
+      buildVendorExpiryInsights(organizationId),
     ]);
 
     // Build stock request status map
@@ -421,6 +658,7 @@ router.get("/vendor/dashboard/stats", requireAuth, requireOrgPermission({ from: 
         status: r.status,
         createdAt: r.createdAt,
       })),
+      expiryInsights,
     });
   } catch (error) {
     console.error("[vendor dashboard stats error]", error);

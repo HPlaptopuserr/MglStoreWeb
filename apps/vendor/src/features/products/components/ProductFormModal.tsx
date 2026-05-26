@@ -1,6 +1,6 @@
 "use client";
 
-import { X, Banknote, BarChart2, Loader2, PackageSearch, Type, AlignLeft, AlertTriangle, ArrowRight } from "lucide-react";
+import { X, Banknote, BarChart2, Loader2, PackageSearch, Type, AlignLeft, AlertTriangle, ArrowRight, CalendarClock } from "lucide-react";
 import { BusinessCategory, FormState, Product } from "../types";
 import { CategorySelector } from "./CategorySelector";
 import { ImageUploadGrid } from "./ImageUploadGrid";
@@ -137,7 +137,7 @@ export function ProductFormModal({
                     Үнэ & Нөөц
                   </h3>
                   
-                  <div className={`grid grid-cols-1 gap-5 ${isPreorder ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-slate-700">
                         Авсан үнэ (₮)
@@ -188,6 +188,21 @@ export function ProductFormModal({
                             placeholder="0"
                             value={form.stock}
                             onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {!isPreorder && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">Дуусах хугацаа</label>
+                        <div className="relative">
+                          <CalendarClock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="date"
+                            className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all font-medium"
+                            value={form.expiryDate}
+                            onChange={(e) => setForm((f) => ({ ...f, expiryDate: e.target.value }))}
                           />
                         </div>
                       </div>

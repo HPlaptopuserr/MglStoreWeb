@@ -43,6 +43,7 @@ const EMPTY_FORM: FormState = {
   price: "",
   costPrice: "",
   stock: "0",
+  expiryDate: "",
   supplyType: "IN_STOCK",
   preorderLeadTimeDays: "14",
   preorderNote: "",
@@ -53,10 +54,32 @@ const EMPTY_FORM: FormState = {
 const PREORDER_FORM: FormState = {
   ...EMPTY_FORM,
   stock: "0",
+  expiryDate: "",
   supplyType: "CHINA_PREORDER",
   preorderLeadTimeDays: "14",
   preorderNote: "",
 };
+
+function toDateInputValue(value?: string | null) {
+  if (!value) return "";
+  return value.includes("T") ? value.split("T")[0] : value.slice(0, 10);
+}
+
+function formatExpiryDate(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return date.toLocaleDateString("mn-MN");
+}
+
+function getDaysUntilExpiry(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((date.getTime() - today.getTime()) / 86_400_000);
+}
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -108,7 +131,11 @@ export default function ProductsPage() {
     if (!orgId) return;
     setLoading(true);
     try {
-      const res = await authFetch(`${API}/products?organizationId=${orgId}`);
+      const params = new URLSearchParams({
+        organizationId: orgId,
+        includeExpiredInventory: "1",
+      });
+      const res = await authFetch(`${API}/products?${params.toString()}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
       setProducts(Array.isArray(data) ? data : Array.isArray(data.products) ? data.products : []);
@@ -213,6 +240,7 @@ export default function ProductsPage() {
       price: String(p.price),
       costPrice: p.costPrice != null ? String(p.costPrice) : "",
       stock: String(p.stock),
+      expiryDate: toDateInputValue(p.expiryDate),
       supplyType: p.supplyType || "IN_STOCK",
       preorderLeadTimeDays: p.preorderLeadTimeDays != null ? String(p.preorderLeadTimeDays) : "14",
       preorderNote: p.preorderNote || "",
@@ -247,6 +275,11 @@ export default function ProductsPage() {
     const stockNum = form.supplyType === "CHINA_PREORDER" ? 0 : parseInt(form.stock) || 0;
     if (stockNum < 0 || stockNum > 2_147_483_647) return showToast("error", "Нөөц 0-2,147,483,647 хооронд байх ёстой");
 
+    const expiryDate = form.supplyType === "CHINA_PREORDER" ? null : form.expiryDate.trim() || null;
+    if (expiryDate && Number.isNaN(new Date(expiryDate).getTime())) {
+      return showToast("error", "Дуусах хугацаа буруу байна");
+    }
+
     const leadTimeDays = form.preorderLeadTimeDays.trim() ? parseInt(form.preorderLeadTimeDays, 10) : null;
     if (leadTimeDays !== null && (isNaN(leadTimeDays) || leadTimeDays < 0 || leadTimeDays > 365)) {
       return showToast("error", "Ирэх хоног 0-365 хооронд байх ёстой");
@@ -263,6 +296,7 @@ export default function ProductsPage() {
         price,
         costPrice,
         stock: stockNum,
+        expiryDate,
         supplyType: form.supplyType,
         preorderLeadTimeDays: form.supplyType === "CHINA_PREORDER" ? leadTimeDays : null,
         preorderNote: form.supplyType === "CHINA_PREORDER" ? form.preorderNote.trim() || null : null,
@@ -631,6 +665,20 @@ export default function ProductsPage() {
                 </div>
               </div>
 
+              {selectedProduct.supplyType !== "CHINA_PREORDER" && (
+                <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
+                    <AlertTriangle size={18} className="text-amber-500" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">Дуусах хугацаа</div>
+                    <div className="text-sm font-black text-slate-900">
+                      {formatExpiryDate(selectedProduct.expiryDate)}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {selectedProduct.images.length > 1 && (
                 <div className="space-y-3">
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Бусад зурагнууд</h4>
@@ -755,7 +803,7 @@ export default function ProductsPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px] text-sm">
+              <table className="w-full min-w-[1100px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 font-bold">
                     <th className="px-6 py-4">Бараа</th>
@@ -764,6 +812,7 @@ export default function ProductsPage() {
                     <th className="px-6 py-4 text-right">Үнэ</th>
                     <th className="px-6 py-4 text-right">Авсан үнэ</th>
                     <th className="px-6 py-4 text-right">Нөөц</th>
+                    <th className="px-6 py-4">Дуусах</th>
                     <th className="px-6 py-4">Төлөв</th>
                     <th className="px-6 py-4 text-right">Үйлдэл</th>
                   </tr>
@@ -842,6 +891,28 @@ export default function ProductsPage() {
                         <span className={`font-bold ${product.stock > 10 ? 'text-slate-700' : product.stock > 0 ? 'text-amber-600' : 'text-red-500'}`}>
                           {product.stock}
                         </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {product.supplyType !== "CHINA_PREORDER" && product.expiryDate ? (
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-slate-700">
+                              {formatExpiryDate(product.expiryDate)}
+                            </span>
+                            {getDaysUntilExpiry(product.expiryDate) !== null && (
+                              <span className={`text-[11px] font-semibold ${
+                                (getDaysUntilExpiry(product.expiryDate) ?? 0) <= 14
+                                  ? "text-amber-600"
+                                  : "text-slate-400"
+                              }`}>
+                                {(getDaysUntilExpiry(product.expiryDate) ?? 0) < 0
+                                  ? "Хэтэрсэн"
+                                  : `${getDaysUntilExpiry(product.expiryDate)} хоног`}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <span
