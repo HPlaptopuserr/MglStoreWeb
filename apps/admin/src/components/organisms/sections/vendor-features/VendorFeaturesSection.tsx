@@ -10,6 +10,7 @@ import {
   Megaphone,
   PackageSearch,
   ScanLine,
+  Store,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
@@ -26,6 +27,7 @@ type FeatureToggle = {
 
 const FEATURES = [
   { suffix: "pos-enabled", label: "POS касс", icon: ScanLine, defaultEnabled: false },
+  { suffix: "web-products-enabled", label: "Web дээр өөрийн бараа", icon: Store, defaultEnabled: false },
   { suffix: "supply-products-enabled", label: "Нэгдсэн бараа", icon: Boxes, defaultEnabled: false },
   { suffix: "preorder-products-enabled", label: "Захиалгын бараа", icon: PackageSearch, defaultEnabled: false },
   { suffix: "service-posts-enabled", label: "Үйлчилгээний постууд", icon: Megaphone, defaultEnabled: true },

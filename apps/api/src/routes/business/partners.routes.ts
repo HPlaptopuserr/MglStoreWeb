@@ -13,10 +13,34 @@ import {
 import type { Prisma } from "@mgl/database";
 import bcrypt from "bcryptjs";
 import { Permission } from "@mgl/types";
-import { requireAuth, requirePlatformPermission, requireAnyPlatformPermission, type AuthPayload } from "../../middleware/auth";
+import { optionalAuth, requireAuth, requirePlatformPermission, requireAnyPlatformPermission, type AuthPayload } from "../../middleware/auth";
 import { getSupabase, ORG_IMAGES_BUCKET } from "../../lib/supabase";
+import { shouldExposeOrgProductsOnWeb } from "../../services/product-visibility.service";
 
 const router: ExpressRouter = Router();
+
+const getExpirySortValue = (value?: Date | string | null) => {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const time = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+};
+
+const sortProductsByExpiry = <T extends { createdAt?: Date | string; warehouseInventories?: { expiryDate: Date | string | null }[] }>(
+  products: T[],
+) =>
+  [...products].sort((a, b) => {
+    const aExpiry = a.warehouseInventories?.[0]?.expiryDate ?? null;
+    const bExpiry = b.warehouseInventories?.[0]?.expiryDate ?? null;
+    const expiryDiff = getExpirySortValue(aExpiry) - getExpirySortValue(bExpiry);
+    if (expiryDiff !== 0) return expiryDiff;
+    return getExpirySortValue(b.createdAt ?? null) - getExpirySortValue(a.createdAt ?? null);
+  });
+
+const getStartOfToday = () => {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
 
 const orgImportUpload = multer({
   storage: multer.memoryStorage(),
@@ -707,7 +731,7 @@ router.get("/partners", async (req, res) => {
 });
 
 // GET /partners/:id — fetch a single partner by ID or slug
-router.get("/partners/:id", async (req, res) => {
+router.get("/partners/:id", optionalAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const includeProducts = req.query.includeProducts !== "false";
@@ -764,11 +788,21 @@ router.get("/partners/:id", async (req, res) => {
                   price: true,
                   costPrice: true,
                   stock: true,
+                  createdAt: true,
                   images: {
                     select: { url: true },
                   },
                   category: {
                     select: { name: true },
+                  },
+                  warehouseInventories: {
+                    where: {
+                      quantity: { gt: 0 },
+                      expiryDate: { gte: getStartOfToday() },
+                    },
+                    select: { expiryDate: true },
+                    orderBy: { expiryDate: "asc" },
+                    take: 1,
                   },
                 },
                 orderBy: { createdAt: "desc" },
@@ -788,6 +822,10 @@ router.get("/partners/:id", async (req, res) => {
       prisma.branch.count({ where: { organizationId: partner.id } }),
       prisma.order.count({ where: { organizationId: partner.id } }),
     ]);
+    const canShowProducts = await shouldExposeOrgProductsOnWeb(req, partner.id);
+    const visibleProducts = canShowProducts
+      ? sortProductsByExpiry(((partner as any).products || []) as any[])
+      : [];
 
     return res.json({
       id: partner.id,
@@ -829,7 +867,7 @@ router.get("/partners/:id", async (req, res) => {
         branches: branchesCount,
         orders: ordersCount,
       },
-      products: ((partner as any).products || []).map((p: any) => ({
+      products: visibleProducts.map((p: any) => ({
         id: p.id,
         title: p.name,
         name: p.name,
@@ -839,6 +877,7 @@ router.get("/partners/:id", async (req, res) => {
         images: p.images?.map((img: any) => img.url),
         category: p.category?.name,
         stock: p.stock,
+        expiryDate: p.warehouseInventories?.[0]?.expiryDate?.toISOString() ?? null,
       })),
     });
   } catch (error) {
@@ -1148,7 +1187,7 @@ router.post("/partners/:id/branches", requireAuth, requirePlatformPermission(Per
 });
 
 // Get single partner by slug or id
-router.get("/partners/:slugOrId", async (req, res) => {
+router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
   try {
     const { slugOrId } = req.params;
 
@@ -1225,6 +1264,9 @@ router.get("/partners/:slugOrId", async (req, res) => {
       return res.status(404).json({ message: "Түнш олдсонгүй" });
     }
 
+    const canShowProducts = await shouldExposeOrgProductsOnWeb(req, partner.id);
+    const visibleProducts = canShowProducts ? partner.products : [];
+
     const result = {
       id: partner.id,
       name: partner.name,
@@ -1271,7 +1313,7 @@ router.get("/partners/:slugOrId", async (req, res) => {
         isActive: m.user.isActive,
         lastLoginAt: m.user.lastLoginAt,
       })),
-      products: partner.products.map((p: any) => ({
+      products: visibleProducts.map((p: any) => ({
         id: p.id,
         name: p.name,
         title: p.name,

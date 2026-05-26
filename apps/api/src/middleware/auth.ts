@@ -46,6 +46,27 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 /**
+ * Attach auth payload when a valid Bearer token is present, but keep public
+ * endpoints public when the token is missing or invalid.
+ */
+export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  if (!header) return next();
+
+  const [scheme, token] = header.split(" ");
+  if (scheme !== "Bearer" || !token) return next();
+
+  try {
+    const decoded = jwt.verify(token, jwtSecret) as AuthPayload;
+    (req as any).user = decoded;
+  } catch {
+    // Public endpoints should not fail solely because a stale token was sent.
+  }
+
+  next();
+}
+
+/**
  * Check that the authenticated user has one of the allowed system roles.
  * Must be used after requireAuth.
  */
