@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
+  FileText,
   Loader2,
   LockKeyhole,
   QrCode,
@@ -21,6 +21,7 @@ type PaidProject = {
   details?: string;
   price?: number;
   imageUrl?: string;
+  pdfUrl?: string;
   tags?: string[];
   isActive?: boolean;
 };
@@ -72,7 +73,7 @@ function ProjectDetailModal({
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
           <div>
             <p className="text-xs font-black uppercase text-[#FFAD02]">
-              {project.category || "Төсөл"}
+              Franchise
             </p>
             <h2 className="mt-1 text-2xl font-black text-slate-950">
               {project.title}
@@ -87,29 +88,50 @@ function ProjectDetailModal({
           </button>
         </div>
         <div className="max-h-[70vh] overflow-y-auto px-6 py-6">
-          {project.imageUrl && (
+          {!project.pdfUrl && project.imageUrl && (
             <img
               src={project.imageUrl}
               alt={project.title}
               className="mb-6 h-64 w-full rounded-lg object-cover"
             />
           )}
-          <div className="prose prose-slate max-w-none">
-            {(
-              project.details ||
-              project.summary ||
-              "Дэлгэрэнгүй мэдээлэл оруулаагүй байна."
-            )
-              .split("\n")
-              .map((line, index) => (
-                <p
-                  key={index}
-                  className="whitespace-pre-wrap text-base leading-8 text-slate-700"
-                >
-                  {line || "\u00A0"}
-                </p>
-              ))}
-          </div>
+          {project.pdfUrl ? (
+            <div className="space-y-4">
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                <iframe
+                  src={project.pdfUrl}
+                  title={`${project.title} PDF`}
+                  className="h-[70vh] w-full bg-white"
+                />
+              </div>
+              <a
+                href={project.pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-black px-5 py-3 text-sm font-black text-white transition hover:bg-[#FFAD02] hover:text-black"
+              >
+                <FileText className="h-4 w-4" />
+                PDF-г шинэ цонхонд нээх
+              </a>
+            </div>
+          ) : (
+            <div className="prose prose-slate max-w-none">
+              {(
+                project.details ||
+                project.summary ||
+                "PDF файл оруулаагүй байна."
+              )
+                .split("\n")
+                .map((line, index) => (
+                  <p
+                    key={index}
+                    className="whitespace-pre-wrap text-base leading-8 text-slate-700"
+                  >
+                    {line || "\u00A0"}
+                  </p>
+                ))}
+            </div>
+          )}
         </div>
       </article>
     </div>
@@ -182,7 +204,7 @@ function ProjectQPayModal({
             </div>
             <div>
               <h2 className="text-base font-black text-slate-950">
-                Төслийн дэлгэрэнгүй төлбөр
+                Franchise PDF төлбөр
               </h2>
               <p className="text-xs text-slate-400">{invoice.orderNumber}</p>
             </div>
@@ -204,9 +226,7 @@ function ProjectQPayModal({
               <p className="text-lg font-black text-slate-950">
                 Төлбөр амжилттай
               </p>
-              <p className="text-sm text-slate-500">
-                Дэлгэрэнгүй мэдээллийг нээж байна.
-              </p>
+              <p className="text-sm text-slate-500">PDF файлыг нээж байна.</p>
             </div>
           ) : (
             <>
@@ -328,18 +348,10 @@ export default function ProjectsPage() {
     );
     const data = await res.json();
     if (!res.ok || !data.success) {
-      throw new Error(
-        data.message || "Төслийн дэлгэрэнгүй авахад алдаа гарлаа",
-      );
+      throw new Error(data.message || "Franchise PDF авахад алдаа гарлаа");
     }
     return data.project as PaidProject;
   };
-
-  const categories = useMemo(() => {
-    return Array.from(
-      new Set(projects.map((project) => project.category || "Төсөл")),
-    );
-  }, [projects]);
 
   const openProject = async (project: PaidProject) => {
     const price = Number(project.price) || 0;
@@ -417,93 +429,50 @@ export default function ProjectsPage() {
       alert(
         error instanceof Error
           ? error.message
-          : "Төслийн дэлгэрэнгүй авахад алдаа гарлаа",
+          : "Franchise PDF авахад алдаа гарлаа",
       );
     }
   };
 
   return (
     <div className="min-h-screen bg-[#f6f4ed] text-slate-950">
-      <section className="bg-black px-4 py-16 text-white sm:py-20 lg:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col gap-10 lg:min-h-[360px] lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-[22rem] sm:max-w-xl md:max-w-3xl">
-            <nav className="mb-8 flex items-center gap-2 text-xs font-semibold text-white/50">
-              <Link href="/" className="transition hover:text-white">
-                Нүүр
-              </Link>
-              <span>/</span>
-              <span className="text-white">Төслүүд</span>
-            </nav>
-            <p className="mb-3 text-sm font-black uppercase text-[#FFAD02]">
-              MGL Store төслийн сан
-            </p>
-            <h1 className="text-3xl font-black leading-none sm:text-4xl md:text-6xl lg:text-7xl">
-              БЭЛЭН{" "}
-              <span className="block text-[#FFAD02] sm:inline">ТӨСЛҮҮД</span>
-              <br />
-              СОНГОЖ ХАРАХ
-            </h1>
-            <p className="mt-6 max-w-2xl break-words text-base leading-8 text-white/75 md:text-lg">
-              Бизнес, орон нутаг, байгууллагын хэрэгцээнд ашиглаж болох төслийн
-              хураангуйг харж, хэрэгтэй дэлгэрэнгүй материалыг QPay-ээр нээнэ.
-            </p>
-          </div>
-
-          <div className="flex flex-col items-start gap-4 lg:items-end">
-            <a
-              href="#project-list"
-              className="inline-flex items-center justify-center gap-3 rounded-full bg-[#FFAD02] px-8 py-4 text-sm font-black uppercase text-black transition hover:bg-white"
-            >
-              Төсөл сонгох
-              <ArrowRight className="h-5 w-5" />
-            </a>
-            <p className="max-w-xs text-sm leading-6 text-white/55 lg:text-right">
-              {loading
-                ? "Төслүүдийг ачаалж байна."
-                : `${projects.length} төсөл, ${categories.length} ангилал бэлэн байна.`}
-            </p>
-          </div>
-        </div>
-      </section>
-
       <main
         id="project-list"
-        className="mx-auto max-w-7xl px-4 py-10 lg:px-8 lg:py-14"
+        className="mx-auto max-w-7xl px-4 py-10 sm:py-12 lg:px-8 lg:py-14"
       >
+        <div className="mb-8 flex flex-col gap-4 border-b border-black/10 pb-6 md:flex-row md:items-end md:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-sm font-black uppercase text-[#d78f00]">
+              Franchise
+            </p>
+            <h1 className="mt-2 break-words text-3xl font-black leading-tight sm:text-4xl md:text-5xl">
+              Franchise боломжууд
+            </h1>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
+              Зураг, нэр, үнэ, хураангуйг харж сонгоод төлбөр төлсний дараа
+              franchise PDF файлыг нээнэ.
+            </p>
+          </div>
+          <p className="text-sm font-bold text-slate-500 md:text-right">
+            {loading
+              ? "Franchise ачаалж байна."
+              : `${projects.length} franchise бэлэн байна.`}
+          </p>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center py-24 text-slate-500">
             <Loader2 className="mr-3 h-6 w-6 animate-spin text-[#FFAD02]" />
-            Төслүүд ачаалж байна...
+            Franchise ачаалж байна...
           </div>
         ) : projects.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white p-14 text-center shadow-sm">
             <p className="text-lg font-bold text-slate-700">
-              Одоогоор нийтлэгдсэн төсөл алга байна.
+              Одоогоор нийтлэгдсэн franchise алга байна.
             </p>
           </div>
         ) : (
-          <section className="space-y-8">
-            <div className="flex flex-col gap-5 border-b border-black/10 pb-6 md:flex-row md:items-end md:justify-between">
-              <div className="max-w-[22rem] sm:max-w-xl">
-                <p className="text-sm font-black uppercase text-[#d78f00]">
-                  Төслүүд
-                </p>
-                <h2 className="mt-2 break-words text-2xl font-black leading-tight sm:text-3xl md:text-4xl">
-                  Хэрэгцээндээ таарах төслөө сонгоорой
-                </h2>
-              </div>
-              <div className="flex flex-wrap gap-2 md:justify-end">
-                {categories.map((category) => (
-                  <span
-                    key={category}
-                    className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm"
-                  >
-                    {category}
-                  </span>
-                ))}
-              </div>
-            </div>
-
+          <section>
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {projects.map((project) => {
                 const price = Number(project.price) || 0;
@@ -524,13 +493,10 @@ export default function ProjectsPage() {
                         <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black text-white">
                           <ShieldCheck className="h-14 w-14 text-[#FFAD02]" />
                           <span className="text-sm font-black uppercase">
-                            MGL Store төсөл
+                            MGL Store franchise
                           </span>
                         </div>
                       )}
-                      <div className="absolute left-4 top-4 rounded-full bg-[#FFAD02] px-3 py-1 text-xs font-black text-black shadow-sm">
-                        {project.category || "Төсөл"}
-                      </div>
                       {!unlocked && (
                         <div className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full bg-black/85 px-3 py-1 text-xs font-black text-white backdrop-blur">
                           <LockKeyhole className="h-3.5 w-3.5" />
@@ -541,9 +507,7 @@ export default function ProjectsPage() {
                     <div className="flex min-h-[270px] flex-col p-5">
                       <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-500">
                         <span>
-                          {unlocked
-                            ? "Нээлттэй дэлгэрэнгүй"
-                            : "Төлбөртэй дэлгэрэнгүй"}
+                          {unlocked ? "PDF нээлттэй" : "Төлбөртэй PDF"}
                         </span>
                         <span className="text-slate-950">
                           {unlocked ? "Үнэгүй" : formatMnt(price)}
@@ -556,18 +520,6 @@ export default function ProjectsPage() {
                         {project.summary ||
                           "Хураангуй мэдээлэл оруулаагүй байна."}
                       </p>
-                      {project.tags && project.tags.length > 0 && (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {project.tags.slice(0, 4).map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full bg-[#f6f4ed] px-2.5 py-1 text-xs font-bold text-slate-600"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                       <button
                         type="button"
                         onClick={() => openProject(project)}
@@ -579,9 +531,7 @@ export default function ProjectsPage() {
                         ) : (
                           <ArrowRight className="h-5 w-5" />
                         )}
-                        {unlocked
-                          ? "Дэлгэрэнгүй үзэх"
-                          : "Төлж дэлгэрэнгүй үзэх"}
+                        {unlocked ? "PDF үзэх" : "Төлж PDF үзэх"}
                       </button>
                     </div>
                   </article>

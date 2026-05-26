@@ -1,4 +1,16 @@
-export type SectionKey = "banner" | "categories" | "branches" | "cards" | "qr" | "pos" | "vendor-features" | "hr" | "forms" | "team" | "mgl-services" | "projects";
+export type SectionKey =
+  | "banner"
+  | "categories"
+  | "branches"
+  | "cards"
+  | "qr"
+  | "pos"
+  | "vendor-features"
+  | "hr"
+  | "forms"
+  | "team"
+  | "mgl-services"
+  | "projects";
 
 export interface ServiceOption {
   id: string;
@@ -39,6 +51,7 @@ export interface ProjectItem {
   details: string;
   price: number;
   imageUrl?: string;
+  pdfUrl?: string;
   tags?: string[];
   isActive: boolean;
 }

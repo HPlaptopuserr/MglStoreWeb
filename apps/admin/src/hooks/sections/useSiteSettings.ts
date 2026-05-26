@@ -147,7 +147,7 @@ export function useSiteSettings() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "Төслийг хадгалахад алдаа гарлаа");
+        throw new Error(data.message || "Franchise хадгалахад алдаа гарлаа");
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -156,7 +156,7 @@ export function useSiteSettings() {
       alert(
         error instanceof Error
           ? error.message
-          : "Төслийг хадгалахад алдаа гарлаа",
+          : "Franchise хадгалахад алдаа гарлаа",
       );
       return false;
     } finally {

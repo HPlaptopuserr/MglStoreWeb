@@ -82,7 +82,14 @@ export const CATEGORY_COLORS = [
 ];
 
 import type { LucideIcon } from "lucide-react";
-import { Store, Tag, Briefcase, Wrench, QrCode, FolderKanban } from "lucide-react";
+import {
+  Store,
+  Tag,
+  Briefcase,
+  Wrench,
+  QrCode,
+  FolderKanban,
+} from "lucide-react";
 
 export interface NavLink {
   href: string;
@@ -115,9 +122,9 @@ export const NAV_LINKS: NavLink[] = [
     color: "bg-purple-50 text-purple-600",
   },
   {
-    href: "/projects",
-    label: "Төслүүд",
-    desc: "Төлбөртэй төслийн сан",
+    href: "/franchise",
+    label: "Franchise",
+    desc: "Төлбөртэй franchise PDF",
     icon: FolderKanban,
     color: "bg-cyan-50 text-cyan-600",
   },
