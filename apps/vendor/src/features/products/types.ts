@@ -21,6 +21,7 @@ export interface Product {
   price: number;
   costPrice: number | null;
   stock: number;
+  expiryDate?: string | null;
   supplyType: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays: number | null;
   preorderNote: string | null;
@@ -39,6 +40,7 @@ export interface FormState {
   price: string;
   costPrice: string;
   stock: string;
+  expiryDate: string;
   supplyType: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays: string;
   preorderNote: string;

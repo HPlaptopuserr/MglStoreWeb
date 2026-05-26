@@ -14,6 +14,7 @@ const ROLE_COLORS: Record<string, string> = {
   WAREHOUSE_ADMIN: "bg-sky-500",
   FINANCE_ADMIN: "bg-emerald-500",
   SERVICE_ADMIN: "bg-pink-500",
+  LAWYER: "bg-fuchsia-500",
 };
 
 function getInitials(session: StoredSession) {

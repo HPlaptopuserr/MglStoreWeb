@@ -4,7 +4,8 @@ import * as XLSX from "xlsx";
 import crypto from "crypto";
 import path from "path";
 import JSZip from "jszip";
-import { prisma } from "@mgl/database";
+import { InventoryReason, prisma } from "@mgl/database";
+import type { PrismaClient } from "@prisma/client";
 import { Permission } from "@mgl/types";
 import { requireAuth } from "../../middleware/auth";
 import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
@@ -19,6 +20,8 @@ import {
 
 const router: ExpressRouter = Router();
 
+type Tx = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
+
 const normalizeSupplyType = (value: unknown) =>
   String(value || "").trim().toUpperCase() === "CHINA_PREORDER" ? "CHINA_PREORDER" : "IN_STOCK";
 
@@ -31,6 +34,180 @@ const normalizePreorderLeadTimeDays = (value: unknown) => {
 
 const PREORDER_PRODUCTS_FEATURE_KEY = "preorder-products-enabled";
 const TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
+
+const getExpirySortValue = (value?: Date | string | null) => {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const time = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+};
+
+const getStartOfToday = () => {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const isTruthyQueryValue = (value: unknown) =>
+  TRUE_VALUES.has(String(value ?? "").trim().toLowerCase());
+
+const getInventoryExpiryFilter = (includeExpired: boolean) =>
+  includeExpired ? { not: null } : { gte: getStartOfToday() };
+
+const parseOptionalExpiryDate = (value: unknown) => {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  const date = new Date(String(value));
+  return Number.isFinite(date.getTime()) ? date : undefined;
+};
+
+async function resolveProductInventoryWarehouseId(
+  tx: Tx,
+  organizationId: string,
+  productId: string,
+  createdById?: string | null,
+) {
+  const existingInventory = await tx.warehouseInventory.findFirst({
+    where: { productId },
+    orderBy: { updatedAt: "desc" },
+    select: { warehouseId: true },
+  });
+  if (existingInventory) return existingInventory.warehouseId;
+
+  const assignment = await tx.warehouseOrganization.findFirst({
+    where: {
+      organizationId,
+      warehouse: { deletedAt: null, isActive: true },
+    },
+    orderBy: { assignedAt: "asc" },
+    select: { warehouseId: true },
+  });
+
+  if (assignment) return assignment.warehouseId;
+
+  const organization = await tx.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: { name: true, address: true },
+  });
+  if (!organization) return null;
+
+  const warehouse = await tx.warehouse.create({
+    data: {
+      name: `${organization.name} - Үндсэн агуулах`,
+      address: organization.address || "Vendor барааны үндсэн агуулах",
+      capacity: 0,
+      createdById: createdById ?? null,
+      isActive: true,
+      organizations: {
+        create: {
+          organizationId,
+          assignedById: createdById ?? null,
+        },
+      },
+    },
+    select: { id: true },
+  });
+
+  return warehouse.id;
+}
+
+async function syncProductStock(tx: Tx, productId: string) {
+  const result = await tx.warehouseInventory.aggregate({
+    where: { productId },
+    _sum: { quantity: true },
+  });
+
+  await tx.product.update({
+    where: { id: productId },
+    data: { stock: result._sum.quantity ?? 0 },
+  });
+}
+
+async function findProductExpiryDate(tx: Tx, productId: string, includeExpired = true) {
+  const inventory = await tx.warehouseInventory.findFirst({
+    where: {
+      productId,
+      quantity: { gt: 0 },
+      expiryDate: getInventoryExpiryFilter(includeExpired),
+    },
+    select: { expiryDate: true },
+    orderBy: { expiryDate: "asc" },
+  });
+
+  return inventory?.expiryDate ?? null;
+}
+
+async function upsertVendorProductInventory(
+  tx: Tx,
+  input: {
+    organizationId: string;
+    productId: string;
+    stock?: number;
+    stockProvided: boolean;
+    expiryDate?: Date | null;
+    expiryDateProvided: boolean;
+    createdById?: string | null;
+  },
+) {
+  if (!input.stockProvided && !input.expiryDateProvided) return;
+
+  const warehouseId = await resolveProductInventoryWarehouseId(
+    tx,
+    input.organizationId,
+    input.productId,
+    input.createdById,
+  );
+
+  if (!warehouseId) return;
+
+  const existing = await tx.warehouseInventory.findUnique({
+    where: { warehouseId_productId: { warehouseId, productId: input.productId } },
+    select: { quantity: true },
+  });
+  const oldQuantity = existing?.quantity ?? 0;
+  const nextQuantity = input.stockProvided ? input.stock ?? 0 : oldQuantity;
+
+  if (!existing && nextQuantity <= 0 && !input.expiryDateProvided) return;
+
+  if (existing) {
+    await tx.warehouseInventory.update({
+      where: { warehouseId_productId: { warehouseId, productId: input.productId } },
+      data: {
+        ...(input.stockProvided ? { quantity: nextQuantity } : {}),
+        ...(input.expiryDateProvided ? { expiryDate: input.expiryDate ?? null } : {}),
+        ...(input.stockProvided && nextQuantity > oldQuantity
+          ? { lastRestockedAt: new Date() }
+          : {}),
+      },
+    });
+  } else {
+    await tx.warehouseInventory.create({
+      data: {
+        warehouseId,
+        productId: input.productId,
+        quantity: nextQuantity,
+        expiryDate: input.expiryDateProvided ? input.expiryDate ?? null : null,
+        lastRestockedAt: nextQuantity > 0 ? new Date() : null,
+      },
+    });
+  }
+
+  const diff = nextQuantity - oldQuantity;
+  if (input.stockProvided && diff !== 0) {
+    await tx.inventoryLedger.create({
+      data: {
+        productId: input.productId,
+        change: diff,
+        reason: existing ? InventoryReason.RESTOCK : InventoryReason.INITIAL_STOCK,
+        note: "Vendor барааны нөөц шинэчилсэн",
+        createdById: input.createdById ?? null,
+      },
+    });
+  }
+
+  if (input.stockProvided) {
+    await syncProductStock(tx, input.productId);
+  }
+}
 
 async function isOrgFeatureEnabled(
   organizationId: string,
@@ -86,6 +263,7 @@ router.get("/products", async (req, res) => {
   try {
     const { organizationId, businessCategoryId } = req.query as Record<string, string>;
     const search = String(req.query.search ?? req.query.q ?? "").trim();
+    const includeExpiredInventory = isTruthyQueryValue(req.query.includeExpiredInventory);
 
     const where: any = {
       deletedAt: null,
@@ -128,7 +306,46 @@ router.get("/products", async (req, res) => {
       },
     });
 
-    return res.json(products);
+    const productIds = products.map((product) => product.id);
+    const inventoryExpiries = productIds.length
+      ? await prisma.warehouseInventory.findMany({
+          where: {
+            productId: { in: productIds },
+            quantity: { gt: 0 },
+            expiryDate: getInventoryExpiryFilter(includeExpiredInventory),
+          },
+          select: {
+            productId: true,
+            expiryDate: true,
+          },
+          orderBy: {
+            expiryDate: "asc",
+          },
+        })
+      : [];
+
+    const expiryByProductId = new Map<string, Date>();
+    for (const item of inventoryExpiries) {
+      if (!expiryByProductId.has(item.productId) && item.expiryDate) {
+        expiryByProductId.set(item.productId, item.expiryDate);
+      }
+    }
+
+    const response = products
+      .map((product) => {
+        const expiryDate = expiryByProductId.get(product.id) ?? null;
+        return {
+          ...product,
+          expiryDate: expiryDate?.toISOString() ?? null,
+        };
+      })
+      .sort((a, b) => {
+        const expiryDiff = getExpirySortValue(a.expiryDate) - getExpirySortValue(b.expiryDate);
+        if (expiryDiff !== 0) return expiryDiff;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
+    return res.json(response);
   } catch (error) {
     console.error("get products error", error);
     return res.status(500).json({ message: "Бараа авахад алдаа гарлаа", error: String(error) });
@@ -479,6 +696,7 @@ router.post(
       price,
       costPrice,
       stock,
+      expiryDate,
       supplyType,
       preorderLeadTimeDays,
       preorderNote,
@@ -526,6 +744,11 @@ router.post(
     }
 
     const normalizedSupplyType = normalizeSupplyType(supplyType);
+    const parsedExpiryDate =
+      normalizedSupplyType === "CHINA_PREORDER" ? null : parseOptionalExpiryDate(expiryDate);
+    if (expiryDate !== undefined && parsedExpiryDate === undefined) {
+      return res.status(400).json({ message: "Дуусах хугацаа буруу байна" });
+    }
     if (
       normalizedSupplyType === "CHINA_PREORDER" &&
       !(await isOrgFeatureEnabled(organizationId, PREORDER_PRODUCTS_FEATURE_KEY))
@@ -565,33 +788,52 @@ router.post(
 
     // Validate max 5 images
     const imageUrls: string[] = Array.isArray(images) ? images.slice(0, 5) : [];
+    const actorId = (req as any).user?.userId ?? null;
 
-    const product = await prisma.product.create({
-      data: {
-        organizationId,
-        name: String(name).trim(),
-        description: description ? String(description).trim() : null,
-        sku: normalizedSku,
-        barcode: normalizedBarcode,
-        price: priceNum,
-        costPrice: costPriceNum,
-        stock: stockNum,
-        supplyType: normalizedSupplyType,
-        preorderLeadTimeDays: normalizedSupplyType === "CHINA_PREORDER" ? normalizedLeadTimeDays : null,
-        preorderNote:
-          normalizedSupplyType === "CHINA_PREORDER" && preorderNote
-            ? String(preorderNote).trim()
-            : null,
-        businessCategoryId: businessCategoryId || null,
-        isActive: true,
-        images: {
-          create: imageUrls.map((url) => ({ url })),
+    const product = await prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          organizationId,
+          name: String(name).trim(),
+          description: description ? String(description).trim() : null,
+          sku: normalizedSku,
+          barcode: normalizedBarcode,
+          price: priceNum,
+          costPrice: costPriceNum,
+          stock: stockNum,
+          supplyType: normalizedSupplyType,
+          preorderLeadTimeDays: normalizedSupplyType === "CHINA_PREORDER" ? normalizedLeadTimeDays : null,
+          preorderNote:
+            normalizedSupplyType === "CHINA_PREORDER" && preorderNote
+              ? String(preorderNote).trim()
+              : null,
+          businessCategoryId: businessCategoryId || null,
+          isActive: true,
+          images: {
+            create: imageUrls.map((url) => ({ url })),
+          },
         },
-      },
-      include: {
-        images: { select: { id: true, url: true } },
-        businessCategory: { select: { id: true, name: true, slug: true } },
-      },
+        include: {
+          images: { select: { id: true, url: true } },
+          businessCategory: { select: { id: true, name: true, slug: true } },
+        },
+      });
+
+      await upsertVendorProductInventory(tx, {
+        organizationId,
+        productId: created.id,
+        stock: stockNum,
+        stockProvided: normalizedSupplyType !== "CHINA_PREORDER" || stockNum > 0,
+        expiryDate: parsedExpiryDate,
+        expiryDateProvided: expiryDate !== undefined && normalizedSupplyType !== "CHINA_PREORDER",
+        createdById: actorId,
+      });
+
+      const currentExpiryDate = await findProductExpiryDate(tx, created.id);
+      return {
+        ...created,
+        expiryDate: currentExpiryDate?.toISOString() ?? null,
+      };
     });
 
     return res.status(201).json(product);
@@ -631,6 +873,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       price,
       costPrice,
       stock,
+      expiryDate,
       supplyType,
       preorderLeadTimeDays,
       preorderNote,
@@ -645,7 +888,16 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_PRODUCTS);
     if (!perm) return;
 
+    const nextSupplyType =
+      supplyType !== undefined ? normalizeSupplyType(supplyType) : existing.supplyType;
+    const parsedExpiryDate =
+      nextSupplyType === "CHINA_PREORDER" ? null : parseOptionalExpiryDate(expiryDate);
+    if (expiryDate !== undefined && parsedExpiryDate === undefined) {
+      return res.status(400).json({ message: "Дуусах хугацаа буруу байна" });
+    }
+
     const data: Record<string, unknown> = {};
+    let stockNumForInventory: number | undefined;
     if (name !== undefined) data.name = String(name).trim();
     if (description !== undefined) data.description = description ? String(description).trim() : null;
     if (sku !== undefined) data.sku = sku ? String(sku).trim() : null;
@@ -660,9 +912,9 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       const s = parseInt(String(stock));
       if (isNaN(s) || s < 0 || s > 2_147_483_647) return res.status(400).json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
       data.stock = s;
+      stockNumForInventory = s;
     }
     if (supplyType !== undefined) {
-      const nextSupplyType = normalizeSupplyType(supplyType);
       if (
         nextSupplyType === "CHINA_PREORDER" &&
         !(await isOrgFeatureEnabled(existing.organizationId, PREORDER_PRODUCTS_FEATURE_KEY))
@@ -686,20 +938,38 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (businessCategoryId !== undefined) data.businessCategoryId = businessCategoryId || null;
     if (isActive !== undefined) data.isActive = Boolean(isActive);
 
-    // Replace images if provided
-    if (Array.isArray(images)) {
-      const imageUrls = images.slice(0, 5);
-      await prisma.productImage.deleteMany({ where: { productId: id } });
-      data.images = { create: imageUrls.map((url: string) => ({ url })) };
-    }
+    const actorId = (req as any).user?.userId ?? null;
+    const product = await prisma.$transaction(async (tx) => {
+      if (Array.isArray(images)) {
+        const imageUrls = images.slice(0, 5);
+        await tx.productImage.deleteMany({ where: { productId: id } });
+        data.images = { create: imageUrls.map((url: string) => ({ url })) };
+      }
 
-    const product = await prisma.product.update({
-      where: { id },
-      data,
-      include: {
-        images: { select: { id: true, url: true } },
-        businessCategory: { select: { id: true, name: true, slug: true } },
-      },
+      const updated = await tx.product.update({
+        where: { id },
+        data,
+        include: {
+          images: { select: { id: true, url: true } },
+          businessCategory: { select: { id: true, name: true, slug: true } },
+        },
+      });
+
+      await upsertVendorProductInventory(tx, {
+        organizationId: existing.organizationId,
+        productId: id,
+        stock: stockNumForInventory,
+        stockProvided: stockNumForInventory !== undefined,
+        expiryDate: parsedExpiryDate,
+        expiryDateProvided: expiryDate !== undefined,
+        createdById: actorId,
+      });
+
+      const currentExpiryDate = await findProductExpiryDate(tx, id);
+      return {
+        ...updated,
+        expiryDate: currentExpiryDate?.toISOString() ?? null,
+      };
     });
 
     return res.json(product);

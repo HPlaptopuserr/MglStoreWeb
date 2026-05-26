@@ -11,7 +11,7 @@ import {
   Megaphone,
   Wrench,
   AlertCircle,
-  Eye,
+  AlertTriangle,
   ArrowRight,
   TrendingUp,
   ShoppingCart,
@@ -21,6 +21,8 @@ import {
   Boxes,
   Zap,
   ReceiptText,
+  CalendarClock,
+  Sparkles,
 } from "lucide-react";
 import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
 
@@ -72,6 +74,41 @@ function timeAgo(date: string) {
   return `${days} өдрийн өмнө`;
 }
 
+type ExpiryRiskLevel = "critical" | "high" | "medium" | "low";
+
+interface ExpiryInsightProduct {
+  inventoryId: string;
+  productId: string;
+  name: string;
+  sku: string | null;
+  imageUrl: string | null;
+  warehouseName: string;
+  quantity: number;
+  expiryDate: string;
+  daysUntilExpiry: number;
+  salesLast30Days: number;
+  dailyVelocity: number;
+  sellThroughDays: number | null;
+  riskScore: number;
+  riskLevel: ExpiryRiskLevel;
+  stockValue: number;
+  recommendation: string;
+}
+
+interface ExpiryInsights {
+  generatedAt: string;
+  windowDays: number;
+  totalAtRisk: number;
+  criticalCount: number;
+  highCount: number;
+  urgentCount: number;
+  stagnantCount: number;
+  riskValue: number;
+  highestRiskScore: number;
+  recommendations: string[];
+  products: ExpiryInsightProduct[];
+}
+
 interface DashboardData {
   products: { total: number; active: number; inactive: number };
   servicePosts: { total: number; active: number; totalViews: number };
@@ -118,6 +155,7 @@ interface DashboardData {
     status: string;
     createdAt: string;
   }[];
+  expiryInsights?: ExpiryInsights;
 }
 
 export default function Dashboard() {
@@ -320,6 +358,10 @@ export default function Dashboard() {
           </div>
 
           {/* ── Secondary stat row ── */}
+          {data?.expiryInsights && (
+            <ExpiryInsightsPanel insights={data.expiryInsights} />
+          )}
+
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[
               {
@@ -548,6 +590,225 @@ export default function Dashboard() {
 /* ════════════════════════════════════════════
    4-Level Dispatch Status Stepper
    ════════════════════════════════════════════ */
+const RISK_STYLE: Record<ExpiryRiskLevel, { label: string; className: string }> = {
+  critical: {
+    label: "Маш өндөр",
+    className: "border-red-200 bg-red-50 text-red-700",
+  },
+  high: {
+    label: "Өндөр",
+    className: "border-orange-200 bg-orange-50 text-orange-700",
+  },
+  medium: {
+    label: "Дунд",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+  },
+  low: {
+    label: "Бага",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+};
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("mn-MN", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatDays(days: number) {
+  if (days < 0) return `${Math.abs(days)} хоног хэтэрсэн`;
+  if (days === 0) return "Өнөөдөр";
+  return `${days} хоног`;
+}
+
+function ExpiryInsightsPanel({ insights }: { insights: ExpiryInsights }) {
+  const topProduct = insights.products[0];
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="grid gap-0 lg:grid-cols-[0.9fr_1.4fr]">
+        <div className="bg-slate-950 p-6 text-white">
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="rounded-xl bg-[#FFAD02] p-2 text-black">
+                <Sparkles size={18} />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-white/50">
+                  AI Тооцоолол
+                </p>
+                <h2 className="text-lg font-bold">Дуусах хугацааны эрсдэл</h2>
+              </div>
+            </div>
+            <span className="rounded-full border border-white/10 px-3 py-1 text-xs font-bold text-white/70">
+              {insights.windowDays} хоног
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-white/[0.08] p-4">
+              <p className="text-3xl font-bold">{insights.totalAtRisk}</p>
+              <p className="mt-1 text-xs font-medium text-white/60">
+                эрсдэлтэй бараа
+              </p>
+            </div>
+            <div className="rounded-xl bg-white/[0.08] p-4">
+              <p className="text-3xl font-bold text-[#FFAD02]">
+                {insights.highestRiskScore}
+              </p>
+              <p className="mt-1 text-xs font-medium text-white/60">
+                хамгийн өндөр оноо
+              </p>
+            </div>
+            <div className="rounded-xl bg-white/[0.08] p-4">
+              <p className="text-2xl font-bold">{insights.urgentCount}</p>
+              <p className="mt-1 text-xs font-medium text-white/60">
+                14 хоног дотор
+              </p>
+            </div>
+            <div className="rounded-xl bg-white/[0.08] p-4">
+              <p className="text-2xl font-bold">
+                {formatMNT(insights.riskValue)}
+              </p>
+              <p className="mt-1 text-xs font-medium text-white/60">
+                эрсдэлийн дүн
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-2">
+            {insights.recommendations.slice(0, 3).map((item) => (
+              <div
+                key={item}
+                className="flex items-start gap-2 rounded-xl bg-white/[0.08] px-3 py-2 text-sm text-white/75"
+              >
+                <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-[#FFAD02]" />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-5 sm:p-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                Түрүүлж гарах бараа
+              </h3>
+              <p className="text-xs font-medium text-slate-400">
+                Борлуулалтын хурд, үлдэгдэл, хугацаагаар оноолсон
+              </p>
+            </div>
+            {topProduct && (
+              <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500 sm:inline-flex">
+                #{topProduct.riskScore}
+              </span>
+            )}
+          </div>
+
+          {insights.products.length === 0 ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center">
+              <CheckCircle2 className="mb-3 h-10 w-10 text-emerald-500" />
+              <p className="text-sm font-bold text-slate-700">
+                Одоогоор өндөр эрсдэл алга
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                FEFO эрэмбэ хэвийн ажиллаж байна.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {insights.products.map((product) => {
+                const style = RISK_STYLE[product.riskLevel];
+                return (
+                  <div
+                    key={product.inventoryId}
+                    className="rounded-xl border border-slate-100 bg-slate-50/60 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-bold text-slate-900">
+                            {product.name}
+                          </p>
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${style.className}`}
+                          >
+                            {style.label}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {product.warehouseName}
+                          {product.sku ? ` · ${product.sku}` : ""}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-black text-slate-900">
+                          {product.riskScore}
+                        </p>
+                        <p className="text-[10px] font-bold uppercase text-slate-400">
+                          оноо
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                      <div className="rounded-lg bg-white px-3 py-2">
+                        <div className="mb-1 flex items-center gap-1 text-slate-400">
+                          <CalendarClock size={12} />
+                          <span>Дуусах</span>
+                        </div>
+                        <p className="font-bold text-slate-800">
+                          {formatDays(product.daysUntilExpiry)}
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          {formatDate(product.expiryDate)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white px-3 py-2">
+                        <div className="mb-1 flex items-center gap-1 text-slate-400">
+                          <Boxes size={12} />
+                          <span>Үлдэгдэл</span>
+                        </div>
+                        <p className="font-bold text-slate-800">
+                          {product.quantity} ш
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          {formatMNT(product.stockValue)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white px-3 py-2">
+                        <div className="mb-1 flex items-center gap-1 text-slate-400">
+                          <ShoppingCart size={12} />
+                          <span>30 хоног</span>
+                        </div>
+                        <p className="font-bold text-slate-800">
+                          {product.salesLast30Days} ш
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          {product.sellThroughDays
+                            ? `${product.sellThroughDays} хоногт зарагдана`
+                            : "хурд алга"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-start gap-2 rounded-lg bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                      <span>{product.recommendation}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 const DISPATCH_STEPS = [
   { key: "PENDING", label: "Хүлээгдэж буй", icon: Clock },
   { key: "CONFIRMED", label: "Баталгаажсан", icon: CheckCircle2 },

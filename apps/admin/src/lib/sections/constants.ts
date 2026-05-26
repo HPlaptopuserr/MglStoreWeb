@@ -10,13 +10,13 @@ import {
   Settings2,
   FileSignature,
   UserSquare2,
+  FolderKanban,
 } from "lucide-react";
 import type { CardColorScheme } from "@mgl/ui";
 import type { SectionKey } from "./types";
 
 export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; requires?: string }[] = [
   { key: "banner", label: "Промо баннер", icon: ImagePlus },
-  { key: "categories", label: "Ангилалууд", icon: Tag },
   { key: "branches", label: "Салбар байршил", icon: MapPin },
   { key: "cards", label: "Карт хэвлэх", icon: CreditCard },
   { key: "qr", label: "QR Generator", icon: Wrench },
@@ -25,6 +25,7 @@ export const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType
   { key: "hr", label: "Хүний нөөц", icon: Users, requires: "MANAGE_USERS" },
   { key: "forms", label: "Маягт үүсгэгч", icon: ClipboardList, requires: "MANAGE_FORMS" },
   { key: "mgl-services", label: "MGL Үйлчилгээ", icon: Settings2, requires: "MANAGE_SITE_SETTINGS" },
+  { key: "projects", label: "Төсөл", icon: FolderKanban, requires: "MANAGE_SITE_SETTINGS" },
   { key: "team", label: "Баг хамт олон", icon: UserSquare2, requires: "MANAGE_SITE_SETTINGS" },
 ];
 

@@ -1,4 +1,4 @@
-export type SectionKey = "banner" | "categories" | "branches" | "cards" | "qr" | "pos" | "vendor-features" | "hr" | "forms" | "team" | "mgl-services";
+export type SectionKey = "banner" | "categories" | "branches" | "cards" | "qr" | "pos" | "vendor-features" | "hr" | "forms" | "team" | "mgl-services" | "projects";
 
 export interface ServiceOption {
   id: string;
@@ -29,6 +29,18 @@ export interface ServiceCategory {
   description: string;
   icon: string;
   subCategories: ServiceSubCategory[];
+}
+
+export interface ProjectItem {
+  id: string;
+  title: string;
+  category: string;
+  summary: string;
+  details: string;
+  price: number;
+  imageUrl?: string;
+  tags?: string[];
+  isActive: boolean;
 }
 
 export type CardPartner = {

@@ -1442,7 +1442,9 @@ enum PlatformRole {
   WAREHOUSE_ADMIN
   FINANCE_ADMIN
   SERVICE_ADMIN
+  LAWYER
 }
+
 
 enum OrgType {
   SUPPLIER

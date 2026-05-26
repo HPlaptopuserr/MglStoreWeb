@@ -54,6 +54,11 @@ export const PLATFORM_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     Permission.MANAGE_SERVICES,
   ],
 
+  [PlatformRole.LAWYER]: [
+    Permission.VIEW_SYSTEM_DASHBOARD,
+    Permission.MANAGE_SERVICES,
+  ],
+
   [PlatformRole.USER]: [],
 };
 
@@ -67,6 +72,7 @@ export const ADMIN_ROLES: string[] = [
   PlatformRole.WAREHOUSE_ADMIN,
   PlatformRole.FINANCE_ADMIN,
   PlatformRole.SERVICE_ADMIN,
+  PlatformRole.LAWYER,
 ];
 
 export function isAdminRole(role: string): boolean {
@@ -97,6 +103,7 @@ export const ADMIN_ROLE_LABELS: Record<string, string> = {
   [PlatformRole.WAREHOUSE_ADMIN]: "Агуулахын менежер",
   [PlatformRole.FINANCE_ADMIN]: "Санхүүгийн менежер",
   [PlatformRole.SERVICE_ADMIN]: "Үйлчилгээний менежер",
+  [PlatformRole.LAWYER]: "Хуульч",
 };
 
 // ─── Navigation access per role ─────────────────────────────────────────
