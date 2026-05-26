@@ -5,6 +5,7 @@ import {
   Check,
   Eye,
   EyeOff,
+  FileText,
   ImagePlus,
   Loader2,
   Pencil,
@@ -31,12 +32,13 @@ type Props = {
 
 const emptyProject = (): ProjectItem => ({
   id: generateId(),
-  title: "Шинэ төсөл",
-  category: "Усны төсөл",
+  title: "Шинэ franchise",
+  category: "Franchise",
   summary: "",
   details: "",
   price: 0,
   imageUrl: "",
+  pdfUrl: "",
   tags: [],
   isActive: true,
 });
@@ -107,11 +109,15 @@ export function ProjectsSection({
   const [uploadingProjectId, setUploadingProjectId] = useState<string | null>(
     null,
   );
+  const [uploadingPdfProjectId, setUploadingPdfProjectId] = useState<
+    string | null
+  >(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
     null,
   );
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState("");
+  const [pdfUploadError, setPdfUploadError] = useState("");
 
   const addProject = () => {
     const project = emptyProject();
@@ -132,7 +138,7 @@ export function ProjectsSection({
   };
 
   const removeProject = async (id: string) => {
-    if (!confirm("Энэ төслийг устгах уу?")) return;
+    if (!confirm("Энэ franchise-ийг устгах уу?")) return;
     const previousProjects = projects;
     const nextProjects = projects.filter((project) => project.id !== id);
     setProjects(nextProjects);
@@ -200,16 +206,56 @@ export function ProjectsSection({
     }
   };
 
+  const uploadProjectPdf = async (
+    id: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const isPdf =
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      setPdfUploadError("Зөвхөн PDF файл оруулна уу.");
+      return;
+    }
+
+    setUploadingPdfProjectId(id);
+    setPdfUploadError("");
+    try {
+      const form = new FormData();
+      form.append("pdf", file);
+      const res = await adminFetch(`${API}/site-settings/project-pdf-upload`, {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(data.message || "PDF upload хийхэд алдаа гарлаа");
+      updateProject(id, "pdfUrl", data.url || "");
+    } catch (error) {
+      setPdfUploadError(
+        error instanceof Error
+          ? error.message
+          : "PDF upload хийхэд алдаа гарлаа",
+      );
+    } finally {
+      setUploadingPdfProjectId(null);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black text-slate-950">
-            Төсөл зарах хэсэг
+            Franchise PDF зарах хэсэг
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Web дээр төслийн хураангуй харагдаж, дэлгэрэнгүйг төлбөр төлсний
-            дараа нээнэ.
+            Web дээр зураг, нэр, үнэ, хураангуй харагдаж, PDF файл төлбөр
+            төлсний дараа нээгдэнэ.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -219,7 +265,7 @@ export function ProjectsSection({
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >
             <Plus className="h-4 w-4" />
-            Төсөл нэмэх
+            Franchise нэмэх
           </button>
           <button
             type="button"
@@ -240,7 +286,7 @@ export function ProjectsSection({
       {projects.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
           <p className="text-sm font-semibold text-slate-500">
-            Одоогоор төсөл оруулаагүй байна.
+            Одоогоор franchise оруулаагүй байна.
           </p>
           <button
             type="button"
@@ -248,7 +294,7 @@ export function ProjectsSection({
             className="mt-4 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white"
           >
             <Plus className="h-4 w-4" />
-            Эхний төслийг нэмэх
+            Эхний franchise нэмэх
           </button>
         </div>
       ) : (
@@ -265,10 +311,10 @@ export function ProjectsSection({
                 <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-500">
-                      Төсөл #{index + 1}
+                      Franchise #{index + 1}
                     </p>
                     <h3 className="mt-1 text-lg font-black text-slate-950">
-                      {project.title || "Нэргүй төсөл"}
+                      {project.title || "Нэргүй franchise"}
                     </h3>
                     <p className="mt-1 text-xs font-semibold text-slate-400">
                       {project.category || "Ангилалгүй"} ·{" "}
@@ -325,7 +371,7 @@ export function ProjectsSection({
                       onClick={() => void removeProject(project.id)}
                       disabled={isDeleting || saving}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-60"
-                      aria-label="Төсөл устгах"
+                      aria-label="Franchise устгах"
                     >
                       {isDeleting ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -340,7 +386,7 @@ export function ProjectsSection({
                   <div className="grid gap-4 lg:grid-cols-2">
                     <label className="space-y-1.5">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Төслийн нэр
+                        Franchise нэр
                       </span>
                       <input
                         value={project.title}
@@ -348,7 +394,7 @@ export function ProjectsSection({
                           updateProject(project.id, "title", e.target.value)
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Жишээ: Ус цэвэршүүлэх төсөл"
+                        placeholder="Жишээ: MGL Store franchise багц"
                       />
                     </label>
                     <label className="space-y-1.5">
@@ -361,12 +407,12 @@ export function ProjectsSection({
                           updateProject(project.id, "category", e.target.value)
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Усны төсөл, Барилгын төсөл..."
+                        placeholder="Franchise, салбар нээх эрх..."
                       />
                     </label>
                     <label className="space-y-1.5">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Дэлгэрэнгүй үзэх үнэ
+                        PDF үзэх үнэ
                       </span>
                       <input
                         type="text"
@@ -462,20 +508,56 @@ export function ProjectsSection({
                         placeholder="Web дээр үнэгүй харагдах богино танилцуулга..."
                       />
                     </label>
-                    <label className="space-y-1.5 lg:col-span-2">
+                    <div className="space-y-1.5 lg:col-span-2">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Дэлгэрэнгүй мэдээлэл
+                        Franchise PDF файл
                       </span>
-                      <textarea
-                        value={project.details}
+                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
+                            {uploadingPdfProjectId === project.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <FileText className="h-4 w-4" />
+                            )}
+                            {uploadingPdfProjectId === project.id
+                              ? "PDF оруулж байна..."
+                              : "PDF сонгох"}
+                            <input
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              className="hidden"
+                              disabled={uploadingPdfProjectId === project.id}
+                              onChange={(e) => uploadProjectPdf(project.id, e)}
+                            />
+                          </label>
+                          {project.pdfUrl && (
+                            <a
+                              href={project.pdfUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"
+                            >
+                              <FileText className="h-4 w-4" />
+                              PDF харах
+                            </a>
+                          )}
+                        </div>
+                        {pdfUploadError && uploadingPdfProjectId === null && (
+                          <p className="mt-2 text-xs font-semibold text-red-500">
+                            {pdfUploadError}
+                          </p>
+                        )}
+                      </div>
+                      <input
+                        value={project.pdfUrl || ""}
                         onChange={(e) =>
-                          updateProject(project.id, "details", e.target.value)
+                          updateProject(project.id, "pdfUrl", e.target.value)
                         }
-                        rows={7}
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Төлбөр төлсний дараа харагдах бүрэн мэдээлэл, тооцоо, хэрэгжилтийн төлөвлөгөө..."
+                        placeholder="PDF upload хийсний дараа URL энд автоматаар орно"
                       />
-                    </label>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-4 rounded-2xl bg-slate-50 p-4 md:flex-row md:items-start">
@@ -495,6 +577,16 @@ export function ProjectsSection({
                         {project.summary ||
                           "Хураангуй мэдээлэл оруулаагүй байна."}
                       </p>
+                      <div
+                        className={`mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
+                          project.pdfUrl
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        {project.pdfUrl ? "PDF холбогдсон" : "PDF оруулаагүй"}
+                      </div>
                       {project.tags && project.tags.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-2">
                           {project.tags.slice(0, 4).map((tag) => (

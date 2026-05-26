@@ -17,9 +17,9 @@ export const NAV_LINKS: NavLinkItem[] = [
     color: "bg-amber-50 text-amber-600",
   },
   {
-    href: "/projects",
-    label: "Төслүүд",
-    desc: "Төлбөртэй төслийн сан",
+    href: "/franchise",
+    label: "Franchise",
+    desc: "Төлбөртэй franchise PDF",
     icon: FolderKanban,
     color: "bg-cyan-50 text-cyan-600",
   },
