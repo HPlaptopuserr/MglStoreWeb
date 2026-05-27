@@ -10,8 +10,9 @@ type BranchPoint = {
   id: string;
   name: string;
   address: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
+  hasCoordinates?: boolean;
   organizationId: string;
   organization: {
     id: string;
@@ -89,13 +90,23 @@ export function BranchMapSection() {
   }, [isMapEnabled, isVisibilityLoaded]);
 
   const activeBranch = useMemo(
-    () => branches.find((b) => b.id === activeBranchId) || branches[0],
+    () => branches.find((b) => b.id === activeBranchId) || branches.find((b) => b.lat !== null && b.lng !== null) || branches[0],
     [branches, activeBranchId],
+  );
+  const mappableBranches = useMemo(
+    () => branches.filter((branch) => branch.lat !== null && branch.lng !== null),
+    [branches],
+  );
+  const activeMapBranch = useMemo(
+    () =>
+      mappableBranches.find((branch) => branch.id === activeBranchId) ||
+      mappableBranches[0],
+    [activeBranchId, mappableBranches],
   );
 
   useEffect(() => {
     if (loading || !mapRef.current || mapInstanceRef.current) return;
-    if (!activeBranch) return;
+    if (!activeMapBranch || activeMapBranch.lat === null || activeMapBranch.lng === null) return;
 
     let cancelled = false;
 
@@ -103,7 +114,7 @@ export function BranchMapSection() {
       const L = await getLeafletLib();
       if (cancelled || !mapRef.current || mapInstanceRef.current) return;
 
-      const map = L.map(mapRef.current).setView([activeBranch.lat, activeBranch.lng], 13);
+      const map = L.map(mapRef.current).setView([activeMapBranch.lat, activeMapBranch.lng], 13);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -121,7 +132,7 @@ export function BranchMapSection() {
     return () => {
       cancelled = true;
     };
-  }, [loading, activeBranch]);
+  }, [loading, activeMapBranch]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !markerLayerRef.current) return;
@@ -136,8 +147,9 @@ export function BranchMapSection() {
       layer.clearLayers();
 
       const bounds = L.latLngBounds([]);
-      branches.forEach((branch) => {
-        const isActive = activeBranch?.id === branch.id;
+      mappableBranches.forEach((branch) => {
+        if (branch.lat === null || branch.lng === null) return;
+        const isActive = activeMapBranch?.id === branch.id;
         const latLng: [number, number] = [branch.lat, branch.lng];
 
         const marker = L.circleMarker(latLng, {
@@ -168,7 +180,7 @@ export function BranchMapSection() {
     };
 
     syncMap().catch(() => {});
-  }, [branches, activeBranch, mapReady]);
+  }, [mappableBranches, activeMapBranch, mapReady]);
 
   useEffect(() => {
     return () => {
@@ -221,10 +233,18 @@ export function BranchMapSection() {
             Салбарын байршил
           </h2>
           <a
-            href={`https://maps.google.com/?q=${activeBranch.lat},${activeBranch.lng}`}
+            href={
+              activeMapBranch
+                ? `https://maps.google.com/?q=${activeMapBranch.lat},${activeMapBranch.lng}`
+                : "#"
+            }
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-100"
+            className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold ${
+              activeMapBranch
+                ? "bg-rose-50 text-rose-600 hover:bg-rose-100"
+                : "pointer-events-none bg-slate-100 text-slate-400"
+            }`}
           >
             <Navigation className="h-3.5 w-3.5" />
             Google Maps
@@ -233,7 +253,13 @@ export function BranchMapSection() {
 
         <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <div ref={mapRef} className="h-[360px] w-full" />
+            {activeMapBranch ? (
+              <div ref={mapRef} className="h-[360px] w-full" />
+            ) : (
+              <div className="flex h-[360px] items-center justify-center px-6 text-center text-sm text-slate-500">
+                Салбар бүртгэгдсэн байна. Map дээр харуулахын тулд lat/lng координат нэмнэ үү.
+              </div>
+            )}
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -258,6 +284,11 @@ export function BranchMapSection() {
                         <Building2 className="h-3.5 w-3.5" />
                         {branch.organization.name}
                       </span>
+                      {(branch.lat === null || branch.lng === null) && (
+                        <span className="text-[11px] font-semibold text-amber-600">
+                          Координатгүй
+                        </span>
+                      )}
                       <Link
                         href={`/organizations/${branch.organization.slug}`}
                         className="text-xs font-semibold text-rose-600 hover:text-rose-700"

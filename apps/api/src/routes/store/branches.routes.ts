@@ -12,8 +12,6 @@ const getStoreBranches = async (req: any, res: any) => {
     const branches = await prisma.branch.findMany({
       where: {
         deletedAt: null,
-        lat: { not: null },
-        lng: { not: null },
         organizationId: organizationId || undefined,
         ...(q
           ? {
@@ -62,6 +60,7 @@ const getStoreBranches = async (req: any, res: any) => {
         lng: branch.lng,
         latitude: branch.lat,
         longitude: branch.lng,
+        hasCoordinates: branch.lat !== null && branch.lng !== null,
         organizationId: branch.organization.id,
         mapsUrl:
           branch.lat !== null && branch.lng !== null

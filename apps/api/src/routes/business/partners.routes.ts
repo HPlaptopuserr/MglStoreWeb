@@ -1093,8 +1093,6 @@ router.get("/branches/map", async (_req, res) => {
     const branches = await prisma.branch.findMany({
       where: {
         deletedAt: null,
-        lat: { not: null },
-        lng: { not: null },
         organization: {
           deletedAt: null,
           status: "ACTIVE",
@@ -1124,6 +1122,7 @@ router.get("/branches/map", async (_req, res) => {
         ...branch,
         latitude: branch.lat,
         longitude: branch.lng,
+        hasCoordinates: branch.lat !== null && branch.lng !== null,
         mapsUrl:
           branch.lat !== null && branch.lng !== null
             ? `https://maps.google.com/?q=${branch.lat},${branch.lng}`
