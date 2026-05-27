@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Delete,
   ChevronRight,
@@ -22,6 +23,9 @@ type Props = {
   paymentMethod: PaymentMethod;
   onChangeMethod: (m: PaymentMethod) => void;
   paymentEntries: CheckoutPaymentEntry[];
+  qpayModal?: CheckoutQPayInvoice | null;
+  statusMessage?: string;
+  statusTone?: "idle" | "success" | "not-found";
   remaining: number;
   onAddPayment: (method: PaymentMethod, amount: number) => void | Promise<void>;
   onRequestQPay: (amount: number) => void | Promise<void>;
@@ -45,6 +49,15 @@ export type CheckoutPaymentEntry = {
   transactionId?: string;
 };
 
+export type CheckoutQPayInvoice = {
+  open: boolean;
+  invoiceId: string;
+  amount: number;
+  qrText: string;
+  qrImage: string;
+  expiresAt: string;
+};
+
 const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; icon: ReactNode }[] = [
   { value: "CASH", label: "Бэлэн", icon: <Banknote size={16} /> },
   { value: "CARD", label: "Карт", icon: <CreditCard size={16} /> },
@@ -66,6 +79,9 @@ export function PosCheckoutView({
   paymentMethod,
   onChangeMethod,
   paymentEntries,
+  qpayModal,
+  statusMessage,
+  statusTone = "idle",
   remaining,
   onAddPayment,
   onRequestQPay,
@@ -212,6 +228,25 @@ export function PosCheckoutView({
               </p>
           </div>
 
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handlePrimaryAction}
+              disabled={disabled || remaining <= 0}
+              className="rounded-xl bg-amber-500 px-3 py-3 text-xs font-black text-black hover:bg-amber-400 disabled:opacity-40"
+            >
+              {paymentMethod === "QR" ? "QPay QR илгээх" : "Төлбөр нэмэх"}
+            </button>
+            <button
+              type="button"
+              onClick={onResetPayments}
+              disabled={disabled || paymentEntries.length === 0}
+              className="rounded-xl border border-zinc-700 px-3 py-3 text-xs font-bold text-zinc-300 hover:border-zinc-500 disabled:opacity-40"
+            >
+              Төлбөрүүд цэвэрлэх
+            </button>
+          </div>
+
           {/* Numpad */}
           <div className="grid grid-cols-3 gap-2">
             {NUMPAD_ROWS.flat().map((key) => (
@@ -249,25 +284,6 @@ export function PosCheckoutView({
                 ₮{amt >= 1000 ? `${amt / 1000}К` : amt}
               </button>
             ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={handlePrimaryAction}
-              disabled={disabled || remaining <= 0}
-              className="rounded-xl bg-amber-500 px-3 py-3 text-xs font-black text-black hover:bg-amber-400 disabled:opacity-40"
-            >
-              {paymentMethod === "QR" ? "QPay QR илгээх" : "Төлбөр нэмэх"}
-            </button>
-            <button
-              type="button"
-              onClick={onResetPayments}
-              disabled={disabled || paymentEntries.length === 0}
-              className="rounded-xl border border-zinc-700 px-3 py-3 text-xs font-bold text-zinc-300 hover:border-zinc-500 disabled:opacity-40"
-            >
-              Төлбөрүүд цэвэрлэх
-            </button>
           </div>
 
           <div
@@ -314,6 +330,56 @@ export function PosCheckoutView({
               </div>
             ))}
           </div>
+
+          {qpayModal?.open && (qpayModal.qrImage || qpayModal.qrText) && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+              <div className="flex flex-col items-center gap-4 xl:flex-row xl:items-center">
+                <div className="flex h-72 w-72 shrink-0 items-center justify-center rounded-xl bg-white p-3 shadow-lg shadow-black/30">
+                  {qpayModal.qrImage ? (
+                    <img
+                      src={`data:image/png;base64,${qpayModal.qrImage}`}
+                      alt="QPay QR"
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <QRCodeSVG
+                      value={qpayModal.qrText}
+                      size={260}
+                      level="L"
+                      bgColor="#ffffff"
+                      fgColor="#000000"
+                      includeMargin
+                    />
+                  )}
+                </div>
+                <div className="min-w-0 text-center xl:text-left">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-300">
+                    QPay QR
+                  </p>
+                  <p className="mt-1 text-3xl font-black text-amber-400">
+                    ₮{qpayModal.amount.toLocaleString()}
+                  </p>
+                  <p className="mt-2 break-all font-mono text-[10px] text-zinc-500">
+                    {qpayModal.invoiceId}
+                  </p>
+                  <p className="mt-2 text-xs font-semibold text-zinc-400">
+                    Дуусах: {new Date(qpayModal.expiresAt).toLocaleTimeString("mn-MN", { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!qpayModal?.open && statusMessage && statusTone === "not-found" && paymentMethod === "QR" && (
+            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-rose-300">
+                QPay QR үүссэнгүй
+              </p>
+              <p className="mt-2 text-sm font-semibold text-rose-100">
+                {statusMessage}
+              </p>
+            </div>
+          )}
 
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-2 max-h-44 overflow-y-auto">
             <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Төлбөрийн мөрүүд</p>

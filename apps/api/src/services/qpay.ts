@@ -341,7 +341,9 @@ async function getMasterToken(): Promise<string> {
   const { username, password, terminalId } = masterEnv();
 
   if (!quickqrBaseUrl || !username || !password) {
-    throw new Error("QPay QuickQR master credentials are not configured");
+    throw new Error(
+      "QPay QuickQR master тохиргоо дутуу байна. QPAY_QUICKQR_BASE_URL, QPAY_QUICKQR_MASTER_USERNAME, QPAY_QUICKQR_MASTER_PASSWORD env-үүдийг API дээр тохируулна уу.",
+    );
   }
 
   const cacheKey = `master:${username}`;

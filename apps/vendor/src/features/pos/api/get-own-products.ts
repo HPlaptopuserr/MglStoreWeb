@@ -6,6 +6,8 @@ type RawProduct = {
   sku: string | null;
   barcode?: string | null;
   name: string;
+  imageUrl?: string | null;
+  images?: { url: string }[];
   price: number;
   stock: number;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
@@ -51,6 +53,7 @@ export async function getOwnProducts(
       sku: item.sku || item.id,
       barcode: item.barcode || null,
       name: item.name,
+      imageUrl: item.imageUrl || item.images?.[0]?.url || null,
       price: Number(item.price) || 0,
       stockQty: Number(item.stock) || 0,
       taxRate: 0,

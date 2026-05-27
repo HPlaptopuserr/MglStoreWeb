@@ -7,7 +7,7 @@ import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
-import { checkSystemQrPayment, createSystemQrInvoice } from "../../../services/systemqr";
+import { checkSystemQrPayment, createSystemQrInvoice, resetSystemQrSubMerchantPassword } from "../../../services/systemqr";
 import {
   requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
@@ -24,6 +24,27 @@ const router: ExpressRouter = Router();
 const isSystemQrMarker = (value?: string | null) =>
   String(value || "").trim().toUpperCase() === "SYSTEMQR" ||
   String(value || "").trim().toLowerCase().startsWith("systemqr");
+
+const getSystemQrPassword = (value?: string | null) => {
+  const marker = String(value || "").trim();
+  if (!marker.toLowerCase().startsWith("systemqr:")) return undefined;
+  return marker.slice("systemqr:".length) || undefined;
+};
+
+const isPublicCallbackBaseUrl = (value?: string | null) => {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return false;
+    if (/^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) {
+      return false;
+    }
+    return url.protocol === "https:" || process.env.NODE_ENV !== "production";
+  } catch {
+    return false;
+  }
+};
 
 async function resolveSystemQrConfig(
   organizationId: string | null,
@@ -56,7 +77,11 @@ async function resolveSystemQrConfig(
   if (!org?.qpayEnabled || !org.qpayMerchantId) return null;
   if (!isSystemQrMarker(org.qpayInvoiceCode) && !isSystemQrMarker(org.qpayMerchantKey)) return null;
 
-  return { merchantCode: org.qpayMerchantId.trim() };
+  return {
+    merchantCode: org.qpayMerchantId.trim(),
+    username: org.qpayMerchantId.trim(),
+    password: getSystemQrPassword(org.qpayMerchantKey),
+  };
 }
 
 router.post("/pos/payments/qpay/invoice", async (req, res) => {
@@ -193,12 +218,37 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
       let qpayData: Awaited<ReturnType<typeof createQPayInvoice>>;
       if (systemQrConfig) {
         const publicUrl = (process.env.API_PUBLIC_URL || process.env.API_URL || "").replace(/\/+$/, "");
+        let systemQrAuth = systemQrConfig;
+        if (!systemQrAuth.password && effectiveOrganizationId) {
+          try {
+            const reset = await resetSystemQrSubMerchantPassword(systemQrConfig.merchantCode);
+            if (reset.password) {
+              await prisma.organization.update({
+                where: { id: effectiveOrganizationId },
+                data: {
+                  qpayMerchantKey: `systemqr:${reset.password}`,
+                  qpayInvoiceCode: "SYSTEMQR",
+                  qpayEnabled: true,
+                },
+              });
+              systemQrAuth = {
+                ...systemQrConfig,
+                username: reset.username || systemQrConfig.merchantCode,
+                password: reset.password,
+              };
+            }
+          } catch (resetError) {
+            console.warn("[SystemQR] subMerchant resetPassword failed; trying master token", resetError);
+          }
+        }
         const systemQr = await createSystemQrInvoice({
           merchantCode: systemQrConfig.merchantCode,
           amount,
           referenceNumber: invoice.id,
-          webhook: publicUrl ? `${publicUrl}/api/pos/qpay/cb?invoiceId=${invoice.id}` : undefined,
-        });
+          webhook: isPublicCallbackBaseUrl(publicUrl)
+            ? `${publicUrl}/api/pos/qpay/cb?invoiceId=${invoice.id}`
+            : undefined,
+        }, systemQrAuth.username, systemQrAuth.password);
 
         qpayData = {
           invoice_id: systemQr.invoiceId,
@@ -332,7 +382,11 @@ router.get("/pos/payments/qpay/status/:invoiceId", async (req, res) => {
           const resolved = await resolveSystemQrConfig(invoice.organizationId, registerConfig);
           const merchantCode = String(payload.merchantCode || resolved?.merchantCode || "").trim();
           if (merchantCode) {
-            const check = await checkSystemQrPayment({ merchantCode, invoiceNumber: providerInvoiceId });
+            const check = await checkSystemQrPayment(
+              { merchantCode, invoiceNumber: providerInvoiceId },
+              resolved?.username,
+              resolved?.password,
+            );
             if (check.paid) {
               current = await prisma.qPayInvoice.update({
                 where: { id },

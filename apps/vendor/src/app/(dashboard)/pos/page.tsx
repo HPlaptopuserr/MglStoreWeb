@@ -82,10 +82,17 @@ type QPayModalPayload = {
   expiresAt: string;
 };
 
+type CustomerDisplaySuccess = {
+  text: string;
+  amount: number;
+  ts: number;
+};
+
 type CustomerDisplayPayload = {
   lines: CartLine[];
   totals: CartTotals;
   qpayModal: QPayModalPayload | null;
+  customerSuccess: CustomerDisplaySuccess | null;
   ts: number;
 };
 
@@ -247,6 +254,7 @@ export default function PosDemoPage() {
     visible: false,
     text: "",
   });
+  const [customerDisplaySuccess, setCustomerDisplaySuccess] = useState<CustomerDisplaySuccess | null>(null);
   const [registerConfig, setRegisterConfig] = useState<RegisterConfig | null>(null);
   const [showPosSettings, setShowPosSettings] = useState(false);
   const [showSetupPanel, setShowSetupPanel] = useState(false);
@@ -273,6 +281,7 @@ export default function PosDemoPage() {
   const clientSaleIdRef = useRef<string | null>(null);
   const progressTickerRef = useRef<number | null>(null);
   const successOverlayTimerRef = useRef<number | null>(null);
+  const customerDisplaySuccessTimerRef = useRef<number | null>(null);
   const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
 
   const posEnabled = posAccess === "enabled";
@@ -367,12 +376,25 @@ export default function PosDemoPage() {
       window.clearTimeout(successOverlayTimerRef.current);
       successOverlayTimerRef.current = null;
     }
+    if (customerDisplaySuccessTimerRef.current !== null) {
+      window.clearTimeout(customerDisplaySuccessTimerRef.current);
+      customerDisplaySuccessTimerRef.current = null;
+    }
     setSuccessOverlay({ visible: true, text });
+    setCustomerDisplaySuccess({
+      text,
+      amount: totals.grandTotal,
+      ts: Date.now(),
+    });
     console.info(`[POS] ${text}`);
     successOverlayTimerRef.current = window.setTimeout(() => {
       setSuccessOverlay({ visible: false, text: "" });
       successOverlayTimerRef.current = null;
     }, 1800);
+    customerDisplaySuccessTimerRef.current = window.setTimeout(() => {
+      setCustomerDisplaySuccess(null);
+      customerDisplaySuccessTimerRef.current = null;
+    }, 3500);
   };
 
   useEffect(() => {
@@ -617,6 +639,9 @@ export default function PosDemoPage() {
       clearProgressTicker();
       if (successOverlayTimerRef.current !== null) {
         window.clearTimeout(successOverlayTimerRef.current);
+      }
+      if (customerDisplaySuccessTimerRef.current !== null) {
+        window.clearTimeout(customerDisplaySuccessTimerRef.current);
       }
     };
   }, []);
@@ -890,6 +915,7 @@ export default function PosDemoPage() {
 
       setQpayModal(null);
       setPaymentEntries([]);
+      setAutoCheckoutActive(false);
       clientSaleIdRef.current = null;
       dispatch({ type: "clear-cart" });
       setView("register");
@@ -899,6 +925,7 @@ export default function PosDemoPage() {
 
       setReceiptHistory((items) => [finalReceipt, ...items.filter((item) => item.id !== finalReceipt.id)]);
       setSelectedReceiptId(finalReceipt.id);
+      reloadProducts();
       reloadReceiptHistory();
       printReceipt(finalReceipt);
     } catch (e: any) {
@@ -1113,11 +1140,12 @@ export default function PosDemoPage() {
       ]);
       setScanStatus("idle");
       setScanMessage("QPay invoice үүслээ. Баталгаажилт хүлээж байна");
-    } catch {
+    } catch (error) {
+      console.warn("QPay invoice create failed", error);
       clearProgressTicker();
       setAutoCheckoutActive(false);
       setScanStatus("not-found");
-      setScanMessage("QPay invoice үүсгэхэд алдаа гарлаа");
+      setScanMessage(error instanceof Error ? error.message : "QPay invoice үүсгэхэд алдаа гарлаа");
     }
   };
 
@@ -1132,6 +1160,7 @@ export default function PosDemoPage() {
             item.id === id ? { ...item, status: "confirmed", invoiceId: invoice.invoiceId } : item,
           ),
         );
+        setAutoCheckoutActive(true);
 
         if (qpayModal?.invoiceId === id) {
           setQpayModal(null);
@@ -1166,6 +1195,7 @@ export default function PosDemoPage() {
     setAutoCheckoutActive(false);
     setPaymentEntries([]);
     setQpayModal(null);
+    setCustomerDisplaySuccess(null);
     clientSaleIdRef.current = null;
   };
 
@@ -1186,6 +1216,7 @@ export default function PosDemoPage() {
     }
 
     setQpayModal(null);
+    setCustomerDisplaySuccess(null);
     setPaymentEntries([]);
     setView("checkout");
 
@@ -1251,6 +1282,7 @@ export default function PosDemoPage() {
               setPaymentEntries((prev) =>
                 prev.map((item) => (item.id === invoiceId ? { ...item, status: "confirmed" } : item)),
               );
+              setAutoCheckoutActive(true);
 
               if (qpayModal?.invoiceId === invoiceId) {
                 setQpayModal(null);
@@ -1285,12 +1317,13 @@ export default function PosDemoPage() {
       lines: state.cart,
       totals,
       qpayModal,
+      customerSuccess: customerDisplaySuccess,
       ts: Date.now(),
     };
 
     localStorage.setItem("mgl_pos_customer_payload", JSON.stringify(payload));
     syncChannelRef.current?.postMessage(payload);
-  }, [state.cart, totals, qpayModal]);
+  }, [state.cart, totals, qpayModal, customerDisplaySuccess]);
 
   const openCustomerDisplay = () => {
     const existing = customerWindowRef.current;
@@ -1742,6 +1775,9 @@ export default function PosDemoPage() {
           paymentMethod={paymentMethod}
           onChangeMethod={handlePaymentMethodChange}
           paymentEntries={paymentEntries}
+          qpayModal={qpayModal}
+          statusMessage={scanMessage}
+          statusTone={scanStatus}
           remaining={remaining}
           onAddPayment={addPaymentEntry}
           onRequestQPay={requestQPay}

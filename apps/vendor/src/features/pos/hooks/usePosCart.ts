@@ -9,16 +9,24 @@ export function usePosCart() {
   const totals = useMemo(() => calculateCartTotal(state.cart), [state.cart]);
 
   const addProduct = (product: PosProduct) => {
-    const currentLine = state.cart.find((line) => line.productId === product.id);
+    const currentLine = state.cart.find(
+      (line) => line.productId === product.id,
+    );
     const currentQty = currentLine?.qty ?? 0;
 
     if (product.stockQty <= 0) {
-      dispatch({ type: "set-error", payload: `"${product.name}" барааны нөөц дууссан` });
+      dispatch({
+        type: "set-error",
+        payload: `"${product.name}" барааны нөөц дууссан`,
+      });
       return { ok: false as const, reason: "out-of-stock" as const };
     }
 
     if (currentQty >= product.stockQty) {
-      dispatch({ type: "set-error", payload: `"${product.name}" барааны нөөц хүрэлцэхгүй` });
+      dispatch({
+        type: "set-error",
+        payload: `"${product.name}" барааны нөөц хүрэлцэхгүй`,
+      });
       return { ok: false as const, reason: "stock-limit" as const };
     }
 
@@ -27,6 +35,7 @@ export function usePosCart() {
       payload: {
         productId: product.id,
         name: product.name,
+        imageUrl: product.imageUrl ?? null,
         qty: 1,
         stockQty: product.stockQty,
         unitPrice: product.price,
