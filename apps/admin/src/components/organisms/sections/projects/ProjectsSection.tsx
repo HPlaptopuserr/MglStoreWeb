@@ -17,6 +17,7 @@ import type { ProjectItem } from "@/lib/sections/types";
 import { API, adminFetch } from "@/lib/api";
 
 const generateId = () => Math.random().toString(36).slice(2, 10);
+const MAX_PROJECT_IMAGES = 12;
 
 type Props = {
   projects: ProjectItem[];
@@ -38,10 +39,38 @@ const emptyProject = (): ProjectItem => ({
   details: "",
   price: 0,
   imageUrl: "",
+  imageUrls: [],
   pdfUrl: "",
   tags: [],
   isActive: true,
 });
+
+function getProjectImages(project?: ProjectItem) {
+  if (!project) return [];
+
+  return Array.from(
+    new Set(
+      [
+        ...(Array.isArray(project.imageUrls) ? project.imageUrls : []),
+        project.imageUrl,
+      ]
+        .filter((url): url is string => typeof url === "string")
+        .map((url) => url.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function parseImageUrls(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .split(/[\n,]+/)
+        .map((url) => url.trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, MAX_PROJECT_IMAGES);
+}
 
 function tagText(project: ProjectItem) {
   return (project.tags || []).join(", ");
@@ -52,6 +81,14 @@ function parseTags(value: string) {
     .split(",")
     .map((tag) => tag.trim())
     .filter(Boolean);
+}
+
+function uploadErrorMessage(data: unknown, fallback: string) {
+  if (!data || typeof data !== "object") return fallback;
+  const record = data as Record<string, unknown>;
+  const message = typeof record.message === "string" ? record.message : "";
+  const detail = typeof record.detail === "string" ? record.detail : "";
+  return [message, detail].filter(Boolean).join(": ") || fallback;
 }
 
 function compressImage(
@@ -137,6 +174,24 @@ export function ProjectsSection({
     );
   };
 
+  const updateProjectImages = (id: string, imageUrls: string[]) => {
+    const nextImages = Array.from(
+      new Set(imageUrls.map((url) => url.trim()).filter(Boolean)),
+    ).slice(0, MAX_PROJECT_IMAGES);
+
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === id
+          ? {
+              ...project,
+              imageUrl: nextImages[0] ?? "",
+              imageUrls: nextImages,
+            }
+          : project,
+      ),
+    );
+  };
+
   const removeProject = async (id: string) => {
     if (!confirm("Энэ franchise-ийг устгах уу?")) return;
     const previousProjects = projects;
@@ -158,44 +213,66 @@ export function ProjectsSection({
     if (result !== false) setEditingProjectId(null);
   };
 
-  const updatePrice = (id: string, value: string) => {
-    const digits = value.replace(/[^\d]/g, "");
-    updateProject(id, "price", digits ? Number(digits) : 0);
-  };
-
   const uploadProjectImage = async (
     id: string,
     event: ChangeEvent<HTMLInputElement>,
   ) => {
-    const file = event.target.files?.[0];
+    const selectedFiles = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (!file) return;
+    if (selectedFiles.length === 0) return;
+
+    const currentImages = getProjectImages(
+      projects.find((project) => project.id === id),
+    );
+    const remainingSlots = MAX_PROJECT_IMAGES - currentImages.length;
+    if (remainingSlots <= 0) {
+      setUploadError(`${MAX_PROJECT_IMAGES} хүртэл зураг оруулах боломжтой.`);
+      return;
+    }
+
+    const files = selectedFiles.slice(0, remainingSlots);
 
     setUploadingProjectId(id);
     setUploadError("");
     try {
-      const compressed = await compressImage(file);
-      const form = new FormData();
-      form.append("image", compressed, "project.jpg");
-      const res = await adminFetch(`${API}/site-settings/banner-upload`, {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data.message || "Зураг upload хийхэд алдаа гарлаа");
-      updateProject(id, "imageUrl", data.url || "");
-    } catch (error) {
-      try {
-        const fallback = await blobToDataUrl(
-          await compressImage(file, 900, 0.72),
-        );
-        updateProject(id, "imageUrl", fallback);
-        setUploadError("");
-        return;
-      } catch {
-        // Keep the original server upload error visible if inline fallback also fails.
+      const uploadedUrls: string[] = [];
+
+      for (const file of files) {
+        try {
+          const compressed = await compressImage(file);
+          const form = new FormData();
+          form.append("image", compressed, "project.jpg");
+          const res = await adminFetch(`${API}/site-settings/banner-upload`, {
+            method: "POST",
+            body: form,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok)
+            throw new Error(
+              uploadErrorMessage(data, "Зураг upload хийхэд алдаа гарлаа"),
+            );
+          if (typeof data.url !== "string" || !data.url) {
+            throw new Error("Зургийн URL серверээс ирсэнгүй");
+          }
+          uploadedUrls.push(data.url);
+        } catch (error) {
+          try {
+            uploadedUrls.push(
+              await blobToDataUrl(await compressImage(file, 900, 0.72)),
+            );
+          } catch {
+            throw error;
+          }
+        }
       }
+
+      updateProjectImages(id, [...currentImages, ...uploadedUrls]);
+      if (selectedFiles.length > files.length) {
+        setUploadError(
+          `${MAX_PROJECT_IMAGES} хүртэл зураг хадгална. Илүү сонгосон зураг нэмэгдсэнгүй.`,
+        );
+      }
+    } catch (error) {
       setUploadError(
         error instanceof Error
           ? error.message
@@ -233,8 +310,13 @@ export function ProjectsSection({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
-        throw new Error(data.message || "PDF upload хийхэд алдаа гарлаа");
-      updateProject(id, "pdfUrl", data.url || "");
+        throw new Error(
+          uploadErrorMessage(data, "PDF upload хийхэд алдаа гарлаа"),
+        );
+      if (typeof data.url !== "string" || !data.url) {
+        throw new Error("PDF URL серверээс ирсэнгүй");
+      }
+      updateProject(id, "pdfUrl", data.url);
     } catch (error) {
       setPdfUploadError(
         error instanceof Error
@@ -251,11 +333,10 @@ export function ProjectsSection({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black text-slate-950">
-            Franchise PDF зарах хэсэг
+            Franchise PDF хэсэг
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Web дээр зураг, нэр, үнэ, хураангуй харагдаж, PDF файл төлбөр
-            төлсний дараа нээгдэнэ.
+            Web дээр зураг, нэр, хураангуй харагдаж, PDF файл үнэгүй нээгдэнэ.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -302,6 +383,8 @@ export function ProjectsSection({
           {projects.map((project, index) => {
             const isEditing = editingProjectId === project.id;
             const isDeleting = deletingProjectId === project.id;
+            const projectImages = getProjectImages(project);
+            const primaryImage = projectImages[0];
 
             return (
               <article
@@ -318,9 +401,7 @@ export function ProjectsSection({
                     </h3>
                     <p className="mt-1 text-xs font-semibold text-slate-400">
                       {project.category || "Ангилалгүй"} ·{" "}
-                      {project.price
-                        ? `${project.price.toLocaleString("mn-MN")}₮`
-                        : "Үнэгүй"}
+                      Үнэгүй
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
@@ -410,71 +491,90 @@ export function ProjectsSection({
                         placeholder="Franchise, салбар нээх эрх..."
                       />
                     </label>
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        PDF үзэх үнэ
-                      </span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={project.price ? String(project.price) : ""}
-                        onChange={(e) =>
-                          updatePrice(project.id, e.target.value)
-                        }
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="50000"
-                      />
-                    </label>
-                    <div className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Зураг URL
-                      </span>
-                      <div className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50 p-2">
-                        {project.imageUrl ? (
-                          <img
-                            src={project.imageUrl}
-                            alt={project.title || "Project image"}
-                            className="h-20 w-28 shrink-0 rounded-lg border border-slate-200 object-cover"
-                          />
+                    <div className="space-y-1.5 lg:col-span-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          Зургууд
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">
+                          {projectImages.length}/{MAX_PROJECT_IMAGES}
+                        </span>
+                      </div>
+                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-2">
+                        {projectImages.length > 0 ? (
+                          <div className="mb-3 grid grid-cols-3 gap-2">
+                            {projectImages.map((image, imageIndex) => (
+                              <div
+                                key={`${image}-${imageIndex}`}
+                                className="group relative aspect-[4/3] overflow-hidden rounded-lg border border-slate-200 bg-white"
+                              >
+                                <img
+                                  src={image}
+                                  alt={`${project.title || "Franchise"} зураг ${imageIndex + 1}`}
+                                  className="h-full w-full object-cover"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateProjectImages(
+                                      project.id,
+                                      projectImages.filter(
+                                        (_, indexToKeep) =>
+                                          indexToKeep !== imageIndex,
+                                      ),
+                                    )
+                                  }
+                                  className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-red-600 opacity-0 shadow-sm transition group-hover:opacity-100"
+                                  aria-label="Зураг устгах"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
                         ) : (
-                          <div className="flex h-20 w-28 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-slate-400">
-                            <ImagePlus className="h-6 w-6" />
+                          <div className="mb-3 flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-slate-400">
+                            <ImagePlus className="h-7 w-7" />
                           </div>
                         )}
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
-                            {uploadingProjectId === project.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <ImagePlus className="h-4 w-4" />
-                            )}
-                            {uploadingProjectId === project.id
-                              ? "Оруулж байна..."
-                              : " зураг сонгох"}
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              disabled={uploadingProjectId === project.id}
-                              onChange={(e) =>
-                                uploadProjectImage(project.id, e)
-                              }
-                            />
-                          </label>
-                          {uploadError && uploadingProjectId === null && (
-                            <p className="text-xs font-semibold text-red-500">
-                              {uploadError}
-                            </p>
+                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
+                          {uploadingProjectId === project.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <ImagePlus className="h-4 w-4" />
                           )}
-                        </div>
+                          {uploadingProjectId === project.id
+                            ? "Зураг оруулж байна..."
+                            : "Зурагнууд сонгох"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            disabled={
+                              uploadingProjectId === project.id ||
+                              projectImages.length >= MAX_PROJECT_IMAGES
+                            }
+                            onChange={(e) => uploadProjectImage(project.id, e)}
+                          />
+                        </label>
+                        {uploadError && uploadingProjectId === null && (
+                          <p className="mt-2 text-xs font-semibold text-red-500">
+                            {uploadError}
+                          </p>
+                        )}
                       </div>
-                      <input
-                        value={project.imageUrl || ""}
+                      <textarea
+                        value={projectImages.join("\n")}
                         onChange={(e) =>
-                          updateProject(project.id, "imageUrl", e.target.value)
+                          updateProjectImages(
+                            project.id,
+                            parseImageUrls(e.target.value),
+                          )
                         }
+                        rows={3}
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Upload хийсний дараа URL энд автоматаар орно"
+                        placeholder="Зургийн URL-уудыг мөр мөрөөр оруулж болно"
                       />
                     </div>
                     <label className="space-y-1.5 lg:col-span-2">
@@ -561,12 +661,19 @@ export function ProjectsSection({
                   </div>
                 ) : (
                   <div className="flex flex-col gap-4 rounded-2xl bg-slate-50 p-4 md:flex-row md:items-start">
-                    {project.imageUrl ? (
-                      <img
-                        src={project.imageUrl}
-                        alt={project.title || "Project image"}
-                        className="h-28 w-full rounded-xl border border-slate-200 object-cover md:w-40"
-                      />
+                    {primaryImage ? (
+                      <div className="relative h-28 w-full overflow-hidden rounded-xl border border-slate-200 md:w-40">
+                        <img
+                          src={primaryImage}
+                          alt={project.title || "Project image"}
+                          className="h-full w-full object-cover"
+                        />
+                        {projectImages.length > 1 && (
+                          <span className="absolute bottom-2 right-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-bold text-white">
+                            +{projectImages.length - 1}
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <div className="flex h-28 w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-slate-400 md:w-40">
                         <ImagePlus className="h-7 w-7" />

@@ -28,6 +28,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+apps/api/uploads/site-settings/
 
 # Editor
 .DS_Store

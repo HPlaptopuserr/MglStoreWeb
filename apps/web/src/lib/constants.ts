@@ -124,7 +124,7 @@ export const NAV_LINKS: NavLink[] = [
   {
     href: "/franchise",
     label: "Franchise",
-    desc: "Төлбөртэй franchise PDF",
+    desc: "Үнэгүй franchise PDF",
     icon: FolderKanban,
     color: "bg-cyan-50 text-cyan-600",
   },

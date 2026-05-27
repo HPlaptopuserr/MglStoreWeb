@@ -58,8 +58,8 @@ export default function HomePage() {
               MGL Store <span className="text-[#FFAD02]">Franchise</span>
             </h2>
             <p className="text-white/80 text-base md:text-lg">
-              Franchise боломжуудын зураг, үнэ, хураангуйг харж сонгоод
-              төлбөрийн дараа PDF файлаа нээгээрэй.
+              Franchise боломжуудын зураг, хураангуй, PDF файлыг төлбөргүйгээр
+              шууд нээгээрэй.
             </p>
           </div>
           <Link

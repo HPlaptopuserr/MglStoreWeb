@@ -51,6 +51,7 @@ export interface ProjectItem {
   details: string;
   price: number;
   imageUrl?: string;
+  imageUrls?: string[];
   pdfUrl?: string;
   tags?: string[];
   isActive: boolean;
