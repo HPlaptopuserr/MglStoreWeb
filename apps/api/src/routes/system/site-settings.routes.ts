@@ -1,5 +1,13 @@
 import crypto from "crypto";
-import { Router, type Router as ExpressRouter } from "express";
+import fs from "fs/promises";
+import path from "path";
+import express, {
+  Router,
+  type NextFunction,
+  type Request,
+  type Response,
+  type Router as ExpressRouter,
+} from "express";
 import multer from "multer";
 import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
@@ -29,6 +37,10 @@ const projectPdfUpload = multer({
 });
 
 const router: ExpressRouter = Router();
+const LOCAL_SITE_UPLOADS_DIR = path.resolve(
+  __dirname,
+  "../../../uploads/site-settings",
+);
 
 const SETTING_VALUE_MAX_BYTES = 512 * 1024; // 512KB — хэрэв утга үүнээс том бол тайлангаас хасна
 
@@ -40,23 +52,85 @@ type PaidProject = {
   details?: string;
   price?: number;
   imageUrl?: string;
+  imageUrls?: string[];
   pdfUrl?: string;
   tags?: string[];
   isActive?: boolean;
 };
 
-type ProjectAccessPayload = {
-  projectId: string;
-  invoiceId: string;
-  amount: number;
-  exp: number;
-};
+function isSupabaseConfigured() {
+  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
+}
 
-const PROJECT_ACCESS_TOKEN_TTL_MS = 30 * 60 * 1000;
-const projectAccessSecret =
-  process.env.JWT_SECRET ||
-  process.env.QPAY_CLIENT_SECRET ||
-  "dev-project-access-secret";
+function getApiBaseUrl(req: Request) {
+  const configured =
+    process.env.API_PUBLIC_URL || process.env.NEXT_PUBLIC_API_URL;
+  const normalized = configured
+    ?.trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\/+$/, "");
+
+  if (normalized) {
+    return normalized.endsWith("/api") ? normalized.slice(0, -4) : normalized;
+  }
+
+  return `${req.protocol}://${req.get("host")}`;
+}
+
+async function saveLocalSiteUpload(
+  req: Request,
+  storagePath: string,
+  buffer: Buffer,
+) {
+  const relativePath = storagePath.replace(/\\/g, "/");
+  if (relativePath.includes("..")) {
+    throw new Error("Invalid upload path");
+  }
+
+  const root = path.resolve(LOCAL_SITE_UPLOADS_DIR);
+  const destination = path.resolve(root, relativePath);
+  if (!destination.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Invalid upload path");
+  }
+
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  await fs.writeFile(destination, buffer);
+
+  const urlPath = relativePath.split("/").map(encodeURIComponent).join("/");
+  return `${getApiBaseUrl(req)}/api/site-settings/uploads/${urlPath}`;
+}
+
+async function uploadSiteFile(
+  req: Request,
+  storagePath: string,
+  buffer: Buffer,
+  contentType: string,
+) {
+  if (!isSupabaseConfigured()) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Supabase storage env тохиргоо дутуу байна");
+    }
+
+    return saveLocalSiteUpload(req, storagePath, buffer);
+  }
+
+  const { error } = await getSupabase()
+    .storage.from(PRODUCT_IMAGES_BUCKET)
+    .upload(storagePath, buffer, {
+      contentType,
+      upsert: false,
+    });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const { data } = getSupabase()
+    .storage.from(PRODUCT_IMAGES_BUCKET)
+    .getPublicUrl(storagePath);
+
+  return data.publicUrl;
+}
 
 async function getPaidProjects(): Promise<PaidProject[]> {
   const setting = await prisma.siteSetting.findUnique({
@@ -74,58 +148,52 @@ async function getPaidProjects(): Promise<PaidProject[]> {
 function getPublicProjects(projects: PaidProject[]) {
   return projects
     .filter((project) => project.isActive !== false)
-    .map(({ details: _details, pdfUrl: _pdfUrl, ...project }) => project);
+    .map((project) => normalizeFreeProject(project));
 }
 
-function signProjectAccessPayload(payload: string) {
-  return crypto
-    .createHmac("sha256", projectAccessSecret)
-    .update(payload)
-    .digest("base64url");
-}
+function getProjectImages(project: PaidProject) {
+  const urls = [
+    ...(Array.isArray(project.imageUrls) ? project.imageUrls : []),
+    project.imageUrl,
+  ];
 
-function createProjectAccessToken(payload: Omit<ProjectAccessPayload, "exp">) {
-  const tokenPayload: ProjectAccessPayload = {
-    ...payload,
-    exp: Date.now() + PROJECT_ACCESS_TOKEN_TTL_MS,
-  };
-  const encoded = Buffer.from(JSON.stringify(tokenPayload), "utf8").toString(
-    "base64url",
+  return Array.from(
+    new Set(
+      urls
+        .filter((url): url is string => typeof url === "string")
+        .map((url) => url.trim())
+        .filter(Boolean),
+    ),
   );
-  const signature = signProjectAccessPayload(encoded);
-  return `${encoded}.${signature}`;
 }
 
-function verifyProjectAccessToken(token?: string): ProjectAccessPayload | null {
-  if (!token) return null;
-  const [encoded, signature] = token.split(".");
-  if (!encoded || !signature) return null;
+function normalizeFreeProject(project: PaidProject): PaidProject {
+  const imageUrls = getProjectImages(project);
 
-  const expected = signProjectAccessPayload(encoded);
-  const providedBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
-  if (
-    providedBuffer.length !== expectedBuffer.length ||
-    !crypto.timingSafeEqual(providedBuffer, expectedBuffer)
-  ) {
-    return null;
-  }
-
-  try {
-    const payload = JSON.parse(
-      Buffer.from(encoded, "base64url").toString("utf8"),
-    ) as ProjectAccessPayload;
-    if (
-      !payload.projectId ||
-      !payload.invoiceId ||
-      Date.now() > Number(payload.exp)
-    )
-      return null;
-    return payload;
-  } catch {
-    return null;
-  }
+  return {
+    ...project,
+    price: 0,
+    imageUrl: imageUrls[0] ?? project.imageUrl ?? "",
+    imageUrls,
+  };
 }
+
+router.use(
+  "/site-settings/uploads",
+  express.static(LOCAL_SITE_UPLOADS_DIR, {
+    setHeaders(res, filePath) {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      res.removeHeader("Access-Control-Allow-Credentials");
+      res.removeHeader("Content-Security-Policy");
+      res.removeHeader("X-Frame-Options");
+
+      if (filePath.toLowerCase().endsWith(".pdf")) {
+        res.setHeader("Content-Type", "application/pdf");
+      }
+    },
+  }),
+);
 
 // GET all site settings as key-value object (public read for web/vendor)
 router.get("/site-settings", async (_req, res) => {
@@ -260,28 +328,19 @@ router.post(
     try {
       const ext = req.file.mimetype === "image/png" ? ".png" : ".jpg";
       const fileName = `banners/${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
-      const { error } = await getSupabase()
-        .storage.from(PRODUCT_IMAGES_BUCKET)
-        .upload(fileName, req.file.buffer, {
-          contentType: req.file.mimetype,
-          upsert: false,
-        });
-      if (error) {
-        res
-          .status(500)
-          .json({
-            message: "Зураг хадгалахад алдаа гарлаа",
-            detail: error.message,
-          });
-        return;
-      }
-      const { data } = getSupabase()
-        .storage.from(PRODUCT_IMAGES_BUCKET)
-        .getPublicUrl(fileName);
-      res.json({ url: data.publicUrl });
+      const url = await uploadSiteFile(
+        req,
+        fileName,
+        req.file.buffer,
+        req.file.mimetype,
+      );
+      res.json({ url });
     } catch (err) {
       console.error("banner-upload error", err);
-      res.status(500).json({ message: "Зураг upload хийхэд алдаа гарлаа" });
+      res.status(500).json({
+        message: "Зураг upload хийхэд алдаа гарлаа",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     }
   },
 );
@@ -299,28 +358,19 @@ router.post(
     }
     try {
       const fileName = `franchise-pdfs/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.pdf`;
-      const { error } = await getSupabase()
-        .storage.from(PRODUCT_IMAGES_BUCKET)
-        .upload(fileName, req.file.buffer, {
-          contentType: "application/pdf",
-          upsert: false,
-        });
-      if (error) {
-        res
-          .status(500)
-          .json({
-            message: "PDF хадгалахад алдаа гарлаа",
-            detail: error.message,
-          });
-        return;
-      }
-      const { data } = getSupabase()
-        .storage.from(PRODUCT_IMAGES_BUCKET)
-        .getPublicUrl(fileName);
-      res.json({ url: data.publicUrl });
+      const url = await uploadSiteFile(
+        req,
+        fileName,
+        req.file.buffer,
+        "application/pdf",
+      );
+      res.json({ url });
     } catch (err) {
       console.error("project-pdf-upload error", err);
-      res.status(500).json({ message: "PDF upload хийхэд алдаа гарлаа" });
+      res.status(500).json({
+        message: "PDF upload хийхэд алдаа гарлаа",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     }
   },
 );
@@ -349,10 +399,6 @@ router.get("/site-settings/projects", async (_req, res) => {
 router.get("/site-settings/projects/:projectId/detail", async (req, res) => {
   try {
     const { projectId } = req.params;
-    const invoiceId =
-      typeof req.query.invoiceId === "string" ? req.query.invoiceId : "";
-    const accessToken =
-      typeof req.query.accessToken === "string" ? req.query.accessToken : "";
 
     const projects = await getPaidProjects();
     const project = projects.find(
@@ -363,37 +409,7 @@ router.get("/site-settings/projects/:projectId/detail", async (req, res) => {
       return;
     }
 
-    const amount = Math.max(0, Number(project.price) || 0);
-    if (amount > 0) {
-      const payload = verifyProjectAccessToken(accessToken);
-      if (
-        !payload ||
-        payload.projectId !== project.id ||
-        payload.invoiceId !== invoiceId ||
-        Math.max(0, Number(payload.amount) || 0) !== amount
-      ) {
-        res
-          .status(403)
-          .json({
-            success: false,
-            message: "Franchise төлбөрийн эрх баталгаажаагүй байна",
-          });
-        return;
-      }
-
-      const payment = await checkQPayPayment(invoiceId);
-      if (payment.count <= 0) {
-        res
-          .status(402)
-          .json({
-            success: false,
-            message: "Franchise төлбөр төлөгдөөгүй байна",
-          });
-        return;
-      }
-    }
-
-    res.json({ success: true, project });
+    res.json({ success: true, project: normalizeFreeProject(project) });
   } catch (error) {
     console.error("get project detail error", error);
     res
@@ -465,7 +481,7 @@ router.get("/site-settings/mgl-services/qpay/check", async (req, res) => {
   }
 });
 
-// POST /site-settings/projects/qpay — paid project detail access invoice
+// POST /site-settings/projects/qpay — legacy endpoint; franchise access is free.
 router.post("/site-settings/projects/qpay", async (req, res) => {
   try {
     const { projectId } = req.body as { projectId?: string };
@@ -485,72 +501,45 @@ router.post("/site-settings/projects/qpay", async (req, res) => {
       return;
     }
 
-    const amount = Math.max(0, Number(project.price) || 0);
-    if (amount <= 0) {
-      res.json({ success: true, free: true, projectId });
-      return;
-    }
-
-    const orderId = crypto.randomUUID();
-    const orderNumber = `PRJ-${Date.now().toString().slice(-6)}`;
-    const invoice = await createQPayInvoice({
-      orderId,
-      orderNumber,
-      amount,
-      description: `MGL Store franchise: ${project.title}`,
-    });
-
-    res.json({
-      success: true,
-      orderId,
-      orderNumber,
-      projectId,
-      amount,
-      invoiceId: invoice.invoice_id,
-      accessToken: createProjectAccessToken({
-        projectId,
-        invoiceId: invoice.invoice_id,
-        amount,
-      }),
-      qrText: invoice.qr_text,
-      qrImage: invoice.qr_image,
-      urls: invoice.urls,
-    });
+    res.json({ success: true, free: true, projectId });
   } catch (error: any) {
     console.error("project qpay create error", error);
     res
       .status(500)
       .json({
         success: false,
-        message: error.message || "Franchise төлбөр үүсгэхэд алдаа гарлаа",
+        message: error.message || "Franchise эрх шалгахад алдаа гарлаа",
       });
   }
 });
 
-// GET /site-settings/projects/qpay/check — check paid project invoice
-router.get("/site-settings/projects/qpay/check", async (req, res) => {
-  try {
-    const { invoiceId } = req.query;
-    if (!invoiceId || typeof invoiceId !== "string") {
-      res
-        .status(400)
-        .json({ success: false, message: "invoiceId шаардлагатай" });
+// GET /site-settings/projects/qpay/check — legacy endpoint; always free.
+router.get("/site-settings/projects/qpay/check", async (_req, res) => {
+  res.json({ success: true, isPaid: true, paidAmount: 0 });
+});
+
+router.use(
+  (error: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (error instanceof multer.MulterError) {
+      const isTooLarge = error.code === "LIMIT_FILE_SIZE";
+      res.status(isTooLarge ? 413 : 400).json({
+        message: isTooLarge
+          ? "Файлын хэмжээ хэтэрсэн байна"
+          : "Файл upload хийхэд алдаа гарлаа",
+        detail: error.message,
+      });
       return;
     }
 
-    const result = await checkQPayPayment(invoiceId);
-    const isPaid = result.count > 0;
-
-    res.json({ success: true, isPaid, paidAmount: result.paid_amount });
-  } catch (error) {
-    console.error("project qpay check error", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Franchise төлбөр шалгахад алдаа гарлаа",
+    if (error instanceof Error) {
+      res.status(400).json({
+        message: error.message,
       });
-  }
-});
+      return;
+    }
+
+    next(error);
+  },
+);
 
 export default router;

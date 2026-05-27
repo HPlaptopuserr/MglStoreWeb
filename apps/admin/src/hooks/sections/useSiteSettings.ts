@@ -5,6 +5,27 @@ import { API, adminFetch } from "@/lib/api";
 
 import { ProjectItem, ServiceCategory } from "@/lib/sections/types";
 
+function normalizeProjectImages(project: ProjectItem): ProjectItem {
+  const imageUrls = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(project.imageUrls) ? project.imageUrls : []),
+        project.imageUrl,
+      ]
+        .filter((url): url is string => typeof url === "string")
+        .map((url) => url.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return {
+    ...project,
+    price: 0,
+    imageUrl: imageUrls[0] ?? "",
+    imageUrls,
+  };
+}
+
 export function useSiteSettings() {
   const [banners, setBanners] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -74,8 +95,9 @@ export function useSiteSettings() {
           try {
             const parsed = JSON.parse(data["paid-projects"]);
             if (Array.isArray(parsed)) {
-              setProjectsRaw(parsed);
-              projectsRef.current = parsed;
+              const normalized = parsed.map(normalizeProjectImages);
+              setProjectsRaw(normalized);
+              projectsRef.current = normalized;
             }
           } catch {}
         }
@@ -137,7 +159,9 @@ export function useSiteSettings() {
   };
 
   const saveProjects = async (currentProjects?: ProjectItem[]) => {
-    const toSave = currentProjects ?? projectsRef.current;
+    const toSave = (currentProjects ?? projectsRef.current).map(
+      normalizeProjectImages,
+    );
     setSaving(true);
     try {
       const res = await adminFetch(`${API}/site-settings`, {
