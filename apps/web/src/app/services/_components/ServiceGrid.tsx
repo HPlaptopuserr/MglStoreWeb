@@ -26,22 +26,24 @@ export function ServiceGrid() {
   }, []);
 
   return (
-    <section className="bg-white py-6">
+    <section className="bg-slate-50 py-10 sm:py-12">
       <div className="container mx-auto px-4 lg:px-8">
-        <GridHeader title="Үйлчилгээнүүд" href="/services" />
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <GridHeader title="Үйлчилгээнүүд" href="/services" />
 
-        <ServiceCarousel
-          posts={posts}
-          onSelect={(id) => {
-            setSelectedId(id);
-          }}
-        />
+          <ServiceCarousel
+            posts={posts}
+            onSelect={(id) => {
+              setSelectedId(id);
+            }}
+          />
 
-        {!loading && posts.length === 0 && (
-          <div className="flex min-h-[220px] items-center justify-center text-sm font-medium text-slate-400">
-            Одоогоор нийтлэгдсэн үйлчилгээ байхгүй байна.
-          </div>
-        )}
+          {!loading && posts.length === 0 && (
+            <div className="flex min-h-[220px] items-center justify-center text-sm font-medium text-slate-400">
+              Одоогоор нийтлэгдсэн үйлчилгээ байхгүй байна.
+            </div>
+          )}
+        </div>
       </div>
 
       {selectedId && (

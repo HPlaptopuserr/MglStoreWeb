@@ -10,6 +10,7 @@
     "db:migrate": "node scripts/with-root-env.cjs prisma migrate dev",
     "db:studio": "node scripts/with-root-env.cjs prisma studio",
     "db:seed": "node scripts/with-root-env.cjs ts-node prisma/seed.ts",
+    "db:seed-categories": "node scripts/with-root-env.cjs ts-node prisma/seed-categories.ts",
     "db:validate": "node scripts/with-root-env.cjs prisma validate",
     "db:format": "node scripts/with-root-env.cjs prisma format"
   },

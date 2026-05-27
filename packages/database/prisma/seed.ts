@@ -9,6 +9,360 @@ import {
 
 const prisma = new PrismaClient();
 
+const BUSINESS_CATEGORY_TREE = [
+  {
+    slug: "retail-commerce",
+    name: "Худалдаа",
+    icon: "🛒",
+    children: [
+      ["supermarket", "Супермаркет", "🛍️"],
+      ["convenience-store", "Мини маркет", "🏪"],
+      ["department-store", "Их дэлгүүр", "🏬"],
+      ["wholesale", "Бөөний худалдаа", "📦"],
+      ["online-shop", "Онлайн дэлгүүр", "💻"],
+      ["import-export", "Импорт экспорт", "🚢"],
+    ],
+  },
+  {
+    slug: "food-beverage",
+    name: "Хоол хүнс",
+    icon: "🍽️",
+    children: [
+      ["restaurant", "Ресторан", "🍽️"],
+      ["cafe", "Кафе", "☕"],
+      ["bakery", "Талх нарийн боов", "🥐"],
+      ["fast-food", "Түргэн хоол", "🍔"],
+      ["catering", "Катеринг", "🍱"],
+      ["beverage-shop", "Ундаа, кофе, цай", "🥤"],
+    ],
+  },
+  {
+    slug: "fashion-beauty",
+    name: "Загвар, гоо сайхан",
+    icon: "✨",
+    children: [
+      ["clothing-store", "Хувцас", "👕"],
+      ["shoes-bags", "Гутал, цүнх", "👟"],
+      ["jewelry-accessories", "Гоёл, аксессуар", "💍"],
+      ["cosmetics", "Гоо сайхны бүтээгдэхүүн", "💄"],
+      ["salon-spa", "Салон, SPA", "💆"],
+      ["barber", "Үсчин, barber", "💈"],
+    ],
+  },
+  {
+    slug: "electronics-technology",
+    name: "Цахилгаан бараа, технологи",
+    icon: "📱",
+    children: [
+      ["mobile-devices", "Гар утас, таблет", "📱"],
+      ["computers", "Компьютер, laptop", "💻"],
+      ["home-appliances", "Гэр ахуйн цахилгаан", "🔌"],
+      ["gaming", "Gaming, console", "🎮"],
+      ["camera-audio", "Камер, аудио", "📷"],
+      ["repair-tech", "Засвар үйлчилгээ", "🛠️"],
+    ],
+  },
+  {
+    slug: "home-living",
+    name: "Гэр ахуй, тавилга",
+    icon: "🏠",
+    children: [
+      ["furniture", "Тавилга", "🛋️"],
+      ["home-decor", "Гэрийн чимэглэл", "🖼️"],
+      ["kitchenware", "Гал тогооны хэрэгсэл", "🍳"],
+      ["cleaning-supplies", "Цэвэрлэгээний хэрэгсэл", "🧽"],
+      ["bedding-textile", "Ор дэр, текстиль", "🛏️"],
+      ["garden-outdoor", "Цэцэрлэг, outdoor", "🌿"],
+    ],
+  },
+  {
+    slug: "health-medical",
+    name: "Эрүүл мэнд",
+    icon: "🏥",
+    children: [
+      ["pharmacy", "Эмийн сан", "💊"],
+      ["clinic", "Эмнэлэг, клиник", "🩺"],
+      ["dental", "Шүдний эмнэлэг", "🦷"],
+      ["fitness-wellness", "Фитнес, wellness", "🏋️"],
+      ["medical-equipment", "Эмнэлгийн хэрэгсэл", "🧪"],
+      ["supplements", "Витамин, нэмэлт", "🌿"],
+    ],
+  },
+  {
+    slug: "education-training",
+    name: "Боловсрол, сургалт",
+    icon: "🎓",
+    children: [
+      ["school", "Сургууль", "🏫"],
+      ["kindergarten", "Цэцэрлэг", "🧸"],
+      ["language-center", "Хэлний төв", "🗣️"],
+      ["it-training", "IT сургалт", "⌨️"],
+      ["professional-course", "Мэргэжлийн сургалт", "📚"],
+      ["online-education", "Онлайн сургалт", "🧑‍💻"],
+    ],
+  },
+  {
+    slug: "finance-insurance",
+    name: "Санхүү, даатгал",
+    icon: "💳",
+    children: [
+      ["banking", "Банк, ББСБ", "🏦"],
+      ["insurance", "Даатгал", "🛡️"],
+      ["accounting-tax", "Нягтлан, татвар", "🧾"],
+      ["audit", "Аудит", "📊"],
+      ["investment", "Хөрөнгө оруулалт", "📈"],
+      ["fintech", "Fintech", "💸"],
+    ],
+  },
+  {
+    slug: "professional-services",
+    name: "Мэргэжлийн үйлчилгээ",
+    icon: "💼",
+    children: [
+      ["legal-service", "Хууль", "⚖️"],
+      ["marketing-agency", "Маркетинг", "📣"],
+      ["hr-consulting", "Хүний нөөц", "👥"],
+      ["consulting", "Зөвлөх үйлчилгээ", "🧭"],
+      ["design-studio", "Дизайн студи", "🎨"],
+      ["translation", "Орчуулга", "🌐"],
+    ],
+  },
+  {
+    slug: "auto-transport",
+    name: "Авто, тээвэр",
+    icon: "🚗",
+    children: [
+      ["car-sales", "Авто худалдаа", "🚘"],
+      ["auto-parts", "Сэлбэг", "⚙️"],
+      ["car-service", "Засвар үйлчилгээ", "🔧"],
+      ["car-wash", "Авто угаалга", "🫧"],
+      ["logistics", "Ложистик", "🚚"],
+      ["taxi-delivery", "Такси, хүргэлт", "🚕"],
+    ],
+  },
+  {
+    slug: "construction-real-estate",
+    name: "Барилга, үл хөдлөх",
+    icon: "🏗️",
+    children: [
+      ["construction-company", "Барилгын компани", "🏢"],
+      ["building-materials", "Барилгын материал", "🧱"],
+      ["real-estate", "Үл хөдлөх", "🏘️"],
+      ["interior-design", "Интерьер", "📐"],
+      ["plumbing-electric", "Сантехник, цахилгаан", "🔩"],
+      ["property-management", "СӨХ, property management", "🏙️"],
+    ],
+  },
+  {
+    slug: "travel-hospitality",
+    name: "Аялал, зочлох үйлчилгээ",
+    icon: "✈️",
+    children: [
+      ["hotel", "Зочид буудал", "🏨"],
+      ["resort-camp", "Амралтын газар", "⛺"],
+      ["travel-agency", "Аяллын агентлаг", "🧳"],
+      ["ticketing", "Тасалбар, booking", "🎫"],
+      ["tour-guide", "Хөтөч, аялал", "🗺️"],
+      ["event-venue", "Event venue", "🎪"],
+    ],
+  },
+  {
+    slug: "entertainment-media",
+    name: "Энтертайнмент, медиа",
+    icon: "🎬",
+    children: [
+      ["cinema", "Кино театр", "🎥"],
+      ["music-production", "Хөгжим, продакшн", "🎧"],
+      ["photography", "Фото, видео", "📸"],
+      ["event-service", "Эвент үйлчилгээ", "🎤"],
+      ["gaming-esport", "E-sport, game", "🕹️"],
+      ["media-publishing", "Медиа, хэвлэл", "📰"],
+    ],
+  },
+  {
+    slug: "sports-outdoor",
+    name: "Спорт, outdoor",
+    icon: "🏆",
+    children: [
+      ["fitness-club", "Фитнес клуб", "🏋️"],
+      ["sports-store", "Спорт бараа", "⚽"],
+      ["outdoor-gear", "Аяллын хэрэгсэл", "🎒"],
+      ["bike-moto", "Дугуй, мото", "🚴"],
+      ["sports-training", "Спорт сургалт", "🥋"],
+      ["pool-sauna", "Бассейн, саун", "🏊"],
+    ],
+  },
+  {
+    slug: "kids-family",
+    name: "Хүүхэд, гэр бүл",
+    icon: "🧸",
+    children: [
+      ["baby-products", "Хүүхдийн бараа", "🍼"],
+      ["toys", "Тоглоом", "🧩"],
+      ["kids-clothing", "Хүүхдийн хувцас", "👶"],
+      ["family-service", "Гэр бүлийн үйлчилгээ", "👨‍👩‍👧"],
+      ["kids-education", "Хүүхдийн сургалт", "🎒"],
+      ["playground", "Тоглоомын төв", "🎡"],
+    ],
+  },
+  {
+    slug: "pets-veterinary",
+    name: "Амьтан",
+    icon: "🐾",
+    children: [
+      ["pet-shop", "Амьтны дэлгүүр", "🐶"],
+      ["pet-food", "Амьтны хоол", "🥫"],
+      ["veterinary", "Мал эмнэлэг", "🏥"],
+      ["grooming", "Grooming", "🛁"],
+      ["pet-hotel", "Амьтны зочид буудал", "🏡"],
+      ["livestock", "Мал аж ахуй", "🐄"],
+    ],
+  },
+  {
+    slug: "agriculture-industrial",
+    name: "Хөдөө аж ахуй, үйлдвэр",
+    icon: "🌾",
+    children: [
+      ["farm-products", "Фермийн бүтээгдэхүүн", "🥚"],
+      ["meat-dairy", "Мах, сүү", "🥛"],
+      ["agro-equipment", "ХАА тоног төхөөрөмж", "🚜"],
+      ["manufacturing", "Үйлдвэрлэл", "🏭"],
+      ["packaging", "Сав баглаа боодол", "📦"],
+      ["raw-materials", "Түүхий эд", "🧵"],
+    ],
+  },
+  {
+    slug: "government-ngo",
+    name: "Төр, ТББ, холбоо",
+    icon: "🏛️",
+    children: [
+      ["government-service", "Төрийн үйлчилгээ", "🏛️"],
+      ["ngo", "ТББ", "🤝"],
+      ["association", "Холбоо", "🏅"],
+      ["community", "Нийгэмлэг", "👥"],
+      ["public-project", "Төсөл, хөтөлбөр", "📌"],
+      ["charity", "Сайн үйлс", "💛"],
+    ],
+  },
+];
+
+const PRODUCT_CATEGORY_TREE = [
+  ["food-grocery", "Хүнс, өдөр тутам", ["Хүнсний ногоо", "Мах, махан бүтээгдэхүүн", "Сүү, цагаан идээ", "Гурил, будаа", "Амттан, snack", "Ундаа, ус"]],
+  ["electronics", "Цахилгаан бараа", ["Гар утас", "Компьютер", "TV, аудио", "Гэр ахуйн цахилгаан", "Камер", "Дагалдах хэрэгсэл"]],
+  ["fashion", "Хувцас, загвар", ["Эмэгтэй хувцас", "Эрэгтэй хувцас", "Гутал", "Цүнх", "Аксессуар", "Спорт хувцас"]],
+  ["beauty-health", "Гоо сайхан, эрүүл мэнд", ["Арьс арчилгаа", "Нүүр будалт", "Үс арчилгаа", "Үнэртэн", "Витамин", "Эмнэлгийн хэрэгсэл"]],
+  ["home-furniture", "Гэр ахуй, тавилга", ["Тавилга", "Гал тогоо", "Ор дэр", "Гэрийн чимэглэл", "Цэвэрлэгээ", "Цэцэрлэг"]],
+  ["kids-baby", "Хүүхэд, нярай", ["Живх, арчилгаа", "Хүүхдийн хувцас", "Тоглоом", "Сургалтын хэрэгсэл", "Тэрэг, суудал", "Хүүхдийн хоол"]],
+  ["auto-parts", "Авто, сэлбэг", ["Дугуй", "Тос, шингэн", "Сэлбэг", "Аксессуар", "Арчилгаа", "Мото хэрэгсэл"]],
+  ["sports-outdoor-products", "Спорт, аялал", ["Фитнес хэрэгсэл", "Бөмбөг, спорт", "Аяллын хэрэгсэл", "Дугуй", "Загасчлал", "Outdoor хувцас"]],
+  ["books-office", "Ном, бичиг хэрэг", ["Ном", "Сурах бичиг", "Бичиг хэрэг", "Оффис хэрэгсэл", "Принтер", "Бэлэг дурсгал"]],
+  ["pet-products", "Амьтны бараа", ["Амьтны хоол", "Арчилгаа", "Тоглоом", "Үүр, ор", "Эмчилгээ", "Дагалдах хэрэгсэл"]],
+  ["construction-tools", "Барилга, багаж", ["Барилгын материал", "Гар багаж", "Цахилгаан багаж", "Сантехник", "Цахилгаан хэрэгсэл", "Хамгаалах хэрэгсэл"]],
+  ["industrial-supply", "Үйлдвэр, агуулах", ["Тоног төхөөрөмж", "Сав баглаа", "Агуулах хэрэгсэл", "Түүхий эд", "Аюулгүй ажиллагаа", "Сэлбэг"]],
+] as const;
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9а-яөөгүё\s-]/gi, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
+async function seedBusinessCategories() {
+  for (const [rootIndex, root] of BUSINESS_CATEGORY_TREE.entries()) {
+    const rootCategory = await prisma.businessCategory.upsert({
+      where: { slug: root.slug },
+      update: {
+        name: root.name,
+        icon: root.icon,
+        sortOrder: rootIndex * 100,
+        parentId: null,
+        level: 0,
+        isActive: true,
+      },
+      create: {
+        slug: root.slug,
+        name: root.name,
+        icon: root.icon,
+        sortOrder: rootIndex * 100,
+        parentId: null,
+        level: 0,
+        isActive: true,
+      },
+    });
+
+    for (const [childIndex, [slug, name, icon]] of root.children.entries()) {
+      await prisma.businessCategory.upsert({
+        where: { slug },
+        update: {
+          name,
+          icon,
+          sortOrder: rootIndex * 100 + childIndex + 1,
+          parentId: rootCategory.id,
+          level: 1,
+          isActive: true,
+        },
+        create: {
+          slug,
+          name,
+          icon,
+          sortOrder: rootIndex * 100 + childIndex + 1,
+          parentId: rootCategory.id,
+          level: 1,
+          isActive: true,
+        },
+      });
+    }
+  }
+}
+
+async function seedProductCategories() {
+  for (const [rootSlug, rootName, children] of PRODUCT_CATEGORY_TREE) {
+    const root = await prisma.category.upsert({
+      where: { slug: rootSlug },
+      update: { name: rootName, parentId: null },
+      create: { slug: rootSlug, name: rootName, parentId: null },
+    });
+
+    for (const childName of children) {
+      const childSlug = `${rootSlug}-${slugify(childName)}`;
+      await prisma.category.upsert({
+        where: { slug: childSlug },
+        update: { name: childName, parentId: root.id },
+        create: { slug: childSlug, name: childName, parentId: root.id },
+      });
+    }
+  }
+}
+
+export async function seedCategoriesOnly() {
+  await seedBusinessCategories();
+  await seedProductCategories();
+}
+
+export async function disconnectSeedPrisma() {
+  await prisma.$disconnect();
+}
+
+async function getUniqueOrganizationTaxId(baseTaxId: string) {
+  let taxId = baseTaxId;
+  let suffix = 1;
+
+  while (true) {
+    const existing = await prisma.organization.findUnique({
+      where: { taxId },
+      select: { id: true },
+    });
+
+    if (!existing) return taxId;
+
+    taxId = `${baseTaxId}-${suffix}`;
+    suffix += 1;
+  }
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash("admin123", 10);
 
@@ -77,17 +431,10 @@ async function main() {
     },
   });
 
-  await prisma.category.createMany({
-    data: [
-      { name: "Electronics", slug: "electronics" },
-      { name: "Food", slug: "food" },
-      { name: "Clothing", slug: "clothing" },
-    ],
-    skipDuplicates: true,
-  });
+  await seedCategoriesOnly();
 
   const activeBusinessCategories = await prisma.businessCategory.findMany({
-    where: { isActive: true },
+    where: { isActive: true, level: 0 },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     select: { slug: true, name: true },
   });
@@ -99,27 +446,37 @@ async function main() {
       const indexPart = String(i).padStart(2, "0");
       const categoryPart = String(categoryIndex + 1).padStart(3, "0");
       const slug = `${category.slug}-mock-org-${indexPart}`;
-      const taxId = `MOCK-${categoryPart}-${indexPart}`;
+      const baseTaxId = `MOCK-${categoryPart}-${indexPart}`;
 
-      const mockOrg = await prisma.organization.upsert({
+      const existingMockOrg = await prisma.organization.findUnique({
         where: { slug },
-        update: {
-          name: `${category.name} Mock Org ${i}`,
-          businessCategory: category.slug,
-          type: OrgType.SUPPLIER,
-          status: OrgStatus.ACTIVE,
-          deletedAt: null,
-        },
-        create: {
-          name: `${category.name} Mock Org ${i}`,
-          slug,
-          taxId,
-          businessCategory: category.slug,
-          type: OrgType.SUPPLIER,
-          status: OrgStatus.ACTIVE,
-          isVerified: true,
-        },
+        select: { id: true },
       });
+
+      const mockOrg = existingMockOrg
+        ? await prisma.organization.update({
+            where: { id: existingMockOrg.id },
+            data: {
+              name: `${category.name} Mock Org ${i}`,
+              slug,
+              businessCategory: category.slug,
+              type: OrgType.SUPPLIER,
+              status: OrgStatus.ACTIVE,
+              deletedAt: null,
+              isVerified: true,
+            },
+          })
+        : await prisma.organization.create({
+            data: {
+              name: `${category.name} Mock Org ${i}`,
+              slug,
+              taxId: await getUniqueOrganizationTaxId(baseTaxId),
+              businessCategory: category.slug,
+              type: OrgType.SUPPLIER,
+              status: OrgStatus.ACTIVE,
+              isVerified: true,
+            },
+          });
 
       await prisma.siteSetting.upsert({
         where: { key: `web-products-enabled-${mockOrg.id}` },
@@ -156,8 +513,8 @@ async function main() {
   // Create sample products for inventory
   const categories = await prisma.category.findMany();
   const electronicsCategory = categories.find((c) => c.slug === "electronics");
-  const foodCategory = categories.find((c) => c.slug === "food");
-  const clothingCategory = categories.find((c) => c.slug === "clothing");
+  const foodCategory = categories.find((c) => c.slug === "food-grocery");
+  const clothingCategory = categories.find((c) => c.slug === "fashion");
 
   const sampleProducts = [
     {
@@ -374,11 +731,13 @@ async function main() {
   );
 }
 
-main()
-  .catch((e) => {
-    console.error("❌ Seed failed:", e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (require.main === module) {
+  main()
+    .catch((e) => {
+      console.error("❌ Seed failed:", e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await disconnectSeedPrisma();
+    });
+}

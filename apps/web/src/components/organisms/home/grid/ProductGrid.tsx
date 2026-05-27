@@ -39,9 +39,9 @@ export const ProductGrid = () => {
   }, []);
 
   return (
-    <section className="py-6 rounded-2xl">
+    <section className="bg-white py-10 sm:py-12">
       <div className="container mx-auto px-4 lg:px-8">
-        <div className="bg-white">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           
           <GridHeader title="Бүтээгдэхүүнүүд" href="/products" />
 

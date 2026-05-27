@@ -33,14 +33,14 @@ export const BrandTicker = () => {
   const items = [...investors, ...investors, ...investors];
 
   return (
-    <section className="py-12 border-t border-slate-100 bg-white">
-      <div className="container mx-auto px-4 text-center mb-8">
-        <div className="inline-flex items-center gap-2 mb-2">
-          <Crown size={14} className="text-amber-400" />
-          <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+    <section className="border-y border-slate-100 bg-slate-950 py-10 text-white">
+      <div className="container mx-auto mb-7 px-4 text-center">
+        <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-4 py-1.5">
+          <Crown size={14} className="text-amber-300" />
+          <h3 className="text-xs font-bold uppercase tracking-[0.22em] text-amber-200">
             Хөрөнгө оруулагчид
           </h3>
-          <Crown size={14} className="text-amber-400" />
+          <Crown size={14} className="text-amber-300" />
         </div>
       </div>
 
@@ -71,7 +71,7 @@ export const BrandTicker = () => {
                     </div>
                   </div>
                 </InvestorRingWrapper>
-                <span className="text-lg font-bold text-slate-300 group-hover/item:text-amber-500 transition-colors">
+                <span className="text-lg font-bold text-slate-300 transition-colors group-hover/item:text-amber-300">
                   {inv.name}
                 </span>
               </Link>
@@ -79,8 +79,8 @@ export const BrandTicker = () => {
           })}
         </div>
 
-        <div className="absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-white to-transparent pointer-events-none" />
-        <div className="absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-white to-transparent pointer-events-none" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-slate-950 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-slate-950 to-transparent" />
       </div>
     </section>
   );

@@ -10,7 +10,7 @@ export function LocationRail() {
 
   return (
     <section className="bg-white py-10 sm:py-12">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+      <div className="container mx-auto px-4 lg:px-8">
         <div className="mb-5 flex items-end justify-between gap-4">
           <div>
             <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600 ring-1 ring-amber-200/70">
