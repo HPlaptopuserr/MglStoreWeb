@@ -164,26 +164,29 @@ export const Header = () => {
               )}
             </button>
 
-            <Link
-              href="/"
-              className="flex shrink-0 items-center gap-2"
-              onClick={closeMobile}
-            >
-              <Image
-                src="/logo.png"
-                alt="MglStore Logo"
-                width={140}
-                height={52}
-                className="h-auto w-[160px] object-contain"
-                priority
-              />
+            <div className="flex shrink-0 items-center gap-2">
+              <Link href="/" onClick={closeMobile}>
+                <Image
+                  src="/logo.png"
+                  alt="MglStore Logo"
+                  width={140}
+                  height={52}
+                  className="h-auto w-[160px] object-contain"
+                  priority
+                />
+              </Link>
               <div className="hidden items-center gap-8 sm:flex py-3">
                 <div className="h-8 w-px bg-gradient-to-b from-transparent via-amber-400 to-transparent" />
-                <span className="max-w-[300px] font-[family-name:var(--font-marck-script)] text-[15px] leading-[1.3] text-gray-900">
-                  Монгол эзэнтэй жижиг дунд бизнес эрхлэгчдийн нэгдсэн холбоо
-                </span>
+                <a
+                  href="/MGL.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="max-w-[300px] font-[family-name:var(--font-marck-script)] text-[15px] leading-[1.3] text-gray-900 transition-colors hover:text-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-4"
+                >
+                  MGL Store нэгдсэн танилцуулга үзэх
+                </a>
               </div>
-            </Link>
+            </div>
 
             <div className="hidden max-w-3xl flex-1 items-center justify-center md:flex">
               <SearchBar />
