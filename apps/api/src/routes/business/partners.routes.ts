@@ -1119,7 +1119,17 @@ router.get("/branches/map", async (_req, res) => {
       },
     });
 
-    res.json(branches);
+    res.json(
+      branches.map((branch) => ({
+        ...branch,
+        latitude: branch.lat,
+        longitude: branch.lng,
+        mapsUrl:
+          branch.lat !== null && branch.lng !== null
+            ? `https://maps.google.com/?q=${branch.lat},${branch.lng}`
+            : null,
+      })),
+    );
   } catch (error) {
     console.error("get branch map data error", error);
     res.status(500).json({ message: "Салбарын байршлын мэдээлэл авахад алдаа гарлаа" });

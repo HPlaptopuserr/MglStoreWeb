@@ -4,6 +4,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import { prisma } from "@mgl/database";
 import contractRoutes from "./routes/contract/contract.routes";
 import {
   authRoutes,
@@ -18,12 +19,14 @@ import {
   businessCategoriesRoutes,
   productsRoutes,
   servicePostsRoutes,
+  postsRoutes,
   jobApplicationRoutes,
   jobPositionRoutes,
   posRoutes,
   serviceRequestsRoutes,
   stockRequestsRoutes,
   warehousesRoutes,
+  deliveriesRoutes,
   dashboardRoutes,
   siteSettingsRoutes,
   teamRoutes,
@@ -33,6 +36,8 @@ import {
   dmRoutes,
   storeCheckoutRoutes,
   vendorOrderRoutes,
+  storeLoyaltyRoutes,
+  storeBranchRoutes,
   vendorMerchantRoutes,
   vendorUpgradeRoutes,
   vendorCardTerminalRoutes,
@@ -112,6 +117,7 @@ app.use("/api", jobPositionRoutes);
 app.use("/api", posRoutes);
 app.use("/api", serviceRequestsRoutes);
 app.use("/api", warehousesRoutes);
+app.use("/api", deliveriesRoutes);
 app.use("/api", stockRequestsRoutes);
 app.use("/api", vendorSetupRoutes);
 app.use("/api", warehouseSetupRoutes);
@@ -120,12 +126,15 @@ app.use("/api", siteSettingsRoutes);
 app.use("/api", teamRoutes);
 app.use("/api", productsRoutes);
 app.use("/api", servicePostsRoutes);
+app.use("/api", postsRoutes);
 app.use("/api", formRoutes);
 app.use("/api", attendanceRoutes);
 app.use("/api", chatRoutes);
 app.use("/api", dmRoutes);
 app.use("/api", storeCheckoutRoutes);
 app.use("/api", vendorOrderRoutes);
+app.use("/api", storeLoyaltyRoutes);
+app.use("/api", storeBranchRoutes);
 app.use("/api", vendorMerchantRoutes);
 app.use("/api", vendorUpgradeRoutes);
 app.use("/api", vendorCardTerminalRoutes);
@@ -152,4 +161,22 @@ const port = process.env.PORT || 4000;
 
 app.listen(Number(port), "0.0.0.0", () => {
   console.log(`[api] Application is running on: http://0.0.0.0:${port}`);
+  if (!isProduction) {
+    prisma.organization.findMany({
+      where: { deletedAt: null, status: "ACTIVE" },
+      select: { id: true, name: true },
+    }).then(async (orgs) => {
+      for (const org of orgs) {
+        const key = `web-products-enabled-${org.id}`;
+        await prisma.siteSetting.upsert({
+          where: { key },
+          update: {},
+          create: { key, value: "true" },
+        });
+      }
+      console.log(`[api] [dev-init] Ensured web-products-enabled setting for ${orgs.length} active organizations.`);
+    }).catch((err) => {
+      console.error("[api] [dev-init] Failed to auto-enable web products in dev:", err);
+    });
+  }
 });

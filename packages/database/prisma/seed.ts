@@ -23,6 +23,15 @@ async function main() {
     },
   });
 
+  await prisma.siteSetting.upsert({
+    where: { key: `web-products-enabled-${org.id}` },
+    update: {},
+    create: {
+      key: `web-products-enabled-${org.id}`,
+      value: "true",
+    },
+  });
+
   const admin = await prisma.user.upsert({
     where: { email: "admin@mglstore.mn" },
     update: {
@@ -92,7 +101,7 @@ async function main() {
       const slug = `${category.slug}-mock-org-${indexPart}`;
       const taxId = `MOCK-${categoryPart}-${indexPart}`;
 
-      await prisma.organization.upsert({
+      const mockOrg = await prisma.organization.upsert({
         where: { slug },
         update: {
           name: `${category.name} Mock Org ${i}`,
@@ -109,6 +118,15 @@ async function main() {
           type: OrgType.SUPPLIER,
           status: OrgStatus.ACTIVE,
           isVerified: true,
+        },
+      });
+
+      await prisma.siteSetting.upsert({
+        where: { key: `web-products-enabled-${mockOrg.id}` },
+        update: {},
+        create: {
+          key: `web-products-enabled-${mockOrg.id}`,
+          value: "true",
         },
       });
 
