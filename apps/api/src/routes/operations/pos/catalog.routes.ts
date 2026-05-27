@@ -1,27 +1,62 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus } from "@mgl/database";
+import {
+  prisma,
+  AuditAction,
+  InventoryReason,
+  PaymentMethod,
+  PosPaymentStatus,
+  PosQPayStatus,
+  PosActivationStatus,
+  ShiftStatus,
+  PosSaleStatus,
+} from "@mgl/database";
 import type { Prisma } from "@mgl/database";
-import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
+import {
+  adjustStock,
+  resolveOrgWarehouse,
+} from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
-  requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
-  roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
-  parseBridgeResultStatus, parseQPaySuccess, parseOptionalDate,
-  makePushEcrReferral, pushEcrHeaders, pushEcrBaseUrl,
-  allowPosSimulation, isProdLikeEnv, bridgeSharedSecret,
-  pushEcrDefaultTerminalId, MONEY_EPSILON,
-  type AuthUser, type ApiError, type SaleLineInput, type SalePaymentLineInput,
-  type CreateSaleBody, type PushEcrPurchaseResponse, toApiError, parseAuthClaims, runtimeEnv,
+  requirePosUser,
+  requireAdminUser,
+  normalizePaymentMethod,
+  normalizeRegisterName,
+  roundMoney,
+  moneyMatches,
+  signPayload,
+  timingSafeEqualHex,
+  getHeaderValue,
+  parseBridgeResultStatus,
+  parseQPaySuccess,
+  parseOptionalDate,
+  makePushEcrReferral,
+  pushEcrHeaders,
+  pushEcrBaseUrl,
+  allowPosSimulation,
+  isProdLikeEnv,
+  bridgeSharedSecret,
+  pushEcrDefaultTerminalId,
+  MONEY_EPSILON,
+  type AuthUser,
+  type ApiError,
+  type SaleLineInput,
+  type SalePaymentLineInput,
+  type CreateSaleBody,
+  type PushEcrPurchaseResponse,
+  toApiError,
+  parseAuthClaims,
+  runtimeEnv,
 } from "./_shared";
 
 const router: ExpressRouter = Router();
 
 const getExpirySortValue = (value?: Date | string | null) => {
   if (!value) return Number.POSITIVE_INFINITY;
-  const time = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  const time =
+    value instanceof Date ? value.getTime() : new Date(value).getTime();
   return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
 };
 
@@ -45,11 +80,17 @@ router.get("/pos/products", async (req, res) => {
 
     if (actor.role !== "ADMIN") {
       const membership = await prisma.organizationMember.findFirst({
-        where: { userId: actor.id, organizationId: branch.organizationId, isActive: true },
+        where: {
+          userId: actor.id,
+          organizationId: branch.organizationId,
+          isActive: true,
+        },
         select: { id: true },
       });
       if (!membership) {
-        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй" });
+        return res
+          .status(403)
+          .json({ message: "Энэ байгууллагад хандах эрхгүй" });
       }
     }
 
@@ -70,6 +111,7 @@ router.get("/pos/products", async (req, res) => {
         isActive: true,
         category: { select: { name: true } },
         businessCategory: { select: { name: true } },
+        images: { select: { url: true }, take: 1 },
         warehouseInventories: {
           where: {
             quantity: { gt: 0 },
@@ -95,6 +137,7 @@ router.get("/pos/products", async (req, res) => {
           sku: p.sku || "",
           barcode: p.barcode || null,
           name: p.name,
+          imageUrl: p.images[0]?.url ?? null,
           price: Number(p.price),
           stockQty: p.stock,
           expiryDate: expiryDate?.toISOString() ?? null,
@@ -103,7 +146,8 @@ router.get("/pos/products", async (req, res) => {
         };
       })
       .sort((a, b) => {
-        const expiryDiff = getExpirySortValue(a.expiryDate) - getExpirySortValue(b.expiryDate);
+        const expiryDiff =
+          getExpirySortValue(a.expiryDate) - getExpirySortValue(b.expiryDate);
         if (expiryDiff !== 0) return expiryDiff;
         return a.name.localeCompare(b.name);
       });
@@ -132,14 +176,21 @@ router.get("/pos/receipts", async (req, res) => {
 
     const shift = await prisma.posShift.findUnique({
       where: { id: shiftId },
-      select: { id: true, cashierId: true, branchId: true, organizationId: true },
+      select: {
+        id: true,
+        cashierId: true,
+        branchId: true,
+        organizationId: true,
+      },
     });
     if (!shift) {
       return res.status(404).json({ message: "Ээлж олдсонгүй" });
     }
 
     if (shift.cashierId !== actor.id && actor.role !== "ADMIN") {
-      return res.status(403).json({ message: "Энэ ээлжийн мэдээлэл харах эрхгүй" });
+      return res
+        .status(403)
+        .json({ message: "Энэ ээлжийн мэдээлэл харах эрхгүй" });
     }
 
     const sales = await prisma.posSale.findMany({
@@ -231,7 +282,8 @@ router.get("/pos/receipts", async (req, res) => {
           invoiceId: invoice.id,
           transactionId: invoice.paymentId || invoice.id,
         })),
-        ...(cardByReceipt.has(sale.receiptNo) || qpayByReceipt.has(sale.receiptNo)
+        ...(cardByReceipt.has(sale.receiptNo) ||
+        qpayByReceipt.has(sale.receiptNo)
           ? []
           : [{ method: sale.paymentMethod, amount: Number(sale.grandTotal) }]),
       ],
@@ -268,14 +320,19 @@ router.get("/pos/sales/history", async (req, res) => {
 
     const queryOrgId = String(req.query.organizationId || "").trim() || null;
     const effectiveOrgId =
-      actor.role === "ADMIN" ? queryOrgId : (actor.organizationId || queryOrgId);
+      actor.role === "ADMIN" ? queryOrgId : actor.organizationId || queryOrgId;
 
     if (!effectiveOrgId) {
       return res.status(400).json({ message: "organizationId шаардлагатай" });
     }
 
-    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, effectiveOrgId))) {
-      return res.status(403).json({ message: "Энэ байгууллагын мэдээлэл харах эрхгүй" });
+    if (
+      actor.role !== "ADMIN" &&
+      !(await hasOrgMembership(actor.id, effectiveOrgId))
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Энэ байгууллагын мэдээлэл харах эрхгүй" });
     }
 
     const fromStr = String(req.query.from || "").trim();
@@ -317,7 +374,9 @@ router.get("/pos/sales/history", async (req, res) => {
               lineTotal: true,
             },
           },
-          cashier: { select: { email: true, profile: { select: { fullName: true } } } },
+          cashier: {
+            select: { email: true, profile: { select: { fullName: true } } },
+          },
           branch: { select: { name: true } },
           register: { select: { name: true } },
         },
@@ -353,10 +412,18 @@ router.get("/pos/sales/history", async (req, res) => {
       })),
     }));
 
-    return res.json({ total, page, limit, pages: Math.ceil(total / limit), sales: result });
+    return res.json({
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      sales: result,
+    });
   } catch (error) {
     console.error("sales history error", error);
-    return res.status(500).json({ message: "Борлуулалтын түүх авахад алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "Борлуулалтын түүх авахад алдаа гарлаа" });
   }
 });
 
@@ -375,7 +442,9 @@ router.get("/pos/reports", async (req, res) => {
     const toStr = String(req.query.to || "").trim();
 
     if (!branchId || !fromStr || !toStr) {
-      return res.status(400).json({ message: "branchId, from, to шаардлагатай" });
+      return res
+        .status(400)
+        .json({ message: "branchId, from, to шаардлагатай" });
     }
 
     const from = new Date(fromStr);
@@ -394,11 +463,17 @@ router.get("/pos/reports", async (req, res) => {
 
     if (actor.role !== "ADMIN") {
       const membership = await prisma.organizationMember.findFirst({
-        where: { userId: actor.id, organizationId: branch.organizationId, isActive: true },
+        where: {
+          userId: actor.id,
+          organizationId: branch.organizationId,
+          isActive: true,
+        },
         select: { id: true },
       });
       if (!membership) {
-        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй" });
+        return res
+          .status(403)
+          .json({ message: "Энэ байгууллагад хандах эрхгүй" });
       }
     }
 
@@ -412,9 +487,13 @@ router.get("/pos/reports", async (req, res) => {
     });
 
     const salesCount = sales.length;
-    const grossAmount = sales.reduce((sum, s) => sum + Number(s.grandTotal) + Number(s.discountTotal), 0);
+    const grossAmount = sales.reduce(
+      (sum, s) => sum + Number(s.grandTotal) + Number(s.discountTotal),
+      0,
+    );
     const netAmount = sales.reduce((sum, s) => sum + Number(s.grandTotal), 0);
-    const averageTicket = salesCount > 0 ? roundMoney(netAmount / salesCount) : 0;
+    const averageTicket =
+      salesCount > 0 ? roundMoney(netAmount / salesCount) : 0;
 
     res.status(200).json({
       salesCount,
@@ -439,7 +518,9 @@ router.post("/pos/sales/:id/void", async (req, res) => {
     if (!actor) return;
 
     const saleId = req.params.id;
-    const reason = String(req.body.reason || "").trim().slice(0, 500);
+    const reason = String(req.body.reason || "")
+      .trim()
+      .slice(0, 500);
     if (!reason) {
       return res.status(400).json({ message: "Цуцлах шалтгаан шаардлагатай" });
     }
@@ -452,45 +533,60 @@ router.post("/pos/sales/:id/void", async (req, res) => {
       return res.status(404).json({ message: "Борлуулалт олдсонгүй" });
     }
     if (sale.status !== PosSaleStatus.COMPLETED) {
-      return res.status(409).json({ message: "Зөвхөн дууссан борлуулалтыг цуцлах боломжтой" });
+      return res
+        .status(409)
+        .json({ message: "Зөвхөн дууссан борлуулалтыг цуцлах боломжтой" });
     }
 
     if (actor.role !== "ADMIN") {
       const membership = await prisma.organizationMember.findFirst({
-        where: { userId: actor.id, organizationId: sale.organizationId, isActive: true },
+        where: {
+          userId: actor.id,
+          organizationId: sale.organizationId,
+          isActive: true,
+        },
         select: { id: true },
       });
       if (!membership) {
-        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй" });
+        return res
+          .status(403)
+          .json({ message: "Энэ байгууллагад хандах эрхгүй" });
       }
     }
 
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.posSale.update({
-        where: { id: saleId },
-        data: {
-          status: PosSaleStatus.VOIDED,
-          voidedAt: new Date(),
-          voidReason: reason,
-          voidedById: actor.id,
-        },
-      });
-
-      // Reverse stock for each line
-      for (const line of sale.lines) {
-        const warehouseId = await resolveOrgWarehouse(tx, sale.organizationId, line.productId);
-        await adjustStock(tx, {
-          productId: line.productId,
-          warehouseId: warehouseId ?? undefined,
-          change: line.qty, // positive = return to stock
-          reason: InventoryReason.RETURN,
-          note: `Void sale ${sale.receiptNo}`,
-          createdById: actor.id,
-          referenceId: sale.receiptNo,
-          referenceType: "POS_VOID",
+    await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        await tx.posSale.update({
+          where: { id: saleId },
+          data: {
+            status: PosSaleStatus.VOIDED,
+            voidedAt: new Date(),
+            voidReason: reason,
+            voidedById: actor.id,
+          },
         });
-      }
-    }, { timeout: 15_000 });
+
+        // Reverse stock for each line
+        for (const line of sale.lines) {
+          const warehouseId = await resolveOrgWarehouse(
+            tx,
+            sale.organizationId,
+            line.productId,
+          );
+          await adjustStock(tx, {
+            productId: line.productId,
+            warehouseId: warehouseId ?? undefined,
+            change: line.qty, // positive = return to stock
+            reason: InventoryReason.RETURN,
+            note: `Void sale ${sale.receiptNo}`,
+            createdById: actor.id,
+            referenceId: sale.receiptNo,
+            referenceType: "POS_VOID",
+          });
+        }
+      },
+      { timeout: 15_000 },
+    );
 
     void prisma.auditLog.create({
       data: {
@@ -511,7 +607,9 @@ router.post("/pos/sales/:id/void", async (req, res) => {
     console.error("void sale error", error);
     const maybeApiError = error as Partial<ApiError>;
     if (maybeApiError?.status && maybeApiError?.message) {
-      return res.status(maybeApiError.status).json({ message: maybeApiError.message });
+      return res
+        .status(maybeApiError.status)
+        .json({ message: maybeApiError.message });
     }
     res.status(500).json({ message: "Буцаалт хийхэд алдаа гарлаа" });
   }

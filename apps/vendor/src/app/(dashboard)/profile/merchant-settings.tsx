@@ -10,6 +10,8 @@ type MerchantStatus = {
   merchantId: string | null;
   connectedAt: string | null;
   orgName: string;
+  managedBySystem?: boolean;
+  provider?: string;
 };
 
 type MinuAgentStatus = {
@@ -28,23 +30,17 @@ type BankAccount = {
   is_default: boolean;
 };
 
-type City = { code: string; name: string };
+type City = { code: string; name: string; districts?: District[] };
 type District = { code: string; name: string };
+type Khoroo = { code: string; name: string };
+type SystemQrCategory = {
+  code: string;
+  name: string;
+  categoryCode?: string;
+  categoryName?: string;
+};
 
 /* ── Constants ──────────────────────────────────────────── */
-const MCC_OPTIONS = [
-  { code: "5311", label: "Дэлгүүр (Department Store)" },
-  { code: "5411", label: "Хүнсний дэлгүүр (Grocery)" },
-  { code: "5812", label: "Хоол, зоогийн газар (Restaurant)" },
-  { code: "5999", label: "Бусад худалдаа (Other Retail)" },
-  { code: "5045", label: "Компьютер, тоног төхөөрөмж (Electronics)" },
-  { code: "5699", label: "Хувцас, бараа (Apparel)" },
-  { code: "7011", label: "Зочид буудал (Hotel)" },
-  { code: "4121", label: "Такси (Taxi)" },
-  { code: "5912", label: "Эмийн сан (Pharmacy)" },
-  { code: "7399", label: "Бизнесийн үйлчилгээ (Business Services)" },
-];
-
 const BANK_OPTIONS = [
   { code: "050000", name: "Хаан банк" },
   { code: "150000", name: "Голомт банк" },
@@ -75,7 +71,7 @@ export function MerchantSettingsSection({
   const [minuStatus, setMinuStatus] = useState<MinuAgentStatus | null>(null);
   const [isQpayLoading, setIsQpayLoading] = useState(true);
   const [isMinuLoading, setIsMinuLoading] = useState(true);
-  const [tab, setTab] = useState<"register" | "manual">("register");
+  const [tab, setTab] = useState<"register" | "manual">("manual");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -91,14 +87,18 @@ export function MerchantSettingsSection({
   const [registerNumber, setRegisterNumber] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [mccCode, setMccCode] = useState("5311");
   const [city, setCity] = useState("");
   const [district, setDistrict] = useState("");
+  const [khorooId, setKhorooId] = useState("");
+  const [building, setBuilding] = useState("");
+  const [doorNo, setDoorNo] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [ownerFirstName, setOwnerFirstName] = useState("");
   const [ownerLastName, setOwnerLastName] = useState("");
+  const [gender, setGender] = useState("M");
+  const [subCategoryId, setSubCategoryId] = useState("36");
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([
     { account_bank_code: "050000", account_number: "", account_name: "", is_default: true },
   ]);
@@ -108,9 +108,12 @@ export function MerchantSettingsSection({
   // City / district
   const [cities, setCities] = useState<City[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
+  const [khoroos, setKhoroos] = useState<Khoroo[]>([]);
+  const [systemQrCategories, setSystemQrCategories] = useState<SystemQrCategory[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
 
   // Manual connect form
+  const [manualProvider, setManualProvider] = useState<"qpay" | "systemqr">("systemqr");
   const [merchantId, setMerchantId] = useState("");
   const [merchantKey, setMerchantKey] = useState("");
   const [invoiceCode, setInvoiceCode] = useState("");
@@ -130,6 +133,7 @@ export function MerchantSettingsSection({
 
     loadMerchantStatus();
     loadCities();
+    loadSystemQrCategories();
     loadBankAccounts();
   }, [mode, organizationId]);
 
@@ -138,6 +142,12 @@ export function MerchantSettingsSection({
     else setDistricts([]);
     setDistrict("");
   }, [city]);
+
+  useEffect(() => {
+    if (district) loadKhoroos(district);
+    else setKhoroos([]);
+    setKhorooId("");
+  }, [district]);
 
   const orgQuery = organizationId ? `?organizationId=${organizationId}` : "";
 
@@ -187,7 +197,7 @@ export function MerchantSettingsSection({
   const loadCities = async () => {
     setCitiesLoading(true);
     try {
-      const res = await authFetch(`${API}/vendor/merchant/cities`);
+      const res = await authFetch(`${API}/vendor/merchant/systemqr/cities`);
       if (res.ok) {
         const data = await res.json();
         setCities(data.cities || []);
@@ -198,18 +208,53 @@ export function MerchantSettingsSection({
   };
 
   const loadDistricts = async (cityCode: string) => {
+    const selectedCity = cities.find((item) => item.code === cityCode);
+    if (selectedCity?.districts?.length) {
+      setDistricts(selectedCity.districts);
+      return;
+    }
+    setDistricts([]);
+  };
+
+  const loadKhoroos = async (districtCode: string) => {
     try {
-      const res = await authFetch(`${API}/vendor/merchant/districts/${cityCode}`);
+      const res = await authFetch(`${API}/vendor/merchant/systemqr/khoroo/${districtCode}`);
       if (res.ok) {
         const data = await res.json();
-        setDistricts(data.districts || []);
+        setKhoroos(data.khoroos || []);
+      }
+    } catch {}
+  };
+
+  const loadSystemQrCategories = async () => {
+    try {
+      const res = await authFetch(`${API}/vendor/merchant/systemqr/categories`);
+      if (res.ok) {
+        const data = await res.json();
+        const categories = data.categories || [];
+        setSystemQrCategories(categories);
+        if (categories.length && !categories.some((item: SystemQrCategory) => item.code === subCategoryId)) {
+          setSubCategoryId(categories[0].code);
+        }
       }
     } catch {}
   };
 
   /* ── Register ─────────────────────────────────────────── */
   const handleRegister = async () => {
-    if (!registerNumber || !displayName || !mccCode || !address || !phone || !email) {
+    if (
+      !registerNumber ||
+      !displayName ||
+      !subCategoryId ||
+      !city ||
+      !district ||
+      !khorooId ||
+      !building ||
+      !doorNo ||
+      !phone ||
+      !ownerFirstName ||
+      !ownerLastName
+    ) {
       setMessage({ type: "error", text: "Бүх шаардлагатай талбарыг бөглөнө үү" });
       return;
     }
@@ -234,38 +279,29 @@ export function MerchantSettingsSection({
     setIsSubmitting(true);
     setMessage(null);
     try {
-      const body =
-        merchantType === "company"
-          ? {
-              type: "company",
-              register_number: registerNumber,
-              company_name: companyName,
-              name: displayName,
-              mcc_code: mccCode,
-              city,
-              district,
-              address,
-              phone,
-              email,
-              owner_first_name: ownerFirstName || undefined,
-              owner_last_name: ownerLastName || undefined,
-              bank_accounts: validBanks.length > 0 ? validBanks : undefined,
-            }
-          : {
-              type: "person",
-              register_number: registerNumber,
-              business_name: companyName || displayName,
-              name: displayName,
-              first_name: ownerFirstName || undefined,
-              last_name: ownerLastName || undefined,
-              mcc_code: mccCode,
-              city,
-              district,
-              address,
-              phone,
-              email,
-              bank_accounts: validBanks.length > 0 ? validBanks : undefined,
-            };
+      const defaultBank = validBanks.find((bank) => bank.is_default) || validBanks[0];
+      const body = {
+        provider: "systemqr",
+        type: merchantType,
+        merchantName: displayName.trim(),
+        accountNumber: defaultBank.account_number.trim(),
+        bankCode: defaultBank.account_bank_code.trim(),
+        cityId: city,
+        districtId: district,
+        khorooId,
+        building: building.trim(),
+        doorNo: doorNo.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+        firstName: ownerFirstName.trim(),
+        lastName: ownerLastName.trim(),
+        corporateFlag: merchantType === "company" ? "1" : "0",
+        corporateName: merchantType === "company" ? companyName.trim() : null,
+        registerNumber: registerNumber.trim(),
+        gender,
+        subCategoryId,
+        bank_accounts: validBanks,
+      };
 
       const res = await authFetch(`${API}/vendor/merchant/register`, {
         method: "POST",
@@ -274,7 +310,7 @@ export function MerchantSettingsSection({
       });
       const data = await res.json();
       if (data.success) {
-        setMessage({ type: "success", text: "QPay мерчант амжилттай бүртгэгдлээ!" });
+        setMessage({ type: "success", text: "Minu Dynamic QR дэд мерчант амжилттай бүртгэгдлээ!" });
         await loadMerchantStatus();
       } else if (data.alreadyRegistered) {
         // Auto-switch to manual tab so the user can connect with existing credentials
@@ -295,8 +331,9 @@ export function MerchantSettingsSection({
 
   /* ── Manual connect ───────────────────────────────────── */
   const handleManualConnect = async () => {
-    if (!merchantId || !merchantKey) {
-      setMessage({ type: "error", text: "Мерчант ID ба key шаардлагатай" });
+    const isSystemQr = manualProvider === "systemqr";
+    if (!merchantId || (!isSystemQr && !merchantKey)) {
+      setMessage({ type: "error", text: isSystemQr ? "Merchant code шаардлагатай" : "Мерчант ID ба key шаардлагатай" });
       return;
     }
     setIsSubmitting(true);
@@ -307,8 +344,8 @@ export function MerchantSettingsSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           merchantId,
-          merchantKey,
-          ...(invoiceCode ? { invoiceCode } : {}),
+          merchantKey: isSystemQr ? "systemqr" : merchantKey,
+          ...(isSystemQr ? { invoiceCode: "SYSTEMQR" } : invoiceCode ? { invoiceCode } : {}),
           ...(organizationId ? { organizationId } : {}),
         }),
       });
@@ -583,10 +620,18 @@ export function MerchantSettingsSection({
         <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 flex items-start gap-3">
           <Check className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
           <div>
-            <p className="font-semibold text-emerald-900">QPay мерчант холбогдсон</p>
-            <p className="text-sm text-emerald-700 mt-0.5">
-              Мерчант ID: <span className="font-mono font-bold">{merchantStatus.merchantId}</span>
+            <p className="font-semibold text-emerald-900">
+              {merchantStatus.managedBySystem ? "Minu Dynamic QR холбогдсон" : "QPay мерчант холбогдсон"}
             </p>
+            <p className="text-sm text-emerald-700 mt-0.5">
+              {merchantStatus.managedBySystem ? "Merchant code" : "Мерчант ID"}:{" "}
+              <span className="font-mono font-bold">{merchantStatus.merchantId}</span>
+            </p>
+            {merchantStatus.managedBySystem && (
+              <p className="text-xs text-emerald-600 mt-1">
+                API env дээрх SYSTEMQR тохиргоогоор кассын QR төлбөр үүснэ.
+              </p>
+            )}
             {merchantStatus.connectedAt && (
               <p className="text-xs text-emerald-600 mt-1">
                 {new Date(merchantStatus.connectedAt).toLocaleDateString("mn-MN")} бүртгэгдсэн
@@ -606,6 +651,7 @@ export function MerchantSettingsSection({
         </div>
 
         {/* Bank accounts section */}
+        {!merchantStatus.managedBySystem && (
         <div className="rounded-xl border border-slate-200 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="font-semibold text-slate-800 text-sm">Банкны данс</p>
@@ -764,6 +810,7 @@ export function MerchantSettingsSection({
             </div>
           )}
         </div>
+        )}
 
         {message && (
           <div className={`rounded-lg p-3 text-sm ${message.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
@@ -789,8 +836,8 @@ export function MerchantSettingsSection({
       <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
         <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
         <div>
-          <p className="font-semibold text-amber-900">QPay данс холбоогүй байна</p>
-          <p className="text-sm text-amber-700">Кассын болон онлайн төлбөр хүлээн авахын тулд QPay данс бүртгүүлэх шаардлагатай.</p>
+          <p className="font-semibold text-amber-900">Minu Dynamic QR холбогдоогүй байна</p>
+          <p className="text-sm text-amber-700">Кассын QR төлбөр авахын тулд дэлгүүрээ Minu Dynamic QR дэд мерчантаар бүртгүүлнэ.</p>
         </div>
       </div>
 
@@ -878,13 +925,37 @@ export function MerchantSettingsSection({
             </Field>
           </div>
 
-          {/* MCC */}
-          <Field label="Үйл ажиллагааны төрөл (MCC) *">
+          <Field label="Хүйс *">
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                ["M", "Эрэгтэй"],
+                ["F", "Эмэгтэй"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setGender(value)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${gender === value ? "border-[#5B4CFF] bg-indigo-50 text-[#5B4CFF]" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          {/* Category */}
+          <Field label="Үйл ажиллагааны чиглэл *">
             <div className="relative">
-              <select value={mccCode} onChange={(e) => setMccCode(e.target.value)} className={inputCls + " appearance-none pr-8"}>
-                {MCC_OPTIONS.map((m) => (
-                  <option key={m.code} value={m.code}>{m.label}</option>
-                ))}
+              <select value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} className={inputCls + " appearance-none pr-8"}>
+                {systemQrCategories.length > 0 ? (
+                  systemQrCategories.map((item) => (
+                    <option key={item.code} value={item.code}>
+                      {item.categoryName ? `${item.categoryName} - ${item.name}` : item.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="36">Бусад</option>
+                )}
               </select>
               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
             </div>
@@ -933,9 +1004,39 @@ export function MerchantSettingsSection({
             )}
           </Field>
 
+          {/* Khoroo */}
+          <Field label="Хороо/Баг *">
+            {khoroos.length > 0 ? (
+              <div className="relative">
+                <select value={khorooId} onChange={(e) => setKhorooId(e.target.value)} className={inputCls + " appearance-none pr-8"}>
+                  <option value="">Сонгоно уу</option>
+                  {khoroos.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={khorooId}
+                onChange={(e) => setKhorooId(e.target.value)}
+                placeholder="15782385"
+                className={inputCls}
+              />
+            )}
+          </Field>
+
           {/* Address */}
-          <Field label="Дэлгэрэнгүй хаяг *">
-            <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="6 хороо, 14-10 тоот" className={inputCls} />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Барилга/хашаа *">
+              <input type="text" value={building} onChange={(e) => setBuilding(e.target.value)} placeholder="Ascom" className={inputCls} />
+            </Field>
+            <Field label="Тоот *">
+              <input type="text" value={doorNo} onChange={(e) => setDoorNo(e.target.value)} placeholder="2" className={inputCls} />
+            </Field>
+          </div>
+
+          <Field label="Дэлгэрэнгүй хаяг">
+            <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Нэмэлт тайлбар" className={inputCls} />
           </Field>
 
           {/* Phone & email */}
@@ -1031,7 +1132,7 @@ export function MerchantSettingsSection({
             className="w-full py-3 rounded-lg bg-[#5B4CFF] hover:bg-[#4A3CDB] text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            QPay мерчант бүртгүүлэх
+            Minu Dynamic QR бүртгүүлэх
           </button>
         </div>
       )}
@@ -1075,18 +1176,52 @@ export function MerchantSettingsSection({
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
-            <Field label="Мерчант ID *">
-              <input type="text" value={merchantId} onChange={(e) => setMerchantId(e.target.value)} placeholder="Жишээ: MYSHOP_MN" className={inputCls} />
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-600">Төлбөрийн төрөл</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setManualProvider("qpay")}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${manualProvider === "qpay" ? "border-[#5B4CFF] bg-[#5B4CFF] text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                >
+                  QPay V2
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualProvider("systemqr")}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${manualProvider === "systemqr" ? "border-[#5B4CFF] bg-[#5B4CFF] text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                >
+                  Minu Dynamic QR
+                </button>
+              </div>
+            </div>
+
+            <Field label={manualProvider === "systemqr" ? "Merchant Code *" : "Мерчант ID *"}>
+              <input
+                type="text"
+                value={merchantId}
+                onChange={(e) => setMerchantId(e.target.value)}
+                placeholder={manualProvider === "systemqr" ? "Жишээ: MC000123" : "Жишээ: MYSHOP_MN"}
+                className={inputCls}
+              />
             </Field>
-            <Field label="Мерчант Key *">
-              <input type="password" value={merchantKey} onChange={(e) => setMerchantKey(e.target.value)} placeholder="•••••••••" className={inputCls} />
-            </Field>
-            <Field label="Invoice Code (заавал биш)">
-              <input type="text" value={invoiceCode} onChange={(e) => setInvoiceCode(e.target.value)} placeholder="Хоосон орхивол Мерчант ID ашиглагдана" className={inputCls} />
-            </Field>
+            {manualProvider === "qpay" ? (
+              <>
+                <Field label="Мерчант Key *">
+                  <input type="password" value={merchantKey} onChange={(e) => setMerchantKey(e.target.value)} placeholder="•••••••••" className={inputCls} />
+                </Field>
+                <Field label="Invoice Code (заавал биш)">
+                  <input type="text" value={invoiceCode} onChange={(e) => setInvoiceCode(e.target.value)} placeholder="Хоосон орхивол Мерчант ID ашиглагдана" className={inputCls} />
+                </Field>
+              </>
+            ) : (
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                Энэ тохиргоо POS кассын QR төлбөрийг Minu Dynamic QR merchantCode-оор үүсгэнэ.
+              </div>
+            )}
             <button
               onClick={handleManualConnect}
-              disabled={isSubmitting || !merchantId || !merchantKey}
+              disabled={isSubmitting || !merchantId || (manualProvider === "qpay" && !merchantKey)}
               className="w-full py-3 rounded-lg bg-[#5B4CFF] hover:bg-[#4A3CDB] text-white font-semibold shadow-md shadow-[#5B4CFF]/20 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2 transition-all"
             >
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

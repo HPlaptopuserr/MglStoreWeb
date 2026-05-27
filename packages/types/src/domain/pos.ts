@@ -75,6 +75,7 @@ export interface PosProduct {
   sku: string;
   barcode?: string | null;
   name: string;
+  imageUrl?: string | null;
   price: number;
   stockQty: number;
   expiryDate?: string | null;
@@ -86,6 +87,7 @@ export interface PosProduct {
 export interface CartLine {
   productId: string;
   name: string;
+  imageUrl?: string | null;
   unitPrice: number;
   qty: number;
   stockQty: number;

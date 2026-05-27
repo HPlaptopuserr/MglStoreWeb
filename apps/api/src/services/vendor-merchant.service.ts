@@ -8,6 +8,10 @@ import {
   type QPayRegisterCompanyParams,
   type QPayRegisterPersonParams,
 } from "./qpay";
+import {
+  registerSystemQrSubMerchant,
+  type SystemQrRegisterSubMerchantParams,
+} from "./systemqr";
 
 export type ConnectMerchantResult = {
   success: boolean;
@@ -21,6 +25,10 @@ export type GetMerchantConfigResult = {
   config?: QPayMerchantContext | null;
   error?: string;
 };
+
+const isSystemQrMarker = (value?: string | null) =>
+  String(value || "").trim().toUpperCase() === "SYSTEMQR" ||
+  String(value || "").trim().toLowerCase().startsWith("systemqr");
 
 /**
  * Connect vendor organization to multi-merchant QPay account
@@ -303,6 +311,64 @@ export type RegisterVendorParams =
   | ({ type: "company" } & Omit<QPayRegisterCompanyParams, never>)
   | ({ type: "person" } & Omit<QPayRegisterPersonParams, never>);
 
+export type RegisterVendorSystemQrParams = SystemQrRegisterSubMerchantParams & {
+  bank_accounts?: QPayBankAccount[];
+};
+
+export async function registerVendorWithSystemQr(
+  organizationId: string,
+  params: RegisterVendorSystemQrParams,
+): Promise<ConnectMerchantResult & { raw?: Record<string, unknown>; username?: string }> {
+  try {
+    const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+    if (!org) return { success: false, message: "Байгууллага олдсонгүй" };
+
+    const result = await registerSystemQrSubMerchant(params);
+    const bankAccounts: QPayBankAccount[] =
+      params.bank_accounts?.length
+        ? params.bank_accounts
+        : [{
+            account_bank_code: params.bankCode,
+            account_number: params.accountNumber,
+            account_name: params.merchantName,
+            is_default: true,
+          }];
+
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        qpayMerchantId: result.merchantCode,
+        qpayMerchantKey: result.password ? `systemqr:${result.password}` : "systemqr",
+        qpayInvoiceCode: "SYSTEMQR",
+        qpayBankAccounts: bankAccounts as any,
+        qpayEnabled: true,
+        qpayConnectedAt: new Date(),
+      },
+    });
+
+    return {
+      success: true,
+      message: "Minu Dynamic QR дэд мерчант амжилттай бүртгэгдлээ",
+      merchantId: result.merchantCode,
+      username: result.username,
+      raw: result.raw,
+    };
+  } catch (error: any) {
+    console.error("registerVendorWithSystemQr error", error);
+    const message = String(error?.message || "");
+    if (/P2002|Unique constraint/i.test(message)) {
+      return {
+        success: false,
+        message: "Энэ merchantCode өөр байгууллага дээр аль хэдийн холбогдсон байна.",
+      };
+    }
+    return {
+      success: false,
+      message: message || "Minu Dynamic QR дэд мерчант бүртгэхэд алдаа гарлаа",
+    };
+  }
+}
+
 /**
  * Register vendor with QPay QuickQR and save credentials to org
  */
@@ -350,6 +416,7 @@ export async function registerVendorWithQPay(
     };
   } catch (error: any) {
     console.error("registerVendorWithQPay error", error);
+    const errorMessage = String(error?.message || "");
     // Аль хэдийн бүртгэгдсэн → auto-recover хийх
     if (error instanceof QPayAlreadyRegisteredError) {
       try {
@@ -365,7 +432,14 @@ export async function registerVendorWithQPay(
         alreadyRegistered: true,
       };
     }
-    return { success: false, message: error?.message || "Бүртгэхэд алдаа гарлаа" };
+    if (/QPAY_QUICKQR|QuickQR.*тохиргоо дутуу|QuickQR.*credentials/i.test(errorMessage)) {
+      return {
+        success: false,
+        message:
+          'QPay QuickQR бүртгэл энэ орчинд идэвхгүй байна. Minu Dynamic QR ашиглах бол "Данс аль хэдийн байна" хэсгээс "Minu Dynamic QR" сонгоод тухайн дэлгүүрийн merchantCode оруулна уу.',
+      };
+    }
+    return { success: false, message: errorMessage || "Бүртгэхэд алдаа гарлаа" };
   }
 }
 
@@ -460,6 +534,8 @@ export async function getVendorMerchantStatus(organizationId: string) {
         name: true,
         qpayEnabled: true,
         qpayMerchantId: true,
+        qpayMerchantKey: true,
+        qpayInvoiceCode: true,
         qpayConnectedAt: true,
       },
     });
@@ -468,12 +544,17 @@ export async function getVendorMerchantStatus(organizationId: string) {
       return { success: false, error: "Байгууллага олдсонгүй" };
     }
 
+    const isSystemQr =
+      isSystemQrMarker(org.qpayMerchantKey) || isSystemQrMarker(org.qpayInvoiceCode);
+
     return {
       success: true,
       isConnected: org.qpayEnabled && !!org.qpayMerchantId,
       merchantId: org.qpayMerchantId || null,
       connectedAt: org.qpayConnectedAt,
       orgName: org.name,
+      managedBySystem: isSystemQr,
+      provider: isSystemQr ? "SYSTEMQR" : "QPAY",
     };
   } catch (error) {
     console.error("vendor merchant status error", error);

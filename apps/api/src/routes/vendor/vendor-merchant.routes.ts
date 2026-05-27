@@ -4,9 +4,15 @@ import {
   connectVendorMerchant,
   disconnectVendorMerchant,
   getVendorMerchantStatus,
+  registerVendorWithSystemQr,
   registerVendorWithQPay,
 } from "../../services/vendor-merchant.service";
 import { getQPayCityList, getQPayDistrictList } from "../../services/qpay";
+import {
+  getSystemQrCategoryList,
+  getSystemQrCityList,
+  getSystemQrKhorooList,
+} from "../../services/systemqr";
 import { prisma } from "@mgl/database";
 import { getMinuAgentToken } from "../../services/minu-pos-agent";
 
@@ -286,13 +292,13 @@ router.post("/vendor/merchant/disconnect", requireAuth, async (req, res) => {
 
 /**
  * POST /api/vendor/merchant/register
- * Register vendor as a new QPay QuickQR merchant.
+ * Register vendor as a new merchant.
  * Body: { type: "company"|"person", ...fields, bank_accounts: [...] }
  */
 router.post("/vendor/merchant/register", requireAuth, async (req, res) => {
   try {
     const userId = (req as any).userId as string;
-    const { type, organizationId: explicitOrgId, ...rest } = req.body;
+    const { type, provider, organizationId: explicitOrgId, ...rest } = req.body;
 
     if (!type || (type !== "company" && type !== "person")) {
       return res.status(400).json({ success: false, message: "type: 'company' эсвэл 'person' байх ёстой" });
@@ -303,7 +309,14 @@ router.post("/vendor/merchant/register", requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
     }
 
-    const result = await registerVendorWithQPay(organizationId, { type, ...rest } as any);
+    const isSystemQrRegister =
+      provider === "systemqr" ||
+      Boolean(rest.merchantName && rest.accountNumber && rest.cityId && rest.districtId);
+
+    const result =
+      isSystemQrRegister
+        ? await registerVendorWithSystemQr(organizationId, rest as any)
+        : await registerVendorWithQPay(organizationId, { type, ...rest } as any);
 
     if (!result.success) {
       return res.status(400).json(result);
@@ -313,6 +326,36 @@ router.post("/vendor/merchant/register", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("merchant register error", error);
     return res.status(500).json({ success: false, message: "QPay бүртгэхэд алдаа гарлаа" });
+  }
+});
+
+router.get("/vendor/merchant/systemqr/cities", requireAuth, async (_req, res) => {
+  try {
+    const cities = await getSystemQrCityList();
+    return res.json({ cities });
+  } catch (error) {
+    console.error("systemqr cities error", error);
+    return res.json({ cities: [] });
+  }
+});
+
+router.get("/vendor/merchant/systemqr/khoroo/:districtId", requireAuth, async (req, res) => {
+  try {
+    const khoroos = await getSystemQrKhorooList(req.params.districtId);
+    return res.json({ khoroos });
+  } catch (error) {
+    console.error("systemqr khoroo error", error);
+    return res.json({ khoroos: [] });
+  }
+});
+
+router.get("/vendor/merchant/systemqr/categories", requireAuth, async (_req, res) => {
+  try {
+    const categories = await getSystemQrCategoryList();
+    return res.json({ categories });
+  } catch (error) {
+    console.error("systemqr categories error", error);
+    return res.json({ categories: [] });
   }
 });
 

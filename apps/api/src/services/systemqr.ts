@@ -1,5 +1,28 @@
-const SYSTEMQR_BASE_URL = process.env.SYSTEMQR_BASE_URL || "https://api.minu.mn/qrpay-test";
-const SYSTEMQR_DEEPLINK_URL = process.env.SYSTEMQR_DEEPLINK_URL || "https://api.minu.mn/deeplink-test";
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
+
+const systemQrEnv = () => {
+  const root = trimTrailingSlash(process.env.SYSTEMQR_ROOT_URL || "https://api.minu.mn");
+  return {
+    qrpayBaseUrl: trimTrailingSlash(process.env.SYSTEMQR_BASE_URL || `${root}/qrpay-test`),
+    deeplinkBaseUrl: trimTrailingSlash(process.env.SYSTEMQR_DEEPLINK_URL || `${root}/deeplink-test`),
+    publicUrl: trimTrailingSlash(process.env.API_PUBLIC_URL || process.env.API_URL || ""),
+  };
+};
+
+const isPublicCallbackUrl = (value?: string | null) => {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return false;
+    if (/^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) {
+      return false;
+    }
+    return url.protocol === "https:" || process.env.NODE_ENV !== "production";
+  } catch {
+    return false;
+  }
+};
 
 interface SystemQrLoginResponse {
   status: string;
@@ -19,13 +42,38 @@ interface SystemQrCheckInvoiceParams {
   invoiceNumber: string;
 }
 
+export interface SystemQrRegisterSubMerchantParams {
+  merchantName: string;
+  accountNumber: string;
+  bankCode: string;
+  cityId: string;
+  districtId: string;
+  khorooId: string;
+  building: string;
+  doorNo: string;
+  phone: string;
+  email?: string | null;
+  firstName: string;
+  lastName: string;
+  corporateFlag: string;
+  corporateName?: string | null;
+  registerNumber: string;
+  gender: string;
+  subCategoryId: string;
+}
+
+export interface SystemQrSubMerchantResult {
+  merchantCode: string;
+  username: string;
+  password?: string;
+  raw: Record<string, unknown>;
+}
+
 // In-memory token cache to avoid logging in on every request
-let tokenCache: { token: string; expiresAt: number } | null = null;
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 async function getSystemQrToken(username?: string, password?: string): Promise<string> {
-  if (tokenCache && Date.now() < tokenCache.expiresAt) {
-    return tokenCache.token;
-  }
+  const { qrpayBaseUrl } = systemQrEnv();
 
   const reqUsername = username || process.env.SYSTEMQR_USERNAME;
   const reqPassword = password || process.env.SYSTEMQR_PASSWORD;
@@ -34,7 +82,13 @@ async function getSystemQrToken(username?: string, password?: string): Promise<s
     throw new Error("SystemQR username or password is not configured");
   }
 
-  const res = await fetch(`https://api.minu.mn/qrpay/login`, {
+  const cacheKey = `${qrpayBaseUrl}:${reqUsername}`;
+  const cached = tokenCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.token;
+  }
+
+  const res = await fetch(`${qrpayBaseUrl}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username: reqUsername, password: reqPassword }),
@@ -48,16 +102,185 @@ async function getSystemQrToken(username?: string, password?: string): Promise<s
 
   const token = data.entity;
   // Token expires in 30 minutes, let's cache for 25 minutes
-  tokenCache = { token, expiresAt: Date.now() + 25 * 60 * 1000 };
+  tokenCache.set(cacheKey, { token, expiresAt: Date.now() + 25 * 60 * 1000 });
   
   return token;
 }
 
+export async function registerSystemQrSubMerchant(
+  params: SystemQrRegisterSubMerchantParams,
+  username?: string,
+  password?: string,
+): Promise<SystemQrSubMerchantResult> {
+  const token = await getSystemQrToken(username, password);
+  const { qrpayBaseUrl } = systemQrEnv();
+
+  const res = await fetch(`${qrpayBaseUrl}/qrMerchant/registerSubMerchant`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      merchantName: params.merchantName,
+      accountNumber: params.accountNumber,
+      bankCode: params.bankCode,
+      cityId: params.cityId,
+      districtId: params.districtId,
+      khorooId: params.khorooId,
+      building: params.building,
+      doorNo: params.doorNo,
+      phone: params.phone,
+      email: params.email || null,
+      firstName: params.firstName,
+      lastName: params.lastName,
+      corporateFlag: params.corporateFlag,
+      corporateName: params.corporateName || null,
+      registerNumber: params.registerNumber,
+      gender: params.gender,
+      subCategoryId: params.subCategoryId,
+    }),
+  });
+
+  const data = (await res.json()) as {
+    status?: string;
+    message?: string | null;
+    entity?: {
+      merchantCode?: string;
+      username?: string;
+      password?: string;
+    } | null;
+  };
+
+  if (data.status !== "000" || !data.entity?.merchantCode) {
+    throw new Error(
+      `Minu SystemQR subMerchant register failed (${data.status || "unknown"}): ${
+        data.message || "merchantCode ирсэнгүй"
+      }`,
+    );
+  }
+
+  return {
+    merchantCode: String(data.entity.merchantCode),
+    username: String(data.entity.username || data.entity.merchantCode),
+    password: data.entity.password ? String(data.entity.password) : undefined,
+    raw: data as unknown as Record<string, unknown>,
+  };
+}
+
+export async function resetSystemQrSubMerchantPassword(
+  subMerchantCode: string,
+  username?: string,
+  password?: string,
+): Promise<SystemQrSubMerchantResult> {
+  const token = await getSystemQrToken(username, password);
+  const { qrpayBaseUrl } = systemQrEnv();
+
+  const res = await fetch(`${qrpayBaseUrl}/qrMerchant/resetPassword`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ subMerchantCode }),
+  });
+
+  const data = (await res.json()) as {
+    status?: string;
+    message?: string | null;
+    entity?: {
+      merchantCode?: string;
+      username?: string;
+      password?: string;
+    } | null;
+  };
+
+  if (data.status !== "000" || !data.entity?.merchantCode) {
+    throw new Error(
+      `Minu SystemQR subMerchant resetPassword failed (${data.status || "unknown"}): ${
+        data.message || "password ирсэнгүй"
+      }`,
+    );
+  }
+
+  return {
+    merchantCode: String(data.entity.merchantCode),
+    username: String(data.entity.username || data.entity.merchantCode),
+    password: data.entity.password ? String(data.entity.password) : undefined,
+    raw: data as unknown as Record<string, unknown>,
+  };
+}
+
+export async function getSystemQrCityList() {
+  const token = await getSystemQrToken();
+  const { qrpayBaseUrl } = systemQrEnv();
+  const res = await fetch(`${qrpayBaseUrl}/qrMerchant/city`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = (await res.json()) as { status?: string; entity?: any[] | null };
+  if (data.status !== "000" || !Array.isArray(data.entity)) return [];
+
+  return data.entity.map((city) => ({
+    code: String(city.cityId || ""),
+    name: String(city.cityName || ""),
+    districts: Array.isArray(city.districtList)
+      ? city.districtList.map((district: any) => ({
+          code: String(district.districtId || ""),
+          name: String(district.districtName || ""),
+        }))
+      : [],
+  }));
+}
+
+export async function getSystemQrKhorooList(districtId: string) {
+  const token = await getSystemQrToken();
+  const { qrpayBaseUrl } = systemQrEnv();
+  const res = await fetch(
+    `${qrpayBaseUrl}/qrMerchant/khoroo?districtId=${encodeURIComponent(districtId)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const data = (await res.json()) as { status?: string; entity?: any[] | null };
+  if (data.status !== "000" || !Array.isArray(data.entity)) return [];
+
+  return data.entity.map((khoroo) => ({
+    code: String(khoroo.khorooId || ""),
+    name: String(khoroo.khorooName || ""),
+  }));
+}
+
+export async function getSystemQrCategoryList() {
+  const token = await getSystemQrToken();
+  const { qrpayBaseUrl } = systemQrEnv();
+  const res = await fetch(`${qrpayBaseUrl}/qrMerchant/category`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = (await res.json()) as { status?: string; entity?: any[] | null };
+  if (data.status !== "000" || !Array.isArray(data.entity)) return [];
+
+  return data.entity.flatMap((category) =>
+    Array.isArray(category.psSubCategoryList)
+      ? category.psSubCategoryList.map((subCategory: any) => ({
+          code: String(subCategory.subCategoryId || ""),
+          name: String(subCategory.subCategoryName || ""),
+          categoryCode: String(category.categoryId || ""),
+          categoryName: String(category.categoryName || ""),
+        }))
+      : [],
+  );
+}
+
 export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams, username?: string, password?: string) {
   const token = await getSystemQrToken(username, password);
+  const { deeplinkBaseUrl, publicUrl } = systemQrEnv();
+  const fallbackWebhook = publicUrl ? `${publicUrl}/api/pos/qpay/cb` : undefined;
+  const webhook = isPublicCallbackUrl(params.webhook)
+    ? params.webhook
+    : isPublicCallbackUrl(fallbackWebhook)
+      ? fallbackWebhook
+      : undefined;
 
   try {
-    const res = await fetch(`${SYSTEMQR_DEEPLINK_URL}/subMerchant/createInvoice`, {
+    const res = await fetch(`${deeplinkBaseUrl}/subMerchant/createInvoice`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -67,25 +290,36 @@ export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams,
         referenceNumber: params.referenceNumber,
         amount: params.amount,
         merchantCode: params.merchantCode,
-        webhook: params.webhook || `${process.env.API_URL}/contracts/systemqr/callback`,
+        ...(webhook ? { webhook } : {}),
       }),
     });
 
     const data = await res.json() as any;
 
     if (data.status !== "000") {
-      throw new Error(data.message || "SystemQR invoice creation failed");
+      throw new Error(
+        `Minu SystemQR createInvoice failed (${data.status || "unknown"}): ${
+          data.message || "SystemQR invoice creation failed"
+        }. Дэлгүүрийн Minu Dynamic QR merchantCode/Sub-Merchant Code зөв эсэхийг Minu талаас шалгана уу.`,
+      );
     }
 
     // Map entity to generic format used by frontend
     const entity = data.entity;
+    if (!entity?.invoiceNumber || !entity?.mainQr) {
+      throw new Error("Minu SystemQR createInvoice returned an incomplete invoice");
+    }
+
     return {
       invoiceId: entity.invoiceNumber, // SystemQR uses invoiceNumber
       qrText: entity.mainQr,
       urls: (entity.deeplinkList || []).map((d: any) => ({
         name: d.deeplinkName,
         description: d.deeplinkDesc,
-        link: d.deeplinkLink,
+        link: String(d.deeplinkLink || "").replace(
+          "qPay_QRcode=null",
+          `qPay_QRcode=${encodeURIComponent(entity.mainQr)}`,
+        ),
         logo: d.image || "",
       })),
     };
@@ -97,9 +331,10 @@ export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams,
 
 export async function checkSystemQrPayment(params: SystemQrCheckInvoiceParams, username?: string, password?: string) {
   const token = await getSystemQrToken(username, password);
+  const { deeplinkBaseUrl } = systemQrEnv();
 
   try {
-    const res = await fetch(`${SYSTEMQR_DEEPLINK_URL}/subMerchant/checkInvoice`, {
+    const res = await fetch(`${deeplinkBaseUrl}/subMerchant/checkInvoice`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
