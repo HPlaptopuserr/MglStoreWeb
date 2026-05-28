@@ -263,6 +263,7 @@ export default function CheckoutPage() {
           orderId={checkoutResult.orderId}
           orderNumber={checkoutResult.orderNumber}
           total={checkoutResult.total}
+          qrText={checkoutResult.qrText}
           qrImage={checkoutResult.qrImage}
           deepLinks={checkoutResult.deepLinks}
           onSuccess={handlePaymentSuccess}

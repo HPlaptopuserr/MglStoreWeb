@@ -322,6 +322,12 @@ model Organization {
   qpayBankAccounts             Json?
   qpayEnabled                  Boolean                 @default(false)
   qpayConnectedAt              DateTime?
+  webQpayMerchantId            String?                 @unique
+  webQpayMerchantKey           String?
+  webQpayInvoiceCode           String?
+  webQpayBankAccounts          Json?
+  webQpayEnabled               Boolean                 @default(false)
+  webQpayConnectedAt           DateTime?
   minuAgentEnabled             Boolean                 @default(false)
   minuAgentUsername            String?
   minuAgentPassword            String?

@@ -96,6 +96,8 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<ProfileTab>(
     initialTab === "qpay" || initialTab === "merchant"
       ? "qpay"
+      : initialTab === "web-qpay" || initialTab === "web-payment"
+        ? "qpay"
       : initialTab === "terminal"
         ? "terminal"
         : "profile",

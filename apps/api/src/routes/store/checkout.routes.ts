@@ -9,7 +9,11 @@ import {
 } from "@mgl/database";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import { adjustStock, resolveOrgWarehouse } from "../../services/inventory.service";
-import { getVendorMerchantConfig } from "../../services/vendor-merchant.service";
+import {
+  getVendorMerchantConfig,
+  getVendorSystemQrConfig,
+} from "../../services/vendor-merchant.service";
+import { checkSystemQrPayment, createSystemQrInvoice } from "../../services/systemqr";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("FATAL: JWT_SECRET not set"); })() : "dev-secret-change-me");
@@ -42,6 +46,112 @@ const generateOrderNumber = () => {
   const rand = String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
   return `ORD-${y}${m}${d}-${rand}`;
 };
+
+const getStoreQPayCallbackUrl = (orderId: string) => {
+  const publicUrl = (process.env.API_PUBLIC_URL || process.env.API_URL || "").replace(/\/+$/, "");
+  return publicUrl ? `${publicUrl}/api/store/qpay/callback?orderId=${encodeURIComponent(orderId)}` : undefined;
+};
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+async function createStorePaymentInvoice(params: {
+  organizationId: string;
+  orderId: string;
+  orderNumber: string;
+  amount: number;
+}) {
+  const systemQrConfig = await getVendorSystemQrConfig(params.organizationId);
+
+  if (systemQrConfig) {
+    const systemQr = await createSystemQrInvoice(
+      {
+        merchantCode: systemQrConfig.merchantCode,
+        amount: params.amount,
+        referenceNumber: params.orderId,
+        webhook: getStoreQPayCallbackUrl(params.orderId),
+      },
+      systemQrConfig.username,
+      systemQrConfig.password,
+    );
+
+    return {
+      data: {
+        invoice_id: systemQr.invoiceId,
+        qr_text: systemQr.qrText,
+        qr_image: "",
+        urls: systemQr.urls,
+      },
+      rawPayload: {
+        provider: "SYSTEMQR",
+        merchantCode: systemQrConfig.merchantCode,
+        invoice_id: systemQr.invoiceId,
+        qr_text: systemQr.qrText,
+        qr_image: "",
+        urls: systemQr.urls,
+      },
+    };
+  }
+
+  const merchantRes = await getVendorMerchantConfig(params.organizationId);
+  if (!merchantRes.success || !merchantRes.config) {
+    throw new Error("QPAY_NOT_CONFIGURED");
+  }
+
+  const qpayData = await createQPayInvoice({
+    orderId: params.orderId,
+    orderNumber: params.orderNumber,
+    amount: params.amount,
+    merchantContext: merchantRes.config,
+  });
+
+  return {
+    data: qpayData,
+    rawPayload: {
+      provider: "QPAY",
+      invoice_id: qpayData.invoice_id,
+      qr_text: qpayData.qr_text,
+      qr_image: qpayData.qr_image,
+      urls: qpayData.urls,
+    },
+  };
+}
+
+async function checkStorePayment(params: {
+  organizationId: string;
+  providerRef: string;
+  rawPayload?: unknown;
+}) {
+  const rawPayload = asRecord(params.rawPayload);
+  const provider = String(rawPayload.provider || "").toUpperCase();
+
+  if (provider === "SYSTEMQR") {
+    const resolved = await getVendorSystemQrConfig(params.organizationId);
+    const merchantCode = String(rawPayload.merchantCode || resolved?.merchantCode || "").trim();
+    if (!merchantCode) return { paid: false, payload: { provider: "SYSTEMQR", missingMerchantCode: true } };
+
+    const check = await checkSystemQrPayment(
+      { merchantCode, invoiceNumber: params.providerRef },
+      resolved?.username,
+      resolved?.password,
+    );
+
+    return {
+      paid: check.paid,
+      payload: { provider: "SYSTEMQR", merchantCode, ...check },
+    };
+  }
+
+  const merchantRes = await getVendorMerchantConfig(params.organizationId);
+  const qpayCheck = await checkQPayPayment(params.providerRef, merchantRes.config ?? undefined);
+
+  return {
+    paid: qpayCheck.count > 0,
+    payload: qpayCheck,
+  };
+}
 
 /* ══════════════════════════════════════════════════════════
    POST /store/checkout
@@ -133,12 +243,14 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
 
     const total = subtotal; // no delivery fee for now
 
-    // Check if vendor has QPay connected
-    const merchantRes = await getVendorMerchantConfig(orgIds[0]);
-    if (!merchantRes.success || !merchantRes.config) {
+    // Web checkout uses the vendor's main QPay merchant profile.
+    const systemQrConfig = await getVendorSystemQrConfig(orgIds[0]);
+    const merchantRes = systemQrConfig
+      ? { success: true, config: null }
+      : await getVendorMerchantConfig(orgIds[0]);
+    if (!systemQrConfig && (!merchantRes.success || !merchantRes.config)) {
       return res.status(400).json({ message: "Дэлгүүр QPay дансаа холбоогүй байна. Төлбөр авах боломжгүй." });
     }
-    const merchantContext = merchantRes.config;
 
     // Create order + items + payment attempt in a transaction
     const order = await prisma.$transaction(async (tx) => {
@@ -198,17 +310,23 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       return ord;
     });
 
-    // Create real QPay V2 invoice
+    // Create QPay payment invoice
     let qpayData;
+    let rawPaymentPayload;
     try {
-      qpayData = await createQPayInvoice({
+      const invoice = await createStorePaymentInvoice({
+        organizationId: orgIds[0],
         orderId: order.id,
         orderNumber: order.orderNumber,
         amount: Number(order.total),
-        merchantContext,
       });
+      qpayData = invoice.data;
+      rawPaymentPayload = invoice.rawPayload;
     } catch (err) {
       console.error("QPay invoice creation failed:", err);
+      if (err instanceof Error && err.message === "QPAY_NOT_CONFIGURED") {
+        return res.status(400).json({ message: "Дэлгүүр QPay төлбөрийн тохиргоо холбоогүй байна." });
+      }
       return res.status(502).json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
     }
 
@@ -218,7 +336,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         where: { id: order.payments[0].id },
         data: {
           providerRef: qpayData.invoice_id,
-          rawPayload: JSON.parse(JSON.stringify(qpayData)),
+          rawPayload: JSON.parse(JSON.stringify(rawPaymentPayload || qpayData)),
         },
       });
     }
@@ -271,7 +389,7 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
         paymentStatus: true,
         orderNumber: true,
         total: true,
-        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, status: true } },
+        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, rawPayload: true, status: true } },
       },
     });
 
@@ -298,11 +416,13 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
       return res.status(400).json({ message: "QPay нэхэмжлэх олдсонгүй" });
     }
 
-    const merchantRes = await getVendorMerchantConfig(order.organizationId);
-    const merchantContext = merchantRes.config ?? undefined;
-    const qpayCheck = await checkQPayPayment(payment.providerRef, merchantContext);
+    const paymentCheck = await checkStorePayment({
+      organizationId: order.organizationId,
+      providerRef: payment.providerRef,
+      rawPayload: payment.rawPayload,
+    });
 
-    if (qpayCheck.count === 0) {
+    if (!paymentCheck.paid) {
       return res.json({
         orderId: order.id,
         orderNumber: order.orderNumber,
@@ -318,7 +438,7 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
         data: {
           status: PaymentStatus.PAID,
           paidAt: new Date(),
-          rawPayload: JSON.parse(JSON.stringify(qpayCheck)),
+          rawPayload: JSON.parse(JSON.stringify(paymentCheck.payload)),
         },
       });
 
@@ -374,7 +494,7 @@ router.get("/store/checkout/:orderId/payment-status", async (req: Request, res: 
         organizationId: true,
         paymentStatus: true,
         orderNumber: true,
-        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, status: true } },
+        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, rawPayload: true, status: true } },
       },
     });
 
@@ -395,11 +515,13 @@ router.get("/store/checkout/:orderId/payment-status", async (req: Request, res: 
       return res.json({ status: "PENDING" });
     }
 
-    const merchantRes2 = await getVendorMerchantConfig(order.organizationId);
-    const merchantContext2 = merchantRes2.config ?? undefined;
-    const qpayCheck = await checkQPayPayment(payment.providerRef, merchantContext2);
+    const paymentCheck = await checkStorePayment({
+      organizationId: order.organizationId,
+      providerRef: payment.providerRef,
+      rawPayload: payment.rawPayload,
+    });
 
-    if (qpayCheck.count === 0) {
+    if (!paymentCheck.paid) {
       return res.json({ status: "PENDING" });
     }
 
@@ -410,7 +532,7 @@ router.get("/store/checkout/:orderId/payment-status", async (req: Request, res: 
         data: {
           status: PaymentStatus.PAID,
           paidAt: new Date(),
-          rawPayload: JSON.parse(JSON.stringify(qpayCheck)),
+          rawPayload: JSON.parse(JSON.stringify(paymentCheck.payload)),
         },
       });
 
@@ -459,7 +581,7 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
         customerId: true,
         organizationId: true,
         paymentStatus: true,
-        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, status: true } },
+        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, rawPayload: true, status: true } },
       },
     });
 
@@ -476,12 +598,14 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
       return res.status(400).json({ message: "no provider ref" });
     }
 
-    // Verify with QPay using the vendor's merchant context
-    const merchantRes3 = await getVendorMerchantConfig(order.organizationId);
-    const merchantContext3 = merchantRes3.config ?? undefined;
-    const qpayCheck = await checkQPayPayment(payment.providerRef, merchantContext3);
+    // Verify with the QPay profile used when the invoice was created.
+    const paymentCheck = await checkStorePayment({
+      organizationId: order.organizationId,
+      providerRef: payment.providerRef,
+      rawPayload: payment.rawPayload,
+    });
 
-    if (qpayCheck.count === 0) {
+    if (!paymentCheck.paid) {
       return res.json({ message: "not yet paid" });
     }
 
@@ -491,7 +615,7 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
         data: {
           status: PaymentStatus.PAID,
           paidAt: new Date(),
-          rawPayload: JSON.parse(JSON.stringify(qpayCheck)),
+          rawPayload: JSON.parse(JSON.stringify(paymentCheck.payload)),
         },
       });
 
