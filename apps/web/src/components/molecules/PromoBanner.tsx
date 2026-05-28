@@ -56,7 +56,7 @@ export default function Hero() {
   if (banners.length === 0) return null;
 
   return (
-    <div className="relative w-full overflow-hidden rounded-2xl bg-slate-100 group aspect-[5/2] sm:aspect-[10/3] lg:aspect-[21/5]">
+    <div className="group relative aspect-[5/2] w-full overflow-hidden rounded-xl bg-slate-100 sm:aspect-[10/3] lg:aspect-[21/5]">
       {/* Slides */}
       <div
         className="flex h-full w-full transition-transform duration-500 ease-in-out"
@@ -64,14 +64,22 @@ export default function Hero() {
       >
         {banners.map((url, i) => (
           <div key={i} className="relative min-w-full h-full flex-shrink-0">
-            <Image
-              src={url}
-              alt={`Промо баннер ${i + 1}`}
-              fill
-              className="object-cover"
-              unoptimized={url.startsWith("data:")}
-              priority={i === 0}
-            />
+            {url.startsWith("data:") ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={url}
+                alt={`Промо баннер ${i + 1}`}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <Image
+                src={url}
+                alt={`Промо баннер ${i + 1}`}
+                fill
+                className="object-cover"
+                priority={i === 0}
+              />
+            )}
           </div>
         ))}
       </div>

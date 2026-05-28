@@ -10,15 +10,25 @@ type Props = {
 };
 
 export function BannerCard({ url, index, total, onRemove, onSwap }: Props) {
+  const isDataImage = url.startsWith("data:");
+
   return (
     <div className="relative w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 group aspect-[2/1] md:aspect-[5/3] shadow-sm hover:shadow-md transition-all">
-      <Image
-        src={url}
-        alt={`Баннер ${index + 1}`}
-        fill
-        className="object-cover transition-transform duration-500 group-hover:scale-105"
-        unoptimized={url.startsWith("data:")}
-      />
+      {isDataImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={url}
+          alt={`Баннер ${index + 1}`}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+        />
+      ) : (
+        <Image
+          src={url}
+          alt={`Баннер ${index + 1}`}
+          fill
+          className="object-cover transition-transform duration-500 group-hover:scale-105"
+        />
+      )}
 
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 

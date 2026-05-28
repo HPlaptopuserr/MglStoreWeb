@@ -13,7 +13,7 @@ export {
 
 export { businessCategoriesRoutes, productsRoutes } from "./catalog";
 
-export { servicePostsRoutes } from "./content";
+export { servicePostsRoutes, postsRoutes } from "./content";
 
 export { jobApplicationRoutes, jobPositionRoutes } from "./jobs";
 
@@ -22,6 +22,7 @@ export {
   serviceRequestsRoutes,
   stockRequestsRoutes,
   warehousesRoutes,
+  deliveriesRoutes,
 } from "./operations";
 
 export { dashboardRoutes, siteSettingsRoutes, teamRoutes, upgradePlansRoutes, adminGrantPlanRoutes } from "./system";
@@ -32,8 +33,7 @@ export { attendanceRoutes } from "./attendance";
 
 export { chatRoutes, dmRoutes } from "./chat";
 
-export { storeCheckoutRoutes } from "./store";
-export { vendorOrderRoutes } from "./store";
+export { storeCheckoutRoutes, vendorOrderRoutes, storeLoyaltyRoutes, storeBranchRoutes } from "./store";
 export { default as vendorMerchantRoutes } from "./vendor/vendor-merchant.routes";
 export { default as vendorUpgradeRoutes } from "./vendor/vendor-upgrade.routes";
 export { default as vendorCardTerminalRoutes } from "./vendor/vendor-card-terminal.routes";

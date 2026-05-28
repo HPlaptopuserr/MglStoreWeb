@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Smartphone,
+  Building2,
   ImagePlus,
   Trash2,
   ArrowUp,
@@ -17,6 +18,8 @@ import {
   Package,
   X,
   Plus,
+  MapPin,
+  Navigation,
 } from "lucide-react";
 import Image from "next/image";
 import { API, adminFetch } from "@/lib/api";
@@ -31,6 +34,23 @@ type BusinessCategory = {
   sortOrder: number;
   parentId: string | null;
   level: number;
+};
+
+type StoreBranchLocation = {
+  id: string;
+  name: string;
+  address: string;
+  lat?: number | null;
+  lng?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  mapsUrl?: string | null;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+    logoUrl: string | null;
+  };
 };
 
 /* ── icon helper: data URI / URL → <img>, otherwise emoji/text ── */
@@ -56,6 +76,11 @@ export function MglStoreTab() {
   const [banners, setBanners] = useState<string[]>([]);
   const [allCategories, setAllCategories] = useState<BusinessCategory[]>([]);
   const [selectedCatIds, setSelectedCatIds] = useState<string[]>([]);
+  const [showLocations, setShowLocations] = useState(true);
+  const [branchLocations, setBranchLocations] = useState<StoreBranchLocation[]>([]);
+  const [branchSearch, setBranchSearch] = useState("");
+  const [branchLoading, setBranchLoading] = useState(true);
+  const [branchError, setBranchError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -82,10 +107,33 @@ export function MglStoreTab() {
             if (Array.isArray(p)) setSelectedCatIds(p);
           } catch {}
         }
+        const showLocationsRaw =
+          settings["app-show-branch-locations"] ?? settings["show-branch-map"];
+        setShowLocations(
+          !["false", "0", "off"].includes(String(showLocationsRaw || "").toLowerCase()),
+        );
         setAllCategories(cats);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    setBranchLoading(true);
+    setBranchError("");
+    fetch(`${API}/store/branches`, { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        setBranchLocations(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        setBranchLocations([]);
+        setBranchError("Салбарын байршил татахад алдаа гарлаа");
+      })
+      .finally(() => setBranchLoading(false));
   }, []);
 
   /* ── derived: roots + children map ── */
@@ -144,6 +192,7 @@ export function MglStoreTab() {
         body: JSON.stringify({
           "app-promo-banners": JSON.stringify(banners),
           "app-home-categories": JSON.stringify(selectedCatIds),
+          "app-show-branch-locations": showLocations ? "true" : "false",
         }),
       });
       setSaved(true);
@@ -152,11 +201,25 @@ export function MglStoreTab() {
       alert("Хадгалахад алдаа гарлаа");
     }
     setSaving(false);
-  }, [banners, selectedCatIds]);
+  }, [banners, selectedCatIds, showLocations]);
 
   const selectedCats = selectedCatIds
     .map((id) => allCategories.find((c) => c.id === id))
     .filter(Boolean) as BusinessCategory[];
+  const normalizedBranchSearch = branchSearch.trim().toLowerCase();
+  const filteredBranchLocations = branchLocations.filter((branch) => {
+    if (!normalizedBranchSearch) return true;
+    const haystack = [
+      branch.name,
+      branch.address,
+      branch.organization?.name,
+      branch.organization?.slug,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(normalizedBranchSearch);
+  });
 
   const nextBanner = () => setPreviewBannerIdx((i) => (i + 1) % Math.max(banners.length, 1));
   const prevBanner = () =>
@@ -479,6 +542,99 @@ export function MglStoreTab() {
               </div>
             </>
           )}
+        </section>
+
+        {/* ── BRANCH LOCATIONS ── */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">Байршил</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                MGL Store app-ийн байршил хэсэгт харагдах салбарууд.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowLocations((prev) => !prev)}
+              className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${
+                showLocations
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  : "bg-slate-100 text-slate-500 border border-slate-200"
+              }`}
+            >
+              {showLocations ? "Идэвхтэй" : "Нуусан"}
+            </button>
+          </div>
+
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <Search size={14} className="text-slate-400" />
+            <input
+              value={branchSearch}
+              onChange={(e) => setBranchSearch(e.target.value)}
+              placeholder="Салбар, байгууллага, хаягаар хайх"
+              className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+            />
+            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-slate-500">
+              {filteredBranchLocations.length}/{branchLocations.length}
+            </span>
+          </div>
+
+          <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+            {branchLoading ? (
+              <div className="flex items-center justify-center gap-2 rounded-xl bg-slate-50 py-8 text-sm text-slate-400">
+                <Loader2 size={16} className="animate-spin" />
+                Байршил ачаалж байна...
+              </div>
+            ) : branchError ? (
+              <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-4 text-sm text-rose-600">
+                {branchError}
+              </div>
+            ) : filteredBranchLocations.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-8 text-center text-sm text-slate-400">
+                Байршил олдсонгүй
+              </div>
+            ) : (
+              filteredBranchLocations.map((branch) => {
+                const lat = branch.latitude ?? branch.lat;
+                const lng = branch.longitude ?? branch.lng;
+                return (
+                  <div
+                    key={branch.id}
+                    className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-3"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-500">
+                      <MapPin size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-slate-800">{branch.name}</p>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{branch.address}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                        <span className="inline-flex items-center gap-1">
+                          <Building2 size={12} />
+                          {branch.organization?.name || "Байгууллага"}
+                        </span>
+                        {typeof lat === "number" && typeof lng === "number" && (
+                          <span>
+                            {lat.toFixed(4)}, {lng.toFixed(4)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {branch.mapsUrl && (
+                      <a
+                        href={branch.mapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm hover:text-rose-500"
+                      >
+                        <Navigation size={14} />
+                      </a>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </section>
       </div>
 

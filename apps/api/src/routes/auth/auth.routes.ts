@@ -790,14 +790,17 @@ router.post("/login", async (req, res) => {
       { expiresIn: "1d" },
     );
 
+    const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
+
     return res.json({
       accessToken,
       user: {
         id: user.id,
-        email: user.email,
+        email: safeEmail,
         role: user.role,
         orgRole: orgInfo?.orgRole || null,
         fullName: user.profile?.fullName || "",
+        phone: user.profile?.phoneNumber || null,
         organizationId: orgInfo?.organizationId || null,
         organizationName,
       },

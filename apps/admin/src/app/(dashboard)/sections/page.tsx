@@ -61,7 +61,8 @@ export default function SectionsPage() {
       visibleSections={visibleSections}
     >
       {active !== "forms" ? (
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="flex-1 overflow-y-auto bg-[#fbfcff] p-4 sm:p-6 lg:p-7">
+          <div className="mx-auto max-w-7xl">
           {active === "banner" && (
             <BannerSection banners={banners} setBanners={setBanners} />
           )}
@@ -97,6 +98,7 @@ export default function SectionsPage() {
           )}
           {active === "hr" && <HrSection />}
           {active === "team" && <TeamSection />}
+          </div>
         </div>
       ) : (
         <FormBuilderTool />

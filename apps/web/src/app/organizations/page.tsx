@@ -272,7 +272,7 @@ export default function OrganizationsPage() {
         onChange={setActiveLocation}
       />
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6">
+      <div className="mx-auto max-w-7xl px-3 pt-6 sm:px-6 sm:pt-8">
         <OrganizationsSectionHeader resultCount={total} />
 
         {isLoading ? (

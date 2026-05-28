@@ -5,13 +5,21 @@ import { Handshake, TrendingUp, Briefcase, UserPlus } from "lucide-react";
 
 export const PartnershipContact = () => {
   return (
-    <section className="w-full py-16 bg-white">
-      <div className="mx-auto bg-white p-8 md:p-16 border border-gray-100   rounded-2xl">
-        <h2 className="text-2xl md:text-3xl font-bold text-center text-gray-900 mb-12">
-          Хамтын ажиллагаа
-        </h2>
+    <section className="w-full py-12">
+      <div className="mx-auto rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:p-10">
+        <div className="mx-auto mb-8 max-w-2xl text-center">
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-orange-500">
+            Partnership
+          </p>
+          <h2 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
+            Хамтын ажиллагаа
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Бизнесээ өргөжүүлэх эсвэл MGL Store багт нэгдэх боломжууд.
+          </p>
+        </div>
 
-        <div className="grid md:grid-cols-2 gap-8">
+        <div className="grid gap-5 md:grid-cols-2">
           <PartnerCard
             title="Бизнесийн хамтрал"
             href="/company/partnership"

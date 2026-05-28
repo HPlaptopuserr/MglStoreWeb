@@ -17,25 +17,25 @@ interface InvestorCardProps {
 
 const TIER_STYLES = {
   TOP: {
-    badge: "bg-gradient-to-r from-amber-400 to-yellow-500 text-gray-900",
-    ring: "ring-2 ring-amber-400/40",
-    glow: "shadow-[0_0_40px_rgba(251,191,36,0.15)]",
+    badge: "bg-[#FFAD02] text-slate-950",
+    ring: "ring-1 ring-[#FFAD02]/35",
+    glow: "shadow-xl shadow-[#FFAD02]/10",
     scale: "md:col-span-2 md:row-span-2",
     logoSize: "w-20 h-20 md:w-28 md:h-28",
     nameSize: "text-xl md:text-2xl",
   },
   STRATEGIC: {
-    badge: "bg-gradient-to-r from-purple-500 to-indigo-600 text-white",
-    ring: "ring-1 ring-purple-400/30",
-    glow: "shadow-[0_0_30px_rgba(139,92,246,0.1)]",
+    badge: "bg-slate-900 text-white",
+    ring: "ring-1 ring-slate-200",
+    glow: "shadow-lg shadow-slate-200/70",
     scale: "",
     logoSize: "w-16 h-16 md:w-20 md:h-20",
     nameSize: "text-base md:text-lg",
   },
   INVESTOR: {
-    badge: "bg-gray-700 text-gray-200",
-    ring: "ring-1 ring-gray-700/30",
-    glow: "",
+    badge: "bg-slate-100 text-slate-700",
+    ring: "ring-1 ring-slate-200",
+    glow: "shadow-sm shadow-slate-200/70",
     scale: "",
     logoSize: "w-14 h-14 md:w-16 md:h-16",
     nameSize: "text-sm md:text-base",
@@ -57,9 +57,9 @@ export function InvestorCard({
   return (
     <Link
       href={`/organizations/${slug}`}
-      className={`group relative flex flex-col items-center gap-4 rounded-2xl border border-gray-800/60 bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 p-6 md:p-8 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${style.ring} ${style.glow} ${style.scale}`}
+      className={`group relative flex flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white p-6 text-center transition-all duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-2xl hover:shadow-slate-200/80 md:p-8 ${style.ring} ${style.glow} ${style.scale}`}
     >
-      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-b from-white/[0.03] to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-24 rounded-t-2xl bg-gradient-to-b from-slate-50 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
       <div className="absolute -top-3 left-1/2 -translate-x-1/2">
         <span
@@ -72,7 +72,7 @@ export function InvestorCard({
       <div className="mt-2">
         <InvestorRingWrapper investmentAmount={investmentLevel} rounded="xl">
           <div
-            className={`relative ${style.logoSize} rounded-2xl bg-white/10 backdrop-blur-sm overflow-hidden`}
+            className={`relative ${style.logoSize} overflow-hidden rounded-2xl bg-slate-50`}
           >
             {logoUrl ? (
               <Image
@@ -82,7 +82,7 @@ export function InvestorCard({
                 className="object-contain p-2"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-white/40">
+              <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-slate-400">
                 {name.charAt(0)}
               </div>
             )}
@@ -91,7 +91,7 @@ export function InvestorCard({
       </div>
 
       <h3
-        className={`font-bold text-white ${style.nameSize} leading-tight`}
+        className={`font-bold text-slate-950 ${style.nameSize} leading-tight`}
       >
         {name}
       </h3>
@@ -105,12 +105,12 @@ export function InvestorCard({
  */}
       {/* Description */}
       {description && tier !== "INVESTOR" && (
-        <p className="text-xs text-gray-400 line-clamp-2 max-w-[240px]">
+        <p className="line-clamp-2 max-w-[240px] text-xs leading-5 text-slate-500">
           {description}
         </p>
       )}
 
-      <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-400/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      <div className="absolute inset-x-5 bottom-0 h-px bg-gradient-to-r from-transparent via-[#FFAD02]/50 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
     </Link>
   );
 }

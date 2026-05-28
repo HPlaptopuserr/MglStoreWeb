@@ -20,14 +20,18 @@ export const PromoBanner = () => {
 
   return (
     <div className="relative w-full overflow-hidden rounded-2xl" style={{ height: "33.333vh", minHeight: "180px" }}>
-      <Image
-        src={bannerUrl}
-        alt="Промо баннер"
-        fill
-        className="object-cover"
-        unoptimized={bannerUrl.startsWith("data:")}
-        priority
-      />
+      {bannerUrl.startsWith("data:") ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={bannerUrl} alt="Промо баннер" className="h-full w-full object-cover" />
+      ) : (
+        <Image
+          src={bannerUrl}
+          alt="Промо баннер"
+          fill
+          className="object-cover"
+          priority
+        />
+      )}
     </div>
   );
 };

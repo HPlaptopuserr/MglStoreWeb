@@ -558,6 +558,8 @@ router.get("/store/orders", async (req: Request, res: Response) => {
         total: Number(o.total),
         subtotal: Number(o.subtotal),
         deliveryCode: o.deliveryCode,
+        phone: o.phone,
+        shippingAddress: o.shippingAddress,
         organizationName: o.organization.name,
         createdAt: o.createdAt.toISOString(),
         items: o.items.map((i) => ({

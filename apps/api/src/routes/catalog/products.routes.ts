@@ -7,10 +7,16 @@ import JSZip from "jszip";
 import { InventoryReason, prisma } from "@mgl/database";
 import type { PrismaClient } from "@prisma/client";
 import { Permission } from "@mgl/types";
-import { requireAuth } from "../../middleware/auth";
+import { optionalAuth, requireAuth } from "../../middleware/auth";
 import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 import { requireActivePlan, checkProductLimit, checkImportLimit } from "../../middleware/plan-guard";
+import {
+  canBypassAllWebProductsVisibility,
+  canBypassWebProductsVisibility,
+  getWebProductsEnabledOrganizationIds,
+  isOrgWebProductsEnabled,
+} from "../../services/product-visibility.service";
 import {
   extractExcelImages,
   uploadBufferToSupabase,
@@ -259,11 +265,12 @@ const imageUpload = multer({
 });
 
 /* ─── GET /products ─────────────────────────────────────────────────── */
-router.get("/products", async (req, res) => {
+router.get("/products", optionalAuth, async (req, res) => {
   try {
     const { organizationId, businessCategoryId } = req.query as Record<string, string>;
     const search = String(req.query.search ?? req.query.q ?? "").trim();
     const includeExpiredInventory = isTruthyQueryValue(req.query.includeExpiredInventory);
+    const requestedOrganizationId = organizationId ? String(organizationId) : "";
 
     const where: any = {
       deletedAt: null,
@@ -289,6 +296,23 @@ router.get("/products", async (req, res) => {
           },
         },
       ];
+    }
+
+    if (!canBypassAllWebProductsVisibility(req)) {
+      const canBypassRequestedOrg = requestedOrganizationId
+        ? await canBypassWebProductsVisibility(req, requestedOrganizationId)
+        : false;
+
+      if (!canBypassRequestedOrg) {
+        const visibleOrganizationIds = await getWebProductsEnabledOrganizationIds();
+        if (requestedOrganizationId) {
+          if (!visibleOrganizationIds.includes(requestedOrganizationId)) {
+            return res.json([]);
+          }
+        } else {
+          where.organizationId = { in: visibleOrganizationIds };
+        }
+      }
     }
 
     const products = await prisma.product.findMany({
@@ -656,14 +680,22 @@ router.post(
 );
 
 /* ─── GET /products/:id ─────────────────────────────────────────────── */
-router.get("/products/:id", async (req, res) => {
+router.get("/products/:id", optionalAuth, async (req, res) => {
   try {
     const product = await prisma.product.findUnique({
       where: { id: req.params.id, deletedAt: null },
       include: {
         images: { select: { id: true, url: true } },
         businessCategory: { select: { id: true, name: true, slug: true } },
-        organization: { select: { id: true, name: true, logoUrl: true } },
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            status: true,
+            deletedAt: true,
+          },
+        },
         discounts: {
           where: { isActive: true, validUntil: { gte: new Date() } },
           select: { percent: true, validUntil: true },
@@ -672,7 +704,26 @@ router.get("/products/:id", async (req, res) => {
       },
     });
     if (!product) return res.status(404).json({ message: "Бараа олдсонгүй" });
-    return res.json(product);
+    const canBypassVisibility = await canBypassWebProductsVisibility(req, product.organizationId);
+    const isPubliclyVisible =
+      product.isActive &&
+      product.organization.deletedAt === null &&
+      product.organization.status === "ACTIVE" &&
+      (await isOrgWebProductsEnabled(product.organizationId));
+
+    if (!canBypassVisibility && !isPubliclyVisible) {
+      return res.status(404).json({ message: "Бараа олдсонгүй" });
+    }
+
+    const { organization, ...safeProduct } = product;
+    return res.json({
+      ...safeProduct,
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        logoUrl: organization.logoUrl,
+      },
+    });
   } catch (error) {
     return res.status(500).json({ message: "Алдаа гарлаа", error: String(error) });
   }

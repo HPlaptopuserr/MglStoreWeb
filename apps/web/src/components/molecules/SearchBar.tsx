@@ -30,7 +30,11 @@ const contextOptions = [
   "Бэлгийн карт",
 ];
 
-export const SearchBar = () => {
+interface SearchBarProps {
+  variant?: "light" | "dark";
+}
+
+export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
   const router = useRouter();
   const [searchContext, setSearchContext] = useState("Бүгд");
   const [searchQuery, setSearchQuery] = useState("");
@@ -90,6 +94,7 @@ export const SearchBar = () => {
   );
 
   const trimmedSearchQuery = searchQuery.trim();
+  const isDark = variant === "dark";
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -142,26 +147,40 @@ export const SearchBar = () => {
 
       {/* 1. Normal Search Bar */}
       <div
-        className={`relative flex items-center w-full max-w-3xl mx-auto bg-white rounded-full border-2 border-orange-500 h-12 transition-all duration-300 ${
+        className={`relative mx-auto flex h-14 w-full max-w-3xl items-center overflow-hidden rounded-full border transition-all duration-300 ${
+          isDark
+            ? "border-[#24324A] bg-[#0B172A] shadow-[0_0_0_1px_rgba(37,99,235,0.12)] hover:border-[#2563EB]/70"
+            : "border-2 border-orange-500 bg-white shadow-md"
+        } ${
           isFocused
             ? "opacity-0 invisible scale-95"
             : "opacity-100 visible scale-100"
-        } cursor-text shadow-md overflow-hidden`}
+        } cursor-text`}
         onClick={() => setIsFocused(true)}
       >
-        <div className="flex items-center px-4 h-full border-r border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors group">
-          <span className="text-sm font-bold text-slate-700 mr-2">
+        <div
+          className={`group flex h-full cursor-pointer items-center border-r px-4 transition-colors ${
+            isDark
+              ? "border-[#24324A] hover:bg-[#111C31]"
+              : "border-slate-200 hover:bg-slate-50"
+          }`}
+        >
+          <span
+            className={`mr-2 text-sm font-bold ${
+              isDark ? "text-[#F8FAFC]" : "text-slate-700"
+            }`}
+          >
             {searchContext}
           </span>
           <ChevronDown
             size={14}
-            className="text-slate-400 group-hover:text-orange-500"
+            className={isDark ? "text-[#64748B] group-hover:text-[#06B6D4]" : "text-slate-400 group-hover:text-orange-500"}
           />
         </div>
-        <div className="flex-1 px-4 text-slate-400 text-sm">
+        <div className={`flex-1 px-4 text-sm ${isDark ? "text-[#64748B]" : "text-slate-400"}`}>
           Хайх утгаа оруулна уу...
         </div>
-        <div className="h-full px-6 flex items-center justify-center text-black">
+        <div className={`flex h-full items-center justify-center px-6 ${isDark ? "text-[#F8FAFC]" : "text-black"}`}>
           <Search size={20} strokeWidth={3} />
         </div>
       </div>

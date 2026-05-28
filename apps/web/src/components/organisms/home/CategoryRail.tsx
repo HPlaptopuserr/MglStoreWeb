@@ -112,17 +112,17 @@ function CategoryPill({
       viewport={{ once: true }}
       transition={{ delay: index * 0.04, duration: 0.35 }}
       onClick={onClick}
-      className={`group relative flex shrink-0 flex-col items-center snap-center cursor-pointer rounded-2xl px-4 py-5 transition-all duration-300 ${
+      className={`group relative flex shrink-0 flex-col items-center snap-center cursor-pointer rounded-xl px-3 py-4 transition-all duration-300 ${
         isActive
           ? `bg-white shadow-lg shadow-gray-200/60 ring-2 ${p.ring} -translate-y-1`
           : "bg-white/60 hover:bg-white hover:shadow-md hover:shadow-gray-100 hover:-translate-y-0.5"
       }`}
-      style={{ width: 112 }}
+      style={{ width: 104 }}
     >
       {/* Icon circle */}
       <div
         className={`flex h-14 w-14 items-center justify-center rounded-xl transition-all duration-300 ${
-          isActive ? `${p.bg} ${p.text} scale-110` : `bg-gray-50 text-gray-400 group-hover:${p.bg} group-hover:${p.text}`
+          isActive ? `${p.bg} ${p.text} scale-105` : `bg-gray-50 text-gray-400 group-hover:${p.bg} group-hover:${p.text}`
         }`}
       >
         <CatIcon icon={cat.icon} name={cat.name} size={26} />
@@ -130,7 +130,7 @@ function CategoryPill({
 
       {/* Name */}
       <span
-        className={`mt-3 text-center text-[13px] font-semibold leading-tight transition-colors line-clamp-2 ${
+        className={`mt-3 text-center text-[12px] font-bold leading-tight transition-colors line-clamp-2 ${
           isActive ? "text-gray-900" : "text-gray-600 group-hover:text-gray-900"
         }`}
       >
@@ -215,10 +215,10 @@ export default function Categories() {
     : "";
 
   return (
-    <section className="bg-gradient-to-b from-gray-50/80 to-white py-16 sm:py-20">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 ">
+    <section className="bg-gradient-to-b from-slate-50 to-white py-10 sm:py-12">
+      <div className="container mx-auto px-4 lg:px-8">
         {/* Header */}
-        <div className="mb-10 flex items-end justify-between">
+        <div className="mb-7 flex items-end justify-between">
           <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
             <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-600 ring-1 ring-amber-200/60">
               <ShoppingBasket size={13} />
@@ -265,7 +265,7 @@ export default function Categories() {
             {/* Category rail */}
             <div
               ref={scrollRef}
-              className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory"
+              className="grid grid-flow-col auto-cols-[104px] gap-3 overflow-x-auto px-0.5 pb-3 pt-1 snap-x snap-mandatory"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
               {categories.map((cat, i) => (

@@ -101,6 +101,8 @@ function normalizeEmail(value?: string | null): string | null {
 const VENDOR_APP_URL =
   process.env.VENDOR_APP_URL || "https://vendor.mglstore.mn";
 
+const TRIAL_PLAN_DAYS = 14;
+
 export async function approvePartnerRequest(
   id: string,
 ): Promise<ApprovePartnerRequestResult> {
@@ -167,6 +169,11 @@ export async function approvePartnerRequest(
   const inviteTokenExpiresAt = getInviteTokenExpiry();
 
   const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const now = new Date();
+    const trialExpiresAt = new Date(
+      now.getTime() + TRIAL_PLAN_DAYS * 24 * 60 * 60 * 1000,
+    );
+
     const newOrganization = await tx.organization.create({
       data: {
         name: existingRequest.organizationName!,
@@ -179,6 +186,11 @@ export async function approvePartnerRequest(
         address: existingRequest.organizationAddress,
         businessCategory: existingRequest.businessCategory,
         isVerified: false,
+        subdomainEnabled: true,
+        planType: "trial",
+        planActivatedAt: now,
+        planExpiresAt: trialExpiresAt,
+        trialUsed: true,
       },
       select: {
         id: true,

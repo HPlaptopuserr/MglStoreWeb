@@ -208,14 +208,14 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f4ed] text-slate-950">
+    <div className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_48%,#ffffff_100%)] text-slate-950">
       <main
         id="project-list"
         className="mx-auto max-w-7xl px-4 py-10 sm:py-12 lg:px-8 lg:py-14"
       >
-        <div className="mb-8 flex flex-col gap-4 border-b border-black/10 pb-6 md:flex-row md:items-end md:justify-between">
+        <div className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between">
           <div className="max-w-3xl">
-            <p className="text-sm font-black uppercase text-[#d78f00]">
+            <p className="text-sm font-black uppercase text-slate-500">
               Franchise
             </p>
             <h1 className="mt-2 break-words text-3xl font-black leading-tight sm:text-4xl md:text-5xl">
@@ -239,7 +239,7 @@ export default function ProjectsPage() {
             Franchise ачаалж байна...
           </div>
         ) : projects.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-300 bg-white p-14 text-center shadow-sm">
+          <div className="rounded-lg border border-dashed border-slate-300 bg-white p-14 text-center shadow-sm shadow-slate-200/70">
             <p className="text-lg font-bold text-slate-700">
               Одоогоор нийтлэгдсэн franchise алга байна.
             </p>

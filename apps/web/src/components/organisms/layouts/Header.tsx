@@ -148,7 +148,7 @@ export const Header = () => {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 flex flex-col bg-white/95 backdrop-blur-md shadow-sm">
+      <header className="fixed left-0 right-0 top-0 z-50 flex flex-col bg-white/95 shadow-sm backdrop-blur-md">
         <div className="border-b border-slate-100">
           <div className="container mx-auto flex h-14 items-center justify-between gap-3 px-4 md:h-16 md:gap-6">
             <button
@@ -164,26 +164,29 @@ export const Header = () => {
               )}
             </button>
 
-            <Link
-              href="/"
-              className="flex shrink-0 items-center gap-2"
-              onClick={closeMobile}
-            >
-              <Image
-                src="/logo.png"
-                alt="MglStore Logo"
-                width={140}
-                height={52}
-                className="h-auto w-[160px] object-contain"
-                priority
-              />
+            <div className="flex shrink-0 items-center gap-2">
+              <Link href="/" onClick={closeMobile}>
+                <Image
+                  src="/logo.png"
+                  alt="MglStore Logo"
+                  width={140}
+                  height={52}
+                  className="h-auto w-[160px] object-contain"
+                  priority
+                />
+              </Link>
               <div className="hidden items-center gap-8 sm:flex py-3">
                 <div className="h-8 w-px bg-gradient-to-b from-transparent via-amber-400 to-transparent" />
-                <span className="max-w-[300px] font-[family-name:var(--font-marck-script)] text-[15px] leading-[1.3] text-gray-900">
-                  Монгол эзэнтэй жижиг дунд бизнес эрхлэгчдийн нэгдсэн холбоо
-                </span>
+                <a
+                  href="/MGL.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="max-w-[300px] font-[family-name:var(--font-marck-script)] text-[15px] leading-[1.3] text-gray-900 transition-colors hover:text-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-4"
+                >
+                  MGL Store нэгдсэн танилцуулга үзэх
+                </a>
               </div>
-            </Link>
+            </div>
 
             <div className="hidden max-w-3xl flex-1 items-center justify-center md:flex">
               <SearchBar />
@@ -271,7 +274,7 @@ export const Header = () => {
               <button
                 type="button"
                 onClick={() => setCartOpen(true)}
-                className="relative flex items-center gap-1.5 rounded-full bg-amber-500 px-3.5 py-2 text-sm font-bold text-white shadow-md hover:bg-amber-600 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-base transition-colors"
+                className="relative flex items-center gap-1.5 rounded-full bg-amber-500 px-3.5 py-2 text-sm font-bold text-white shadow-md transition-colors hover:bg-amber-600 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-base"
               >
                 <ShoppingCart size={16} className="sm:h-5 sm:w-5" />
                 <span>₮{total > 0 ? total.toLocaleString() : "0"}</span>

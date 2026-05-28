@@ -12,15 +12,20 @@ export const GridHeader: React.FC<SectionHeaderProps> = ({
   linkText = "Бүгд",
 }) => {
   return (
-    <div className="flex items-center justify-between mb-5">
-      <h2 className="text-base font-bold text-slate-900">
-        {title}
-      </h2>
+    <div className="mb-6 flex items-end justify-between gap-4">
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-orange-500">
+          MGL Store
+        </p>
+        <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+          {title}
+        </h2>
+      </div>
 
       {href && (
         <a
           href={href}
-          className="text-xs font-medium text-slate-500 hover:text-black flex items-center gap-1"
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
         >
           {linkText} <span>›</span>
         </a>

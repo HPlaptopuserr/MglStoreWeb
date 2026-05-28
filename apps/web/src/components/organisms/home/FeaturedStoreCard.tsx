@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Clock, Star, MapPin, ChevronRight, ShoppingBag } from "lucide-react";
+import { Clock, Star, ChevronRight, ShoppingBag } from "lucide-react";
 import type { CompanyCard } from "@mgl/types";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 
@@ -18,20 +18,20 @@ export const FeaturedStoreCard = ({
   return (
     <Link
       href={`/organizations/${company.slug}`}
-      className={`group flex flex-col rounded-3xl border border-slate-200 bg-white shadow-sm hover:shadow-xl hover:border-orange-200 transition-all duration-300 snap-start hover:-translate-y-1 overflow-hidden ${className || "min-w-70 sm:min-w-[320px]"}`}
+      className={`group flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-100/60 ${className || "min-w-70 sm:min-w-[320px]"}`}
     >
-      <div className="relative h-40 w-full bg-slate-100">
+      <div className="relative h-32 w-full bg-slate-100">
         <Image
           src={company.banner}
           alt={company.name}
           fill
           className="object-cover transition-transform duration-700 group-hover:scale-105"
         />
-        <div className="absolute inset-0 bg-linear-to-t from-slate-900/30 to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-t from-slate-950/35 via-transparent to-transparent" />
 
-        <div className="absolute top-4 right-4 z-20">
+        <div className="absolute right-3 top-3 z-20">
           <span
-            className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-full shadow-sm text-white ${
+            className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm ${
               company.isOpen
                 ? "bg-[#0bb783]"
                 : "bg-slate-800/80 backdrop-blur-md"
@@ -42,12 +42,12 @@ export const FeaturedStoreCard = ({
         </div>
       </div>
 
-      <div className="flex flex-col flex-1 pb-6 px-6 bg-white relative z-10 rounded-b-3xl pt-3">
+      <div className="relative z-10 flex flex-1 flex-col bg-white px-4 pb-4 pt-3">
         {/* Logo */}
-        <div className="-mt-10 mb-3">
+        <div className="-mt-9 mb-3">
           <InvestorRingWrapper investmentAmount={company.isInvestor ? company.investmentAmount : null} rounded="full">
-            <div className="w-[76px] h-[76px] rounded-full bg-white shadow-md overflow-hidden">
-              <div className="relative w-full h-full rounded-full overflow-hidden bg-slate-100">
+            <div className="h-16 w-16 overflow-hidden rounded-full bg-white p-1 shadow-md ring-1 ring-slate-100">
+              <div className="relative h-full w-full overflow-hidden rounded-full bg-slate-100">
                 <Image
                   src={company.logo}
                   alt={company.name}
@@ -59,43 +59,43 @@ export const FeaturedStoreCard = ({
           </InvestorRingWrapper>
         </div>
 
-        <div className="flex justify-between items-start mb-1">
-          <h3 className="font-extrabold text-xl text-[#0f172a] line-clamp-1 group-hover:text-orange-600 transition-colors">
+        <div className="mb-1 flex items-start justify-between gap-3">
+          <h3 className="min-w-0 flex-1 truncate text-base font-black text-slate-950 transition-colors group-hover:text-orange-600">
             {company.name}
           </h3>
-          <div className="flex items-center gap-1.5 bg-[#fff8f0] px-2.5 py-1 rounded-xl shrink-0 mt-0.5">
-            <Star size={13} className="fill-[#fb923c] text-[#fb923c]" />
-            <span className="text-[13px] font-bold text-[#b45309]">
+          <div className="mt-0.5 flex shrink-0 items-center gap-1 rounded-md bg-orange-50 px-2 py-1">
+            <Star size={12} className="fill-orange-400 text-orange-400" />
+            <span className="text-xs font-bold text-orange-700">
               {company.rating ? Number(company.rating).toFixed(1) : "5.0"}
             </span>
           </div>
         </div>
 
-        <p className="text-[13px] font-medium text-[#64748b] mb-5 line-clamp-1 capitalize">
+        <p className="mb-4 truncate text-xs font-medium capitalize text-slate-500">
           {company.category ?? "Дэлгүүр"}
         </p>
 
-        <div className="flex flex-wrap items-center gap-3 mb-6">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#f8fafc] border border-slate-100 rounded-xl text-[13px] font-semibold text-[#475569]">
-            <Clock size={13} className="text-[#94a3b8]" />
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-600">
+            <Clock size={12} className="shrink-0 text-slate-400" />
             <span>{company.deliveryTime ?? "N/A"}</span>
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#f8fafc] border border-slate-100 rounded-xl text-[13px] font-semibold text-[#475569]">
-            <ShoppingBag size={13} className="text-[#94a3b8]" />
-            <span>{company.products?.length ?? 0} бараа</span>
+          <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-600">
+            <ShoppingBag size={12} className="shrink-0 text-slate-400" />
+            <span className="truncate">{company.products?.length ?? 0} бараа</span>
           </div>
         </div>
 
-        <div className="w-full h-px bg-slate-100 mt-auto mb-5" />
+        <div className="mt-auto h-px w-full bg-slate-100" />
 
-        <div className="flex items-center justify-between text-[15px] font-bold text-[#ea580c] group-hover:text-[#c2410c] transition-colors">
+        <div className="flex items-center justify-between pt-4 text-sm font-bold text-orange-600 transition-colors group-hover:text-orange-700">
           <span>Дэлгүүр рүү орох</span>
-          <div className="w-9 h-9 rounded-full bg-[#fff7ed] flex items-center justify-center transition-colors">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-50 transition-colors group-hover:bg-orange-100">
             <ChevronRight
-              size={18}
+              size={16}
               strokeWidth={3}
-              className="text-[#fb923c] group-hover:text-[#ea580c] transition-colors"
+              className="text-orange-500 transition-colors group-hover:text-orange-700"
             />
           </div>
         </div>
