@@ -122,7 +122,6 @@ export function MerchantSettingsSection({
   const [minuUsername, setMinuUsername] = useState("");
   const [minuPassword, setMinuPassword] = useState("");
   const [minuBranchId, setMinuBranchId] = useState("");
-
   useEffect(() => {
     if (!organizationId) return;
 
@@ -149,7 +148,9 @@ export function MerchantSettingsSection({
     setKhorooId("");
   }, [district]);
 
-  const orgQuery = organizationId ? `?organizationId=${organizationId}` : "";
+  const merchantQueryParams = new URLSearchParams();
+  if (organizationId) merchantQueryParams.set("organizationId", organizationId);
+  const orgQuery = merchantQueryParams.toString() ? `?${merchantQueryParams.toString()}` : "";
 
   const loadBankAccounts = async () => {
     try {

@@ -4,6 +4,7 @@ import {
   connectVendorMerchant,
   disconnectVendorMerchant,
   getVendorMerchantStatus,
+  normalizeMerchantChannel,
   registerVendorWithSystemQr,
   registerVendorWithQPay,
 } from "../../services/vendor-merchant.service";
@@ -59,13 +60,14 @@ router.get("/vendor/merchant/status", requireAuth, async (req, res) => {
   try {
     const userId = (req as any).userId as string;
     const explicitOrgId = req.query.organizationId as string | undefined;
+    const channel = normalizeMerchantChannel(req.query.channel as string | undefined);
     const organizationId = await resolveOrganizationId(userId, explicitOrgId);
 
     if (!organizationId) {
       return res.status(404).json({ success: false, error: "Байгууллага олдсонгүй" });
     }
 
-    const status = await getVendorMerchantStatus(organizationId);
+    const status = await getVendorMerchantStatus(organizationId, channel);
     return res.json(status);
   } catch (error) {
     console.error("merchant status error", error);
@@ -224,6 +226,7 @@ router.post("/vendor/merchant/connect", requireAuth, async (req, res) => {
   try {
     const userId = (req as any).userId as string;
     const { merchantId, merchantKey, invoiceCode, organizationId: explicitOrgId } = req.body;
+    const channel = normalizeMerchantChannel(req.body?.channel);
 
     if (!merchantId || !merchantKey) {
       return res.status(400).json({
@@ -243,6 +246,7 @@ router.post("/vendor/merchant/connect", requireAuth, async (req, res) => {
       merchantId,
       merchantKey,
       invoiceCode,
+      channel,
     );
 
     if (!result.success) {
@@ -267,6 +271,7 @@ router.post("/vendor/merchant/disconnect", requireAuth, async (req, res) => {
   try {
     const userId = (req as any).userId as string;
     const explicitOrgId = req.body?.organizationId as string | undefined;
+    const channel = normalizeMerchantChannel(req.body?.channel);
     const organizationId = await resolveOrganizationId(userId, explicitOrgId);
 
     if (!organizationId) {
@@ -274,7 +279,7 @@ router.post("/vendor/merchant/disconnect", requireAuth, async (req, res) => {
     }
 
     // Disconnect merchant
-    const result = await disconnectVendorMerchant(organizationId);
+    const result = await disconnectVendorMerchant(organizationId, channel);
 
     if (!result.success) {
       return res.status(400).json(result);
@@ -298,7 +303,8 @@ router.post("/vendor/merchant/disconnect", requireAuth, async (req, res) => {
 router.post("/vendor/merchant/register", requireAuth, async (req, res) => {
   try {
     const userId = (req as any).userId as string;
-    const { type, provider, organizationId: explicitOrgId, ...rest } = req.body;
+    const { type, provider, channel: _channel, organizationId: explicitOrgId, ...rest } = req.body;
+    const channel = normalizeMerchantChannel(_channel);
 
     if (!type || (type !== "company" && type !== "person")) {
       return res.status(400).json({ success: false, message: "type: 'company' эсвэл 'person' байх ёстой" });
@@ -315,8 +321,8 @@ router.post("/vendor/merchant/register", requireAuth, async (req, res) => {
 
     const result =
       isSystemQrRegister
-        ? await registerVendorWithSystemQr(organizationId, rest as any)
-        : await registerVendorWithQPay(organizationId, { type, ...rest } as any);
+        ? await registerVendorWithSystemQr(organizationId, rest as any, channel)
+        : await registerVendorWithQPay(organizationId, { type, ...rest } as any, channel);
 
     if (!result.success) {
       return res.status(400).json(result);
@@ -367,6 +373,7 @@ router.put("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
   try {
     const userId = (req as any).userId as string;
     const { bank_accounts, organizationId: explicitOrgId } = req.body;
+    const channel = normalizeMerchantChannel(req.body?.channel);
 
     if (!Array.isArray(bank_accounts) || bank_accounts.length === 0) {
       return res.status(400).json({ success: false, message: "Дор хаяж нэг банкны данс шаардлагатай" });
@@ -386,7 +393,9 @@ router.put("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
 
     await prisma.organization.update({
       where: { id: organizationId },
-      data: { qpayBankAccounts: bank_accounts },
+      data: channel === "WEB"
+        ? { webQpayBankAccounts: bank_accounts }
+        : { qpayBankAccounts: bank_accounts },
     });
 
     return res.json({ success: true, message: "Банкны данс амжилттай хадгалагдлаа" });
@@ -404,6 +413,7 @@ router.get("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
   try {
     const userId = (req as any).userId as string;
     const explicitOrgId = req.query.organizationId as string | undefined;
+    const channel = normalizeMerchantChannel(req.query.channel as string | undefined);
     const organizationId = await resolveOrganizationId(userId, explicitOrgId);
 
     if (!organizationId) {
@@ -412,10 +422,13 @@ router.get("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
 
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { qpayBankAccounts: true },
+      select: { qpayBankAccounts: true, webQpayBankAccounts: true },
     });
 
-    return res.json({ success: true, bank_accounts: org?.qpayBankAccounts || [] });
+    return res.json({
+      success: true,
+      bank_accounts: channel === "WEB" ? org?.webQpayBankAccounts || [] : org?.qpayBankAccounts || [],
+    });
   } catch (error) {
     console.error("bank-accounts get error", error);
     return res.status(500).json({ success: false, error: "Серверийн алдаа" });
@@ -459,6 +472,7 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
     const userId = (req as any).userId as string;
     const { registerNumber } = req.params;
     const explicitOrgId = req.query.organizationId as string | undefined;
+    const channel = normalizeMerchantChannel(req.query.channel as string | undefined);
     const organizationId = await resolveOrganizationId(userId, explicitOrgId);
 
     if (!organizationId) {
@@ -534,12 +548,19 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
 
     await prisma.organization.update({
       where: { id: organizationId },
-      data: {
-        qpayMerchantId: merchantId,
-        qpayMerchantKey: merchantKey || null,
-        qpayEnabled: true,
-        qpayConnectedAt: new Date(),
-      },
+      data: channel === "WEB"
+        ? {
+            webQpayMerchantId: merchantId,
+            webQpayMerchantKey: merchantKey || null,
+            webQpayEnabled: true,
+            webQpayConnectedAt: new Date(),
+          }
+        : {
+            qpayMerchantId: merchantId,
+            qpayMerchantKey: merchantKey || null,
+            qpayEnabled: true,
+            qpayConnectedAt: new Date(),
+          },
     });
 
     return res.json({ success: true, merchantId, message: "Мерчант мэдээлэл олдоод амжилттай холбогдлоо" });

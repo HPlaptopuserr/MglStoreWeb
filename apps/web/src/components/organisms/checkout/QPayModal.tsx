@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { X, CheckCircle2, Loader2, QrCode, Smartphone } from "lucide-react";
+import { QrGenerator } from "@mgl/ui";
 import { useAuth } from "@/lib/auth-context";
 import { API } from "@/lib/api";
 
@@ -16,13 +17,14 @@ interface QPayModalProps {
   orderId: string;
   orderNumber: string;
   total: number;
+  qrText: string;
   qrImage: string;
   deepLinks: DeepLink[];
   onSuccess: () => void;
   onClose: () => void;
 }
 
-export function QPayModal({ orderId, orderNumber, total, qrImage, deepLinks, onSuccess, onClose }: QPayModalProps) {
+export function QPayModal({ orderId, orderNumber, total, qrText, qrImage, deepLinks, onSuccess, onClose }: QPayModalProps) {
   const { authFetch } = useAuth();
   const [confirmed, setConfirmed] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -93,6 +95,11 @@ export function QPayModal({ orderId, orderNumber, total, qrImage, deepLinks, onS
 
   const minutes = Math.floor(countdown / 60);
   const seconds = countdown % 60;
+  const qrImageSrc = qrImage
+    ? qrImage.startsWith("data:")
+      ? qrImage
+      : `data:image/png;base64,${qrImage}`
+    : "";
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center">
@@ -151,12 +158,26 @@ export function QPayModal({ orderId, orderNumber, total, qrImage, deepLinks, onS
               {/* QR Code — real base64 image */}
               <div className="flex flex-col items-center gap-3">
                 <div className="rounded-2xl border-2 border-gray-200 bg-white p-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`data:image/png;base64,${qrImage}`}
-                    alt="QPay QR Code"
-                    className="h-52 w-52 rounded-xl"
-                  />
+                  {qrImageSrc ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={qrImageSrc}
+                      alt="QPay QR Code"
+                      className="h-52 w-52 rounded-xl"
+                    />
+                  ) : qrText ? (
+                    <QrGenerator
+                      value={qrText}
+                      size={208}
+                      level="M"
+                      includeMargin
+                      className="rounded-xl"
+                    />
+                  ) : (
+                    <div className="flex h-52 w-52 items-center justify-center rounded-xl bg-gray-50 text-gray-400">
+                      <QrCode size={40} />
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Smartphone size={14} />
@@ -171,21 +192,34 @@ export function QPayModal({ orderId, orderNumber, total, qrImage, deepLinks, onS
                     Банкны апп-аар төлөх
                   </p>
                   <div className="grid grid-cols-4 gap-2">
-                    {deepLinks.map((dl) => (
-                      <a
-                        key={dl.name}
-                        href={dl.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex flex-col items-center gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-2.5 hover:bg-gray-100 transition-colors"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={dl.logo} alt={dl.name} className="h-8 w-8 rounded-lg object-contain" />
-                        <span className="text-[10px] font-medium text-gray-600 text-center leading-tight line-clamp-2">
-                          {dl.description}
-                        </span>
-                      </a>
-                    ))}
+                    {deepLinks.map((dl) => {
+                      const logoSrc =
+                        dl.logo && (dl.logo.startsWith("http") || dl.logo.startsWith("data:"))
+                          ? dl.logo
+                          : "";
+
+                      return (
+                        <a
+                          key={dl.name}
+                          href={dl.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex flex-col items-center gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-2.5 hover:bg-gray-100 transition-colors"
+                        >
+                          {logoSrc ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={logoSrc} alt={dl.name} className="h-8 w-8 rounded-lg object-contain" />
+                          ) : (
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-gray-400">
+                              <Smartphone size={16} />
+                            </div>
+                          )}
+                          <span className="text-[10px] font-medium text-gray-600 text-center leading-tight line-clamp-2">
+                            {dl.description}
+                          </span>
+                        </a>
+                      );
+                    })}
                   </div>
                 </div>
               )}

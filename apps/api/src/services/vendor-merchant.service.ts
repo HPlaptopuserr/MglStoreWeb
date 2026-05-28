@@ -26,9 +26,74 @@ export type GetMerchantConfigResult = {
   error?: string;
 };
 
+export type MerchantChannel = "POS" | "WEB";
+
+export const normalizeMerchantChannel = (value?: string | null): MerchantChannel =>
+  String(value || "").trim().toUpperCase() === "WEB" ? "WEB" : "POS";
+
 const isSystemQrMarker = (value?: string | null) =>
   String(value || "").trim().toUpperCase() === "SYSTEMQR" ||
   String(value || "").trim().toLowerCase().startsWith("systemqr");
+
+const getSystemQrPassword = (value?: string | null) => {
+  const marker = String(value || "").trim();
+  if (!marker.toLowerCase().startsWith("systemqr:")) return undefined;
+  return marker.slice("systemqr:".length) || undefined;
+};
+
+const buildMerchantUpdateData = (
+  channel: MerchantChannel,
+  data: {
+    merchantId?: string | null;
+    merchantKey?: string | null;
+    invoiceCode?: string | null;
+    bankAccounts?: QPayBankAccount[] | null | undefined;
+    enabled?: boolean;
+    connectedAt?: Date | null;
+  },
+) => {
+  if (channel === "WEB") {
+    return {
+      webQpayMerchantId: data.merchantId ?? null,
+      webQpayMerchantKey: data.merchantKey ?? null,
+      webQpayInvoiceCode: data.invoiceCode ?? null,
+      ...(data.bankAccounts !== undefined ? { webQpayBankAccounts: data.bankAccounts as any } : {}),
+      webQpayEnabled: data.enabled ?? false,
+      webQpayConnectedAt: data.connectedAt ?? null,
+    };
+  }
+
+  return {
+    qpayMerchantId: data.merchantId ?? null,
+    qpayMerchantKey: data.merchantKey ?? null,
+    qpayInvoiceCode: data.invoiceCode ?? null,
+    ...(data.bankAccounts !== undefined ? { qpayBankAccounts: data.bankAccounts as any } : {}),
+    qpayEnabled: data.enabled ?? false,
+    qpayConnectedAt: data.connectedAt ?? null,
+  };
+};
+
+const pickMerchantFields = (org: any, channel: MerchantChannel) => {
+  if (channel === "WEB") {
+    return {
+      enabled: org.webQpayEnabled,
+      merchantId: org.webQpayMerchantId,
+      merchantKey: org.webQpayMerchantKey,
+      invoiceCode: org.webQpayInvoiceCode,
+      bankAccounts: org.webQpayBankAccounts,
+      connectedAt: org.webQpayConnectedAt,
+    };
+  }
+
+  return {
+    enabled: org.qpayEnabled,
+    merchantId: org.qpayMerchantId,
+    merchantKey: org.qpayMerchantKey,
+    invoiceCode: org.qpayInvoiceCode,
+    bankAccounts: org.qpayBankAccounts,
+    connectedAt: org.qpayConnectedAt,
+  };
+};
 
 /**
  * Connect vendor organization to multi-merchant QPay account
@@ -39,6 +104,7 @@ export async function connectVendorMerchant(
   merchantId: string,
   merchantKey: string,
   invoiceCode?: string,
+  channel: MerchantChannel = "POS",
 ): Promise<ConnectMerchantResult> {
   try {
     if (!organizationId || !merchantId || !merchantKey) {
@@ -62,13 +128,13 @@ export async function connectVendorMerchant(
     // Update organization with merchant credentials
     await prisma.organization.update({
       where: { id: organizationId },
-      data: {
-        qpayMerchantId: merchantId.trim(),
-        qpayMerchantKey: merchantKey.trim(),
-        qpayInvoiceCode: invoiceCode?.trim() || null,
-        qpayEnabled: true,
-        qpayConnectedAt: new Date(),
-      },
+      data: buildMerchantUpdateData(channel, {
+        merchantId: merchantId.trim(),
+        merchantKey: merchantKey.trim(),
+        invoiceCode: invoiceCode?.trim() || null,
+        enabled: true,
+        connectedAt: new Date(),
+      }),
     });
 
     return {
@@ -90,6 +156,7 @@ export async function connectVendorMerchant(
  */
 export async function disconnectVendorMerchant(
   organizationId: string,
+  channel: MerchantChannel = "POS",
 ): Promise<ConnectMerchantResult> {
   try {
     const org = await prisma.organization.findUnique({
@@ -106,13 +173,13 @@ export async function disconnectVendorMerchant(
     // Clear merchant credentials but keep bank accounts so re-registration can use them
     await prisma.organization.update({
       where: { id: organizationId },
-      data: {
-        qpayMerchantId: null,
-        qpayMerchantKey: null,
-        qpayInvoiceCode: null,
-        qpayEnabled: false,
-        qpayConnectedAt: null,
-      },
+      data: buildMerchantUpdateData(channel, {
+        merchantId: null,
+        merchantKey: null,
+        invoiceCode: null,
+        enabled: false,
+        connectedAt: null,
+      }),
     });
 
     return {
@@ -133,6 +200,7 @@ export async function disconnectVendorMerchant(
  */
 export async function getVendorMerchantConfig(
   organizationId: string,
+  channel: MerchantChannel = "POS",
 ): Promise<GetMerchantConfigResult> {
   try {
     const org = await prisma.organization.findUnique({
@@ -144,6 +212,12 @@ export async function getVendorMerchantConfig(
         qpayInvoiceCode: true,
         qpayConnectedAt: true,
         qpayBankAccounts: true,
+        webQpayEnabled: true,
+        webQpayMerchantId: true,
+        webQpayMerchantKey: true,
+        webQpayInvoiceCode: true,
+        webQpayConnectedAt: true,
+        webQpayBankAccounts: true,
         taxId: true,
         name: true,
         email: true,
@@ -159,13 +233,16 @@ export async function getVendorMerchantConfig(
       };
     }
 
+    const selected = pickMerchantFields(org, channel);
+
     console.log("[getVendorMerchantConfig] org QPay state:", {
-      qpayEnabled: org.qpayEnabled,
-      qpayMerchantId: org.qpayMerchantId,
-      qpayMerchantKey: org.qpayMerchantKey ? "set" : "null",
+      channel,
+      qpayEnabled: selected.enabled,
+      qpayMerchantId: selected.merchantId,
+      qpayMerchantKey: selected.merchantKey ? "set" : "null",
     });
 
-    if (!org.qpayEnabled || !org.qpayMerchantId) {
+    if (!selected.enabled || !selected.merchantId) {
       return {
         success: true,
         config: null,
@@ -179,21 +256,21 @@ export async function getVendorMerchantConfig(
 
     // Check if the merchantId is a QuickQR UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
     const isQuickQrUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      org.qpayMerchantId,
+      selected.merchantId,
     );
 
     // QuickQR path: UUID merchantId + valid master credentials + base URL configured
     if (isQuickQrUUID && masterUsername && masterPassword && quickqrBaseUrl) {
-      console.log("[getVendorMerchantConfig] Using QuickQR path for merchant:", org.qpayMerchantId);
+      console.log("[getVendorMerchantConfig] Using QuickQR path for merchant:", selected.merchantId);
       const merchantContext: QPayMerchantContext = {
         username: masterUsername,
         password: masterPassword,
         terminalId: masterTerminalId,
         invoiceCode: null,
-        merchantId: org.qpayMerchantId,
-        merchantKey: `vendor:${org.qpayMerchantId}`,
-        bankAccounts: Array.isArray(org.qpayBankAccounts)
-          ? (org.qpayBankAccounts as unknown as QPayBankAccount[])
+        merchantId: selected.merchantId,
+        merchantKey: `vendor:${selected.merchantId}`,
+        bankAccounts: Array.isArray(selected.bankAccounts)
+          ? (selected.bankAccounts as unknown as QPayBankAccount[])
           : null,
       };
 
@@ -207,21 +284,21 @@ export async function getVendorMerchantConfig(
     const centralClientId = (process.env.QPAY_CLIENT_ID || "").trim();
     const centralClientSecret = (process.env.QPAY_CLIENT_SECRET || "").trim();
     const centralInvoiceCode = (process.env.QPAY_INVOICE_CODE || "").trim();
-    const orgInvoiceCode = (org.qpayInvoiceCode || "").trim();
-    const orgMerchantKey = (org.qpayMerchantKey || "").trim();
-    const orgBankAccounts = Array.isArray(org.qpayBankAccounts)
-      ? (org.qpayBankAccounts as unknown as QPayBankAccount[])
+    const orgInvoiceCode = (selected.invoiceCode || "").trim();
+    const orgMerchantKey = (selected.merchantKey || "").trim();
+    const orgBankAccounts = Array.isArray(selected.bankAccounts)
+      ? (selected.bankAccounts as unknown as QPayBankAccount[])
       : null;
 
     // If the vendor has their own QPay credentials, use them directly.
     // QPay authenticates as their own merchant → payments go to their registered bank account.
-    if (org.qpayMerchantId && orgMerchantKey) {
-      console.log("[getVendorMerchantConfig] Using vendor-own QPay V2 credentials for:", org.qpayMerchantId);
+    if (selected.merchantId && orgMerchantKey) {
+      console.log("[getVendorMerchantConfig] Using vendor-own QPay V2 credentials for:", selected.merchantId);
       const merchantContext: QPayMerchantContext = {
-        username: org.qpayMerchantId,
+        username: selected.merchantId,
         password: orgMerchantKey,
         invoiceCode: orgInvoiceCode || null,
-        merchantKey: `v2-own:${org.qpayMerchantId}`,
+        merchantKey: `v2-own:${selected.merchantId}`,
         bankAccounts: orgBankAccounts,
       };
       return { success: true, config: merchantContext };
@@ -249,13 +326,13 @@ export async function getVendorMerchantConfig(
           const isNewUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(regResult.merchantId);
           await prisma.organization.update({
             where: { id: organizationId },
-            data: {
-              qpayMerchantId: regResult.merchantId,
-              qpayMerchantKey: regResult.merchantKey || null,
-              qpayInvoiceCode: regResult.invoiceCode || null,
-              qpayEnabled: isNewUUID ? true : !!(regResult.merchantId && regResult.merchantKey),
-              qpayConnectedAt: new Date(),
-            },
+            data: buildMerchantUpdateData(channel, {
+              merchantId: regResult.merchantId,
+              merchantKey: regResult.merchantKey || null,
+              invoiceCode: regResult.invoiceCode || null,
+              enabled: isNewUUID ? true : !!(regResult.merchantId && regResult.merchantKey),
+              connectedAt: new Date(),
+            }),
           });
 
           if (isNewUUID) {
@@ -293,7 +370,7 @@ export async function getVendorMerchantConfig(
       username: centralClientId,
       password: centralClientSecret,
       invoiceCode: orgInvoiceCode || centralInvoiceCode || null,
-      merchantKey: `v2:${org.qpayMerchantId}`,
+      merchantKey: `v2:${selected.merchantId}`,
       bankAccounts: orgBankAccounts,
     };
 
@@ -307,6 +384,44 @@ export async function getVendorMerchantConfig(
   }
 }
 
+export async function getVendorSystemQrConfig(
+  organizationId: string,
+  channel: MerchantChannel = "POS",
+): Promise<{
+  merchantCode: string;
+  username?: string;
+  password?: string;
+} | null> {
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      qpayEnabled: true,
+      qpayMerchantId: true,
+      qpayMerchantKey: true,
+      qpayInvoiceCode: true,
+      webQpayEnabled: true,
+      webQpayMerchantId: true,
+      webQpayMerchantKey: true,
+      webQpayInvoiceCode: true,
+    },
+  });
+
+  if (!org) return null;
+
+  const selected = pickMerchantFields(org, channel);
+  if (!selected.enabled || !selected.merchantId) return null;
+  if (!isSystemQrMarker(selected.invoiceCode) && !isSystemQrMarker(selected.merchantKey)) {
+    return null;
+  }
+
+  const password = getSystemQrPassword(selected.merchantKey);
+  const merchantCode = String(selected.merchantId).trim();
+  return {
+    merchantCode,
+    ...(password ? { username: merchantCode, password } : {}),
+  };
+}
+
 export type RegisterVendorParams =
   | ({ type: "company" } & Omit<QPayRegisterCompanyParams, never>)
   | ({ type: "person" } & Omit<QPayRegisterPersonParams, never>);
@@ -318,6 +433,7 @@ export type RegisterVendorSystemQrParams = SystemQrRegisterSubMerchantParams & {
 export async function registerVendorWithSystemQr(
   organizationId: string,
   params: RegisterVendorSystemQrParams,
+  channel: MerchantChannel = "POS",
 ): Promise<ConnectMerchantResult & { raw?: Record<string, unknown>; username?: string }> {
   try {
     const org = await prisma.organization.findUnique({ where: { id: organizationId } });
@@ -336,14 +452,14 @@ export async function registerVendorWithSystemQr(
 
     await prisma.organization.update({
       where: { id: organizationId },
-      data: {
-        qpayMerchantId: result.merchantCode,
-        qpayMerchantKey: result.password ? `systemqr:${result.password}` : "systemqr",
-        qpayInvoiceCode: "SYSTEMQR",
-        qpayBankAccounts: bankAccounts as any,
-        qpayEnabled: true,
-        qpayConnectedAt: new Date(),
-      },
+      data: buildMerchantUpdateData(channel, {
+        merchantId: result.merchantCode,
+        merchantKey: result.password ? `systemqr:${result.password}` : "systemqr",
+        invoiceCode: "SYSTEMQR",
+        bankAccounts,
+        enabled: true,
+        connectedAt: new Date(),
+      }),
     });
 
     return {
@@ -375,6 +491,7 @@ export async function registerVendorWithSystemQr(
 export async function registerVendorWithQPay(
   organizationId: string,
   params: RegisterVendorParams,
+  channel: MerchantChannel = "POS",
 ): Promise<ConnectMerchantResult & { raw?: Record<string, unknown> }> {
   try {
     const org = await prisma.organization.findUnique({ where: { id: organizationId } });
@@ -398,14 +515,14 @@ export async function registerVendorWithQPay(
 
     await prisma.organization.update({
       where: { id: organizationId },
-      data: {
-        qpayMerchantId: result.merchantId || null,
-        qpayMerchantKey: result.merchantKey || null,
-        qpayInvoiceCode: result.invoiceCode || null,
-        qpayBankAccounts: bankAccounts.length > 0 ? (bankAccounts as any) : undefined,
-        qpayEnabled,
-        qpayConnectedAt: new Date(),
-      },
+      data: buildMerchantUpdateData(channel, {
+        merchantId: result.merchantId || null,
+        merchantKey: result.merchantKey || null,
+        invoiceCode: result.invoiceCode || null,
+        bankAccounts: bankAccounts.length > 0 ? bankAccounts : undefined,
+        enabled: qpayEnabled,
+        connectedAt: new Date(),
+      }),
     });
 
     return {
@@ -421,7 +538,7 @@ export async function registerVendorWithQPay(
     if (error instanceof QPayAlreadyRegisteredError) {
       try {
         const bankAccounts: QPayBankAccount[] = (params as any).bank_accounts || [];
-        const recovered = await autoRecoverMerchant(organizationId, error.registerNumber, bankAccounts);
+        const recovered = await autoRecoverMerchant(organizationId, error.registerNumber, bankAccounts, channel);
         if (recovered.success) return recovered;
       } catch (recErr) {
         console.error("auto-recover failed", recErr);
@@ -447,6 +564,7 @@ async function autoRecoverMerchant(
   organizationId: string,
   registerNumber: string,
   bankAccounts: QPayBankAccount[],
+  channel: MerchantChannel = "POS",
 ): Promise<ConnectMerchantResult> {
   const quickqrBaseUrl = (process.env.QPAY_QUICKQR_BASE_URL || "").trim();
   const masterUsername = (process.env.QPAY_QUICKQR_MASTER_USERNAME || "").trim();
@@ -492,13 +610,13 @@ async function autoRecoverMerchant(
 
   await prisma.organization.update({
     where: { id: organizationId },
-    data: {
-      qpayMerchantId: merchantId,
-      qpayMerchantKey: merchantKey || null,
-      qpayEnabled: true,
-      qpayConnectedAt: new Date(),
-      ...(bankAccounts.length > 0 ? { qpayBankAccounts: bankAccounts as any } : {}),
-    },
+    data: buildMerchantUpdateData(channel, {
+      merchantId,
+      merchantKey: merchantKey || null,
+      bankAccounts: bankAccounts.length > 0 ? bankAccounts : undefined,
+      enabled: true,
+      connectedAt: new Date(),
+    }),
   });
 
   console.log(`[autoRecover] Merchant recovered: ${merchantId} (UUID: ${isUUID})`);
@@ -510,14 +628,22 @@ async function autoRecoverMerchant(
  */
 export async function isVendorMerchantConnected(
   organizationId: string,
+  channel: MerchantChannel = "POS",
 ): Promise<boolean> {
   try {
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { qpayEnabled: true, qpayMerchantId: true },
+      select: {
+        qpayEnabled: true,
+        qpayMerchantId: true,
+        webQpayEnabled: true,
+        webQpayMerchantId: true,
+      },
     });
 
-    return !!(org && org.qpayEnabled && org.qpayMerchantId);
+    if (!org) return false;
+    const selected = pickMerchantFields(org, channel);
+    return !!(selected.enabled && selected.merchantId);
   } catch {
     return false;
   }
@@ -526,7 +652,10 @@ export async function isVendorMerchantConnected(
 /**
  * Get vendor merchant status and info
  */
-export async function getVendorMerchantStatus(organizationId: string) {
+export async function getVendorMerchantStatus(
+  organizationId: string,
+  channel: MerchantChannel = "POS",
+) {
   try {
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
@@ -537,6 +666,11 @@ export async function getVendorMerchantStatus(organizationId: string) {
         qpayMerchantKey: true,
         qpayInvoiceCode: true,
         qpayConnectedAt: true,
+        webQpayEnabled: true,
+        webQpayMerchantId: true,
+        webQpayMerchantKey: true,
+        webQpayInvoiceCode: true,
+        webQpayConnectedAt: true,
       },
     });
 
@@ -544,17 +678,19 @@ export async function getVendorMerchantStatus(organizationId: string) {
       return { success: false, error: "Байгууллага олдсонгүй" };
     }
 
+    const selected = pickMerchantFields(org, channel);
     const isSystemQr =
-      isSystemQrMarker(org.qpayMerchantKey) || isSystemQrMarker(org.qpayInvoiceCode);
+      isSystemQrMarker(selected.merchantKey) || isSystemQrMarker(selected.invoiceCode);
 
     return {
       success: true,
-      isConnected: org.qpayEnabled && !!org.qpayMerchantId,
-      merchantId: org.qpayMerchantId || null,
-      connectedAt: org.qpayConnectedAt,
+      isConnected: selected.enabled && !!selected.merchantId,
+      merchantId: selected.merchantId || null,
+      connectedAt: selected.connectedAt,
       orgName: org.name,
       managedBySystem: isSystemQr,
       provider: isSystemQr ? "SYSTEMQR" : "QPAY",
+      channel,
     };
   } catch (error) {
     console.error("vendor merchant status error", error);
