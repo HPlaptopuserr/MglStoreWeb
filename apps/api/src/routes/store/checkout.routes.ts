@@ -410,7 +410,15 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     const normalizedCustomerLng = toNumberOrNull(customerLng);
     const total = subtotal; // no delivery fee for now
 
-    // Create order + items, then start branch radar before payment.
+    const systemQrConfig = await getVendorSystemQrConfig(orgIds[0]);
+    const merchantRes = systemQrConfig
+      ? { success: true, config: null }
+      : await getVendorMerchantConfig(orgIds[0]);
+    if (!systemQrConfig && (!merchantRes.success || !merchantRes.config)) {
+      return res.status(400).json({ message: "Дэлгүүр QPay дансаа холбоогүй байна. Төлбөр авах боломжгүй." });
+    }
+
+    // Create order + items, then prepare branch radar for after payment.
     const order = await prisma.$transaction(async (tx) => {
       const ord = await tx.order.create({
         data: {
@@ -436,9 +444,17 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
               note: "Захиалга үүсгэж, ойр салбар хайж эхэлсэн",
             },
           },
+          payments: {
+            create: {
+              method: PaymentMethod.QPAY,
+              status: PaymentStatus.PENDING,
+              amount: total,
+            },
+          },
         },
         include: {
           items: true,
+          payments: { select: { id: true, status: true, amount: true } },
         },
       });
 
@@ -452,19 +468,46 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       return ord;
     });
 
+    let invoice;
+    try {
+      invoice = await createStorePaymentInvoice({
+        organizationId: orgIds[0],
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: Number(order.total),
+      });
+    } catch (err) {
+      console.error("QPay invoice creation failed:", err);
+      if (err instanceof Error && err.message === "QPAY_NOT_CONFIGURED") {
+        return res.status(400).json({ message: "Дэлгүүр QPay төлбөрийн тохиргоо холбоогүй байна." });
+      }
+      return res.status(502).json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
+    }
+
+    const payment = order.payments[0];
+    if (payment) {
+      await prisma.paymentAttempt.update({
+        where: { id: payment.id },
+        data: {
+          providerRef: invoice.data.invoice_id,
+          rawPayload: JSON.parse(JSON.stringify(invoice.rawPayload)),
+        },
+      });
+    }
+
     return res.status(201).json({
       orderId: order.id,
       orderNumber: order.orderNumber,
       total: Number(order.total),
       subtotal: Number(order.subtotal),
-      paymentId: null,
-      paymentRequired: false,
-      dispatchStatus: "SEARCHING",
-      qrText: "",
-      qrImage: "",
-      qpayInvoiceId: "",
-      deepLinks: [],
-      expiresIn: 0,
+      paymentId: payment?.id || null,
+      paymentRequired: true,
+      dispatchStatus: "WAITING_PAYMENT",
+      qrText: invoice.data.qr_text,
+      qrImage: invoice.data.qr_image,
+      qpayInvoiceId: invoice.data.invoice_id,
+      deepLinks: invoice.data.urls,
+      expiresIn: 300,
       items: order.items.map((i) => ({
         productId: i.productId,
         name: i.productName,
