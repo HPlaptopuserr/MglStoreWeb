@@ -107,35 +107,35 @@ export function QPayModal({
     : "";
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center px-3 py-5 sm:px-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center px-3 py-3 sm:px-4">
       <div
         className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
         onClick={confirmed ? undefined : onClose}
       />
 
-      <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-[28px] bg-[#061836] text-white shadow-2xl max-h-[92vh] overflow-y-auto">
+      <div className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-lg overflow-y-auto overflow-x-hidden rounded-3xl bg-[#061836] text-white shadow-2xl sm:max-h-[calc(100vh-2rem)]">
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,#164b86_0%,#0a2a57_38%,#061836_100%)]" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-white/5" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-white/5" />
 
-        <div className="relative flex items-center justify-between border-b border-white/10 px-6 py-5 sm:px-8">
+        <div className="relative flex items-center justify-between border-b border-white/10 px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-blue-600 shadow-sm">
-              <QrCode size={23} />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/95 text-blue-600 shadow-sm">
+              <QrCode size={21} />
             </div>
-            <h2 className="text-2xl font-black text-white">QPay</h2>
+            <h2 className="text-xl font-black text-white">QPay</h2>
           </div>
           {!confirmed && (
             <button
               onClick={onClose}
               aria-label="QPay цонх хаах"
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
             >
-              <X size={24} />
+              <X size={22} />
             </button>
           )}
         </div>
 
-        <div className="relative px-6 py-6 sm:px-8 sm:py-8">
+        <div className="relative px-5 py-5 sm:px-6 sm:py-6">
           {confirmed ? (
             <div className="flex flex-col items-center gap-5 py-8 text-center">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-400/15">
@@ -148,51 +148,51 @@ export function QPayModal({
               <p className="text-xs text-white/50">Захиалгын хуудас руу шилжиж байна...</p>
             </div>
           ) : (
-            <div className="space-y-7">
-              <div className="rounded-3xl border border-white/15 bg-white/10 px-5 py-5 shadow-inner sm:px-6">
+            <div className="space-y-4 sm:space-y-5">
+              <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4 shadow-inner sm:px-5">
                 <div className="flex items-center justify-between gap-4 text-sm sm:text-base">
                   <span className="text-white/65">Захиалга:</span>
                   <span className="min-w-0 truncate text-right font-mono text-white">{orderNumber}</span>
                 </div>
-                <div className="mt-3 flex items-center justify-between gap-4">
-                  <span className="text-xl font-medium text-white/85 sm:text-2xl">Нийт дүн:</span>
-                  <span className="shrink-0 text-3xl font-black text-white sm:text-4xl">
+                <div className="mt-2 flex items-center justify-between gap-4">
+                  <span className="text-lg font-medium text-white/85 sm:text-xl">Нийт дүн:</span>
+                  <span className="shrink-0 text-2xl font-black text-white sm:text-3xl">
                     ₮{total.toLocaleString()}
                   </span>
                 </div>
               </div>
 
-              <div className="flex flex-col items-center gap-4">
-                <div className="rounded-3xl bg-white p-5 shadow-2xl shadow-slate-950/35">
+              <div className="flex flex-col items-center gap-2.5">
+                <div className="rounded-2xl bg-white p-3 shadow-2xl shadow-slate-950/35 sm:p-4">
                   {qrImageSrc ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={qrImageSrc}
                       alt="QPay QR Code"
-                      className="h-[248px] w-[248px] rounded-xl sm:h-[292px] sm:w-[292px]"
+                      className="h-[210px] w-[210px] rounded-xl sm:h-[232px] sm:w-[232px]"
                     />
                   ) : qrText ? (
                     <QrGenerator
                       value={qrText}
-                      size={292}
+                      size={232}
                       level="M"
                       includeMargin
-                      className="h-[248px] w-[248px] rounded-xl sm:h-[292px] sm:w-[292px]"
+                      className="h-[210px] w-[210px] rounded-xl sm:h-[232px] sm:w-[232px]"
                     />
                   ) : (
-                    <div className="flex h-[248px] w-[248px] items-center justify-center rounded-xl bg-gray-50 text-gray-400 sm:h-[292px] sm:w-[292px]">
+                    <div className="flex h-[210px] w-[210px] items-center justify-center rounded-xl bg-gray-50 text-gray-400 sm:h-[232px] sm:w-[232px]">
                       <QrCode size={44} />
                     </div>
                   )}
                 </div>
-                <div className="flex items-center justify-center gap-2 text-base text-white/80">
+                <div className="flex items-center justify-center gap-2 text-sm text-white/80">
                   <Smartphone size={18} className="text-white/60" />
                   <span>QPay аппликейшнээр уншуулна уу</span>
                 </div>
               </div>
 
               {countdown > 0 ? (
-                <p className="text-center text-base text-white/60">
+                <p className="text-center text-sm text-white/60">
                   Хүлээх хугацаа:{" "}
                   <span className="font-mono font-black text-white">
                     {minutes}:{String(seconds).padStart(2, "0")}
@@ -213,7 +213,7 @@ export function QPayModal({
               <button
                 onClick={handleManualCheck}
                 disabled={checking || countdown === 0}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-black text-[#0a2a57] transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3.5 text-sm font-black text-[#0a2a57] transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {checking ? (
                   <>
