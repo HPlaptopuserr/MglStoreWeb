@@ -1200,8 +1200,31 @@ export default function ContractsPage() {
 
       {activeTab === "submissions" && <SubmissionsList />}
       {activeTab === "templates" && (
-        <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
-          <Contract />
+        <div className="flex flex-col gap-4">
+          <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5 shadow-sm flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-white p-2 text-[#1e4e8c] shadow-sm">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-slate-800">Хийх боломжтой гэрээнүүдийн сан</h2>
+                <p className="mt-1 max-w-2xl text-xs font-semibold leading-5 text-slate-500">
+                  Энд хадгалсан бүх гэрээ хэрэглэгчийн `/contract` хуудсанд харагдана. Хэрэглэгч гэрээ сонгоод зөвхөн бүртгэлээр нэвтэрсний дараа бөглөж баталгаажуулах боломжтой.
+                </p>
+              </div>
+            </div>
+            <a
+              href={`${WEB}/contract`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e4e8c] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#163d70]"
+            >
+              Хэрэглэгчийн гэрээний сан нээх <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+          <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
+            <Contract />
+          </div>
         </div>
       )}
     </div>

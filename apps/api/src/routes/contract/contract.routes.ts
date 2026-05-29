@@ -2,13 +2,78 @@ import { Router, type Router as ExpressRouter } from "express";
 import { requireAuth } from "../../middleware/auth";
 import { prisma } from "@mgl/database";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
-import { createSystemQrInvoice, checkSystemQrPayment } from "../../services/systemqr";
+import { createSystemQrInvoice, checkSystemQrPayment, registerSystemQrSubMerchant } from "../../services/systemqr";
 import multer from "multer";
 import path from "path";
 import crypto from "crypto";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 
 const router: ExpressRouter = Router();
+
+const requiredMinuBankFields = [
+  "merchantName",
+  "accountNumber",
+  "bankCode",
+  "registerNumber",
+  "phone",
+] as const;
+
+function getContractUserId(req: any): string | undefined {
+  return (req.user?.userId || req.user?.id || req.userId) as string | undefined;
+}
+
+function getTemplateTitle(contract: { headerData: any; id: string }) {
+  const hd = contract.headerData as any;
+  return hd?.contractTitle || hd?.title || `Гэрээний загвар MGL-${contract.id.slice(0, 8).toUpperCase()}`;
+}
+
+function summarizeTemplate(contract: any) {
+  const hd = contract.headerData as any;
+  const feePlans: any[] = hd?.feePlans ?? [];
+  const planEntry = feePlans.find((p: any) => p.key === contract.feePlan);
+  const feePlanLabel = planEntry
+    ? `${planEntry.label || planEntry.key || "Багц"}${planEntry.price ? ` — ${Number(planEntry.price).toLocaleString()}₮` : ""}`
+    : contract.feePlan ?? "—";
+
+  return {
+    id: contract.id,
+    title: getTemplateTitle(contract),
+    description: hd?.subtitle || hd?.description || "Цахимаар бөглөж баталгаажуулах боломжтой гэрээ",
+    org: "Гэрээний загвар",
+    status: contract.status,
+    createdBy: contract.user?.profile?.fullName || contract.user?.email || "Admin",
+    date: contract.createdAt.toLocaleString("mn-MN"),
+    createdAt: contract.createdAt,
+    feePlan: contract.feePlan,
+    feePlanLabel,
+    isPaid: contract.isPaid,
+    signedAt: contract.signedAt,
+    pdfUrl: contract.pdfUrl,
+    hasAdminSignature: !!contract.adminSignature,
+    submissionCount: contract._count?.submissions ?? 0,
+    signedCount: 0,
+    headerData: contract.headerData,
+    publicUrl: `/contract/sign/${contract.id}`,
+  };
+}
+
+function summarizePublicTemplate(contract: any) {
+  const summary = summarizeTemplate(contract);
+  const hd = contract.headerData as any;
+  return {
+    ...summary,
+    headerData: hd
+      ? {
+          contractTitle: hd.contractTitle,
+          subtitle: hd.subtitle,
+          description: hd.description,
+          feePlans: hd.feePlans,
+          defaultFeePlan: hd.defaultFeePlan,
+          hasDuration: hd.hasDuration,
+        }
+      : null,
+  };
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // GET /api/contracts/stats  —  Admin dashboard stats
@@ -40,30 +105,7 @@ router.get("/contracts", requireAuth, async (_req, res) => {
       },
     });
 
-    const result = templates.map((c) => {
-      const hd = c.headerData as any;
-      const feePlans: any[] = hd?.feePlans ?? [];
-      const planEntry = feePlans.find((p: any) => p.key === c.feePlan);
-      const feePlanLabel = planEntry
-        ? `${planEntry.label} — ${Number(planEntry.price).toLocaleString()}₮`
-        : c.feePlan ?? "—";
-
-      return {
-        id: c.id,
-        org: "Гэрээний загвар",
-        status: c.status,
-        createdBy: c.user?.profile?.fullName || c.user?.email || "Admin",
-        date: c.createdAt.toLocaleString("mn-MN"),
-        feePlan: c.feePlan,
-        feePlanLabel,
-        isPaid: c.isPaid,
-        signedAt: c.signedAt,
-        pdfUrl: c.pdfUrl,
-        hasAdminSignature: !!c.adminSignature,
-        submissionCount: c._count.submissions,
-        signedCount: 0,
-      };
-    });
+    const result = templates.map(summarizeTemplate);
 
     return res.json({ success: true, contracts: result });
   } catch (error) {
@@ -121,6 +163,84 @@ router.post("/contracts", requireAuth, async (req, res) => {
   } catch (error: any) {
     console.error("contract create error", error);
     return res.status(500).json({ success: false, error: error?.message || "Гэрээ үүсгэхэд алдаа гарлаа" });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// POST /api/contracts/minu-dynamic-qr/register — Admin registers a per-contract
+// Minu Dynamic QR sub-merchant and stores the returned merchantCode in template settings.
+// ──────────────────────────────────────────────────────────────────────────────
+router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const missing = requiredMinuBankFields.filter((field) => !String(body[field] || "").trim());
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Данс холбох талбар дутуу байна: ${missing.join(", ")}`,
+      });
+    }
+
+    const loginUsername = String(body.username || "").trim() || undefined;
+    const loginPassword = String(body.password || "").trim() || undefined;
+
+    const result = await registerSystemQrSubMerchant(
+      {
+        merchantName: String(body.merchantName).trim(),
+        accountNumber: String(body.accountNumber).trim(),
+        bankCode: String(body.bankCode).trim(),
+        cityId: String(body.cityId || "11000").trim(),
+        districtId: String(body.districtId || "110400").trim(),
+        khorooId: String(body.khorooId || "15782385").trim(),
+        building: String(body.building || "-").trim(),
+        doorNo: String(body.doorNo || "-").trim(),
+        phone: String(body.phone).trim(),
+        email: body.email ? String(body.email).trim() : null,
+        firstName: String(body.firstName || body.merchantName).trim(),
+        lastName: String(body.lastName || "-").trim(),
+        corporateFlag: String(body.corporateFlag || "1").trim(),
+        corporateName: body.corporateName ? String(body.corporateName).trim() : String(body.merchantName).trim(),
+        registerNumber: String(body.registerNumber).trim(),
+        gender: String(body.gender || "M").trim(),
+        subCategoryId: String(body.subCategoryId || "36").trim(),
+      },
+      loginUsername,
+      loginPassword,
+    );
+
+    return res.json({
+      success: true,
+      merchantCode: result.merchantCode,
+      username: result.username,
+      password: result.password || null,
+      message: "Minu Dynamic QR данс амжилттай холбогдлоо",
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("contract minu dynamic qr register error", errorMessage);
+    const status = /username or password|login|credential|unauthorized|401|403/i.test(errorMessage) ? 400 : 500;
+    return res.status(status).json({ success: false, error: errorMessage || "Minu Dynamic QR данс холбох үед алдаа гарлаа" });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// GET /api/contracts/available  —  Public catalog of templates users can choose
+// ──────────────────────────────────────────────────────────────────────────────
+router.get("/contracts/available", async (_req, res) => {
+  try {
+    const templates = await prisma.contract.findMany({
+      where: { isTemplate: true },
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: { select: { email: true, profile: { select: { fullName: true } } } },
+        _count: { select: { submissions: true } },
+      },
+    });
+
+    return res.json({ success: true, contracts: templates.map(summarizePublicTemplate) });
+  } catch (error) {
+    console.error("available contracts list error", error);
+    return res.status(500).json({ success: false, error: "Гэрээний жагсаалт авахад алдаа гарлаа" });
   }
 });
 
@@ -272,13 +392,18 @@ router.get("/contracts/:id/submissions", requireAuth, async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// POST /api/contracts/:id/submit  —  Member submits a new contract from template (public)
+// POST /api/contracts/:id/submit  —  Member submits a new contract from template
 // Body: { memberData, memberSignature, feePlan }
 // Returns: { submissionId, requiresPayment }
 // ──────────────────────────────────────────────────────────────────────────────
-router.post("/contracts/:id/submit", async (req, res) => {
+router.post("/contracts/:id/submit", requireAuth, async (req, res) => {
   try {
+    const userId = getContractUserId(req);
     const { memberData, memberSignature, feePlan } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Гэрээ хийхийн тулд нэвтэрнэ үү" });
+    }
 
     const template = await prisma.contract.findUnique({ where: { id: req.params.id } });
     if (!template || !template.isTemplate) {
@@ -288,7 +413,8 @@ router.post("/contracts/:id/submit", async (req, res) => {
     const effectivePlan = feePlan || template.feePlan;
     const submission = await prisma.contract.create({
       data: {
-        userId: template.userId,
+        userId,
+        organizationId: (req as any).user?.organizationId || null,
         templateId: template.id,
         isTemplate: false,
         feePlan: effectivePlan,
@@ -306,6 +432,16 @@ router.post("/contracts/:id/submit", async (req, res) => {
       },
     });
 
+    await prisma.contractAuditLog.create({
+      data: {
+        contractId: submission.id,
+        action: "CONTRACT_SUBMITTED",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent") || undefined,
+        deviceInfo: { templateId: template.id, userId },
+      },
+    });
+
     return res.json({ success: true, submissionId: submission.id, requiresPayment: template.isPaid });
   } catch (error) {
     console.error("contract submit error", error);
@@ -316,9 +452,14 @@ router.post("/contracts/:id/submit", async (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/contracts/:id/sign  —  Legacy: update existing contract (backwards compat)
 // ──────────────────────────────────────────────────────────────────────────────
-router.post("/contracts/:id/sign", async (req, res) => {
+router.post("/contracts/:id/sign", requireAuth, async (req, res) => {
   try {
+    const userId = getContractUserId(req);
     const { memberData, memberSignature, feePlan } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Гэрээ хийхийн тулд нэвтэрнэ үү" });
+    }
 
     const contract = await prisma.contract.findUnique({ where: { id: req.params.id } });
     if (!contract || contract.status === "SIGNED") {
@@ -328,10 +469,22 @@ router.post("/contracts/:id/sign", async (req, res) => {
     await prisma.contract.update({
       where: { id: req.params.id },
       data: {
+        userId,
+        organizationId: (req as any).user?.organizationId || contract.organizationId || null,
         memberData: memberData || undefined,
         memberSignature: memberSignature || undefined,
         feePlan: feePlan || contract.feePlan,
         ...(!contract.isPaid && { status: "SIGNED", signedAt: new Date() }),
+      },
+    });
+
+    await prisma.contractAuditLog.create({
+      data: {
+        contractId: contract.id,
+        action: "CONTRACT_SIGNED_BY_USER",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent") || undefined,
+        deviceInfo: { userId },
       },
     });
 

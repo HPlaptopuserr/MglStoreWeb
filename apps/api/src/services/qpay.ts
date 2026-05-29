@@ -7,6 +7,7 @@
  */
 
 import type { QPayCallbackConfig, QPayMerchantContext } from "./qpay.types";
+import { isQuickQrContext, redactQPayRegistrationResponse } from "./qpay-provider";
 
 const env = () => ({
   baseUrl: process.env.QPAY_BASE_URL || "https://merchant.qpay.mn/v2",
@@ -21,7 +22,7 @@ const env = () => ({
 // (QuickQR multi-merchant). Standard QPay V2 contexts always use QPAY_BASE_URL.
 const resolveBaseUrl = (context?: QPayMerchantContext) => {
   const { baseUrl, quickqrBaseUrl } = env();
-  if (context?.merchantId && quickqrBaseUrl) return quickqrBaseUrl;
+  if (isQuickQrContext(context) && quickqrBaseUrl) return quickqrBaseUrl;
   return baseUrl;
 };
 
@@ -206,9 +207,10 @@ export async function createQPayInvoice(params: {
 
   // ── QuickQR branch ──────────────────────────────────────────
   // QuickQR uses merchant_id + bank_accounts instead of invoice_code
-  if (params.merchantContext?.merchantId) {
+  const quickQrContext = isQuickQrContext(params.merchantContext) ? params.merchantContext : null;
+  if (quickQrContext) {
     const body: Record<string, unknown> = {
-      merchant_id: params.merchantContext.merchantId,
+      merchant_id: quickQrContext.merchantId,
       amount: params.amount,
       currency: "MNT",
       callback_url: callbackUrl,
@@ -217,12 +219,12 @@ export async function createQPayInvoice(params: {
       customer_logo: "",
     };
 
-    if (params.merchantContext.branchCode) {
-      body.branch_code = params.merchantContext.branchCode;
+    if (quickQrContext.branchCode) {
+      body.branch_code = quickQrContext.branchCode;
     }
 
-    if (params.merchantContext.bankAccounts?.length) {
-      body.bank_accounts = params.merchantContext.bankAccounts.map((b) => ({
+    if (quickQrContext.bankAccounts?.length) {
+      body.bank_accounts = quickQrContext.bankAccounts.map((b) => ({
         account_bank_code: b.account_bank_code,
         account_number: b.account_number,
         account_name: b.account_name,
@@ -238,7 +240,7 @@ export async function createQPayInvoice(params: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       },
-      params.merchantContext,
+      quickQrContext,
     );
 
     if (!res.ok) {
@@ -445,7 +447,7 @@ export async function registerQPayMerchantCompany(
 
   const raw = (await res.json()) as Record<string, unknown>;
   console.log("QPay company registration response keys:", Object.keys(raw));
-  console.log("QPay company registration raw:", JSON.stringify(raw));
+  console.log("QPay company registration raw:", JSON.stringify(redactQPayRegistrationResponse(raw)));
   return {
     raw,
     merchantId: String(raw.merchant_id || raw.username || raw.id || ""),
@@ -488,7 +490,7 @@ export async function registerQPayMerchantPerson(
 
   const raw = (await res.json()) as Record<string, unknown>;
   console.log("QPay person registration response keys:", Object.keys(raw));
-  console.log("QPay person registration raw:", JSON.stringify(raw));
+  console.log("QPay person registration raw:", JSON.stringify(redactQPayRegistrationResponse(raw)));
   return {
     raw,
     merchantId: String(raw.merchant_id || raw.username || raw.id || ""),
@@ -538,7 +540,7 @@ export async function checkQPayPayment(
   const baseUrl = resolveBaseUrl(merchantContext);
 
   // QuickQR uses { invoice_id } — standard QPay uses { object_type, object_id }
-  const isQuickQr = !!merchantContext?.merchantId;
+  const isQuickQr = isQuickQrContext(merchantContext);
 
   const body = isQuickQr
     ? { invoice_id: invoiceId }

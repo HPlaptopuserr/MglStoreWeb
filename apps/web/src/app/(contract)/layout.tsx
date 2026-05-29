@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import "../globals.css";
+import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata = {
   title: "Гэрээ баталгаажуулах | MGL Store",
@@ -11,7 +12,7 @@ export default function ContractLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="mn">
       <body className="bg-neutral-100 antialiased min-h-screen" suppressHydrationWarning>
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
