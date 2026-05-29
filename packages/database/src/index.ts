@@ -7,6 +7,7 @@ export {
   Capability,
   OrgStatus,
   OrderStatus,
+  OrderDispatchAttemptStatus,
   DeliveryStatus,
   ReturnStatus,
   PaymentStatus,

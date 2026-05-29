@@ -36,7 +36,9 @@ export const ProductCard = ({
   const primaryTag = tag || tags?.[0];
   const hasCartAction = typeof onAddToCart === "function";
 
-  const badge = hasDiscount
+  const badge = soldOut
+    ? { label: "Дууссан", className: "bg-black text-white" }
+    : hasDiscount
     ? { label: `-${discountPercent}%`, className: "bg-red-500 text-white" }
     : isPreorder
       ? { label: preorderLeadTimeDays ? `${preorderLeadTimeDays} хоног` : "Захиалгаар", className: "bg-blue-500 text-white" }
@@ -68,7 +70,7 @@ export const ProductCard = ({
             src={image}
             alt={name || "Product image"}
             fill
-            className="object-cover transition duration-500 group-hover:scale-105"
+            className="object-contain p-3 transition duration-500 group-hover:scale-105"
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           />
         ) : (
@@ -79,18 +81,14 @@ export const ProductCard = ({
 
         {badge && (
           <span
-            className={`absolute left-4 top-4 z-10 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide shadow-sm ${badge.className}`}
+            className={`absolute left-4 top-4 z-20 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide shadow-sm ${badge.className}`}
           >
             {badge.label}
           </span>
         )}
 
         {soldOut && (
-          <div className="absolute inset-0 z-10 grid place-items-center bg-black/45">
-            <span className="rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-black">
-              Дууссан
-            </span>
-          </div>
+          <div className="absolute inset-0 z-10 bg-slate-950/25" />
         )}
       </Link>
 
@@ -102,7 +100,7 @@ export const ProductCard = ({
           e.stopPropagation();
           handleWishlistClick();
         }}
-        className="absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-black shadow-sm ring-1 ring-black/5 transition hover:scale-105 hover:bg-white"
+        className="absolute right-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-black shadow-sm ring-1 ring-black/5 transition hover:scale-105 hover:bg-white"
       >
         <Heart
           className={`h-5 w-5 ${localWishlistActive ? "fill-red-500 text-red-500" : ""}`}

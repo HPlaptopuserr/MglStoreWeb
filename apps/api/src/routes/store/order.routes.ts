@@ -1,7 +1,8 @@
 import { Router, type Request, type Response, type Router as ExpressRouter } from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { prisma, OrderStatus } from "@mgl/database";
+import { OrderDispatchAttemptStatus } from "@prisma/client";
+import { DeliveryStatus, prisma, OrderStatus } from "@mgl/database";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("FATAL: JWT_SECRET not set"); })() : "dev-secret-change-me");
@@ -42,6 +43,30 @@ const getVendorUser = async (req: Request) => {
 /* ── Generate 6-digit delivery code ──────────────────── */
 function generateDeliveryCode(): string {
   return String(crypto.randomInt(100000, 999999));
+}
+
+const DISPATCH_WINDOW_MINUTES = 3;
+
+async function advanceNextDispatchAttempt(tx: any, orderId: string) {
+  const next = await tx.orderDispatchAttempt.findFirst({
+    where: {
+      orderId,
+      status: OrderDispatchAttemptStatus.QUEUED,
+    },
+    orderBy: { sequence: "asc" },
+    select: { id: true },
+  });
+
+  if (!next) return null;
+
+  return tx.orderDispatchAttempt.update({
+    where: { id: next.id },
+    data: {
+      status: OrderDispatchAttemptStatus.PENDING,
+      requestedAt: new Date(),
+      expiresAt: new Date(Date.now() + DISPATCH_WINDOW_MINUTES * 60 * 1000),
+    },
+  });
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -86,8 +111,22 @@ router.get("/vendor/orders", async (req: Request, res: Response) => {
         include: {
           items: {
             select: { productName: true, quantity: true, price: true, subtotal: true },
+        },
+        branch: { select: { id: true, name: true, address: true } },
+        dispatchAttempts: {
+          orderBy: { sequence: "asc" },
+          select: {
+            id: true,
+            branchId: true,
+            status: true,
+            sequence: true,
+            distanceKm: true,
+            requestedAt: true,
+            respondedAt: true,
+            branch: { select: { id: true, name: true, address: true } },
           },
-          customer: { select: { id: true, email: true, profile: { select: { fullName: true, phoneNumber: true } } } },
+        },
+        customer: { select: { id: true, email: true, profile: { select: { fullName: true, phoneNumber: true } } } },
         },
       }),
       prisma.order.count({ where }),
@@ -105,6 +144,28 @@ router.get("/vendor/orders", async (req: Request, res: Response) => {
         shippingAddress: o.shippingAddress,
         note: o.note,
         deliveryCode: o.deliveryCode,
+        branch: o.branch,
+        dispatch: {
+          status: o.branch
+            ? "ACCEPTED"
+            : o.dispatchAttempts.some((a) => a.status === "PENDING")
+              ? "SEARCHING"
+              : o.dispatchAttempts.some((a) => a.status === "QUEUED")
+                ? "QUEUED"
+                : o.dispatchAttempts.length > 0
+                  ? "NO_BRANCH_AVAILABLE"
+                  : "NOT_STARTED",
+          attempts: o.dispatchAttempts.map((a) => ({
+            id: a.id,
+            branchId: a.branchId,
+            status: a.status,
+            sequence: a.sequence,
+            distanceKm: a.distanceKm,
+            requestedAt: a.requestedAt.toISOString(),
+            respondedAt: a.respondedAt?.toISOString() || null,
+            branch: a.branch,
+          })),
+        },
         createdAt: o.createdAt.toISOString(),
         customer: {
           id: o.customer.id,
@@ -126,6 +187,227 @@ router.get("/vendor/orders", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("vendor orders error", error);
     return res.status(500).json({ message: "Захиалгын жагсаалт авахад алдаа гарлаа" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   GET /vendor/order-dispatches
+   Radar-style branch requests waiting for this organization.
+   ══════════════════════════════════════════════════════════ */
+router.get("/vendor/order-dispatches", async (req: Request, res: Response) => {
+  try {
+    const user = await getVendorUser(req);
+    if (!user) return res.status(401).json({ message: "Нэвтэрнэ үү" });
+
+    const attempts = await prisma.orderDispatchAttempt.findMany({
+      where: {
+        organizationId: user.organizationId,
+        status: { in: [OrderDispatchAttemptStatus.PENDING, OrderDispatchAttemptStatus.QUEUED] },
+        order: {
+          deletedAt: null,
+          paymentStatus: "PAID",
+          branchId: null,
+        },
+      },
+      orderBy: [{ status: "desc" }, { sequence: "asc" }, { requestedAt: "asc" }],
+      take: 80,
+      include: {
+        branch: { select: { id: true, name: true, address: true, lat: true, lng: true } },
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            total: true,
+            shippingAddress: true,
+            phone: true,
+            customerLat: true,
+            customerLng: true,
+            createdAt: true,
+            items: { select: { productName: true, quantity: true, subtotal: true } },
+            customer: { select: { email: true, profile: { select: { fullName: true, phoneNumber: true } } } },
+          },
+        },
+      },
+    });
+
+    return res.json({
+      dispatches: attempts.map((a) => ({
+        id: a.id,
+        orderId: a.orderId,
+        branchId: a.branchId,
+        status: a.status,
+        sequence: a.sequence,
+        distanceKm: a.distanceKm,
+        requestedAt: a.requestedAt.toISOString(),
+        expiresAt: a.expiresAt?.toISOString() || null,
+        branch: a.branch,
+        order: {
+          id: a.order.id,
+          orderNumber: a.order.orderNumber,
+          total: Number(a.order.total),
+          shippingAddress: a.order.shippingAddress,
+          phone: a.order.phone,
+          customerLat: a.order.customerLat,
+          customerLng: a.order.customerLng,
+          createdAt: a.order.createdAt.toISOString(),
+          customer: {
+            name: a.order.customer.profile?.fullName || a.order.customer.email,
+            phone: a.order.customer.profile?.phoneNumber || null,
+          },
+          items: a.order.items.map((i) => ({
+            name: i.productName,
+            qty: i.quantity,
+            subtotal: Number(i.subtotal),
+          })),
+        },
+      })),
+    });
+  } catch (error) {
+    console.error("vendor order dispatches error", error);
+    return res.status(500).json({ message: "Захиалгын radar хүсэлт авахад алдаа гарлаа" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   POST /vendor/order-dispatches/:attemptId/accept
+   Branch accepts the radar request.
+   ══════════════════════════════════════════════════════════ */
+router.post("/vendor/order-dispatches/:attemptId/accept", async (req: Request, res: Response) => {
+  try {
+    const user = await getVendorUser(req);
+    if (!user) return res.status(401).json({ message: "Нэвтэрнэ үү" });
+
+    const { attemptId } = req.params;
+    const attempt = await prisma.orderDispatchAttempt.findUnique({
+      where: { id: attemptId },
+      include: { order: { select: { id: true, orderNumber: true, branchId: true, status: true } }, branch: true },
+    });
+
+    if (!attempt || attempt.organizationId !== user.organizationId) {
+      return res.status(404).json({ message: "Radar хүсэлт олдсонгүй" });
+    }
+    if (attempt.order.branchId) {
+      return res.status(409).json({ message: "Энэ захиалгыг өөр салбар аль хэдийн авсан байна" });
+    }
+    if (attempt.status !== OrderDispatchAttemptStatus.PENDING) {
+      return res.status(400).json({ message: "Зөвхөн идэвхтэй radar хүсэлтийг авах боломжтой" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.orderDispatchAttempt.update({
+        where: { id: attempt.id },
+        data: {
+          status: OrderDispatchAttemptStatus.ACCEPTED,
+          respondedAt: new Date(),
+          respondedById: user.id,
+        },
+      });
+
+      await tx.orderDispatchAttempt.updateMany({
+        where: {
+          orderId: attempt.orderId,
+          id: { not: attempt.id },
+          status: { in: [OrderDispatchAttemptStatus.PENDING, OrderDispatchAttemptStatus.QUEUED] },
+        },
+        data: { status: OrderDispatchAttemptStatus.CANCELLED, respondedAt: new Date() },
+      });
+
+      await tx.order.update({
+        where: { id: attempt.orderId },
+        data: { branchId: attempt.branchId, status: OrderStatus.CONFIRMED },
+      });
+
+      await tx.delivery.upsert({
+        where: { orderId: attempt.orderId },
+        create: { orderId: attempt.orderId, status: DeliveryStatus.WAITING },
+        update: { status: DeliveryStatus.WAITING, cancelledAt: null },
+      });
+
+      await tx.orderHistory.create({
+        data: {
+          orderId: attempt.orderId,
+          fromStatus: attempt.order.status as OrderStatus,
+          toStatus: OrderStatus.CONFIRMED,
+          changedById: user.id,
+          note: `${attempt.branch.name} салбар захиалгыг хүлээн авлаа`,
+        },
+      });
+    });
+
+    return res.json({
+      orderId: attempt.orderId,
+      orderNumber: attempt.order.orderNumber,
+      branchId: attempt.branchId,
+      branchName: attempt.branch.name,
+      status: "ACCEPTED",
+      message: "Захиалгыг салбар хүлээн авлаа",
+    });
+  } catch (error) {
+    console.error("accept order dispatch error", error);
+    return res.status(500).json({ message: "Radar хүсэлт авахад алдаа гарлаа" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   POST /vendor/order-dispatches/:attemptId/decline
+   Branch declines; next nearest queued branch becomes active.
+   ══════════════════════════════════════════════════════════ */
+router.post("/vendor/order-dispatches/:attemptId/decline", async (req: Request, res: Response) => {
+  try {
+    const user = await getVendorUser(req);
+    if (!user) return res.status(401).json({ message: "Нэвтэрнэ үү" });
+
+    const { attemptId } = req.params;
+    const { note } = req.body as { note?: string };
+    const attempt = await prisma.orderDispatchAttempt.findUnique({
+      where: { id: attemptId },
+      include: { order: { select: { id: true, orderNumber: true, branchId: true } }, branch: true },
+    });
+
+    if (!attempt || attempt.organizationId !== user.organizationId) {
+      return res.status(404).json({ message: "Radar хүсэлт олдсонгүй" });
+    }
+    if (attempt.order.branchId) {
+      return res.status(409).json({ message: "Энэ захиалгыг өөр салбар аль хэдийн авсан байна" });
+    }
+    if (attempt.status !== OrderDispatchAttemptStatus.PENDING) {
+      return res.status(400).json({ message: "Зөвхөн идэвхтэй radar хүсэлтийг татгалзах боломжтой" });
+    }
+
+    const next = await prisma.$transaction(async (tx) => {
+      await tx.orderDispatchAttempt.update({
+        where: { id: attempt.id },
+        data: {
+          status: OrderDispatchAttemptStatus.DECLINED,
+          respondedAt: new Date(),
+          respondedById: user.id,
+          note: note || null,
+        },
+      });
+
+      await tx.orderHistory.create({
+        data: {
+          orderId: attempt.orderId,
+          toStatus: OrderStatus.CONFIRMED,
+          changedById: user.id,
+          note: `${attempt.branch.name} салбар боломжгүй гэж татгалзлаа`,
+        },
+      });
+
+      return advanceNextDispatchAttempt(tx, attempt.orderId);
+    });
+
+    return res.json({
+      orderId: attempt.orderId,
+      orderNumber: attempt.order.orderNumber,
+      declinedBranchId: attempt.branchId,
+      nextAttemptId: next?.id || null,
+      status: next ? "NEXT_BRANCH_REQUESTED" : "NO_BRANCH_AVAILABLE",
+      message: next ? "Дараагийн ойр салбар руу хүсэлт илгээгдлээ" : "Ойролцоох бүх салбар татгалзсан байна",
+    });
+  } catch (error) {
+    console.error("decline order dispatch error", error);
+    return res.status(500).json({ message: "Radar хүсэлт татгалзахад алдаа гарлаа" });
   }
 });
 

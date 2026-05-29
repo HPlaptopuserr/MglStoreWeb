@@ -6,7 +6,7 @@ const router: ExpressRouter = Router();
 // ── GET /customer/loyalty/points — current points balance
 router.get("/customer/loyalty/points", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = (req as any).user.userId;
     // Derive a unique but consistent point balance for the user
     const balance = ((userId.charCodeAt(0) || 77) * 4) + 120;
     res.json({ points: balance });

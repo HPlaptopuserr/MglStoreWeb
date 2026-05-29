@@ -19,9 +19,10 @@ import {
   Search,
   Bell,
   FileText,
+  BarChart3,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
-import { MobileDashboard } from "@/components/organisms";
+import { MobileDashboard } from "@/components/organisms/MobileDashboard";
 import { AccountSwitcher } from "@/components/organisms/AccountSwitcher";
 import { AdminAuthProvider, useAdminAuth } from "@/lib/admin-auth";
 
@@ -34,6 +35,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     label: "Хяналтын самбар",
     icon: LayoutGrid,
     href: "/dashboard",
+    requires: ["VIEW_SYSTEM_DASHBOARD"],
+  },
+  {
+    id: "statistics",
+    label: "Статистик",
+    icon: BarChart3,
+    href: "/statistics",
     requires: ["VIEW_SYSTEM_DASHBOARD"],
   },
   {
@@ -144,6 +152,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
 
   const pageTitle = useMemo(() => {
     if (pathname.startsWith("/dashboard")) return "Хяналтын самбар";
+    if (pathname.startsWith("/statistics")) return "Статистик";
     if (pathname.startsWith("/requests")) return "Хүсэлтүүд";
     if (pathname.startsWith("/partners")) return "Түншүүд";
     if (pathname.startsWith("/warehouses")) return "Агуулах";

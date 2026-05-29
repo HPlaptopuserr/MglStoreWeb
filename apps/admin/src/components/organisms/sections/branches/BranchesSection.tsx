@@ -1,15 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { useBranches } from "@/hooks/sections/useBranches";
 import { BranchForm } from "@/components/molecules/sections/branches/BranchForm";
 import { BranchPreviewPanel } from "@/components/molecules/sections/branches/BranchPreviewPanel";
 import { getLeafletLib } from "@/lib/sections/utils";
-import {
-  BRANCH_MAP_ATTRIBUTION,
-  UB_CENTER,
-} from "@/lib/sections/constants";
+import { BRANCH_MAP_ATTRIBUTION, UB_CENTER } from "@/lib/sections/constants";
 
 type Props = {
   showBranchMapOnWeb: boolean;
@@ -17,7 +14,11 @@ type Props = {
   saving: boolean;
 };
 
-export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props) {
+export function BranchesSection({
+  showBranchMapOnWeb,
+  onToggle,
+  saving,
+}: Props) {
   const [active, setActive] = useState(true);
   const [branchMapError, setBranchMapError] = useState("");
 
@@ -65,7 +66,9 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
 
     init().catch((err) => {
       console.error("Picker map init failed", err);
-      setBranchMapError("Map ачаалахад алдаа гарлаа. Хуудсаа дахин ачаална уу.");
+      setBranchMapError(
+        "Map ачаалахад алдаа гарлаа. Хуудсаа дахин ачаална уу.",
+      );
     });
 
     return () => {
@@ -95,7 +98,10 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
     }
 
     const map = mapInstanceRef.current;
-    const nextLatLng: [number, number] = [branches.parsedBranchLat, branches.parsedBranchLng];
+    const nextLatLng: [number, number] = [
+      branches.parsedBranchLat,
+      branches.parsedBranchLng,
+    ];
 
     const sync = async () => {
       const L = await getLeafletLib();
@@ -136,7 +142,8 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
 
     const init = async () => {
       const L = await getLeafletLib();
-      if (cancelled || !previewMapRef.current || previewMapInstanceRef.current) return;
+      if (cancelled || !previewMapRef.current || previewMapInstanceRef.current)
+        return;
 
       const map = L.map(previewMapRef.current).setView(UB_CENTER, 11);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -183,7 +190,8 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
 
       const bounds = L.latLngBounds([]);
       const activeId =
-        branches.selectedRegisteredBranch?.id || branches.selectedRegisteredBranchId;
+        branches.selectedRegisteredBranch?.id ||
+        branches.selectedRegisteredBranchId;
 
       branches.branchItems.forEach((item) => {
         if (item.lat === null || item.lng === null) return;
@@ -200,7 +208,9 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
         });
 
         marker.bindTooltip(item.name, { direction: "top", offset: [0, -8] });
-        marker.on("click", () => branches.setSelectedRegisteredBranchId(item.id));
+        marker.on("click", () =>
+          branches.setSelectedRegisteredBranchId(item.id),
+        );
         marker.addTo(layer);
 
         bounds.extend(latLng);
@@ -218,7 +228,10 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
           fillColor: "#86efac",
           fillOpacity: 0.85,
         });
-        draftMarker.bindTooltip("Шинэ байршлын draft", { direction: "top", offset: [0, -8] });
+        draftMarker.bindTooltip("Шинэ байршлын draft", {
+          direction: "top",
+          offset: [0, -8],
+        });
         draftMarker.addTo(layer);
         bounds.extend(draftLatLng);
       }
@@ -242,15 +255,20 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
     <div className="flex flex-col gap-6">
       {/* Section header */}
       <div>
-        <h2 className="text-lg font-bold text-slate-800 mb-1">Салбарын байршил</h2>
+        <h2 className="text-lg font-bold text-slate-800 mb-1">
+          Салбарын байршил
+        </h2>
         <p className="text-sm text-slate-400">
-          Нүүр хуудасны хамгийн доод хэсэгт харагдах map-д салбарын байршлыг нэмнэ.
+          Нүүр хуудасны хамгийн доод хэсэгт харагдах map-д салбарын байршлыг
+          нэмнэ.
         </p>
 
         {/* Web map visibility toggle */}
         <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
           <div>
-            <p className="text-sm font-semibold text-slate-700">Web дээр map харуулах</p>
+            <p className="text-sm font-semibold text-slate-700">
+              Web дээр map харуулах
+            </p>
             <p className="text-xs text-slate-500">
               Асаалттай үед web нүүр хуудсанд салбарын map харагдана.
             </p>
@@ -280,6 +298,21 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
             Байгууллага болон салбарын мэдээлэл ачаалж байна...
           </p>
         </div>
+      ) : branches.branchLoadError ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-6 py-14 text-center text-rose-700">
+          <AlertCircle size={34} />
+          <p className="mt-3 text-sm font-bold">{branches.branchLoadError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setActive(false);
+              setTimeout(() => setActive(true), 0);
+            }}
+            className="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
+          >
+            Дахин ачаалах
+          </button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <BranchForm
@@ -290,6 +323,10 @@ export function BranchesSection({ showBranchMapOnWeb, onToggle, saving }: Props)
             form={branches.branchForm}
             setForm={branches.setBranchForm}
             branchSaving={branches.branchSaving}
+            branchError={branches.branchError}
+            branchSuccess={branches.branchSuccess}
+            branchValidationError={branches.branchValidationError}
+            canCreateBranch={branches.canCreateBranch}
             branchMapError={branchMapError}
             mapPickerRef={mapPickerRef}
             onSubmit={branches.handleCreateBranch}

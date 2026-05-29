@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { QrCode, ClipboardList } from "lucide-react";
-import { QrGeneratorPanel, FormBuilderTool } from "@/components/organisms";
+import { QrGeneratorPanel } from "@/components/organisms/QrGeneratorPanel";
+import { FormBuilderTool } from "@/components/organisms/FormBuilderTool";
 
 const TABS = [
   { key: "qr", label: "QR үүсгэгч", icon: QrCode },
@@ -43,4 +44,3 @@ export default function AdminToolsPage() {
     </div>
   );
 }
-

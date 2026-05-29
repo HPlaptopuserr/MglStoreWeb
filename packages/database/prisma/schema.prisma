@@ -8,59 +8,61 @@ datasource db {
 }
 
 model User {
-  id                           String                   @id @default(uuid())
-  email                        String                   @unique
-  registerNumber               String?                  @unique
-  role                         PlatformRole             @default(USER)
-  isActive                     Boolean                  @default(true)
-  emailVerified                Boolean                  @default(false)
+  id                           String                    @id @default(uuid())
+  email                        String                    @unique
+  registerNumber               String?                   @unique
+  role                         PlatformRole              @default(USER)
+  isActive                     Boolean                   @default(true)
+  emailVerified                Boolean                   @default(false)
   lastLoginAt                  DateTime?
-  onboardingSource             OnboardingSource         @default(ADMIN)
-  createdAt                    DateTime                 @default(now())
-  updatedAt                    DateTime                 @updatedAt
+  onboardingSource             OnboardingSource          @default(ADMIN)
+  createdAt                    DateTime                  @default(now())
+  updatedAt                    DateTime                  @updatedAt
   deletedAt                    DateTime?
   passwordHash                 String?
   addresses                    Address[]
-  attendanceRecords            AttendanceRecord[]       @relation("AttendanceRecordUser")
+  attendanceRecords            AttendanceRecord[]        @relation("AttendanceRecordUser")
   auditLogs                    AuditLog[]
-  initiatedCardAttempts        CardPaymentAttempt[]     @relation("CardPaymentAttemptInitiatedBy")
-  chatSessions                 ChatSession[]            @relation("UserChatSessions")
-  courierLocationHistories     CourierLocationHistory[] @relation("CourierLocationHistoryUser")
-  deliveries                   Delivery[]               @relation("CourierDeliveries")
-  forms                        Form[]                   @relation("FormCreatedBy")
-  inventoryLedgers             InventoryLedger[]        @relation("InventoryLedgerCreatedBy")
-  orders                       Order[]                  @relation("CustomerOrders")
-  changedOrderHistories        OrderHistory[]           @relation("OrderHistoryChangedBy")
+  initiatedCardAttempts        CardPaymentAttempt[]      @relation("CardPaymentAttemptInitiatedBy")
+  chatSessions                 ChatSession[]             @relation("UserChatSessions")
+  courierLocationHistories     CourierLocationHistory[]  @relation("CourierLocationHistoryUser")
+  deliveries                   Delivery[]                @relation("CourierDeliveries")
+  forms                        Form[]                    @relation("FormCreatedBy")
+  inventoryLedgers             InventoryLedger[]         @relation("InventoryLedgerCreatedBy")
+  orders                       Order[]                   @relation("CustomerOrders")
+  orderDispatchResponses       OrderDispatchAttempt[]    @relation("OrderDispatchAttemptRespondedBy")
+  changedOrderHistories        OrderHistory[]            @relation("OrderHistoryChangedBy")
   organizationMemberships      OrganizationMember[]
-  passwordResetTokens          PasswordResetToken[]     @relation("UserPasswordResetTokens")
-  reviewedPosRegisters         PosRegister[]            @relation("PosRegisterReviewedBy")
-  reviewedCardTerminalRequests CardTerminalRequest[]    @relation("CardTerminalRequestReviewedBy")
-  posts                        Post[]                   @relation("PostAuthor")
-  reviewedProductRequests      ProductRequest[]         @relation("ReviewedProductRequests")
-  submittedProductRequests     ProductRequest[]         @relation("SubmittedProductRequests")
+  passwordResetTokens          PasswordResetToken[]      @relation("UserPasswordResetTokens")
+  reviewedPosRegisters         PosRegister[]             @relation("PosRegisterReviewedBy")
+  reviewedCardTerminalRequests CardTerminalRequest[]     @relation("CardTerminalRequestReviewedBy")
+  posts                        Post[]                    @relation("PostAuthor")
+  reviewedProductRequests      ProductRequest[]          @relation("ReviewedProductRequests")
+  submittedProductRequests     ProductRequest[]          @relation("SubmittedProductRequests")
   profile                      Profile?
-  initiatedQPayInvoices        QPayInvoice[]            @relation("QPayInvoiceInitiatedBy")
-  approvedFromRequest          RegistrationRequest?     @relation("ApprovedUserRegistrationRequest")
-  reviewedRegistrationRequests RegistrationRequest[]    @relation("ReviewedRegistrationRequests")
-  resolvedReturnRequests       ReturnRequest[]          @relation("ReturnRequestResolvedBy")
-  assignedServiceRequests      ServiceRequest[]         @relation("ServiceRequestAssignedTo")
-  requestedServiceRequests     ServiceRequest[]         @relation("ServiceRequestRequestedBy")
-  driverDispatches             StockDispatch[]          @relation("DriverDispatches")
-  confirmedPayments            StockRequestPayment[]    @relation("PaymentConfirmations")
+  initiatedQPayInvoices        QPayInvoice[]             @relation("QPayInvoiceInitiatedBy")
+  approvedFromRequest          RegistrationRequest?      @relation("ApprovedUserRegistrationRequest")
+  reviewedRegistrationRequests RegistrationRequest[]     @relation("ReviewedRegistrationRequests")
+  resolvedReturnRequests       ReturnRequest[]           @relation("ReturnRequestResolvedBy")
+  assignedServiceRequests      ServiceRequest[]          @relation("ServiceRequestAssignedTo")
+  requestedServiceRequests     ServiceRequest[]          @relation("ServiceRequestRequestedBy")
+  driverDispatches             StockDispatch[]           @relation("DriverDispatches")
+  confirmedPayments            StockRequestPayment[]     @relation("PaymentConfirmations")
   sessions                     UserSession[]
-  vendorSetupTokens            VendorSetupToken[]       @relation("UserVendorSetupTokens")
-  createdWarehouses            Warehouse[]              @relation("WarehouseCreatedBy")
-  warehouseAssignments         WarehouseOrganization[]  @relation("WarehouseAssignedBy")
-  warehouseSetupTokens         WarehouseSetupToken[]    @relation("UserWarehouseSetupTokens")
-  requestedStockRequests       WarehouseStockRequest[]  @relation("StockRequestsRequested")
-  reviewedStockRequests        WarehouseStockRequest[]  @relation("StockRequestsReviewed")
-  returnApprovals              DispatchReturn[]         @relation("ReturnApprovals")
-  orgJoinRequests              OrgJoinRequest[]         @relation("UserOrgJoinRequests")
+  vendorSetupTokens            VendorSetupToken[]        @relation("UserVendorSetupTokens")
+  createdWarehouses            Warehouse[]               @relation("WarehouseCreatedBy")
+  warehouseAssignments         WarehouseOrganization[]   @relation("WarehouseAssignedBy")
+  warehouseSetupTokens         WarehouseSetupToken[]     @relation("UserWarehouseSetupTokens")
+  requestedStockRequests       WarehouseStockRequest[]   @relation("StockRequestsRequested")
+  reviewedStockRequests        WarehouseStockRequest[]   @relation("StockRequestsReviewed")
+  returnApprovals              DispatchReturn[]          @relation("ReturnApprovals")
+  orgJoinRequests              OrgJoinRequest[]          @relation("UserOrgJoinRequests")
   conversationParticipants     ConversationParticipant[]
-  sentDirectMessages           DirectMessage[]          @relation("DirectMessageSender")
-  posShifts                    PosShift[]               @relation("PosShiftCashier")
-  posSales                     PosSale[]                @relation("PosSaleCashier")
+  sentDirectMessages           DirectMessage[]           @relation("DirectMessageSender")
+  posShifts                    PosShift[]                @relation("PosShiftCashier")
+  posSales                     PosSale[]                 @relation("PosSaleCashier")
   contracts                    Contract[]
+
   @@index([role])
   @@index([isActive])
   @@index([deletedAt])
@@ -371,24 +373,24 @@ model Organization {
 }
 
 model CardTerminalRequest {
-  id               String                     @id @default(uuid())
-  organizationId   String
-  contactName      String
-  contactPhone     String
-  contactEmail     String?
-  providerType     String                     // e.g. "MONPAY", "GOLOMT", "TDB", etc.
-  businessNote     String?
-  status           CardTerminalRequestStatus  @default(PENDING)
-  adminNote        String?
+  id                String                    @id @default(uuid())
+  organizationId    String
+  contactName       String
+  contactPhone      String
+  contactEmail      String?
+  providerType      String // e.g. "MONPAY", "GOLOMT", "TDB", etc.
+  businessNote      String?
+  status            CardTerminalRequestStatus @default(PENDING)
+  adminNote         String?
   // credentials set by admin after card terminal company approves
-  cardTerminalId   String?
+  cardTerminalId    String?
   terminalBridgeUrl String?
-  reviewedById     String?
-  reviewedAt       DateTime?
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
-  organization     Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  reviewedBy       User?                      @relation("CardTerminalRequestReviewedBy", fields: [reviewedById], references: [id])
+  reviewedById      String?
+  reviewedAt        DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  organization      Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewedBy        User?                     @relation("CardTerminalRequestReviewedBy", fields: [reviewedById], references: [id])
 
   @@index([organizationId])
   @@index([status])
@@ -396,24 +398,24 @@ model CardTerminalRequest {
 }
 
 model OrgUpgradePlan {
-  id               String            @id @default(uuid())
-  organizationId   String
-  planId           String?
-  planType         String
-  invoiceId        String            @unique
-  invoiceNo        String            @unique
-  qrText           String            @default("")
-  amount           Decimal           @db.Decimal(18, 2)
-  status           PlanPaymentStatus @default(PENDING)
-  paidAt           DateTime?
-  expiresAt        DateTime?
-  grantedByAdmin   Boolean           @default(false)
-  grantNote        String?
-  grantedById      String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  plan             UpgradePlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
+  id             String            @id @default(uuid())
+  organizationId String
+  planId         String?
+  planType       String
+  invoiceId      String            @unique
+  invoiceNo      String            @unique
+  qrText         String            @default("")
+  amount         Decimal           @db.Decimal(18, 2)
+  status         PlanPaymentStatus @default(PENDING)
+  paidAt         DateTime?
+  expiresAt      DateTime?
+  grantedByAdmin Boolean           @default(false)
+  grantNote      String?
+  grantedById    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan           UpgradePlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([planId])
@@ -423,25 +425,25 @@ model OrgUpgradePlan {
 }
 
 model UpgradePlan {
-  id             String           @id @default(uuid())
-  code           String           @unique
-  name           String
-  description    String?
-  price          Decimal          @db.Decimal(18, 2)
-  durationDays   Int
-  maxProducts    Int
-  maxImages      Int
-  maxCategories  Int
-  hasBanner      Boolean          @default(false)
-  hasAnalytics   Boolean          @default(false)
-  isTrial        Boolean          @default(false)
-  badge          String?
-  isRecommended  Boolean          @default(false)
-  isActive       Boolean          @default(true)
-  sortOrder      Int              @default(0)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  invoices       OrgUpgradePlan[]
+  id            String           @id @default(uuid())
+  code          String           @unique
+  name          String
+  description   String?
+  price         Decimal          @db.Decimal(18, 2)
+  durationDays  Int
+  maxProducts   Int
+  maxImages     Int
+  maxCategories Int
+  hasBanner     Boolean          @default(false)
+  hasAnalytics  Boolean          @default(false)
+  isTrial       Boolean          @default(false)
+  badge         String?
+  isRecommended Boolean          @default(false)
+  isActive      Boolean          @default(true)
+  sortOrder     Int              @default(0)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  invoices      OrgUpgradePlan[]
 
   @@index([isActive])
   @@index([sortOrder])
@@ -522,16 +524,16 @@ model OrganizationMember {
 /// A request from a user to join an organization.
 /// OWNER/ADMIN of the org can approve or reject.
 model OrgJoinRequest {
-  id             String           @id @default(uuid())
+  id             String            @id @default(uuid())
   userId         String
   organizationId String
   status         JoinRequestStatus @default(PENDING)
   message        String?
   rejectedReason String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  user           User             @relation("UserOrgJoinRequests", fields: [userId], references: [id], onDelete: Cascade)
-  organization   Organization     @relation("OrgJoinRequests", fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User              @relation("UserOrgJoinRequests", fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization      @relation("OrgJoinRequests", fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([userId, organizationId])
   @@index([userId])
@@ -546,20 +548,22 @@ enum JoinRequestStatus {
 }
 
 model Branch {
-  id              String           @id @default(uuid())
-  organizationId  String
-  name            String
-  address         String
-  lat             Float?
-  lng             Float?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  deletedAt       DateTime?
-  attendanceZones AttendanceZone[]
-  organization    Organization     @relation(fields: [organizationId], references: [id])
-  posRegisters    PosRegister[]
-  posShifts       PosShift[]
-  posSales        PosSale[]
+  id                    String                 @id @default(uuid())
+  organizationId        String
+  name                  String
+  address               String
+  lat                   Float?
+  lng                   Float?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+  attendanceZones       AttendanceZone[]
+  organization          Organization           @relation(fields: [organizationId], references: [id])
+  posRegisters          PosRegister[]
+  posShifts             PosShift[]
+  posSales              PosSale[]
+  orderAssignments      Order[]                @relation("OrderAssignedBranch")
+  orderDispatchAttempts OrderDispatchAttempt[]
 
   @@index([organizationId])
   @@index([deletedAt])
@@ -677,7 +681,7 @@ model Product {
   warehouseInventories WarehouseInventory[]
   stockRequestItems    WarehouseStockRequestItem[] @relation("StockRequestProducts")
   posSaleLines         PosSaleLine[]
-  returnItems          DispatchReturnItem[] @relation("ReturnProducts")
+  returnItems          DispatchReturnItem[]        @relation("ReturnProducts")
 
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
@@ -784,30 +788,35 @@ model InventoryLedger {
 }
 
 model Order {
-  id                 String           @id @default(uuid())
+  id                 String                 @id @default(uuid())
   organizationId     String
   customerId         String
-  status             OrderStatus      @default(PENDING)
-  paymentStatus      PaymentStatus    @default(PENDING)
+  status             OrderStatus            @default(PENDING)
+  paymentStatus      PaymentStatus          @default(PENDING)
   paymentMethod      PaymentMethod?
   shippingAddress    String
   phone              String
   note               String?
   shippingAddressId  String?
+  branchId           String?
+  customerLat        Float?
+  customerLng        Float?
   deliveryCode       String?
-  subtotal           Decimal          @db.Decimal(18, 2)
-  discountAmount     Decimal          @default(0) @db.Decimal(18, 2)
-  deliveryFee        Decimal          @default(0) @db.Decimal(18, 2)
-  total              Decimal          @db.Decimal(18, 2)
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  subtotal           Decimal                @db.Decimal(18, 2)
+  discountAmount     Decimal                @default(0) @db.Decimal(18, 2)
+  deliveryFee        Decimal                @default(0) @db.Decimal(18, 2)
+  total              Decimal                @db.Decimal(18, 2)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
   deletedAt          DateTime?
-  orderNumber        String           @unique
+  orderNumber        String                 @unique
   delivery           Delivery?
-  customer           User             @relation("CustomerOrders", fields: [customerId], references: [id])
-  organization       Organization     @relation(fields: [organizationId], references: [id])
-  shippingAddressRef Address?         @relation("OrderShippingAddressRef", fields: [shippingAddressId], references: [id])
+  branch             Branch?                @relation("OrderAssignedBranch", fields: [branchId], references: [id])
+  customer           User                   @relation("CustomerOrders", fields: [customerId], references: [id])
+  organization       Organization           @relation(fields: [organizationId], references: [id])
+  shippingAddressRef Address?               @relation("OrderShippingAddressRef", fields: [shippingAddressId], references: [id])
   history            OrderHistory[]
+  dispatchAttempts   OrderDispatchAttempt[]
   items              OrderItem[]
   payments           PaymentAttempt[]
   returnRequest      ReturnRequest?
@@ -817,8 +826,33 @@ model Order {
   @@index([createdAt])
   @@index([deletedAt])
   @@index([shippingAddressId])
+  @@index([branchId])
   @@index([paymentStatus])
   @@index([orderNumber])
+}
+
+model OrderDispatchAttempt {
+  id             String                     @id @default(uuid())
+  orderId        String
+  branchId       String
+  organizationId String
+  status         OrderDispatchAttemptStatus @default(PENDING)
+  sequence       Int
+  distanceKm     Float?
+  requestedAt    DateTime                   @default(now())
+  respondedAt    DateTime?
+  respondedById  String?
+  expiresAt      DateTime?
+  note           String?
+  branch         Branch                     @relation(fields: [branchId], references: [id])
+  order          Order                      @relation(fields: [orderId], references: [id])
+  respondedBy    User?                      @relation("OrderDispatchAttemptRespondedBy", fields: [respondedById], references: [id])
+
+  @@unique([orderId, branchId])
+  @@index([orderId, status])
+  @@index([branchId, status])
+  @@index([organizationId, status])
+  @@index([requestedAt])
 }
 
 model OrderItem {
@@ -956,27 +990,27 @@ model ServiceRequest {
 }
 
 model Warehouse {
-  id            String                  @id @default(uuid())
-  name          String
-  address       String
-  capacity      Int                     @default(0)
-  lat           Float?
-  lng           Float?
-  createdById   String?
-  isActive      Boolean                 @default(true)
-  createdAt     DateTime                @default(now())
-  updatedAt     DateTime                @updatedAt
-  deletedAt     DateTime?
-  city          String                  @default("")
-  district      String                  @default("")
-  phone         String?
-  dispatches    StockDispatch[]         @relation("WarehouseDispatches")
-  createdBy     User?                   @relation("WarehouseCreatedBy", fields: [createdById], references: [id])
-  inventories   WarehouseInventory[]
-  organizations WarehouseOrganization[]
-  setupTokens   WarehouseSetupToken[]   @relation("WarehouseSetupTokens")
-  stockRequests WarehouseStockRequest[] @relation("WarehouseStockRequests")
-  dispatchReturns DispatchReturn[]     @relation("WarehouseReturns")
+  id              String                  @id @default(uuid())
+  name            String
+  address         String
+  capacity        Int                     @default(0)
+  lat             Float?
+  lng             Float?
+  createdById     String?
+  isActive        Boolean                 @default(true)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  deletedAt       DateTime?
+  city            String                  @default("")
+  district        String                  @default("")
+  phone           String?
+  dispatches      StockDispatch[]         @relation("WarehouseDispatches")
+  createdBy       User?                   @relation("WarehouseCreatedBy", fields: [createdById], references: [id])
+  inventories     WarehouseInventory[]
+  organizations   WarehouseOrganization[]
+  setupTokens     WarehouseSetupToken[]   @relation("WarehouseSetupTokens")
+  stockRequests   WarehouseStockRequest[] @relation("WarehouseStockRequests")
+  dispatchReturns DispatchReturn[]        @relation("WarehouseReturns")
 
   @@index([createdById])
   @@index([isActive])
@@ -1142,25 +1176,25 @@ model StockDispatch {
 /// Return request for defective/wrong goods from a delivered dispatch.
 /// Warehouse admin manually approves; approved returns restore inventory.
 model DispatchReturn {
-  id             String                @id @default(uuid())
-  returnNumber   String                @unique
+  id             String               @id @default(uuid())
+  returnNumber   String               @unique
   dispatchId     String
   warehouseId    String
   organizationId String
-  status         ReturnStatus          @default(PENDING)
+  status         ReturnStatus         @default(PENDING)
   reason         String?
   note           String?
   rejectReason   String?
-  requestedAt    DateTime              @default(now())
+  requestedAt    DateTime             @default(now())
   approvedAt     DateTime?
   rejectedAt     DateTime?
   approvedById   String?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
-  dispatch       StockDispatch         @relation(fields: [dispatchId], references: [id])
-  warehouse      Warehouse             @relation("WarehouseReturns", fields: [warehouseId], references: [id])
-  organization   Organization          @relation("OrganizationReturns", fields: [organizationId], references: [id])
-  approvedBy     User?                 @relation("ReturnApprovals", fields: [approvedById], references: [id])
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  dispatch       StockDispatch        @relation(fields: [dispatchId], references: [id])
+  warehouse      Warehouse            @relation("WarehouseReturns", fields: [warehouseId], references: [id])
+  organization   Organization         @relation("OrganizationReturns", fields: [organizationId], references: [id])
+  approvedBy     User?                @relation("ReturnApprovals", fields: [approvedById], references: [id])
   items          DispatchReturnItem[]
 
   @@index([dispatchId])
@@ -1451,7 +1485,6 @@ enum PlatformRole {
   LAWYER
 }
 
-
 enum OrgType {
   SUPPLIER
   BUSINESS_CUSTOMER
@@ -1484,6 +1517,15 @@ enum DeliveryStatus {
   PICKING
   DELIVERING
   COMPLETED
+  CANCELLED
+}
+
+enum OrderDispatchAttemptStatus {
+  QUEUED
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
   CANCELLED
 }
 
@@ -1717,17 +1759,17 @@ model ConversationParticipant {
 }
 
 model DirectMessage {
-  id             String        @id @default(cuid())
+  id             String       @id @default(cuid())
   conversationId String
   senderId       String
-  type           DmType        @default(TEXT)
+  type           DmType       @default(TEXT)
   content        String
   fileName       String?
   fileSize       Int?
   duration       Int?
-  createdAt      DateTime      @default(now())
-  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender         User          @relation("DirectMessageSender", fields: [senderId], references: [id])
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("DirectMessageSender", fields: [senderId], references: [id])
 
   @@index([conversationId, createdAt])
   @@index([senderId])
@@ -1781,40 +1823,40 @@ model PosShift {
 
 /// Structured POS sale record.
 model PosSale {
-  id             String        @id @default(uuid())
-  receiptNo      String        @unique
-  organizationId String
-  branchId       String
-  registerId     String?
-  shiftId        String
-  cashierId      String
-  status         PosSaleStatus @default(COMPLETED)
-  paymentMethod  String
-  subtotal       Decimal       @db.Decimal(18, 2)
-  taxTotal       Decimal       @db.Decimal(18, 2)
-  discountTotal  Decimal       @db.Decimal(18, 2)
-  grandTotal     Decimal       @db.Decimal(18, 2)
-  note           String?
-  ebarimtStatus  String?
-  ebarimtBillId  String?
+  id               String        @id @default(uuid())
+  receiptNo        String        @unique
+  organizationId   String
+  branchId         String
+  registerId       String?
+  shiftId          String
+  cashierId        String
+  status           PosSaleStatus @default(COMPLETED)
+  paymentMethod    String
+  subtotal         Decimal       @db.Decimal(18, 2)
+  taxTotal         Decimal       @db.Decimal(18, 2)
+  discountTotal    Decimal       @db.Decimal(18, 2)
+  grandTotal       Decimal       @db.Decimal(18, 2)
+  note             String?
+  ebarimtStatus    String?
+  ebarimtBillId    String?
   ebarimtReceiptId String?
-  ebarimtQrData  String?
-  ebarimtLottery String?
-  ebarimtDate    DateTime?
-  ebarimtError   String?
-  ebarimtPayload Json?
-  ebarimtSyncedAt DateTime?
-  voidedAt       DateTime?
-  voidReason     String?
-  voidedById     String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  organization   Organization  @relation(fields: [organizationId], references: [id])
-  branch         Branch        @relation(fields: [branchId], references: [id])
-  register       PosRegister?  @relation(fields: [registerId], references: [id])
-  shift          PosShift      @relation(fields: [shiftId], references: [id])
-  cashier        User          @relation("PosSaleCashier", fields: [cashierId], references: [id])
-  lines          PosSaleLine[]
+  ebarimtQrData    String?
+  ebarimtLottery   String?
+  ebarimtDate      DateTime?
+  ebarimtError     String?
+  ebarimtPayload   Json?
+  ebarimtSyncedAt  DateTime?
+  voidedAt         DateTime?
+  voidReason       String?
+  voidedById       String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  organization     Organization  @relation(fields: [organizationId], references: [id])
+  branch           Branch        @relation(fields: [branchId], references: [id])
+  register         PosRegister?  @relation(fields: [registerId], references: [id])
+  shift            PosShift      @relation(fields: [shiftId], references: [id])
+  cashier          User          @relation("PosSaleCashier", fields: [cashierId], references: [id])
+  lines            PosSaleLine[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -1863,36 +1905,36 @@ enum ContractStatus {
 }
 
 model Contract {
-  id             String         @id @default(uuid())
-  version        String         @default("v1.0")
-  status         ContractStatus @default(PENDING)
-  userId         String
-  organizationId String?
-  feePlan          String?
-  isPaid           Boolean        @default(false)
-  isTemplate       Boolean        @default(false)
-  templateId       String?
-  pdfUrl           String?
-  documentHash     String?
-  otpSecret        String?
-  adminSignature   String?
-  adminName        String?
-  adminTitle       String?
-  adminStamp       String?
-  qpayInvoiceId    String?
+  id                String             @id @default(uuid())
+  version           String             @default("v1.0")
+  status            ContractStatus     @default(PENDING)
+  userId            String
+  organizationId    String?
+  feePlan           String?
+  isPaid            Boolean            @default(false)
+  isTemplate        Boolean            @default(false)
+  templateId        String?
+  pdfUrl            String?
+  documentHash      String?
+  otpSecret         String?
+  adminSignature    String?
+  adminName         String?
+  adminTitle        String?
+  adminStamp        String?
+  qpayInvoiceId     String?
   systemQrInvoiceId String?
-  paymentSystem    String?        @default("QPAY")
-  memberData       Json?
-  memberSignature  String?
-  headerData       Json?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  signedAt         DateTime?
-  user           User           @relation(fields: [userId], references: [id])
-  organization   Organization?  @relation(fields: [organizationId], references: [id])
-  auditLogs      ContractAuditLog[]
-  template       Contract?      @relation("ContractSubmissions", fields: [templateId], references: [id])
-  submissions    Contract[]     @relation("ContractSubmissions")
+  paymentSystem     String?            @default("QPAY")
+  memberData        Json?
+  memberSignature   String?
+  headerData        Json?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  signedAt          DateTime?
+  user              User               @relation(fields: [userId], references: [id])
+  organization      Organization?      @relation(fields: [organizationId], references: [id])
+  auditLogs         ContractAuditLog[]
+  template          Contract?          @relation("ContractSubmissions", fields: [templateId], references: [id])
+  submissions       Contract[]         @relation("ContractSubmissions")
 
   @@index([userId])
   @@index([organizationId])
@@ -1904,7 +1946,7 @@ model Contract {
 model ContractAuditLog {
   id         String   @id @default(uuid())
   contractId String
-  action     String   // FORM_SUBMITTED, OTP_VERIFIED, PDF_GENERATED, SIGNED
+  action     String // FORM_SUBMITTED, OTP_VERIFIED, PDF_GENERATED, SIGNED
   ipAddress  String?
   userAgent  String?
   deviceInfo Json?
@@ -1960,4 +2002,3 @@ model TeamMember {
   @@index([isActive])
   @@index([order])
 }
-
