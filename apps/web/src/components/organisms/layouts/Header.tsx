@@ -337,7 +337,7 @@ export const Header = () => {
                 }`}
               >
                 <FolderKanban size={14} />
-                Franchise
+                Франчайз
               </Link>
             </div>
 

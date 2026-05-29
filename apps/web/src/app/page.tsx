@@ -49,7 +49,7 @@ export default function HomePage() {
               </h2>
             </div>
             <p className="max-w-xl text-sm leading-6 text-slate-500">
-              Үйлчилгээ, franchise боломжуудыг нэг дороос сонгож, хэрэгтэй
+              Үйлчилгээ, франчайз боломжуудыг нэг дороос сонгож, хэрэгтэй
               мэдээлэл болон файлаа хурдан аваарай.
             </p>
           </div>
@@ -117,10 +117,10 @@ export default function HomePage() {
                 </div>
 
                 <h3 className="text-xl font-black uppercase tracking-tight text-slate-950 sm:text-2xl">
-                  MGL Store franchise
+                  MGL Store франчайз
                 </h3>
                 <p className="mt-3 max-w-xl text-sm leading-6 text-slate-500 sm:text-base">
-                  Franchise боломжуудын зураг, хураангуй, PDF файлыг нэг дороос
+                  Франчайз боломжуудын зураг, хураангуй, PDF файлыг нэг дороос
                   үзэж, өөрт тохирох загвараа сонгоно.
                 </p>
 
@@ -144,7 +144,7 @@ export default function HomePage() {
                     href="/franchise"
                     className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-bold text-white transition-colors hover:bg-slate-950"
                   >
-                    Franchise сонгох <ArrowRight className="h-4 w-4" />
+                    Франчайз сонгох <ArrowRight className="h-4 w-4" />
                   </Link>
                 </div>
               </div>
