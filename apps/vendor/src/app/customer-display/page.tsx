@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { CheckCircle2 } from "lucide-react";
 import {
+  CUSTOMER_DISPLAY_THEME_STORAGE_KEY,
   PosCustomerDisplay,
   type CartLine,
   type CartTotals,
+  type CustomerDisplayThemeId,
+  isCustomerDisplayThemeId,
 } from "@/features/pos";
 
 const CUSTOMER_DISPLAY_CHANNEL = "mgl-pos-customer-display";
@@ -14,6 +17,7 @@ const CUSTOMER_DISPLAY_CHANNEL = "mgl-pos-customer-display";
 type CustomerPayload = {
   lines: CartLine[];
   totals: CartTotals;
+  displayTheme?: CustomerDisplayThemeId;
   qpayModal: {
     open: boolean;
     invoiceId: string;
@@ -45,25 +49,39 @@ export default function CustomerDisplayPage() {
   const [payload, setPayload] = useState<CustomerPayload>({
     lines: [],
     totals: EMPTY_TOTALS,
+    displayTheme: "violet",
     qpayModal: null,
     customerSuccess: null,
     ts: Date.now(),
   });
 
   useEffect(() => {
+    const storedTheme = localStorage.getItem(CUSTOMER_DISPLAY_THEME_STORAGE_KEY);
+    const fallbackTheme = isCustomerDisplayThemeId(storedTheme)
+      ? storedTheme
+      : "violet";
+    const withTheme = (next: CustomerPayload): CustomerPayload => ({
+      ...next,
+      displayTheme: isCustomerDisplayThemeId(next.displayTheme)
+        ? next.displayTheme
+        : fallbackTheme,
+    });
+
     const fromStorage = localStorage.getItem("mgl_pos_customer_payload");
     if (fromStorage) {
       try {
         const parsed = JSON.parse(fromStorage) as CustomerPayload;
-        setPayload(parsed);
+        setPayload(withTheme(parsed));
       } catch {
         // ignore malformed payload
       }
+    } else {
+      setPayload((current) => ({ ...current, displayTheme: fallbackTheme }));
     }
 
     const channel = new BroadcastChannel(CUSTOMER_DISPLAY_CHANNEL);
     channel.onmessage = (event: MessageEvent<CustomerPayload>) => {
-      setPayload(event.data);
+      setPayload(withTheme(event.data));
     };
 
     return () => channel.close();
@@ -76,7 +94,11 @@ export default function CustomerDisplayPage() {
 
   return (
     <>
-      <PosCustomerDisplay lines={payload.lines} totals={payload.totals} />
+      <PosCustomerDisplay
+        lines={payload.lines}
+        totals={payload.totals}
+        theme={payload.displayTheme}
+      />
 
       {payload.qpayModal?.open && (qrSrc || qrText) && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-8 backdrop-blur-md">
