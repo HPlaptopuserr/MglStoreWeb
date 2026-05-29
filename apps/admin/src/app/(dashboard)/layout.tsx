@@ -22,7 +22,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
-import { MobileDashboard } from "@/components/organisms";
+import { MobileDashboard } from "@/components/organisms/MobileDashboard";
 import { AccountSwitcher } from "@/components/organisms/AccountSwitcher";
 import { AdminAuthProvider, useAdminAuth } from "@/lib/admin-auth";
 

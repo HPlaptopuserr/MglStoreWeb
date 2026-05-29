@@ -6,9 +6,9 @@ import { SectionsSidebar } from "./SectionsSidebar";
 type Props = {
   active: SectionKey;
   setActive: (key: SectionKey) => void;
-  onSave: () => void;
-  saving: boolean;
-  saved: boolean;
+  onSave?: () => void;
+  saving?: boolean;
+  saved?: boolean;
   children: React.ReactNode;
   visibleSections?: typeof SECTIONS;
 };
@@ -79,9 +79,9 @@ const SECTION_COPY: Record<SectionKey, { eyebrow: string; title: string; descrip
 export function SectionsLayout({
   active,
   setActive,
-  onSave,
-  saving,
-  saved,
+  onSave = () => {},
+  saving = false,
+  saved = false,
   children,
   visibleSections,
 }: Props) {

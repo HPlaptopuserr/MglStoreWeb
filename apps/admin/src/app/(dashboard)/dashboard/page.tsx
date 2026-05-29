@@ -11,7 +11,7 @@ import {
   DashboardChartsRow,
   RecentActivitySection,
   JobApplicationDetailModal,
-} from "@/components/organisms";
+} from "@/components/organisms/dashboard";
 import { useDashboardData } from "../../../hooks/useDashboardData";
 import { useJobApplications } from "../../../hooks/useJobApplications";
 import { useAdminAuth } from "@/lib/admin-auth";

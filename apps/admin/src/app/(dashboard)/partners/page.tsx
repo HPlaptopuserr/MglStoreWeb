@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { API, adminFetch } from "@/lib/api";
-import { OrganizationImportModal } from "@/components/organisms";
+import { OrganizationImportModal } from "@/components/organisms/OrganizationImportModal";
 
 type Partner = {
   id: string;
