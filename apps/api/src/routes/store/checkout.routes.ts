@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type Router as ExpressRouter } from "express";
 import jwt from "jsonwebtoken";
+import { OrderDispatchAttemptStatus } from "@prisma/client";
 import {
   prisma,
   OrderStatus,
@@ -153,6 +154,168 @@ async function checkStorePayment(params: {
   };
 }
 
+const DISPATCH_WINDOW_MINUTES = 3;
+const DISPATCH_CANDIDATE_LIMIT = 8;
+
+const toNumberOrNull = (value: unknown) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
+const distanceKm = (fromLat: number, fromLng: number, toLat: number, toLng: number) => {
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const earthKm = 6371;
+  const dLat = toRad(toLat - fromLat);
+  const dLng = toRad(toLng - fromLng);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(fromLat)) * Math.cos(toRad(toLat)) * Math.sin(dLng / 2) ** 2;
+  return earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+async function seedOrderDispatchRadar(
+  tx: any,
+  order: { id: string; organizationId: string; customerLat: number | null; customerLng: number | null },
+) {
+  const existing = await tx.orderDispatchAttempt.count({ where: { orderId: order.id } });
+  if (existing > 0) return;
+
+  const branches: {
+    id: string;
+    organizationId: string;
+    lat: number | null;
+    lng: number | null;
+    createdAt: Date;
+  }[] = await tx.branch.findMany({
+    where: {
+      organizationId: order.organizationId,
+      deletedAt: null,
+    },
+    select: { id: true, organizationId: true, lat: true, lng: true, createdAt: true },
+  });
+
+  if (branches.length === 0) return;
+
+  const ranked: {
+    branchId: string;
+    organizationId: string;
+    distanceKm: number | null;
+    createdAt: Date;
+  }[] = branches
+    .map((branch) => {
+      const hasDistance =
+        order.customerLat !== null &&
+        order.customerLng !== null &&
+        branch.lat !== null &&
+        branch.lng !== null;
+      return {
+        branchId: branch.id,
+        organizationId: branch.organizationId,
+        distanceKm: hasDistance ? distanceKm(order.customerLat!, order.customerLng!, branch.lat!, branch.lng!) : null,
+        createdAt: branch.createdAt,
+      };
+    })
+    .sort((a, b) => {
+      if (a.distanceKm !== null && b.distanceKm !== null) return a.distanceKm - b.distanceKm;
+      if (a.distanceKm !== null) return -1;
+      if (b.distanceKm !== null) return 1;
+      return a.createdAt.getTime() - b.createdAt.getTime();
+    })
+    .slice(0, DISPATCH_CANDIDATE_LIMIT);
+
+  const expiresAt = new Date(Date.now() + DISPATCH_WINDOW_MINUTES * 60 * 1000);
+  await tx.orderDispatchAttempt.createMany({
+    data: ranked.map((branch, index) => ({
+      orderId: order.id,
+      branchId: branch.branchId,
+      organizationId: branch.organizationId,
+      sequence: index + 1,
+      distanceKm: branch.distanceKm,
+      status: index === 0 ? OrderDispatchAttemptStatus.PENDING : OrderDispatchAttemptStatus.QUEUED,
+      expiresAt: index === 0 ? expiresAt : null,
+    })),
+    skipDuplicates: true,
+  });
+}
+
+async function markOrderPaidAndStartDispatch(
+  order: {
+    id: string;
+    customerId: string;
+    organizationId: string;
+    status?: string;
+    customerLat?: number | null;
+    customerLng?: number | null;
+  },
+  paymentId: string,
+  rawPayload: unknown,
+  note: string,
+) {
+  await prisma.$transaction(async (tx) => {
+    await tx.paymentAttempt.update({
+      where: { id: paymentId },
+      data: {
+        status: PaymentStatus.PAID,
+        paidAt: new Date(),
+        rawPayload: JSON.parse(JSON.stringify(rawPayload)),
+      },
+    });
+
+    await decrementOrderStock(tx, order.id, order.customerId);
+
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        paymentStatus: PaymentStatus.PAID,
+        status: OrderStatus.CONFIRMED,
+      },
+    });
+
+    await tx.orderHistory.create({
+      data: {
+        orderId: order.id,
+        fromStatus: (order.status as OrderStatus | undefined) ?? OrderStatus.PENDING,
+        toStatus: OrderStatus.CONFIRMED,
+        changedById: order.customerId,
+        note,
+      },
+    });
+
+  });
+}
+
+async function decrementOrderStock(tx: any, orderId: string, customerId: string) {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    select: {
+      organizationId: true,
+      items: {
+        select: {
+          productId: true,
+          quantity: true,
+          product: { select: { supplyType: true } },
+        },
+      },
+    },
+  });
+  if (!order) return;
+
+  for (const item of order.items) {
+    if (item.product?.supplyType === "CHINA_PREORDER") continue;
+    const warehouseId = await resolveOrgWarehouse(tx, order.organizationId, item.productId);
+    await adjustStock(tx, {
+      productId: item.productId,
+      warehouseId: warehouseId ?? undefined,
+      change: -item.quantity,
+      reason: InventoryReason.ORDER,
+      note: "Онлайн захиалга төлбөр баталгаажсан",
+      createdById: customerId,
+      referenceId: orderId,
+      referenceType: "ORDER",
+    });
+  }
+}
+
 /* ══════════════════════════════════════════════════════════
    POST /store/checkout
    Creates an Order + OrderItems + QPay mock invoice.
@@ -165,10 +328,12 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Нэвтэрнэ үү" });
     }
 
-    const { lines, phone, shippingAddress } = req.body as {
+    const { lines, phone, shippingAddress, customerLat, customerLng } = req.body as {
       lines?: { productId: string; qty: number }[];
       phone?: string;
       shippingAddress?: string;
+      customerLat?: number | string;
+      customerLng?: number | string;
     };
 
     if (!lines || !Array.isArray(lines) || lines.length === 0) {
@@ -241,36 +406,12 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         .json({ message: "Нэг захиалгад зөвхөн нэг дэлгүүрийн бараа байх ёстой" });
     }
 
+    const normalizedCustomerLat = toNumberOrNull(customerLat);
+    const normalizedCustomerLng = toNumberOrNull(customerLng);
     const total = subtotal; // no delivery fee for now
 
-    // Web checkout uses the vendor's main QPay merchant profile.
-    const systemQrConfig = await getVendorSystemQrConfig(orgIds[0]);
-    const merchantRes = systemQrConfig
-      ? { success: true, config: null }
-      : await getVendorMerchantConfig(orgIds[0]);
-    if (!systemQrConfig && (!merchantRes.success || !merchantRes.config)) {
-      return res.status(400).json({ message: "Дэлгүүр QPay дансаа холбоогүй байна. Төлбөр авах боломжгүй." });
-    }
-
-    // Create order + items + payment attempt in a transaction
+    // Create order + items, then start branch radar before payment.
     const order = await prisma.$transaction(async (tx) => {
-      // Decrement stock through unified adjustStock (warehouse-aware + ledger)
-      for (const item of orderItemsData) {
-        const product = productMap.get(item.productId);
-        if (product?.supplyType === "CHINA_PREORDER") continue;
-
-        const warehouseId = await resolveOrgWarehouse(tx, orgIds[0], item.productId);
-        await adjustStock(tx, {
-          productId: item.productId,
-          warehouseId: warehouseId ?? undefined,
-          change: -item.quantity,
-          reason: InventoryReason.ORDER,
-          note: "Онлайн захиалга",
-          createdById: customer.id,
-          referenceType: "ORDER",
-        });
-      }
-
       const ord = await tx.order.create({
         data: {
           orderNumber: generateOrderNumber(),
@@ -281,6 +422,8 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           paymentMethod: PaymentMethod.QPAY,
           shippingAddress: shippingAddress || "",
           phone: phone || "",
+          customerLat: normalizedCustomerLat,
+          customerLng: normalizedCustomerLng,
           subtotal,
           total,
           items: {
@@ -290,68 +433,38 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
             create: {
               toStatus: OrderStatus.PENDING,
               changedById: customer.id,
-              note: "Захиалга үүсгэсэн",
-            },
-          },
-          payments: {
-            create: {
-              method: PaymentMethod.QPAY,
-              status: PaymentStatus.PENDING,
-              amount: total,
+              note: "Захиалга үүсгэж, ойр салбар хайж эхэлсэн",
             },
           },
         },
         include: {
           items: true,
-          payments: { select: { id: true, status: true, amount: true } },
         },
+      });
+
+      await seedOrderDispatchRadar(tx, {
+        id: ord.id,
+        organizationId: ord.organizationId,
+        customerLat: ord.customerLat,
+        customerLng: ord.customerLng,
       });
 
       return ord;
     });
-
-    // Create QPay payment invoice
-    let qpayData;
-    let rawPaymentPayload;
-    try {
-      const invoice = await createStorePaymentInvoice({
-        organizationId: orgIds[0],
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        amount: Number(order.total),
-      });
-      qpayData = invoice.data;
-      rawPaymentPayload = invoice.rawPayload;
-    } catch (err) {
-      console.error("QPay invoice creation failed:", err);
-      if (err instanceof Error && err.message === "QPAY_NOT_CONFIGURED") {
-        return res.status(400).json({ message: "Дэлгүүр QPay төлбөрийн тохиргоо холбоогүй байна." });
-      }
-      return res.status(502).json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
-    }
-
-    // Store QPay invoice_id in PaymentAttempt.providerRef
-    if (order.payments[0]) {
-      await prisma.paymentAttempt.update({
-        where: { id: order.payments[0].id },
-        data: {
-          providerRef: qpayData.invoice_id,
-          rawPayload: JSON.parse(JSON.stringify(rawPaymentPayload || qpayData)),
-        },
-      });
-    }
 
     return res.status(201).json({
       orderId: order.id,
       orderNumber: order.orderNumber,
       total: Number(order.total),
       subtotal: Number(order.subtotal),
-      paymentId: order.payments[0]?.id,
-      qrText: qpayData.qr_text,
-      qrImage: qpayData.qr_image,
-      qpayInvoiceId: qpayData.invoice_id,
-      deepLinks: qpayData.urls,
-      expiresIn: 300, // 5 minutes
+      paymentId: null,
+      paymentRequired: false,
+      dispatchStatus: "SEARCHING",
+      qrText: "",
+      qrImage: "",
+      qpayInvoiceId: "",
+      deepLinks: [],
+      expiresIn: 0,
       items: order.items.map((i) => ({
         productId: i.productId,
         name: i.productName,
@@ -363,6 +476,123 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("store checkout error", error);
     return res.status(500).json({ message: "Захиалга үүсгэхэд алдаа гарлаа" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   POST /store/checkout/:orderId/payment
+   Create QPay invoice only after a branch accepts the radar request.
+   ══════════════════════════════════════════════════════════ */
+router.post("/store/checkout/:orderId/payment", async (req: Request, res: Response) => {
+  try {
+    const customer = await getCustomer(req);
+    if (!customer || !customer.isActive || customer.deletedAt) {
+      return res.status(401).json({ message: "Нэвтэрнэ үү" });
+    }
+
+    const { orderId } = req.params;
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: true,
+        payments: {
+          where: { method: PaymentMethod.QPAY },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+
+    if (!order) return res.status(404).json({ message: "Захиалга олдсонгүй" });
+    if (order.customerId !== customer.id) {
+      return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
+    }
+    if (!order.branchId) {
+      return res.status(409).json({ message: "Салбар захиалгыг баталгаажуулсны дараа төлбөр төлнө." });
+    }
+    if (order.paymentStatus === PaymentStatus.PAID) {
+      return res.status(400).json({ message: "Төлбөр аль хэдийн төлөгдсөн байна" });
+    }
+
+    const existing = order.payments[0];
+    if (existing?.providerRef && existing.rawPayload) {
+      const raw = existing.rawPayload as any;
+      return res.json({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        total: Number(order.total),
+        subtotal: Number(order.subtotal),
+        paymentId: existing.id,
+        qrText: raw.qr_text || "",
+        qrImage: raw.qr_image || "",
+        qpayInvoiceId: raw.invoice_id || existing.providerRef,
+        deepLinks: raw.urls || [],
+        expiresIn: 300,
+        items: order.items.map((i) => ({
+          productId: i.productId,
+          name: i.productName,
+          qty: i.quantity,
+          price: Number(i.price),
+          subtotal: Number(i.subtotal),
+        })),
+      });
+    }
+
+    const payment = existing ?? await prisma.paymentAttempt.create({
+      data: {
+        orderId: order.id,
+        method: PaymentMethod.QPAY,
+        status: PaymentStatus.PENDING,
+        amount: Number(order.total),
+      },
+    });
+
+    let invoice;
+    try {
+      invoice = await createStorePaymentInvoice({
+        organizationId: order.organizationId,
+        orderId,
+        orderNumber: order.orderNumber,
+        amount: Number(order.total),
+      });
+    } catch (err) {
+      console.error("QPay invoice creation failed:", err);
+      if (err instanceof Error && err.message === "QPAY_NOT_CONFIGURED") {
+        return res.status(400).json({ message: "Дэлгүүр QPay төлбөрийн тохиргоо холбоогүй байна." });
+      }
+      return res.status(502).json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
+    }
+
+    await prisma.paymentAttempt.update({
+      where: { id: payment.id },
+      data: {
+        providerRef: invoice.data.invoice_id,
+        rawPayload: JSON.parse(JSON.stringify(invoice.rawPayload)),
+      },
+    });
+
+    return res.json({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      total: Number(order.total),
+      subtotal: Number(order.subtotal),
+      paymentId: payment.id,
+      qrText: invoice.data.qr_text,
+      qrImage: invoice.data.qr_image,
+      qpayInvoiceId: invoice.data.invoice_id,
+      deepLinks: invoice.data.urls,
+      expiresIn: 300,
+      items: order.items.map((i) => ({
+        productId: i.productId,
+        name: i.productName,
+        qty: i.quantity,
+        price: Number(i.price),
+        subtotal: Number(i.subtotal),
+      })),
+    });
+  } catch (error) {
+    console.error("store payment create error", error);
+    return res.status(500).json({ message: "Төлбөр үүсгэхэд алдаа гарлаа" });
   }
 });
 
@@ -386,6 +616,8 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
         customerId: true,
         organizationId: true,
         status: true,
+        customerLat: true,
+        customerLng: true,
         paymentStatus: true,
         orderNumber: true,
         total: true,
@@ -431,35 +663,7 @@ router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Respon
       });
     }
 
-    // Payment confirmed — update records
-    await prisma.$transaction(async (tx) => {
-      await tx.paymentAttempt.update({
-        where: { id: payment.id },
-        data: {
-          status: PaymentStatus.PAID,
-          paidAt: new Date(),
-          rawPayload: JSON.parse(JSON.stringify(paymentCheck.payload)),
-        },
-      });
-
-      await tx.order.update({
-        where: { id: order.id },
-        data: {
-          paymentStatus: PaymentStatus.PAID,
-          status: OrderStatus.CONFIRMED,
-        },
-      });
-
-      await tx.orderHistory.create({
-        data: {
-          orderId: order.id,
-          fromStatus: OrderStatus.PENDING,
-          toStatus: OrderStatus.CONFIRMED,
-          changedById: customer.id,
-          note: "QPay төлбөр амжилттай",
-        },
-      });
-    });
+    await markOrderPaidAndStartDispatch(order, payment.id, paymentCheck.payload, "QPay төлбөр амжилттай");
 
     return res.json({
       orderId: order.id,
@@ -492,6 +696,9 @@ router.get("/store/checkout/:orderId/payment-status", async (req: Request, res: 
         id: true,
         customerId: true,
         organizationId: true,
+        status: true,
+        customerLat: true,
+        customerLng: true,
         paymentStatus: true,
         orderNumber: true,
         payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, rawPayload: true, status: true } },
@@ -525,35 +732,7 @@ router.get("/store/checkout/:orderId/payment-status", async (req: Request, res: 
       return res.json({ status: "PENDING" });
     }
 
-    // Payment found — mark as paid
-    await prisma.$transaction(async (tx) => {
-      await tx.paymentAttempt.update({
-        where: { id: payment.id },
-        data: {
-          status: PaymentStatus.PAID,
-          paidAt: new Date(),
-          rawPayload: JSON.parse(JSON.stringify(paymentCheck.payload)),
-        },
-      });
-
-      await tx.order.update({
-        where: { id: order.id },
-        data: {
-          paymentStatus: PaymentStatus.PAID,
-          status: OrderStatus.CONFIRMED,
-        },
-      });
-
-      await tx.orderHistory.create({
-        data: {
-          orderId: order.id,
-          fromStatus: OrderStatus.PENDING,
-          toStatus: OrderStatus.CONFIRMED,
-          changedById: customer.id,
-          note: "QPay төлбөр амжилттай (auto-poll)",
-        },
-      });
-    });
+    await markOrderPaidAndStartDispatch(order, payment.id, paymentCheck.payload, "QPay төлбөр амжилттай (auto-poll)");
 
     return res.json({ status: "PAID" });
   } catch (error) {
@@ -580,6 +759,9 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
         id: true,
         customerId: true,
         organizationId: true,
+        status: true,
+        customerLat: true,
+        customerLng: true,
         paymentStatus: true,
         payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, rawPayload: true, status: true } },
       },
@@ -609,34 +791,7 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
       return res.json({ message: "not yet paid" });
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.paymentAttempt.update({
-        where: { id: payment.id },
-        data: {
-          status: PaymentStatus.PAID,
-          paidAt: new Date(),
-          rawPayload: JSON.parse(JSON.stringify(paymentCheck.payload)),
-        },
-      });
-
-      await tx.order.update({
-        where: { id: order.id },
-        data: {
-          paymentStatus: PaymentStatus.PAID,
-          status: OrderStatus.CONFIRMED,
-        },
-      });
-
-      await tx.orderHistory.create({
-        data: {
-          orderId: order.id,
-          fromStatus: OrderStatus.PENDING,
-          toStatus: OrderStatus.CONFIRMED,
-          changedById: order.customerId,
-          note: "QPay callback — төлбөр амжилттай",
-        },
-      });
-    });
+    await markOrderPaidAndStartDispatch(order, payment.id, paymentCheck.payload, "QPay callback — төлбөр амжилттай");
 
     return res.json({ message: "success" });
   } catch (error) {
@@ -670,6 +825,19 @@ router.get("/store/orders", async (req: Request, res: Response) => {
           },
         },
         organization: { select: { name: true } },
+        branch: { select: { id: true, name: true, address: true, lat: true, lng: true } },
+        dispatchAttempts: {
+          orderBy: { sequence: "asc" },
+          select: {
+            id: true,
+            status: true,
+            sequence: true,
+            distanceKm: true,
+            requestedAt: true,
+            respondedAt: true,
+            branch: { select: { id: true, name: true, address: true } },
+          },
+        },
       },
     });
 
@@ -685,6 +853,35 @@ router.get("/store/orders", async (req: Request, res: Response) => {
         phone: o.phone,
         shippingAddress: o.shippingAddress,
         organizationName: o.organization.name,
+        branch: o.branch
+          ? {
+              id: o.branch.id,
+              name: o.branch.name,
+              address: o.branch.address,
+              lat: o.branch.lat,
+              lng: o.branch.lng,
+            }
+          : null,
+        dispatch: {
+          status: o.branch
+            ? "ACCEPTED"
+            : o.dispatchAttempts.some((a) => a.status === "PENDING")
+              ? "SEARCHING"
+              : o.dispatchAttempts.some((a) => a.status === "QUEUED")
+                ? "QUEUED"
+                : o.dispatchAttempts.length > 0
+                  ? "NO_BRANCH_AVAILABLE"
+                  : "NOT_STARTED",
+          attempts: o.dispatchAttempts.map((a) => ({
+            id: a.id,
+            status: a.status,
+            sequence: a.sequence,
+            distanceKm: a.distanceKm,
+            requestedAt: a.requestedAt.toISOString(),
+            respondedAt: a.respondedAt?.toISOString() || null,
+            branch: a.branch,
+          })),
+        },
         createdAt: o.createdAt.toISOString(),
         items: o.items.map((i) => ({
           name: i.productName,
