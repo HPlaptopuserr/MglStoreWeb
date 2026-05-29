@@ -6,6 +6,8 @@ import { useParams, useSearchParams } from "next/navigation";
 import { ContractPayment } from "../../../../../components/organisms/ContractPayment";
 import { OrgInfoTable } from "../../../../../components/organisms/OrgInfoTable";
 import type { OrgContactInfo } from "../../../../../components/organisms/OrgInfoTable";
+import { LoginModal } from "../../../../../components/organisms/auth/LoginModal";
+import { useAuth } from "@/lib/auth-context";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
 const API = `${API_BASE}/api`;
@@ -15,6 +17,7 @@ const DEFAULT_CONTRACT_TEXT = `ХОЁР. ГЭРЭЕНИЙ ЗОРИЛГО
 2.1. Энэхүү гэрээний зорилго нь Гишүүн байгууллагыг Холбооны бүрэлдэхүүнд элсүүлэх, гишүүнчлэлийн эрх, үүрэг, хариуцлагыг тодорхойлж, талуудын харилцааг зохицуулахад оршино.`;
 
 export default function ContractSignPage() {
+  const { user, loading: authLoading, login, register, authFetch } = useAuth();
   const params = useParams();
   const searchParams = useSearchParams();
   const isPrintMode = searchParams?.get("print") === "1";
@@ -48,6 +51,9 @@ export default function ContractSignPage() {
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [memberPosition, setMemberPosition] = useState("");
   const [memberStamp, setMemberStamp] = useState<string | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
   const stampInputRef = useRef<HTMLInputElement>(null);
 
   // QPay
@@ -80,6 +86,16 @@ export default function ContractSignPage() {
   const [memberData, setMemberData] = useState({
     name: "", register: "", field: "", address: "", phone: "", email: "", website: "", director: ""
   });
+
+  useEffect(() => {
+    if (!user || isPrintMode) return;
+    setMemberData((prev) => ({
+      ...prev,
+      phone: prev.phone || user.phone || "",
+      email: prev.email || user.email || "",
+      director: prev.director || user.fullName || "",
+    }));
+  }, [user, isPrintMode]);
 
   useEffect(() => {
     setToday(new Date().toLocaleDateString("mn-MN"));
@@ -200,6 +216,10 @@ export default function ContractSignPage() {
 
   const handleProceedToPayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
     setIsSubmitting(true);
     try {
       const signature = canvasRef.current?.toDataURL("image/png") || "";
@@ -215,12 +235,15 @@ export default function ContractSignPage() {
         ? `${API}/contracts/${contractId}/submit`
         : `${API}/contracts/${contractId}/sign`;
 
-      const signRes = await fetch(endpoint, {
+      const signRes = await authFetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const signData = await signRes.json();
+      if (signRes.status === 401) {
+        setAuthOpen(true);
+        throw new Error(signData?.error || signData?.message || "Гэрээ хийхийн тулд нэвтэрнэ үү");
+      }
       if (!signData.success) throw new Error(signData.error);
 
       // For template submissions: use the new submissionId for QPay
@@ -383,6 +406,22 @@ export default function ContractSignPage() {
             <h1 className="text-2xl font-bold text-neutral-800">Гэрээ баталгаажуулах</h1>
             <p className="text-neutral-500 mt-1">Доорх мэдээллийг бөглөж гэрээг цахимаар байгуулна уу.</p>
           </div>
+        </div>
+      )}
+
+      {!isPrintMode && !authLoading && !user && (
+        <div className="max-w-[850px] mx-auto mb-4 no-print bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="font-bold text-amber-900 text-sm">Гэрээ хийхийн тулд бүртгэлээр нэвтэрнэ үү</div>
+            <div className="text-xs text-amber-700 mt-1">Таны сонгосон гэрээ бүртгэлтэй хэрэглэгчийн нэр дээр хадгалагдана.</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAuthOpen(true)}
+            className="px-4 py-2.5 bg-[#1e4e8c] text-white rounded-lg text-sm font-bold hover:bg-blue-800 transition-colors"
+          >
+            Нэвтрэх / Бүртгүүлэх
+          </button>
         </div>
       )}
 
@@ -693,7 +732,7 @@ export default function ContractSignPage() {
  */}
         {/* Action Bar */}
         {!isPrintMode && (
-          <div className="no-print bg-white rounded-xl shadow-lg border border-neutral-200 p-6 flex flex-col md:flex-row items-center justify-between gap-6 sticky bottom-6 z-50">
+          <div className="no-print bg-white rounded-xl shadow-lg border border-neutral-200 p-6 flex flex-col md:flex-row items-center justify-between gap-6">
             <label className="flex items-start gap-3 cursor-pointer group flex-1">
               <div className="flex-shrink-0 mt-0.5">
                 <input
@@ -717,11 +756,13 @@ export default function ContractSignPage() {
               )}
               <button
                 type="submit"
-                disabled={!agreed || isSubmitting || !memberData.name || !memberData.register || !memberData.director || !memberPosition}
+                disabled={!agreed || isSubmitting || authLoading || !memberData.name || !memberData.register || !memberData.director || !memberPosition}
                 className="w-full md:w-auto px-8 py-3.5 bg-[#1e4e8c] text-white rounded-xl font-medium hover:bg-blue-800 focus:ring-4 focus:ring-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-sm"
               >
                 {isSubmitting ? (
                   <><Loader2 className="w-5 h-5 animate-spin" /> Уншиж байна...</>
+                ) : !user ? (
+                  <><CheckCircle2 className="w-5 h-5" /> Нэвтэрч үргэлжлүүлэх</>
                 ) : (
                   <><CheckCircle2 className="w-5 h-5" /> Дараагийн</>
                 )}
@@ -730,6 +771,39 @@ export default function ContractSignPage() {
           </div>
         )}
       </form>
+      {authOpen && (
+        <LoginModal
+          open={authOpen}
+          onClose={() => { setAuthOpen(false); setAuthError(""); }}
+          onLogin={async (identifier, password, options) => {
+            setAuthError("");
+            setAuthBusy(true);
+            try {
+              const result = await login(identifier, password, options);
+              if (result?.requiresEmailOtp) return result;
+              setAuthOpen(false);
+            } catch (err: unknown) {
+              setAuthError(err instanceof Error ? err.message : "Нэвтрэхэд алдаа гарлаа.");
+            } finally {
+              setAuthBusy(false);
+            }
+          }}
+          onRegister={async (fullName, identifier, password) => {
+            setAuthError("");
+            setAuthBusy(true);
+            try {
+              await register(fullName, identifier, password);
+              setAuthOpen(false);
+            } catch (err: unknown) {
+              setAuthError(err instanceof Error ? err.message : "Бүртгүүлэхэд алдаа гарлаа.");
+            } finally {
+              setAuthBusy(false);
+            }
+          }}
+          isLoading={authBusy}
+          error={authError}
+        />
+      )}
     </div>
   );
 }

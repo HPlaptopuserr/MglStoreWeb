@@ -1,5 +1,6 @@
 import { prisma } from "@mgl/database";
 import type { QPayMerchantContext } from "./qpay.types";
+import { buildQuickQrMerchantKey, isQuickQrMerchantId, redactQPayRegistrationResponse } from "./qpay-provider";
 import {
   registerQPayMerchantCompany,
   registerQPayMerchantPerson,
@@ -255,9 +256,7 @@ export async function getVendorMerchantConfig(
     const quickqrBaseUrl = (process.env.QPAY_QUICKQR_BASE_URL || "").trim();
 
     // Check if the merchantId is a QuickQR UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-    const isQuickQrUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      selected.merchantId,
-    );
+    const isQuickQrUUID = isQuickQrMerchantId(selected.merchantId);
 
     // QuickQR path: UUID merchantId + valid master credentials + base URL configured
     if (isQuickQrUUID && masterUsername && masterPassword && quickqrBaseUrl) {
@@ -268,7 +267,7 @@ export async function getVendorMerchantConfig(
         terminalId: masterTerminalId,
         invoiceCode: null,
         merchantId: selected.merchantId,
-        merchantKey: `vendor:${selected.merchantId}`,
+        merchantKey: buildQuickQrMerchantKey("vendor", selected.merchantId),
         bankAccounts: Array.isArray(selected.bankAccounts)
           ? (selected.bankAccounts as unknown as QPayBankAccount[])
           : null,
@@ -323,7 +322,7 @@ export async function getVendorMerchantConfig(
         });
 
         if (regResult.merchantId) {
-          const isNewUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(regResult.merchantId);
+          const isNewUUID = isQuickQrMerchantId(regResult.merchantId);
           await prisma.organization.update({
             where: { id: organizationId },
             data: buildMerchantUpdateData(channel, {
@@ -343,7 +342,7 @@ export async function getVendorMerchantConfig(
               terminalId: masterTerminalId,
               invoiceCode: null,
               merchantId: regResult.merchantId,
-              merchantKey: `vendor:${regResult.merchantId}`,
+              merchantKey: buildQuickQrMerchantKey("vendor", regResult.merchantId),
               bankAccounts: orgBankAccounts,
             };
             return { success: true, config: merchantContext };
@@ -502,14 +501,12 @@ export async function registerVendorWithQPay(
         ? await registerQPayMerchantCompany(params as QPayRegisterCompanyParams)
         : await registerQPayMerchantPerson(params as QPayRegisterPersonParams);
 
-    console.log("QPay registration raw response:", JSON.stringify(result.raw, null, 2));
+    console.log("QPay registration raw response:", JSON.stringify(redactQPayRegistrationResponse(result.raw), null, 2));
     console.log("QPay parsed → merchantId:", result.merchantId, "| merchantKey:", result.merchantKey, "| invoiceCode:", result.invoiceCode);
 
     const bankAccounts: QPayBankAccount[] = (params as any).bank_accounts || [];
 
-    const isQuickQrUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      result.merchantId || "",
-    );
+    const isQuickQrUUID = isQuickQrMerchantId(result.merchantId);
     // QuickQR UUID merchants authenticate via master credentials — no per-vendor key needed
     const qpayEnabled = isQuickQrUUID ? !!result.merchantId : !!(result.merchantId && result.merchantKey);
 

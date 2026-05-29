@@ -1,4 +1,5 @@
 import type { QPayMerchantContext } from "./qpay.types";
+import { buildQuickQrMerchantKey, isQuickQrMerchantId } from "./qpay-provider";
 
 type PosRegisterQPayConfig = {
   qpayEnabled: boolean;
@@ -27,13 +28,7 @@ export function buildQPayMerchantContextFromPosRegister(
 
   const qpayMerchantId = (register.qpayMerchantId || "").trim();
 
-  // QuickQR path: register has a UUID merchant_id from QuickQR registration
-  // UUID pattern check (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    qpayMerchantId,
-  );
-
-  if (isUUID) {
+  if (isQuickQrMerchantId(qpayMerchantId)) {
     const masterUsername = (process.env.QPAY_QUICKQR_MASTER_USERNAME || "").trim();
     const masterPassword = (process.env.QPAY_QUICKQR_MASTER_PASSWORD || "").trim();
     const masterTerminalId = (
@@ -50,7 +45,7 @@ export function buildQPayMerchantContextFromPosRegister(
       invoiceCode: null,
       merchantId: qpayMerchantId,                               // QuickQR UUID
       branchCode: (register.qpayTerminalId || "").trim() || null,
-      merchantKey: `quickqr:${masterUsername}:${qpayMerchantId}`,
+      merchantKey: buildQuickQrMerchantKey(`quickqr:${masterUsername}`, qpayMerchantId),
     };
   }
 
@@ -58,4 +53,3 @@ export function buildQPayMerchantContextFromPosRegister(
   // Returns null → caller falls back to org-level config → uses QPAY_CLIENT_ID/INVOICE_CODE
   return null;
 }
-
