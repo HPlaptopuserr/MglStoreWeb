@@ -65,6 +65,10 @@ import {
   attachEbarimtReceipt,
   type AttachEbarimtPayload,
   type RegisterConfig,
+  CUSTOMER_DISPLAY_THEME_OPTIONS,
+  CUSTOMER_DISPLAY_THEME_STORAGE_KEY,
+  type CustomerDisplayThemeId,
+  isCustomerDisplayThemeId,
 } from "@/features/pos";
 import { API, authFetch } from "@/lib/api";
 import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
@@ -91,6 +95,7 @@ type CustomerDisplaySuccess = {
 type CustomerDisplayPayload = {
   lines: CartLine[];
   totals: CartTotals;
+  displayTheme: CustomerDisplayThemeId;
   qpayModal: QPayModalPayload | null;
   customerSuccess: CustomerDisplaySuccess | null;
   ts: number;
@@ -244,6 +249,8 @@ export default function PosDemoPage() {
   const [paymentEntries, setPaymentEntries] = useState<CheckoutPaymentEntry[]>([]);
   const [view, setView] = useState<PosView>("register");
   const [displayOpened, setDisplayOpened] = useState(false);
+  const [customerDisplayTheme, setCustomerDisplayTheme] =
+    useState<CustomerDisplayThemeId>("violet");
   const [qpayModal, setQpayModal] = useState<QPayModalPayload | null>(null);
   const [isCardProcessing, setIsCardProcessing] = useState(false);
   const [isCancellingCard, setIsCancellingCard] = useState(false);
@@ -654,6 +661,21 @@ export default function PosDemoPage() {
       syncChannelRef.current = null;
     };
   }, [posEnabled]);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem(CUSTOMER_DISPLAY_THEME_STORAGE_KEY);
+    if (isCustomerDisplayThemeId(savedTheme)) {
+      setCustomerDisplayTheme(savedTheme);
+    }
+  }, []);
+
+  const updateCustomerDisplayTheme = useCallback(
+    (theme: CustomerDisplayThemeId) => {
+      setCustomerDisplayTheme(theme);
+      localStorage.setItem(CUSTOMER_DISPLAY_THEME_STORAGE_KEY, theme);
+    },
+    [],
+  );
 
   const categories = useMemo(() => {
     const cats = new Set(products.map(p => p.categoryName || "Бусад"));
@@ -1316,6 +1338,7 @@ export default function PosDemoPage() {
     const payload: CustomerDisplayPayload = {
       lines: state.cart,
       totals,
+      displayTheme: customerDisplayTheme,
       qpayModal,
       customerSuccess: customerDisplaySuccess,
       ts: Date.now(),
@@ -1323,7 +1346,7 @@ export default function PosDemoPage() {
 
     localStorage.setItem("mgl_pos_customer_payload", JSON.stringify(payload));
     syncChannelRef.current?.postMessage(payload);
-  }, [state.cart, totals, qpayModal, customerDisplaySuccess]);
+  }, [state.cart, totals, customerDisplayTheme, qpayModal, customerDisplaySuccess]);
 
   const openCustomerDisplay = () => {
     const existing = customerWindowRef.current;
@@ -1885,7 +1908,7 @@ export default function PosDemoPage() {
       </div>
 
       {showPosSettings && (
-        <div className="grid shrink-0 grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm xl:grid-cols-4">
+        <div className="grid shrink-0 grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm xl:grid-cols-5">
           <div className="rounded-lg bg-slate-50 px-3 py-2">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Салбар</p>
             <p className="truncate font-black text-slate-900">{registerConfig?.branch.name ?? "Салбар"}</p>
@@ -1916,6 +1939,37 @@ export default function PosDemoPage() {
             <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Customer display</span>
             {displayOpened ? "Нээлттэй" : "Нээх"}
           </button>
+          <div className="rounded-lg bg-slate-50 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              Display өнгө
+            </p>
+            <div className="mt-2 flex items-center gap-1.5">
+              {CUSTOMER_DISPLAY_THEME_OPTIONS.map((option) => {
+                const selected = customerDisplayTheme === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => updateCustomerDisplayTheme(option.id)}
+                    title={option.label}
+                    aria-label={`Customer display өнгө: ${option.label}`}
+                    className={`h-7 w-7 rounded-full border-2 transition ${
+                      selected
+                        ? "border-slate-950 ring-2 ring-slate-300"
+                        : "border-white hover:scale-105"
+                    }`}
+                    style={{
+                      backgroundColor: option.swatch,
+                      boxShadow:
+                        option.id === "white"
+                          ? "inset 0 0 0 1px #cbd5e1"
+                          : undefined,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
           <button
             type="button"
             onClick={() => setShowShiftPanel((value) => !value)}
