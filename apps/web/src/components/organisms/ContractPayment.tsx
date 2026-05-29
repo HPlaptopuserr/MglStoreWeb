@@ -1,5 +1,6 @@
 import React from "react";
 import { QrCode, Loader2, Smartphone, CheckCircle2 } from "lucide-react";
+import { QrGenerator } from "@mgl/ui";
 
 interface QPayData {
   invoiceId: string;
@@ -37,9 +38,13 @@ export function ContractPayment({
           {qpayData.qrImage ? (
             <img
               src={`data:image/png;base64,${qpayData.qrImage}`}
-              alt="QPay QR"
+              alt="QR төлбөр"
               className="w-52 h-52 rounded-xl border-2 border-neutral-200 shadow-sm"
             />
+          ) : qpayData.qrText ? (
+            <div className="p-2 bg-white rounded-xl border-2 border-neutral-200 shadow-sm">
+              <QrGenerator value={qpayData.qrText} size={192} level="M" includeMargin />
+            </div>
           ) : (
             <div className="w-52 h-52 bg-neutral-100 rounded-xl border-2 border-neutral-200 flex items-center justify-center text-neutral-400 text-sm">
               QR код ачааллаж байна...

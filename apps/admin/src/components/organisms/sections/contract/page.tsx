@@ -9,6 +9,13 @@ import {
 import { adminFetch, API } from "@/lib/api";
 import { DEFAULT_CONTRACT_TEXT, DEFAULT_FEE_PLANS } from "./contract-defaults";
 import { OrgInfoEditor, DEFAULT_ORG_CONTACT, type OrgContactInfo } from "./OrgInfoFields";
+import {
+  CONTRACT_PAYMENT_ACCOUNTS_KEY,
+  ContractPaymentAccountSelect,
+  parseContractPaymentAccounts,
+  toSystemQrConfig,
+  type ContractPaymentAccount,
+} from "./PaymentAccountPanels";
 
 
 // ─── Signature Input: draw or upload PNG ────────────────────────────────────
@@ -312,11 +319,31 @@ export function Contract() {
     feePlans: DEFAULT_FEE_PLANS as { key: string; label: string; sublabel: string; price: number }[],
     memberFields: DEFAULT_MEMBER_FIELDS,
     orgContact: { ...DEFAULT_ORG_CONTACT } as OrgContactInfo,
+    paymentAccounts: [] as ContractPaymentAccount[],
     systemQr: {
       enabled: false,
+      selectedAccountId: "",
       username: "",
       password: "",
       merchantCode: "",
+      merchantName: "",
+      accountNumber: "",
+      accountName: "",
+      bankCode: "050000",
+      registerNumber: "",
+      phone: "",
+      email: "",
+      cityId: "11000",
+      districtId: "110400",
+      khorooId: "15782385",
+      building: "-",
+      doorNo: "-",
+      firstName: "",
+      lastName: "",
+      corporateFlag: "1",
+      corporateName: "",
+      gender: "M",
+      subCategoryId: "36",
     },
   });
   const [contracts, setContracts] = useState<any[]>([]);
@@ -327,7 +354,10 @@ export function Contract() {
     Promise.all([
       adminFetch(`${API}/contracts`).then(r => r.json()),
       adminFetch(`${API}/contracts/stats`).then(r => r.json()),
-    ]).then(([cd, sd]) => {
+      adminFetch(`${API}/site-settings/admin`).then(r => r.ok ? r.json() : {}),
+    ]).then(([cd, sd, siteSettings]) => {
+      const siteSettingMap = siteSettings as Record<string, string>;
+      const storedPaymentAccounts = parseContractPaymentAccounts(siteSettingMap?.[CONTRACT_PAYMENT_ACCOUNTS_KEY]);
       if (cd.success) {
         setContracts(cd.contracts);
 
@@ -356,6 +386,9 @@ export function Contract() {
                     content: hd?.content || prev.content,
                     contentIsHtml: hd?.contentIsHtml ?? prev.contentIsHtml,
                     orgContact: hd?.orgContact || prev.orgContact,
+                    paymentAccounts: storedPaymentAccounts.length > 0
+                      ? storedPaymentAccounts
+                      : (hd?.paymentAccounts?.length > 0 ? hd.paymentAccounts : prev.paymentAccounts),
                     systemQr: hd?.systemQr || prev.systemQr,
                   }));
                 }
@@ -363,6 +396,9 @@ export function Contract() {
               .catch(() => {});
           }
         }
+      }
+      if (storedPaymentAccounts.length > 0) {
+        setSettings(prev => ({ ...prev, paymentAccounts: storedPaymentAccounts }));
       }
       if (sd.success) setStats({ total: sd.total, signed: sd.signed, pending: sd.pending });
     }).catch(() => { }).finally(() => setLoading(false));
@@ -830,6 +866,7 @@ function NewContractButton({ settings, setContracts, setStats }: {
             content: settings.content || null,
             contentIsHtml: settings.contentIsHtml || false,
             orgContact: settings.orgContact,
+            paymentAccounts: settings.paymentAccounts,
             systemQr: settings.systemQr,
           },
         }),
@@ -1025,6 +1062,25 @@ function ContractEditorTab({
     });
   };
 
+  const selectPaymentAccount = (accountId: string) => {
+    const account = (settings.paymentAccounts || []).find((item: ContractPaymentAccount) => item.id === accountId);
+    if (!account) {
+      setSettings((prev: any) => ({
+        ...prev,
+        systemQr: {
+          ...prev.systemQr,
+          selectedAccountId: "",
+        },
+      }));
+      return;
+    }
+
+    setSettings((prev: any) => ({
+      ...prev,
+      systemQr: toSystemQrConfig(account, prev.systemQr),
+    }));
+  };
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1088,6 +1144,7 @@ function ContractEditorTab({
             content: settings.content || null,
             contentIsHtml: settings.contentIsHtml || false,
             orgContact: settings.orgContact,
+            paymentAccounts: settings.paymentAccounts,
             systemQr: settings.systemQr,
           },
         }),
@@ -1481,96 +1538,11 @@ function ContractEditorTab({
             </div>
           )}
           
-          {/* SystemQR config */}
-          {(settings.hasDuration || settings.isPaid) && (
-            <div className="mt-4 p-4 bg-white border border-blue-200 rounded-xl shadow-sm">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-4 bg-blue-500 rounded-full" />
-                  <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
-                    SystemQR төлбөрийн тохиргоо
-                  </span>
-                </div>
-                
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSettings({
-                      ...settings,
-                      systemQr: { ...settings.systemQr, enabled: !settings.systemQr?.enabled },
-                    })
-                  }
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    settings.systemQr?.enabled
-                      ? "bg-blue-100 text-blue-700"
-                      : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
-                  }`}
-                >
-                  {settings.systemQr?.enabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-                  {settings.systemQr?.enabled ? "Идэвхтэй" : "Идэвхгүй"}
-                </button>
-              </div>
-
-              {settings.systemQr?.enabled && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-neutral-500 pl-1">
-                      Merchant Username
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.systemQr?.username || ""}
-                      onChange={e =>
-                        setSettings((prev: any) => ({
-                          ...prev,
-                          systemQr: { ...prev.systemQr, username: e.target.value },
-                        }))
-                      }
-                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-neutral-500 pl-1">
-                      Merchant Password
-                    </label>
-                    <input
-                      type="password"
-                      value={settings.systemQr?.password || ""}
-                      onChange={e =>
-                        setSettings((prev: any) => ({
-                          ...prev,
-                          systemQr: { ...prev.systemQr, password: e.target.value },
-                        }))
-                      }
-                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-neutral-500 pl-1">
-                      Sub-Merchant Code
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.systemQr?.merchantCode || ""}
-                      onChange={e =>
-                        setSettings((prev: any) => ({
-                          ...prev,
-                          systemQr: { ...prev.systemQr, merchantCode: e.target.value },
-                        }))
-                      }
-                      placeholder="e.g. TEST_1695617811883"
-                      className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="md:col-span-3">
-                    <p className="text-xs text-neutral-400 mt-1">
-                      Хэрэв эдгээр талбаруудыг хоосон орхивол үндсэн SystemQR (env) тохиргоог ашиглана. Sub-Merchant Code-г заавал оруулна уу.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <ContractPaymentAccountSelect
+            settings={settings}
+            setSettings={setSettings}
+            selectPaymentAccount={selectPaymentAccount}
+          />
         </div>
       )}
 

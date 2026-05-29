@@ -14,8 +14,10 @@ import {
   ExternalLink,
   Link as LinkIcon,
   ImageIcon,
+  CreditCard,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
+import { ContractPaymentAccountsSettings } from "@/components/organisms/settings/ContractPaymentAccountsSettings";
 
 // ─── Section config ────────────────────────────────────────────────────────────
 
@@ -23,6 +25,7 @@ const SECTIONS = [
   { key: "general", label: "Ерөнхий", icon: Globe },
   { key: "appearance", label: "Гадаад харагдал", icon: Palette },
   { key: "contact", label: "Холбоо барих", icon: Phone },
+  { key: "contract-payments", label: "Гэрээний төлбөр", icon: CreditCard },
   { key: "social", label: "Нийгмийн сүлжээ", icon: Share2 },
   { key: "seo", label: "SEO", icon: Search },
 ] as const;
@@ -527,6 +530,11 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              {/* ── CONTRACT PAYMENTS ── */}
+              {active === "contract-payments" && (
+                <ContractPaymentAccountsSettings />
+              )}
+
               {/* ── SOCIAL ── */}
               {active === "social" && (
                 <div className="space-y-5">
@@ -666,6 +674,7 @@ export default function SettingsPage() {
               )}
 
               {/* ── Save bar ── */}
+              {active !== "contract-payments" && (
               <div className="flex justify-end pt-2">
                 <button
                   type="button"
@@ -683,6 +692,7 @@ export default function SettingsPage() {
                   {saving ? "Хадгалж байна..." : saved ? "Хадгалагдлаа" : "Хадгалах"}
                 </button>
               </div>
+              )}
             </>
           )}
         </div>
