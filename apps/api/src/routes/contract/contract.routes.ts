@@ -2,7 +2,12 @@ import { Router, type Router as ExpressRouter } from "express";
 import { requireAuth } from "../../middleware/auth";
 import { prisma } from "@mgl/database";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
-import { createSystemQrInvoice, checkSystemQrPayment, registerSystemQrSubMerchant } from "../../services/systemqr";
+import {
+  createSystemQrInvoice,
+  checkSystemQrPayment,
+  listSystemQrSubMerchants,
+  registerSystemQrSubMerchant,
+} from "../../services/systemqr";
 import multer from "multer";
 import path from "path";
 import crypto from "crypto";
@@ -173,6 +178,30 @@ router.post("/contracts", requireAuth, async (req, res) => {
 router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res) => {
   try {
     const body = req.body || {};
+    const merchantName = String(body.merchantName || "").trim();
+    if (merchantName) {
+      const existingSubMerchants = await listSystemQrSubMerchants().catch((error) => {
+        console.error("contract minu dynamic qr subMerchant precheck error", error);
+        return [];
+      });
+      const existing = existingSubMerchants.find((item) =>
+        item.merchantName.toLowerCase() === merchantName.toLowerCase()
+        || item.merchantCode.toLowerCase() === merchantName.toLowerCase()
+      );
+
+      if (existing) {
+        return res.json({
+          success: true,
+          alreadyRegistered: true,
+          merchantCode: existing.merchantCode,
+          username: existing.merchantCode,
+          password: null,
+          merchantName: existing.merchantName,
+          message: `Minu дээр "${existing.merchantName}" нэртэй subMerchant бүртгэлтэй байна. Merchant Code-г ашиглалаа.`,
+        });
+      }
+    }
+
     const missing = requiredMinuBankFields.filter((field) => !String(body[field] || "").trim());
     if (missing.length > 0) {
       return res.status(400).json({
@@ -181,16 +210,25 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       });
     }
 
-    const loginUsername = String(body.username || "").trim() || undefined;
-    const loginPassword = String(body.password || "").trim() || undefined;
+    const requestedCityId = String(body.cityId || "20").trim();
+    const requestedDistrictId = String(body.districtId || "1").trim();
+    const registerNumber = String(body.registerNumber).trim();
+    const looksLikePersonRegister = /^[А-Яа-яЁёӨөҮү]{2}\d{8}$/.test(registerNumber);
+    const requestedCorporateFlag = String(body.corporateFlag || "").trim();
+    const corporateFlag = looksLikePersonRegister ? "0" : requestedCorporateFlag || "1";
+    const corporateName = corporateFlag === "1"
+      ? String(body.corporateName || body.merchantName).trim()
+      : null;
+    const requestedSubCategoryId = String(body.subCategoryId || "36").trim();
+    const subCategoryId = requestedSubCategoryId === "1000" ? "36" : requestedSubCategoryId;
 
     const result = await registerSystemQrSubMerchant(
       {
-        merchantName: String(body.merchantName).trim(),
+        merchantName,
         accountNumber: String(body.accountNumber).trim(),
         bankCode: String(body.bankCode).trim(),
-        cityId: String(body.cityId || "11000").trim(),
-        districtId: String(body.districtId || "110400").trim(),
+        cityId: requestedCityId === "11000" ? "20" : requestedCityId,
+        districtId: requestedDistrictId === "110400" ? "1" : requestedDistrictId,
         khorooId: String(body.khorooId || "15782385").trim(),
         building: String(body.building || "-").trim(),
         doorNo: String(body.doorNo || "-").trim(),
@@ -198,14 +236,12 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         email: body.email ? String(body.email).trim() : null,
         firstName: String(body.firstName || body.merchantName).trim(),
         lastName: String(body.lastName || "-").trim(),
-        corporateFlag: String(body.corporateFlag || "1").trim(),
-        corporateName: body.corporateName ? String(body.corporateName).trim() : String(body.merchantName).trim(),
-        registerNumber: String(body.registerNumber).trim(),
+        corporateFlag,
+        corporateName,
+        registerNumber,
         gender: String(body.gender || "M").trim(),
-        subCategoryId: String(body.subCategoryId || "36").trim(),
+        subCategoryId,
       },
-      loginUsername,
-      loginPassword,
     );
 
     return res.json({
@@ -218,14 +254,67 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("contract minu dynamic qr register error", errorMessage);
+    if (/subMerchant register failed \(001\)/i.test(errorMessage)) {
+      const merchantName = String((req.body || {}).merchantName || "").trim();
+      if (merchantName) {
+        const existing = await listSystemQrSubMerchants().then((rows) =>
+          rows.find((item) =>
+            item.merchantName.toLowerCase() === merchantName.toLowerCase()
+            || item.merchantCode.toLowerCase() === merchantName.toLowerCase()
+          ),
+        ).catch(() => null);
+
+        if (existing) {
+          return res.json({
+            success: true,
+            alreadyRegistered: true,
+            recoveredFromSystemError: true,
+            merchantCode: existing.merchantCode,
+            username: existing.merchantCode,
+            password: null,
+            merchantName: existing.merchantName,
+            message: `Minu 001 буцаасан боловч "${existing.merchantName}" subMerchant үүссэн байна. Merchant Code-г ашиглалаа.`,
+          });
+        }
+      }
+    }
     const status = /username or password|login|credential|unauthorized|401|403/i.test(errorMessage) ? 400 : 500;
-    return res.status(status).json({ success: false, error: errorMessage || "Minu Dynamic QR данс холбох үед алдаа гарлаа" });
+    const friendlyError = /subMerchant register failed \(001\)/i.test(errorMessage)
+      ? `${errorMessage}. Minu дээр merchantName давхардсан бол 0077 гэж буцдаг. 001 нь ихэвчлэн Minu талын данс/регистр/утас verification эсвэл test/prod орчны алдаа байна.`
+      : errorMessage;
+    return res.status(status).json({ success: false, error: friendlyError || "Minu Dynamic QR данс холбох үед алдаа гарлаа" });
   }
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
 // GET /api/contracts/available  —  Public catalog of templates users can choose
 // ──────────────────────────────────────────────────────────────────────────────
+router.get("/contracts/minu-dynamic-qr/sub-merchants", requireAuth, async (req, res) => {
+  try {
+    const query = String(req.query.query || "").trim().toLowerCase();
+    const rows = await listSystemQrSubMerchants();
+    const subMerchants = query
+      ? rows.filter((item) =>
+          item.merchantName.toLowerCase().includes(query)
+          || item.merchantCode.toLowerCase().includes(query)
+        )
+      : rows;
+
+    return res.json({
+      success: true,
+      subMerchants: subMerchants.slice(0, 50),
+      total: rows.length,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("contract minu dynamic qr subMerchant list error", errorMessage);
+    return res.status(500).json({
+      success: false,
+      error: errorMessage || "Minu Dynamic QR бүртгэл шалгахад алдаа гарлаа",
+    });
+  }
+});
+
 router.get("/contracts/available", async (_req, res) => {
   try {
     const templates = await prisma.contract.findMany({

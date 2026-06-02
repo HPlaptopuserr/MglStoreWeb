@@ -69,6 +69,14 @@ export interface SystemQrSubMerchantResult {
   raw: Record<string, unknown>;
 }
 
+export interface SystemQrSubMerchantListItem {
+  merchantCode: string;
+  merchantName: string;
+  merchantNo?: string | null;
+  terminalNo?: string | null;
+  createdDate?: string | null;
+}
+
 // In-memory token cache to avoid logging in on every request
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
@@ -153,6 +161,16 @@ export async function registerSystemQrSubMerchant(
   };
 
   if (data.status !== "000" || !data.entity?.merchantCode) {
+    console.error("SystemQR registerSubMerchant failed", {
+      status: data.status || "unknown",
+      message: data.message || null,
+      merchantName: params.merchantName,
+      bankCode: params.bankCode,
+      cityId: params.cityId,
+      districtId: params.districtId,
+      khorooId: params.khorooId,
+      subCategoryId: params.subCategoryId,
+    });
     throw new Error(
       `Minu SystemQR subMerchant register failed (${data.status || "unknown"}): ${
         data.message || "merchantCode ирсэнгүй"
@@ -211,6 +229,42 @@ export async function resetSystemQrSubMerchantPassword(
   };
 }
 
+export async function listSystemQrSubMerchants(
+  username?: string,
+  password?: string,
+): Promise<SystemQrSubMerchantListItem[]> {
+  const token = await getSystemQrToken(username, password);
+  const { qrpayBaseUrl } = systemQrEnv();
+
+  const res = await fetch(`${qrpayBaseUrl}/qrMerchant/subMerchant`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  const data = (await res.json()) as {
+    status?: string;
+    message?: string | null;
+    entity?: Array<{
+      merchantCode?: string | null;
+      merchantName?: string | null;
+      merchantNo?: string | null;
+      terminalNo?: string | null;
+      createdDate?: string | null;
+    }> | null;
+  };
+
+  if (data.status !== "000" || !Array.isArray(data.entity)) {
+    throw new Error(`Minu SystemQR subMerchant list failed (${data.status || "unknown"}): ${data.message || "list ирсэнгүй"}`);
+  }
+
+  return data.entity.map((item) => ({
+    merchantCode: String(item.merchantCode || "").trim(),
+    merchantName: String(item.merchantName || "").trim(),
+    merchantNo: item.merchantNo ? String(item.merchantNo).trim() : null,
+    terminalNo: item.terminalNo ? String(item.terminalNo).trim() : null,
+    createdDate: item.createdDate ? String(item.createdDate).trim() : null,
+  }));
+}
+
 export async function getSystemQrCityList() {
   const token = await getSystemQrToken();
   const { qrpayBaseUrl } = systemQrEnv();
@@ -264,7 +318,7 @@ export async function getSystemQrCategoryList() {
           name: String(subCategory.subCategoryName || ""),
           categoryCode: String(category.categoryId || ""),
           categoryName: String(category.categoryName || ""),
-        }))
+        })).filter((item: { code: string; categoryCode: string }) => item.code !== "1000" && item.categoryCode !== "9")
       : [],
   );
 }
