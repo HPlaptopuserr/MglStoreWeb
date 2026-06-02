@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
 const systemQrEnv = () => {
@@ -91,7 +93,8 @@ async function getSystemQrToken(username?: string, password?: string): Promise<s
     throw new Error("SystemQR username or password is not configured");
   }
 
-  const cacheKey = `${qrpayBaseUrl}:${reqUsername}`;
+  const passwordHash = crypto.createHash("sha256").update(reqPassword).digest("hex").slice(0, 16);
+  const cacheKey = `${qrpayBaseUrl}:${reqUsername}:${passwordHash}`;
   const cached = tokenCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
     return cached.token;

@@ -344,7 +344,7 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
     }
     const status = isSystemQrAuthError(errorMessage) ? 400 : 500;
     const friendlyError = isSystemQrAuthError(errorMessage)
-      ? "Minu Dynamic QR бүртгэл шалгах боломжгүй байна. Merchant Code байгаа бол шууд дансны санд хадгалаад ашиглаж болно."
+      ? "Minu Dynamic QR данс шинээр холбох master login амжилтгүй байна. SYSTEMQR_USERNAME/SYSTEMQR_PASSWORD prod API env зөв эсэхийг шалгана уу. Merchant Code байгаа бол шууд дансны санд хадгалаад ашиглаж болно."
       : /subMerchant register failed \(001\)/i.test(errorMessage)
       ? `${errorMessage}. Minu дээр merchantName давхардсан бол 0077 гэж буцдаг. 001 нь ихэвчлэн Minu талын данс/регистр/утас verification эсвэл test/prod орчны алдаа байна.`
       : errorMessage;
