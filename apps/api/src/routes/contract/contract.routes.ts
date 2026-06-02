@@ -26,6 +26,7 @@ const requiredMinuBankFields = [
 
 async function resolveContractSystemQrAuth(systemQrConfig: any) {
   const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
+  const merchantName = String(systemQrConfig?.merchantName || "").trim();
   const username = String(systemQrConfig?.username || "").trim();
   const password = String(systemQrConfig?.password || "").trim();
 
@@ -41,13 +42,32 @@ async function resolveContractSystemQrAuth(systemQrConfig: any) {
     };
   }
 
-  const reset = await resetSystemQrSubMerchantPassword(merchantCode);
+  let reset;
+  let resolvedMerchantCode = merchantCode;
+  try {
+    reset = await resetSystemQrSubMerchantPassword(merchantCode);
+  } catch (resetError) {
+    if (!merchantName) throw resetError;
+
+    const existingSubMerchants = await listSystemQrSubMerchants();
+    const existing = existingSubMerchants.find((item) =>
+      item.merchantName.toLowerCase() === merchantName.toLowerCase()
+      || item.merchantCode.toLowerCase() === merchantName.toLowerCase()
+    );
+
+    if (!existing) throw resetError;
+
+    resolvedMerchantCode = existing.merchantCode;
+    reset = await resetSystemQrSubMerchantPassword(resolvedMerchantCode);
+  }
+
   return {
-    username: reset.username || merchantCode,
+    username: reset.username || resolvedMerchantCode,
     password: reset.password,
     updatedConfig: {
       ...systemQrConfig,
-      username: reset.username || merchantCode,
+      merchantCode: resolvedMerchantCode,
+      username: reset.username || resolvedMerchantCode,
       password: reset.password || "",
     },
   };
@@ -790,7 +810,7 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
 
     const invoice = await createSystemQrInvoice(
       {
-        merchantCode: systemQrConfig.merchantCode,
+        merchantCode: auth.updatedConfig?.merchantCode || systemQrConfig.merchantCode,
         amount,
         referenceNumber,
         webhook: `${process.env.API_URL || "https://mglstore.mn/api"}/contracts/systemqr/callback?contractId=${contract.id}`,
@@ -851,7 +871,7 @@ router.get("/contracts/:id/systemqr/check", async (req, res) => {
 
     const result = await checkSystemQrPayment(
       {
-        merchantCode: systemQrConfig.merchantCode,
+        merchantCode: auth.updatedConfig?.merchantCode || systemQrConfig.merchantCode,
         invoiceNumber: contract.systemQrInvoiceId,
       },
       auth.username,
