@@ -35,6 +35,25 @@ const contractSystemQrPublicError = (message: string, fallback: string) =>
 
 const normalizeSystemQrLookup = (value?: string | null) => String(value || "").trim().toLowerCase();
 
+function sanitizeContractHeaderData(headerData: any) {
+  if (!headerData || typeof headerData !== "object") return headerData;
+  const safe = JSON.parse(JSON.stringify(headerData));
+  const scrub = (value: any) => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      value.forEach(scrub);
+      return;
+    }
+    if ("merchantCode" in value || "systemQr" in value) {
+      delete value.username;
+      delete value.password;
+    }
+    Object.values(value).forEach(scrub);
+  };
+  scrub(safe);
+  return safe;
+}
+
 async function getLocalContractSystemQrSubMerchants(query: string) {
   const normalizedQuery = normalizeSystemQrLookup(query);
   const seen = new Set<string>();
@@ -91,6 +110,40 @@ async function getLocalContractSystemQrSubMerchants(query: string) {
   templates.forEach((contract) => addRow((contract.headerData as any)?.systemQr, contract.updatedAt));
 
   return rows;
+}
+
+async function resolveContractSystemQrAuth(systemQrConfig: any) {
+  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
+  const inlinePassword = String(systemQrConfig?.password || "").trim();
+  if (merchantCode && inlinePassword) {
+    return {
+      username: String(systemQrConfig?.username || merchantCode).trim(),
+      password: inlinePassword,
+    };
+  }
+
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
+  }).catch(() => null);
+  if (!setting?.value) return {};
+
+  try {
+    const accounts = JSON.parse(setting.value);
+    if (!Array.isArray(accounts)) return {};
+    const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
+    const account = accounts.find((item: any) =>
+      (selectedAccountId && String(item?.id || "").trim() === selectedAccountId)
+      || (merchantCode && String(item?.merchantCode || "").trim() === merchantCode)
+    );
+    const password = String(account?.password || "").trim();
+    if (!password) return {};
+    return {
+      username: String(account?.username || account?.merchantCode || merchantCode).trim(),
+      password,
+    };
+  } catch {
+    return {};
+  }
 }
 
 function getContractUserId(req: any): string | undefined {
@@ -315,6 +368,8 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
     return res.json({
       success: true,
       merchantCode: result.merchantCode,
+      username: result.username,
+      password: result.password || null,
       message: "Minu Dynamic QR данс амжилттай холбогдлоо",
     });
   } catch (error) {
@@ -464,7 +519,7 @@ router.get("/contracts/:id", async (req, res) => {
         adminStamp: contract.adminStamp,
         memberData: contract.memberData,
         memberSignature: contract.memberSignature,
-        headerData: contract.headerData,
+        headerData: sanitizeContractHeaderData(contract.headerData),
         signedAt: contract.signedAt,
         pdfUrl: contract.pdfUrl,
         submissionCount: contract._count.submissions,
@@ -804,6 +859,7 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
     }
 
     const referenceNumber = `MGL-${contract.id.slice(0, 8).toUpperCase()}`;
+    const systemQrAuth = await resolveContractSystemQrAuth(systemQrConfig);
 
     const invoice = await createSystemQrInvoice(
       {
@@ -812,6 +868,8 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
         referenceNumber,
         webhook: `${process.env.API_URL || "https://mglstore.mn/api"}/contracts/systemqr/callback?contractId=${contract.id}`,
       },
+      systemQrAuth.username,
+      systemQrAuth.password,
     );
 
     await prisma.contract.update({
@@ -857,12 +915,15 @@ router.get("/contracts/:id/systemqr/check", async (req, res) => {
     if (!systemQrConfig || !systemQrConfig.merchantCode) {
       return res.status(400).json({ success: false, error: "SystemQR тохиргоо олдсонгүй" });
     }
+    const systemQrAuth = await resolveContractSystemQrAuth(systemQrConfig);
 
     const result = await checkSystemQrPayment(
       {
         merchantCode: systemQrConfig.merchantCode,
         invoiceNumber: contract.systemQrInvoiceId,
       },
+      systemQrAuth.username,
+      systemQrAuth.password,
     );
 
     if (result.paid && contract.status !== "SIGNED") {

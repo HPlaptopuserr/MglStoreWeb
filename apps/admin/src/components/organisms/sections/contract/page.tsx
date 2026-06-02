@@ -1252,8 +1252,8 @@ function ContractEditorTab({
       label: String(overrides.label || config.label || nextMerchantName || "Minu данс").trim(),
       merchantName: nextMerchantName,
       merchantCode: nextMerchantCode,
-      username: "",
-      password: "",
+      username: String(overrides.username || config.username || nextMerchantCode).trim(),
+      password: String(overrides.password || config.password || "").trim(),
       bankCode: String(overrides.bankCode || config.bankCode || "050000").trim(),
       accountNumber: String(overrides.accountNumber || config.accountNumber).trim(),
       registerNumber: String(overrides.registerNumber || config.registerNumber).trim(),
@@ -1344,6 +1344,8 @@ function ContractEditorTab({
           await upsertCurrentPaymentAccount({
             merchantName: data.merchantName || config.merchantName,
             merchantCode: data.merchantCode,
+            username: data.username || data.merchantCode,
+            password: data.password || "",
           });
           alert(data.message || "Minu дээр бүртгэлтэй merchant code-г авч хадгаллаа.");
           return;
@@ -1388,6 +1390,8 @@ function ContractEditorTab({
 
       await upsertCurrentPaymentAccount({
         merchantCode: data.merchantCode,
+        username: data.username || data.merchantCode,
+        password: data.password || "",
       });
       alert("Minu Dynamic QR данс холбогдлоо. Энэ гэрээний template дээр сонгож ашиглаж болно.");
     } catch (error) {
