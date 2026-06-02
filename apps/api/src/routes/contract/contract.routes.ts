@@ -23,6 +23,8 @@ const requiredMinuBankFields = [
   "phone",
 ] as const;
 
+const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
+
 const isSystemQrAuthError = (message: string) =>
   /SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(message);
 
@@ -30,6 +32,66 @@ const contractSystemQrPublicError = (message: string, fallback: string) =>
   isSystemQrAuthError(message)
     ? `${fallback}. Minu SystemQR тохиргоо эсвэл Minu талын эрхийг шалгана уу.`
     : message;
+
+const normalizeSystemQrLookup = (value?: string | null) => String(value || "").trim().toLowerCase();
+
+async function getLocalContractSystemQrSubMerchants(query: string) {
+  const normalizedQuery = normalizeSystemQrLookup(query);
+  const seen = new Set<string>();
+  const rows: Array<{
+    merchantCode: string;
+    merchantName: string;
+    merchantNo: null;
+    terminalNo: null;
+    createdDate: string | null;
+  }> = [];
+
+  const addRow = (input: any, createdDate?: string | Date | null) => {
+    const merchantCode = String(input?.merchantCode || "").trim();
+    if (!merchantCode || seen.has(merchantCode.toLowerCase())) return;
+    const merchantName = String(input?.merchantName || input?.label || merchantCode).trim();
+    if (
+      normalizedQuery
+      && !normalizeSystemQrLookup(merchantName).includes(normalizedQuery)
+      && !normalizeSystemQrLookup(merchantCode).includes(normalizedQuery)
+    ) {
+      return;
+    }
+
+    seen.add(merchantCode.toLowerCase());
+    rows.push({
+      merchantCode,
+      merchantName,
+      merchantNo: null,
+      terminalNo: null,
+      createdDate: createdDate ? new Date(createdDate).toISOString() : null,
+    });
+  };
+
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
+  });
+  if (setting?.value) {
+    try {
+      const accounts = JSON.parse(setting.value);
+      if (Array.isArray(accounts)) {
+        accounts.forEach((account) => addRow(account, account?.updatedAt || account?.createdAt || null));
+      }
+    } catch {
+      // Ignore malformed legacy settings; contract templates below may still have a saved merchantCode.
+    }
+  }
+
+  const templates = await prisma.contract.findMany({
+    where: { isTemplate: true },
+    select: { headerData: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
+    take: 200,
+  });
+  templates.forEach((contract) => addRow((contract.headerData as any)?.systemQr, contract.updatedAt));
+
+  return rows;
+}
 
 function getContractUserId(req: any): string | undefined {
   return (req.user?.userId || req.user?.id || req.userId) as string | undefined;
@@ -312,6 +374,20 @@ router.get("/contracts/minu-dynamic-qr/sub-merchants", requireAuth, async (req, 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("contract minu dynamic qr subMerchant list error", errorMessage);
+
+    if (isSystemQrAuthError(errorMessage)) {
+      const query = String(req.query.query || "").trim();
+      const localRows = await getLocalContractSystemQrSubMerchants(query);
+      return res.json({
+        success: true,
+        subMerchants: localRows.slice(0, 50),
+        total: localRows.length,
+        source: "local",
+        fallback: true,
+        message: "Minu шалгалт түр боломжгүй тул дансны сангаас харуулж байна.",
+      });
+    }
+
     return res.status(500).json({
       success: false,
       error: contractSystemQrPublicError(

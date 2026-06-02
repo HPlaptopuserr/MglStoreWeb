@@ -402,7 +402,10 @@ export function ContractPaymentAccountsSettings() {
         return;
       }
 
-      alert(rows.slice(0, 5).map((item: any) =>
+      const prefix = data.fallback
+        ? "Minu шалгалт түр боломжгүй тул дансны сангаас харуулж байна:\n"
+        : "";
+      alert(prefix + rows.slice(0, 5).map((item: any) =>
         `${item.merchantName || "-"} — ${item.merchantCode || "-"}`
       ).join("\n"));
     } catch (error) {
