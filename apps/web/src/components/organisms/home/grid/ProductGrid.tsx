@@ -27,7 +27,7 @@ export const ProductGrid = () => {
   const [scrollProgress, setScrollProgress] = useState(0);
 
   useEffect(() => {
-    fetch(`${API}/products`)
+    fetch(`${API}/products?limit=16`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
         if (Array.isArray(data)) {
