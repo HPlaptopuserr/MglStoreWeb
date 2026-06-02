@@ -1379,7 +1379,7 @@ function ContractEditorTab({
 
       await upsertCurrentPaymentAccount({
         merchantCode: data.merchantCode,
-        username: data.username || data.merchantCode,
+        username: data.password ? data.username || data.merchantCode : "",
         password: data.password || config.password || "",
       });
       alert("Minu Dynamic QR данс холбогдлоо. Энэ гэрээний template дээр сонгож ашиглаж болно.");

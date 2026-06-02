@@ -6,6 +6,7 @@ import {
   createSystemQrInvoice,
   checkSystemQrPayment,
   listSystemQrSubMerchants,
+  resetSystemQrSubMerchantPassword,
   registerSystemQrSubMerchant,
 } from "../../services/systemqr";
 import multer from "multer";
@@ -22,6 +23,51 @@ const requiredMinuBankFields = [
   "registerNumber",
   "phone",
 ] as const;
+
+async function resolveContractSystemQrAuth(systemQrConfig: any) {
+  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
+  const username = String(systemQrConfig?.username || "").trim();
+  const password = String(systemQrConfig?.password || "").trim();
+
+  if (!merchantCode) {
+    return { username: undefined, password: undefined, updatedConfig: systemQrConfig };
+  }
+
+  if (password) {
+    return {
+      username: username || merchantCode,
+      password,
+      updatedConfig: systemQrConfig,
+    };
+  }
+
+  const reset = await resetSystemQrSubMerchantPassword(merchantCode);
+  return {
+    username: reset.username || merchantCode,
+    password: reset.password,
+    updatedConfig: {
+      ...systemQrConfig,
+      username: reset.username || merchantCode,
+      password: reset.password || "",
+    },
+  };
+}
+
+async function getExistingSystemQrCredentials(merchantCode: string) {
+  try {
+    const reset = await resetSystemQrSubMerchantPassword(merchantCode);
+    return {
+      username: reset.username || merchantCode,
+      password: reset.password || null,
+    };
+  } catch (error) {
+    console.warn("contract minu dynamic qr resetPassword precheck error", error);
+    return {
+      username: merchantCode,
+      password: null,
+    };
+  }
+}
 
 function getContractUserId(req: any): string | undefined {
   return (req.user?.userId || req.user?.id || req.userId) as string | undefined;
@@ -190,12 +236,13 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       );
 
       if (existing) {
+        const credentials = await getExistingSystemQrCredentials(existing.merchantCode);
         return res.json({
           success: true,
           alreadyRegistered: true,
           merchantCode: existing.merchantCode,
-          username: existing.merchantCode,
-          password: null,
+          username: credentials.username,
+          password: credentials.password,
           merchantName: existing.merchantName,
           message: `Minu дээр "${existing.merchantName}" нэртэй subMerchant бүртгэлтэй байна. Merchant Code-г ашиглалаа.`,
         });
@@ -222,7 +269,7 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
     const requestedSubCategoryId = String(body.subCategoryId || "36").trim();
     const subCategoryId = requestedSubCategoryId === "1000" ? "36" : requestedSubCategoryId;
 
-    const result = await registerSystemQrSubMerchant(
+    let result = await registerSystemQrSubMerchant(
       {
         merchantName,
         accountNumber: String(body.accountNumber).trim(),
@@ -243,6 +290,15 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         subCategoryId,
       },
     );
+
+    if (!result.password) {
+      const credentials = await getExistingSystemQrCredentials(result.merchantCode);
+      result = {
+        ...result,
+        username: credentials.username,
+        password: credentials.password || undefined,
+      };
+    }
 
     return res.json({
       success: true,
@@ -265,13 +321,14 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         ).catch(() => null);
 
         if (existing) {
+          const credentials = await getExistingSystemQrCredentials(existing.merchantCode);
           return res.json({
             success: true,
             alreadyRegistered: true,
             recoveredFromSystemError: true,
             merchantCode: existing.merchantCode,
-            username: existing.merchantCode,
-            password: null,
+            username: credentials.username,
+            password: credentials.password,
             merchantName: existing.merchantName,
             message: `Minu 001 буцаасан боловч "${existing.merchantName}" subMerchant үүссэн байна. Merchant Code-г ашиглалаа.`,
           });
@@ -722,6 +779,15 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
 
     const referenceNumber = `MGL-${contract.id.slice(0, 8).toUpperCase()}`;
 
+    let auth = { username: systemQrConfig.username, password: systemQrConfig.password, updatedConfig: systemQrConfig };
+    if (!String(systemQrConfig.password || "").trim()) {
+      try {
+        auth = await resolveContractSystemQrAuth(systemQrConfig);
+      } catch (authError) {
+        console.warn("[Contract SystemQR] resetPassword failed; trying configured/master auth", authError);
+      }
+    }
+
     const invoice = await createSystemQrInvoice(
       {
         merchantCode: systemQrConfig.merchantCode,
@@ -729,13 +795,19 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
         referenceNumber,
         webhook: `${process.env.API_URL || "https://mglstore.mn/api"}/contracts/systemqr/callback?contractId=${contract.id}`,
       },
-      systemQrConfig.username,
-      systemQrConfig.password
+      auth.username,
+      auth.password
     );
 
     await prisma.contract.update({
       where: { id: contract.id },
-      data: { systemQrInvoiceId: invoice.invoiceId, paymentSystem: "SYSTEMQR" },
+      data: {
+        systemQrInvoiceId: invoice.invoiceId,
+        paymentSystem: "SYSTEMQR",
+        ...(auth.updatedConfig !== systemQrConfig
+          ? { headerData: { ...headerData, systemQr: auth.updatedConfig } }
+          : {}),
+      },
     });
 
     return res.json({
@@ -768,14 +840,30 @@ router.get("/contracts/:id/systemqr/check", async (req, res) => {
       return res.status(400).json({ success: false, error: "SystemQR тохиргоо олдсонгүй" });
     }
 
+    let auth = { username: systemQrConfig.username, password: systemQrConfig.password, updatedConfig: systemQrConfig };
+    if (!String(systemQrConfig.password || "").trim()) {
+      try {
+        auth = await resolveContractSystemQrAuth(systemQrConfig);
+      } catch (authError) {
+        console.warn("[Contract SystemQR] resetPassword failed during check; trying configured/master auth", authError);
+      }
+    }
+
     const result = await checkSystemQrPayment(
       {
         merchantCode: systemQrConfig.merchantCode,
         invoiceNumber: contract.systemQrInvoiceId,
       },
-      systemQrConfig.username,
-      systemQrConfig.password
+      auth.username,
+      auth.password
     );
+
+    if (auth.updatedConfig !== systemQrConfig) {
+      await prisma.contract.update({
+        where: { id: contract.id },
+        data: { headerData: { ...(contract.headerData as any), systemQr: auth.updatedConfig } },
+      });
+    }
 
     if (result.paid && contract.status !== "SIGNED") {
       await prisma.contract.update({

@@ -2,9 +2,10 @@ const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
 const systemQrEnv = () => {
   const root = trimTrailingSlash(process.env.SYSTEMQR_ROOT_URL || "https://api.minu.mn");
+  const suffix = process.env.NODE_ENV === "production" ? "" : "-test";
   return {
-    qrpayBaseUrl: trimTrailingSlash(process.env.SYSTEMQR_BASE_URL || `${root}/qrpay-test`),
-    deeplinkBaseUrl: trimTrailingSlash(process.env.SYSTEMQR_DEEPLINK_URL || `${root}/deeplink-test`),
+    qrpayBaseUrl: trimTrailingSlash(process.env.SYSTEMQR_BASE_URL || `${root}/qrpay${suffix}`),
+    deeplinkBaseUrl: trimTrailingSlash(process.env.SYSTEMQR_DEEPLINK_URL || `${root}/deeplink${suffix}`),
     publicUrl: trimTrailingSlash(process.env.API_PUBLIC_URL || process.env.API_URL || ""),
   };
 };
