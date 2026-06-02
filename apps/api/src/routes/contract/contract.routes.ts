@@ -7,6 +7,7 @@ import {
   checkSystemQrPayment,
   listSystemQrSubMerchants,
   registerSystemQrSubMerchant,
+  resetSystemQrSubMerchantPassword,
 } from "../../services/systemqr";
 import multer from "multer";
 import path from "path";
@@ -39,6 +40,8 @@ const contractSystemQrPublicError = (message: string, fallback: string) =>
     : message;
 
 const normalizeSystemQrLookup = (value?: string | null) => String(value || "").trim().toLowerCase();
+
+type ContractSystemQrAuth = { username?: string; password?: string };
 
 function sanitizeContractHeaderData(headerData: any) {
   if (!headerData || typeof headerData !== "object") return headerData;
@@ -117,10 +120,86 @@ async function getLocalContractSystemQrSubMerchants(query: string) {
   return rows;
 }
 
-async function resolveContractSystemQrAuth(systemQrConfig: any) {
+async function cacheContractSystemQrAuth(systemQrConfig: any, auth: ContractSystemQrAuth) {
+  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
+  const password = String(auth.password || "").trim();
+  if (!merchantCode || !password) return;
+
+  const username = String(auth.username || systemQrConfig?.username || merchantCode).trim();
+  const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
+  const now = new Date().toISOString();
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
+  }).catch(() => null);
+
+  let accounts: any[] = [];
+  if (setting?.value) {
+    try {
+      const parsed = JSON.parse(setting.value);
+      if (Array.isArray(parsed)) accounts = parsed;
+    } catch {
+      accounts = [];
+    }
+  }
+
+  let updated = false;
+  accounts = accounts.map((account) => {
+    const sameAccount = selectedAccountId && String(account?.id || "").trim() === selectedAccountId;
+    const sameMerchant = String(account?.merchantCode || "").trim() === merchantCode;
+    if (!sameAccount && !sameMerchant) return account;
+    updated = true;
+    return {
+      ...account,
+      merchantCode: String(account?.merchantCode || merchantCode).trim(),
+      username,
+      password,
+      updatedAt: now,
+    };
+  });
+
+  if (!updated) {
+    accounts.push({
+      id: selectedAccountId || crypto.randomUUID(),
+      label: String(systemQrConfig?.label || systemQrConfig?.merchantName || merchantCode).trim(),
+      merchantName: String(systemQrConfig?.merchantName || merchantCode).trim(),
+      merchantCode,
+      username,
+      password,
+      bankCode: String(systemQrConfig?.bankCode || "").trim(),
+      accountNumber: String(systemQrConfig?.accountNumber || "").trim(),
+      registerNumber: String(systemQrConfig?.registerNumber || "").trim(),
+      phone: String(systemQrConfig?.phone || "").trim(),
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  await prisma.siteSetting.upsert({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
+    update: { value: JSON.stringify(accounts) },
+    create: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY, value: JSON.stringify(accounts) },
+  }).catch((error) => {
+    console.warn("contract SystemQR auth cache update failed", error);
+  });
+}
+
+async function resetContractSystemQrAuth(systemQrConfig: any): Promise<ContractSystemQrAuth> {
+  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
+  if (!merchantCode) return {};
+
+  const reset = await resetSystemQrSubMerchantPassword(merchantCode);
+  const auth = {
+    username: String(reset.username || merchantCode).trim(),
+    password: reset.password ? String(reset.password).trim() : undefined,
+  };
+  await cacheContractSystemQrAuth(systemQrConfig, auth);
+  return auth;
+}
+
+async function resolveContractSystemQrAuth(systemQrConfig: any, options?: { forceReset?: boolean }): Promise<ContractSystemQrAuth> {
   const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
   const inlinePassword = String(systemQrConfig?.password || "").trim();
-  if (merchantCode && inlinePassword) {
+  if (!options?.forceReset && merchantCode && inlinePassword) {
     return {
       username: String(systemQrConfig?.username || merchantCode).trim(),
       password: inlinePassword,
@@ -130,24 +209,84 @@ async function resolveContractSystemQrAuth(systemQrConfig: any) {
   const setting = await prisma.siteSetting.findUnique({
     where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
   }).catch(() => null);
-  if (!setting?.value) return {};
 
   try {
-    const accounts = JSON.parse(setting.value);
-    if (!Array.isArray(accounts)) return {};
-    const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
-    const account = accounts.find((item: any) =>
-      (selectedAccountId && String(item?.id || "").trim() === selectedAccountId)
-      || (merchantCode && String(item?.merchantCode || "").trim() === merchantCode)
-    );
-    const password = String(account?.password || "").trim();
-    if (!password) return {};
-    return {
-      username: String(account?.username || account?.merchantCode || merchantCode).trim(),
-      password,
-    };
+    if (setting?.value) {
+      const accounts = JSON.parse(setting.value);
+      if (Array.isArray(accounts)) {
+        const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
+        const account = accounts.find((item: any) =>
+          (selectedAccountId && String(item?.id || "").trim() === selectedAccountId)
+          || (merchantCode && String(item?.merchantCode || "").trim() === merchantCode)
+        );
+        const password = String(account?.password || "").trim();
+        if (!options?.forceReset && password) {
+          return {
+            username: String(account?.username || account?.merchantCode || merchantCode).trim(),
+            password,
+          };
+        }
+      }
+    }
   } catch {
+    // Fall through to reset below.
+  }
+
+  try {
+    return await resetContractSystemQrAuth(systemQrConfig);
+  } catch (error) {
+    console.warn("contract SystemQR password reset fallback failed", error);
     return {};
+  }
+}
+
+async function createContractSystemQrInvoiceWithFallback(params: {
+  systemQrConfig: any;
+  amount: number;
+  referenceNumber: string;
+  webhook: string;
+}) {
+  const invoiceParams = {
+    merchantCode: params.systemQrConfig.merchantCode,
+    amount: params.amount,
+    referenceNumber: params.referenceNumber,
+    webhook: params.webhook,
+  };
+
+  const auth = await resolveContractSystemQrAuth(params.systemQrConfig);
+  try {
+    return await createSystemQrInvoice(invoiceParams, auth.username, auth.password);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!isSystemQrAuthError(message) && !/createInvoice failed \(002\)/i.test(message)) {
+      throw error;
+    }
+
+    const refreshedAuth = await resetContractSystemQrAuth(params.systemQrConfig);
+    if (!refreshedAuth.password) throw error;
+    return createSystemQrInvoice(invoiceParams, refreshedAuth.username, refreshedAuth.password);
+  }
+}
+
+async function checkContractSystemQrPaymentWithFallback(params: {
+  systemQrConfig: any;
+  invoiceNumber: string;
+}) {
+  const checkParams = {
+    merchantCode: params.systemQrConfig.merchantCode,
+    invoiceNumber: params.invoiceNumber,
+  };
+
+  const auth = await resolveContractSystemQrAuth(params.systemQrConfig);
+  try {
+    return await checkSystemQrPayment(checkParams, auth.username, auth.password);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!isSystemQrAuthError(message)) throw error;
+
+    const refreshedAuth = await resetContractSystemQrAuth(params.systemQrConfig);
+    if (!refreshedAuth.password) throw error;
+    return checkSystemQrPayment(checkParams, refreshedAuth.username, refreshedAuth.password);
   }
 }
 
@@ -866,18 +1005,12 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
     }
 
     const referenceNumber = `MGL-${contract.id.slice(0, 8).toUpperCase()}`;
-    const systemQrAuth = await resolveContractSystemQrAuth(systemQrConfig);
-
-    const invoice = await createSystemQrInvoice(
-      {
-        merchantCode: systemQrConfig.merchantCode,
-        amount,
-        referenceNumber,
-        webhook: `${process.env.API_URL || "https://mglstore.mn/api"}/contracts/systemqr/callback?contractId=${contract.id}`,
-      },
-      systemQrAuth.username,
-      systemQrAuth.password,
-    );
+    const invoice = await createContractSystemQrInvoiceWithFallback({
+      systemQrConfig,
+      amount,
+      referenceNumber,
+      webhook: `${process.env.API_URL || "https://mglstore.mn/api"}/contracts/systemqr/callback?contractId=${contract.id}`,
+    });
 
     await prisma.contract.update({
       where: { id: contract.id },
@@ -922,16 +1055,10 @@ router.get("/contracts/:id/systemqr/check", async (req, res) => {
     if (!systemQrConfig || !systemQrConfig.merchantCode) {
       return res.status(400).json({ success: false, error: "SystemQR тохиргоо олдсонгүй" });
     }
-    const systemQrAuth = await resolveContractSystemQrAuth(systemQrConfig);
-
-    const result = await checkSystemQrPayment(
-      {
-        merchantCode: systemQrConfig.merchantCode,
-        invoiceNumber: contract.systemQrInvoiceId,
-      },
-      systemQrAuth.username,
-      systemQrAuth.password,
-    );
+    const result = await checkContractSystemQrPaymentWithFallback({
+      systemQrConfig,
+      invoiceNumber: contract.systemQrInvoiceId,
+    });
 
     if (result.paid && contract.status !== "SIGNED") {
       await prisma.contract.update({
