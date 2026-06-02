@@ -46,6 +46,12 @@ const contractSystemQrPublicError = (message: string, fallback: string) =>
 
 const normalizeSystemQrLookup = (value?: string | null) => String(value || "").trim().toLowerCase();
 
+const isSystemQrMasterMerchantCode = (merchantCode?: string | null) => {
+  const code = normalizeSystemQrLookup(merchantCode);
+  const masterUsername = normalizeSystemQrLookup(process.env.SYSTEMQR_USERNAME);
+  return Boolean(code && masterUsername && code === masterUsername);
+};
+
 type ContractSystemQrAuth = { username?: string; password?: string };
 
 async function getContractPaymentAccounts() {
@@ -65,6 +71,7 @@ async function getContractPaymentAccounts() {
 function findContractSystemQrAccount(accounts: any[], systemQrConfig: any) {
   const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
   const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
+  if (isSystemQrMasterMerchantCode(merchantCode)) return undefined;
   return accounts.find((item: any) =>
     (selectedAccountId && String(item?.id || "").trim() === selectedAccountId)
     || (merchantCode && String(item?.merchantCode || "").trim() === merchantCode)
@@ -104,6 +111,7 @@ async function getLocalContractSystemQrSubMerchants(query: string) {
   const addRow = (input: any, createdDate?: string | Date | null) => {
     const merchantCode = String(input?.merchantCode || "").trim();
     if (!merchantCode || seen.has(merchantCode.toLowerCase())) return;
+    if (isSystemQrMasterMerchantCode(merchantCode)) return;
     const merchantName = String(input?.merchantName || input?.label || merchantCode).trim();
     if (
       normalizedQuery
@@ -425,8 +433,11 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         return [];
       });
       const existing = existingSubMerchants.find((item) =>
-        item.merchantName.toLowerCase() === merchantName.toLowerCase()
-        || item.merchantCode.toLowerCase() === merchantName.toLowerCase()
+        !isSystemQrMasterMerchantCode(item.merchantCode)
+        && (
+          item.merchantName.toLowerCase() === merchantName.toLowerCase()
+          || item.merchantCode.toLowerCase() === merchantName.toLowerCase()
+        )
       );
 
       if (existing) {
@@ -482,6 +493,12 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       },
     );
 
+    if (isSystemQrMasterMerchantCode(result.merchantCode)) {
+      throw new Error(
+        "Minu SystemQR registerSubMerchant returned the master username as merchantCode. SubMerchant code биш тул invoice үүсгэх боломжгүй.",
+      );
+    }
+
     return res.json({
       success: true,
       merchantCode: result.merchantCode,
@@ -497,8 +514,11 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       if (merchantName) {
         const existing = await listSystemQrSubMerchants().then((rows) =>
           rows.find((item) =>
-            item.merchantName.toLowerCase() === merchantName.toLowerCase()
-            || item.merchantCode.toLowerCase() === merchantName.toLowerCase()
+            !isSystemQrMasterMerchantCode(item.merchantCode)
+            && (
+              item.merchantName.toLowerCase() === merchantName.toLowerCase()
+              || item.merchantCode.toLowerCase() === merchantName.toLowerCase()
+            )
           ),
         ).catch(() => null);
 
@@ -532,7 +552,7 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
 router.get("/contracts/minu-dynamic-qr/sub-merchants", requireAuth, async (req, res) => {
   try {
     const query = String(req.query.query || "").trim().toLowerCase();
-    const rows = await listSystemQrSubMerchants();
+    const rows = (await listSystemQrSubMerchants()).filter((item) => !isSystemQrMasterMerchantCode(item.merchantCode));
     const subMerchants = query
       ? rows.filter((item) =>
           item.merchantName.toLowerCase().includes(query)
@@ -975,6 +995,13 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
     const systemQrConfig = headerData?.systemQr;
     if (!systemQrConfig || !systemQrConfig.enabled || !systemQrConfig.merchantCode) {
       return res.status(400).json({ success: false, error: "Гэрээнд SystemQR тохируулагдаагүй байна" });
+    }
+
+    if (isSystemQrMasterMerchantCode(systemQrConfig.merchantCode)) {
+      return res.status(400).json({
+        success: false,
+        error: "Гэрээний төлбөрийн дансны merchantCode нь SystemQR master username-тэй адил байна. Minu subMerchant code сонгоод template дээр дахин хадгална уу.",
+      });
     }
 
     const referenceNumber = `MGL-${contract.id.slice(0, 8).toUpperCase()}`;
