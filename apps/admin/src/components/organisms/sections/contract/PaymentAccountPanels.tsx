@@ -61,6 +61,33 @@ export const DEFAULT_SYSTEMQR_LOCATION = {
   subCategoryId: "36",
 };
 
+const FALLBACK_SYSTEMQR_CATEGORIES: SystemQrCategory[] = [
+  { code: "36", name: "Электрон бараа (Компьютер, гар утас)", categoryName: "Бараа" },
+  { code: "35", name: "Код 35" },
+];
+
+const FALLBACK_SYSTEMQR_CITIES: SystemQrCity[] = [
+  {
+    code: "20",
+    name: "Улаанбаатар",
+    districts: [{ code: "1", name: "Сонгинохайрхан" }],
+  },
+];
+
+const FALLBACK_SYSTEMQR_KHOROOS_BY_DISTRICT: Record<string, SystemQrKhoroo[]> = {
+  "1": [{ code: "15782385", name: "1-р хороо" }],
+};
+
+function withCurrentOption<T extends { code: string; name: string }>(
+  options: T[],
+  code: string,
+  fallbackName: string,
+): T[] {
+  const currentCode = String(code || "").trim();
+  if (!currentCode || options.some((option) => option.code === currentCode)) return options;
+  return [{ code: currentCode, name: fallbackName } as T, ...options];
+}
+
 export const BANK_OPTIONS = [
   { value: "050000", label: "Хаан банк" },
   { value: "150000", label: "Голомт банк" },
@@ -234,8 +261,55 @@ export function PaymentAccountsSettingsPanel({
 }: PaymentAccountsSettingsPanelProps) {
   const accounts: ContractPaymentAccount[] = settings.paymentAccounts || [];
   const selectClass = "px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white";
-  const selectedCity = systemQrCities.find((city) => city.code === (settings.systemQr?.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId));
-  const districtOptions = selectedCity?.districts || [];
+  const currentSubCategoryId = String(settings.systemQr?.subCategoryId || DEFAULT_SYSTEMQR_LOCATION.subCategoryId);
+  const currentCityId = String(settings.systemQr?.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId);
+  const currentDistrictId = String(settings.systemQr?.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId);
+  const currentKhorooId = String(settings.systemQr?.khorooId || DEFAULT_SYSTEMQR_LOCATION.khorooId);
+  const categoryOptions = withCurrentOption(
+    systemQrCategories.length > 0 ? systemQrCategories : FALLBACK_SYSTEMQR_CATEGORIES,
+    currentSubCategoryId,
+    `Код ${currentSubCategoryId}`,
+  );
+  const cityOptions = withCurrentOption(
+    systemQrCities.length > 0 ? systemQrCities : FALLBACK_SYSTEMQR_CITIES,
+    currentCityId,
+    `Код ${currentCityId}`,
+  );
+  const selectedCity = cityOptions.find((city) => city.code === currentCityId);
+  const districtOptions = withCurrentOption(
+    selectedCity?.districts || [],
+    currentDistrictId,
+    `Код ${currentDistrictId}`,
+  );
+  const khorooOptions = withCurrentOption(
+    systemQrKhoroos.length > 0
+      ? systemQrKhoroos
+      : FALLBACK_SYSTEMQR_KHOROOS_BY_DISTRICT[currentDistrictId] || [],
+    currentKhorooId,
+    `Код ${currentKhorooId}`,
+  );
+
+  const handleCitySelectChange = (cityId: string) => {
+    if (onSystemQrCityChange && systemQrCities.some((city) => city.code === cityId)) {
+      onSystemQrCityChange(cityId);
+      return;
+    }
+
+    const city = cityOptions.find((item) => item.code === cityId);
+    updateSystemQr("cityId", cityId);
+    updateSystemQr("districtId", city?.districts?.[0]?.code || "");
+    updateSystemQr("khorooId", "");
+  };
+
+  const handleDistrictSelectChange = (districtId: string) => {
+    if (onSystemQrDistrictChange) {
+      onSystemQrDistrictChange(districtId);
+      return;
+    }
+
+    updateSystemQr("districtId", districtId);
+    updateSystemQr("khorooId", "");
+  };
 
   return (
     <div className="p-6 border-b border-neutral-100 bg-neutral-50/20">
@@ -422,96 +496,56 @@ export function PaymentAccountsSettingsPanel({
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-neutral-500 pl-1">Үйл ажиллагааны чиглэл *</label>
-              {systemQrCategories.length > 0 ? (
-                <select
-                  value={settings.systemQr?.subCategoryId || DEFAULT_SYSTEMQR_LOCATION.subCategoryId}
-                  onChange={(event) => updateSystemQr("subCategoryId", event.target.value)}
-                  className={selectClass}
-                >
-                  {systemQrCategories.map((category) => (
-                    <option key={category.code} value={category.code}>
-                      {category.categoryName ? `${category.categoryName} - ${category.name}` : category.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={settings.systemQr?.subCategoryId || DEFAULT_SYSTEMQR_LOCATION.subCategoryId}
-                  onChange={(event) => updateSystemQr("subCategoryId", event.target.value)}
-                  className={selectClass}
-                />
-              )}
+              <select
+                value={currentSubCategoryId}
+                onChange={(event) => updateSystemQr("subCategoryId", event.target.value)}
+                className={selectClass}
+              >
+                {categoryOptions.map((category) => (
+                  <option key={category.code} value={category.code}>
+                    {category.categoryName ? `${category.categoryName} - ${category.name}` : category.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-neutral-500 pl-1">Аймаг/Хот *</label>
-              {systemQrCities.length > 0 ? (
-                <select
-                  value={settings.systemQr?.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId}
-                  onChange={(event) =>
-                    onSystemQrCityChange
-                      ? onSystemQrCityChange(event.target.value)
-                      : updateSystemQr("cityId", event.target.value)
-                  }
-                  className={selectClass}
-                >
-                  {systemQrCities.map((city) => (
-                    <option key={city.code} value={city.code}>{city.name}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={settings.systemQr?.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId}
-                  onChange={(event) => updateSystemQr("cityId", event.target.value)}
-                  className={selectClass}
-                />
-              )}
+              <select
+                value={currentCityId}
+                onChange={(event) => handleCitySelectChange(event.target.value)}
+                className={selectClass}
+              >
+                {cityOptions.map((city) => (
+                  <option key={city.code} value={city.code}>{city.name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-neutral-500 pl-1">Дүүрэг/Сум *</label>
-              {districtOptions.length > 0 ? (
-                <select
-                  value={settings.systemQr?.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId}
-                  onChange={(event) =>
-                    onSystemQrDistrictChange
-                      ? onSystemQrDistrictChange(event.target.value)
-                      : updateSystemQr("districtId", event.target.value)
-                  }
-                  className={selectClass}
-                >
-                  {districtOptions.map((district) => (
-                    <option key={district.code} value={district.code}>{district.name}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={settings.systemQr?.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId}
-                  onChange={(event) => updateSystemQr("districtId", event.target.value)}
-                  className={selectClass}
-                />
-              )}
+              <select
+                value={currentDistrictId}
+                onChange={(event) => handleDistrictSelectChange(event.target.value)}
+                className={selectClass}
+              >
+                {districtOptions.map((district) => (
+                  <option key={district.code} value={district.code}>{district.name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-neutral-500 pl-1">Хороо/Баг *</label>
-              {systemQrKhoroos.length > 0 ? (
-                <select
-                  value={settings.systemQr?.khorooId || DEFAULT_SYSTEMQR_LOCATION.khorooId}
-                  onChange={(event) => updateSystemQr("khorooId", event.target.value)}
-                  className={selectClass}
-                >
-                  {systemQrKhoroos.map((khoroo) => (
-                    <option key={khoroo.code} value={khoroo.code}>{khoroo.name}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={settings.systemQr?.khorooId || DEFAULT_SYSTEMQR_LOCATION.khorooId}
-                  onChange={(event) => updateSystemQr("khorooId", event.target.value)}
-                  className={selectClass}
-                />
-              )}
+              <select
+                value={currentKhorooId}
+                onChange={(event) => updateSystemQr("khorooId", event.target.value)}
+                className={selectClass}
+              >
+                {khorooOptions.map((khoroo) => (
+                  <option key={khoroo.code} value={khoroo.code}>{khoroo.name}</option>
+                ))}
+              </select>
             </div>
 
             <AccountInput
