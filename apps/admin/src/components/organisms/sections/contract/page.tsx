@@ -1335,19 +1335,22 @@ function ContractEditorTab({
     if (config.merchantName && !config.merchantCode) {
       setConnectingMinuAccount(true);
       try {
-        const res = await adminFetch(`${API}/contracts/minu-dynamic-qr/register`, {
-          method: "POST",
-          body: JSON.stringify({ merchantName: config.merchantName }),
-        });
+        const res = await adminFetch(`${API}/contracts/minu-dynamic-qr/sub-merchants?query=${encodeURIComponent(config.merchantName)}`);
         const data = await res.json();
-        if (data.success && data.merchantCode) {
+        const existing = Array.isArray(data.subMerchants)
+          ? data.subMerchants.find((item: any) =>
+              String(item.merchantName || "").trim().toLowerCase() === config.merchantName.toLowerCase()
+              || String(item.merchantCode || "").trim().toLowerCase() === config.merchantName.toLowerCase()
+            )
+          : null;
+        if (data.success && existing?.merchantCode) {
           await upsertCurrentPaymentAccount({
-            merchantName: data.merchantName || config.merchantName,
-            merchantCode: data.merchantCode,
-            username: data.username || data.merchantCode,
-            password: data.password || "",
+            merchantName: existing.merchantName || config.merchantName,
+            merchantCode: existing.merchantCode,
+            username: existing.username || existing.merchantCode,
+            password: existing.password || "",
           });
-          alert(data.message || "Minu дээр бүртгэлтэй merchant code-г авч хадгаллаа.");
+          alert("Minu дээр бүртгэлтэй merchant code-г авч хадгаллаа.");
           return;
         }
       } catch {
