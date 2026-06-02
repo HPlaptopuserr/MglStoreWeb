@@ -301,8 +301,20 @@ export function ContractPaymentAccountsSettings() {
     }
   };
 
+  const withSystemQrDefaults = (config: any) => ({
+    ...config,
+    cityId: String(config.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId).trim(),
+    districtId: String(config.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId).trim(),
+    khorooId: String(config.khorooId || DEFAULT_SYSTEMQR_LOCATION.khorooId).trim(),
+    building: String(config.building || DEFAULT_SYSTEMQR_LOCATION.building).trim(),
+    doorNo: String(config.doorNo || DEFAULT_SYSTEMQR_LOCATION.doorNo).trim(),
+    corporateFlag: String(config.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag).trim(),
+    gender: String(config.gender || DEFAULT_SYSTEMQR_LOCATION.gender).trim(),
+    subCategoryId: String(config.subCategoryId || DEFAULT_SYSTEMQR_LOCATION.subCategoryId).trim(),
+  });
+
   const handleConnectMinuAccount = async () => {
-    const config = settings.systemQr || {};
+    const config = withSystemQrDefaults(settings.systemQr || {});
     if (config.merchantName && config.merchantCode) {
       const account = await upsertCurrentPaymentAccount();
       if (account) alert("Minu merchant code дансны санд хадгалагдлаа.");
