@@ -32,8 +32,13 @@ const isSystemQrAuthError = (message: string) =>
 const isSystemQrNetworkError = (message: string) =>
   /fetch failed|network|timeout|timed out|unable to connect|ECONN|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|UND_ERR/i.test(message);
 
+const isContractSystemQrInactiveError = (message: string) =>
+  /CONTRACT_SYSTEMQR_ACCOUNT_NOT_ACTIVE/i.test(message);
+
 const contractSystemQrPublicError = (message: string, fallback: string) =>
-  isSystemQrAuthError(message)
+  isContractSystemQrInactiveError(message)
+    ? "Энэ гэрээний төлбөрийн Minu Dynamic QR данс устгагдсан эсвэл идэвхгүй байна. Admin дээр гэрээний template дээр идэвхтэй данс дахин сонгоод шинэ link үүсгэнэ үү."
+    : isSystemQrAuthError(message)
     ? `${fallback}. Minu SystemQR тохиргоо эсвэл Minu талын эрхийг шалгана уу.`
     : isSystemQrNetworkError(message)
     ? `${fallback}. Minu SystemQR API руу холбогдохгүй байна. API сервер api.minu.mn:443 рүү гарах эрхтэй эсэх, системийн VPN/proxy/whitelist-аа шалгана уу.`
@@ -42,6 +47,29 @@ const contractSystemQrPublicError = (message: string, fallback: string) =>
 const normalizeSystemQrLookup = (value?: string | null) => String(value || "").trim().toLowerCase();
 
 type ContractSystemQrAuth = { username?: string; password?: string };
+
+async function getContractPaymentAccounts() {
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
+  }).catch(() => null);
+
+  if (!setting?.value) return [];
+  try {
+    const accounts = JSON.parse(setting.value);
+    return Array.isArray(accounts) ? accounts : [];
+  } catch {
+    return [];
+  }
+}
+
+function findContractSystemQrAccount(accounts: any[], systemQrConfig: any) {
+  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
+  const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
+  return accounts.find((item: any) =>
+    (selectedAccountId && String(item?.id || "").trim() === selectedAccountId)
+    || (merchantCode && String(item?.merchantCode || "").trim() === merchantCode)
+  );
+}
 
 function sanitizeContractHeaderData(headerData: any) {
   if (!headerData || typeof headerData !== "object") return headerData;
@@ -95,19 +123,8 @@ async function getLocalContractSystemQrSubMerchants(query: string) {
     });
   };
 
-  const setting = await prisma.siteSetting.findUnique({
-    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
-  });
-  if (setting?.value) {
-    try {
-      const accounts = JSON.parse(setting.value);
-      if (Array.isArray(accounts)) {
-        accounts.forEach((account) => addRow(account, account?.updatedAt || account?.createdAt || null));
-      }
-    } catch {
-      // Ignore malformed legacy settings; contract templates below may still have a saved merchantCode.
-    }
-  }
+  const accounts = await getContractPaymentAccounts();
+  accounts.forEach((account) => addRow(account, account?.updatedAt || account?.createdAt || null));
 
   const templates = await prisma.contract.findMany({
     where: { isTemplate: true },
@@ -128,19 +145,7 @@ async function cacheContractSystemQrAuth(systemQrConfig: any, auth: ContractSyst
   const username = String(auth.username || systemQrConfig?.username || merchantCode).trim();
   const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
   const now = new Date().toISOString();
-  const setting = await prisma.siteSetting.findUnique({
-    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
-  }).catch(() => null);
-
-  let accounts: any[] = [];
-  if (setting?.value) {
-    try {
-      const parsed = JSON.parse(setting.value);
-      if (Array.isArray(parsed)) accounts = parsed;
-    } catch {
-      accounts = [];
-    }
-  }
+  let accounts = await getContractPaymentAccounts();
 
   let updated = false;
   accounts = accounts.map((account) => {
@@ -157,22 +162,7 @@ async function cacheContractSystemQrAuth(systemQrConfig: any, auth: ContractSyst
     };
   });
 
-  if (!updated) {
-    accounts.push({
-      id: selectedAccountId || crypto.randomUUID(),
-      label: String(systemQrConfig?.label || systemQrConfig?.merchantName || merchantCode).trim(),
-      merchantName: String(systemQrConfig?.merchantName || merchantCode).trim(),
-      merchantCode,
-      username,
-      password,
-      bankCode: String(systemQrConfig?.bankCode || "").trim(),
-      accountNumber: String(systemQrConfig?.accountNumber || "").trim(),
-      registerNumber: String(systemQrConfig?.registerNumber || "").trim(),
-      phone: String(systemQrConfig?.phone || "").trim(),
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
+  if (!updated) return;
 
   await prisma.siteSetting.upsert({
     where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
@@ -199,37 +189,20 @@ async function resetContractSystemQrAuth(systemQrConfig: any): Promise<ContractS
 async function resolveContractSystemQrAuth(systemQrConfig: any, options?: { forceReset?: boolean }): Promise<ContractSystemQrAuth> {
   const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
   const inlinePassword = String(systemQrConfig?.password || "").trim();
-  if (!options?.forceReset && merchantCode && inlinePassword) {
-    return {
-      username: String(systemQrConfig?.username || merchantCode).trim(),
-      password: inlinePassword,
-    };
+  const accounts = await getContractPaymentAccounts();
+  const account = findContractSystemQrAccount(accounts, systemQrConfig);
+
+  if (!account) {
+    throw new Error("CONTRACT_SYSTEMQR_ACCOUNT_NOT_ACTIVE");
   }
 
-  const setting = await prisma.siteSetting.findUnique({
-    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
-  }).catch(() => null);
-
-  try {
-    if (setting?.value) {
-      const accounts = JSON.parse(setting.value);
-      if (Array.isArray(accounts)) {
-        const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
-        const account = accounts.find((item: any) =>
-          (selectedAccountId && String(item?.id || "").trim() === selectedAccountId)
-          || (merchantCode && String(item?.merchantCode || "").trim() === merchantCode)
-        );
-        const password = String(account?.password || "").trim();
-        if (!options?.forceReset && password) {
-          return {
-            username: String(account?.username || account?.merchantCode || merchantCode).trim(),
-            password,
-          };
-        }
-      }
-    }
-  } catch {
-    // Fall through to reset below.
+  const accountPassword = String(account?.password || "").trim();
+  const password = accountPassword || inlinePassword;
+  if (!options?.forceReset && merchantCode && password) {
+    return {
+      username: String(account?.username || systemQrConfig?.username || account?.merchantCode || merchantCode).trim(),
+      password,
+    };
   }
 
   try {

@@ -385,7 +385,35 @@ export function Contract() {
                     contentIsHtml: hd?.contentIsHtml ?? prev.contentIsHtml,
                     orgContact: hd?.orgContact || prev.orgContact,
                     paymentAccounts: storedPaymentAccounts,
-                    systemQr: hd?.systemQr || prev.systemQr,
+                    systemQr: hd?.systemQr?.merchantCode
+                      ? (() => {
+                          const matchedAccount = storedPaymentAccounts.find((account) =>
+                            (hd.systemQr.selectedAccountId && account.id === hd.systemQr.selectedAccountId)
+                            || account.merchantCode === hd.systemQr.merchantCode
+                          );
+                          return matchedAccount
+                            ? toSystemQrConfig(matchedAccount, hd.systemQr)
+                            : {
+                                ...prev.systemQr,
+                                enabled: false,
+                                selectedAccountId: "",
+                                label: "",
+                                merchantName: "",
+                                accountNumber: "",
+                                bankCode: "050000",
+                                registerNumber: "",
+                                phone: "",
+                                email: "",
+                                merchantCode: "",
+                                username: "",
+                                password: "",
+                                ...DEFAULT_SYSTEMQR_LOCATION,
+                                firstName: "",
+                                lastName: "",
+                                corporateName: "",
+                              };
+                        })()
+                      : (hd?.systemQr || prev.systemQr),
                   }));
                 }
               })
