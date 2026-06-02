@@ -9,7 +9,6 @@ import {
   resetSystemQrSubMerchantPassword,
   registerSystemQrSubMerchant,
 } from "../../services/systemqr";
-import { getVendorSystemQrConfig } from "../../services/vendor-merchant.service";
 import multer from "multer";
 import path from "path";
 import crypto from "crypto";
@@ -25,90 +24,7 @@ const requiredMinuBankFields = [
   "phone",
 ] as const;
 
-const normalizeLookupText = (value?: string | null) =>
-  String(value || "").trim().toLowerCase();
-
-async function findVendorSystemQrAuth(systemQrConfig: any, organizationId?: string | null) {
-  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
-  const merchantName = String(systemQrConfig?.merchantName || "").trim();
-  const normalizedMerchantName = normalizeLookupText(merchantName);
-  const normalizedMerchantCode = normalizeLookupText(merchantCode);
-
-  const candidateIds = new Set<string>();
-  if (organizationId) candidateIds.add(organizationId);
-
-  const organizations = await prisma.organization.findMany({
-    where: {
-      deletedAt: null,
-      OR: [
-        ...(merchantCode
-          ? [
-              { qpayMerchantId: merchantCode },
-              { webQpayMerchantId: merchantCode },
-            ]
-          : []),
-        { qpayInvoiceCode: "SYSTEMQR" },
-        { webQpayInvoiceCode: "SYSTEMQR" },
-        { qpayMerchantKey: { startsWith: "systemqr:" } },
-        { webQpayMerchantKey: { startsWith: "systemqr:" } },
-      ],
-    },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      qpayMerchantId: true,
-      webQpayMerchantId: true,
-    },
-    take: 100,
-  });
-
-  const scored = organizations
-    .map((org) => {
-      let score = candidateIds.has(org.id) ? 100 : 0;
-      const orgName = normalizeLookupText(org.name);
-      const orgSlug = normalizeLookupText(org.slug);
-      const qpayMerchantId = normalizeLookupText(org.qpayMerchantId);
-      const webQpayMerchantId = normalizeLookupText(org.webQpayMerchantId);
-
-      if (normalizedMerchantCode && (qpayMerchantId === normalizedMerchantCode || webQpayMerchantId === normalizedMerchantCode)) {
-        score += 80;
-      }
-      if (normalizedMerchantName) {
-        if (orgName === normalizedMerchantName || orgSlug === normalizedMerchantName) {
-          score += 60;
-        } else if (orgName.includes(normalizedMerchantName) || orgSlug.includes(normalizedMerchantName)) {
-          score += 35;
-        }
-      }
-
-      return { org, score };
-    })
-    .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score);
-
-  for (const { org } of scored) {
-    for (const channel of ["POS", "WEB"] as const) {
-      const vendorConfig = await getVendorSystemQrConfig(org.id, channel);
-      if (vendorConfig?.merchantCode && vendorConfig.password) {
-        console.log("[Contract SystemQR] using vendor SystemQR config", {
-          organizationId: org.id,
-          channel,
-          merchantCode: vendorConfig.merchantCode,
-        });
-        return {
-          merchantCode: vendorConfig.merchantCode,
-          username: vendorConfig.username || vendorConfig.merchantCode,
-          password: vendorConfig.password,
-        };
-      }
-    }
-  }
-
-  return null;
-}
-
-async function resolveContractSystemQrAuth(systemQrConfig: any, organizationId?: string | null) {
+async function resolveContractSystemQrAuth(systemQrConfig: any) {
   const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
   const merchantName = String(systemQrConfig?.merchantName || "").trim();
   const username = String(systemQrConfig?.username || "").trim();
@@ -123,20 +39,6 @@ async function resolveContractSystemQrAuth(systemQrConfig: any, organizationId?:
       username: username || merchantCode,
       password,
       updatedConfig: systemQrConfig,
-    };
-  }
-
-  const vendorAuth = await findVendorSystemQrAuth(systemQrConfig, organizationId);
-  if (vendorAuth) {
-    return {
-      username: vendorAuth.username,
-      password: vendorAuth.password,
-      updatedConfig: {
-        ...systemQrConfig,
-        merchantCode: vendorAuth.merchantCode,
-        username: vendorAuth.username,
-        password: vendorAuth.password,
-      },
     };
   }
 
@@ -185,6 +87,13 @@ async function getExistingSystemQrCredentials(merchantCode: string) {
       password: null,
     };
   }
+}
+
+function buildContractSystemQrCredentialError(error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error || "");
+  return new Error(
+    `Гэрээний Minu Dynamic QR username/password хадгалагдаагүй байна. Admin дээрх гэрээний дансны тохиргоонд энэ merchantCode-ийн Minu username/password-ийг хадгалаад template дээр дахин сонгоно уу.${detail ? ` (${detail})` : ""}`,
+  );
 }
 
 function getContractUserId(req: any): string | undefined {
@@ -900,9 +809,10 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
     let auth = { username: systemQrConfig.username, password: systemQrConfig.password, updatedConfig: systemQrConfig };
     if (!String(systemQrConfig.password || "").trim()) {
       try {
-        auth = await resolveContractSystemQrAuth(systemQrConfig, contract.organizationId);
+        auth = await resolveContractSystemQrAuth(systemQrConfig);
       } catch (authError) {
-        console.warn("[Contract SystemQR] resetPassword failed; trying configured/master auth", authError);
+        console.warn("[Contract SystemQR] credential resolve failed", authError);
+        throw buildContractSystemQrCredentialError(authError);
       }
     }
 
@@ -961,9 +871,10 @@ router.get("/contracts/:id/systemqr/check", async (req, res) => {
     let auth = { username: systemQrConfig.username, password: systemQrConfig.password, updatedConfig: systemQrConfig };
     if (!String(systemQrConfig.password || "").trim()) {
       try {
-        auth = await resolveContractSystemQrAuth(systemQrConfig, contract.organizationId);
+        auth = await resolveContractSystemQrAuth(systemQrConfig);
       } catch (authError) {
-        console.warn("[Contract SystemQR] resetPassword failed during check; trying configured/master auth", authError);
+        console.warn("[Contract SystemQR] credential resolve failed during check", authError);
+        throw buildContractSystemQrCredentialError(authError);
       }
     }
 

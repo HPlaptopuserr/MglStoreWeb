@@ -226,6 +226,12 @@ export function ContractPaymentAccountsSettings() {
       alert("Дансны санд хадгалахын тулд мерчант нэр болон merchant code шаардлагатай");
       return null;
     }
+    const nextUsername = String(overrides.username !== undefined ? overrides.username : config.username || nextMerchantCode).trim() || nextMerchantCode;
+    const nextPassword = String(overrides.password !== undefined ? overrides.password : config.password || "").trim();
+    if (!nextPassword) {
+      alert("Энэ contract дансанд Minu Password шаардлагатай. Minu-ээс авсан sub-merchant password-оо оруулаад хадгална уу.");
+      return null;
+    }
 
     const existingId = config.selectedAccountId || overrides.id;
     const now = new Date().toISOString();
@@ -235,8 +241,8 @@ export function ContractPaymentAccountsSettings() {
       label: String(overrides.label || config.label || nextMerchantName || "Minu данс").trim(),
       merchantName: nextMerchantName,
       merchantCode: nextMerchantCode,
-      username: String(overrides.username !== undefined ? overrides.username : config.username || "").trim(),
-      password: String(overrides.password !== undefined ? overrides.password : config.password || "").trim(),
+      username: nextUsername,
+      password: nextPassword,
       bankCode: String(overrides.bankCode || config.bankCode || "050000").trim(),
       accountNumber: String(overrides.accountNumber || config.accountNumber).trim(),
       registerNumber: String(overrides.registerNumber || config.registerNumber).trim(),
