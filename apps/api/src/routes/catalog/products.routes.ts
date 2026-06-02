@@ -271,10 +271,10 @@ router.get("/products", optionalAuth, async (req, res) => {
     const search = String(req.query.search ?? req.query.q ?? "").trim();
     const includeExpiredInventory = isTruthyQueryValue(req.query.includeExpiredInventory);
     const requestedOrganizationId = organizationId ? String(organizationId) : "";
-    const limit = Math.min(
-      100,
-      Math.max(1, parseInt(String(req.query.limit || "0"), 10) || 0),
-    );
+    const rawLimit = parseInt(String(req.query.limit || ""), 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(100, rawLimit)
+      : 0;
 
     const where: any = {
       deletedAt: null,
