@@ -89,13 +89,6 @@ async function getExistingSystemQrCredentials(merchantCode: string) {
   }
 }
 
-function buildContractSystemQrCredentialError(error: unknown) {
-  const detail = error instanceof Error ? error.message : String(error || "");
-  return new Error(
-    `Гэрээний Minu Dynamic QR username/password хадгалагдаагүй байна. Admin дээрх гэрээний дансны тохиргоонд энэ merchantCode-ийн Minu username/password-ийг хадгалаад template дээр дахин сонгоно уу.${detail ? ` (${detail})` : ""}`,
-  );
-}
-
 function getContractUserId(req: any): string | undefined {
   return (req.user?.userId || req.user?.id || req.userId) as string | undefined;
 }
@@ -806,15 +799,10 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
 
     const referenceNumber = `MGL-${contract.id.slice(0, 8).toUpperCase()}`;
 
-    let auth = { username: systemQrConfig.username, password: systemQrConfig.password, updatedConfig: systemQrConfig };
-    if (!String(systemQrConfig.password || "").trim()) {
-      try {
-        auth = await resolveContractSystemQrAuth(systemQrConfig);
-      } catch (authError) {
-        console.warn("[Contract SystemQR] credential resolve failed", authError);
-        throw buildContractSystemQrCredentialError(authError);
-      }
-    }
+    const configuredPassword = String(systemQrConfig.password || "").trim();
+    const auth = configuredPassword
+      ? await resolveContractSystemQrAuth(systemQrConfig)
+      : { username: undefined, password: undefined, updatedConfig: systemQrConfig };
 
     const invoice = await createSystemQrInvoice(
       {
@@ -868,15 +856,10 @@ router.get("/contracts/:id/systemqr/check", async (req, res) => {
       return res.status(400).json({ success: false, error: "SystemQR тохиргоо олдсонгүй" });
     }
 
-    let auth = { username: systemQrConfig.username, password: systemQrConfig.password, updatedConfig: systemQrConfig };
-    if (!String(systemQrConfig.password || "").trim()) {
-      try {
-        auth = await resolveContractSystemQrAuth(systemQrConfig);
-      } catch (authError) {
-        console.warn("[Contract SystemQR] credential resolve failed during check", authError);
-        throw buildContractSystemQrCredentialError(authError);
-      }
-    }
+    const configuredPassword = String(systemQrConfig.password || "").trim();
+    const auth = configuredPassword
+      ? await resolveContractSystemQrAuth(systemQrConfig)
+      : { username: undefined, password: undefined, updatedConfig: systemQrConfig };
 
     const result = await checkSystemQrPayment(
       {

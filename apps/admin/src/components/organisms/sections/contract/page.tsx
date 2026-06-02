@@ -1246,10 +1246,6 @@ function ContractEditorTab({
     }
     const nextUsername = String(overrides.username !== undefined ? overrides.username : config.username || nextMerchantCode).trim() || nextMerchantCode;
     const nextPassword = String(overrides.password !== undefined ? overrides.password : config.password || "").trim();
-    if (!nextPassword) {
-      alert("Энэ contract дансанд Minu Password шаардлагатай. Minu-ээс авсан sub-merchant password-оо оруулаад хадгална уу.");
-      return null;
-    }
 
     const existingId = config.selectedAccountId || overrides.id;
     const now = new Date().toISOString();
