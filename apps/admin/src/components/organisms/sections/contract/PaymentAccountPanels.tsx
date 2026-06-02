@@ -154,6 +154,7 @@ export function ContractPaymentAccountSelect({
   if (!settings.isPaid) return null;
 
   const accounts: ContractPaymentAccount[] = settings.paymentAccounts || [];
+  const selectedAccount = accounts.find((account) => account.id === settings.systemQr?.selectedAccountId);
 
   return (
     <div className="mt-4 p-4 bg-white border border-amber-200 rounded-xl shadow-sm">
@@ -214,7 +215,7 @@ export function ContractPaymentAccountSelect({
                 </p>
               )}
 
-              {settings.systemQr?.selectedAccountId && (
+              {selectedAccount && (
                 <p className="text-xs text-neutral-500 mt-1">
                   Сонгосон данс: {settings.systemQr?.merchantName} · {getBankLabel(settings.systemQr?.bankCode)} {settings.systemQr?.accountNumber}
                 </p>

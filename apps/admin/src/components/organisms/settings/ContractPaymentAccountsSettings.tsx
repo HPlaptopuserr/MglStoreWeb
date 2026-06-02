@@ -278,6 +278,7 @@ export function ContractPaymentAccountsSettings() {
   const deletePaymentAccount = async (accountId: string) => {
     if (!confirm("Энэ дансыг сангаас устгах уу? Өмнө нь үүссэн гэрээний template доторх merchantCode хэвээр үлдэнэ.")) return;
 
+    const removedAccount = (settings.paymentAccounts || []).find((item: ContractPaymentAccount) => item.id === accountId);
     const nextAccounts = (settings.paymentAccounts || []).filter((item: ContractPaymentAccount) => item.id !== accountId);
     try {
       await persistPaymentAccounts(nextAccounts);
@@ -285,7 +286,26 @@ export function ContractPaymentAccountsSettings() {
         ...prev,
         paymentAccounts: nextAccounts,
         systemQr: prev.systemQr?.selectedAccountId === accountId
-          ? { ...prev.systemQr, selectedAccountId: "" }
+          || (removedAccount?.merchantCode && prev.systemQr?.merchantCode === removedAccount.merchantCode)
+          ? {
+              ...prev.systemQr,
+              enabled: false,
+              selectedAccountId: "",
+              label: "",
+              merchantName: "",
+              accountNumber: "",
+              bankCode: "050000",
+              registerNumber: "",
+              phone: "",
+              email: "",
+              merchantCode: "",
+              username: "",
+              password: "",
+              ...DEFAULT_SYSTEMQR_LOCATION,
+              firstName: "",
+              lastName: "",
+              corporateName: "",
+            }
           : prev.systemQr,
       }));
     } catch (error) {

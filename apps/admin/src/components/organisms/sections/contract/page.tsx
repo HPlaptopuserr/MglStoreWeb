@@ -384,9 +384,7 @@ export function Contract() {
                     content: hd?.content || prev.content,
                     contentIsHtml: hd?.contentIsHtml ?? prev.contentIsHtml,
                     orgContact: hd?.orgContact || prev.orgContact,
-                    paymentAccounts: storedPaymentAccounts.length > 0
-                      ? storedPaymentAccounts
-                      : (hd?.paymentAccounts?.length > 0 ? hd.paymentAccounts : prev.paymentAccounts),
+                    paymentAccounts: storedPaymentAccounts,
                     systemQr: hd?.systemQr || prev.systemQr,
                   }));
                 }
@@ -864,7 +862,6 @@ function NewContractButton({ settings, setContracts, setStats }: {
             content: settings.content || null,
             contentIsHtml: settings.contentIsHtml || false,
             orgContact: settings.orgContact,
-            paymentAccounts: settings.paymentAccounts,
             systemQr: settings.systemQr,
           },
         }),
@@ -1296,6 +1293,7 @@ function ContractEditorTab({
   const deletePaymentAccount = async (accountId: string) => {
     if (!confirm("Энэ дансыг сангаас устгах уу? Өмнө нь үүссэн гэрээний template доторх merchantCode хэвээр үлдэнэ.")) return;
 
+    const removedAccount = (settings.paymentAccounts || []).find((item: ContractPaymentAccount) => item.id === accountId);
     const nextAccounts = (settings.paymentAccounts || []).filter((item: ContractPaymentAccount) => item.id !== accountId);
     try {
       await persistPaymentAccounts(nextAccounts);
@@ -1303,7 +1301,26 @@ function ContractEditorTab({
         ...prev,
         paymentAccounts: nextAccounts,
         systemQr: prev.systemQr?.selectedAccountId === accountId
-          ? { ...prev.systemQr, selectedAccountId: "" }
+          || (removedAccount?.merchantCode && prev.systemQr?.merchantCode === removedAccount.merchantCode)
+          ? {
+              ...prev.systemQr,
+              enabled: false,
+              selectedAccountId: "",
+              label: "",
+              merchantName: "",
+              accountNumber: "",
+              bankCode: "050000",
+              registerNumber: "",
+              phone: "",
+              email: "",
+              merchantCode: "",
+              username: "",
+              password: "",
+              ...DEFAULT_SYSTEMQR_LOCATION,
+              firstName: "",
+              lastName: "",
+              corporateName: "",
+            }
           : prev.systemQr,
       }));
     } catch (error) {
