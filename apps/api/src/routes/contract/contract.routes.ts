@@ -28,9 +28,14 @@ const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
 const isSystemQrAuthError = (message: string) =>
   /SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(message);
 
+const isSystemQrNetworkError = (message: string) =>
+  /fetch failed|network|timeout|timed out|unable to connect|ECONN|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|UND_ERR/i.test(message);
+
 const contractSystemQrPublicError = (message: string, fallback: string) =>
   isSystemQrAuthError(message)
     ? `${fallback}. Minu SystemQR тохиргоо эсвэл Minu талын эрхийг шалгана уу.`
+    : isSystemQrNetworkError(message)
+    ? `${fallback}. Minu SystemQR API руу холбогдохгүй байна. API сервер api.minu.mn:443 рүү гарах эрхтэй эсэх, системийн VPN/proxy/whitelist-аа шалгана уу.`
     : message;
 
 const normalizeSystemQrLookup = (value?: string | null) => String(value || "").trim().toLowerCase();
@@ -397,9 +402,11 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         }
       }
     }
-    const status = isSystemQrAuthError(errorMessage) ? 400 : 500;
+    const status = isSystemQrAuthError(errorMessage) ? 400 : isSystemQrNetworkError(errorMessage) ? 503 : 500;
     const friendlyError = isSystemQrAuthError(errorMessage)
       ? "Minu Dynamic QR данс шинээр холбох master login амжилтгүй байна. SYSTEMQR_USERNAME/SYSTEMQR_PASSWORD prod API env зөв эсэхийг шалгана уу. Merchant Code байгаа бол шууд дансны санд хадгалаад ашиглаж болно."
+      : isSystemQrNetworkError(errorMessage)
+      ? "Minu Dynamic QR данс шинээр холбох үед Minu API руу холбогдохгүй байна. API сервер api.minu.mn:443 рүү гарах эрхтэй эсэх, системийн VPN/proxy/whitelist-аа шалгана уу. Merchant Code байгаа бол шууд дансны санд хадгалаад ашиглаж болно."
       : /subMerchant register failed \(001\)/i.test(errorMessage)
       ? `${errorMessage}. Minu дээр merchantName давхардсан бол 0077 гэж буцдаг. 001 нь ихэвчлэн Minu талын данс/регистр/утас verification эсвэл test/prod орчны алдаа байна.`
       : errorMessage;
@@ -430,7 +437,7 @@ router.get("/contracts/minu-dynamic-qr/sub-merchants", requireAuth, async (req, 
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("contract minu dynamic qr subMerchant list error", errorMessage);
 
-    if (isSystemQrAuthError(errorMessage)) {
+    if (isSystemQrAuthError(errorMessage) || isSystemQrNetworkError(errorMessage)) {
       const query = String(req.query.query || "").trim();
       const localRows = await getLocalContractSystemQrSubMerchants(query);
       return res.json({
