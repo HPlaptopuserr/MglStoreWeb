@@ -60,6 +60,16 @@ services:
         sync: false
       - key: CORS_ORIGIN
         sync: false
+      - key: SYSTEMQR_ROOT_URL
+        value: https://api.minu.mn
+      - key: SYSTEMQR_BASE_URL
+        value: https://api.minu.mn/qrpay
+      - key: SYSTEMQR_DEEPLINK_URL
+        value: https://api.minu.mn/deeplink
+      - key: SYSTEMQR_USERNAME
+        sync: false
+      - key: SYSTEMQR_PASSWORD
+        sync: false
 
 databases:
   - name: mglstore
