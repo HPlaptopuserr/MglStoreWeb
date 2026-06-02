@@ -5,9 +5,10 @@ import Link from "next/link";
 import { ServiceSelector } from "./_components/ServiceSelector";
 import { ServiceCategory } from "./types";
 import { API } from "@/lib/api";
+import { MGL_SERVICES_DATA } from "./data";
 
 export default function OurServicesPage() {
-  const [categories, setCategories] = useState<ServiceCategory[]>([]);
+  const [categories, setCategories] = useState<ServiceCategory[]>(MGL_SERVICES_DATA);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,7 +20,10 @@ export default function OurServicesPage() {
           if (data["mgl-services"]) {
             const parsed = JSON.parse(data["mgl-services"]);
             if (Array.isArray(parsed)) {
-              setCategories(parsed);
+              const hasTraining = parsed.some(
+                (category: Partial<ServiceCategory>) => category?.id === "training",
+              );
+              setCategories(hasTraining ? parsed : [MGL_SERVICES_DATA[0], ...parsed]);
             }
           }
         }

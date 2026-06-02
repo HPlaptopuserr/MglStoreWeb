@@ -1,4 +1,4 @@
-import { Briefcase, FolderKanban, Store, Tag } from "lucide-react";
+import { Briefcase, FolderKanban, Sparkles, Store, Tag } from "lucide-react";
 import type { NavLinkItem } from "@/types";
 
 export const NAV_LINKS: NavLinkItem[] = [
@@ -15,6 +15,13 @@ export const NAV_LINKS: NavLinkItem[] = [
     desc: "Бараа бүтээгдэхүүн",
     icon: Tag,
     color: "bg-amber-50 text-amber-600",
+  },
+  {
+    href: "/our-services",
+    label: "Үйлчилгээ",
+    desc: "MGL үйлчилгээ",
+    icon: Sparkles,
+    color: "bg-violet-50 text-violet-600",
   },
   {
     href: "/franchise",

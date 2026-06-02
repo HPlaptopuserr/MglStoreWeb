@@ -10,7 +10,10 @@ interface Props {
 
 export function ServiceCategoryCard({ category, selectedItems, onToggleItem }: Props) {
   return (
-    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mb-8 transition-shadow hover:shadow-md">
+    <div
+      id={category.id}
+      className="scroll-mt-28 bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mb-8 transition-shadow hover:shadow-md"
+    >
       <div className="bg-slate-50 px-6 py-5 border-b border-gray-100 flex items-start sm:items-center gap-4 flex-col sm:flex-row">
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden bg-black shadow-sm">
           {category.icon && category.icon.startsWith("http") ? (
