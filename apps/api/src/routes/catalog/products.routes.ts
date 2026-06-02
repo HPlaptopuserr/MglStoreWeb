@@ -271,6 +271,10 @@ router.get("/products", optionalAuth, async (req, res) => {
     const search = String(req.query.search ?? req.query.q ?? "").trim();
     const includeExpiredInventory = isTruthyQueryValue(req.query.includeExpiredInventory);
     const requestedOrganizationId = organizationId ? String(organizationId) : "";
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(String(req.query.limit || "0"), 10) || 0),
+    );
 
     const where: any = {
       deletedAt: null,
@@ -355,7 +359,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       }
     }
 
-    const response = products
+    let response = products
       .map((product) => {
         const expiryDate = expiryByProductId.get(product.id) ?? null;
         return {
@@ -368,6 +372,10 @@ router.get("/products", optionalAuth, async (req, res) => {
         if (expiryDiff !== 0) return expiryDiff;
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
+
+    if (limit > 0) {
+      response = response.slice(0, limit);
+    }
 
     return res.json(response);
   } catch (error) {
