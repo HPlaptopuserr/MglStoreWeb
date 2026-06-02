@@ -1244,9 +1244,6 @@ function ContractEditorTab({
       alert("Дансны санд хадгалахын тулд мерчант нэр болон merchant code шаардлагатай");
       return null;
     }
-    const nextUsername = String(overrides.username !== undefined ? overrides.username : config.username || nextMerchantCode).trim() || nextMerchantCode;
-    const nextPassword = String(overrides.password !== undefined ? overrides.password : config.password || "").trim();
-
     const existingId = config.selectedAccountId || overrides.id;
     const now = new Date().toISOString();
     const accountCorporateFlag = String(overrides.corporateFlag || config.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag).trim();
@@ -1255,8 +1252,8 @@ function ContractEditorTab({
       label: String(overrides.label || config.label || nextMerchantName || "Minu данс").trim(),
       merchantName: nextMerchantName,
       merchantCode: nextMerchantCode,
-      username: nextUsername,
-      password: nextPassword,
+      username: "",
+      password: "",
       bankCode: String(overrides.bankCode || config.bankCode || "050000").trim(),
       accountNumber: String(overrides.accountNumber || config.accountNumber).trim(),
       registerNumber: String(overrides.registerNumber || config.registerNumber).trim(),
@@ -1347,8 +1344,6 @@ function ContractEditorTab({
           await upsertCurrentPaymentAccount({
             merchantName: data.merchantName || config.merchantName,
             merchantCode: data.merchantCode,
-            username: data.password ? data.username || "" : "",
-            password: data.password || "",
           });
           alert(data.message || "Minu дээр бүртгэлтэй merchant code-г авч хадгаллаа.");
           return;
@@ -1393,8 +1388,6 @@ function ContractEditorTab({
 
       await upsertCurrentPaymentAccount({
         merchantCode: data.merchantCode,
-        username: data.password ? data.username || data.merchantCode : "",
-        password: data.password || config.password || "",
       });
       alert("Minu Dynamic QR данс холбогдлоо. Энэ гэрээний template дээр сонгож ашиглаж болно.");
     } catch (error) {

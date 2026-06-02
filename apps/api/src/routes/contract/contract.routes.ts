@@ -6,7 +6,6 @@ import {
   createSystemQrInvoice,
   checkSystemQrPayment,
   listSystemQrSubMerchants,
-  resetSystemQrSubMerchantPassword,
   registerSystemQrSubMerchant,
 } from "../../services/systemqr";
 import multer from "multer";
@@ -24,70 +23,13 @@ const requiredMinuBankFields = [
   "phone",
 ] as const;
 
-async function resolveContractSystemQrAuth(systemQrConfig: any) {
-  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
-  const merchantName = String(systemQrConfig?.merchantName || "").trim();
-  const username = String(systemQrConfig?.username || "").trim();
-  const password = String(systemQrConfig?.password || "").trim();
+const isSystemQrAuthError = (message: string) =>
+  /SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(message);
 
-  if (!merchantCode) {
-    return { username: undefined, password: undefined, updatedConfig: systemQrConfig };
-  }
-
-  if (password) {
-    return {
-      username: username || merchantCode,
-      password,
-      updatedConfig: systemQrConfig,
-    };
-  }
-
-  let reset;
-  let resolvedMerchantCode = merchantCode;
-  try {
-    reset = await resetSystemQrSubMerchantPassword(merchantCode);
-  } catch (resetError) {
-    if (!merchantName) throw resetError;
-
-    const existingSubMerchants = await listSystemQrSubMerchants();
-    const existing = existingSubMerchants.find((item) =>
-      item.merchantName.toLowerCase() === merchantName.toLowerCase()
-      || item.merchantCode.toLowerCase() === merchantName.toLowerCase()
-    );
-
-    if (!existing) throw resetError;
-
-    resolvedMerchantCode = existing.merchantCode;
-    reset = await resetSystemQrSubMerchantPassword(resolvedMerchantCode);
-  }
-
-  return {
-    username: reset.username || resolvedMerchantCode,
-    password: reset.password,
-    updatedConfig: {
-      ...systemQrConfig,
-      merchantCode: resolvedMerchantCode,
-      username: reset.username || resolvedMerchantCode,
-      password: reset.password || "",
-    },
-  };
-}
-
-async function getExistingSystemQrCredentials(merchantCode: string) {
-  try {
-    const reset = await resetSystemQrSubMerchantPassword(merchantCode);
-    return {
-      username: reset.username || merchantCode,
-      password: reset.password || null,
-    };
-  } catch (error) {
-    console.warn("contract minu dynamic qr resetPassword precheck error", error);
-    return {
-      username: merchantCode,
-      password: null,
-    };
-  }
-}
+const contractSystemQrPublicError = (message: string, fallback: string) =>
+  isSystemQrAuthError(message)
+    ? `${fallback}. Minu SystemQR тохиргоо эсвэл Minu талын эрхийг шалгана уу.`
+    : message;
 
 function getContractUserId(req: any): string | undefined {
   return (req.user?.userId || req.user?.id || req.userId) as string | undefined;
@@ -256,13 +198,10 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       );
 
       if (existing) {
-        const credentials = await getExistingSystemQrCredentials(existing.merchantCode);
         return res.json({
           success: true,
           alreadyRegistered: true,
           merchantCode: existing.merchantCode,
-          username: credentials.username,
-          password: credentials.password,
           merchantName: existing.merchantName,
           message: `Minu дээр "${existing.merchantName}" нэртэй subMerchant бүртгэлтэй байна. Merchant Code-г ашиглалаа.`,
         });
@@ -289,7 +228,7 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
     const requestedSubCategoryId = String(body.subCategoryId || "36").trim();
     const subCategoryId = requestedSubCategoryId === "1000" ? "36" : requestedSubCategoryId;
 
-    let result = await registerSystemQrSubMerchant(
+    const result = await registerSystemQrSubMerchant(
       {
         merchantName,
         accountNumber: String(body.accountNumber).trim(),
@@ -311,20 +250,9 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       },
     );
 
-    if (!result.password) {
-      const credentials = await getExistingSystemQrCredentials(result.merchantCode);
-      result = {
-        ...result,
-        username: credentials.username,
-        password: credentials.password || undefined,
-      };
-    }
-
     return res.json({
       success: true,
       merchantCode: result.merchantCode,
-      username: result.username,
-      password: result.password || null,
       message: "Minu Dynamic QR данс амжилттай холбогдлоо",
     });
   } catch (error) {
@@ -341,22 +269,21 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         ).catch(() => null);
 
         if (existing) {
-          const credentials = await getExistingSystemQrCredentials(existing.merchantCode);
           return res.json({
             success: true,
             alreadyRegistered: true,
             recoveredFromSystemError: true,
             merchantCode: existing.merchantCode,
-            username: credentials.username,
-            password: credentials.password,
             merchantName: existing.merchantName,
             message: `Minu 001 буцаасан боловч "${existing.merchantName}" subMerchant үүссэн байна. Merchant Code-г ашиглалаа.`,
           });
         }
       }
     }
-    const status = /username or password|login|credential|unauthorized|401|403/i.test(errorMessage) ? 400 : 500;
-    const friendlyError = /subMerchant register failed \(001\)/i.test(errorMessage)
+    const status = isSystemQrAuthError(errorMessage) ? 400 : 500;
+    const friendlyError = isSystemQrAuthError(errorMessage)
+      ? "Minu Dynamic QR бүртгэл шалгах боломжгүй байна. Merchant Code байгаа бол шууд дансны санд хадгалаад ашиглаж болно."
+      : /subMerchant register failed \(001\)/i.test(errorMessage)
       ? `${errorMessage}. Minu дээр merchantName давхардсан бол 0077 гэж буцдаг. 001 нь ихэвчлэн Minu талын данс/регистр/утас verification эсвэл test/prod орчны алдаа байна.`
       : errorMessage;
     return res.status(status).json({ success: false, error: friendlyError || "Minu Dynamic QR данс холбох үед алдаа гарлаа" });
@@ -387,7 +314,10 @@ router.get("/contracts/minu-dynamic-qr/sub-merchants", requireAuth, async (req, 
     console.error("contract minu dynamic qr subMerchant list error", errorMessage);
     return res.status(500).json({
       success: false,
-      error: errorMessage || "Minu Dynamic QR бүртгэл шалгахад алдаа гарлаа",
+      error: contractSystemQrPublicError(
+        errorMessage,
+        "Minu Dynamic QR бүртгэл шалгах боломжгүй байна. Merchant Code байгаа бол шууд дансны санд хадгалаад ашиглаж болно",
+      ) || "Minu Dynamic QR бүртгэл шалгахад алдаа гарлаа",
     });
   }
 });
@@ -799,20 +729,13 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
 
     const referenceNumber = `MGL-${contract.id.slice(0, 8).toUpperCase()}`;
 
-    const configuredPassword = String(systemQrConfig.password || "").trim();
-    const auth = configuredPassword
-      ? await resolveContractSystemQrAuth(systemQrConfig)
-      : { username: undefined, password: undefined, updatedConfig: systemQrConfig };
-
     const invoice = await createSystemQrInvoice(
       {
-        merchantCode: auth.updatedConfig?.merchantCode || systemQrConfig.merchantCode,
+        merchantCode: systemQrConfig.merchantCode,
         amount,
         referenceNumber,
         webhook: `${process.env.API_URL || "https://mglstore.mn/api"}/contracts/systemqr/callback?contractId=${contract.id}`,
       },
-      auth.username,
-      auth.password
     );
 
     await prisma.contract.update({
@@ -820,9 +743,6 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
       data: {
         systemQrInvoiceId: invoice.invoiceId,
         paymentSystem: "SYSTEMQR",
-        ...(auth.updatedConfig !== systemQrConfig
-          ? { headerData: { ...headerData, systemQr: auth.updatedConfig } }
-          : {}),
       },
     });
 
@@ -837,7 +757,13 @@ router.post("/contracts/:id/systemqr", async (req, res) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("contract systemqr error:", errorMessage, error);
-    return res.status(500).json({ success: false, error: `SystemQR алдаа: ${errorMessage}` });
+    return res.status(500).json({
+      success: false,
+      error: contractSystemQrPublicError(
+        errorMessage,
+        "Төлбөрийн QR invoice үүсгэх боломжгүй байна",
+      ),
+    });
   }
 });
 
@@ -856,26 +782,12 @@ router.get("/contracts/:id/systemqr/check", async (req, res) => {
       return res.status(400).json({ success: false, error: "SystemQR тохиргоо олдсонгүй" });
     }
 
-    const configuredPassword = String(systemQrConfig.password || "").trim();
-    const auth = configuredPassword
-      ? await resolveContractSystemQrAuth(systemQrConfig)
-      : { username: undefined, password: undefined, updatedConfig: systemQrConfig };
-
     const result = await checkSystemQrPayment(
       {
-        merchantCode: auth.updatedConfig?.merchantCode || systemQrConfig.merchantCode,
+        merchantCode: systemQrConfig.merchantCode,
         invoiceNumber: contract.systemQrInvoiceId,
       },
-      auth.username,
-      auth.password
     );
-
-    if (auth.updatedConfig !== systemQrConfig) {
-      await prisma.contract.update({
-        where: { id: contract.id },
-        data: { headerData: { ...(contract.headerData as any), systemQr: auth.updatedConfig } },
-      });
-    }
 
     if (result.paid && contract.status !== "SIGNED") {
       await prisma.contract.update({
