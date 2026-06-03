@@ -56,8 +56,16 @@ export interface ProjectItem {
   pdfUrl?: string;
   tags?: string[];
   isActive: boolean;
+  isFeatured?: boolean;
   paymentAccountId?: string;
   paymentMerchantCode?: string;
+}
+
+export interface ProjectShowcaseSection {
+  id: string;
+  title: string;
+  subtitle?: string;
+  projectIds: string[];
 }
 
 export interface ProjectPaymentAccount {
