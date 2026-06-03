@@ -19,3 +19,20 @@ export type ProjectShowcaseSection = {
   subtitle?: string;
   projectIds: string[];
 };
+
+export type ProjectPaymentDeepLink = {
+  name: string;
+  description: string;
+  logo: string;
+  link: string;
+};
+
+export type ProjectPaymentSession = {
+  invoiceId: string;
+  providerInvoiceId?: string;
+  amount: number;
+  qrText: string;
+  qrImage: string;
+  urls: ProjectPaymentDeepLink[];
+  expiresAt?: string;
+};
