@@ -7,7 +7,6 @@ import {
   checkSystemQrPayment,
   listSystemQrSubMerchants,
   registerSystemQrSubMerchant,
-  resetSystemQrSubMerchantPassword,
 } from "../../services/systemqr";
 import multer from "multer";
 import path from "path";
@@ -145,56 +144,7 @@ async function getLocalContractSystemQrSubMerchants(query: string) {
   return rows;
 }
 
-async function cacheContractSystemQrAuth(systemQrConfig: any, auth: ContractSystemQrAuth) {
-  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
-  const password = String(auth.password || "").trim();
-  if (!merchantCode || !password) return;
-
-  const username = String(auth.username || systemQrConfig?.username || merchantCode).trim();
-  const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
-  const now = new Date().toISOString();
-  let accounts = await getContractPaymentAccounts();
-
-  let updated = false;
-  accounts = accounts.map((account) => {
-    const sameAccount = selectedAccountId && String(account?.id || "").trim() === selectedAccountId;
-    const sameMerchant = String(account?.merchantCode || "").trim() === merchantCode;
-    if (!sameAccount && !sameMerchant) return account;
-    updated = true;
-    return {
-      ...account,
-      merchantCode: String(account?.merchantCode || merchantCode).trim(),
-      username,
-      password,
-      updatedAt: now,
-    };
-  });
-
-  if (!updated) return;
-
-  await prisma.siteSetting.upsert({
-    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
-    update: { value: JSON.stringify(accounts) },
-    create: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY, value: JSON.stringify(accounts) },
-  }).catch((error) => {
-    console.warn("contract SystemQR auth cache update failed", error);
-  });
-}
-
-async function resetContractSystemQrAuth(systemQrConfig: any): Promise<ContractSystemQrAuth> {
-  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
-  if (!merchantCode) return {};
-
-  const reset = await resetSystemQrSubMerchantPassword(merchantCode);
-  const auth = {
-    username: String(reset.username || merchantCode).trim(),
-    password: reset.password ? String(reset.password).trim() : undefined,
-  };
-  await cacheContractSystemQrAuth(systemQrConfig, auth);
-  return auth;
-}
-
-async function resolveContractSystemQrAuth(systemQrConfig: any, options?: { forceReset?: boolean }): Promise<ContractSystemQrAuth> {
+async function resolveContractSystemQrAuth(systemQrConfig: any): Promise<ContractSystemQrAuth> {
   const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
   const inlinePassword = String(systemQrConfig?.password || "").trim();
   const accounts = await getContractPaymentAccounts();
@@ -206,19 +156,14 @@ async function resolveContractSystemQrAuth(systemQrConfig: any, options?: { forc
 
   const accountPassword = String(account?.password || "").trim();
   const password = accountPassword || inlinePassword;
-  if (!options?.forceReset && merchantCode && password) {
+  if (merchantCode && password) {
     return {
       username: String(account?.username || systemQrConfig?.username || account?.merchantCode || merchantCode).trim(),
       password,
     };
   }
 
-  try {
-    return await resetContractSystemQrAuth(systemQrConfig);
-  } catch (error) {
-    console.warn("contract SystemQR password reset fallback failed", error);
-    return {};
-  }
+  return {};
 }
 
 async function createContractSystemQrInvoiceWithFallback(params: {
@@ -239,13 +184,12 @@ async function createContractSystemQrInvoiceWithFallback(params: {
     return await createSystemQrInvoice(invoiceParams, auth.username, auth.password);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!isSystemQrAuthError(message) && !/createInvoice failed \(002\)/i.test(message)) {
+    if ((!auth.username && !auth.password) || (!isSystemQrAuthError(message) && !/createInvoice failed \(002\)/i.test(message))) {
       throw error;
     }
 
-    const refreshedAuth = await resetContractSystemQrAuth(params.systemQrConfig);
-    if (!refreshedAuth.password) throw error;
-    return createSystemQrInvoice(invoiceParams, refreshedAuth.username, refreshedAuth.password);
+    console.warn("contract SystemQR subMerchant auth failed; retrying with master token", message);
+    return createSystemQrInvoice(invoiceParams);
   }
 }
 
@@ -263,11 +207,10 @@ async function checkContractSystemQrPaymentWithFallback(params: {
     return await checkSystemQrPayment(checkParams, auth.username, auth.password);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!isSystemQrAuthError(message)) throw error;
+    if ((!auth.username && !auth.password) || !isSystemQrAuthError(message)) throw error;
 
-    const refreshedAuth = await resetContractSystemQrAuth(params.systemQrConfig);
-    if (!refreshedAuth.password) throw error;
-    return checkSystemQrPayment(checkParams, refreshedAuth.username, refreshedAuth.password);
+    console.warn("contract SystemQR check auth failed; retrying with master token", message);
+    return checkSystemQrPayment(checkParams);
   }
 }
 
