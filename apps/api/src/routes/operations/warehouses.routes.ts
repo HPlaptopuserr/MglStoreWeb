@@ -12,7 +12,6 @@ import {
   resolveCol,
 } from "../../lib/excel-import";
 import { adjustStock, resolveOrgWarehouse, syncProductStock } from "../../services/inventory.service";
-import { assertOrgPermission } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
 
@@ -665,19 +664,11 @@ router.patch(
 
       const targetInventory = await prisma.warehouseInventory.findUnique({
         where: { warehouseId_productId: { warehouseId, productId } },
-        select: { product: { select: { organizationId: true } } },
+        select: { productId: true },
       });
       if (!targetInventory) {
         return res.status(404).json({ message: "Агуулахын бараа олдсонгүй" });
       }
-      const permission = await assertOrgPermission(
-        req,
-        res,
-        targetInventory.product.organizationId,
-        Permission.MANAGE_STOCK,
-      );
-      if (!permission) return;
-
       const inventory = await prisma.$transaction(async (tx) => {
         // Get old quantity for ledger
         const oldInv = quantity !== undefined

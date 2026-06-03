@@ -17,6 +17,7 @@ import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
   checkSystemQrPayment,
   createSystemQrInvoice,
+  resetSystemQrSubMerchantPassword,
 } from "../../services/systemqr";
 
 const bannerUpload = multer({
@@ -51,7 +52,6 @@ const PROJECT_PAYMENT_TTL_MS = 5 * 60 * 1000;
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
 const FRANCHISE_ITEMS_KEY = "paid-projects";
 const SITE_PROJECTS_KEY = "site-projects";
-const SITE_PROJECT_SHOWCASES_KEY = "site-project-showcases";
 
 type PaidProject = {
   id: string;
@@ -65,16 +65,8 @@ type PaidProject = {
   pdfUrl?: string;
   tags?: string[];
   isActive?: boolean;
-  isFeatured?: boolean;
   paymentAccountId?: string;
   paymentMerchantCode?: string;
-};
-
-type ProjectShowcaseSection = {
-  id: string;
-  title: string;
-  subtitle?: string;
-  projectIds: string[];
 };
 
 type ProjectPaymentAccount = {
@@ -188,21 +180,6 @@ async function getPaidProjects(): Promise<PaidProject[]> {
   return getProjectItems(SITE_PROJECTS_KEY);
 }
 
-async function getProjectShowcaseSections(): Promise<ProjectShowcaseSection[]> {
-  const setting = await prisma.siteSetting.findUnique({
-    where: { key: SITE_PROJECT_SHOWCASES_KEY },
-  });
-  if (!setting?.value) return [];
-  try {
-    const parsed = JSON.parse(setting.value);
-    return Array.isArray(parsed)
-      ? parsed.map(normalizeProjectShowcaseSection)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 function normalizeProjectPrice(value: unknown) {
   const price = Number(value ?? 0);
   return Number.isFinite(price) && price > 0 ? Math.round(price) : 0;
@@ -212,58 +189,6 @@ function getPublicProjects(projects: PaidProject[]) {
   return projects
     .filter((project) => project.isActive !== false)
     .map((project) => normalizePublicProject(project));
-}
-
-function normalizeProjectShowcaseSection(
-  section: ProjectShowcaseSection,
-): ProjectShowcaseSection {
-  return {
-    id: String(section.id || "").trim() || crypto.randomUUID(),
-    title: String(section.title || "").trim() || "Төслийн хэсэг",
-    subtitle: String(section.subtitle || "").trim(),
-    projectIds: Array.from(
-      new Set(
-        (Array.isArray(section.projectIds) ? section.projectIds : [])
-          .map((id) => String(id || "").trim())
-          .filter(Boolean),
-      ),
-    ),
-  };
-}
-
-function getPublicProjectShowcaseSections(
-  sections: ProjectShowcaseSection[],
-  projects: PaidProject[],
-) {
-  const activeProjectIds = new Set(
-    projects
-      .filter((project) => project.isActive !== false)
-      .map((project) => project.id),
-  );
-  const publicSections = sections
-    .map(normalizeProjectShowcaseSection)
-    .map((section) => ({
-      ...section,
-      projectIds: section.projectIds.filter((id) => activeProjectIds.has(id)),
-    }))
-    .filter((section) => section.projectIds.length > 0);
-
-  if (publicSections.length > 0) return publicSections;
-
-  const featuredIds = projects
-    .filter((project) => project.isActive !== false && project.isFeatured)
-    .map((project) => project.id);
-
-  return featuredIds.length > 0
-    ? [
-        {
-          id: "default-featured-projects",
-          title: "Төслийн онцлох хэсэг",
-          subtitle: "Admin-аас сонгосон төслүүд",
-          projectIds: featuredIds,
-        },
-      ]
-    : [];
 }
 
 function getProjectImages(project: PaidProject) {
@@ -305,7 +230,6 @@ function normalizePublicProject(project: PaidProject): PaidProject {
     imageUrls: normalized.imageUrls,
     tags: normalized.tags,
     isActive: normalized.isActive,
-    isFeatured: normalized.isFeatured,
   };
 }
 
@@ -407,6 +331,68 @@ function getProjectSystemQrAuth(
   };
 }
 
+async function cacheProjectSystemQrAuth(
+  account: ProjectPaymentAccount,
+  auth: { username?: string; password?: string },
+) {
+  const merchantCode = String(account.merchantCode || "").trim();
+  const password = String(auth.password || "").trim();
+  if (!merchantCode || !password) return;
+
+  const setting = await prisma.siteSetting
+    .findUnique({ where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY } })
+    .catch(() => null);
+  const accounts = setting?.value ? JSON.parse(setting.value) : [];
+  if (!Array.isArray(accounts)) return;
+
+  let updated = false;
+  const now = new Date().toISOString();
+  const nextAccounts = accounts.map((item) => {
+    const sameId = account.id && String(item?.id || "").trim() === account.id;
+    const sameMerchant =
+      merchantCode && String(item?.merchantCode || "").trim() === merchantCode;
+    if (!sameId && !sameMerchant) return item;
+
+    updated = true;
+    return {
+      ...item,
+      merchantCode: String(item?.merchantCode || merchantCode).trim(),
+      username: String(auth.username || item?.username || merchantCode).trim(),
+      password,
+      updatedAt: now,
+    };
+  });
+
+  if (!updated) return;
+
+  await prisma.siteSetting.upsert({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
+    update: { value: JSON.stringify(nextAccounts) },
+    create: {
+      key: CONTRACT_PAYMENT_ACCOUNTS_KEY,
+      value: JSON.stringify(nextAccounts),
+    },
+  });
+}
+
+async function recoverProjectSystemQrAuth(
+  account: ProjectPaymentAccount,
+): Promise<{ username?: string; password?: string }> {
+  const storedAuth = getProjectSystemQrAuth(account);
+  if (storedAuth.password) return storedAuth;
+
+  const merchantCode = String(account.merchantCode || "").trim();
+  if (!merchantCode) return storedAuth;
+
+  const reset = await resetSystemQrSubMerchantPassword(merchantCode);
+  const auth = {
+    username: String(reset.username || account.username || merchantCode).trim(),
+    password: reset.password ? String(reset.password).trim() : undefined,
+  };
+  if (auth.password) await cacheProjectSystemQrAuth(account, auth);
+  return auth.password ? auth : storedAuth;
+}
+
 async function createProjectSystemQrInvoiceWithFallback(params: {
   account: ProjectPaymentAccount;
   amount: number;
@@ -419,7 +405,7 @@ async function createProjectSystemQrInvoiceWithFallback(params: {
     referenceNumber: params.referenceNumber,
     webhook: params.webhook,
   };
-  const auth = getProjectSystemQrAuth(params.account);
+  const auth = await recoverProjectSystemQrAuth(params.account);
 
   try {
     return await createSystemQrInvoice(invoiceParams, auth.username, auth.password);
@@ -863,19 +849,11 @@ router.get("/site-settings/franchise/:projectId/detail", async (req, res) => {
 router.get("/site-settings/projects", async (_req, res) => {
   try {
     const projects = await getPaidProjects();
-    const showcaseSections = await getProjectShowcaseSections();
     res.setHeader(
       "Cache-Control",
       "public, max-age=30, stale-while-revalidate=60",
     );
-    res.json({
-      success: true,
-      projects: getPublicProjects(projects),
-      showcaseSections: getPublicProjectShowcaseSections(
-        showcaseSections,
-        projects,
-      ),
-    });
+    res.json({ success: true, projects: getPublicProjects(projects) });
   } catch (error) {
     console.error("get public projects error", error);
     res
