@@ -52,6 +52,7 @@ const PROJECT_PAYMENT_TTL_MS = 5 * 60 * 1000;
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
 const FRANCHISE_ITEMS_KEY = "paid-projects";
 const SITE_PROJECTS_KEY = "site-projects";
+const SITE_PROJECT_SHOWCASES_KEY = "site-project-showcases";
 
 type PaidProject = {
   id: string;
@@ -65,8 +66,16 @@ type PaidProject = {
   pdfUrl?: string;
   tags?: string[];
   isActive?: boolean;
+  isFeatured?: boolean;
   paymentAccountId?: string;
   paymentMerchantCode?: string;
+};
+
+type ProjectShowcaseSection = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  projectIds: string[];
 };
 
 type ProjectPaymentAccount = {
@@ -180,6 +189,21 @@ async function getPaidProjects(): Promise<PaidProject[]> {
   return getProjectItems(SITE_PROJECTS_KEY);
 }
 
+async function getProjectShowcaseSections(): Promise<ProjectShowcaseSection[]> {
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: SITE_PROJECT_SHOWCASES_KEY },
+  });
+  if (!setting?.value) return [];
+  try {
+    const parsed = JSON.parse(setting.value);
+    return Array.isArray(parsed)
+      ? parsed.map(normalizeProjectShowcaseSection)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function normalizeProjectPrice(value: unknown) {
   const price = Number(value ?? 0);
   return Number.isFinite(price) && price > 0 ? Math.round(price) : 0;
@@ -189,6 +213,58 @@ function getPublicProjects(projects: PaidProject[]) {
   return projects
     .filter((project) => project.isActive !== false)
     .map((project) => normalizePublicProject(project));
+}
+
+function normalizeProjectShowcaseSection(
+  section: ProjectShowcaseSection,
+): ProjectShowcaseSection {
+  return {
+    id: String(section.id || "").trim() || crypto.randomUUID(),
+    title: String(section.title || "").trim() || "Төслийн хэсэг",
+    subtitle: String(section.subtitle || "").trim(),
+    projectIds: Array.from(
+      new Set(
+        (Array.isArray(section.projectIds) ? section.projectIds : [])
+          .map((id) => String(id || "").trim())
+          .filter(Boolean),
+      ),
+    ),
+  };
+}
+
+function getPublicProjectShowcaseSections(
+  sections: ProjectShowcaseSection[],
+  projects: PaidProject[],
+) {
+  const activeProjectIds = new Set(
+    projects
+      .filter((project) => project.isActive !== false)
+      .map((project) => project.id),
+  );
+  const publicSections = sections
+    .map(normalizeProjectShowcaseSection)
+    .map((section) => ({
+      ...section,
+      projectIds: section.projectIds.filter((id) => activeProjectIds.has(id)),
+    }))
+    .filter((section) => section.projectIds.length > 0);
+
+  if (publicSections.length > 0) return publicSections;
+
+  const featuredIds = projects
+    .filter((project) => project.isActive !== false && project.isFeatured)
+    .map((project) => project.id);
+
+  return featuredIds.length > 0
+    ? [
+        {
+          id: "default-featured-projects",
+          title: "Төслийн онцлох хэсэг",
+          subtitle: "Admin-аас сонгосон төслүүд",
+          projectIds: featuredIds,
+        },
+      ]
+    : [];
 }
 
 function getProjectImages(project: PaidProject) {
@@ -230,6 +306,7 @@ function normalizePublicProject(project: PaidProject): PaidProject {
     imageUrls: normalized.imageUrls,
     tags: normalized.tags,
     isActive: normalized.isActive,
+    isFeatured: normalized.isFeatured,
   };
 }
 
@@ -849,11 +926,19 @@ router.get("/site-settings/franchise/:projectId/detail", async (req, res) => {
 router.get("/site-settings/projects", async (_req, res) => {
   try {
     const projects = await getPaidProjects();
+    const showcaseSections = await getProjectShowcaseSections();
     res.setHeader(
       "Cache-Control",
       "public, max-age=30, stale-while-revalidate=60",
     );
-    res.json({ success: true, projects: getPublicProjects(projects) });
+    res.json({
+      success: true,
+      projects: getPublicProjects(projects),
+      showcaseSections: getPublicProjectShowcaseSections(
+        showcaseSections,
+        projects,
+      ),
+    });
   } catch (error) {
     console.error("get public projects error", error);
     res
