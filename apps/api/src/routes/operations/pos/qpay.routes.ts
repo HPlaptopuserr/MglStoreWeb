@@ -7,7 +7,7 @@ import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
-import { checkSystemQrPayment, createSystemQrInvoice } from "../../../services/systemqr";
+import { checkSystemQrPayment, createSystemQrInvoice, resetSystemQrSubMerchantPassword } from "../../../services/systemqr";
 import {
   requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
@@ -218,6 +218,29 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
       let qpayData: Awaited<ReturnType<typeof createQPayInvoice>>;
       if (systemQrConfig) {
         const publicUrl = (process.env.API_PUBLIC_URL || process.env.API_URL || "").replace(/\/+$/, "");
+        let systemQrAuth = systemQrConfig;
+        if (!systemQrAuth.password && effectiveOrganizationId) {
+          try {
+            const reset = await resetSystemQrSubMerchantPassword(systemQrConfig.merchantCode);
+            if (reset.password) {
+              await prisma.organization.update({
+                where: { id: effectiveOrganizationId },
+                data: {
+                  qpayMerchantKey: `systemqr:${reset.password}`,
+                  qpayInvoiceCode: "SYSTEMQR",
+                  qpayEnabled: true,
+                },
+              });
+              systemQrAuth = {
+                ...systemQrConfig,
+                username: reset.username || systemQrConfig.merchantCode,
+                password: reset.password,
+              };
+            }
+          } catch (resetError) {
+            console.warn("[SystemQR] missing subMerchant password reset failed; trying master token", resetError);
+          }
+        }
         const systemQrInvoiceParams = {
           merchantCode: systemQrConfig.merchantCode,
           amount,
@@ -228,10 +251,10 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
         };
         let systemQr: Awaited<ReturnType<typeof createSystemQrInvoice>>;
         try {
-          systemQr = await createSystemQrInvoice(systemQrInvoiceParams, systemQrConfig.username, systemQrConfig.password);
+          systemQr = await createSystemQrInvoice(systemQrInvoiceParams, systemQrAuth.username, systemQrAuth.password);
         } catch (systemQrError) {
           const message = systemQrError instanceof Error ? systemQrError.message : String(systemQrError);
-          if (!systemQrConfig.password || !/SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(message)) {
+          if (!systemQrAuth.password || !/SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(message)) {
             throw systemQrError;
           }
           console.warn("[SystemQR] subMerchant auth failed; trying master token", message);

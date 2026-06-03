@@ -7,6 +7,7 @@ import {
   checkSystemQrPayment,
   listSystemQrSubMerchants,
   registerSystemQrSubMerchant,
+  resetSystemQrSubMerchantPassword,
 } from "../../services/systemqr";
 import multer from "multer";
 import path from "path";
@@ -144,6 +145,42 @@ async function getLocalContractSystemQrSubMerchants(query: string) {
   return rows;
 }
 
+async function cacheContractSystemQrAuth(systemQrConfig: any, auth: ContractSystemQrAuth) {
+  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
+  const password = String(auth.password || "").trim();
+  if (!merchantCode || !password) return;
+
+  const username = String(auth.username || systemQrConfig?.username || merchantCode).trim();
+  const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
+  const now = new Date().toISOString();
+  let accounts = await getContractPaymentAccounts();
+
+  let updated = false;
+  accounts = accounts.map((account) => {
+    const sameAccount = selectedAccountId && String(account?.id || "").trim() === selectedAccountId;
+    const sameMerchant = String(account?.merchantCode || "").trim() === merchantCode;
+    if (!sameAccount && !sameMerchant) return account;
+    updated = true;
+    return {
+      ...account,
+      merchantCode: String(account?.merchantCode || merchantCode).trim(),
+      username,
+      password,
+      updatedAt: now,
+    };
+  });
+
+  if (!updated) return;
+
+  await prisma.siteSetting.upsert({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
+    update: { value: JSON.stringify(accounts) },
+    create: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY, value: JSON.stringify(accounts) },
+  }).catch((error) => {
+    console.warn("contract SystemQR auth cache update failed", error);
+  });
+}
+
 async function resolveContractSystemQrAuth(systemQrConfig: any): Promise<ContractSystemQrAuth> {
   const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
   const inlinePassword = String(systemQrConfig?.password || "").trim();
@@ -161,6 +198,22 @@ async function resolveContractSystemQrAuth(systemQrConfig: any): Promise<Contrac
       username: String(account?.username || systemQrConfig?.username || account?.merchantCode || merchantCode).trim(),
       password,
     };
+  }
+
+  if (merchantCode) {
+    try {
+      const reset = await resetSystemQrSubMerchantPassword(merchantCode);
+      const auth = {
+        username: String(reset.username || merchantCode).trim(),
+        password: reset.password ? String(reset.password).trim() : undefined,
+      };
+      if (auth.password) {
+        await cacheContractSystemQrAuth(systemQrConfig, auth);
+        return auth;
+      }
+    } catch (error) {
+      console.warn("contract SystemQR missing password reset failed", error);
+    }
   }
 
   return {};
