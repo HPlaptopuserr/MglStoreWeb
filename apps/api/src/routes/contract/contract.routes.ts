@@ -35,9 +35,14 @@ const isSystemQrNetworkError = (message: string) =>
 const isContractSystemQrInactiveError = (message: string) =>
   /CONTRACT_SYSTEMQR_ACCOUNT_NOT_ACTIVE/i.test(message);
 
+const isContractSystemQrPasswordMissingError = (message: string) =>
+  /CONTRACT_SYSTEMQR_PASSWORD_MISSING/i.test(message);
+
 const contractSystemQrPublicError = (message: string, fallback: string) =>
   isContractSystemQrInactiveError(message)
     ? "Энэ гэрээний төлбөрийн Minu Dynamic QR данс устгагдсан эсвэл идэвхгүй байна. Admin дээр гэрээний template дээр идэвхтэй данс дахин сонгоод шинэ link үүсгэнэ үү."
+    : isContractSystemQrPasswordMissingError(message)
+    ? "Энэ гэрээний төлбөрийн Minu Dynamic QR subMerchant password олдсонгүй. Admin дээр Minu данс холбох эсвэл бүртгэл шалгах үйлдлээр password-оо сэргээж хадгална уу."
     : isSystemQrAuthError(message)
     ? `${fallback}. Minu SystemQR тохиргоо эсвэл Minu талын эрхийг шалгана уу.`
     : isSystemQrNetworkError(message)
@@ -241,7 +246,12 @@ async function resolveContractSystemQrAuth(systemQrConfig: any): Promise<Contrac
     };
   }
 
-  return {};
+  if (merchantCode) {
+    const recoveredAuth = await recoverContractSystemQrAuth(merchantCode);
+    if (recoveredAuth.password) return recoveredAuth;
+  }
+
+  throw new Error("CONTRACT_SYSTEMQR_PASSWORD_MISSING");
 }
 
 async function createContractSystemQrInvoiceWithFallback(params: {
