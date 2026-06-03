@@ -240,6 +240,46 @@ export async function registerSystemQrSubMerchant(
   };
 }
 
+export async function resetSystemQrSubMerchantPassword(
+  subMerchantCode: string,
+  username?: string,
+  password?: string,
+): Promise<SystemQrSubMerchantResult> {
+  const { qrpayBaseUrl } = systemQrEnv();
+
+  const data = await fetchSystemQrJsonWithTokenRetry<{
+    status?: string;
+    message?: string | null;
+    entity?: {
+      merchantCode?: string;
+      username?: string;
+      password?: string;
+    } | null;
+  }>((token) => fetch(`${qrpayBaseUrl}/qrMerchant/resetPassword`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ subMerchantCode }),
+  }), username, password);
+
+  if (data.status !== "000" || !data.entity?.merchantCode) {
+    throw new Error(
+      `Minu SystemQR subMerchant resetPassword failed (${data.status || "unknown"}): ${
+        data.message || "password ирсэнгүй"
+      }`,
+    );
+  }
+
+  return {
+    merchantCode: String(data.entity.merchantCode),
+    username: String(data.entity.username || data.entity.merchantCode),
+    password: data.entity.password ? String(data.entity.password) : undefined,
+    raw: data as unknown as Record<string, unknown>,
+  };
+}
+
 export async function listSystemQrSubMerchants(
   username?: string,
   password?: string,

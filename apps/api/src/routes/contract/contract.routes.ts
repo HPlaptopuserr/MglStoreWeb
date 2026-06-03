@@ -7,6 +7,7 @@ import {
   checkSystemQrPayment,
   listSystemQrSubMerchants,
   registerSystemQrSubMerchant,
+  resetSystemQrSubMerchantPassword,
 } from "../../services/systemqr";
 import multer from "multer";
 import path from "path";
@@ -144,6 +145,42 @@ async function getLocalContractSystemQrSubMerchants(query: string) {
   return rows;
 }
 
+async function cacheContractSystemQrAuth(systemQrConfig: any, auth: ContractSystemQrAuth) {
+  const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
+  const password = String(auth.password || "").trim();
+  if (!merchantCode || !password) return;
+
+  const username = String(auth.username || systemQrConfig?.username || merchantCode).trim();
+  const selectedAccountId = String(systemQrConfig?.selectedAccountId || "").trim();
+  const now = new Date().toISOString();
+  let accounts = await getContractPaymentAccounts();
+
+  let updated = false;
+  accounts = accounts.map((account) => {
+    const sameAccount = selectedAccountId && String(account?.id || "").trim() === selectedAccountId;
+    const sameMerchant = String(account?.merchantCode || "").trim() === merchantCode;
+    if (!sameAccount && !sameMerchant) return account;
+    updated = true;
+    return {
+      ...account,
+      merchantCode: String(account?.merchantCode || merchantCode).trim(),
+      username,
+      password,
+      updatedAt: now,
+    };
+  });
+
+  if (!updated) return;
+
+  await prisma.siteSetting.upsert({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
+    update: { value: JSON.stringify(accounts) },
+    create: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY, value: JSON.stringify(accounts) },
+  }).catch((error) => {
+    console.warn("contract SystemQR auth cache update failed", error);
+  });
+}
+
 async function getStoredContractSystemQrAuth(merchantCode: string): Promise<ContractSystemQrAuth> {
   const normalizedMerchantCode = String(merchantCode || "").trim();
   if (!normalizedMerchantCode) return {};
@@ -163,6 +200,26 @@ async function getStoredContractSystemQrAuth(merchantCode: string): Promise<Cont
   return {
     username: String(existingAccount?.username || normalizedMerchantCode).trim(),
   };
+}
+
+async function recoverContractSystemQrAuth(merchantCode: string): Promise<ContractSystemQrAuth> {
+  const storedAuth = await getStoredContractSystemQrAuth(merchantCode);
+  if (storedAuth.password) return storedAuth;
+
+  const normalizedMerchantCode = String(merchantCode || "").trim();
+  if (!normalizedMerchantCode) return storedAuth;
+
+  const reset = await resetSystemQrSubMerchantPassword(normalizedMerchantCode);
+  const auth = {
+    username: String(reset.username || storedAuth.username || normalizedMerchantCode).trim(),
+    password: reset.password ? String(reset.password).trim() : undefined,
+  };
+
+  if (auth.password) {
+    await cacheContractSystemQrAuth({ merchantCode: normalizedMerchantCode }, auth);
+  }
+
+  return auth.password ? auth : storedAuth;
 }
 
 async function resolveContractSystemQrAuth(systemQrConfig: any): Promise<ContractSystemQrAuth> {
@@ -405,14 +462,17 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       );
 
       if (existing) {
-        const storedAuth = await getStoredContractSystemQrAuth(existing.merchantCode);
+        const recoveredAuth = await recoverContractSystemQrAuth(existing.merchantCode).catch((error) => {
+          console.warn("contract minu dynamic qr existing subMerchant password recovery failed", error);
+          return null;
+        });
         return res.json({
           success: true,
           alreadyRegistered: true,
           merchantCode: existing.merchantCode,
           merchantName: existing.merchantName,
-          username: storedAuth.username || existing.merchantCode,
-          password: storedAuth.password || null,
+          username: recoveredAuth?.username || existing.merchantCode,
+          password: recoveredAuth?.password || null,
           message: `Minu дээр "${existing.merchantName}" нэртэй subMerchant бүртгэлтэй байна. Merchant Code-г ашиглалаа.`,
         });
       }
@@ -490,15 +550,18 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         ).catch(() => null);
 
         if (existing) {
-          const storedAuth = await getStoredContractSystemQrAuth(existing.merchantCode);
+          const recoveredAuth = await recoverContractSystemQrAuth(existing.merchantCode).catch((error) => {
+            console.warn("contract minu dynamic qr recovered subMerchant password recovery failed", error);
+            return null;
+          });
           return res.json({
             success: true,
             alreadyRegistered: true,
             recoveredFromSystemError: true,
             merchantCode: existing.merchantCode,
             merchantName: existing.merchantName,
-            username: storedAuth.username || existing.merchantCode,
-            password: storedAuth.password || null,
+            username: recoveredAuth?.username || existing.merchantCode,
+            password: recoveredAuth?.password || null,
             message: `Minu 001 буцаасан боловч "${existing.merchantName}" subMerchant үүссэн байна. Merchant Code-г ашиглалаа.`,
           });
         }
