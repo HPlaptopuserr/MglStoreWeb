@@ -212,8 +212,7 @@ export function MerchantSettingsSection({
       !building ||
       !doorNo ||
       !phone ||
-      !ownerFirstName ||
-      !ownerLastName
+      (merchantType === "person" && (!ownerFirstName || !ownerLastName))
     ) {
       setMessage({ type: "error", text: "Бүх шаардлагатай талбарыг бөглөнө үү" });
       return;
@@ -240,6 +239,12 @@ export function MerchantSettingsSection({
     setMessage(null);
     try {
       const defaultBank = validBanks.find((bank) => bank.is_default) || validBanks[0];
+      const normalizedOwnerFirstName =
+        merchantType === "company"
+          ? (ownerFirstName.trim() || displayName.trim() || companyName.trim())
+          : ownerFirstName.trim();
+      const normalizedOwnerLastName =
+        merchantType === "company" ? (ownerLastName.trim() || "-") : ownerLastName.trim();
       const body = {
         provider: "systemqr",
         type: merchantType,
@@ -253,8 +258,8 @@ export function MerchantSettingsSection({
         doorNo: doorNo.trim(),
         phone: phone.trim(),
         email: email.trim() || undefined,
-        firstName: ownerFirstName.trim(),
-        lastName: ownerLastName.trim(),
+        firstName: normalizedOwnerFirstName,
+        lastName: normalizedOwnerLastName,
         corporateFlag: merchantType === "company" ? "1" : "0",
         corporateName: merchantType === "company" ? companyName.trim() : null,
         registerNumber: registerNumber.trim(),
@@ -672,10 +677,10 @@ export function MerchantSettingsSection({
 
           {/* Owner name */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Эзэмшигчийн овог">
+            <Field label={merchantType === "company" ? "Эзэмшигчийн овог" : "Эзэмшигчийн овог *"}>
               <input type="text" value={ownerLastName} onChange={(e) => setOwnerLastName(e.target.value)} placeholder="Батбаяр" className={inputCls} />
             </Field>
-            <Field label="Эзэмшигчийн нэр">
+            <Field label={merchantType === "company" ? "Эзэмшигчийн нэр" : "Эзэмшигчийн нэр *"}>
               <input type="text" value={ownerFirstName} onChange={(e) => setOwnerFirstName(e.target.value)} placeholder="Оюунбаяр" className={inputCls} />
             </Field>
           </div>

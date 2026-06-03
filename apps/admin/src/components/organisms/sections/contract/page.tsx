@@ -1371,6 +1371,7 @@ function ContractEditorTab({
 
   const handleConnectMinuAccount = async () => {
     const config = withSystemQrDefaults(settings.systemQr || {});
+    const isCorporateMerchant = String(config.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag).trim() === "1";
     if (config.merchantName && config.merchantCode) {
       const account = await upsertCurrentPaymentAccount();
       if (account) alert("Minu merchant code дансны санд хадгалагдлаа.");
@@ -1416,8 +1417,7 @@ function ContractEditorTab({
       !config.khorooId ||
       !config.building ||
       !config.doorNo ||
-      !config.firstName ||
-      !config.lastName ||
+      (!isCorporateMerchant && (!config.firstName || !config.lastName)) ||
       !config.subCategoryId
     ) {
       alert("Minu данс холбохын тулд мерчант, данс, регистр, утас, эзэмшигч, хаяг, үйл ажиллагааны чиглэлээ бүрэн бөглөнө үү");

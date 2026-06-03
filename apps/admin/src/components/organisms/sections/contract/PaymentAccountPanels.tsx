@@ -266,6 +266,7 @@ export function PaymentAccountsSettingsPanel({
   const currentCityId = String(settings.systemQr?.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId);
   const currentDistrictId = String(settings.systemQr?.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId);
   const currentKhorooId = String(settings.systemQr?.khorooId || DEFAULT_SYSTEMQR_LOCATION.khorooId);
+  const isCorporateSystemQr = String(settings.systemQr?.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag) === "1";
   const categoryOptions = withCurrentOption(
     systemQrCategories.length > 0 ? systemQrCategories : FALLBACK_SYSTEMQR_CATEGORIES,
     currentSubCategoryId,
@@ -455,12 +456,12 @@ export function PaymentAccountsSettingsPanel({
           />
           <div className="md:col-span-3 mt-1 grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-neutral-100 pt-3">
             <AccountInput
-              label="Эзэмшигчийн нэр *"
+              label={isCorporateSystemQr ? "Эзэмшигчийн нэр" : "Эзэмшигчийн нэр *"}
               value={settings.systemQr?.firstName || ""}
               onChange={(value) => updateSystemQr("firstName", value)}
             />
             <AccountInput
-              label="Эзэмшигчийн овог *"
+              label={isCorporateSystemQr ? "Эзэмшигчийн овог" : "Эзэмшигчийн овог *"}
               value={settings.systemQr?.lastName || ""}
               onChange={(value) => updateSystemQr("lastName", value)}
             />

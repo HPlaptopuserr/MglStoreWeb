@@ -438,14 +438,26 @@ export async function registerVendorWithSystemQr(
     const org = await prisma.organization.findUnique({ where: { id: organizationId } });
     if (!org) return { success: false, message: "Байгууллага олдсонгүй" };
 
-    const result = await registerSystemQrSubMerchant(params);
+    const merchantName = String(params.merchantName || "").trim();
+    const corporateFlag = String(params.corporateFlag || "").trim();
+    const normalizedParams: RegisterVendorSystemQrParams = {
+      ...params,
+      merchantName,
+      firstName: String(params.firstName || (corporateFlag === "1" ? merchantName : "")).trim(),
+      lastName: String(params.lastName || (corporateFlag === "1" ? "-" : "")).trim(),
+      corporateName: corporateFlag === "1"
+        ? String(params.corporateName || merchantName).trim()
+        : params.corporateName,
+    };
+
+    const result = await registerSystemQrSubMerchant(normalizedParams);
     const bankAccounts: QPayBankAccount[] =
-      params.bank_accounts?.length
-        ? params.bank_accounts
+      normalizedParams.bank_accounts?.length
+        ? normalizedParams.bank_accounts
         : [{
-            account_bank_code: params.bankCode,
-            account_number: params.accountNumber,
-            account_name: params.merchantName,
+            account_bank_code: normalizedParams.bankCode,
+            account_number: normalizedParams.accountNumber,
+            account_name: normalizedParams.merchantName,
             is_default: true,
           }];
 
