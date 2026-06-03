@@ -8,8 +8,10 @@ export type SectionKey =
   | "vendor-features"
   | "hr"
   | "forms"
+  | "survey"
   | "team"
   | "mgl-services"
+  | "hr-services"
   | "franchise"
   | "projects";
 
@@ -25,6 +27,11 @@ export interface ServiceItem {
   description?: string;
   price: number;
   priceLabel?: string;
+  fileUrl?: string;
+  fileName?: string;
+  hasForm?: boolean;
+  formSlug?: string;
+  formTitle?: string;
   features?: string[];
   options?: ServiceOption[];
 }
@@ -42,6 +49,16 @@ export interface ServiceCategory {
   description: string;
   icon: string;
   subCategories: ServiceSubCategory[];
+}
+
+export interface SurveySectionSettings {
+  enabled: boolean;
+  title: string;
+  eyebrow: string;
+  description: string;
+  formSlug: string;
+  formTitle?: string;
+  actionLabel: string;
 }
 
 export interface ProjectItem {

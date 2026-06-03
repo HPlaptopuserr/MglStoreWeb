@@ -129,15 +129,19 @@ export default function ProjectsPage() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [activeProject, setActiveProject] = useState<ProjectItem | null>(null);
-  const [loadedProjects, setLoadedProjects] = useState<Record<string, ProjectItem>>(
-    {},
-  );
+  const [loadedProjects, setLoadedProjects] = useState<
+    Record<string, ProjectItem>
+  >({});
   const [openingId, setOpeningId] = useState<string | null>(null);
-  const [paymentProject, setPaymentProject] = useState<ProjectItem | null>(null);
+  const [paymentProject, setPaymentProject] = useState<ProjectItem | null>(
+    null,
+  );
   const [paymentSession, setPaymentSession] =
     useState<ProjectPaymentSession | null>(null);
   const showcaseGroups = useMemo(() => {
-    const projectById = new Map(projects.map((project) => [project.id, project]));
+    const projectById = new Map(
+      projects.map((project) => [project.id, project]),
+    );
     const configured = projectShowcaseSections
       .map((section) => ({
         ...section,

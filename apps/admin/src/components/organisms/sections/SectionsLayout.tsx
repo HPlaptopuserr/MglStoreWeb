@@ -13,51 +13,69 @@ type Props = {
   visibleSections?: typeof SECTIONS;
 };
 
-const SECTION_COPY: Record<SectionKey, { eyebrow: string; title: string; description: string }> = {
+const SECTION_COPY: Record<
+  SectionKey,
+  { eyebrow: string; title: string; description: string }
+> = {
   banner: {
     eyebrow: "Homepage",
     title: "Промо баннер",
-    description: "Нүүр хуудасны hero slider, campaign banner болон default загваруудыг удирдана.",
+    description:
+      "Нүүр хуудасны hero slider, campaign banner болон default загваруудыг удирдана.",
   },
   categories: {
     eyebrow: "Catalog",
     title: "Ангилал",
-    description: "Нүүр хуудсанд харагдах ангиллын дараалал, сонголтыг тохируулна.",
+    description:
+      "Нүүр хуудсанд харагдах ангиллын дараалал, сонголтыг тохируулна.",
   },
   branches: {
     eyebrow: "Locations",
     title: "Салбар байршил",
-    description: "Салбар дэлгүүрүүдийн хаяг, координат болон web map-ийн харагдах төлвийг удирдана.",
+    description:
+      "Салбар дэлгүүрүүдийн хаяг, координат болон web map-ийн харагдах төлвийг удирдана.",
   },
   cards: {
     eyebrow: "Printing",
     title: "Карт хэвлэх",
-    description: "Гишүүн байгууллагын карт, өнгөний scheme болон хэвлэх layout-ийг бэлдэнэ.",
+    description:
+      "Гишүүн байгууллагын карт, өнгөний scheme болон хэвлэх layout-ийг бэлдэнэ.",
   },
   qr: {
     eyebrow: "Utilities",
     title: "QR Generator",
-    description: "Холбоос, үйлчилгээ, мэдээллийн QR кодыг хурдан үүсгэх туслах хэрэгсэл.",
+    description:
+      "Холбоос, үйлчилгээ, мэдээллийн QR кодыг хурдан үүсгэх туслах хэрэгсэл.",
   },
   pos: {
     eyebrow: "Operations",
     title: "POS Register",
-    description: "Салбарын касс, register болон төлбөрийн төхөөрөмжийн тохиргоог удирдана.",
+    description:
+      "Салбарын касс, register болон төлбөрийн төхөөрөмжийн тохиргоог удирдана.",
   },
   "vendor-features": {
     eyebrow: "Vendor app",
     title: "Vendor тохиргоо",
-    description: "Vendor хэрэглэгчдэд нээлттэй байх боломж, функцуудыг тохируулна.",
+    description:
+      "Vendor хэрэглэгчдэд нээлттэй байх боломж, функцуудыг тохируулна.",
   },
   hr: {
     eyebrow: "People",
     title: "Хүний нөөц",
-    description: "Ажилтан, эрх, байгууллагын багийн зохион байгуулалтыг хянана.",
+    description:
+      "Ажилтан, эрх, байгууллагын багийн зохион байгуулалтыг хянана.",
   },
   forms: {
     eyebrow: "Forms",
     title: "Маягт үүсгэгч",
-    description: "Public form, бүртгэлийн маягт болон custom талбаруудыг үүсгэнэ.",
+    description:
+      "Public form, бүртгэлийн маягт болон custom талбаруудыг үүсгэнэ.",
+  },
+  survey: {
+    eyebrow: "Survey",
+    title: "Судалгаа",
+    description:
+      "Маягт үүсгэгчээс бэлдсэн маягтыг сонгож, web дээр судалгааны хэсэг болгон нээж ажиллуулна.",
   },
   team: {
     eyebrow: "Company",
@@ -67,17 +85,26 @@ const SECTION_COPY: Record<SectionKey, { eyebrow: string; title: string; descrip
   "mgl-services": {
     eyebrow: "Services",
     title: "MGL Үйлчилгээ",
-    description: "Мэргэжлийн үйлчилгээний ангилал, багц, үнэ болон сонголтуудыг шинэчилнэ.",
+    description:
+      "Мэргэжлийн үйлчилгээний ангилал, багц, үнэ болон сонголтуудыг шинэчилнэ.",
+  },
+  "hr-services": {
+    eyebrow: "People services",
+    title: "HR үйлчилгээ",
+    description:
+      "Web header дээр гарах хүний нөөцийн үйлчилгээний бүлэг, багц, үнэ болон сонголтуудыг удирдана.",
   },
   franchise: {
     eyebrow: "Franchise",
     title: "Franchise",
-    description: "Франчайз танилцуулга, зураг, PDF болон нийтлэгдэх төлвийг удирдана.",
+    description:
+      "Франчайз танилцуулга, зураг, PDF болон нийтлэгдэх төлвийг удирдана.",
   },
   projects: {
     eyebrow: "Projects",
     title: "Төсөл",
-    description: "Төслийн зураг, PDF, үнэ, дэлгэрэнгүй мэдээлэл болон нийтлэгдэх төлвийг удирдана.",
+    description:
+      "Төслийн зураг, PDF, үнэ, дэлгэрэнгүй мэдээлэл болон нийтлэгдэх төлвийг удирдана.",
   },
 };
 
@@ -91,7 +118,9 @@ export function SectionsLayout({
   visibleSections,
 }: Props) {
   const activeInfo = SECTION_COPY[active];
-  const activeSection = (visibleSections ?? SECTIONS).find((section) => section.key === active);
+  const activeSection = (visibleSections ?? SECTIONS).find(
+    (section) => section.key === active,
+  );
   const ActiveIcon = activeSection?.icon ?? Sparkles;
   const showSave = active === "banner" || active === "categories";
 
@@ -108,19 +137,28 @@ export function SectionsLayout({
                 Нэмэлт хэсгүүд
               </h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                Нүүр хуудас болон public контент бүрийг тусдаа ажлын хэсгээр удирдана.
-                Доорх хэсгээс сонгоод, баруун дээд хадгалах үйлдлийг ашиглана.
+                Нүүр хуудас болон public контент бүрийг тусдаа ажлын хэсгээр
+                удирдана. Доорх хэсгээс сонгоод, баруун дээд хадгалах үйлдлийг
+                ашиглана.
               </p>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Нийт</p>
-                <p className="mt-1 text-xl font-black text-slate-950">{(visibleSections ?? SECTIONS).length}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Нийт
+                </p>
+                <p className="mt-1 text-xl font-black text-slate-950">
+                  {(visibleSections ?? SECTIONS).length}
+                </p>
               </div>
               <div className="rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-violet-400">Одоо засаж буй</p>
-                <p className="mt-1 text-sm font-black text-violet-800">{activeInfo.title}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-violet-400">
+                  Одоо засаж буй
+                </p>
+                <p className="mt-1 text-sm font-black text-violet-800">
+                  {activeInfo.title}
+                </p>
               </div>
               {showSave && (
                 <button
@@ -147,7 +185,11 @@ export function SectionsLayout({
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <SectionsSidebar active={active} onSelect={setActive} visibleSections={visibleSections} />
+          <SectionsSidebar
+            active={active}
+            onSelect={setActive}
+            visibleSections={visibleSections}
+          />
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -156,7 +198,7 @@ export function SectionsLayout({
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
-                  <ActiveIcon size={18} />
+                    <ActiveIcon size={18} />
                   </div>
                   <div className="min-w-0">
                     <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-violet-500">

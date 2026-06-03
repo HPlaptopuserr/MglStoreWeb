@@ -6,7 +6,6 @@ import {
   ArrowRight,
   BriefcaseBusiness,
   ChevronDown,
-  ClipboardCheck,
   FileText,
   GraduationCap,
   ShieldCheck,
@@ -15,159 +14,147 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-
-type HrService = {
-  id: string;
-  title: string;
-  description: string;
-  priceLabel: string;
-  href: string;
-};
+import { MGL_SERVICES_DATA } from "@/app/our-services/data";
+import type { ServiceCategory, ServiceItem } from "@/app/our-services/types";
+import { HrServiceDetailModal } from "@/components/molecules/hr/HrServiceDetailModal";
+import { HrServiceGroupButton } from "@/components/molecules/hr/HrServiceGroupButton";
+import {
+  HrServiceMenuCard,
+  type HrMenuService,
+} from "@/components/molecules/hr/HrServiceMenuCard";
+import { getKnownHrFormLink } from "@/components/molecules/hr/hr-service-form-links";
+import { API } from "@/lib/api";
 
 type HrServiceGroup = {
   id: string;
   label: string;
   description: string;
   icon: LucideIcon;
-  services: HrService[];
+  services: HrMenuService[];
 };
 
-const hrServiceGroups: HrServiceGroup[] = [
-  {
-    id: "hr-documents",
-    label: "HR бичиг баримт",
-    description: "Гэрээ, тушаал, журам, маягтыг стандартын дагуу цэгцлэх.",
-    icon: FileText,
-    services: [
-      {
-        id: "employment-contract",
-        title: "Хөдөлмөрийн гэрээний багц",
-        description: "Ажилтны гэрээ, нэмэлт нөхцөл, хавсралтын mock үйлчилгээ.",
-        priceLabel: "₮250,000-с",
-        href: "/info/hr",
-      },
-      {
-        id: "internal-policy",
-        title: "Дотоод журам боловсруулах",
-        description: "Ажлын цаг, сахилга, урамшууллын журам цэгцлэх.",
-        priceLabel: "₮450,000-с",
-        href: "/info/hr",
-      },
-      {
-        id: "order-template",
-        title: "Тушаал, маягтын template",
-        description: "Томилгоо, чөлөө, цалин, ажлаас гарах маягтын багц.",
-        priceLabel: "₮180,000-с",
-        href: "/info/hr",
-      },
-    ],
-  },
-  {
-    id: "recruitment",
-    label: "Сонгон шалгаруулалт",
-    description: "Ажлын байр, ярилцлага, үнэлгээний процесс байгуулах.",
-    icon: Users,
-    services: [
-      {
-        id: "job-description",
-        title: "Ажлын байрны тодорхойлолт",
-        description: "Албан тушаал бүрийн зорилго, KPI, үүрэг тодорхойлох.",
-        priceLabel: "₮120,000-с",
-        href: "/info/hr",
-      },
-      {
-        id: "interview-kit",
-        title: "Ярилцлагын үнэлгээний kit",
-        description: "Асуулт, онооны хуудас, shortlist template бэлдэх.",
-        priceLabel: "₮200,000-с",
-        href: "/info/hr",
-      },
-      {
-        id: "onboarding",
-        title: "Onboarding checklist",
-        description: "Шинэ ажилтны эхний 30 хоногийн flow загварчлах.",
-        priceLabel: "₮150,000-с",
-        href: "/info/hr",
-      },
-    ],
-  },
-  {
-    id: "hr-audit",
-    label: "HR аудит, зөвлөх",
-    description: "Одоо байгаа HR эрсдэл, процесс, compliance-ийг шалгах.",
-    icon: ShieldCheck,
-    services: [
-      {
-        id: "hr-risk-audit",
-        title: "HR эрсдэлийн аудит",
-        description: "Гэрээ, тушаал, журам, бүртгэлийн gap analysis.",
-        priceLabel: "₮600,000-с",
-        href: "/info/hr",
-      },
-      {
-        id: "salary-structure",
-        title: "Цалин, урамшууллын бүтэц",
-        description: "Албан тушаалын шатлал, incentive logic боловсруулах.",
-        priceLabel: "₮500,000-с",
-        href: "/info/hr",
-      },
-      {
-        id: "hr-consulting",
-        title: "HR зөвлөх уулзалт",
-        description: "Богино хугацааны оношилгоо, шийдлийн roadmap.",
-        priceLabel: "₮90,000/цаг",
-        href: "/info/hr",
-      },
-    ],
-  },
-  {
-    id: "training",
-    label: "Сургалт, хөгжил",
-    description: "Менежер, ажилтан, үйлчилгээний багийн сургалтын багц.",
-    icon: GraduationCap,
-    services: [
-      {
-        id: "manager-training",
-        title: "Менежерийн HR сургалт",
-        description: "Feedback, сахилга, гүйцэтгэл удирдах basic training.",
-        priceLabel: "₮350,000-с",
-        href: "/info/hr",
-      },
-      {
-        id: "service-training",
-        title: "Үйлчилгээний ажилтны сургалт",
-        description: "Харилцаа, стандарт, complaint handling сургалт.",
-        priceLabel: "₮280,000-с",
-        href: "/info/hr",
-      },
-      {
-        id: "culture-workshop",
-        title: "Байгууллагын соёл workshop",
-        description: "Үнэ цэн, багийн зан төлөв, culture ritual тодорхойлох.",
-        priceLabel: "₮420,000-с",
-        href: "/info/hr",
-      },
-    ],
-  },
+const hrIconByText: { test: RegExp; icon: LucideIcon }[] = [
+  { test: /гэрээ|журам|бичиг|маягт|тушаал/i, icon: FileText },
+  { test: /сонгон|бүрдүүл|ажилтан|ярилцлага/i, icon: Users },
+  { test: /аудит|эрсдэл|зөвл/i, icon: ShieldCheck },
+  { test: /сургалт|хөгжил|onboarding/i, icon: GraduationCap },
 ];
+
+const fallbackHrCategory =
+  MGL_SERVICES_DATA.find((category) => category.id === "hr") ??
+  MGL_SERVICES_DATA[MGL_SERVICES_DATA.length - 1];
+
+const getPriceLabel = (item: ServiceItem) => {
+  if (item.priceLabel?.trim()) return item.priceLabel.trim();
+  if (Number.isFinite(item.price) && item.price > 0) {
+    return `₮${item.price.toLocaleString()}`;
+  }
+  return "Үнийн санал";
+};
+
+const normalizeServices = (payload: unknown): ServiceCategory[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.filter((category): category is ServiceCategory => {
+    if (typeof category !== "object" || category === null) return false;
+    const item = category as Partial<ServiceCategory>;
+    return (
+      typeof item.id === "string" &&
+      typeof item.title === "string" &&
+      typeof item.description === "string" &&
+      Array.isArray(item.subCategories)
+    );
+  });
+};
+
+const toHrGroups = (categories: ServiceCategory[]): HrServiceGroup[] => {
+  return categories
+    .map((category, index) => {
+      const textForIcon = `${category.id} ${category.title} ${category.description}`;
+      const Icon =
+        hrIconByText.find(({ test }) => test.test(textForIcon))?.icon ??
+        (index % 2 === 0 ? Users : BriefcaseBusiness);
+      const services = category.subCategories
+        .flatMap((subCategory) => subCategory.items)
+        .map((item) => {
+          const knownForm = getKnownHrFormLink(item);
+          const formSlug = item.formSlug || knownForm?.slug || "";
+          const formTitle = item.formTitle || knownForm?.title || "";
+
+          return {
+            id: item.id,
+            title: item.name,
+            description:
+              item.description ||
+              item.features?.slice(0, 2).join(", ") ||
+              category.description,
+            priceLabel: getPriceLabel(item),
+            href: item.fileUrl || `/our-services#${category.id}`,
+            fileUrl: item.fileUrl,
+            fileName: item.fileName,
+            hasForm: Boolean((item.hasForm && item.formSlug) || knownForm),
+            formSlug,
+            formTitle,
+            details: Array.isArray(item.features) ? item.features : [],
+          };
+        });
+
+      return {
+        id: category.id,
+        label: category.title,
+        description: category.description,
+        icon: Icon,
+        services,
+      };
+    })
+    .filter((group) => group.services.length > 0);
+};
 
 export const HrServicesMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [hrCategories, setHrCategories] = useState<ServiceCategory[]>([
+    fallbackHrCategory,
+  ]);
+  const [selectedService, setSelectedService] = useState<HrMenuService | null>(
+    null,
+  );
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const activeGroup = hrServiceGroups[activeIndex] ?? hrServiceGroups[0];
-  const ActiveIcon = activeGroup.icon;
-  const serviceCount = hrServiceGroups.reduce(
+  const groups = toHrGroups(hrCategories);
+  const activeGroup = groups[activeIndex] ?? groups[0];
+  const ActiveIcon = activeGroup?.icon ?? BriefcaseBusiness;
+  const serviceCount = groups.reduce(
     (sum, group) => sum + group.services.length,
     0,
   );
 
   useEffect(() => {
+    let cancelled = false;
+
+    fetch(`${API}/site-settings`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: unknown) => {
+        if (cancelled || !data || typeof data !== "object") return;
+        const rawServices = (data as Record<string, unknown>)["hr-services"];
+        if (typeof rawServices !== "string") return;
+        const parsed = JSON.parse(rawServices);
+        const normalized = normalizeServices(parsed);
+        if (toHrGroups(normalized).length > 0) {
+          setHrCategories(normalized);
+          setActiveIndex(0);
+        }
+      })
+      .catch(console.error);
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
       if (!menuRef.current) return;
-      if (!menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+      if (!menuRef.current.contains(event.target as Node)) setIsOpen(false);
     };
 
     const handleEscape = (event: KeyboardEvent) => {
@@ -182,6 +169,8 @@ export const HrServicesMenu = () => {
       document.removeEventListener("keydown", handleEscape);
     };
   }, []);
+
+  if (!activeGroup) return null;
 
   return (
     <div ref={menuRef} className="flex h-full items-center">
@@ -223,7 +212,7 @@ export const HrServicesMenu = () => {
                       Хүний нөөцийн үйлчилгээ
                     </h2>
                     <p className="mt-0.5 text-sm text-slate-500">
-                      Mock өгөгдлөөр HR үйлчилгээний багцуудыг ангиллаар харуулж байна.
+                      Admin-аас оруулсан гол гарчиг, файл материалууд.
                     </p>
                   </div>
                 </div>
@@ -236,45 +225,19 @@ export const HrServicesMenu = () => {
               <div className="grid min-h-[420px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:grid-cols-[320px_1fr]">
                 <aside className="border-b border-slate-200 bg-slate-50/80 p-3 lg:border-b-0 lg:border-r">
                   <div className="mb-2 px-2 text-[11px] font-black uppercase tracking-widest text-slate-400">
-                    Ангилал
+                    HR үйлчилгээний төрөл
                   </div>
                   <div className="space-y-1">
-                    {hrServiceGroups.map((group, index) => {
-                      const Icon = group.icon;
-                      const active = index === activeIndex;
-                      return (
-                        <button
-                          key={group.id}
-                          type="button"
-                          onMouseEnter={() => setActiveIndex(index)}
-                          onFocus={() => setActiveIndex(index)}
-                          onClick={() => setActiveIndex(index)}
-                          className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-all ${
-                            active
-                              ? "bg-white text-slate-950 shadow-sm ring-1 ring-emerald-100"
-                              : "text-slate-600 hover:bg-white hover:text-slate-950"
-                          }`}
-                        >
-                          <span
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                              active
-                                ? "bg-emerald-50 text-emerald-600"
-                                : "bg-white text-slate-400"
-                            }`}
-                          >
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-bold">
-                              {group.label}
-                            </span>
-                            <span className="block text-xs text-slate-400">
-                              {group.services.length} үйлчилгээ
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
+                    {groups.map((group, index) => (
+                      <HrServiceGroupButton
+                        key={group.id}
+                        active={index === activeIndex}
+                        icon={group.icon}
+                        label={group.label}
+                        count={group.services.length}
+                        onSelect={() => setActiveIndex(index)}
+                      />
+                    ))}
                   </div>
                 </aside>
 
@@ -288,7 +251,7 @@ export const HrServicesMenu = () => {
                         <h3 className="text-xl font-black text-slate-950">
                           {activeGroup.label}
                         </h3>
-                        <p className="mt-1 text-sm text-slate-500">
+                        <p className="mt-1 max-w-2xl text-sm text-slate-500">
                           {activeGroup.description}
                         </p>
                       </div>
@@ -305,37 +268,26 @@ export const HrServicesMenu = () => {
 
                   <div className="grid gap-3 lg:grid-cols-3">
                     {activeGroup.services.map((service) => (
-                      <Link
+                      <HrServiceMenuCard
                         key={service.id}
-                        href={service.href}
-                        onClick={() => setIsOpen(false)}
-                        className="group flex min-h-[178px] flex-col rounded-2xl border border-slate-200 bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-emerald-50/50 hover:shadow-lg hover:shadow-emerald-100/60"
-                      >
-                        <div className="mb-4 flex items-start justify-between gap-3">
-                          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-emerald-600">
-                            <ClipboardCheck className="h-4 w-4" />
-                          </span>
-                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700">
-                            {service.priceLabel}
-                          </span>
-                        </div>
-                        <h4 className="text-base font-black leading-tight text-slate-950">
-                          {service.title}
-                        </h4>
-                        <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-500">
-                          {service.description}
-                        </p>
-                        <span className="mt-auto inline-flex items-center gap-1.5 pt-4 text-xs font-black text-emerald-700">
-                          Дэлгэрэнгүй
-                          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
-                        </span>
-                      </Link>
+                        service={service}
+                        onOpen={setSelectedService}
+                      />
                     ))}
                   </div>
                 </section>
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedService && (
+          <HrServiceDetailModal
+            service={selectedService}
+            onClose={() => setSelectedService(null)}
+          />
         )}
       </AnimatePresence>
     </div>

@@ -17,5 +17,5 @@ export default async function FormPage({ params }: PageProps) {
 
   const form = await res.json();
 
-  return <FormFillClient form={form} />;
+  return <FormFillClient form={form} variant="page" />;
 }
