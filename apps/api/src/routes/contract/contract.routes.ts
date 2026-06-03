@@ -181,6 +181,31 @@ async function cacheContractSystemQrAuth(systemQrConfig: any, auth: ContractSyst
   });
 }
 
+async function recoverContractSystemQrAuth(merchantCode: string): Promise<ContractSystemQrAuth> {
+  const normalizedMerchantCode = String(merchantCode || "").trim();
+  if (!normalizedMerchantCode) return {};
+
+  const accounts = await getContractPaymentAccounts();
+  const existingAccount = accounts.find(
+    (account: any) => String(account?.merchantCode || "").trim() === normalizedMerchantCode,
+  );
+  const existingPassword = String(existingAccount?.password || "").trim();
+  if (existingPassword) {
+    return {
+      username: String(existingAccount?.username || normalizedMerchantCode).trim(),
+      password: existingPassword,
+    };
+  }
+
+  const reset = await resetSystemQrSubMerchantPassword(normalizedMerchantCode);
+  const auth = {
+    username: String(reset.username || normalizedMerchantCode).trim(),
+    password: reset.password ? String(reset.password).trim() : undefined,
+  };
+  if (auth.password) await cacheContractSystemQrAuth({ merchantCode: normalizedMerchantCode }, auth);
+  return auth;
+}
+
 async function resolveContractSystemQrAuth(systemQrConfig: any): Promise<ContractSystemQrAuth> {
   const merchantCode = String(systemQrConfig?.merchantCode || "").trim();
   const inlinePassword = String(systemQrConfig?.password || "").trim();
@@ -202,15 +227,8 @@ async function resolveContractSystemQrAuth(systemQrConfig: any): Promise<Contrac
 
   if (merchantCode) {
     try {
-      const reset = await resetSystemQrSubMerchantPassword(merchantCode);
-      const auth = {
-        username: String(reset.username || merchantCode).trim(),
-        password: reset.password ? String(reset.password).trim() : undefined,
-      };
-      if (auth.password) {
-        await cacheContractSystemQrAuth(systemQrConfig, auth);
-        return auth;
-      }
+      const auth = await recoverContractSystemQrAuth(merchantCode);
+      if (auth.password) return auth;
     } catch (error) {
       console.warn("contract SystemQR missing password reset failed", error);
     }
@@ -437,11 +455,17 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       );
 
       if (existing) {
+        const recoveredAuth: ContractSystemQrAuth | null = await recoverContractSystemQrAuth(existing.merchantCode).catch((error) => {
+          console.warn("contract minu dynamic qr existing subMerchant password recovery failed", error);
+          return null;
+        });
         return res.json({
           success: true,
           alreadyRegistered: true,
           merchantCode: existing.merchantCode,
           merchantName: existing.merchantName,
+          username: recoveredAuth?.username || existing.merchantCode,
+          password: recoveredAuth?.password || null,
           message: `Minu дээр "${existing.merchantName}" нэртэй subMerchant бүртгэлтэй байна. Merchant Code-г ашиглалаа.`,
         });
       }
@@ -519,12 +543,18 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         ).catch(() => null);
 
         if (existing) {
+          const recoveredAuth: ContractSystemQrAuth | null = await recoverContractSystemQrAuth(existing.merchantCode).catch((error) => {
+            console.warn("contract minu dynamic qr recovered subMerchant password recovery failed", error);
+            return null;
+          });
           return res.json({
             success: true,
             alreadyRegistered: true,
             recoveredFromSystemError: true,
             merchantCode: existing.merchantCode,
             merchantName: existing.merchantName,
+            username: recoveredAuth?.username || existing.merchantCode,
+            password: recoveredAuth?.password || null,
             message: `Minu 001 буцаасан боловч "${existing.merchantName}" subMerchant үүссэн байна. Merchant Code-г ашиглалаа.`,
           });
         }
