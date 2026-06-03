@@ -129,6 +129,13 @@ export const NAV_LINKS: NavLink[] = [
     color: "bg-cyan-50 text-cyan-600",
   },
   {
+    href: "/projects",
+    label: "Төсөл",
+    desc: "Dynamic QR төлбөртэй дэлгэрэнгүй",
+    icon: FolderKanban,
+    color: "bg-violet-50 text-violet-600",
+  },
+  {
     href: "/company/partnership",
     label: "Хамтрах",
     desc: "Бизнесээ холбох",

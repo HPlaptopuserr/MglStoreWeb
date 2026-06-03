@@ -69,10 +69,15 @@ const SECTION_COPY: Record<SectionKey, { eyebrow: string; title: string; descrip
     title: "MGL Үйлчилгээ",
     description: "Мэргэжлийн үйлчилгээний ангилал, багц, үнэ болон сонголтуудыг шинэчилнэ.",
   },
-  projects: {
+  franchise: {
     eyebrow: "Franchise",
     title: "Franchise",
-    description: "Franchise боломжуудын зураг, PDF, үнэ болон нийтлэгдэх төлвийг удирдана.",
+    description: "Франчайз танилцуулга, зураг, PDF болон нийтлэгдэх төлвийг удирдана.",
+  },
+  projects: {
+    eyebrow: "Projects",
+    title: "Төсөл",
+    description: "Төслийн зураг, PDF, үнэ, дэлгэрэнгүй мэдээлэл болон нийтлэгдэх төлвийг удирдана.",
   },
 };
 

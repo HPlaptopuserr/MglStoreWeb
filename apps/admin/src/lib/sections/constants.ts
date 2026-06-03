@@ -46,8 +46,14 @@ export const SECTIONS: {
     requires: "MANAGE_SITE_SETTINGS",
   },
   {
-    key: "projects",
+    key: "franchise",
     label: "Franchise",
+    icon: FileSignature,
+    requires: "MANAGE_SITE_SETTINGS",
+  },
+  {
+    key: "projects",
+    label: "Төсөл",
     icon: FolderKanban,
     requires: "MANAGE_SITE_SETTINGS",
   },
