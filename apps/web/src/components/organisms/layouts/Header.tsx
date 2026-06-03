@@ -330,7 +330,6 @@ export const Header = () => {
               <Link
                 href="/franchise"
                 className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
-                  pathname.startsWith("/projects") ||
                   pathname.startsWith("/franchise")
                     ? "bg-cyan-50 text-cyan-700"
                     : "text-gray-600 hover:bg-cyan-50 hover:text-cyan-700"
@@ -338,6 +337,17 @@ export const Header = () => {
               >
                 <FolderKanban size={14} />
                 Франчайз
+              </Link>
+              <Link
+                href="/projects"
+                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  pathname.startsWith("/projects")
+                    ? "bg-violet-50 text-violet-700"
+                    : "text-gray-600 hover:bg-violet-50 hover:text-violet-700"
+                }`}
+              >
+                <FolderKanban size={14} />
+                Төсөл
               </Link>
             </div>
 

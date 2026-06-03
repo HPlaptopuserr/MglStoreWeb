@@ -25,9 +25,68 @@ export type ContractPaymentAccount = {
   registerNumber: string;
   phone: string;
   email?: string;
+  cityId?: string;
+  districtId?: string;
+  khorooId?: string;
+  building?: string;
+  doorNo?: string;
+  firstName?: string;
+  lastName?: string;
+  corporateFlag?: string;
+  corporateName?: string;
+  gender?: string;
+  subCategoryId?: string;
   createdAt?: string;
   updatedAt?: string;
 };
+
+export type SystemQrDistrict = { code: string; name: string };
+export type SystemQrCity = { code: string; name: string; districts?: SystemQrDistrict[] };
+export type SystemQrKhoroo = { code: string; name: string };
+export type SystemQrCategory = {
+  code: string;
+  name: string;
+  categoryCode?: string;
+  categoryName?: string;
+};
+
+export const DEFAULT_SYSTEMQR_LOCATION = {
+  cityId: "20",
+  districtId: "1",
+  khorooId: "15782385",
+  building: "-",
+  doorNo: "-",
+  corporateFlag: "0",
+  gender: "M",
+  subCategoryId: "36",
+};
+
+const FALLBACK_SYSTEMQR_CATEGORIES: SystemQrCategory[] = [
+  { code: "36", name: "Электрон бараа (Компьютер, гар утас)", categoryName: "Бараа" },
+  { code: "35", name: "Код 35" },
+];
+
+const FALLBACK_SYSTEMQR_CITIES: SystemQrCity[] = [
+  {
+    code: "20",
+    name: "Улаанбаатар",
+    districts: [{ code: "1", name: "Сонгинохайрхан" }],
+  },
+];
+
+const FALLBACK_SYSTEMQR_KHOROOS_BY_DISTRICT: Record<string, SystemQrKhoroo[]> = {
+  "1": [{ code: "15782385", name: "1-р хороо" }],
+};
+
+function withCurrentOption<T extends { code: string; name: string }>(
+  options: T[],
+  code: string,
+  fallbackName: string,
+): T[] {
+  const currentCode = String(code || "").trim();
+  if (!currentCode || options.some((option) => option.code === currentCode)) return options;
+  return [{ code: currentCode, name: fallbackName } as T, ...options];
+}
 
 export const BANK_OPTIONS = [
   { value: "050000", label: "Хаан банк" },
@@ -56,15 +115,29 @@ export const toSystemQrConfig = (account: ContractPaymentAccount, previous: any 
   ...previous,
   enabled: true,
   selectedAccountId: account.id,
+  label: account.label || previous.label || "",
   merchantName: account.merchantName,
   merchantCode: account.merchantCode,
-  username: account.username || account.merchantCode,
-  password: account.password || previous.password || "",
+  username: account.username || "",
+  password: account.password || "",
   bankCode: account.bankCode || "050000",
   accountNumber: account.accountNumber,
   registerNumber: account.registerNumber,
   phone: account.phone,
   email: account.email || "",
+  cityId: account.cityId || previous.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId,
+  districtId: account.districtId || previous.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId,
+  khorooId: account.khorooId || previous.khorooId || DEFAULT_SYSTEMQR_LOCATION.khorooId,
+  building: account.building || previous.building || DEFAULT_SYSTEMQR_LOCATION.building,
+  doorNo: account.doorNo || previous.doorNo || DEFAULT_SYSTEMQR_LOCATION.doorNo,
+  firstName: account.firstName || previous.firstName || "",
+  lastName: account.lastName || previous.lastName || "",
+  corporateFlag: account.corporateFlag || previous.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag,
+  corporateName: (account.corporateFlag || previous.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag) === "1"
+    ? account.corporateName || previous.corporateName || account.merchantName
+    : account.corporateName || previous.corporateName || "",
+  gender: account.gender || previous.gender || DEFAULT_SYSTEMQR_LOCATION.gender,
+  subCategoryId: account.subCategoryId || previous.subCategoryId || DEFAULT_SYSTEMQR_LOCATION.subCategoryId,
 });
 
 type SharedAccountProps = {
@@ -78,9 +151,10 @@ export function ContractPaymentAccountSelect({
   setSettings,
   selectPaymentAccount,
 }: SharedAccountProps) {
-  if (!settings.hasDuration && !settings.isPaid) return null;
+  if (!settings.isPaid) return null;
 
   const accounts: ContractPaymentAccount[] = settings.paymentAccounts || [];
+  const selectedAccount = accounts.find((account) => account.id === settings.systemQr?.selectedAccountId);
 
   return (
     <div className="mt-4 p-4 bg-white border border-amber-200 rounded-xl shadow-sm">
@@ -141,7 +215,7 @@ export function ContractPaymentAccountSelect({
                 </p>
               )}
 
-              {settings.systemQr?.selectedAccountId && (
+              {selectedAccount && (
                 <p className="text-xs text-neutral-500 mt-1">
                   Сонгосон данс: {settings.systemQr?.merchantName} · {getBankLabel(settings.systemQr?.bankCode)} {settings.systemQr?.accountNumber}
                 </p>
@@ -156,8 +230,15 @@ export function ContractPaymentAccountSelect({
 
 type PaymentAccountsSettingsPanelProps = SharedAccountProps & {
   connectingMinuAccount: boolean;
+  checkingMinuAccounts?: boolean;
+  checkMinuSubMerchants?: () => void;
   deletePaymentAccount: (accountId: string) => void;
   handleConnectMinuAccount: () => void;
+  onSystemQrCityChange?: (cityId: string) => void;
+  onSystemQrDistrictChange?: (districtId: string) => void;
+  systemQrCategories?: SystemQrCategory[];
+  systemQrCities?: SystemQrCity[];
+  systemQrKhoroos?: SystemQrKhoroo[];
   updateSystemQr: (field: string, value: string | boolean) => void;
   upsertCurrentPaymentAccount: (overrides?: Partial<ContractPaymentAccount>) => Promise<ContractPaymentAccount | null>;
 };
@@ -167,12 +248,70 @@ export function PaymentAccountsSettingsPanel({
   setSettings,
   selectPaymentAccount,
   connectingMinuAccount,
+  checkingMinuAccounts = false,
+  checkMinuSubMerchants,
   deletePaymentAccount,
   handleConnectMinuAccount,
+  onSystemQrCityChange,
+  onSystemQrDistrictChange,
+  systemQrCategories = [],
+  systemQrCities = [],
+  systemQrKhoroos = [],
   updateSystemQr,
   upsertCurrentPaymentAccount,
 }: PaymentAccountsSettingsPanelProps) {
   const accounts: ContractPaymentAccount[] = settings.paymentAccounts || [];
+  const selectClass = "px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white";
+  const currentSubCategoryId = String(settings.systemQr?.subCategoryId || DEFAULT_SYSTEMQR_LOCATION.subCategoryId);
+  const currentCityId = String(settings.systemQr?.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId);
+  const currentDistrictId = String(settings.systemQr?.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId);
+  const currentKhorooId = String(settings.systemQr?.khorooId || DEFAULT_SYSTEMQR_LOCATION.khorooId);
+  const isCorporateSystemQr = String(settings.systemQr?.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag) === "1";
+  const categoryOptions = withCurrentOption(
+    systemQrCategories.length > 0 ? systemQrCategories : FALLBACK_SYSTEMQR_CATEGORIES,
+    currentSubCategoryId,
+    `Код ${currentSubCategoryId}`,
+  );
+  const cityOptions = withCurrentOption(
+    systemQrCities.length > 0 ? systemQrCities : FALLBACK_SYSTEMQR_CITIES,
+    currentCityId,
+    `Код ${currentCityId}`,
+  );
+  const selectedCity = cityOptions.find((city) => city.code === currentCityId);
+  const districtOptions = withCurrentOption(
+    selectedCity?.districts || [],
+    currentDistrictId,
+    `Код ${currentDistrictId}`,
+  );
+  const khorooOptions = withCurrentOption(
+    systemQrKhoroos.length > 0
+      ? systemQrKhoroos
+      : FALLBACK_SYSTEMQR_KHOROOS_BY_DISTRICT[currentDistrictId] || [],
+    currentKhorooId,
+    `Код ${currentKhorooId}`,
+  );
+
+  const handleCitySelectChange = (cityId: string) => {
+    if (onSystemQrCityChange && systemQrCities.some((city) => city.code === cityId)) {
+      onSystemQrCityChange(cityId);
+      return;
+    }
+
+    const city = cityOptions.find((item) => item.code === cityId);
+    updateSystemQr("cityId", cityId);
+    updateSystemQr("districtId", city?.districts?.[0]?.code || "");
+    updateSystemQr("khorooId", "");
+  };
+
+  const handleDistrictSelectChange = (districtId: string) => {
+    if (onSystemQrDistrictChange) {
+      onSystemQrDistrictChange(districtId);
+      return;
+    }
+
+    updateSystemQr("districtId", districtId);
+    updateSystemQr("khorooId", "");
+  };
 
   return (
     <div className="p-6 border-b border-neutral-100 bg-neutral-50/20">
@@ -202,6 +341,10 @@ export function PaymentAccountsSettingsPanel({
                 merchantCode: "",
                 username: "",
                 password: "",
+                ...DEFAULT_SYSTEMQR_LOCATION,
+                firstName: "",
+                lastName: "",
+                corporateName: "",
               },
             }))
           }
@@ -254,7 +397,7 @@ export function PaymentAccountsSettingsPanel({
 
       <div className="rounded-xl border border-amber-200 bg-white p-4 shadow-sm">
         <div className="mb-4 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Шинээр холбох үед Merchant Code-г хоосон үлдээнэ. Minu амжилттай бүртгэвэл код автоматаар бөглөгдөнө. Аль хэдийн Minu-ээс авсан код байгаа бол гараар оруулаад "Дансны санд хадгалах" дарна.
+          Шинээр холбох үед Merchant Code-г хоосон үлдээнэ. Minu амжилттай бүртгэвэл код автоматаар бөглөгдөнө. Аль хэдийн Minu-ээс авсан код байгаа бол merchantCode-оо оруулаад "Дансны санд хадгалах" дарна. Invoice үүсгэхдээ SystemQR master тохиргоог ашиглана.
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -276,7 +419,7 @@ export function PaymentAccountsSettingsPanel({
             <select
               value={settings.systemQr?.bankCode || "050000"}
               onChange={(event) => updateSystemQr("bankCode", event.target.value)}
-              className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+              className={selectClass}
             >
               {BANK_OPTIONS.map((bank) => (
                 <option key={bank.value} value={bank.value}>{bank.label}</option>
@@ -311,17 +454,113 @@ export function PaymentAccountsSettingsPanel({
             onChange={(value) => updateSystemQr("merchantCode", value)}
             placeholder="Шинэ бүртгэл хийх бол хоосон үлдээнэ"
           />
-          <AccountInput
-            label="Minu Username"
-            value={settings.systemQr?.username || ""}
-            onChange={(value) => updateSystemQr("username", value)}
-          />
-          <AccountInput
-            label="Minu Password"
-            type="password"
-            value={settings.systemQr?.password || ""}
-            onChange={(value) => updateSystemQr("password", value)}
-          />
+          <div className="md:col-span-3 mt-1 grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-neutral-100 pt-3">
+            <AccountInput
+              label={isCorporateSystemQr ? "Эзэмшигчийн нэр" : "Эзэмшигчийн нэр *"}
+              value={settings.systemQr?.firstName || ""}
+              onChange={(value) => updateSystemQr("firstName", value)}
+            />
+            <AccountInput
+              label={isCorporateSystemQr ? "Эзэмшигчийн овог" : "Эзэмшигчийн овог *"}
+              value={settings.systemQr?.lastName || ""}
+              onChange={(value) => updateSystemQr("lastName", value)}
+            />
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500 pl-1">Мерчант төрөл *</label>
+              <select
+                value={settings.systemQr?.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag}
+                onChange={(event) => updateSystemQr("corporateFlag", event.target.value)}
+                className={selectClass}
+              >
+                <option value="0">Хувь хүн</option>
+                <option value="1">Байгууллага</option>
+              </select>
+            </div>
+
+            <AccountInput
+              label="Байгууллагын нэр"
+              value={settings.systemQr?.corporateName || ""}
+              onChange={(value) => updateSystemQr("corporateName", value)}
+            />
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500 pl-1">Хүйс *</label>
+              <select
+                value={settings.systemQr?.gender || DEFAULT_SYSTEMQR_LOCATION.gender}
+                onChange={(event) => updateSystemQr("gender", event.target.value)}
+                className={selectClass}
+              >
+                <option value="M">Эрэгтэй</option>
+                <option value="F">Эмэгтэй</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500 pl-1">Үйл ажиллагааны чиглэл *</label>
+              <select
+                value={currentSubCategoryId}
+                onChange={(event) => updateSystemQr("subCategoryId", event.target.value)}
+                className={selectClass}
+              >
+                {categoryOptions.map((category) => (
+                  <option key={category.code} value={category.code}>
+                    {category.categoryName ? `${category.categoryName} - ${category.name}` : category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500 pl-1">Аймаг/Хот *</label>
+              <select
+                value={currentCityId}
+                onChange={(event) => handleCitySelectChange(event.target.value)}
+                className={selectClass}
+              >
+                {cityOptions.map((city) => (
+                  <option key={city.code} value={city.code}>{city.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500 pl-1">Дүүрэг/Сум *</label>
+              <select
+                value={currentDistrictId}
+                onChange={(event) => handleDistrictSelectChange(event.target.value)}
+                className={selectClass}
+              >
+                {districtOptions.map((district) => (
+                  <option key={district.code} value={district.code}>{district.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-500 pl-1">Хороо/Баг *</label>
+              <select
+                value={currentKhorooId}
+                onChange={(event) => updateSystemQr("khorooId", event.target.value)}
+                className={selectClass}
+              >
+                {khorooOptions.map((khoroo) => (
+                  <option key={khoroo.code} value={khoroo.code}>{khoroo.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <AccountInput
+              label="Байр/Хашаа *"
+              value={settings.systemQr?.building || DEFAULT_SYSTEMQR_LOCATION.building}
+              onChange={(value) => updateSystemQr("building", value)}
+            />
+            <AccountInput
+              label="Тоот *"
+              value={settings.systemQr?.doorNo || DEFAULT_SYSTEMQR_LOCATION.doorNo}
+              onChange={(value) => updateSystemQr("doorNo", value)}
+            />
+          </div>
 
           <div className="md:col-span-3 flex flex-wrap gap-2">
             <button
@@ -333,6 +572,17 @@ export function PaymentAccountsSettingsPanel({
               {connectingMinuAccount ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
               Minu данс холбох
             </button>
+            {checkMinuSubMerchants && (
+              <button
+                type="button"
+                onClick={checkMinuSubMerchants}
+                disabled={checkingMinuAccounts}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-neutral-300 text-neutral-700 rounded-lg text-sm font-semibold hover:bg-neutral-100 disabled:opacity-50"
+              >
+                {checkingMinuAccounts ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                Бүртгэл шалгах
+              </button>
+            )}
             <button
               type="button"
               onClick={() => upsertCurrentPaymentAccount().then((account) => account && alert("Дансны санд хадгалагдлаа"))}

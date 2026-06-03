@@ -3,6 +3,7 @@
 import { useState, type ChangeEvent } from "react";
 import {
   Check,
+  CreditCard,
   Eye,
   EyeOff,
   FileText,
@@ -13,7 +14,10 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
-import type { ProjectItem } from "@/lib/sections/types";
+import type {
+  ProjectItem,
+  ProjectPaymentAccount,
+} from "@/lib/sections/types";
 import { API, adminFetch } from "@/lib/api";
 
 const generateId = () => Math.random().toString(36).slice(2, 10);
@@ -21,6 +25,8 @@ const MAX_PROJECT_IMAGES = 12;
 
 type Props = {
   projects: ProjectItem[];
+  paymentAccounts?: ProjectPaymentAccount[];
+  mode?: "project" | "franchise";
   setProjects: (
     update: ProjectItem[] | ((prev: ProjectItem[]) => ProjectItem[]),
   ) => void;
@@ -31,18 +37,20 @@ type Props = {
   saved?: boolean;
 };
 
-const emptyProject = (): ProjectItem => ({
+const emptyProject = (mode: "project" | "franchise" = "project"): ProjectItem => ({
   id: generateId(),
-  title: "Шинэ franchise",
-  category: "Franchise",
+  title: mode === "franchise" ? "Шинэ franchise" : "Шинэ төсөл",
+  category: mode === "franchise" ? "Franchise" : "Төсөл",
   summary: "",
   details: "",
-  price: 0,
+  price: mode === "franchise" ? 0 : 5000,
   imageUrl: "",
   imageUrls: [],
   pdfUrl: "",
   tags: [],
   isActive: true,
+  paymentAccountId: "",
+  paymentMerchantCode: "",
 });
 
 function getProjectImages(project?: ProjectItem) {
@@ -81,6 +89,47 @@ function parseTags(value: string) {
     .split(",")
     .map((tag) => tag.trim())
     .filter(Boolean);
+}
+
+function formatMnt(value: number) {
+  return `₮${Number(value || 0).toLocaleString("mn-MN")}`;
+}
+
+function getBankLabel(bankCode?: string) {
+  const banks: Record<string, string> = {
+    "050000": "Хаан банк",
+    "150000": "Голомт банк",
+    "040000": "TDB",
+    "320000": "ХасБанк",
+    "010000": "Төрийн банк",
+    "300000": "Капитрон банк",
+    "290000": "Богд банк",
+  };
+  return banks[bankCode || ""] || bankCode || "-";
+}
+
+function getSelectedPaymentAccount(
+  project: ProjectItem,
+  accounts: ProjectPaymentAccount[],
+) {
+  return accounts.find(
+    (account) =>
+      (project.paymentAccountId && account.id === project.paymentAccountId) ||
+      (project.paymentMerchantCode &&
+        account.merchantCode === project.paymentMerchantCode),
+  );
+}
+
+function formatPaymentAccount(account?: ProjectPaymentAccount) {
+  if (!account) return "Данс сонгоогүй";
+  return `${account.label || account.merchantName || "Minu данс"} · ${getBankLabel(
+    account.bankCode,
+  )} ${account.accountNumber || "-"} · ${account.merchantCode || "-"}`;
+}
+
+function parsePrice(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
 }
 
 function uploadErrorMessage(data: unknown, fallback: string) {
@@ -138,6 +187,8 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 
 export function ProjectsSection({
   projects,
+  paymentAccounts = [],
+  mode = "project",
   setProjects,
   onSave,
   saving,
@@ -155,9 +206,43 @@ export function ProjectsSection({
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState("");
   const [pdfUploadError, setPdfUploadError] = useState("");
+  const isFranchiseMode = mode === "franchise";
+  const copy = isFranchiseMode
+    ? {
+        heading: "Franchise PDF хэсэг",
+        description:
+          "Web дээр зураг, нэр, хураангуй харагдаж, PDF файл үнэгүй нээгдэнэ.",
+        add: "Franchise нэмэх",
+        empty: "Одоогоор franchise оруулаагүй байна.",
+        first: "Эхний franchise нэмэх",
+        itemLabel: "Franchise",
+        unnamed: "Нэргүй franchise",
+        deleteConfirm: "Энэ franchise-ийг устгах уу?",
+        titleLabel: "Franchise нэр",
+        titlePlaceholder: "Жишээ: MGL Store franchise багц",
+        categoryPlaceholder: "Franchise, салбар нээх эрх...",
+        pdfLabel: "Franchise PDF файл",
+        summaryPlaceholder: "Web дээр үнэгүй харагдах богино танилцуулга...",
+      }
+    : {
+        heading: "Төслийн хэсэг",
+        description:
+          "Web дээр зураг, нэр, хураангуй харагдаж, дэлгэрэнгүй мэдээлэл болон PDF нь төлбөрийн дараа нээгдэнэ.",
+        add: "Төсөл нэмэх",
+        empty: "Одоогоор төсөл оруулаагүй байна.",
+        first: "Эхний төсөл нэмэх",
+        itemLabel: "Төсөл",
+        unnamed: "Нэргүй төсөл",
+        deleteConfirm: "Энэ төслийг устгах уу?",
+        titleLabel: "Төслийн нэр",
+        titlePlaceholder: "Жишээ: Орон нутгийн нийлүүлэлтийн төсөл",
+        categoryPlaceholder: "Хөрөнгө оруулалт, хамтын ажиллагаа...",
+        pdfLabel: "Төслийн PDF файл",
+        summaryPlaceholder: "Web дээр үнэгүй харагдах богино танилцуулга...",
+      };
 
   const addProject = () => {
-    const project = emptyProject();
+    const project = emptyProject(mode);
     setProjects((prev) => [project, ...prev]);
     setEditingProjectId(project.id);
   };
@@ -192,8 +277,23 @@ export function ProjectsSection({
     );
   };
 
+  const updateProjectPaymentAccount = (id: string, accountId: string) => {
+    const account = paymentAccounts.find((item) => item.id === accountId);
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === id
+          ? {
+              ...project,
+              paymentAccountId: account?.id || "",
+              paymentMerchantCode: account?.merchantCode || "",
+            }
+          : project,
+      ),
+    );
+  };
+
   const removeProject = async (id: string) => {
-    if (!confirm("Энэ franchise-ийг устгах уу?")) return;
+    if (!confirm(copy.deleteConfirm)) return;
     const previousProjects = projects;
     const nextProjects = projects.filter((project) => project.id !== id);
     setProjects(nextProjects);
@@ -333,10 +433,10 @@ export function ProjectsSection({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black text-slate-950">
-            Franchise PDF хэсэг
+            {copy.heading}
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Web дээр зураг, нэр, хураангуй харагдаж, PDF файл үнэгүй нээгдэнэ.
+            {copy.description}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -346,7 +446,7 @@ export function ProjectsSection({
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >
             <Plus className="h-4 w-4" />
-            Franchise нэмэх
+            {copy.add}
           </button>
           <button
             type="button"
@@ -367,7 +467,7 @@ export function ProjectsSection({
       {projects.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
           <p className="text-sm font-semibold text-slate-500">
-            Одоогоор franchise оруулаагүй байна.
+            {copy.empty}
           </p>
           <button
             type="button"
@@ -375,7 +475,7 @@ export function ProjectsSection({
             className="mt-4 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white"
           >
             <Plus className="h-4 w-4" />
-            Эхний franchise нэмэх
+            {copy.first}
           </button>
         </div>
       ) : (
@@ -385,6 +485,10 @@ export function ProjectsSection({
             const isDeleting = deletingProjectId === project.id;
             const projectImages = getProjectImages(project);
             const primaryImage = projectImages[0];
+            const selectedPaymentAccount = getSelectedPaymentAccount(
+              project,
+              paymentAccounts,
+            );
 
             return (
               <article
@@ -394,15 +498,21 @@ export function ProjectsSection({
                 <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-500">
-                      Franchise #{index + 1}
+                      {copy.itemLabel} #{index + 1}
                     </p>
                     <h3 className="mt-1 text-lg font-black text-slate-950">
-                      {project.title || "Нэргүй franchise"}
+                      {project.title || copy.unnamed}
                     </h3>
                     <p className="mt-1 text-xs font-semibold text-slate-400">
                       {project.category || "Ангилалгүй"} ·{" "}
-                      Үнэгүй
+                      {isFranchiseMode ? "Үнэгүй" : formatMnt(project.price)}
                     </p>
+                    {!isFranchiseMode && project.price > 0 && (
+                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">
+                        <CreditCard className="h-3.5 w-3.5" />
+                        {formatPaymentAccount(selectedPaymentAccount)}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <button
@@ -452,7 +562,7 @@ export function ProjectsSection({
                       onClick={() => void removeProject(project.id)}
                       disabled={isDeleting || saving}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-60"
-                      aria-label="Franchise устгах"
+                      aria-label={`${copy.itemLabel} устгах`}
                     >
                       {isDeleting ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -467,7 +577,7 @@ export function ProjectsSection({
                   <div className="grid gap-4 lg:grid-cols-2">
                     <label className="space-y-1.5">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Franchise нэр
+                        {copy.titleLabel}
                       </span>
                       <input
                         value={project.title}
@@ -475,7 +585,7 @@ export function ProjectsSection({
                           updateProject(project.id, "title", e.target.value)
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Жишээ: MGL Store franchise багц"
+                        placeholder={copy.titlePlaceholder}
                       />
                     </label>
                     <label className="space-y-1.5">
@@ -488,9 +598,65 @@ export function ProjectsSection({
                           updateProject(project.id, "category", e.target.value)
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Franchise, салбар нээх эрх..."
+                        placeholder={copy.categoryPlaceholder}
                       />
                     </label>
+                    {!isFranchiseMode && (
+                      <>
+                        <label className="space-y-1.5">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Дэлгэрэнгүй үзэх үнэ
+                          </span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={100}
+                            value={project.price}
+                            onChange={(e) =>
+                              updateProject(
+                                project.id,
+                                "price",
+                                parsePrice(e.target.value),
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            placeholder="5000"
+                          />
+                        </label>
+                        <label className="space-y-1.5">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Төлбөр орох данс
+                          </span>
+                          <select
+                            value={
+                              selectedPaymentAccount?.id ||
+                              project.paymentAccountId ||
+                              ""
+                            }
+                            onChange={(e) =>
+                              updateProjectPaymentAccount(
+                                project.id,
+                                e.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                          >
+                            <option value="">Данс сонгоно уу</option>
+                            {paymentAccounts.map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {formatPaymentAccount(account)}
+                              </option>
+                            ))}
+                          </select>
+                          {paymentAccounts.length === 0 && (
+                            <p className="text-xs font-semibold text-amber-600">
+                              “Гэрээний төлбөр” тохиргоонд эхлээд Minu Dynamic
+                              QR данс холбоно уу.
+                            </p>
+                          )}
+                        </label>
+                      </>
+                    )}
                     <div className="space-y-1.5 lg:col-span-2">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -510,7 +676,7 @@ export function ProjectsSection({
                               >
                                 <img
                                   src={image}
-                                  alt={`${project.title || "Franchise"} зураг ${imageIndex + 1}`}
+                                  alt={`${project.title || copy.itemLabel} зураг ${imageIndex + 1}`}
                                   className="h-full w-full object-cover"
                                 />
                                 <button
@@ -605,12 +771,28 @@ export function ProjectsSection({
                         }
                         rows={3}
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Web дээр үнэгүй харагдах богино танилцуулга..."
+                        placeholder={copy.summaryPlaceholder}
                       />
                     </label>
+                    {!isFranchiseMode && (
+                      <label className="space-y-1.5 lg:col-span-2">
+                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          Дэлгэрэнгүй мэдээлэл
+                        </span>
+                        <textarea
+                          value={project.details}
+                          onChange={(e) =>
+                            updateProject(project.id, "details", e.target.value)
+                          }
+                          rows={6}
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                          placeholder="Төлбөр төлсний дараа харагдах дэлгэрэнгүй нөхцөл, боломж, холбоо барих мэдээлэл..."
+                        />
+                      </label>
+                    )}
                     <div className="space-y-1.5 lg:col-span-2">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Franchise PDF файл
+                        {copy.pdfLabel}
                       </span>
                       <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
                         <div className="flex flex-wrap items-center gap-3">
@@ -665,7 +847,7 @@ export function ProjectsSection({
                       <div className="relative h-28 w-full overflow-hidden rounded-xl border border-slate-200 md:w-40">
                         <img
                           src={primaryImage}
-                          alt={project.title || "Project image"}
+                          alt={project.title || `${copy.itemLabel} image`}
                           className="h-full w-full object-cover"
                         />
                         {projectImages.length > 1 && (
@@ -685,7 +867,14 @@ export function ProjectsSection({
                           "Хураангуй мэдээлэл оруулаагүй байна."}
                       </p>
                       <div
-                        className={`mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
+                        className="mt-3 inline-flex items-center gap-2 rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700"
+                      >
+                        {!isFranchiseMode && project.price > 0
+                          ? `${formatMnt(project.price)} төлбөртэй`
+                          : "Үнэгүй"}
+                      </div>
+                      <div
+                        className={`ml-2 mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
                           project.pdfUrl
                             ? "bg-emerald-50 text-emerald-700"
                             : "bg-amber-50 text-amber-700"

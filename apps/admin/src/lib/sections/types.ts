@@ -10,6 +10,7 @@ export type SectionKey =
   | "forms"
   | "team"
   | "mgl-services"
+  | "franchise"
   | "projects";
 
 export interface ServiceOption {
@@ -55,6 +56,17 @@ export interface ProjectItem {
   pdfUrl?: string;
   tags?: string[];
   isActive: boolean;
+  paymentAccountId?: string;
+  paymentMerchantCode?: string;
+}
+
+export interface ProjectPaymentAccount {
+  id: string;
+  label?: string;
+  merchantName?: string;
+  merchantCode?: string;
+  bankCode?: string;
+  accountNumber?: string;
 }
 
 export type CardPartner = {

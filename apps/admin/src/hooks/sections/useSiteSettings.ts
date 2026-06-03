@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { API, adminFetch } from "@/lib/api";
 
-import { ProjectItem, ServiceCategory } from "@/lib/sections/types";
+import {
+  ProjectItem,
+  ProjectPaymentAccount,
+  ServiceCategory,
+} from "@/lib/sections/types";
 
 function normalizeProjectImages(project: ProjectItem): ProjectItem {
   const imageUrls = Array.from(
@@ -20,10 +24,33 @@ function normalizeProjectImages(project: ProjectItem): ProjectItem {
 
   return {
     ...project,
-    price: 0,
+    price:
+      Number.isFinite(Number(project.price)) && Number(project.price) > 0
+        ? Math.round(Number(project.price))
+        : 0,
     imageUrl: imageUrls[0] ?? "",
     imageUrls,
   };
+}
+
+function parseProjectPaymentAccounts(raw?: string): ProjectPaymentAccount[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((account) => ({
+        id: String(account?.id || "").trim(),
+        label: String(account?.label || "").trim(),
+        merchantName: String(account?.merchantName || "").trim(),
+        merchantCode: String(account?.merchantCode || "").trim(),
+        bankCode: String(account?.bankCode || "").trim(),
+        accountNumber: String(account?.accountNumber || "").trim(),
+      }))
+      .filter((account) => account.id && account.merchantCode);
+  } catch {
+    return [];
+  }
 }
 
 export function useSiteSettings() {
@@ -31,8 +58,15 @@ export function useSiteSettings() {
   const [categories, setCategories] = useState<string[]>([]);
   const [mglServices, setMglServicesRaw] = useState<ServiceCategory[]>([]);
   const mglServicesRef = useRef<ServiceCategory[]>([]);
+  const [franchiseProjects, setFranchiseProjectsRaw] = useState<ProjectItem[]>(
+    [],
+  );
+  const franchiseProjectsRef = useRef<ProjectItem[]>([]);
   const [projects, setProjectsRaw] = useState<ProjectItem[]>([]);
   const projectsRef = useRef<ProjectItem[]>([]);
+  const [projectPaymentAccounts, setProjectPaymentAccounts] = useState<
+    ProjectPaymentAccount[]
+  >([]);
 
   const setMglServices = (
     update:
@@ -52,6 +86,16 @@ export function useSiteSettings() {
     setProjectsRaw((prev) => {
       const next = typeof update === "function" ? update(prev) : update;
       projectsRef.current = next;
+      return next;
+    });
+  };
+
+  const setFranchiseProjects = (
+    update: ProjectItem[] | ((prev: ProjectItem[]) => ProjectItem[]),
+  ) => {
+    setFranchiseProjectsRaw((prev) => {
+      const next = typeof update === "function" ? update(prev) : update;
+      franchiseProjectsRef.current = next;
       return next;
     });
   };
@@ -96,11 +140,26 @@ export function useSiteSettings() {
             const parsed = JSON.parse(data["paid-projects"]);
             if (Array.isArray(parsed)) {
               const normalized = parsed.map(normalizeProjectImages);
+              setFranchiseProjectsRaw(normalized);
+              franchiseProjectsRef.current = normalized;
+            }
+          } catch {}
+        }
+
+        if (data["site-projects"]) {
+          try {
+            const parsed = JSON.parse(data["site-projects"]);
+            if (Array.isArray(parsed)) {
+              const normalized = parsed.map(normalizeProjectImages);
               setProjectsRaw(normalized);
               projectsRef.current = normalized;
             }
           } catch {}
         }
+
+        setProjectPaymentAccounts(
+          parseProjectPaymentAccounts(data["contract-payment-accounts"]),
+        );
 
         const showMapRaw = data["show-branch-map"];
         setShowBranchMapOnWeb(
@@ -158,8 +217,13 @@ export function useSiteSettings() {
     setSaving(false);
   };
 
-  const saveProjects = async (currentProjects?: ProjectItem[]) => {
-    const toSave = (currentProjects ?? projectsRef.current).map(
+  const saveProjectList = async (
+    key: "paid-projects" | "site-projects",
+    currentProjects: ProjectItem[] | undefined,
+    fallbackRef: { current: ProjectItem[] },
+    errorMessage: string,
+  ) => {
+    const toSave = (currentProjects ?? fallbackRef.current).map(
       normalizeProjectImages,
     );
     setSaving(true);
@@ -167,11 +231,11 @@ export function useSiteSettings() {
       const res = await adminFetch(`${API}/site-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ "paid-projects": JSON.stringify(toSave) }),
+        body: JSON.stringify({ [key]: JSON.stringify(toSave) }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "Franchise хадгалахад алдаа гарлаа");
+        throw new Error(data.message || errorMessage);
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -180,13 +244,29 @@ export function useSiteSettings() {
       alert(
         error instanceof Error
           ? error.message
-          : "Franchise хадгалахад алдаа гарлаа",
+          : errorMessage,
       );
       return false;
     } finally {
       setSaving(false);
     }
   };
+
+  const saveFranchiseProjects = async (currentProjects?: ProjectItem[]) =>
+    saveProjectList(
+      "paid-projects",
+      currentProjects,
+      franchiseProjectsRef,
+      "Franchise хадгалахад алдаа гарлаа",
+    );
+
+  const saveProjects = async (currentProjects?: ProjectItem[]) =>
+    saveProjectList(
+      "site-projects",
+      currentProjects,
+      projectsRef,
+      "Төсөл хадгалахад алдаа гарлаа",
+    );
 
   const toggleBranchMapOnWeb = async () => {
     const nextValue = !showBranchMapOnWeb;
@@ -214,8 +294,11 @@ export function useSiteSettings() {
     setCategories,
     mglServices,
     setMglServices,
+    franchiseProjects,
+    setFranchiseProjects,
     projects,
     setProjects,
+    projectPaymentAccounts,
     showBranchMapOnWeb,
     saving,
     saved,
@@ -223,6 +306,7 @@ export function useSiteSettings() {
     saveBanners,
     saveCategories,
     saveMglServices,
+    saveFranchiseProjects,
     saveProjects,
     toggleBranchMapOnWeb,
   };

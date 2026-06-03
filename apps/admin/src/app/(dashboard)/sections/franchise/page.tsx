@@ -5,29 +5,28 @@ import { ProjectsSection } from "@/components/organisms/sections/projects/Projec
 import { SectionsRouteFrame } from "../_components/SectionsRouteFrame";
 import { SectionContent } from "../_components/SectionContent";
 
-export default function ProjectsSectionPage() {
+export default function FranchiseSectionPage() {
   const {
-    projects,
-    setProjects,
-    projectPaymentAccounts,
+    franchiseProjects,
+    setFranchiseProjects,
     saving,
     saved,
-    saveProjects,
+    saveFranchiseProjects,
   } = useSiteSettings();
 
   return (
     <SectionsRouteFrame
-      active="projects"
-      onSave={saveProjects}
+      active="franchise"
+      onSave={saveFranchiseProjects}
       saving={saving}
       saved={saved}
     >
       <SectionContent>
         <ProjectsSection
-          projects={projects}
-          paymentAccounts={projectPaymentAccounts}
-          setProjects={setProjects}
-          onSave={saveProjects}
+          mode="franchise"
+          projects={franchiseProjects}
+          setProjects={setFranchiseProjects}
+          onSave={saveFranchiseProjects}
           saving={saving}
           saved={saved}
         />
