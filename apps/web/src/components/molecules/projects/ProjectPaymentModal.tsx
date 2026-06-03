@@ -1,14 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  CheckCircle2,
-  Loader2,
-  QrCode,
-  Smartphone,
-  X,
-} from "lucide-react";
+import { CheckCircle2, Loader2, QrCode, Smartphone, X } from "lucide-react";
 import { QrGenerator } from "@mgl/ui";
+import { MobileBankAppLinks } from "@/components/molecules/payments/MobileBankAppLinks";
 import { API } from "@/lib/api";
 import type { ProjectItem, ProjectPaymentSession } from "./project-types";
 import { formatMnt } from "./project-utils";
@@ -154,7 +149,7 @@ export function ProjectPaymentModal({
           )}
         </div>
 
-        <div className="relative px-5 py-5 sm:px-6 sm:py-6">
+        <div className="relative px-4 py-4 sm:px-6 sm:py-6">
           {confirmed ? (
             <div className="flex flex-col items-center gap-5 py-8 text-center">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-400/15">
@@ -171,30 +166,32 @@ export function ProjectPaymentModal({
             </div>
           ) : (
             <div className="space-y-4 sm:space-y-5">
-              <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4 shadow-inner sm:px-5">
-                <div className="flex items-center justify-between gap-4 text-sm sm:text-base">
+              <div className="overflow-hidden rounded-2xl border border-white/15 bg-white/10 px-3 py-3 shadow-inner sm:px-5 sm:py-4">
+                <div className="flex min-w-0 items-center justify-between gap-3 text-xs sm:text-base">
                   <span className="text-white/65">Нэхэмжлэх:</span>
-                  <span className="min-w-0 truncate text-right font-mono text-white">
+                  <span className="min-w-0 truncate text-right font-mono text-[11px] text-white sm:text-sm">
                     {payment.invoiceId}
                   </span>
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-4">
-                  <span className="text-lg font-medium text-white/85 sm:text-xl">
+                <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
+                  <span className="text-base font-medium text-white/85 sm:text-xl">
                     Нийт дүн:
                   </span>
-                  <span className="shrink-0 text-2xl font-black text-white sm:text-3xl">
+                  <span className="shrink-0 text-xl font-black text-white sm:text-3xl">
                     {formatMnt(payment.amount)}
                   </span>
                 </div>
               </div>
 
-              <div className="flex flex-col items-center gap-2.5">
-                <div className="rounded-2xl bg-white p-3 shadow-2xl shadow-slate-950/35 sm:p-4">
+              <div
+                className={`${payment.urls.length > 0 ? "hidden sm:flex" : "flex"} flex-col items-center gap-2.5`}
+              >
+                <div className="max-w-full rounded-2xl bg-white p-2.5 shadow-2xl shadow-slate-950/35 sm:p-4">
                   {qrImageSrc ? (
                     <img
                       src={qrImageSrc}
                       alt="Dynamic QR"
-                      className="h-[210px] w-[210px] rounded-xl sm:h-[232px] sm:w-[232px]"
+                      className="h-[clamp(168px,54vw,220px)] w-[clamp(168px,54vw,220px)] rounded-xl sm:h-[232px] sm:w-[232px]"
                     />
                   ) : payment.qrText ? (
                     <QrGenerator
@@ -202,10 +199,10 @@ export function ProjectPaymentModal({
                       size={232}
                       level="M"
                       includeMargin
-                      className="h-[210px] w-[210px] rounded-xl sm:h-[232px] sm:w-[232px]"
+                      className="h-[clamp(168px,54vw,220px)] w-[clamp(168px,54vw,220px)] rounded-xl sm:h-[232px] sm:w-[232px]"
                     />
                   ) : (
-                    <div className="flex h-[210px] w-[210px] items-center justify-center rounded-xl bg-gray-50 text-center text-sm font-bold text-gray-400 sm:h-[232px] sm:w-[232px]">
+                    <div className="flex h-[clamp(168px,54vw,220px)] w-[clamp(168px,54vw,220px)] items-center justify-center rounded-xl bg-gray-50 text-center text-sm font-bold text-gray-400 sm:h-[232px] sm:w-[232px]">
                       QR мэдээлэл ирсэнгүй
                     </div>
                   )}
@@ -229,29 +226,7 @@ export function ProjectPaymentModal({
                 </p>
               )}
 
-              {payment.urls.length > 0 && (
-                <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3">
-                  <p className="mb-3 text-center text-xs font-bold uppercase tracking-wider text-white/45">
-                    Аппаар төлөх
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                    {payment.urls.slice(0, 8).map((link) => (
-                      <a
-                        key={`${link.name}-${link.link}`}
-                        href={link.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/10 p-2 text-white transition hover:bg-white/15"
-                      >
-                        <Smartphone className="h-5 w-5 text-white/65" />
-                        <span className="line-clamp-2 text-center text-[10px] font-semibold leading-tight text-white/80">
-                          {link.description || link.name}
-                        </span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <MobileBankAppLinks links={payment.urls} />
 
               {error && (
                 <p className="rounded-2xl border border-amber-200/20 bg-amber-300/10 px-4 py-3 text-center text-sm text-amber-100">

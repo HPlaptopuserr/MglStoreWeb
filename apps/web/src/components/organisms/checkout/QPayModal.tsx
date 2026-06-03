@@ -5,6 +5,7 @@ import { X, CheckCircle2, Loader2, QrCode, Smartphone } from "lucide-react";
 import { QrGenerator } from "@mgl/ui";
 import { useAuth } from "@/lib/auth-context";
 import { API } from "@/lib/api";
+import { MobileBankAppLinks } from "@/components/molecules/payments/MobileBankAppLinks";
 
 interface DeepLink {
   name: string;
@@ -30,6 +31,7 @@ export function QPayModal({
   total,
   qrText,
   qrImage,
+  deepLinks,
   onSuccess,
   onClose,
 }: QPayModalProps) {
@@ -42,7 +44,9 @@ export function QPayModal({
 
   const checkPayment = useCallback(async () => {
     try {
-      const res = await authFetch(`${API}/store/checkout/${orderId}/payment-status`);
+      const res = await authFetch(
+        `${API}/store/checkout/${orderId}/payment-status`,
+      );
       const data = await res.json();
       if (data.status === "PAID") {
         if (pollRef.current) clearInterval(pollRef.current);
@@ -93,7 +97,9 @@ export function QPayModal({
     setError("");
     const paid = await checkPayment();
     if (!paid) {
-      setError("Төлбөр хүлээгдэж байна. QPay аппаар төлбөрөө төлөөд дахин шалгана уу.");
+      setError(
+        "Төлбөр хүлээгдэж байна. QPay аппаар төлбөрөө төлөөд дахин шалгана уу.",
+      );
     }
     setChecking(false);
   };
@@ -135,41 +141,53 @@ export function QPayModal({
           )}
         </div>
 
-        <div className="relative px-5 py-5 sm:px-6 sm:py-6">
+        <div className="relative px-4 py-4 sm:px-6 sm:py-6">
           {confirmed ? (
             <div className="flex flex-col items-center gap-5 py-8 text-center">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-400/15">
                 <CheckCircle2 size={42} className="text-emerald-300" />
               </div>
               <div>
-                <p className="text-2xl font-black text-white">Төлбөр амжилттай!</p>
-                <p className="mt-2 text-sm text-white/70">Захиалга #{orderNumber} баталгаажлаа.</p>
+                <p className="text-2xl font-black text-white">
+                  Төлбөр амжилттай!
+                </p>
+                <p className="mt-2 text-sm text-white/70">
+                  Захиалга #{orderNumber} баталгаажлаа.
+                </p>
               </div>
-              <p className="text-xs text-white/50">Захиалгын хуудас руу шилжиж байна...</p>
+              <p className="text-xs text-white/50">
+                Захиалгын хуудас руу шилжиж байна...
+              </p>
             </div>
           ) : (
             <div className="space-y-4 sm:space-y-5">
-              <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4 shadow-inner sm:px-5">
-                <div className="flex items-center justify-between gap-4 text-sm sm:text-base">
+              <div className="overflow-hidden rounded-2xl border border-white/15 bg-white/10 px-3 py-3 shadow-inner sm:px-5 sm:py-4">
+                <div className="flex min-w-0 items-center justify-between gap-3 text-xs sm:text-base">
                   <span className="text-white/65">Захиалга:</span>
-                  <span className="min-w-0 truncate text-right font-mono text-white">{orderNumber}</span>
+                  <span className="min-w-0 truncate text-right font-mono text-[11px] text-white sm:text-sm">
+                    {orderNumber}
+                  </span>
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-4">
-                  <span className="text-lg font-medium text-white/85 sm:text-xl">Нийт дүн:</span>
-                  <span className="shrink-0 text-2xl font-black text-white sm:text-3xl">
+                <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
+                  <span className="text-base font-medium text-white/85 sm:text-xl">
+                    Нийт дүн:
+                  </span>
+                  <span className="shrink-0 text-xl font-black text-white sm:text-3xl">
                     ₮{total.toLocaleString()}
                   </span>
                 </div>
               </div>
 
-              <div className="flex flex-col items-center gap-2.5">
-                <div className="rounded-2xl bg-white p-3 shadow-2xl shadow-slate-950/35 sm:p-4">
+              <div
+                className={`${deepLinks.length > 0 ? "hidden sm:flex" : "flex"} flex-col items-center gap-2.5`}
+              >
+                <div className="max-w-full rounded-2xl bg-white p-2.5 shadow-2xl shadow-slate-950/35 sm:p-4">
                   {qrImageSrc ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={qrImageSrc}
                       alt="QPay QR Code"
-                      className="h-[210px] w-[210px] rounded-xl sm:h-[232px] sm:w-[232px]"
+                      className="h-[clamp(168px,54vw,220px)] w-[clamp(168px,54vw,220px)] rounded-xl sm:h-[232px] sm:w-[232px]"
                     />
                   ) : qrText ? (
                     <QrGenerator
@@ -177,10 +195,10 @@ export function QPayModal({
                       size={232}
                       level="M"
                       includeMargin
-                      className="h-[210px] w-[210px] rounded-xl sm:h-[232px] sm:w-[232px]"
+                      className="h-[clamp(168px,54vw,220px)] w-[clamp(168px,54vw,220px)] rounded-xl sm:h-[232px] sm:w-[232px]"
                     />
                   ) : (
-                    <div className="flex h-[210px] w-[210px] items-center justify-center rounded-xl bg-gray-50 text-gray-400 sm:h-[232px] sm:w-[232px]">
+                    <div className="flex h-[clamp(168px,54vw,220px)] w-[clamp(168px,54vw,220px)] items-center justify-center rounded-xl bg-gray-50 text-gray-400 sm:h-[232px] sm:w-[232px]">
                       <QrCode size={44} />
                     </div>
                   )}
@@ -209,6 +227,8 @@ export function QPayModal({
                   {error}
                 </p>
               )}
+
+              <MobileBankAppLinks links={deepLinks} />
 
               <button
                 onClick={handleManualCheck}
