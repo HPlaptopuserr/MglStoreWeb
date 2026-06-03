@@ -122,22 +122,22 @@ export default function HrInfoPage() {
   return (
     <InfoDetailPage
       accent={{
-        pageBg: "bg-[#f8f4ec]",
-        border: "border-amber-100",
-        heroBg: "bg-gradient-to-br from-stone-950 via-amber-950 to-slate-950",
-        cardBg: "bg-amber-50/50",
-        glowPrimary: "bg-amber-400/25",
-        glowSecondary: "bg-orange-500/20",
+        pageBg: "bg-slate-50",
+        border: "border-slate-200",
+        heroBg: "bg-gradient-to-br from-slate-950 via-slate-900 to-black",
+        cardBg: "bg-white",
+        glowPrimary: "bg-[#FFAD02]/25",
+        glowSecondary: "bg-white/10",
         eyebrow: "text-amber-300",
-        panelBg: "bg-amber-50",
-        chipBg: "bg-amber-100",
-        chipText: "text-amber-800",
-        marker: "bg-amber-500",
-        highlightBg: "bg-gradient-to-br from-amber-900 to-slate-950",
+        panelBg: "bg-white",
+        chipBg: "bg-[#FFF3CC]",
+        chipText: "text-[#8A4D00]",
+        marker: "bg-[#FFAD02]",
+        highlightBg: "bg-slate-950",
       }}
       eyebrow="HR зөвлөгөө"
-      title="Хүний нөөцийн зөвлөгөөний үнийн хөлс болон задаргаа"
-      description="Ажилтан сонгон шалгаруулалт, HR бичиг баримт, дотоод журам, сургалт болон HR FIX/BUILD/SCALE багцын мэдээлэл."
+      title="Хүний нөөцийн үйлчилгээ"
+      description="Ажилтан авах, гэрээ бичиг баримт цэгцлэх, дотоод журам байгуулах болон HR FIX/BUILD/SCALE багцуудыг нэг дор харьцуулж сонгоно."
       cardsEyebrow="Зах зээлийн үнэ"
       cardsTitle="Хүний нөөцийн зөвлөгөөний төрөл"
       cards={cards}
@@ -147,6 +147,14 @@ export default function HrInfoPage() {
       packagesEyebrow="HR багцууд"
       packagesTitle="FIX, BUILD, SCALE багц үйлчилгээ"
       packages={packages}
+      primaryAction={{
+        label: "Үйлчилгээ сонгох",
+        href: "/our-services#hr",
+      }}
+      secondaryAction={{
+        label: "Үнийн задаргаа",
+        href: "#prices",
+      }}
       highlights={[
         {
           label: "HR FIX",
