@@ -20,8 +20,8 @@ export function ProjectGridCard({
   const isFree = !project.price || project.price <= 0;
 
   return (
-    <article className="group overflow-hidden rounded-xl border border-white/10 bg-[#18181b] shadow-[0_24px_70px_rgba(0,0,0,0.34)] transition duration-300 hover:-translate-y-1 hover:border-orange-300/40">
-      <div className="relative aspect-[16/12] overflow-hidden bg-[#0f0f11]">
+    <article className="group flex min-h-[430px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-orange-200 hover:shadow-xl hover:shadow-orange-100/60">
+      <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
         {primaryImage ? (
           <img
             src={primaryImage}
@@ -29,44 +29,60 @@ export function ProjectGridCard({
             className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-[linear-gradient(135deg,#151516,#23201e)] text-white">
-            <ShieldCheck className="h-14 w-14 text-orange-300" />
-            <span className="text-sm font-black uppercase">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-[linear-gradient(135deg,#f8fafc,#eef2f7)] text-slate-500">
+            <ShieldCheck className="h-12 w-12 text-orange-400" />
+            <span className="text-xs font-black uppercase tracking-[0.2em]">
               MGL Store төсөл
             </span>
           </div>
         )}
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#18181b] to-transparent" />
-        <div className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-orange-500 to-orange-300 px-4 py-1.5 text-[11px] font-black uppercase text-white shadow-lg shadow-orange-900/40">
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-slate-950/65 via-slate-950/12 to-transparent" />
+        <div className="absolute left-4 top-4 rounded-full bg-white/92 px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-slate-700 shadow-sm backdrop-blur">
+          {project.category || "Төсөл"}
+        </div>
+        <div className="absolute right-4 top-4 rounded-full bg-orange-500 px-3.5 py-1.5 text-[11px] font-black uppercase text-white shadow-lg shadow-orange-900/20">
           {isFree ? "Үнэгүй" : formatMnt(project.price)}
         </div>
       </div>
 
-      <div className="flex min-h-[246px] flex-col px-6 pb-6 pt-5">
-        <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-cyan-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+      <div className="flex flex-1 flex-col px-5 pb-5 pt-4">
+        <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-cyan-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-cyan-600" />
           PROJECT #{String(index + 1).padStart(6, "0")}
           {images.length > 1 && (
-            <span className="ml-auto inline-flex items-center gap-1 text-orange-200/80">
+            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-slate-500">
               <ImagePlus className="h-3.5 w-3.5" />
               {images.length}
             </span>
           )}
         </div>
 
-        <h2 className="mt-4 line-clamp-2 text-2xl font-black leading-tight text-white">
+        <h2 className="mt-3 line-clamp-2 text-xl font-black leading-tight text-slate-950">
           {project.title}
         </h2>
-        <p className="mt-4 line-clamp-4 text-sm leading-6 text-orange-50/70">
+        <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-500">
           {project.summary ||
             "Төслийн хураангуй, зураг болон төлбөртэй дэлгэрэнгүй мэдээллийг нэг дороос үзэх боломжтой."}
         </p>
+
+        {project.tags && project.tags.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {project.tags.slice(0, 3).map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-500"
+              >
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
 
         <button
           type="button"
           onClick={() => onOpen(project)}
           disabled={openingId === project.id}
-          className="mt-auto inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-300 px-5 text-sm font-black text-black transition hover:brightness-110 disabled:opacity-60"
+          className="mt-auto inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-black text-white transition hover:bg-orange-500 disabled:opacity-60"
         >
           {openingId === project.id ? (
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -81,4 +97,3 @@ export function ProjectGridCard({
     </article>
   );
 }
-

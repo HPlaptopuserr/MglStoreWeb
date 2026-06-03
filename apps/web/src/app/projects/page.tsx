@@ -506,7 +506,7 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_24%_0%,rgba(255,111,44,0.22),transparent_34%),radial-gradient(circle_at_76%_0%,rgba(21,160,180,0.18),transparent_34%),linear-gradient(180deg,#171313_0%,#101011_58%,#111113_100%)] text-white">
+    <div className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_42%,#ffffff_100%)] text-slate-950">
       <main
         id="project-list"
         className="relative mx-auto max-w-7xl overflow-hidden px-4 py-10 sm:py-12 lg:px-8 lg:py-16"
@@ -520,13 +520,13 @@ export default function ProjectsPage() {
             {Array.from({ length: 3 }).map((_, index) => (
               <div
                 key={index}
-                className="h-[455px] animate-pulse rounded-xl border border-white/10 bg-white/[0.04]"
+                className="h-[455px] animate-pulse rounded-xl border border-slate-200 bg-slate-100"
               />
             ))}
           </div>
         ) : projects.length === 0 ? (
-          <div className="relative z-10 rounded-xl border border-dashed border-orange-200/30 bg-white/[0.04] p-14 text-center shadow-[0_22px_70px_rgba(0,0,0,0.22)]">
-            <p className="text-lg font-bold text-orange-50/80">
+          <div className="relative z-10 rounded-xl border border-dashed border-slate-300 bg-white p-14 text-center shadow-sm">
+            <p className="text-lg font-bold text-slate-500">
               Одоогоор нийтлэгдсэн төсөл алга байна.
             </p>
           </div>
@@ -545,14 +545,14 @@ export default function ProjectsPage() {
 
             <div className="mb-5 flex items-end justify-between gap-4">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200/75">
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-700">
                   All projects
                 </p>
-                <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
                   Бүх төслүүд
                 </h2>
               </div>
-              <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs font-black text-orange-100/80">
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-600 shadow-sm">
                 {projects.length}
               </span>
             </div>
@@ -568,14 +568,14 @@ export default function ProjectsPage() {
                 />
               ))}
 
-              <article className="flex min-h-[455px] flex-col items-center justify-center rounded-xl border border-dashed border-orange-200/24 bg-white/[0.03] px-8 text-center shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
-                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-orange-200/10 text-orange-200 shadow-[0_0_35px_rgba(255,111,44,0.16)]">
+              <article className="flex min-h-[455px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-8 text-center shadow-sm">
+                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-orange-50 text-orange-500">
                   <Plus className="h-8 w-8" />
                 </div>
-                <h3 className="mt-7 text-lg font-black text-orange-100">
+                <h3 className="mt-7 text-lg font-black text-slate-950">
                   Шинэ төсөл удахгүй
                 </h3>
-                <p className="mt-3 max-w-xs text-sm font-semibold leading-6 text-orange-50/45">
+                <p className="mt-3 max-w-xs text-sm font-semibold leading-6 text-slate-500">
                   Бид удахгүй шинэ төсөл, хамтын ажиллагааны боломжуудыг нэмэх
                   болно.
                 </p>

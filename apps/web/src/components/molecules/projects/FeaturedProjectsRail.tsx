@@ -48,11 +48,11 @@ export function FeaturedProjectsRail({
       <div className="mb-4 flex items-end justify-between gap-4">
         <div>
           {subtitle && (
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200/75">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-700">
               {subtitle}
             </p>
           )}
-          <h2 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
             {title}
           </h2>
         </div>
@@ -60,7 +60,7 @@ export function FeaturedProjectsRail({
           <button
             type="button"
             onClick={() => scrollByPage(-1)}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white transition hover:bg-white/12"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
             aria-label="Өмнөх төслүүд"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -68,7 +68,7 @@ export function FeaturedProjectsRail({
           <button
             type="button"
             onClick={() => scrollByPage(1)}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white transition hover:bg-white/12"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
             aria-label="Дараагийн төслүүд"
           >
             <ChevronRight className="h-4 w-4" />
@@ -76,7 +76,7 @@ export function FeaturedProjectsRail({
         </div>
       </div>
 
-      <div className="pointer-events-none absolute right-0 top-24 z-20 hidden h-44 w-28 bg-gradient-to-l from-[#111113] to-transparent lg:block" />
+      <div className="pointer-events-none absolute right-0 top-24 z-20 hidden h-44 w-28 bg-gradient-to-l from-white to-transparent lg:block" />
       <div
         ref={scrollRef}
         className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-4 [scrollbar-width:none] sm:gap-4 [&::-webkit-scrollbar]:hidden"
@@ -148,7 +148,7 @@ export function FeaturedProjectsRail({
               });
             }}
             className={`h-1 rounded-full transition-all ${
-              index === activeIndex ? "w-10 bg-white" : "w-8 bg-white/25"
+              index === activeIndex ? "w-10 bg-slate-950" : "w-8 bg-slate-300"
             }`}
             aria-label={`${title} ${index + 1}`}
           />
