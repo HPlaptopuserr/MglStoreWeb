@@ -83,7 +83,7 @@ export interface SystemQrSubMerchantListItem {
 // In-memory token cache to avoid logging in on every request
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
-async function getSystemQrToken(username?: string, password?: string): Promise<string> {
+function resolveSystemQrCredentials(username?: string, password?: string) {
   const { qrpayBaseUrl } = systemQrEnv();
 
   const reqUsername = username || process.env.SYSTEMQR_USERNAME;
@@ -93,8 +93,17 @@ async function getSystemQrToken(username?: string, password?: string): Promise<s
     throw new Error("SystemQR username or password is not configured");
   }
 
-  const passwordHash = crypto.createHash("sha256").update(reqPassword).digest("hex").slice(0, 16);
-  const cacheKey = `${qrpayBaseUrl}:${reqUsername}:${passwordHash}`;
+  return { qrpayBaseUrl, reqUsername, reqPassword };
+}
+
+function getSystemQrTokenCacheKey(qrpayBaseUrl: string, username: string, password: string) {
+  const passwordHash = crypto.createHash("sha256").update(password).digest("hex").slice(0, 16);
+  return `${qrpayBaseUrl}:${username}:${passwordHash}`;
+}
+
+async function getSystemQrToken(username?: string, password?: string): Promise<string> {
+  const { qrpayBaseUrl, reqUsername, reqPassword } = resolveSystemQrCredentials(username, password);
+  const cacheKey = getSystemQrTokenCacheKey(qrpayBaseUrl, reqUsername, reqPassword);
   const cached = tokenCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
     return cached.token;
@@ -119,15 +128,66 @@ async function getSystemQrToken(username?: string, password?: string): Promise<s
   return token;
 }
 
+function clearSystemQrToken(username?: string, password?: string) {
+  const { qrpayBaseUrl, reqUsername, reqPassword } = resolveSystemQrCredentials(username, password);
+  tokenCache.delete(getSystemQrTokenCacheKey(qrpayBaseUrl, reqUsername, reqPassword));
+}
+
+const isSystemQrTokenExpiredResponse = (data: { status?: unknown; message?: unknown } | null | undefined) => {
+  const status = String(data?.status || "").trim();
+  const message = String(data?.message || "").trim();
+  const combined = `${status} ${message}`;
+  return /^(401|403)$/.test(status)
+    || /token|jwt|session|expire|expired|unauthorized|forbidden|нэвтрэх эрх|хандалтын эрх|эрх дууссан/i.test(combined);
+};
+
+async function readSystemQrJson<T extends { status?: unknown; message?: unknown }>(res: Response): Promise<T> {
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text) as T;
+    if (!res.ok && data && typeof data === "object") {
+      if (data.status === undefined || data.status === null) data.status = String(res.status);
+      if (data.message === undefined || data.message === null) data.message = res.statusText || text;
+    }
+    return data;
+  } catch {
+    return {
+      status: String(res.status),
+      message: text || res.statusText || "SystemQR response is not JSON",
+    } as T;
+  }
+}
+
+async function fetchSystemQrJsonWithTokenRetry<T extends { status?: unknown; message?: unknown }>(
+  request: (token: string) => Promise<Response>,
+  username?: string,
+  password?: string,
+): Promise<T> {
+  const token = await getSystemQrToken(username, password);
+  const first = await readSystemQrJson<T>(await request(token));
+  if (!isSystemQrTokenExpiredResponse(first)) return first;
+
+  clearSystemQrToken(username, password);
+  const freshToken = await getSystemQrToken(username, password);
+  return readSystemQrJson<T>(await request(freshToken));
+}
+
 export async function registerSystemQrSubMerchant(
   params: SystemQrRegisterSubMerchantParams,
   username?: string,
   password?: string,
 ): Promise<SystemQrSubMerchantResult> {
-  const token = await getSystemQrToken(username, password);
   const { qrpayBaseUrl } = systemQrEnv();
 
-  const res = await fetch(`${qrpayBaseUrl}/qrMerchant/registerSubMerchant`, {
+  const data = await fetchSystemQrJsonWithTokenRetry<{
+    status?: string;
+    message?: string | null;
+    entity?: {
+      merchantCode?: string;
+      username?: string;
+      password?: string;
+    } | null;
+  }>((token) => fetch(`${qrpayBaseUrl}/qrMerchant/registerSubMerchant`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -152,17 +212,7 @@ export async function registerSystemQrSubMerchant(
       gender: params.gender,
       subCategoryId: params.subCategoryId,
     }),
-  });
-
-  const data = (await res.json()) as {
-    status?: string;
-    message?: string | null;
-    entity?: {
-      merchantCode?: string;
-      username?: string;
-      password?: string;
-    } | null;
-  };
+  }), username, password);
 
   if (data.status !== "000" || !data.entity?.merchantCode) {
     console.error("SystemQR registerSubMerchant failed", {
@@ -195,19 +245,9 @@ export async function resetSystemQrSubMerchantPassword(
   username?: string,
   password?: string,
 ): Promise<SystemQrSubMerchantResult> {
-  const token = await getSystemQrToken(username, password);
   const { qrpayBaseUrl } = systemQrEnv();
 
-  const res = await fetch(`${qrpayBaseUrl}/qrMerchant/resetPassword`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ subMerchantCode }),
-  });
-
-  const data = (await res.json()) as {
+  const data = await fetchSystemQrJsonWithTokenRetry<{
     status?: string;
     message?: string | null;
     entity?: {
@@ -215,7 +255,14 @@ export async function resetSystemQrSubMerchantPassword(
       username?: string;
       password?: string;
     } | null;
-  };
+  }>((token) => fetch(`${qrpayBaseUrl}/qrMerchant/resetPassword`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ subMerchantCode }),
+  }), username, password);
 
   if (data.status !== "000" || !data.entity?.merchantCode) {
     throw new Error(
@@ -237,14 +284,9 @@ export async function listSystemQrSubMerchants(
   username?: string,
   password?: string,
 ): Promise<SystemQrSubMerchantListItem[]> {
-  const token = await getSystemQrToken(username, password);
   const { qrpayBaseUrl } = systemQrEnv();
 
-  const res = await fetch(`${qrpayBaseUrl}/qrMerchant/subMerchant`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  const data = (await res.json()) as {
+  const data = await fetchSystemQrJsonWithTokenRetry<{
     status?: string;
     message?: string | null;
     entity?: Array<{
@@ -254,7 +296,9 @@ export async function listSystemQrSubMerchants(
       terminalNo?: string | null;
       createdDate?: string | null;
     }> | null;
-  };
+  }>((token) => fetch(`${qrpayBaseUrl}/qrMerchant/subMerchant`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }), username, password);
 
   if (data.status !== "000" || !Array.isArray(data.entity)) {
     throw new Error(`Minu SystemQR subMerchant list failed (${data.status || "unknown"}): ${data.message || "list ирсэнгүй"}`);
@@ -270,12 +314,12 @@ export async function listSystemQrSubMerchants(
 }
 
 export async function getSystemQrCityList() {
-  const token = await getSystemQrToken();
   const { qrpayBaseUrl } = systemQrEnv();
-  const res = await fetch(`${qrpayBaseUrl}/qrMerchant/city`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const data = (await res.json()) as { status?: string; entity?: any[] | null };
+  const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: any[] | null }>(
+    (token) => fetch(`${qrpayBaseUrl}/qrMerchant/city`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  );
   if (data.status !== "000" || !Array.isArray(data.entity)) return [];
 
   return data.entity.map((city) => ({
@@ -291,13 +335,13 @@ export async function getSystemQrCityList() {
 }
 
 export async function getSystemQrKhorooList(districtId: string) {
-  const token = await getSystemQrToken();
   const { qrpayBaseUrl } = systemQrEnv();
-  const res = await fetch(
-    `${qrpayBaseUrl}/qrMerchant/khoroo?districtId=${encodeURIComponent(districtId)}`,
-    { headers: { Authorization: `Bearer ${token}` } },
+  const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: any[] | null }>(
+    (token) => fetch(
+      `${qrpayBaseUrl}/qrMerchant/khoroo?districtId=${encodeURIComponent(districtId)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    ),
   );
-  const data = (await res.json()) as { status?: string; entity?: any[] | null };
   if (data.status !== "000" || !Array.isArray(data.entity)) return [];
 
   return data.entity.map((khoroo) => ({
@@ -307,12 +351,12 @@ export async function getSystemQrKhorooList(districtId: string) {
 }
 
 export async function getSystemQrCategoryList() {
-  const token = await getSystemQrToken();
   const { qrpayBaseUrl } = systemQrEnv();
-  const res = await fetch(`${qrpayBaseUrl}/qrMerchant/category`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const data = (await res.json()) as { status?: string; entity?: any[] | null };
+  const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: any[] | null }>(
+    (token) => fetch(`${qrpayBaseUrl}/qrMerchant/category`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  );
   if (data.status !== "000" || !Array.isArray(data.entity)) return [];
 
   return data.entity.flatMap((category) =>
@@ -328,7 +372,6 @@ export async function getSystemQrCategoryList() {
 }
 
 export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams, username?: string, password?: string) {
-  const token = await getSystemQrToken(username, password);
   const { deeplinkBaseUrl, publicUrl } = systemQrEnv();
   const fallbackWebhook = publicUrl ? `${publicUrl}/api/pos/qpay/cb` : undefined;
   const webhook = isPublicCallbackUrl(params.webhook)
@@ -338,7 +381,7 @@ export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams,
       : undefined;
 
   try {
-    const res = await fetch(`${deeplinkBaseUrl}/subMerchant/createInvoice`, {
+    const data = await fetchSystemQrJsonWithTokenRetry<any>((token) => fetch(`${deeplinkBaseUrl}/subMerchant/createInvoice`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -350,9 +393,7 @@ export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams,
         merchantCode: params.merchantCode,
         ...(webhook ? { webhook } : {}),
       }),
-    });
-
-    const data = await res.json() as any;
+    }), username, password);
 
     if (data.status !== "000") {
       throw new Error(
@@ -388,11 +429,10 @@ export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams,
 }
 
 export async function checkSystemQrPayment(params: SystemQrCheckInvoiceParams, username?: string, password?: string) {
-  const token = await getSystemQrToken(username, password);
   const { deeplinkBaseUrl } = systemQrEnv();
 
   try {
-    const res = await fetch(`${deeplinkBaseUrl}/subMerchant/checkInvoice`, {
+    const data = await fetchSystemQrJsonWithTokenRetry<any>((token) => fetch(`${deeplinkBaseUrl}/subMerchant/checkInvoice`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -402,9 +442,7 @@ export async function checkSystemQrPayment(params: SystemQrCheckInvoiceParams, u
         merchantCode: params.merchantCode,
         invoiceNumber: params.invoiceNumber,
       }),
-    });
-
-    const data = await res.json() as any;
+    }), username, password);
 
     // According to docs, entity.status = null (pending), "000" (success), "00x" (failed)
     const entity = data.entity;
