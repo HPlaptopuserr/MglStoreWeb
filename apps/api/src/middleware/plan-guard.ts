@@ -4,6 +4,7 @@
  */
 import type { Request, Response, NextFunction } from "express";
 import { prisma } from "@mgl/database";
+import { isFullAdmin } from "@mgl/types";
 import { getPlan } from "../routes/vendor/vendor-upgrade.routes";
 
 // ─── Helper: get org from authenticated user ──────────────────────────
@@ -65,6 +66,11 @@ export function requireActivePlan(
 ) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const userRole = (req as any).user?.role as string | undefined;
+      if (userRole && isFullAdmin(userRole)) {
+        return next();
+      }
+
       let org: Awaited<ReturnType<typeof getOrgById>> | null = null;
 
       if (source === "user") {

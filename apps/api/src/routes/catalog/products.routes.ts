@@ -270,6 +270,8 @@ router.get("/products", optionalAuth, async (req, res) => {
     const { organizationId, businessCategoryId } = req.query as Record<string, string>;
     const search = String(req.query.search ?? req.query.q ?? "").trim();
     const includeExpiredInventory = isTruthyQueryValue(req.query.includeExpiredInventory);
+    const includeInactive = isTruthyQueryValue(req.query.includeInactive)
+      && canBypassAllWebProductsVisibility(req);
     const requestedOrganizationId = organizationId ? String(organizationId) : "";
     const rawLimit = parseInt(String(req.query.limit || ""), 10);
     const limit = Number.isFinite(rawLimit) && rawLimit > 0
@@ -278,9 +280,9 @@ router.get("/products", optionalAuth, async (req, res) => {
 
     const where: any = {
       deletedAt: null,
-      isActive: true,
       organization: { deletedAt: null, status: "ACTIVE" },
     };
+    if (!includeInactive) where.isActive = true;
     if (organizationId) where.organizationId = organizationId;
     if (businessCategoryId) where.businessCategoryId = businessCategoryId;
 

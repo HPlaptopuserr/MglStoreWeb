@@ -32,6 +32,7 @@ import {
   PlanGrantDialog,
   PlanGrantHistory,
 } from "@/components/organisms/plan-grant";
+import { PartnerContentManager } from "./PartnerContentManager";
 
 export default function PartnerDetailsPage() {
   const params = useParams();
@@ -359,6 +360,11 @@ export default function PartnerDetailsPage() {
           ))}
         </div>
       </div>
+
+      <PartnerContentManager
+        partner={partner}
+        onPartnerUpdated={(next) => setPartner((prev: any) => ({ ...prev, ...next }))}
+      />
 
       {/* ── Main grid ── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
