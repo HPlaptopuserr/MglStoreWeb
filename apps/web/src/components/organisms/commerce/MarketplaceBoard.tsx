@@ -23,6 +23,55 @@ export type MarketplaceCategory = {
   _count?: { products?: number };
 };
 
+function isImageIcon(icon: string) {
+  return (
+    icon.startsWith("data:image/") ||
+    icon.startsWith("http://") ||
+    icon.startsWith("https://") ||
+    icon.startsWith("/")
+  );
+}
+
+function isSafeTextIcon(icon: string) {
+  const trimmed = icon.trim();
+  if (!trimmed || trimmed.length > 8) return false;
+  if (/^[A-Za-z0-9+/=]{6,}$/.test(trimmed)) return false;
+  return true;
+}
+
+function SafeCategoryIcon({
+  icon,
+  name,
+  className = "h-3.5 w-3.5 text-orange-500",
+}: {
+  icon?: string | null;
+  name: string;
+  className?: string;
+}) {
+  const value = String(icon || "").trim();
+
+  if (value && isImageIcon(value)) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={value}
+        alt={name}
+        className="h-4 w-4 rounded-sm object-contain"
+      />
+    );
+  }
+
+  if (value && isSafeTextIcon(value)) {
+    return (
+      <span className="block max-w-[1.25rem] overflow-hidden text-base leading-none">
+        {value}
+      </span>
+    );
+  }
+
+  return <PackageSearch className={className} />;
+}
+
 export type MarketplaceProduct = {
   id: string;
   name: string;
@@ -134,7 +183,15 @@ export function MarketplaceBoard({
                           activeCategory === category.id ? "bg-white/20" : "bg-white ring-1 ring-slate-100"
                         }`}
                       >
-                        {category.icon || <PackageSearch className="h-3.5 w-3.5 text-orange-500" />}
+                        <SafeCategoryIcon
+                          icon={category.icon}
+                          name={category.name}
+                          className={
+                            activeCategory === category.id
+                              ? "h-3.5 w-3.5 text-white"
+                              : "h-3.5 w-3.5 text-orange-500"
+                          }
+                        />
                       </span>
                       <span className="truncate">{category.name}</span>
                     </span>
@@ -263,7 +320,15 @@ export function MarketplaceBoard({
                     : "border-slate-200 bg-white/90 text-slate-700 hover:border-orange-200 hover:text-orange-600"
                 }`}
               >
-                {category.icon && <span className="text-base leading-none">{category.icon}</span>}
+                <SafeCategoryIcon
+                  icon={category.icon}
+                  name={category.name}
+                  className={
+                    activeCategory === category.id
+                      ? "h-4 w-4 text-white"
+                      : "h-4 w-4 text-orange-500"
+                  }
+                />
                 {category.name}
               </CategoryLink>
             );

@@ -1,16 +1,77 @@
-import { Router, type Router as ExpressRouter } from "express";
+import express, { Router, type Router as ExpressRouter, type Request } from "express";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import multer from "multer";
 import { prisma } from "@mgl/database";
 import { isAdminRole, ADMIN_ROLE_LABELS, getPlatformPermissions } from "@mgl/types";
 import { resolveOrganization, requireAuth, type AuthPayload } from "../../middleware/auth";
 import { isSmtpConfigured, sendSmtpMail } from "../../lib/smtp";
 
 const router: ExpressRouter = Router();
+const profileUploadsDir = path.resolve(__dirname, "../../../uploads/profile");
+if (!fs.existsSync(profileUploadsDir)) {
+  fs.mkdirSync(profileUploadsDir, { recursive: true });
+}
+
+const profileAvatarUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, profileUploadsDir),
+    filename: (req, file, cb) => {
+      const userId = String((req as any).user?.userId || "user").replace(
+        /[^a-zA-Z0-9_-]/g,
+        "",
+      );
+      const ext = path.extname(file.originalname || "").toLowerCase() || ".jpg";
+      cb(null, `${userId}-${Date.now()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Зөвхөн зураг файл upload хийнэ үү"));
+  },
+});
+
+router.use("/profile/uploads", express.static(profileUploadsDir));
 
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("FATAL: JWT_SECRET not set"); })() : "dev-secret-change-me");
 const VERIFY_MN_API_BASE = "https://api.verify.mn";
+
+function toWebUserPayload(user: any, orgInfo?: { orgRole?: string | null; organizationId?: string | null } | null) {
+  const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
+  const address = Array.isArray(user.addresses)
+    ? user.addresses.find((item: any) => item.isDefault) || user.addresses[0]
+    : null;
+
+  return {
+    id: user.id,
+    email: safeEmail,
+    role: user.role,
+    orgRole: orgInfo?.orgRole || null,
+    fullName: user.profile?.fullName || "",
+    phone: user.profile?.phoneNumber || null,
+    avatarUrl: user.profile?.avatarUrl || null,
+    organizationId: orgInfo?.organizationId || null,
+    termsAcceptedAt: user.termsAcceptedAt || null,
+    marketingConsent: Boolean(user.marketingConsent),
+    defaultAddress: address
+      ? {
+          id: address.id,
+          label: address.label || "",
+          fullAddress: address.fullAddress || "",
+          city: address.city || "",
+          district: address.district || "",
+          khoroo: address.khoroo || "",
+          entrance: address.entrance || "",
+          apartment: address.apartment || "",
+          isDefault: Boolean(address.isDefault),
+        }
+      : null,
+  };
+}
 
 type VerifyMnSessionResponse = {
   sessionId: string;
@@ -315,7 +376,14 @@ router.get("/me", requireAuth, async (req, res) => {
     const { userId } = (req as any).user as AuthPayload;
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { profile: true },
+      include: {
+        profile: true,
+        addresses: {
+          where: { deletedAt: null },
+          orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+          take: 1,
+        },
+      },
     });
 
     if (!user) {
@@ -323,17 +391,7 @@ router.get("/me", requireAuth, async (req, res) => {
     }
 
     const orgInfo = await resolveOrganization(user.id);
-    const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
-
-    return res.json({
-      id: user.id,
-      email: safeEmail,
-      role: user.role,
-      orgRole: orgInfo?.orgRole || null,
-      fullName: user.profile?.fullName || "",
-      phone: user.profile?.phoneNumber || null,
-      organizationId: orgInfo?.organizationId || null,
-    });
+    return res.json(toWebUserPayload(user, orgInfo));
   } catch (error) {
     console.error("[auth/me error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
@@ -1599,11 +1657,35 @@ router.post("/reset-password", async (req, res) => {
 router.put("/web/profile", requireAuth, async (req, res) => {
   try {
     const { userId } = (req as any).user as AuthPayload;
-    const { fullName, phone, email } = req.body;
+    const {
+      fullName,
+      phone,
+      email,
+      avatarUrl,
+      address,
+      acceptTerms,
+      marketingConsent,
+    } = req.body as {
+      fullName?: string;
+      phone?: string;
+      email?: string;
+      avatarUrl?: string | null;
+      acceptTerms?: boolean;
+      marketingConsent?: boolean;
+      address?: {
+        label?: string;
+        fullAddress?: string;
+        city?: string;
+        district?: string;
+        khoroo?: string;
+        entrance?: string;
+        apartment?: string;
+      };
+    };
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { profile: true },
+      include: { profile: true, addresses: { where: { deletedAt: null } } },
     });
 
     if (!user) {
@@ -1628,43 +1710,118 @@ router.put("/web/profile", requireAuth, async (req, res) => {
       }
     }
 
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(email && !email.endsWith("@temp.local") ? { email: email.trim().toLowerCase() } : {}),
-        profile: {
-          upsert: {
-            create: {
-              fullName: fullName?.trim() || "",
-              phoneNumber: phone?.trim() || "",
-            },
-            update: {
-              ...(fullName !== undefined ? { fullName: fullName.trim() } : {}),
-              ...(phone !== undefined ? { phoneNumber: phone.trim() } : {}),
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const savedUser = await tx.user.update({
+        where: { id: userId },
+        data: {
+          ...(email && !email.endsWith("@temp.local") ? { email: email.trim().toLowerCase() } : {}),
+          ...(acceptTerms && !user.termsAcceptedAt ? { termsAcceptedAt: new Date() } : {}),
+          ...(marketingConsent !== undefined ? { marketingConsent: Boolean(marketingConsent) } : {}),
+          profile: {
+            upsert: {
+              create: {
+                fullName: fullName?.trim() || "",
+                phoneNumber: phone?.trim() || "",
+                avatarUrl: avatarUrl?.trim() || null,
+              },
+              update: {
+                ...(fullName !== undefined ? { fullName: fullName.trim() } : {}),
+                ...(phone !== undefined ? { phoneNumber: phone.trim() } : {}),
+                ...(avatarUrl !== undefined ? { avatarUrl: avatarUrl?.trim() || null } : {}),
+              },
             },
           },
         },
-      },
-      include: { profile: true },
+        include: {
+          profile: true,
+          addresses: {
+            where: { deletedAt: null },
+            orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+            take: 1,
+          },
+        },
+      });
+
+      const fullAddress = address?.fullAddress?.trim();
+      if (fullAddress) {
+        const nextAddress = address as NonNullable<typeof address>;
+        await tx.address.updateMany({
+          where: { userId, deletedAt: null },
+          data: { isDefault: false },
+        });
+        await tx.address.upsert({
+          where: { id: user.addresses[0]?.id || crypto.randomUUID() },
+          update: {
+            label: nextAddress.label?.trim() || "Үндсэн хаяг",
+            fullAddress,
+            city: nextAddress.city?.trim() || null,
+            district: nextAddress.district?.trim() || null,
+            khoroo: nextAddress.khoroo?.trim() || null,
+            entrance: nextAddress.entrance?.trim() || null,
+            apartment: nextAddress.apartment?.trim() || null,
+            isDefault: true,
+            deletedAt: null,
+          },
+          create: {
+            userId,
+            label: nextAddress.label?.trim() || "Үндсэн хаяг",
+            fullAddress,
+            city: nextAddress.city?.trim() || null,
+            district: nextAddress.district?.trim() || null,
+            khoroo: nextAddress.khoroo?.trim() || null,
+            entrance: nextAddress.entrance?.trim() || null,
+            apartment: nextAddress.apartment?.trim() || null,
+            isDefault: true,
+          },
+        });
+      }
+
+      return tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        include: {
+          profile: true,
+          addresses: {
+            where: { deletedAt: null },
+            orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+            take: 1,
+          },
+        },
+      });
     });
 
     const orgInfo = await resolveOrganization(userId);
-    const safeEmail = updatedUser.email?.endsWith("@temp.local") ? null : updatedUser.email;
-
-    return res.json({
-      id: updatedUser.id,
-      email: safeEmail,
-      role: updatedUser.role,
-      orgRole: orgInfo?.orgRole || null,
-      fullName: updatedUser.profile?.fullName || "",
-      phone: updatedUser.profile?.phoneNumber || null,
-      organizationId: orgInfo?.organizationId || null,
-    });
+    return res.json(toWebUserPayload(updatedUser, orgInfo));
   } catch (error) {
     console.error("[web/profile update error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
   }
 });
+
+router.post(
+  "/web/profile/avatar",
+  requireAuth,
+  profileAvatarUpload.single("avatar"),
+  async (req: Request, res) => {
+    try {
+      const { userId } = (req as any).user as AuthPayload;
+      if (!req.file) {
+        return res.status(400).json({ message: "Зураг файл шаардлагатай" });
+      }
+
+      const avatarUrl = `/api/auth/profile/uploads/${req.file.filename}`;
+      await prisma.profile.upsert({
+        where: { userId },
+        create: { userId, fullName: "", avatarUrl },
+        update: { avatarUrl },
+      });
+
+      return res.json({ avatarUrl });
+    } catch (error) {
+      console.error("[web/profile avatar upload error]", error);
+      return res.status(500).json({ message: "Зураг upload хийхэд алдаа гарлаа" });
+    }
+  },
+);
 
 // ── PUT /auth/web/change-password — Change password for current user ───
 router.put("/web/change-password", requireAuth, async (req, res) => {

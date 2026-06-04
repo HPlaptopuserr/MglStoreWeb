@@ -9,6 +9,19 @@ export type AuthUser = {
   role: string;
   fullName?: string;
   phone?: string | null;
+  avatarUrl?: string | null;
+  termsAcceptedAt?: string | null;
+  marketingConsent?: boolean;
+  defaultAddress?: {
+    id: string;
+    label?: string;
+    fullAddress: string;
+    city?: string;
+    district?: string;
+    khoroo?: string;
+    entrance?: string;
+    apartment?: string;
+  } | null;
   orgRole?: string | null;
   organizationId?: string | null;
 };
@@ -100,7 +113,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = getToken();
     const headers = new Headers(init?.headers);
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    if (!headers.has("Content-Type") && init?.body) {
+    const isFormData =
+      typeof FormData !== "undefined" && init?.body instanceof FormData;
+    if (!headers.has("Content-Type") && init?.body && !isFormData) {
       headers.set("Content-Type", "application/json");
     }
     const res = await fetch(url, { ...init, headers });

@@ -49,10 +49,24 @@ const PALETTE = [
 /* ─── CategoryIcon ──────────────────────────────────────────── */
 function CatIcon({ icon, name, size = 28 }: { icon?: string; name: string; size?: number }) {
   if (!icon) return <ShoppingBasket size={size} />;
-  if (icon.startsWith("data:image") || icon.startsWith("http")) {
+  const value = icon.trim();
+  const isImage =
+    value.startsWith("data:image/") ||
+    value.startsWith("http://") ||
+    value.startsWith("https://") ||
+    value.startsWith("/");
+  const isSafeText =
+    value.length > 0 &&
+    value.length <= 8 &&
+    !/^[A-Za-z0-9+/=]{6,}$/.test(value);
+
+  if (isImage) {
     return <img src={icon} alt={name} className="object-contain" style={{ width: size, height: size }} />;
   }
-  return <span style={{ fontSize: size * 0.85 }} className="leading-none">{icon}</span>;
+  if (isSafeText) {
+    return <span style={{ fontSize: size * 0.85 }} className="leading-none">{value}</span>;
+  }
+  return <ShoppingBasket size={size} />;
 }
 
 /* ─── PartnerCard ───────────────────────────────────────────── */
