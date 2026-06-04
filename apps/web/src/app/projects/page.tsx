@@ -31,9 +31,27 @@ function ProjectDetailModal({
   const images = getProjectImages(project);
 
   useEffect(() => {
+    const scrollY = window.scrollY;
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    const { overflow, paddingRight, position, top, width } =
+      document.body.style;
+
     document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow = overflow;
+      document.body.style.paddingRight = paddingRight;
+      document.body.style.position = position;
+      document.body.style.top = top;
+      document.body.style.width = width;
+      window.scrollTo(0, scrollY);
     };
   }, []);
 
@@ -67,7 +85,7 @@ function ProjectDetailModal({
           </button>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto px-6 py-6">
+        <div className="max-h-[70vh] overscroll-contain overflow-y-auto px-6 py-6">
           {images.length > 0 && (
             <div className="mb-6 grid gap-3 sm:grid-cols-2">
               {images.map((image, index) => (

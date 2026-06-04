@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
+import type { WheelEvent } from "react";
 import {
   ShoppingBasket,
   Loader2,
@@ -34,16 +35,16 @@ interface GroupedCategory {
 
 /* ─── Color palette (soft pastel pairs) ─────────────────────── */
 const PALETTE = [
-  { bg: "bg-violet-50", text: "text-violet-500", ring: "ring-violet-200", badge: "bg-violet-100 text-violet-600" },
-  { bg: "bg-sky-50", text: "text-sky-500", ring: "ring-sky-200", badge: "bg-sky-100 text-sky-600" },
-  { bg: "bg-emerald-50", text: "text-emerald-500", ring: "ring-emerald-200", badge: "bg-emerald-100 text-emerald-600" },
-  { bg: "bg-amber-50", text: "text-amber-500", ring: "ring-amber-200", badge: "bg-amber-100 text-amber-600" },
-  { bg: "bg-rose-50", text: "text-rose-500", ring: "ring-rose-200", badge: "bg-rose-100 text-rose-600" },
-  { bg: "bg-teal-50", text: "text-teal-500", ring: "ring-teal-200", badge: "bg-teal-100 text-teal-600" },
-  { bg: "bg-fuchsia-50", text: "text-fuchsia-500", ring: "ring-fuchsia-200", badge: "bg-fuchsia-100 text-fuchsia-600" },
-  { bg: "bg-cyan-50", text: "text-cyan-500", ring: "ring-cyan-200", badge: "bg-cyan-100 text-cyan-600" },
-  { bg: "bg-orange-50", text: "text-orange-500", ring: "ring-orange-200", badge: "bg-orange-100 text-orange-600" },
-  { bg: "bg-indigo-50", text: "text-indigo-500", ring: "ring-indigo-200", badge: "bg-indigo-100 text-indigo-600" },
+  { bg: "bg-violet-50", text: "text-violet-600", ring: "ring-violet-200", badge: "bg-violet-100 text-violet-700", hover: "group-hover:bg-violet-50 group-hover:text-violet-600" },
+  { bg: "bg-sky-50", text: "text-sky-600", ring: "ring-sky-200", badge: "bg-sky-100 text-sky-700", hover: "group-hover:bg-sky-50 group-hover:text-sky-600" },
+  { bg: "bg-emerald-50", text: "text-emerald-600", ring: "ring-emerald-200", badge: "bg-emerald-100 text-emerald-700", hover: "group-hover:bg-emerald-50 group-hover:text-emerald-600" },
+  { bg: "bg-amber-50", text: "text-amber-600", ring: "ring-amber-200", badge: "bg-amber-100 text-amber-700", hover: "group-hover:bg-amber-50 group-hover:text-amber-600" },
+  { bg: "bg-rose-50", text: "text-rose-600", ring: "ring-rose-200", badge: "bg-rose-100 text-rose-700", hover: "group-hover:bg-rose-50 group-hover:text-rose-600" },
+  { bg: "bg-teal-50", text: "text-teal-600", ring: "ring-teal-200", badge: "bg-teal-100 text-teal-700", hover: "group-hover:bg-teal-50 group-hover:text-teal-600" },
+  { bg: "bg-fuchsia-50", text: "text-fuchsia-600", ring: "ring-fuchsia-200", badge: "bg-fuchsia-100 text-fuchsia-700", hover: "group-hover:bg-fuchsia-50 group-hover:text-fuchsia-600" },
+  { bg: "bg-cyan-50", text: "text-cyan-600", ring: "ring-cyan-200", badge: "bg-cyan-100 text-cyan-700", hover: "group-hover:bg-cyan-50 group-hover:text-cyan-600" },
+  { bg: "bg-orange-50", text: "text-orange-600", ring: "ring-orange-200", badge: "bg-orange-100 text-orange-700", hover: "group-hover:bg-orange-50 group-hover:text-orange-600" },
+  { bg: "bg-indigo-50", text: "text-indigo-600", ring: "ring-indigo-200", badge: "bg-indigo-100 text-indigo-700", hover: "group-hover:bg-indigo-50 group-hover:text-indigo-600" },
 ];
 
 /* ─── CategoryIcon ──────────────────────────────────────────── */
@@ -79,9 +80,9 @@ function PartnerCard({ partner, index }: { partner: GroupedCategory["partners"][
     >
       <Link
         href={`/organizations/${partner.slug}`}
-        className="group flex items-center gap-3.5 rounded-2xl border border-gray-100 bg-white p-3.5 transition-all duration-200 hover:border-amber-200 hover:shadow-lg hover:shadow-amber-100/40 hover:-translate-y-0.5"
+        className="group flex items-center gap-3.5 rounded-2xl border border-slate-100 bg-white/90 p-3.5 shadow-sm shadow-slate-100/70 transition-all duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:bg-white hover:shadow-xl hover:shadow-orange-100/50"
       >
-        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-gray-50 border border-gray-100">
+        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-slate-100 bg-slate-50 ring-4 ring-slate-50 transition group-hover:ring-orange-50">
           {partner.logoUrl ? (
             <Image src={partner.logoUrl} alt={partner.name} width={48} height={48} className="h-full w-full object-cover" />
           ) : (
@@ -91,10 +92,10 @@ function PartnerCard({ partner, index }: { partner: GroupedCategory["partners"][
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h4 className="truncate text-sm font-semibold text-gray-900 group-hover:text-amber-600 transition-colors">
+          <h4 className="truncate text-sm font-bold text-slate-900 transition-colors group-hover:text-orange-600">
             {partner.name}
           </h4>
-          <span className="flex items-center gap-1 text-[11px] font-medium text-gray-400 group-hover:text-amber-500 transition-colors">
+          <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 transition-colors group-hover:text-orange-500">
             Дэлгүүр үзэх <ArrowRight size={10} />
           </span>
         </div>
@@ -126,17 +127,19 @@ function CategoryPill({
       viewport={{ once: true }}
       transition={{ delay: index * 0.04, duration: 0.35 }}
       onClick={onClick}
-      className={`group relative flex shrink-0 flex-col items-center snap-center cursor-pointer rounded-xl px-3 py-4 transition-all duration-300 ${
+      className={`group relative flex shrink-0 snap-center cursor-pointer flex-col items-center rounded-2xl border px-3 py-4 transition-all duration-300 ${
         isActive
-          ? `bg-white shadow-lg shadow-gray-200/60 ring-2 ${p.ring} -translate-y-1`
-          : "bg-white/60 hover:bg-white hover:shadow-md hover:shadow-gray-100 hover:-translate-y-0.5"
+          ? `-translate-y-1 border-white bg-white shadow-2xl shadow-orange-100/60 ring-2 ${p.ring}`
+          : "border-white/70 bg-white/70 shadow-sm shadow-slate-100 hover:-translate-y-0.5 hover:border-white hover:bg-white hover:shadow-xl hover:shadow-slate-200/60"
       }`}
-      style={{ width: 104 }}
+      style={{ width: 112 }}
     >
+      <span className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent" />
+
       {/* Icon circle */}
       <div
-        className={`flex h-14 w-14 items-center justify-center rounded-xl transition-all duration-300 ${
-          isActive ? `${p.bg} ${p.text} scale-105` : `bg-gray-50 text-gray-400 group-hover:${p.bg} group-hover:${p.text}`
+        className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-inner transition-all duration-300 ${
+          isActive ? `${p.bg} ${p.text} scale-105` : `bg-slate-50 text-slate-400 ${p.hover}`
         }`}
       >
         <CatIcon icon={cat.icon} name={cat.name} size={26} />
@@ -144,8 +147,8 @@ function CategoryPill({
 
       {/* Name */}
       <span
-        className={`mt-3 text-center text-[12px] font-bold leading-tight transition-colors line-clamp-2 ${
-          isActive ? "text-gray-900" : "text-gray-600 group-hover:text-gray-900"
+        className={`mt-3 line-clamp-2 min-h-[34px] text-center text-[12px] font-black leading-[17px] transition-colors ${
+          isActive ? "text-slate-950" : "text-slate-600 group-hover:text-slate-950"
         }`}
       >
         {cat.name}
@@ -155,7 +158,7 @@ function CategoryPill({
       {partnerCount > 0 && (
         <span
           className={`mt-2 inline-flex h-5 items-center justify-center rounded-full px-2 text-[10px] font-bold transition-colors ${
-            isActive ? p.badge : "bg-gray-100 text-gray-400"
+            isActive ? p.badge : "bg-slate-100 text-slate-400 group-hover:bg-orange-50 group-hover:text-orange-500"
           }`}
         >
           {partnerCount}
@@ -193,15 +196,31 @@ export default function Categories() {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    checkScroll();
+    const frame = requestAnimationFrame(checkScroll);
     el.addEventListener("scroll", checkScroll, { passive: true });
     const ro = new ResizeObserver(checkScroll);
     ro.observe(el);
-    return () => { el.removeEventListener("scroll", checkScroll); ro.disconnect(); };
-  }, [checkScroll, categories]);
+    return () => {
+      cancelAnimationFrame(frame);
+      el.removeEventListener("scroll", checkScroll);
+      ro.disconnect();
+    };
+  }, [checkScroll, categories.length, grouped.length, isLoading]);
 
   const scroll = (dir: "left" | "right") => {
-    scrollRef.current?.scrollBy({ left: dir === "left" ? -320 : 320, behavior: "smooth" });
+    scrollRef.current?.scrollBy({ left: dir === "left" ? -420 : 420, behavior: "smooth" });
+  };
+
+  const handleRailWheel = (event: WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ? event.deltaX
+      : event.deltaY;
+    if (delta === 0) return;
+    event.preventDefault();
+    el.scrollLeft += delta;
+    requestAnimationFrame(checkScroll);
   };
 
   useEffect(() => {
@@ -229,19 +248,20 @@ export default function Categories() {
     : "";
 
   return (
-    <section className="bg-gradient-to-b from-slate-50 to-white py-10 sm:py-12">
-      <div className="container mx-auto px-4 lg:px-8">
+    <section className="relative overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_68%)] py-10 sm:py-12">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_50%_0%,rgba(251,146,60,0.14),transparent_58%)]" />
+      <div className="container relative mx-auto px-4 lg:px-8">
         {/* Header */}
-        <div className="mb-7 flex items-end justify-between">
+        <div className="mb-7 flex items-end justify-between gap-6">
           <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-600 ring-1 ring-amber-200/60">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-orange-200 bg-white px-3.5 py-1.5 text-xs font-black text-orange-600 shadow-sm shadow-orange-100/60">
               <ShoppingBasket size={13} />
               АНГИЛАЛУУД
             </div>
-            <h2 className="text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl">
+            <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
               Ангиллаар дэлгүүр хэсэх
             </h2>
-            <p className="mt-2 text-sm text-gray-500 sm:text-base">
+            <p className="mt-2 text-sm font-medium text-slate-500 sm:text-base">
               Ангилал дээр дарж байгууллагуудыг харна уу
             </p>
           </motion.div>
@@ -251,14 +271,14 @@ export default function Categories() {
             <button
               onClick={() => scroll("left")}
               disabled={!canLeft}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-all hover:border-gray-300 hover:shadow-sm disabled:opacity-30"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-all hover:border-orange-200 hover:text-orange-600 hover:shadow-md disabled:opacity-30"
             >
               <ChevronLeft size={16} />
             </button>
             <button
               onClick={() => scroll("right")}
               disabled={!canRight}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-all hover:border-gray-300 hover:shadow-sm disabled:opacity-30"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-all hover:border-orange-200 hover:text-orange-600 hover:shadow-md disabled:opacity-30"
             >
               <ChevronRight size={16} />
             </button>
@@ -277,21 +297,26 @@ export default function Categories() {
         ) : (
           <>
             {/* Category rail */}
-            <div
-              ref={scrollRef}
-              className="grid grid-flow-col auto-cols-[104px] gap-3 overflow-x-auto px-0.5 pb-3 pt-1 snap-x snap-mandatory"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
-              {categories.map((cat, i) => (
-                <CategoryPill
-                  key={cat.id}
-                  cat={cat}
-                  index={i}
-                  isActive={activeSlug === cat.slug}
-                  partnerCount={grouped.find((g) => g.category === cat.slug)?.partners.length ?? 0}
-                  onClick={() => setActiveSlug((prev) => (prev === cat.slug ? null : cat.slug))}
-                />
-              ))}
+            <div className="relative rounded-[28px] border border-white bg-white/55 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.08)] ring-1 ring-slate-100/80 backdrop-blur">
+              <div
+                ref={scrollRef}
+                onWheel={handleRailWheel}
+                className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-0.5 pb-5 pt-2"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+              >
+                {categories.map((cat, i) => (
+                  <CategoryPill
+                    key={cat.id}
+                    cat={cat}
+                    index={i}
+                    isActive={activeSlug === cat.slug}
+                    partnerCount={grouped.find((g) => g.category === cat.slug)?.partners.length ?? 0}
+                    onClick={() => setActiveSlug((prev) => (prev === cat.slug ? null : cat.slug))}
+                  />
+                ))}
+              </div>
+              <div className="pointer-events-none absolute inset-y-3 left-3 w-12 rounded-l-[24px] bg-gradient-to-r from-white/90 to-transparent" />
+              <div className="pointer-events-none absolute inset-y-3 right-3 w-12 rounded-r-[24px] bg-gradient-to-l from-white/90 to-transparent" />
             </div>
 
             {/* Expanded panel */}
@@ -305,7 +330,7 @@ export default function Categories() {
                   transition={{ duration: 0.3, ease: "easeInOut" }}
                   className="overflow-hidden"
                 >
-                  <div className="mt-8 rounded-3xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8">
+                  <div className="mt-8 rounded-[28px] border border-slate-100 bg-white p-6 shadow-xl shadow-slate-200/50 sm:p-8">
                     {/* Panel header */}
                     <div className="mb-6 flex items-center justify-between">
                       <div className="flex items-center gap-3">
