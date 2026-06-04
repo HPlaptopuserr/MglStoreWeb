@@ -56,7 +56,7 @@ const emptyProject = (
   category: mode === "franchise" ? "Franchise" : "Төсөл",
   summary: "",
   details: "",
-  price: mode === "franchise" ? 0 : 5000,
+  price: 5000,
   imageUrl: "",
   imageUrls: [],
   pdfUrl: "",
@@ -228,7 +228,7 @@ export function ProjectsSection({
     ? {
         heading: "Franchise PDF хэсэг",
         description:
-          "Web дээр зураг, нэр, хураангуй харагдаж, PDF файл үнэгүй нээгдэнэ.",
+          "Web дээр зураг, нэр, хураангуй харагдаж, дэлгэрэнгүй мэдээлэл болон PDF нь төлбөрийн дараа нээгдэнэ.",
         add: "Franchise нэмэх",
         empty: "Одоогоор franchise оруулаагүй байна.",
         first: "Эхний franchise нэмэх",
@@ -239,7 +239,7 @@ export function ProjectsSection({
         titlePlaceholder: "Жишээ: MGL Store franchise багц",
         categoryPlaceholder: "Franchise, салбар нээх эрх...",
         pdfLabel: "Franchise PDF файл",
-        summaryPlaceholder: "Web дээр үнэгүй харагдах богино танилцуулга...",
+        summaryPlaceholder: "Web дээр харагдах богино танилцуулга...",
       }
     : {
         heading: "Төслийн хэсэг",
@@ -772,9 +772,9 @@ export function ProjectsSection({
                     </h3>
                     <p className="mt-1 truncate text-xs font-semibold text-slate-400">
                       {project.category || "Ангилалгүй"} ·{" "}
-                      {isFranchiseMode ? "Үнэгүй" : formatMnt(project.price)}
+                      {project.price > 0 ? formatMnt(project.price) : "Үнэгүй"}
                     </p>
-                    {isEditing && !isFranchiseMode && project.price > 0 && (
+                    {isEditing && project.price > 0 && (
                       <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">
                         <CreditCard className="h-3.5 w-3.5" />
                         {formatPaymentAccount(selectedPaymentAccount)}
@@ -933,62 +933,60 @@ export function ProjectsSection({
                         placeholder={copy.categoryPlaceholder}
                       />
                     </label>
-                    {!isFranchiseMode && (
-                      <>
-                        <label className="space-y-1.5">
-                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                            Дэлгэрэнгүй үзэх үнэ
-                          </span>
-                          <input
-                            type="number"
-                            min={0}
-                            step={100}
-                            value={project.price}
-                            onChange={(e) =>
-                              updateProject(
-                                project.id,
-                                "price",
-                                parsePrice(e.target.value),
-                              )
-                            }
-                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            placeholder="5000"
-                          />
-                        </label>
-                        <label className="space-y-1.5">
-                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                            Төлбөр орох данс
-                          </span>
-                          <select
-                            value={
-                              selectedPaymentAccount?.id ||
-                              project.paymentAccountId ||
-                              ""
-                            }
-                            onChange={(e) =>
-                              updateProjectPaymentAccount(
-                                project.id,
-                                e.target.value,
-                              )
-                            }
-                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                          >
-                            <option value="">Данс сонгоно уу</option>
-                            {paymentAccounts.map((account) => (
-                              <option key={account.id} value={account.id}>
-                                {formatPaymentAccount(account)}
-                              </option>
-                            ))}
-                          </select>
-                          {paymentAccounts.length === 0 && (
-                            <p className="text-xs font-semibold text-amber-600">
-                              “Гэрээний төлбөр” тохиргоонд эхлээд Minu Dynamic
-                              QR данс холбоно уу.
-                            </p>
-                          )}
-                        </label>
-                      </>
-                    )}
+                    <>
+                      <label className="space-y-1.5">
+                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          Дэлгэрэнгүй үзэх үнэ
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={100}
+                          value={project.price}
+                          onChange={(e) =>
+                            updateProject(
+                              project.id,
+                              "price",
+                              parsePrice(e.target.value),
+                            )
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                          placeholder="5000"
+                        />
+                      </label>
+                      <label className="space-y-1.5">
+                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          Төлбөр орох данс
+                        </span>
+                        <select
+                          value={
+                            selectedPaymentAccount?.id ||
+                            project.paymentAccountId ||
+                            ""
+                          }
+                          onChange={(e) =>
+                            updateProjectPaymentAccount(
+                              project.id,
+                              e.target.value,
+                            )
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                        >
+                          <option value="">Данс сонгоно уу</option>
+                          {paymentAccounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {formatPaymentAccount(account)}
+                            </option>
+                          ))}
+                        </select>
+                        {paymentAccounts.length === 0 && (
+                          <p className="text-xs font-semibold text-amber-600">
+                            “Гэрээний төлбөр” тохиргоонд эхлээд Minu Dynamic QR
+                            данс холбоно уу.
+                          </p>
+                        )}
+                      </label>
+                    </>
                     <div className="space-y-1.5 lg:col-span-2">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -1106,22 +1104,20 @@ export function ProjectsSection({
                         placeholder={copy.summaryPlaceholder}
                       />
                     </label>
-                    {!isFranchiseMode && (
-                      <label className="space-y-1.5 lg:col-span-2">
-                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          Дэлгэрэнгүй мэдээлэл
-                        </span>
-                        <textarea
-                          value={project.details}
-                          onChange={(e) =>
-                            updateProject(project.id, "details", e.target.value)
-                          }
-                          rows={6}
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                          placeholder="Төлбөр төлсний дараа харагдах дэлгэрэнгүй нөхцөл, боломж, холбоо барих мэдээлэл..."
-                        />
-                      </label>
-                    )}
+                    <label className="space-y-1.5 lg:col-span-2">
+                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                        Дэлгэрэнгүй мэдээлэл
+                      </span>
+                      <textarea
+                        value={project.details}
+                        onChange={(e) =>
+                          updateProject(project.id, "details", e.target.value)
+                        }
+                        rows={6}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                        placeholder="Төлбөр төлсний дараа харагдах дэлгэрэнгүй нөхцөл, боломж, холбоо барих мэдээлэл..."
+                      />
+                    </label>
                     <div className="space-y-1.5 lg:col-span-2">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
                         {copy.pdfLabel}
@@ -1200,7 +1196,7 @@ export function ProjectsSection({
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <div className="inline-flex items-center gap-2 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700">
-                          {!isFranchiseMode && project.price > 0
+                          {project.price > 0
                             ? `${formatMnt(project.price)}`
                             : "Үнэгүй"}
                         </div>

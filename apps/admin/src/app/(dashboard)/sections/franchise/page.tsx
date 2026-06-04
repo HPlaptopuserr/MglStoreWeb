@@ -9,6 +9,7 @@ export default function FranchiseSectionPage() {
   const {
     franchiseProjects,
     setFranchiseProjects,
+    projectPaymentAccounts,
     saving,
     saved,
     saveFranchiseProjects,
@@ -25,6 +26,7 @@ export default function FranchiseSectionPage() {
         <ProjectsSection
           mode="franchise"
           projects={franchiseProjects}
+          paymentAccounts={projectPaymentAccounts}
           setProjects={setFranchiseProjects}
           onSave={saveFranchiseProjects}
           saving={saving}
