@@ -1,0 +1,270 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import type { ServiceCategory, ServiceItem } from "@/lib/sections/types";
+import { API, adminFetch } from "@/lib/api";
+import { HrEmptyHeadingsState } from "@/components/molecules/sections/hr-services/HrEmptyHeadingsState";
+import { HrEmptyMaterialsState } from "@/components/molecules/sections/hr-services/HrEmptyMaterialsState";
+import { HrHeadingEditor } from "@/components/molecules/sections/hr-services/HrHeadingEditor";
+import { HrHeadingOrderList } from "@/components/molecules/sections/hr-services/HrHeadingOrderList";
+import { HrHeadingSidebar } from "@/components/molecules/sections/hr-services/HrHeadingSidebar";
+import { HrMaterialCard } from "@/components/molecules/sections/hr-services/HrMaterialCard";
+import { HrServicesHeader } from "@/components/molecules/sections/hr-services/HrServicesHeader";
+import {
+  createHrHeading,
+  createHrMaterial,
+  getHrMaterials,
+  withHrMaterials,
+} from "./hr-services-utils";
+import { useHrAdminForms } from "./useHrAdminForms";
+
+type HrServicesSectionProps = {
+  hrServices: ServiceCategory[];
+  setHrServices: (
+    update:
+      | ServiceCategory[]
+      | ((prev: ServiceCategory[]) => ServiceCategory[]),
+  ) => void;
+  onSave: () => Promise<boolean | void> | boolean | void;
+  saving?: boolean;
+  saved?: boolean;
+};
+
+export function HrServicesSection({
+  hrServices,
+  setHrServices,
+  onSave,
+  saving,
+  saved,
+}: HrServicesSectionProps) {
+  const [activeId, setActiveId] = useState<string | null>(
+    hrServices[0]?.id ?? null,
+  );
+  const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { activeForms, loadingForms } = useHrAdminForms();
+
+  const activeHeading =
+    hrServices.find((heading) => heading.id === activeId) ?? hrServices[0];
+  const activeMaterials = activeHeading ? getHrMaterials(activeHeading) : [];
+  const activeFormCount = activeMaterials.filter(
+    (item) => item.hasForm && item.formSlug,
+  ).length;
+
+  useEffect(() => {
+    if (hrServices.length === 0) {
+      if (activeId !== null) setActiveId(null);
+      return;
+    }
+
+    if (!activeId || !hrServices.some((heading) => heading.id === activeId)) {
+      setActiveId(hrServices[0].id);
+    }
+  }, [activeId, hrServices]);
+
+  const updateHeadings = (
+    updater: (items: ServiceCategory[]) => ServiceCategory[],
+  ) => {
+    setHrServices((prev) => updater(prev));
+  };
+
+  const addHeading = () => {
+    const heading = createHrHeading();
+    setHrServices((prev) => [...prev, heading]);
+    setActiveId(heading.id);
+  };
+
+  const updateHeading = (
+    headingId: string,
+    patch: Partial<ServiceCategory>,
+  ) => {
+    updateHeadings((prev) =>
+      prev.map((heading) =>
+        heading.id === headingId ? { ...heading, ...patch } : heading,
+      ),
+    );
+  };
+
+  const removeHeading = (headingId: string) => {
+    if (!confirm("Энэ гол гарчиг болон доторх бүх материалыг устгах уу?")) {
+      return;
+    }
+    updateHeadings((prev) =>
+      prev.filter((heading) => heading.id !== headingId),
+    );
+  };
+
+  const moveHeading = (headingId: string, direction: -1 | 1) => {
+    updateHeadings((prev) => {
+      const index = prev.findIndex((heading) => heading.id === headingId);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  };
+
+  const addMaterial = (headingId: string) => {
+    updateHeadings((prev) =>
+      prev.map((heading) =>
+        heading.id === headingId
+          ? withHrMaterials(heading, (items) => [...items, createHrMaterial()])
+          : heading,
+      ),
+    );
+  };
+
+  const updateMaterial = (
+    headingId: string,
+    itemId: string,
+    patch: Partial<ServiceItem>,
+  ) => {
+    updateHeadings((prev) =>
+      prev.map((heading) =>
+        heading.id === headingId
+          ? withHrMaterials(heading, (items) =>
+              items.map((item) =>
+                item.id === itemId ? { ...item, ...patch } : item,
+              ),
+            )
+          : heading,
+      ),
+    );
+  };
+
+  const removeMaterial = (headingId: string, itemId: string) => {
+    updateHeadings((prev) =>
+      prev.map((heading) =>
+        heading.id === headingId
+          ? withHrMaterials(heading, (items) =>
+              items.filter((item) => item.id !== itemId),
+            )
+          : heading,
+      ),
+    );
+  };
+
+  const selectForm = (headingId: string, itemId: string, formSlug: string) => {
+    const form = activeForms.find((candidate) => candidate.slug === formSlug);
+    updateMaterial(headingId, itemId, {
+      hasForm: Boolean(formSlug),
+      formSlug,
+      formTitle: form?.title ?? "",
+    });
+  };
+
+  const uploadFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !activeHeading || !uploadingItemId) return;
+
+    try {
+      const form = new FormData();
+      form.append("pdf", file);
+      const res = await adminFetch(`${API}/site-settings/project-pdf-upload`, {
+        method: "POST",
+        body: form,
+      });
+      if (!res.ok) throw new Error("Файл upload хийхэд алдаа гарлаа");
+      const data = (await res.json()) as { url?: string };
+      if (!data.url) throw new Error("Файлын холбоос буцаж ирсэнгүй");
+      updateMaterial(activeHeading.id, uploadingItemId, {
+        fileUrl: data.url,
+        fileName: file.name,
+      });
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Файл upload хийхэд алдаа гарлаа",
+      );
+    } finally {
+      setUploadingItemId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <HrServicesHeader
+        onAddHeading={addHeading}
+        onSave={onSave}
+        saving={saving}
+        saved={saved}
+      />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        onChange={uploadFile}
+        className="hidden"
+      />
+
+      {hrServices.length === 0 ? (
+        <HrEmptyHeadingsState onAddHeading={addHeading} />
+      ) : (
+        <>
+          <HrHeadingOrderList
+            headings={hrServices}
+            activeHeadingId={activeHeading?.id}
+            onSelect={setActiveId}
+            onMove={moveHeading}
+          />
+
+          <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+            <HrHeadingSidebar
+              headings={hrServices}
+              activeHeadingId={activeHeading?.id}
+              onSelect={setActiveId}
+            />
+
+            {activeHeading && (
+              <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <HrHeadingEditor
+                  heading={activeHeading}
+                  formCount={activeFormCount}
+                  onUpdate={(patch) => updateHeading(activeHeading.id, patch)}
+                  onMove={(direction) =>
+                    moveHeading(activeHeading.id, direction)
+                  }
+                  onRemove={() => removeHeading(activeHeading.id)}
+                  onAddMaterial={() => addMaterial(activeHeading.id)}
+                />
+
+                <div className="space-y-4">
+                  {activeMaterials.map((item) => (
+                    <HrMaterialCard
+                      key={item.id}
+                      item={item}
+                      forms={activeForms}
+                      loadingForms={loadingForms}
+                      uploading={uploadingItemId === item.id}
+                      onUpdate={(patch) =>
+                        updateMaterial(activeHeading.id, item.id, patch)
+                      }
+                      onUpload={() => {
+                        setUploadingItemId(item.id);
+                        fileInputRef.current?.click();
+                      }}
+                      onRemove={() => removeMaterial(activeHeading.id, item.id)}
+                      onSelectForm={(formSlug) =>
+                        selectForm(activeHeading.id, item.id, formSlug)
+                      }
+                    />
+                  ))}
+                </div>
+
+                {activeMaterials.length === 0 && (
+                  <HrEmptyMaterialsState
+                    onAddMaterial={() => addMaterial(activeHeading.id)}
+                  />
+                )}
+              </section>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

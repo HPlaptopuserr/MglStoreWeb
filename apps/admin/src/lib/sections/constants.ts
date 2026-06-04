@@ -11,6 +11,7 @@ import {
   FileSignature,
   UserSquare2,
   FolderKanban,
+  ClipboardCheck,
 } from "lucide-react";
 import type { CardColorScheme } from "@mgl/ui";
 import type { SectionKey } from "./types";
@@ -40,9 +41,21 @@ export const SECTIONS: {
     requires: "MANAGE_FORMS",
   },
   {
+    key: "survey",
+    label: "Судалгаа",
+    icon: ClipboardCheck,
+    requires: "MANAGE_SITE_SETTINGS",
+  },
+  {
     key: "mgl-services",
     label: "MGL Үйлчилгээ",
     icon: Settings2,
+    requires: "MANAGE_SITE_SETTINGS",
+  },
+  {
+    key: "hr-services",
+    label: "HR үйлчилгээ",
+    icon: Users,
     requires: "MANAGE_SITE_SETTINGS",
   },
   {

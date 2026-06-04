@@ -17,6 +17,7 @@ import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
   checkSystemQrPayment,
   createSystemQrInvoice,
+  resetSystemQrSubMerchantPassword,
 } from "../../services/systemqr";
 
 const bannerUpload = multer({
@@ -79,13 +80,17 @@ type ProjectPaymentAccount = {
   accountNumber?: string;
 };
 
+type PaidContentKind = "PROJECT_ACCESS" | "FRANCHISE_ACCESS";
+
 function isSupabaseConfigured() {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
 }
 
 function getApiBaseUrl(req: Request) {
   const configured =
-    process.env.API_PUBLIC_URL || process.env.API_URL || process.env.NEXT_PUBLIC_API_URL;
+    process.env.API_PUBLIC_URL ||
+    process.env.API_URL ||
+    process.env.NEXT_PUBLIC_API_URL;
   const normalized = configured
     ?.trim()
     .replace(/^["']|["']$/g, "")
@@ -233,20 +238,43 @@ function normalizePublicProject(project: PaidProject): PaidProject {
 }
 
 function normalizeFranchiseProject(project: PaidProject): PaidProject {
-  return {
-    ...normalizeProject(project),
-    price: 0,
-  };
+  return normalizeProject(project);
+}
+
+function isMglStoreFranchise(project: Pick<PaidProject, "title">) {
+  const title = String(project.title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  return title.includes("mglstore");
+}
+
+function sortMglStoreFranchiseFirst<T extends Pick<PaidProject, "title">>(
+  projects: T[],
+) {
+  return projects
+    .map((project, index) => ({ project, index }))
+    .sort((a, b) => {
+      const aPriority = isMglStoreFranchise(a.project) ? 0 : 1;
+      const bPriority = isMglStoreFranchise(b.project) ? 0 : 1;
+      return aPriority - bPriority || a.index - b.index;
+    })
+    .map(({ project }) => project);
 }
 
 function getPublicFranchiseProjects(projects: PaidProject[]) {
-  return projects
-    .filter((project) => project.isActive !== false)
-    .map((project) => normalizePublicProject({ ...project, price: 0 }));
+  return sortMglStoreFranchiseFirst(
+    projects
+      .filter((project) => project.isActive !== false)
+      .map((project) => normalizePublicProject(project)),
+  );
 }
 
-function projectSaleReference(projectId: string) {
-  return `PROJECT:${projectId}`;
+function projectSaleReference(
+  projectId: string,
+  kind: PaidContentKind = "PROJECT_ACCESS",
+) {
+  return `${kind === "FRANCHISE_ACCESS" ? "FRANCHISE" : "PROJECT"}:${projectId}`;
 }
 
 function projectPaymentPayload(invoice: {
@@ -256,7 +284,9 @@ function projectPaymentPayload(invoice: {
 }
 
 const normalizeSystemQrLookup = (value?: string | null) =>
-  String(value || "").trim().toLowerCase();
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const isSystemQrAuthError = (message: string) =>
   /SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(
@@ -318,9 +348,10 @@ async function resolveProjectPaymentAccount(project: PaidProject) {
   return null;
 }
 
-function getProjectSystemQrAuth(
-  account: ProjectPaymentAccount | null,
-): { username?: string; password?: string } {
+function getProjectSystemQrAuth(account: ProjectPaymentAccount | null): {
+  username?: string;
+  password?: string;
+} {
   const password = String(account?.password || "").trim();
   if (!account?.merchantCode || !password) return {};
 
@@ -328,6 +359,68 @@ function getProjectSystemQrAuth(
     username: String(account.username || account.merchantCode).trim(),
     password,
   };
+}
+
+async function cacheProjectSystemQrAuth(
+  account: ProjectPaymentAccount,
+  auth: { username?: string; password?: string },
+) {
+  const merchantCode = String(account.merchantCode || "").trim();
+  const password = String(auth.password || "").trim();
+  if (!merchantCode || !password) return;
+
+  const setting = await prisma.siteSetting
+    .findUnique({ where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY } })
+    .catch(() => null);
+  const accounts = setting?.value ? JSON.parse(setting.value) : [];
+  if (!Array.isArray(accounts)) return;
+
+  let updated = false;
+  const now = new Date().toISOString();
+  const nextAccounts = accounts.map((item) => {
+    const sameId = account.id && String(item?.id || "").trim() === account.id;
+    const sameMerchant =
+      merchantCode && String(item?.merchantCode || "").trim() === merchantCode;
+    if (!sameId && !sameMerchant) return item;
+
+    updated = true;
+    return {
+      ...item,
+      merchantCode: String(item?.merchantCode || merchantCode).trim(),
+      username: String(auth.username || item?.username || merchantCode).trim(),
+      password,
+      updatedAt: now,
+    };
+  });
+
+  if (!updated) return;
+
+  await prisma.siteSetting.upsert({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
+    update: { value: JSON.stringify(nextAccounts) },
+    create: {
+      key: CONTRACT_PAYMENT_ACCOUNTS_KEY,
+      value: JSON.stringify(nextAccounts),
+    },
+  });
+}
+
+async function recoverProjectSystemQrAuth(
+  account: ProjectPaymentAccount,
+): Promise<{ username?: string; password?: string }> {
+  const storedAuth = getProjectSystemQrAuth(account);
+  if (storedAuth.password) return storedAuth;
+
+  const merchantCode = String(account.merchantCode || "").trim();
+  if (!merchantCode) return storedAuth;
+
+  const reset = await resetSystemQrSubMerchantPassword(merchantCode);
+  const auth = {
+    username: String(reset.username || account.username || merchantCode).trim(),
+    password: reset.password ? String(reset.password).trim() : undefined,
+  };
+  if (auth.password) await cacheProjectSystemQrAuth(account, auth);
+  return auth.password ? auth : storedAuth;
 }
 
 async function createProjectSystemQrInvoiceWithFallback(params: {
@@ -342,10 +435,14 @@ async function createProjectSystemQrInvoiceWithFallback(params: {
     referenceNumber: params.referenceNumber,
     webhook: params.webhook,
   };
-  const auth = getProjectSystemQrAuth(params.account);
+  const auth = await recoverProjectSystemQrAuth(params.account);
 
   try {
-    return await createSystemQrInvoice(invoiceParams, auth.username, auth.password);
+    return await createSystemQrInvoice(
+      invoiceParams,
+      auth.username,
+      auth.password,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (
@@ -376,7 +473,11 @@ async function checkProjectSystemQrPaymentWithFallback(params: {
   const auth = getProjectSystemQrAuth(params.account);
 
   try {
-    return await checkSystemQrPayment(checkParams, auth.username, auth.password);
+    return await checkSystemQrPayment(
+      checkParams,
+      auth.username,
+      auth.password,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if ((!auth.username && !auth.password) || !isSystemQrAuthError(message)) {
@@ -399,11 +500,12 @@ function projectInvoiceBelongsTo(
   },
   projectId: string,
   price: number,
+  kind: PaidContentKind = "PROJECT_ACCESS",
 ) {
   const payload = projectPaymentPayload(invoice);
   return (
-    invoice.saleReference === projectSaleReference(projectId) &&
-    String(payload.kind || "") === "PROJECT_ACCESS" &&
+    invoice.saleReference === projectSaleReference(projectId, kind) &&
+    String(payload.kind || "") === kind &&
     String(payload.projectId || "") === projectId &&
     Math.abs(Number(invoice.amount) - price) < 0.01
   );
@@ -417,7 +519,10 @@ async function refreshProjectInvoicePayment(invoiceId: string) {
 
   if (invoice.status === PosQPayStatus.PAID) return invoice;
 
-  if (invoice.status === PosQPayStatus.PENDING && invoice.expiresAt <= new Date()) {
+  if (
+    invoice.status === PosQPayStatus.PENDING &&
+    invoice.expiresAt <= new Date()
+  ) {
     return prisma.qPayInvoice.update({
       where: { id: invoice.id },
       data: { status: PosQPayStatus.EXPIRED },
@@ -427,7 +532,9 @@ async function refreshProjectInvoicePayment(invoiceId: string) {
   if (invoice.status !== PosQPayStatus.PENDING) return invoice;
 
   const payload = projectPaymentPayload(invoice);
-  const provider = String(payload.provider || "QPAY").trim().toUpperCase();
+  const provider = String(payload.provider || "QPAY")
+    .trim()
+    .toUpperCase();
 
   if (provider === "SYSTEMQR") {
     const providerInvoiceId = String(
@@ -484,8 +591,7 @@ async function refreshProjectInvoicePayment(invoiceId: string) {
   const paidAmount =
     Number(check.paid_amount || 0) ||
     rows.reduce((sum, row: any) => sum + Number(row.payment_amount || 0), 0);
-  const isPaid =
-    check.count > 0 && paidAmount + 0.01 >= Number(invoice.amount);
+  const isPaid = check.count > 0 && paidAmount + 0.01 >= Number(invoice.amount);
 
   if (!isPaid) {
     return prisma.qPayInvoice.update({
@@ -519,10 +625,12 @@ async function ensurePaidProjectAccess({
   projectId,
   invoiceId,
   price,
+  kind = "PROJECT_ACCESS",
 }: {
   projectId: string;
   invoiceId?: string;
   price: number;
+  kind?: PaidContentKind;
 }) {
   if (price <= 0) return true;
   if (!invoiceId) return false;
@@ -532,7 +640,7 @@ async function ensurePaidProjectAccess({
 
   return (
     invoice.status === PosQPayStatus.PAID &&
-    projectInvoiceBelongsTo(invoice, projectId, price)
+    projectInvoiceBelongsTo(invoice, projectId, price, kind)
   );
 }
 
@@ -619,12 +727,10 @@ router.put(
       return;
     }
     if (Buffer.byteLength(value, "utf8") > SETTING_VALUE_MAX_BYTES) {
-      res
-        .status(413)
-        .json({
-          message:
-            "Утга хэт том байна (512KB хязгаар). Зургийг тусдаа file upload ашиглана уу.",
-        });
+      res.status(413).json({
+        message:
+          "Утга хэт том байна (512KB хязгаар). Зургийг тусдаа file upload ашиглана уу.",
+      });
       return;
     }
     // Sanitize key: only allow alphanumeric, dashes, underscores
@@ -748,12 +854,10 @@ router.get("/site-settings/franchise", async (_req, res) => {
     res.json({ success: true, projects: getPublicFranchiseProjects(projects) });
   } catch (error) {
     console.error("get franchise list error", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Franchise мэдээлэл авахад алдаа гарлаа",
-      });
+    res.status(500).json({
+      success: false,
+      message: "Franchise мэдээлэл авахад алдаа гарлаа",
+    });
   }
 });
 
@@ -761,6 +865,9 @@ router.get("/site-settings/franchise", async (_req, res) => {
 router.get("/site-settings/franchise/:projectId/detail", async (req, res) => {
   try {
     const { projectId } = req.params;
+    const invoiceId =
+      typeof req.query.invoiceId === "string" ? req.query.invoiceId : undefined;
+
     const projects = await getFranchiseProjects();
     const project = projects.find(
       (item) => item.id === projectId && item.isActive !== false,
@@ -770,15 +877,29 @@ router.get("/site-settings/franchise/:projectId/detail", async (req, res) => {
       return;
     }
 
-    res.json({ success: true, project: normalizeFranchiseProject(project) });
+    const normalized = normalizeFranchiseProject(project);
+    const hasAccess = await ensurePaidProjectAccess({
+      projectId,
+      invoiceId,
+      price: normalizeProjectPrice(normalized.price),
+      kind: "FRANCHISE_ACCESS",
+    });
+    if (!hasAccess) {
+      res.status(402).json({
+        success: false,
+        requiresPayment: true,
+        message: "Franchise дэлгэрэнгүй мэдээлэл үзэхийн тулд төлбөр төлнө үү",
+      });
+      return;
+    }
+
+    res.json({ success: true, project: normalized });
   } catch (error) {
     console.error("get franchise detail error", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Franchise мэдээлэл авахад алдаа гарлаа",
-      });
+    res.status(500).json({
+      success: false,
+      message: "Franchise мэдээлэл авахад алдаа гарлаа",
+    });
   }
 });
 
@@ -793,12 +914,10 @@ router.get("/site-settings/projects", async (_req, res) => {
     res.json({ success: true, projects: getPublicProjects(projects) });
   } catch (error) {
     console.error("get public projects error", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Төслийн жагсаалт авахад алдаа гарлаа",
-      });
+    res.status(500).json({
+      success: false,
+      message: "Төслийн жагсаалт авахад алдаа гарлаа",
+    });
   }
 });
 
@@ -836,9 +955,10 @@ router.get("/site-settings/projects/:projectId/detail", async (req, res) => {
     res.json({ success: true, project: normalized });
   } catch (error) {
     console.error("get project detail error", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Төслийн мэдээлэл авахад алдаа гарлаа" });
+    res.status(500).json({
+      success: false,
+      message: "Төслийн мэдээлэл авахад алдаа гарлаа",
+    });
   }
 });
 
@@ -873,12 +993,10 @@ router.post("/site-settings/mgl-services/qpay", async (req, res) => {
     });
   } catch (error: any) {
     console.error("mgl-services qpay create error", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: error.message || "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа",
-      });
+    res.status(500).json({
+      success: false,
+      message: error.message || "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа",
+    });
   }
 });
 
@@ -906,7 +1024,10 @@ router.get("/site-settings/mgl-services/qpay/check", async (req, res) => {
 });
 
 // POST /site-settings/projects/systemqr — project detail access Minu Dynamic QR invoice.
-const createProjectSystemQrPaymentSession = async (req: Request, res: Response) => {
+const createProjectSystemQrPaymentSession = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { projectId } = req.body as { projectId?: string };
     if (!projectId) {
@@ -1011,18 +1132,148 @@ const createProjectSystemQrPaymentSession = async (req: Request, res: Response) 
     }
   } catch (error: any) {
     console.error("project systemqr create error", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message:
-          error.message || "Төслийн Dynamic QR төлбөр үүсгэхэд алдаа гарлаа",
-      });
+    res.status(500).json({
+      success: false,
+      message:
+        error.message || "Төслийн Dynamic QR төлбөр үүсгэхэд алдаа гарлаа",
+    });
   }
 };
 
-router.post("/site-settings/projects/systemqr", createProjectSystemQrPaymentSession);
-router.post("/site-settings/projects/qpay", createProjectSystemQrPaymentSession);
+const createFranchiseSystemQrPaymentSession = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { projectId } = req.body as { projectId?: string };
+    if (!projectId) {
+      res
+        .status(400)
+        .json({ success: false, message: "projectId шаардлагатай" });
+      return;
+    }
+
+    const projects = await getFranchiseProjects();
+    const project = projects.find(
+      (item) => item.id === projectId && item.isActive !== false,
+    );
+    if (!project) {
+      res.status(404).json({ success: false, message: "Franchise олдсонгүй" });
+      return;
+    }
+
+    const normalized = normalizeFranchiseProject(project);
+    const amount = normalizeProjectPrice(normalized.price);
+    if (amount <= 0) {
+      res.json({ success: true, free: true, projectId });
+      return;
+    }
+
+    const expiresAt = new Date(Date.now() + PROJECT_PAYMENT_TTL_MS);
+    const account = await resolveProjectPaymentAccount(normalized);
+    if (!account?.merchantCode) {
+      res.status(400).json({
+        success: false,
+        message:
+          "Энэ franchise-ийн төлбөр орох Minu Dynamic QR данс сонгогдоогүй байна. Admin дээр Franchise засахдаа төлбөрийн данс сонгоно уу.",
+      });
+      return;
+    }
+
+    const invoice = await prisma.qPayInvoice.create({
+      data: {
+        amount,
+        qrText: "",
+        status: PosQPayStatus.PENDING,
+        expiresAt,
+        saleReference: projectSaleReference(projectId, "FRANCHISE_ACCESS"),
+        webhookPayload: {
+          kind: "FRANCHISE_ACCESS",
+          provider: "SYSTEMQR",
+          projectId,
+          projectTitle: normalized.title,
+          paymentAccountId: account.id || "",
+          paymentAccountLabel: account.label || account.merchantName || "",
+          merchantCode: account.merchantCode,
+        } as unknown as Prisma.JsonObject,
+      },
+    });
+
+    try {
+      const systemQr = await createProjectSystemQrInvoiceWithFallback({
+        account,
+        referenceNumber: `FRN-${invoice.id.slice(0, 8).toUpperCase()}`,
+        amount,
+        webhook: `${getApiRouteBaseUrl(
+          req,
+        )}/site-settings/franchise/systemqr/callback?invoiceId=${invoice.id}`,
+      });
+
+      const updated = await prisma.qPayInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          qrText: systemQr.qrText,
+          webhookPayload: {
+            kind: "FRANCHISE_ACCESS",
+            provider: "SYSTEMQR",
+            projectId,
+            projectTitle: normalized.title,
+            paymentAccountId: account.id || "",
+            paymentAccountLabel: account.label || account.merchantName || "",
+            paymentAccountBankCode: account.bankCode || "",
+            paymentAccountNumber: account.accountNumber || "",
+            merchantCode: account.merchantCode,
+            providerInvoiceId: systemQr.invoiceId,
+            systemQrInvoiceNumber: systemQr.invoiceId,
+            qrImage: "",
+            deepLinks: systemQr.urls as unknown as Prisma.JsonArray,
+          } as unknown as Prisma.JsonObject,
+        },
+      });
+
+      res.json({
+        success: true,
+        free: false,
+        projectId,
+        invoiceId: updated.id,
+        provider: "SYSTEMQR",
+        providerInvoiceId: systemQr.invoiceId,
+        amount,
+        qrText: systemQr.qrText,
+        qrImage: "",
+        urls: systemQr.urls,
+        expiresAt: expiresAt.toISOString(),
+      });
+    } catch (systemQrError) {
+      await prisma.qPayInvoice.delete({ where: { id: invoice.id } });
+      throw systemQrError;
+    }
+  } catch (error: any) {
+    console.error("franchise systemqr create error", error);
+    res.status(500).json({
+      success: false,
+      message:
+        error.message || "Franchise Dynamic QR төлбөр үүсгэхэд алдаа гарлаа",
+    });
+  }
+};
+
+router.post(
+  "/site-settings/projects/systemqr",
+  createProjectSystemQrPaymentSession,
+);
+router.post(
+  "/site-settings/projects/qpay",
+  createProjectSystemQrPaymentSession,
+);
+router.post(
+  "/site-settings/franchise/systemqr",
+  createFranchiseSystemQrPaymentSession,
+);
+router.post(
+  "/site-settings/franchise/qpay",
+  createFranchiseSystemQrPaymentSession,
+);
 
 // GET /site-settings/projects/systemqr/check — project detail payment check.
 const checkProjectPaymentSession = async (req: Request, res: Response) => {
@@ -1047,7 +1298,8 @@ const checkProjectPaymentSession = async (req: Request, res: Response) => {
     const payload = projectPaymentPayload(invoice);
     const belongsToProject =
       !projectId ||
-      (String(payload.projectId || "") === projectId &&
+      (String(payload.kind || "") === "PROJECT_ACCESS" &&
+        String(payload.projectId || "") === projectId &&
         invoice.saleReference === projectSaleReference(projectId));
 
     res.json({
@@ -1067,12 +1319,67 @@ const checkProjectPaymentSession = async (req: Request, res: Response) => {
   }
 };
 
-router.get("/site-settings/projects/systemqr/check", checkProjectPaymentSession);
+router.get(
+  "/site-settings/projects/systemqr/check",
+  checkProjectPaymentSession,
+);
 router.get("/site-settings/projects/qpay/check", checkProjectPaymentSession);
+
+const checkFranchisePaymentSession = async (req: Request, res: Response) => {
+  try {
+    const invoiceId =
+      typeof req.query.invoiceId === "string" ? req.query.invoiceId : "";
+    const projectId =
+      typeof req.query.projectId === "string" ? req.query.projectId : "";
+    if (!invoiceId) {
+      res
+        .status(400)
+        .json({ success: false, message: "invoiceId шаардлагатай" });
+      return;
+    }
+
+    const invoice = await refreshProjectInvoicePayment(invoiceId);
+    if (!invoice) {
+      res.status(404).json({ success: false, message: "Нэхэмжлэх олдсонгүй" });
+      return;
+    }
+
+    const payload = projectPaymentPayload(invoice);
+    const belongsToFranchise =
+      !projectId ||
+      (String(payload.kind || "") === "FRANCHISE_ACCESS" &&
+        String(payload.projectId || "") === projectId &&
+        invoice.saleReference ===
+          projectSaleReference(projectId, "FRANCHISE_ACCESS"));
+
+    res.json({
+      success: true,
+      isPaid: invoice.status === PosQPayStatus.PAID && belongsToFranchise,
+      status: invoice.status,
+      paidAmount:
+        Number((payload.lastPaymentCheck as any)?.paid_amount || 0) ||
+        Number(payload.paidAmount || 0),
+      expiresAt: invoice.expiresAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("franchise qpay check error", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Төлбөр шалгахад алдаа гарлаа" });
+  }
+};
+
+router.get(
+  "/site-settings/franchise/systemqr/check",
+  checkFranchisePaymentSession,
+);
+router.get("/site-settings/franchise/qpay/check", checkFranchisePaymentSession);
 
 const handleProjectPaymentCallback = async (req: Request, res: Response) => {
   try {
-    const invoiceId = String(req.query.invoiceId || req.body?.invoiceId || "").trim();
+    const invoiceId = String(
+      req.query.invoiceId || req.body?.invoiceId || "",
+    ).trim();
     if (invoiceId) {
       await refreshProjectInvoicePayment(invoiceId);
     }
@@ -1083,8 +1390,22 @@ const handleProjectPaymentCallback = async (req: Request, res: Response) => {
   }
 };
 
-router.all("/site-settings/projects/systemqr/callback", handleProjectPaymentCallback);
-router.all("/site-settings/projects/qpay/callback", handleProjectPaymentCallback);
+router.all(
+  "/site-settings/projects/systemqr/callback",
+  handleProjectPaymentCallback,
+);
+router.all(
+  "/site-settings/projects/qpay/callback",
+  handleProjectPaymentCallback,
+);
+router.all(
+  "/site-settings/franchise/systemqr/callback",
+  handleProjectPaymentCallback,
+);
+router.all(
+  "/site-settings/franchise/qpay/callback",
+  handleProjectPaymentCallback,
+);
 
 router.use(
   (error: unknown, _req: Request, res: Response, next: NextFunction) => {

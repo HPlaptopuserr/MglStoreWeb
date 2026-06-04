@@ -397,7 +397,7 @@ export function PaymentAccountsSettingsPanel({
 
       <div className="rounded-xl border border-amber-200 bg-white p-4 shadow-sm">
         <div className="mb-4 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Шинээр холбох үед Merchant Code-г хоосон үлдээнэ. Minu амжилттай бүртгэвэл код автоматаар бөглөгдөнө. Аль хэдийн Minu-ээс авсан код байгаа бол merchantCode-оо оруулаад "Дансны санд хадгалах" дарна. Invoice үүсгэхдээ SystemQR master тохиргоог ашиглана.
+          Шинээр холбох үед Merchant Code-г хоосон үлдээнэ. Minu амжилттай бүртгэвэл код автоматаар бөглөгдөнө. Аль хэдийн Minu-ээс авсан код байгаа бол merchantCode-оо оруулаад хадгалах үед Minu дээр яг таарч байгаа эсэхийг шалгана. Invoice үүсгэхдээ SystemQR master тохиргоог ашиглана.
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -453,6 +453,7 @@ export function PaymentAccountsSettingsPanel({
             value={settings.systemQr?.merchantCode || ""}
             onChange={(value) => updateSystemQr("merchantCode", value)}
             placeholder="Шинэ бүртгэл хийх бол хоосон үлдээнэ"
+            description="Регистр/дансны дугаар биш. Шинэ subMerchant бүртгэх бол хоосон үлдээнэ, Minu-ээс авсан код байгаа бол шалгагдаж байж хадгалагдана."
           />
           <div className="md:col-span-3 mt-1 grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-neutral-100 pt-3">
             <AccountInput
@@ -599,12 +600,14 @@ export function PaymentAccountsSettingsPanel({
 }
 
 function AccountInput({
+  description,
   label,
   onChange,
   placeholder,
   type = "text",
   value,
 }: {
+  description?: string;
   label: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -621,6 +624,7 @@ function AccountInput({
         placeholder={placeholder}
         className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
       />
+      {description && <p className="text-[11px] leading-snug text-neutral-500 pl-1">{description}</p>}
     </div>
   );
 }

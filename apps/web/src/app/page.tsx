@@ -21,6 +21,7 @@ import { PromoBanner } from "@/components/organisms/home/PromoBanner";
 import { BranchMapSection } from "@/components/organisms/home/BranchMapSection";
 import { LegalInfoQrSection } from "@/components/organisms/home/LegalInfoQrSection";
 import { HrServicesSpotlight } from "@/components/organisms/home/HrServicesSpotlight";
+import { SurveySection } from "@/components/organisms/home/SurveySection";
 
 export default function HomePage() {
   return (
@@ -38,6 +39,7 @@ export default function HomePage() {
       <ProductGrid />
       <ServiceGrid />
       <HrServicesSpotlight />
+      <SurveySection />
 
       <section className="border-y border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.10),transparent_34%),linear-gradient(180deg,#ffffff,#f8fafc)] py-12">
         <div className="container mx-auto px-4 lg:px-8">

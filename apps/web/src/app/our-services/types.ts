@@ -10,6 +10,11 @@ export interface ServiceItem {
   description?: string;
   price: number;
   priceLabel?: string;
+  fileUrl?: string;
+  fileName?: string;
+  hasForm?: boolean;
+  formSlug?: string;
+  formTitle?: string;
   features?: string[];
   options?: ServiceOption[];
 }

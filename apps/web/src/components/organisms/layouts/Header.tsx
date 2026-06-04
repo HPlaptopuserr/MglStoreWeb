@@ -21,6 +21,7 @@ import Image from "next/image";
 import { SearchBar } from "../../molecules/SearchBar";
 import { MegaMenu } from "@/components/organisms/MegaMenu";
 import { PartnerMenu } from "@/components/organisms/home/PartnerMenu";
+import { HrServicesMenu } from "@/components/organisms/home/HrServicesMenu";
 import { CategoryIcon } from "@/components/atoms/CategoryIcon";
 import { LoginModal } from "@/components/organisms/auth/LoginModal";
 import { useBusinessCategories } from "@/hooks/useBusinessCategories";
@@ -327,6 +328,7 @@ export const Header = () => {
             <div className="flex h-12 items-center gap-8">
               <MegaMenu />
               <PartnerMenu />
+              <HrServicesMenu />
               <Link
                 href="/franchise"
                 className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${

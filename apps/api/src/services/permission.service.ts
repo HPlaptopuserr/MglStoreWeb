@@ -206,7 +206,7 @@ export function requireOrgPermission(source: OrgSource, ...required: Permission[
     try {
       const resolved = await resolvePermissionsForOrg(user.userId, user.role, targetOrgId);
 
-      if (user.role !== "ADMIN" && !resolved.orgRole) {
+      if (!isFullAdmin(user.role) && !resolved.orgRole) {
         return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
       }
 
@@ -252,7 +252,7 @@ export async function assertOrgPermission(
   try {
     const resolved = await resolvePermissionsForOrg(user.userId, user.role, targetOrgId);
 
-    if (user.role !== "ADMIN" && !resolved.orgRole) {
+    if (!isFullAdmin(user.role) && !resolved.orgRole) {
       res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
       return null;
     }

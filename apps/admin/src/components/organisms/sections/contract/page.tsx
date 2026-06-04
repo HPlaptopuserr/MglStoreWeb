@@ -22,6 +22,13 @@ import {
   type SystemQrKhoroo,
 } from "./PaymentAccountPanels";
 
+const MANUAL_SYSTEMQR_CODE_ERROR =
+  'Merchant Code/Sub-merchant code-г гараар хадгалахын өмнө Minu дээр шалгагдсан байх ёстой. Регистр эсвэл дансны дугаар оруулахгүй. Шинээр бүртгэх бол энэ талбарыг хоосон үлдээгээд "Minu данс холбох" дарна уу.';
+
+type PaymentAccountUpsertOptions = {
+  trustedMerchantCode?: boolean;
+};
+
 
 // ─── Signature Input: draw or upload PNG ────────────────────────────────────
 function SignatureInput({
@@ -1261,14 +1268,44 @@ function ContractEditorTab({
     }));
   };
 
-  const upsertCurrentPaymentAccount = async (overrides: Partial<ContractPaymentAccount> = {}) => {
+  const findExactMinuSubMerchant = async (merchantCode: string) => {
+    const expectedCode = String(merchantCode || "").trim().toLowerCase();
+    if (!expectedCode) return null;
+
+    const res = await adminFetch(`${API}/contracts/minu-dynamic-qr/sub-merchants?query=${encodeURIComponent(merchantCode)}`);
+    const data = await res.json();
+    if (!data.success || data.fallback) return null;
+
+    const rows = Array.isArray(data.subMerchants) ? data.subMerchants : [];
+    return rows.find((item: any) =>
+      String(item.merchantCode || "").trim().toLowerCase() === expectedCode
+    ) || null;
+  };
+
+  const upsertCurrentPaymentAccount = async (
+    overrides: Partial<ContractPaymentAccount> = {},
+    options: PaymentAccountUpsertOptions = {},
+  ) => {
     const config = settings.systemQr || {};
-    const nextMerchantName = String(overrides.merchantName || config.merchantName || "").trim();
-    const nextMerchantCode = String(overrides.merchantCode || config.merchantCode || "").trim();
+    let nextMerchantName = String(overrides.merchantName || config.merchantName || "").trim();
+    let nextMerchantCode = String(overrides.merchantCode || config.merchantCode || "").trim();
     if (!nextMerchantName || !nextMerchantCode) {
       alert("Дансны санд хадгалахын тулд мерчант нэр болон merchant code шаардлагатай");
       return null;
     }
+
+    let verifiedSubMerchant: any = null;
+    if (!options.trustedMerchantCode) {
+      verifiedSubMerchant = await findExactMinuSubMerchant(nextMerchantCode).catch(() => null);
+      if (!verifiedSubMerchant?.merchantCode) {
+        alert(MANUAL_SYSTEMQR_CODE_ERROR);
+        return null;
+      }
+
+      nextMerchantName = String(verifiedSubMerchant.merchantName || nextMerchantName).trim();
+      nextMerchantCode = String(verifiedSubMerchant.merchantCode || nextMerchantCode).trim();
+    }
+
     const existingId = config.selectedAccountId || overrides.id;
     const now = new Date().toISOString();
     const accountCorporateFlag = String(overrides.corporateFlag || config.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag).trim();
@@ -1277,8 +1314,8 @@ function ContractEditorTab({
       label: String(overrides.label || config.label || nextMerchantName || "Minu данс").trim(),
       merchantName: nextMerchantName,
       merchantCode: nextMerchantCode,
-      username: String(overrides.username || config.username || nextMerchantCode).trim(),
-      password: String(overrides.password || config.password || "").trim(),
+      username: String(overrides.username || verifiedSubMerchant?.username || config.username || nextMerchantCode).trim(),
+      password: String(overrides.password || verifiedSubMerchant?.password || config.password || "").trim(),
       bankCode: String(overrides.bankCode || config.bankCode || "050000").trim(),
       accountNumber: String(overrides.accountNumber || config.accountNumber).trim(),
       registerNumber: String(overrides.registerNumber || config.registerNumber).trim(),
@@ -1373,8 +1410,13 @@ function ContractEditorTab({
     const config = withSystemQrDefaults(settings.systemQr || {});
     const isCorporateMerchant = String(config.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag).trim() === "1";
     if (config.merchantName && config.merchantCode) {
-      const account = await upsertCurrentPaymentAccount();
-      if (account) alert("Minu merchant code дансны санд хадгалагдлаа.");
+      setConnectingMinuAccount(true);
+      try {
+        const account = await upsertCurrentPaymentAccount();
+        if (account) alert("Minu merchant code дансны санд хадгалагдлаа.");
+      } finally {
+        setConnectingMinuAccount(false);
+      }
       return;
     }
 
@@ -1389,13 +1431,13 @@ function ContractEditorTab({
               || String(item.merchantCode || "").trim().toLowerCase() === config.merchantName.toLowerCase()
             )
           : null;
-        if (data.success && existing?.merchantCode) {
+        if (data.success && !data.fallback && existing?.merchantCode) {
           await upsertCurrentPaymentAccount({
             merchantName: existing.merchantName || config.merchantName,
             merchantCode: existing.merchantCode,
             username: existing.username || existing.merchantCode,
             password: existing.password || "",
-          });
+          }, { trustedMerchantCode: true });
           alert("Minu дээр бүртгэлтэй merchant code-г авч хадгаллаа.");
           return;
         }
@@ -1440,7 +1482,7 @@ function ContractEditorTab({
         merchantCode: data.merchantCode,
         username: data.username || data.merchantCode,
         password: data.password || "",
-      });
+      }, { trustedMerchantCode: true });
       alert("Minu Dynamic QR данс холбогдлоо. Энэ гэрээний template дээр сонгож ашиглаж болно.");
     } catch (error) {
       console.error("connect minu account error", error);

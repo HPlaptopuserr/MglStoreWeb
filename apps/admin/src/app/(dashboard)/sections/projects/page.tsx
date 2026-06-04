@@ -9,6 +9,8 @@ export default function ProjectsSectionPage() {
   const {
     projects,
     setProjects,
+    projectShowcaseSections,
+    setProjectShowcaseSections,
     projectPaymentAccounts,
     saving,
     saved,
@@ -26,6 +28,8 @@ export default function ProjectsSectionPage() {
         <ProjectsSection
           projects={projects}
           paymentAccounts={projectPaymentAccounts}
+          projectShowcaseSections={projectShowcaseSections}
+          setProjectShowcaseSections={setProjectShowcaseSections}
           setProjects={setProjects}
           onSave={saveProjects}
           saving={saving}

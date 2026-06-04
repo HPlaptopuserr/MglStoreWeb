@@ -1,4 +1,6 @@
 import bcrypt from "bcryptjs";
+import fs from "fs";
+import path from "path";
 import {
   PrismaClient,
   PlatformRole,
@@ -247,18 +249,150 @@ const BUSINESS_CATEGORY_TREE = [
 ];
 
 const PRODUCT_CATEGORY_TREE = [
-  ["food-grocery", "Хүнс, өдөр тутам", ["Хүнсний ногоо", "Мах, махан бүтээгдэхүүн", "Сүү, цагаан идээ", "Гурил, будаа", "Амттан, snack", "Ундаа, ус"]],
-  ["electronics", "Цахилгаан бараа", ["Гар утас", "Компьютер", "TV, аудио", "Гэр ахуйн цахилгаан", "Камер", "Дагалдах хэрэгсэл"]],
-  ["fashion", "Хувцас, загвар", ["Эмэгтэй хувцас", "Эрэгтэй хувцас", "Гутал", "Цүнх", "Аксессуар", "Спорт хувцас"]],
-  ["beauty-health", "Гоо сайхан, эрүүл мэнд", ["Арьс арчилгаа", "Нүүр будалт", "Үс арчилгаа", "Үнэртэн", "Витамин", "Эмнэлгийн хэрэгсэл"]],
-  ["home-furniture", "Гэр ахуй, тавилга", ["Тавилга", "Гал тогоо", "Ор дэр", "Гэрийн чимэглэл", "Цэвэрлэгээ", "Цэцэрлэг"]],
-  ["kids-baby", "Хүүхэд, нярай", ["Живх, арчилгаа", "Хүүхдийн хувцас", "Тоглоом", "Сургалтын хэрэгсэл", "Тэрэг, суудал", "Хүүхдийн хоол"]],
-  ["auto-parts", "Авто, сэлбэг", ["Дугуй", "Тос, шингэн", "Сэлбэг", "Аксессуар", "Арчилгаа", "Мото хэрэгсэл"]],
-  ["sports-outdoor-products", "Спорт, аялал", ["Фитнес хэрэгсэл", "Бөмбөг, спорт", "Аяллын хэрэгсэл", "Дугуй", "Загасчлал", "Outdoor хувцас"]],
-  ["books-office", "Ном, бичиг хэрэг", ["Ном", "Сурах бичиг", "Бичиг хэрэг", "Оффис хэрэгсэл", "Принтер", "Бэлэг дурсгал"]],
-  ["pet-products", "Амьтны бараа", ["Амьтны хоол", "Арчилгаа", "Тоглоом", "Үүр, ор", "Эмчилгээ", "Дагалдах хэрэгсэл"]],
-  ["construction-tools", "Барилга, багаж", ["Барилгын материал", "Гар багаж", "Цахилгаан багаж", "Сантехник", "Цахилгаан хэрэгсэл", "Хамгаалах хэрэгсэл"]],
-  ["industrial-supply", "Үйлдвэр, агуулах", ["Тоног төхөөрөмж", "Сав баглаа", "Агуулах хэрэгсэл", "Түүхий эд", "Аюулгүй ажиллагаа", "Сэлбэг"]],
+  [
+    "food-grocery",
+    "Хүнс, өдөр тутам",
+    [
+      "Хүнсний ногоо",
+      "Мах, махан бүтээгдэхүүн",
+      "Сүү, цагаан идээ",
+      "Гурил, будаа",
+      "Амттан, snack",
+      "Ундаа, ус",
+    ],
+  ],
+  [
+    "electronics",
+    "Цахилгаан бараа",
+    [
+      "Гар утас",
+      "Компьютер",
+      "TV, аудио",
+      "Гэр ахуйн цахилгаан",
+      "Камер",
+      "Дагалдах хэрэгсэл",
+    ],
+  ],
+  [
+    "fashion",
+    "Хувцас, загвар",
+    [
+      "Эмэгтэй хувцас",
+      "Эрэгтэй хувцас",
+      "Гутал",
+      "Цүнх",
+      "Аксессуар",
+      "Спорт хувцас",
+    ],
+  ],
+  [
+    "beauty-health",
+    "Гоо сайхан, эрүүл мэнд",
+    [
+      "Арьс арчилгаа",
+      "Нүүр будалт",
+      "Үс арчилгаа",
+      "Үнэртэн",
+      "Витамин",
+      "Эмнэлгийн хэрэгсэл",
+    ],
+  ],
+  [
+    "home-furniture",
+    "Гэр ахуй, тавилга",
+    [
+      "Тавилга",
+      "Гал тогоо",
+      "Ор дэр",
+      "Гэрийн чимэглэл",
+      "Цэвэрлэгээ",
+      "Цэцэрлэг",
+    ],
+  ],
+  [
+    "kids-baby",
+    "Хүүхэд, нярай",
+    [
+      "Живх, арчилгаа",
+      "Хүүхдийн хувцас",
+      "Тоглоом",
+      "Сургалтын хэрэгсэл",
+      "Тэрэг, суудал",
+      "Хүүхдийн хоол",
+    ],
+  ],
+  [
+    "auto-parts",
+    "Авто, сэлбэг",
+    [
+      "Дугуй",
+      "Тос, шингэн",
+      "Сэлбэг",
+      "Аксессуар",
+      "Арчилгаа",
+      "Мото хэрэгсэл",
+    ],
+  ],
+  [
+    "sports-outdoor-products",
+    "Спорт, аялал",
+    [
+      "Фитнес хэрэгсэл",
+      "Бөмбөг, спорт",
+      "Аяллын хэрэгсэл",
+      "Дугуй",
+      "Загасчлал",
+      "Outdoor хувцас",
+    ],
+  ],
+  [
+    "books-office",
+    "Ном, бичиг хэрэг",
+    [
+      "Ном",
+      "Сурах бичиг",
+      "Бичиг хэрэг",
+      "Оффис хэрэгсэл",
+      "Принтер",
+      "Бэлэг дурсгал",
+    ],
+  ],
+  [
+    "pet-products",
+    "Амьтны бараа",
+    [
+      "Амьтны хоол",
+      "Арчилгаа",
+      "Тоглоом",
+      "Үүр, ор",
+      "Эмчилгээ",
+      "Дагалдах хэрэгсэл",
+    ],
+  ],
+  [
+    "construction-tools",
+    "Барилга, багаж",
+    [
+      "Барилгын материал",
+      "Гар багаж",
+      "Цахилгаан багаж",
+      "Сантехник",
+      "Цахилгаан хэрэгсэл",
+      "Хамгаалах хэрэгсэл",
+    ],
+  ],
+  [
+    "industrial-supply",
+    "Үйлдвэр, агуулах",
+    [
+      "Тоног төхөөрөмж",
+      "Сав баглаа",
+      "Агуулах хэрэгсэл",
+      "Түүхий эд",
+      "Аюулгүй ажиллагаа",
+      "Сэлбэг",
+    ],
+  ],
 ] as const;
 
 function slugify(value: string) {
@@ -363,6 +497,377 @@ async function getUniqueOrganizationTaxId(baseTaxId: string) {
   }
 }
 
+type SeedFormField = {
+  id: string;
+  type:
+    | "text"
+    | "textarea"
+    | "number"
+    | "dropdown"
+    | "checkbox"
+    | "radio"
+    | "date"
+    | "label";
+  label: string;
+  required: boolean;
+  placeholder?: string;
+  options?: { id: string; value: string }[];
+};
+
+const ENVIRONMENT_SURVEY_FORM_SLUG = "neg-huudastai-orchnii-sudalgaa";
+const ENVIRONMENT_SURVEY_PDF_FILE =
+  "neg_huudastai_orchnii_sudalgaanii_mayagt.pdf";
+
+function formField(
+  id: string,
+  type: SeedFormField["type"],
+  label: string,
+  required = false,
+  options?: string[],
+  placeholder?: string,
+): SeedFormField {
+  return {
+    id,
+    type,
+    label,
+    required,
+    placeholder,
+    options: options?.map((value, index) => ({
+      id: `${id}-option-${index + 1}`,
+      value,
+    })),
+  };
+}
+
+function getSeedApiBaseUrl() {
+  const configured =
+    process.env.API_PUBLIC_URL ||
+    process.env.API_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:4000";
+  const normalized = configured
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\/+$/, "");
+
+  return normalized.endsWith("/api") ? normalized.slice(0, -4) : normalized;
+}
+
+function ensureEnvironmentSurveyPdfAsset() {
+  const source = path.resolve(__dirname, "assets", ENVIRONMENT_SURVEY_PDF_FILE);
+  const destination = path.resolve(
+    __dirname,
+    "../../..",
+    "apps/api/uploads/site-settings/project-pdfs",
+    ENVIRONMENT_SURVEY_PDF_FILE,
+  );
+
+  if (!fs.existsSync(source)) return;
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(source, destination);
+}
+
+function getEnvironmentSurveyPdfUrl() {
+  return `${getSeedApiBaseUrl()}/api/site-settings/uploads/project-pdfs/${ENVIRONMENT_SURVEY_PDF_FILE}`;
+}
+
+function environmentSurveyFields(): SeedFormField[] {
+  return [
+    formField(
+      "survey-meta",
+      "label",
+      "Ерөнхий мэдээлэл",
+      false,
+      undefined,
+      "PDF маягтын дээд мөр: огноо, цаг, объект/байршил, судлаач, оролцогчийн төрөл, дугаар.",
+    ),
+    formField("survey-date", "date", "Огноо", true),
+    formField("survey-time", "text", "Цаг", true, undefined, "Жишээ: 10:30"),
+    formField(
+      "survey-location",
+      "text",
+      "Объект / байршил",
+      true,
+      undefined,
+      "Судалгаа хийсэн объект, байрлал",
+    ),
+    formField("researcher", "text", "Судлаач", true),
+    formField("participant-type", "dropdown", "Оролцогчийн төрөл", true, [
+      "Иргэн",
+      "Ажилтан",
+      "Түрээслэгч",
+      "Бизнес эрхлэгч",
+      "Бусад",
+    ]),
+    formField("survey-number", "text", "Дугаар", false),
+
+    formField(
+      "section-needed-goods",
+      "label",
+      "1. Ойр орчимд хэрэгцээтэй бараа",
+      false,
+      undefined,
+      "3 хүртэл сонгож, нэмэлт санал байвал доор бичнэ.",
+    ),
+    formField(
+      "needed-goods",
+      "checkbox",
+      "Ойр орчимд хэрэгцээтэй бараа",
+      true,
+      [
+        "Өрөө тутмын хүнс, ус/ундаа",
+        "Эрүүл мэндийн хэрэгсэл, эм",
+        "Хүүхдийн бараа, жижиг тоглоом",
+        "Гэр ахуйн жижиг материал, багаж",
+        "Түлхүүрийн бөглөө, бэлэн хоол",
+        "Гялгар/картон/сав баглаа",
+        "Гар утасны цэнэглэгч, кабель",
+        "Гоо сайхан, ариун цэвэр",
+        "Автомашины жижиг хэрэгсэл",
+        "Амьтны хоол, хэрэгсэл",
+      ],
+    ),
+    formField(
+      "needed-goods-other",
+      "text",
+      "Бусад хэрэгцээтэй бараа",
+      false,
+      undefined,
+      "Хэрэв жагсаалтад байхгүй бол бичнэ үү",
+    ),
+
+    formField(
+      "section-missing-services",
+      "label",
+      "2. Дутмаг үйлчилгээ",
+      false,
+      undefined,
+      "0-3 оноогоор үнэлнэ. 0 = шаардлагагүй, 3 = маш их хэрэгтэй.",
+    ),
+    ...[
+      "Хүнсний мини маркет",
+      "Кофе/түргэн хоол/цайны газар",
+      "Фитнес сан/эрүүл мэнд",
+      "Угаалга/хими цэвэрлэгээ",
+      "Үсчин/гоо сайхан",
+      "Канон/хэвлэл/бичиг хэрэг",
+      "ATM/төлбөр/мөнгө шилжүүлэх",
+      "Хүргэлт авах цэг/pick-up",
+      "Авто жижиг үйлчилгээ/засвар",
+      "Тоглоом/түрээс/хүүхэд",
+      "Хүүхдийн булан/сургалт",
+      "Ариун цэврийн өрөө/амрах хэсэг",
+    ].map((label, index) =>
+      formField(`missing-service-${index + 1}`, "dropdown", label, false, [
+        "0",
+        "1",
+        "2",
+        "3",
+      ]),
+    ),
+
+    formField(
+      "section-traffic",
+      "label",
+      "3. Явган хүн, машины урсгалын ажиглалт",
+      false,
+      undefined,
+      "15-30 минутын ажиглалтын мэдээлэл.",
+    ),
+    formField("foot-traffic-peak", "number", "Явган хүн / оргил", false),
+    formField("foot-traffic-normal", "number", "Явган хүн / энгийн", false),
+    formField("car-count", "number", "Машин тоо", false),
+    formField("parking-availability", "radio", "Зогсоолын байдал", false, [
+      "сайн",
+      "дунд",
+      "хүнд",
+    ]),
+    formField("payment-option", "radio", "Төлбөр/түрээсийн боломж", false, [
+      "бага",
+      "дунд",
+      "өндөр",
+    ]),
+    formField(
+      "nearest-stop",
+      "text",
+      "Ойролцоох такси цэг",
+      false,
+      undefined,
+      "Байгаа бол нэр/байршлыг бичнэ",
+    ),
+    formField(
+      "public-transport",
+      "checkbox",
+      "Нийтийн тээвэр / явган хүний нөхцөл",
+      false,
+      [
+        "Ойрхон автобусны буудал",
+        "Орон сууц/ажлын байр ойр",
+        "Зам гарц сайн",
+        "Гэрэлтүүлэг сайн",
+        "Өдөр хүн их",
+        "Орой хүн их",
+      ],
+    ),
+    formField("traffic-risk", "checkbox", "Эрсдэл, саад", false, [
+      "Хэт их өрсөлдөгч",
+      "Зогсоол хэцүү",
+      "Аюулгүй байдал бага",
+      "Зардал их",
+    ]),
+
+    formField(
+      "section-required-items",
+      "label",
+      "4. Зөрж өнгөрөгч / жолооч нарт хэрэгцээтэй байж болох зүйл",
+      false,
+    ),
+    formField("driver-needs", "checkbox", "Хэрэгцээтэй зүйлс", false, [
+      "Ус, ундаа, кофе",
+      "Утас цэнэглэх/кабель",
+      "ATM/төлбөр",
+      "Ариун цэврийн өрөө",
+      "Сарвис/гар утасны хэрэгсэл",
+      "Бичиг хэрэг/хэвлэл",
+      "Авто хэрэгсэл/шил арчигч",
+      "Амрах сандал/хүлээлгийн хэсэг",
+      "Талх, амттан",
+      "Хүргэлт авах цэг",
+      "Түр зогсоол",
+    ]),
+    formField("driver-needs-other", "text", "Бусад хэрэгцээ", false),
+
+    formField(
+      "section-final",
+      "label",
+      "5. Дүгнэлт, бизнесийн санал",
+      false,
+      undefined,
+      "Гурван өндөр оноотой үйлчилгээ, санал, шийдвэрээ тэмдэглэнэ.",
+    ),
+    formField("top-suggestion-1", "text", "Хамгийн өндөр оноотой үйлчилгээ #1"),
+    formField("top-suggestion-2", "text", "Хамгийн өндөр оноотой үйлчилгээ #2"),
+    formField("top-suggestion-3", "text", "Хамгийн өндөр оноотой үйлчилгээ #3"),
+    formField(
+      "feasible-businesses",
+      "checkbox",
+      "Санал болгож болох бизнес",
+      false,
+      [
+        "Мини маркет",
+        "Кофе/хоол",
+        "Авто/зогсоол",
+        "Үйлчилгээ",
+        "Салбарлуулах боломжтой",
+      ],
+    ),
+    formField(
+      "next-actions",
+      "textarea",
+      "Нэмэлт ажиглалт / эрсдэл / дараагийн алхам",
+      false,
+    ),
+    formField("total-score", "number", "Нийт оноо", false),
+    formField("decision", "radio", "Шийдвэр", false, [
+      "Нээх",
+      "Турших",
+      "Судлах",
+    ]),
+    formField("signature", "text", "Судлаачийн гарын үсэг", false),
+    formField("completed-date", "date", "Дууссан огноо", false),
+  ];
+}
+
+async function seedEnvironmentSurveyHrMaterial(createdById: string) {
+  ensureEnvironmentSurveyPdfAsset();
+
+  const pdfUrl = getEnvironmentSurveyPdfUrl();
+  const form = await prisma.form.upsert({
+    where: { slug: ENVIRONMENT_SURVEY_FORM_SLUG },
+    update: {
+      title: "Нэг хуудастай орчны судалгааны маягт",
+      description:
+        "Байршлын орчин, хэрэглэгчийн хэрэгцээ, үйлчилгээний дутмаг байдал, явган хүн/машины урсгал болон бизнесийн боломжийг нэг дор бүртгэх судалгааны маягт.",
+      fields: environmentSurveyFields(),
+      isActive: true,
+      createdById,
+    },
+    create: {
+      slug: ENVIRONMENT_SURVEY_FORM_SLUG,
+      title: "Нэг хуудастай орчны судалгааны маягт",
+      description:
+        "Байршлын орчин, хэрэглэгчийн хэрэгцээ, үйлчилгээний дутмаг байдал, явган хүн/машины урсгал болон бизнесийн боломжийг нэг дор бүртгэх судалгааны маягт.",
+      fields: environmentSurveyFields(),
+      isActive: true,
+      createdById,
+    },
+  });
+
+  const headingId = "hr-environment-survey";
+  const materialId = "hr-environment-survey-form";
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: "hr-services" },
+  });
+  let hrServices: any[] = [];
+
+  if (setting?.value) {
+    try {
+      const parsed = JSON.parse(setting.value);
+      if (Array.isArray(parsed)) hrServices = parsed;
+    } catch {
+      hrServices = [];
+    }
+  }
+
+  const surveyHeading = {
+    id: headingId,
+    title: "Судалгааны маягтууд",
+    description:
+      "Объект, байршил болон орчны бизнес боломжийг үнэлэх HR үйлчилгээний маягтууд.",
+    icon: "ClipboardList",
+    subCategories: [
+      {
+        id: "hr-environment-survey-files",
+        title: "Судалгааны материалууд",
+        description: "",
+        items: [
+          {
+            id: materialId,
+            name: "Нэг хуудастай орчны судалгааны маягт",
+            description:
+              "PDF загвар болон web дээр шууд бөглөх маягттай орчны судалгааны материал.",
+            price: 0,
+            priceLabel: "Үнэгүй",
+            fileUrl: pdfUrl,
+            fileName: ENVIRONMENT_SURVEY_PDF_FILE,
+            hasForm: true,
+            formSlug: form.slug,
+            formTitle: form.title,
+            features: [
+              "Огноо, цаг, объект/байршил, судлаачийн мэдээлэл бүртгэнэ.",
+              "Ойр орчимд хэрэгцээтэй бараа болон дутмаг үйлчилгээг оноогоор үнэлнэ.",
+              "Явган хүн, машины урсгал болон жолооч нарт хэрэгцээтэй зүйлсийг тэмдэглэнэ.",
+              "Эцэст нь санал болгож болох бизнес, эрсдэл, шийдвэрийг нэгтгэнэ.",
+            ],
+            options: [],
+          },
+        ],
+      },
+    ],
+  };
+
+  const withoutSeedHeading = hrServices.filter(
+    (heading) => heading?.id !== headingId,
+  );
+  await prisma.siteSetting.upsert({
+    where: { key: "hr-services" },
+    update: { value: JSON.stringify([...withoutSeedHeading, surveyHeading]) },
+    create: { key: "hr-services", value: JSON.stringify([surveyHeading]) },
+  });
+
+  return { formTitle: form.title, pdfUrl };
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash("admin123", 10);
 
@@ -418,9 +923,13 @@ async function main() {
     },
   });
 
+  const environmentSurveySeed = await seedEnvironmentSurveyHrMaterial(admin.id);
+
   // Ensure admin has OWNER membership in the default org
   await prisma.organizationMember.upsert({
-    where: { userId_organizationId: { userId: admin.id, organizationId: org.id } },
+    where: {
+      userId_organizationId: { userId: admin.id, organizationId: org.id },
+    },
     update: { role: "OWNER", isPrimary: true, isActive: true },
     create: {
       userId: admin.id,
@@ -721,14 +1230,14 @@ async function main() {
   console.log(
     `   - Active business categories: ${activeBusinessCategories.length}`,
   );
-  console.log(
-    `   - Upserted mock organizations: ${mockOrganizationsUpserted}`,
-  );
+  console.log(`   - Upserted mock organizations: ${mockOrganizationsUpserted}`);
   console.log(`   - Created warehouse: ${warehouse.name}`);
   console.log(`   - Created ${products.length} products`);
   console.log(
     `   - Created ${inventoryData.length} warehouse inventory entries`,
   );
+  console.log(`   - Seeded HR survey form: ${environmentSurveySeed.formTitle}`);
+  console.log(`   - Seeded HR survey PDF: ${environmentSurveySeed.pdfUrl}`);
 }
 
 if (require.main === module) {

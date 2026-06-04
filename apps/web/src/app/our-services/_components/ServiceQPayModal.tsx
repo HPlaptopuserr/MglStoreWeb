@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { X, CheckCircle2, Loader2, QrCode, Smartphone } from "lucide-react";
 import { API } from "@/lib/api";
+import { MobileBankAppLinks } from "@/components/molecules/payments/MobileBankAppLinks";
 
 interface DeepLink {
   name: string;
@@ -22,7 +23,15 @@ interface ServiceQPayModalProps {
   onClose: () => void;
 }
 
-export function ServiceQPayModal({ orderNumber, total, qrImage, invoiceId, deepLinks, onSuccess, onClose }: ServiceQPayModalProps) {
+export function ServiceQPayModal({
+  orderNumber,
+  total,
+  qrImage,
+  invoiceId,
+  deepLinks,
+  onSuccess,
+  onClose,
+}: ServiceQPayModalProps) {
   const [confirmed, setConfirmed] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
@@ -32,7 +41,9 @@ export function ServiceQPayModal({ orderNumber, total, qrImage, invoiceId, deepL
   // Check payment status
   const checkPayment = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/site-settings/mgl-services/qpay/check?invoiceId=${invoiceId}`);
+      const res = await fetch(
+        `${API}/site-settings/mgl-services/qpay/check?invoiceId=${invoiceId}`,
+      );
       const data = await res.json();
       if (data.isPaid) {
         if (pollRef.current) clearInterval(pollRef.current);
@@ -41,7 +52,7 @@ export function ServiceQPayModal({ orderNumber, total, qrImage, invoiceId, deepL
         return true;
       }
     } catch {
-      // silent — retry on next poll
+      // silent â€” retry on next poll
     }
     return false;
   }, [invoiceId, onSuccess]);
@@ -76,7 +87,9 @@ export function ServiceQPayModal({ orderNumber, total, qrImage, invoiceId, deepL
   // Lock body scroll
   useEffect(() => {
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, []);
 
   // Manual check
@@ -85,7 +98,9 @@ export function ServiceQPayModal({ orderNumber, total, qrImage, invoiceId, deepL
     setError("");
     const paid = await checkPayment();
     if (!paid) {
-      setError("Төлбөр хүлээгдэж байна. QPay аппаар төлбөрөө төлнө үү.");
+      setError(
+        "Ð¢Ó©Ð»Ð±Ó©Ñ€ Ñ…Ò¯Ð»ÑÑÐ³Ð´ÑÐ¶ Ð±Ð°Ð¹Ð½Ð°. QPay Ð°Ð¿Ð¿Ð°Ð°Ñ€ Ñ‚Ó©Ð»Ð±Ó©Ñ€Ó©Ó© Ñ‚Ó©Ð»Ð½Ó© Ò¯Ò¯.",
+      );
     }
     setChecking(false);
   };
@@ -95,7 +110,10 @@ export function ServiceQPayModal({ orderNumber, total, qrImage, invoiceId, deepL
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={confirmed ? undefined : onClose} />
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={confirmed ? undefined : onClose}
+      />
 
       <div className="relative z-10 w-full max-w-md mx-4 rounded-2xl bg-white shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
@@ -103,7 +121,9 @@ export function ServiceQPayModal({ orderNumber, total, qrImage, invoiceId, deepL
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
               <QrCode size={18} className="text-blue-600" />
             </div>
-            <h2 className="text-base font-bold text-gray-900">QPay төлбөр</h2>
+            <h2 className="text-base font-bold text-gray-900">
+              QPay Ñ‚Ó©Ð»Ð±Ó©Ñ€
+            </h2>
           </div>
           {!confirmed && (
             <button
@@ -115,79 +135,72 @@ export function ServiceQPayModal({ orderNumber, total, qrImage, invoiceId, deepL
           )}
         </div>
 
-        <div className="px-6 py-6 space-y-6">
+        <div className="space-y-5 px-4 py-5 sm:space-y-6 sm:px-6 sm:py-6">
           {confirmed ? (
             <div className="flex flex-col items-center gap-4 py-4">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
                 <CheckCircle2 size={40} className="text-green-600" />
               </div>
               <div className="text-center">
-                <p className="text-lg font-bold text-gray-900">Төлбөр амжилттай!</p>
-                <p className="mt-1 text-sm text-gray-500">Захиалга #{orderNumber} баталгаажлаа</p>
-                <p className="mt-2 text-sm text-gray-600 font-medium">Бид тантай тун удахгүй холбогдох болно. Баярлалаа!</p>
+                <p className="text-lg font-bold text-gray-900">
+                  Ð¢Ó©Ð»Ð±Ó©Ñ€ Ð°Ð¼Ð¶Ð¸Ð»Ñ‚Ñ‚Ð°Ð¹!
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Ð—Ð°Ñ…Ð¸Ð°Ð»Ð³Ð° #{orderNumber} Ð±Ð°Ñ‚Ð°Ð»Ð³Ð°Ð°Ð¶Ð»Ð°Ð°
+                </p>
+                <p className="mt-2 text-sm text-gray-600 font-medium">
+                  Ð‘Ð¸Ð´ Ñ‚Ð°Ð½Ñ‚Ð°Ð¹ Ñ‚ÑƒÐ½ ÑƒÐ´Ð°Ñ…Ð³Ò¯Ð¹ Ñ…Ð¾Ð»Ð±Ð¾Ð³Ð´Ð¾Ñ…
+                  Ð±Ð¾Ð»Ð½Ð¾. Ð‘Ð°ÑÑ€Ð»Ð°Ð»Ð°Ð°!
+                </p>
               </div>
             </div>
           ) : (
             <>
-              <div className="rounded-xl bg-gray-50 px-4 py-3 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Захиалга</span>
-                  <span className="font-mono text-gray-700">{orderNumber}</span>
+              <div className="space-y-1 overflow-hidden rounded-xl bg-gray-50 px-3 py-3 sm:px-4">
+                <div className="flex min-w-0 justify-between gap-3 text-sm">
+                  <span className="text-gray-500">Ð—Ð°Ñ…Ð¸Ð°Ð»Ð³Ð°</span>
+                  <span className="min-w-0 truncate text-right font-mono text-gray-700">
+                    {orderNumber}
+                  </span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Нийт дүн</span>
-                  <span className="text-lg font-black text-gray-900">₮{total.toLocaleString()}</span>
+                <div className="flex flex-wrap items-end justify-between gap-2 text-sm">
+                  <span className="text-gray-500">ÐÐ¸Ð¹Ñ‚ Ð´Ò¯Ð½</span>
+                  <span className="text-base font-black text-gray-900 sm:text-lg">
+                    â‚®{total.toLocaleString()}
+                  </span>
                 </div>
               </div>
 
-              <div className="flex flex-col items-center gap-3">
-                <div className="rounded-2xl border-2 border-gray-200 bg-white p-2">
+              <div
+                className={`${deepLinks.length > 0 ? "hidden sm:flex" : "flex"} flex-col items-center gap-3`}
+              >
+                <div className="max-w-full rounded-2xl border-2 border-gray-200 bg-white p-2">
                   <img
                     src={`data:image/png;base64,${qrImage}`}
                     alt="QPay QR Code"
-                    className="h-52 w-52 rounded-xl"
+                    className="h-[clamp(168px,54vw,220px)] w-[clamp(168px,54vw,220px)] rounded-xl sm:h-52 sm:w-52"
                   />
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Smartphone size={14} />
-                  <span>QPay аппликейшнээр уншуулна уу</span>
+                  <span>
+                    QPay Ð°Ð¿Ð¿Ð»Ð¸ÐºÐµÐ¹ÑˆÐ½ÑÑÑ€ ÑƒÐ½ÑˆÑƒÑƒÐ»Ð½Ð° ÑƒÑƒ
+                  </span>
                 </div>
               </div>
 
-              {deepLinks.length > 0 && (
-                <div>
-                  <p className="mb-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Банкны апп-аар төлөх
-                  </p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {deepLinks.map((dl) => (
-                      <a
-                        key={dl.name}
-                        href={dl.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex flex-col items-center gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-2.5 hover:bg-gray-100 transition-colors"
-                      >
-                        <img src={dl.logo} alt={dl.name} className="h-8 w-8 rounded-lg object-contain" />
-                        <span className="text-[10px] font-medium text-gray-600 text-center leading-tight line-clamp-2">
-                          {dl.description}
-                        </span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <MobileBankAppLinks links={deepLinks} variant="light" />
 
               {countdown > 0 ? (
                 <p className="text-center text-sm text-gray-400">
-                  Хүлээх хугацаа:{" "}
+                  Ð¥Ò¯Ð»ÑÑÑ… Ñ…ÑƒÐ³Ð°Ñ†Ð°Ð°:{" "}
                   <span className="font-mono font-bold text-gray-700">
                     {minutes}:{String(seconds).padStart(2, "0")}
                   </span>
                 </p>
               ) : (
                 <p className="text-center text-sm text-red-500 font-medium">
-                  Хугацаа дууссан. Дахин оролдоно уу.
+                  Ð¥ÑƒÐ³Ð°Ñ†Ð°Ð° Ð´ÑƒÑƒÑÑÐ°Ð½. Ð”Ð°Ñ…Ð¸Ð½ Ð¾Ñ€Ð¾Ð»Ð´Ð¾Ð½Ð¾ ÑƒÑƒ.
                 </p>
               )}
 
@@ -205,18 +218,19 @@ export function ServiceQPayModal({ orderNumber, total, qrImage, invoiceId, deepL
                 {checking ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Шалгаж байна...
+                    Ð¨Ð°Ð»Ð³Ð°Ð¶ Ð±Ð°Ð¹Ð½Ð°...
                   </>
                 ) : (
                   <>
                     <CheckCircle2 size={18} />
-                    Төлбөр шалгах
+                    Ð¢Ó©Ð»Ð±Ó©Ñ€ ÑˆÐ°Ð»Ð³Ð°Ñ…
                   </>
                 )}
               </button>
 
               <p className="text-center text-xs text-gray-400">
-                Төлбөр автоматаар шалгагдана. Эсвэл &quot;Төлбөр шалгах&quot; товч дарна уу.
+                Ð¢Ó©Ð»Ð±Ó©Ñ€ Ð°Ð²Ñ‚Ð¾Ð¼Ð°Ñ‚Ð°Ð°Ñ€ ÑˆÐ°Ð»Ð³Ð°Ð³Ð´Ð°Ð½Ð°. Ð­ÑÐ²ÑÐ»
+                &quot;Ð¢Ó©Ð»Ð±Ó©Ñ€ ÑˆÐ°Ð»Ð³Ð°Ñ…&quot; Ñ‚Ð¾Ð²Ñ‡ Ð´Ð°Ñ€Ð½Ð° ÑƒÑƒ.
               </p>
             </>
           )}

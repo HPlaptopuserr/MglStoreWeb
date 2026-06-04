@@ -11,6 +11,10 @@ import {
   X,
 } from "lucide-react";
 import { API } from "@/lib/api";
+import {
+  PaidAccessPaymentModal,
+  type PaidAccessPaymentSession,
+} from "@/components/molecules/payments/PaidAccessPaymentModal";
 
 type FranchiseProject = {
   id: string;
@@ -18,6 +22,7 @@ type FranchiseProject = {
   category?: string;
   summary?: string;
   details?: string;
+  price?: number;
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
@@ -37,6 +42,29 @@ function getProjectImages(project: FranchiseProject) {
         .filter(Boolean),
     ),
   );
+}
+
+function formatMnt(value?: number) {
+  return `₮${Number(value || 0).toLocaleString("mn-MN")}`;
+}
+
+function isMglStoreFranchise(project: Pick<FranchiseProject, "title">) {
+  const title = String(project.title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  return title.includes("mglstore");
+}
+
+function sortMglStoreFranchiseFirst(projects: FranchiseProject[]) {
+  return projects
+    .map((project, index) => ({ project, index }))
+    .sort((a, b) => {
+      const aPriority = isMglStoreFranchise(a.project) ? 0 : 1;
+      const bPriority = isMglStoreFranchise(b.project) ? 0 : 1;
+      return aPriority - bPriority || a.index - b.index;
+    })
+    .map(({ project }) => project);
 }
 
 function FranchiseDetailModal({
@@ -154,6 +182,11 @@ export default function FranchisePage() {
     Record<string, FranchiseProject>
   >({});
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [paymentProject, setPaymentProject] = useState<FranchiseProject | null>(
+    null,
+  );
+  const [paymentSession, setPaymentSession] =
+    useState<PaidAccessPaymentSession | null>(null);
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -163,8 +196,10 @@ export default function FranchisePage() {
         const data = await res.json();
         const parsed = Array.isArray(data.projects) ? data.projects : [];
         setProjects(
-          parsed.filter(
-            (project: FranchiseProject) => project.isActive !== false,
+          sortMglStoreFranchiseFirst(
+            parsed.filter(
+              (project: FranchiseProject) => project.isActive !== false,
+            ),
           ),
         );
       } catch (error) {
@@ -176,15 +211,29 @@ export default function FranchisePage() {
     fetchProjects();
   }, []);
 
-  const fetchProjectDetail = async (projectId: string) => {
+  const fetchProjectDetail = async (projectId: string, invoiceId?: string) => {
+    const params = invoiceId
+      ? `?${new URLSearchParams({ invoiceId }).toString()}`
+      : "";
     const res = await fetch(
-      `${API}/site-settings/franchise/${projectId}/detail`,
+      `${API}/site-settings/franchise/${projectId}/detail${params}`,
     );
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) {
       throw new Error(data.message || "Franchise мэдээлэл авахад алдаа гарлаа");
     }
     return data.project as FranchiseProject;
+  };
+
+  const openPaidProject = async (
+    project: FranchiseProject,
+    invoiceId: string,
+  ) => {
+    const detail = await fetchProjectDetail(project.id, invoiceId);
+    setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+    setPaymentProject(null);
+    setPaymentSession(null);
+    setActiveProject(detail);
   };
 
   const openProject = async (project: FranchiseProject) => {
@@ -196,9 +245,39 @@ export default function FranchisePage() {
 
     try {
       setOpeningId(project.id);
-      const detail = await fetchProjectDetail(project.id);
-      setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
-      setActiveProject(detail);
+      if (!project.price || project.price <= 0) {
+        const detail = await fetchProjectDetail(project.id);
+        setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+        setActiveProject(detail);
+        return;
+      }
+
+      const res = await fetch(`${API}/site-settings/franchise/systemqr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Төлбөрийн QR үүсгэхэд алдаа гарлаа");
+      }
+      if (data.free) {
+        const detail = await fetchProjectDetail(project.id);
+        setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+        setActiveProject(detail);
+        return;
+      }
+
+      setPaymentProject(project);
+      setPaymentSession({
+        invoiceId: data.invoiceId,
+        providerInvoiceId: data.providerInvoiceId,
+        amount: Number(data.amount || project.price || 0),
+        qrText: String(data.qrText || ""),
+        qrImage: String(data.qrImage || ""),
+        urls: Array.isArray(data.urls) ? data.urls : [],
+        expiresAt: data.expiresAt,
+      });
     } catch (error) {
       console.error(error);
       alert(
@@ -232,8 +311,8 @@ export default function FranchisePage() {
               </span>
             </h1>
             <p className="mt-5 max-w-2xl text-sm leading-7 text-orange-50/70">
-              Франчайз зураг, танилцуулга, PDF файлыг төлбөргүйгээр шууд нээж
-              үзнэ.
+              Франчайзын хураангуйг үзээд, дэлгэрэнгүй мэдээлэл болон PDF файлыг
+              Dynamic QR төлбөрөөр нээнэ.
             </p>
           </div>
 
@@ -263,6 +342,7 @@ export default function FranchisePage() {
               {projects.map((project, index) => {
                 const images = getProjectImages(project);
                 const primaryImage = images[0];
+                const isFree = !project.price || project.price <= 0;
                 return (
                   <article
                     key={project.id}
@@ -285,7 +365,7 @@ export default function FranchisePage() {
                       )}
                       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#18181b] to-transparent" />
                       <div className="absolute right-4 top-4 rounded-full bg-gradient-to-r from-orange-500 to-orange-300 px-4 py-1.5 text-[11px] font-black uppercase text-white shadow-lg shadow-orange-900/40">
-                        Үнэгүй
+                        {isFree ? "Үнэгүй" : formatMnt(project.price)}
                       </div>
                     </div>
 
@@ -319,7 +399,9 @@ export default function FranchisePage() {
                           <Loader2 className="h-5 w-5 animate-spin" />
                         ) : (
                           <>
-                            Дэлгэрэнгүй үзэх
+                            {isFree
+                              ? "Дэлгэрэнгүй үзэх"
+                              : "Төлөөд дэлгэрэнгүй үзэх"}
                             <ArrowRight className="h-4 w-4" />
                           </>
                         )}
@@ -344,6 +426,20 @@ export default function FranchisePage() {
           </section>
         )}
       </main>
+
+      {paymentProject && paymentSession && (
+        <PaidAccessPaymentModal
+          itemId={paymentProject.id}
+          title={paymentProject.title}
+          payment={paymentSession}
+          checkUrl={`${API}/site-settings/franchise/systemqr/check`}
+          onPaid={(invoiceId) => openPaidProject(paymentProject, invoiceId)}
+          onClose={() => {
+            setPaymentProject(null);
+            setPaymentSession(null);
+          }}
+        />
+      )}
 
       {activeProject && (
         <FranchiseDetailModal
