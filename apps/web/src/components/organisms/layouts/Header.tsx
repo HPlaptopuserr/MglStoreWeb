@@ -31,6 +31,8 @@ import { useCart } from "@/hooks/useCart";
 import { CartDrawer } from "@/components/organisms/CartDrawer";
 import { useAuth } from "@/lib/auth-context";
 import { MobileBottomNav } from "@/components/organisms/layouts/MobileBottomNav";
+import { API } from "@/lib/api";
+import { AUTH_LOGIN_BANNER_KEY, createLoginMarketingBanner, parseLoginMarketingBanner } from "@/lib/site-banners";
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -39,6 +41,7 @@ export const Header = () => {
   const [authOpen, setAuthOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [marketingBanner, setMarketingBanner] = useState(() => createLoginMarketingBanner());
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { user, login, register, logout } = useAuth();
@@ -82,6 +85,13 @@ export const Header = () => {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    fetch(`${API}/site-settings`)
+      .then((response) => (response.ok ? response.json() : ({} as Record<string, string>)))
+      .then((settings) => setMarketingBanner(parseLoginMarketingBanner(settings?.[AUTH_LOGIN_BANNER_KEY])))
+      .catch(() => setMarketingBanner(createLoginMarketingBanner()));
+  }, []);
 
   useEffect(() => {
     if (mobileMenuOpen) {
@@ -605,6 +615,7 @@ export const Header = () => {
           }}
           isLoading={authLoading}
           error={authError}
+          marketingBanner={marketingBanner}
         />
       )}
 

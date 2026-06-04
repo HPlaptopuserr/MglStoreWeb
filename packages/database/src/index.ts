@@ -28,6 +28,8 @@ export {
   ShiftStatus,
   PosSaleStatus,
   ContractStatus,
+  PaidAccessSourceType,
+  MPointLedgerType,
   CardTerminalRequestStatus,
   AssociationMembershipType,
 } from "@prisma/client";

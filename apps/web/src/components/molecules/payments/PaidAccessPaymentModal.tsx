@@ -20,6 +20,7 @@ type PaidAccessPaymentModalProps = {
   title: string;
   payment: PaidAccessPaymentSession;
   checkUrl: string;
+  request?: (url: string, init?: RequestInit) => Promise<Response>;
   onPaid: (invoiceId: string) => Promise<void>;
   onClose: () => void;
 };
@@ -33,6 +34,7 @@ export function PaidAccessPaymentModal({
   title,
   payment,
   checkUrl,
+  request,
   onPaid,
   onClose,
 }: PaidAccessPaymentModalProps) {
@@ -53,7 +55,7 @@ export function PaidAccessPaymentModal({
       invoiceId: payment.invoiceId,
       projectId: itemId,
     });
-    const res = await fetch(`${checkUrl}?${params}`);
+    const res = await (request || fetch)(`${checkUrl}?${params}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) {
       throw new Error(data.message || "Төлбөр шалгахад алдаа гарлаа");
@@ -65,7 +67,7 @@ export function PaidAccessPaymentModal({
       return true;
     }
     return false;
-  }, [checkUrl, itemId, onPaid, payment.invoiceId]);
+  }, [checkUrl, itemId, onPaid, payment.invoiceId, request]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";

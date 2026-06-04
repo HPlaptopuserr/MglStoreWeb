@@ -24,6 +24,7 @@ export interface ProductCardProps {
   tags?: string[];
   isPrime?: boolean;
   wishlistActive?: boolean;
+  showCartAction?: boolean;
   onWishlistToggle?: (active: boolean) => void;
   onAddToCart?: () => void;
 }

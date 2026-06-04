@@ -10,6 +10,7 @@ import {
   Settings,
   Tag,
   Package,
+  PackageSearch,
   Briefcase,
   TrendingUp,
   Headphones,
@@ -122,6 +123,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     requires: ["VIEW_SYSTEM_DASHBOARD"],
   },
   {
+    id: "product-development",
+    label: "Бүтээгдэхүүн хөгжүүлэлт",
+    icon: PackageSearch,
+    href: "/product-development",
+    requires: ["MANAGE_SITE_SETTINGS"],
+  },
+  {
     id: "categories",
     label: "Бизнесийн ангилал",
     icon: Tag,
@@ -159,6 +167,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
     if (pathname.startsWith("/settings")) return "Тохиргоо";
     if (pathname.startsWith("/contracts")) return "Хийгдсэн гэрээнүүд";
     if (pathname.startsWith("/sections")) return "Нэмэлт хэсгүүд";
+    if (pathname.startsWith("/product-development")) return "Бүтээгдэхүүн хөгжүүлэлт";
     if (pathname.startsWith("/applications")) return "Ажлын анкет";
     if (pathname.startsWith("/investors")) return "Хөрөнгө оруулалт";
     if (pathname.startsWith("/services")) return "Үйлчилгээ";

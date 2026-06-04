@@ -1,7 +1,6 @@
 "use client";
 
 import { ProductCard } from "@mgl/ui";
-import { addToCart } from "@/lib/cart";
 
 interface Props {
   product: any;
@@ -19,9 +18,10 @@ export const ProductCarouselItem = ({ product, idx, onClick }: Props) => {
   return (
     <div
       onClick={onClick}
-      className="w-[82%] shrink-0 cursor-pointer sm:w-[46%] lg:w-[31%] xl:w-[23.5%]"
+      className="min-w-0 cursor-pointer"
     >
       <ProductCard
+        href={`/products/${product.id}`}
         image={mainImage}
         price={finalPrice}
         name={product.name}
@@ -35,15 +35,7 @@ export const ProductCarouselItem = ({ product, idx, onClick }: Props) => {
         isPreorder={product.supplyType === "CHINA_PREORDER"}
         preorderLeadTimeDays={product.preorderLeadTimeDays}
         isPrime={idx % 5 === 0}
-        onAddToCart={() =>
-          addToCart({
-            id: product.id,
-            name: product.name,
-            price: finalPrice,
-            image: mainImage,
-            quantity: 1,
-          })
-        }
+        showCartAction={false}
       />
     </div>
   );

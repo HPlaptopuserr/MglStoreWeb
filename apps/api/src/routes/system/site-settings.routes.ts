@@ -11,7 +11,11 @@ import express, {
 import multer from "multer";
 import { prisma, PosQPayStatus, type Prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
-import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
+import {
+  optionalAuth,
+  requireAuth,
+  requirePlatformPermission,
+} from "../../middleware/auth";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
@@ -81,6 +85,7 @@ type ProjectPaymentAccount = {
 };
 
 type PaidContentKind = "PROJECT_ACCESS" | "FRANCHISE_ACCESS";
+type PaidAccessSource = "PROJECT" | "FRANCHISE";
 
 function isSupabaseConfigured() {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
@@ -281,6 +286,22 @@ function projectPaymentPayload(invoice: {
   webhookPayload: Prisma.JsonValue | null;
 }) {
   return (invoice.webhookPayload || {}) as Record<string, unknown>;
+}
+
+function paidAccessSourceFromKind(kind: PaidContentKind): PaidAccessSource {
+  return kind === "FRANCHISE_ACCESS" ? "FRANCHISE" : "PROJECT";
+}
+
+function paidAccessLabelFromSource(sourceType: PaidAccessSource) {
+  return sourceType === "FRANCHISE" ? "Franchise" : "Төсөл";
+}
+
+function paidAccessFileName(project: PaidProject) {
+  const cleanTitle = String(project.title || "MGL файл")
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${cleanTitle || "MGL файл"}.pdf`;
 }
 
 const normalizeSystemQrLookup = (value?: string | null) =>
@@ -622,26 +643,185 @@ async function refreshProjectInvoicePayment(invoiceId: string) {
 }
 
 async function ensurePaidProjectAccess({
+  userId,
   projectId,
+  project,
   invoiceId,
   price,
   kind = "PROJECT_ACCESS",
 }: {
+  userId?: string;
   projectId: string;
+  project: PaidProject;
   invoiceId?: string;
   price: number;
   kind?: PaidContentKind;
 }) {
   if (price <= 0) return true;
+
+  const sourceType = paidAccessSourceFromKind(kind);
+  if (userId) {
+    const purchase = await prisma.paidAccessPurchase.findUnique({
+      where: {
+        userId_sourceType_itemId: {
+          userId,
+          sourceType,
+          itemId: projectId,
+        },
+      },
+      select: { id: true },
+    });
+    if (purchase) return true;
+  }
+
   if (!invoiceId) return false;
 
   const invoice = await refreshProjectInvoicePayment(invoiceId);
   if (!invoice) return false;
+  const payload = projectPaymentPayload(invoice);
+  if (!userId || String(payload.userId || "") !== userId) return false;
 
-  return (
+  const canUnlock =
     invoice.status === PosQPayStatus.PAID &&
-    projectInvoiceBelongsTo(invoice, projectId, price, kind)
+    projectInvoiceBelongsTo(invoice, projectId, price, kind);
+  if (canUnlock) {
+    await ensurePaidAccessPurchaseForInvoice({
+      invoice,
+      project,
+      kind,
+      userId,
+    });
+  }
+  return canUnlock;
+}
+
+async function ensurePaidAccessPurchaseForInvoice({
+  invoice,
+  project,
+  kind,
+  userId,
+}: {
+  invoice: Awaited<ReturnType<typeof refreshProjectInvoicePayment>>;
+  project: PaidProject;
+  kind: PaidContentKind;
+  userId: string;
+}) {
+  if (!invoice || invoice.status !== PosQPayStatus.PAID) return null;
+
+  const sourceType = paidAccessSourceFromKind(kind);
+  const payload = projectPaymentPayload(invoice);
+  const itemId = String(payload.projectId || project.id || "").trim();
+  if (!itemId || String(payload.userId || "") !== userId) return null;
+
+  const amount = Math.max(0, Math.round(Number(invoice.amount || 0)));
+  const earnedPoints = Math.floor(amount * 0.02);
+  const fileUrl = String(project.pdfUrl || "").trim() || null;
+
+  return prisma.$transaction(async (tx) => {
+    const purchase = await tx.paidAccessPurchase.upsert({
+      where: {
+        userId_sourceType_itemId: {
+          userId,
+          sourceType,
+          itemId,
+        },
+      },
+      update: {
+        title: project.title,
+        fileUrl,
+        fileName: fileUrl ? paidAccessFileName(project) : null,
+        amount,
+        invoiceId: invoice.id,
+        metadata: {
+          kind,
+          projectId: itemId,
+          projectTitle: project.title,
+          paidAt: invoice.paidAt?.toISOString() || new Date().toISOString(),
+        } as unknown as Prisma.JsonObject,
+      },
+      create: {
+        userId,
+        sourceType,
+        itemId,
+        title: project.title,
+        fileUrl,
+        fileName: fileUrl ? paidAccessFileName(project) : null,
+        amount,
+        invoiceId: invoice.id,
+        metadata: {
+          kind,
+          projectId: itemId,
+          projectTitle: project.title,
+          paidAt: invoice.paidAt?.toISOString() || new Date().toISOString(),
+        } as unknown as Prisma.JsonObject,
+      },
+    });
+
+    if (earnedPoints > 0) {
+      const existingLedger = await tx.mPointLedger.findUnique({
+        where: { invoiceId: invoice.id },
+        select: { id: true },
+      });
+      if (!existingLedger) {
+        const balance = await tx.mPointLedger.aggregate({
+          where: { userId },
+          _sum: { amount: true },
+        });
+        const balanceAfter = Number(balance._sum.amount || 0) + earnedPoints;
+        await tx.mPointLedger.create({
+          data: {
+            userId,
+            type: "EARN",
+            amount: earnedPoints,
+            balanceAfter,
+            sourceType,
+            sourceId: itemId,
+            invoiceId: invoice.id,
+            description: `${paidAccessLabelFromSource(sourceType)} худалдан авалт - ${project.title}`,
+          },
+        });
+      }
+    }
+
+    return purchase;
+  });
+}
+
+async function ensurePaidAccessPurchaseFromInvoice(
+  invoice: Awaited<ReturnType<typeof refreshProjectInvoicePayment>>,
+) {
+  if (!invoice || invoice.status !== PosQPayStatus.PAID) return null;
+
+  const payload = projectPaymentPayload(invoice);
+  const kind = String(payload.kind || "") as PaidContentKind;
+  if (kind !== "PROJECT_ACCESS" && kind !== "FRANCHISE_ACCESS") return null;
+
+  const userId = String(payload.userId || "").trim();
+  const projectId = String(payload.projectId || "").trim();
+  if (!userId || !projectId) return null;
+
+  const projects =
+    kind === "FRANCHISE_ACCESS"
+      ? await getFranchiseProjects()
+      : await getPaidProjects();
+  const project = projects.find(
+    (item) => item.id === projectId && item.isActive !== false,
   );
+  if (!project) return null;
+
+  const normalized =
+    kind === "FRANCHISE_ACCESS"
+      ? normalizeFranchiseProject(project)
+      : normalizeProject(project);
+  const price = normalizeProjectPrice(normalized.price);
+  if (!projectInvoiceBelongsTo(invoice, projectId, price, kind)) return null;
+
+  return ensurePaidAccessPurchaseForInvoice({
+    invoice,
+    project: normalized,
+    kind,
+    userId,
+  });
 }
 
 router.use(
@@ -862,7 +1042,7 @@ router.get("/site-settings/franchise", async (_req, res) => {
 });
 
 // GET /site-settings/franchise/:projectId/detail — full Franchise detail.
-router.get("/site-settings/franchise/:projectId/detail", async (req, res) => {
+router.get("/site-settings/franchise/:projectId/detail", optionalAuth, async (req, res) => {
   try {
     const { projectId } = req.params;
     const invoiceId =
@@ -878,10 +1058,23 @@ router.get("/site-settings/franchise/:projectId/detail", async (req, res) => {
     }
 
     const normalized = normalizeFranchiseProject(project);
+    const price = normalizeProjectPrice(normalized.price);
+    const userId = String((req as any).user?.userId || "").trim();
+    if (price > 0 && !userId) {
+      res.status(401).json({
+        success: false,
+        requiresAuth: true,
+        message: "Franchise худалдан авахын өмнө нэвтэрнэ үү",
+      });
+      return;
+    }
+
     const hasAccess = await ensurePaidProjectAccess({
+      userId,
       projectId,
+      project: normalized,
       invoiceId,
-      price: normalizeProjectPrice(normalized.price),
+      price,
       kind: "FRANCHISE_ACCESS",
     });
     if (!hasAccess) {
@@ -922,7 +1115,7 @@ router.get("/site-settings/projects", async (_req, res) => {
 });
 
 // GET /site-settings/projects/:projectId/detail — full detail after payment check
-router.get("/site-settings/projects/:projectId/detail", async (req, res) => {
+router.get("/site-settings/projects/:projectId/detail", optionalAuth, async (req, res) => {
   try {
     const { projectId } = req.params;
     const invoiceId =
@@ -938,10 +1131,23 @@ router.get("/site-settings/projects/:projectId/detail", async (req, res) => {
     }
 
     const normalized = normalizeProject(project);
+    const price = normalizeProjectPrice(normalized.price);
+    const userId = String((req as any).user?.userId || "").trim();
+    if (price > 0 && !userId) {
+      res.status(401).json({
+        success: false,
+        requiresAuth: true,
+        message: "Төсөл худалдан авахын өмнө нэвтэрнэ үү",
+      });
+      return;
+    }
+
     const hasAccess = await ensurePaidProjectAccess({
+      userId,
       projectId,
+      project: normalized,
       invoiceId,
-      price: normalizeProjectPrice(normalized.price),
+      price,
     });
     if (!hasAccess) {
       res.status(402).json({
@@ -963,7 +1169,7 @@ router.get("/site-settings/projects/:projectId/detail", async (req, res) => {
 });
 
 // POST /site-settings/mgl-services/qpay — MGL үйлчилгээ захиалах үед QPay нэхэмжлэх үүсгэх
-router.post("/site-settings/mgl-services/qpay", async (req, res) => {
+router.post("/site-settings/mgl-services/qpay", requireAuth, async (req, res) => {
   try {
     const { total, items } = req.body;
     if (!total || isNaN(Number(total))) {
@@ -1001,7 +1207,7 @@ router.post("/site-settings/mgl-services/qpay", async (req, res) => {
 });
 
 // GET /site-settings/mgl-services/qpay/check — Төлбөр шалгах
-router.get("/site-settings/mgl-services/qpay/check", async (req, res) => {
+router.get("/site-settings/mgl-services/qpay/check", requireAuth, async (req, res) => {
   try {
     const { invoiceId } = req.query;
     if (!invoiceId || typeof invoiceId !== "string") {
@@ -1029,6 +1235,7 @@ const createProjectSystemQrPaymentSession = async (
   res: Response,
 ) => {
   try {
+    const userId = String((req as any).user?.userId || "").trim();
     const { projectId } = req.body as { projectId?: string };
     if (!projectId) {
       res
@@ -1053,6 +1260,26 @@ const createProjectSystemQrPaymentSession = async (
       return;
     }
 
+    const existingPurchase = await prisma.paidAccessPurchase.findUnique({
+      where: {
+        userId_sourceType_itemId: {
+          userId,
+          sourceType: "PROJECT",
+          itemId: projectId,
+        },
+      },
+      select: { id: true },
+    });
+    if (existingPurchase) {
+      res.json({
+        success: true,
+        free: true,
+        alreadyPurchased: true,
+        projectId,
+      });
+      return;
+    }
+
     const expiresAt = new Date(Date.now() + PROJECT_PAYMENT_TTL_MS);
     const account = await resolveProjectPaymentAccount(normalized);
     if (!account?.merchantCode) {
@@ -1074,6 +1301,7 @@ const createProjectSystemQrPaymentSession = async (
         webhookPayload: {
           kind: "PROJECT_ACCESS",
           provider: "SYSTEMQR",
+          userId,
           projectId,
           projectTitle: normalized.title,
           paymentAccountId: account.id || "",
@@ -1098,6 +1326,7 @@ const createProjectSystemQrPaymentSession = async (
           webhookPayload: {
             kind: "PROJECT_ACCESS",
             provider: "SYSTEMQR",
+            userId,
             projectId,
             projectTitle: normalized.title,
             paymentAccountId: account.id || "",
@@ -1145,6 +1374,7 @@ const createFranchiseSystemQrPaymentSession = async (
   res: Response,
 ) => {
   try {
+    const userId = String((req as any).user?.userId || "").trim();
     const { projectId } = req.body as { projectId?: string };
     if (!projectId) {
       res
@@ -1169,6 +1399,26 @@ const createFranchiseSystemQrPaymentSession = async (
       return;
     }
 
+    const existingPurchase = await prisma.paidAccessPurchase.findUnique({
+      where: {
+        userId_sourceType_itemId: {
+          userId,
+          sourceType: "FRANCHISE",
+          itemId: projectId,
+        },
+      },
+      select: { id: true },
+    });
+    if (existingPurchase) {
+      res.json({
+        success: true,
+        free: true,
+        alreadyPurchased: true,
+        projectId,
+      });
+      return;
+    }
+
     const expiresAt = new Date(Date.now() + PROJECT_PAYMENT_TTL_MS);
     const account = await resolveProjectPaymentAccount(normalized);
     if (!account?.merchantCode) {
@@ -1190,6 +1440,7 @@ const createFranchiseSystemQrPaymentSession = async (
         webhookPayload: {
           kind: "FRANCHISE_ACCESS",
           provider: "SYSTEMQR",
+          userId,
           projectId,
           projectTitle: normalized.title,
           paymentAccountId: account.id || "",
@@ -1216,6 +1467,7 @@ const createFranchiseSystemQrPaymentSession = async (
           webhookPayload: {
             kind: "FRANCHISE_ACCESS",
             provider: "SYSTEMQR",
+            userId,
             projectId,
             projectTitle: normalized.title,
             paymentAccountId: account.id || "",
@@ -1260,24 +1512,29 @@ const createFranchiseSystemQrPaymentSession = async (
 
 router.post(
   "/site-settings/projects/systemqr",
+  requireAuth,
   createProjectSystemQrPaymentSession,
 );
 router.post(
   "/site-settings/projects/qpay",
+  requireAuth,
   createProjectSystemQrPaymentSession,
 );
 router.post(
   "/site-settings/franchise/systemqr",
+  requireAuth,
   createFranchiseSystemQrPaymentSession,
 );
 router.post(
   "/site-settings/franchise/qpay",
+  requireAuth,
   createFranchiseSystemQrPaymentSession,
 );
 
 // GET /site-settings/projects/systemqr/check — project detail payment check.
 const checkProjectPaymentSession = async (req: Request, res: Response) => {
   try {
+    const userId = String((req as any).user?.userId || "").trim();
     const invoiceId =
       typeof req.query.invoiceId === "string" ? req.query.invoiceId : "";
     const projectId =
@@ -1296,11 +1553,22 @@ const checkProjectPaymentSession = async (req: Request, res: Response) => {
     }
 
     const payload = projectPaymentPayload(invoice);
+    if (String(payload.userId || "") !== userId) {
+      res.status(403).json({
+        success: false,
+        message: "Энэ нэхэмжлэх таны account-д хамаарахгүй байна",
+      });
+      return;
+    }
     const belongsToProject =
       !projectId ||
       (String(payload.kind || "") === "PROJECT_ACCESS" &&
         String(payload.projectId || "") === projectId &&
         invoice.saleReference === projectSaleReference(projectId));
+
+    if (invoice.status === PosQPayStatus.PAID && belongsToProject) {
+      await ensurePaidAccessPurchaseFromInvoice(invoice);
+    }
 
     res.json({
       success: true,
@@ -1321,12 +1589,18 @@ const checkProjectPaymentSession = async (req: Request, res: Response) => {
 
 router.get(
   "/site-settings/projects/systemqr/check",
+  requireAuth,
   checkProjectPaymentSession,
 );
-router.get("/site-settings/projects/qpay/check", checkProjectPaymentSession);
+router.get(
+  "/site-settings/projects/qpay/check",
+  requireAuth,
+  checkProjectPaymentSession,
+);
 
 const checkFranchisePaymentSession = async (req: Request, res: Response) => {
   try {
+    const userId = String((req as any).user?.userId || "").trim();
     const invoiceId =
       typeof req.query.invoiceId === "string" ? req.query.invoiceId : "";
     const projectId =
@@ -1345,12 +1619,23 @@ const checkFranchisePaymentSession = async (req: Request, res: Response) => {
     }
 
     const payload = projectPaymentPayload(invoice);
+    if (String(payload.userId || "") !== userId) {
+      res.status(403).json({
+        success: false,
+        message: "Энэ нэхэмжлэх таны account-д хамаарахгүй байна",
+      });
+      return;
+    }
     const belongsToFranchise =
       !projectId ||
       (String(payload.kind || "") === "FRANCHISE_ACCESS" &&
         String(payload.projectId || "") === projectId &&
         invoice.saleReference ===
           projectSaleReference(projectId, "FRANCHISE_ACCESS"));
+
+    if (invoice.status === PosQPayStatus.PAID && belongsToFranchise) {
+      await ensurePaidAccessPurchaseFromInvoice(invoice);
+    }
 
     res.json({
       success: true,
@@ -1371,9 +1656,14 @@ const checkFranchisePaymentSession = async (req: Request, res: Response) => {
 
 router.get(
   "/site-settings/franchise/systemqr/check",
+  requireAuth,
   checkFranchisePaymentSession,
 );
-router.get("/site-settings/franchise/qpay/check", checkFranchisePaymentSession);
+router.get(
+  "/site-settings/franchise/qpay/check",
+  requireAuth,
+  checkFranchisePaymentSession,
+);
 
 const handleProjectPaymentCallback = async (req: Request, res: Response) => {
   try {
@@ -1381,7 +1671,8 @@ const handleProjectPaymentCallback = async (req: Request, res: Response) => {
       req.query.invoiceId || req.body?.invoiceId || "",
     ).trim();
     if (invoiceId) {
-      await refreshProjectInvoicePayment(invoiceId);
+      const invoice = await refreshProjectInvoicePayment(invoiceId);
+      await ensurePaidAccessPurchaseFromInvoice(invoice);
     }
     res.json({ ok: true });
   } catch (error) {

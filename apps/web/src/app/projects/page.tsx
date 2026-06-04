@@ -1,15 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { FileText, Plus, X } from "lucide-react";
 import { API } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { FeaturedProjectsRail } from "@/components/molecules/projects/FeaturedProjectsRail";
 import { ProjectGridCard } from "@/components/molecules/projects/ProjectGridCard";
-import { ProjectPaymentModal } from "@/components/molecules/projects/ProjectPaymentModal";
+import {
+  PaidAccessPaymentModal,
+  type PaidAccessPaymentSession,
+} from "@/components/molecules/payments/PaidAccessPaymentModal";
 import { ProjectsHero } from "@/components/molecules/projects/ProjectsHero";
 import type {
   ProjectItem,
-  ProjectPaymentSession,
   ProjectShowcaseSection,
 } from "@/components/molecules/projects/project-types";
 import {
@@ -123,6 +127,8 @@ function ProjectDetailModal({
 }
 
 export default function ProjectsPage() {
+  const router = useRouter();
+  const { user, authFetch } = useAuth();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [projectShowcaseSections, setProjectShowcaseSections] = useState<
     ProjectShowcaseSection[]
@@ -137,7 +143,7 @@ export default function ProjectsPage() {
     null,
   );
   const [paymentSession, setPaymentSession] =
-    useState<ProjectPaymentSession | null>(null);
+    useState<PaidAccessPaymentSession | null>(null);
   const showcaseGroups = useMemo(() => {
     const projectById = new Map(
       projects.map((project) => [project.id, project]),
@@ -194,7 +200,7 @@ export default function ProjectsPage() {
     const params = invoiceId
       ? `?${new URLSearchParams({ invoiceId }).toString()}`
       : "";
-    const res = await fetch(
+    const res = await authFetch(
       `${API}/site-settings/projects/${projectId}/detail${params}`,
     );
     const data = await res.json().catch(() => ({}));
@@ -228,7 +234,12 @@ export default function ProjectsPage() {
         return;
       }
 
-      const res = await fetch(`${API}/site-settings/projects/systemqr`, {
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const res = await authFetch(`${API}/site-settings/projects/systemqr`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id }),
@@ -347,9 +358,12 @@ export default function ProjectsPage() {
       </main>
 
       {paymentProject && paymentSession && (
-        <ProjectPaymentModal
-          project={paymentProject}
+        <PaidAccessPaymentModal
+          itemId={paymentProject.id}
+          title={paymentProject.title}
           payment={paymentSession}
+          checkUrl={`${API}/site-settings/projects/systemqr/check`}
+          request={authFetch}
           onPaid={(invoiceId) => openPaidProject(paymentProject, invoiceId)}
           onClose={() => {
             setPaymentProject(null);

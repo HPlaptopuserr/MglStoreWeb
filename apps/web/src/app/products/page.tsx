@@ -1,13 +1,21 @@
 "use client";
 
-import React, { Suspense, useState, useEffect, useMemo, useRef, useCallback } from "react";
-import Link from "next/link";
+import React, { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
-import { ProductCard } from "@mgl/ui";
+import { Check } from "lucide-react";
 import { API } from "@/lib/api";
+import type {
+  MarketplaceProjectBanner,
+  MarketplaceServicesPromo,
+  MarketplaceSideBanner,
+} from "@/components/organisms/commerce/MarketplaceBoard";
+import { ProductCommandBar } from "./_components/ProductCommandBar";
+import { ProductResultsGrid } from "./_components/ProductResultsGrid";
+import { ProductSearchHero } from "./_components/ProductSearchHero";
 
 const PRODUCTS_PER_PAGE = 16;
+const MARKETPLACE_SIDE_BANNER_KEY = "marketplace-side-banner";
+const MARKETPLACE_SERVICES_PROMO_KEY = "marketplace-services-promo";
 
 type SortKey = "newest" | "price_asc" | "price_desc" | "discount" | "name_asc";
 type StockKey = "all" | "in_stock" | "low_stock" | "sold_out";
@@ -69,6 +77,77 @@ function buildProductsUrl(categoryId: string | null, search: string, supplyType:
   return qs ? `/products?${qs}` : "/products";
 }
 
+function parseSideBanner(raw?: string): MarketplaceSideBanner | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      isActive: parsed.isActive !== false,
+      imageUrl: String(parsed.imageUrl || ""),
+      eyebrow: String(parsed.eyebrow || ""),
+      title: String(parsed.title || ""),
+      subtitle: String(parsed.subtitle || ""),
+      cta: String(parsed.cta || ""),
+      href: String(parsed.href || ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseServicesPromo(raw?: string): MarketplaceServicesPromo | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      imageUrl: String(parsed.imageUrl || ""),
+      eyebrow: String(parsed.eyebrow || ""),
+      title: String(parsed.title || ""),
+      subtitle: String(parsed.subtitle || ""),
+      cta: String(parsed.cta || ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resolveProjectBanners(projects: unknown[]): MarketplaceProjectBanner[] {
+  const banners: MarketplaceProjectBanner[] = [];
+
+  for (const project of projects) {
+    if (!project || typeof project !== "object") continue;
+    const item = project as {
+      id?: unknown;
+      title?: unknown;
+      summary?: unknown;
+      imageUrl?: unknown;
+      imageUrls?: unknown;
+      isActive?: unknown;
+    };
+    if (item.isActive === false) continue;
+
+    const imageUrls = Array.isArray(item.imageUrls) ? item.imageUrls : [];
+    const image = [...imageUrls, item.imageUrl]
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .find(Boolean);
+
+    if (!image) continue;
+
+    banners.push({
+      id: String(item.id || image),
+      title: String(item.title || "MGL Store төсөл"),
+      summary: typeof item.summary === "string" ? item.summary : undefined,
+      imageUrl: image,
+    });
+
+    if (banners.length >= 4) break;
+  }
+
+  return banners;
+}
+
 export default function ProductsPage() {
   return (
     <Suspense
@@ -89,19 +168,28 @@ function ProductsContent() {
   const categoryParam = searchParams.get("category");
   const searchParam = (searchParams.get("search") ?? searchParams.get("q") ?? "").trim();
   const typeParam = searchParams.get("type");
+  const sortParam = searchParams.get("sort");
+  const discountParam = searchParams.get("discount");
   const supplyParam: SupplyKey =
     typeParam === "preorder" ? "preorder" : typeParam === "stock" ? "stock" : "all";
+  const initialSortKey: SortKey = SORT_OPTIONS.some((option) => option.key === sortParam)
+    ? (sortParam as SortKey)
+    : "newest";
+  const initialDiscountOnly = discountParam === "1" || discountParam === "true";
 
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([]);
+  const [sideBanner, setSideBanner] = useState<MarketplaceSideBanner | null>(null);
+  const [servicesPromo, setServicesPromo] = useState<MarketplaceServicesPromo | null>(null);
+  const [projectBanners, setProjectBanners] = useState<MarketplaceProjectBanner[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(categoryParam);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Filter & Sort state
-  const [sortKey, setSortKey] = useState<SortKey>("newest");
+  const [sortKey, setSortKey] = useState<SortKey>(initialSortKey);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
-  const [discountOnly, setDiscountOnly] = useState(false);
+  const [discountOnly, setDiscountOnly] = useState(initialDiscountOnly);
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [selectedOrganization, setSelectedOrganization] = useState("");
@@ -128,43 +216,27 @@ function ProductsContent() {
     return () => document.removeEventListener("mousedown", handler);
   }, [filterPanelOpen]);
 
-  // Category tabs scroll
-  const tabsScrollRef = useRef<HTMLDivElement>(null);
-  const [tabsCanLeft, setTabsCanLeft] = useState(false);
-  const [tabsCanRight, setTabsCanRight] = useState(false);
-
-  const checkTabsScroll = useCallback(() => {
-    const el = tabsScrollRef.current;
-    if (!el) return;
-    setTabsCanLeft(el.scrollLeft > 2);
-    setTabsCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 2);
-  }, []);
-
   useEffect(() => {
-    checkTabsScroll();
-    const el = tabsScrollRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", checkTabsScroll, { passive: true });
-    const ro = new ResizeObserver(checkTabsScroll);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener("scroll", checkTabsScroll);
-      ro.disconnect();
-    };
-  }, [apiCategories, checkTabsScroll]);
-
-  const scrollTabs = (dir: "left" | "right") => {
-    tabsScrollRef.current?.scrollBy({ left: dir === "left" ? -260 : 260, behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    const loadCategories = async () => {
+    const loadChromeData = async () => {
       try {
-        const res = await fetch(`${API}/business-categories`);
-        if (res.ok) setApiCategories(await res.json());
+        const [categoryRes, settingsRes, projectRes] = await Promise.all([
+          fetch(`${API}/business-categories`),
+          fetch(`${API}/site-settings`),
+          fetch(`${API}/site-settings/projects`),
+        ]);
+        if (categoryRes.ok) setApiCategories(await categoryRes.json());
+        if (settingsRes.ok) {
+          const settings = await settingsRes.json();
+          setSideBanner(parseSideBanner(settings?.[MARKETPLACE_SIDE_BANNER_KEY]));
+          setServicesPromo(parseServicesPromo(settings?.[MARKETPLACE_SERVICES_PROMO_KEY]));
+        }
+        if (projectRes.ok) {
+          const data = await projectRes.json();
+          setProjectBanners(resolveProjectBanners(Array.isArray(data?.projects) ? data.projects : []));
+        }
       } catch {}
     };
-    loadCategories();
+    loadChromeData();
   }, []);
 
   useEffect(() => {
@@ -192,8 +264,10 @@ function ProductsContent() {
     setSearchQuery(searchParam);
     setDebouncedSearch(searchParam);
     setSupplyFilter(supplyParam);
+    setSortKey(initialSortKey);
+    setDiscountOnly(initialDiscountOnly);
     setCurrentPage(1);
-  }, [resolvedCategoryParam, searchParam, supplyParam]);
+  }, [resolvedCategoryParam, searchParam, supplyParam, initialSortKey, initialDiscountOnly]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -357,14 +431,8 @@ function ProductsContent() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const activeCategoryName = apiCategories.find((c) => c.id === activeCategory)?.name;
   const activeOrganizationName = availableOrganizations.find((org) => org.id === selectedOrganization)?.name;
   const activeSupplyName = SUPPLY_OPTIONS.find((option) => option.key === supplyFilter)?.label;
-  const pageTitle = supplyFilter === "preorder"
-    ? "Захиалгын бараа"
-    : supplyFilter === "stock"
-      ? "Бэлэн бараа бүтээгдэхүүн"
-      : activeCategoryName ?? "Бүх бараа бүтээгдэхүүн";
 
   // Price bounds for hints
   const prices = apiProducts.map((p) => p.price);
@@ -373,506 +441,224 @@ function ProductsContent() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Breadcrumb */}
-      <div className="container mx-auto px-4 lg:px-8 pt-6">
-        <nav className="flex items-center gap-2 text-xs text-gray-500 mb-6">
-          <Link href="/" className="hover:underline">Нүүр</Link>
-          <span>/</span>
-          <Link href="/products" className="hover:underline">Дэлгүүр</Link>
-          <span>/</span>
-          <span className="text-gray-400">{pageTitle}</span>
-        </nav>
+      <ProductSearchHero
+        categories={apiCategories}
+        activeCategory={activeCategory}
+        searchQuery={searchQuery}
+        total={processedProducts.length}
+        products={apiProducts}
+        onCategoryClick={handleCategoryClick}
+        sideBanner={sideBanner}
+        servicesPromo={servicesPromo}
+        projectBanners={projectBanners}
+      />
 
-        {/* Title */}
-        <div className="mb-6">
-          <h1 className="text-2xl md:text-4xl font-black tracking-tight text-black uppercase">
-            {pageTitle}{" "}
-            <span className="text-[#FFAD02] text-sm md:text-base font-bold align-middle">
-              ({processedProducts.length})
-            </span>
-          </h1>
-        </div>
+      <ProductCommandBar
+        total={processedProducts.length}
+        activeFilterCount={activeFilterCount}
+        sortOptions={SORT_OPTIONS}
+        sortKey={sortKey}
+        supplyOptions={SUPPLY_OPTIONS}
+        supplyFilter={supplyFilter}
+        supplyCounts={supplyCounts}
+        discountOnly={discountOnly}
+        filterPanelOpen={filterPanelOpen}
+        onSortChange={(key) => {
+          setSortKey(key);
+          setCurrentPage(1);
+        }}
+        onSupplyClick={handleSupplyClick}
+        onDiscountToggle={() => {
+          setDiscountOnly((value) => !value);
+          setCurrentPage(1);
+        }}
+        onToggleFilters={() => setFilterPanelOpen((value) => !value)}
+      />
 
-        {/* Search bar */}
-        <div className="mb-6 relative max-w-xl">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Бараа, SKU, дэлгүүр эсвэл ангилал хайх..."
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submitSearch();
-            }}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 text-sm focus:outline-none focus:border-black transition-colors bg-gray-50 focus:bg-white"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => {
-                setSearchQuery("");
-                setDebouncedSearch("");
-                setCurrentPage(1);
-                router.replace(buildProductsUrl(activeCategory, "", supplyFilter), { scroll: false });
-              }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
-        {/* Product type tabs */}
-        <div className="mb-6 grid gap-2 sm:grid-cols-3">
-          {SUPPLY_OPTIONS.map((option) => {
-            const count = supplyCounts[option.key];
-            const active = supplyFilter === option.key;
-            return (
+      <div className="container relative mx-auto px-4 lg:px-8" ref={filterPanelRef}>
+        {filterPanelOpen && (
+          <div className="absolute right-4 top-2 z-50 max-h-[75vh] w-[min(92vw,28rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-950">Шүүлт & Эрэмбэ</span>
               <button
-                key={option.key}
                 type="button"
-                onClick={() => handleSupplyClick(option.key)}
-                className={`border px-4 py-3 text-left transition-colors ${
-                  active
-                    ? "border-black bg-black text-white"
-                    : "border-gray-200 bg-white text-gray-700 hover:border-black"
-                }`}
+                onClick={clearFilters}
+                className="text-[11px] font-bold text-slate-400 underline transition hover:text-slate-950"
               >
-                <span className="flex items-center justify-between gap-3 text-sm font-bold">
-                  {option.label}
-                  <span className={active ? "text-[#FFAD02]" : "text-gray-400"}>{count}</span>
-                </span>
-                <span className={`mt-1 block text-xs ${active ? "text-white/70" : "text-gray-400"}`}>
-                  {option.description}
-                </span>
+                Цэвэрлэх
               </button>
-            );
-          })}
-        </div>
-
-        {/* Category tabs + filter button row */}
-        <div className="flex items-center justify-between border-b border-gray-200 mb-0">
-          <div className="relative flex-1 min-w-0">
-            {tabsCanLeft && (
-              <button
-                onClick={() => scrollTabs("left")}
-                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
-              >
-                <ChevronLeft size={16} />
-              </button>
-            )}
-            <div
-              ref={tabsScrollRef}
-              className="flex items-center gap-0 overflow-x-auto scrollbar-hide -mb-px px-8"
-            >
-              <button
-                onClick={() => handleCategoryClick(null)}
-                className={`relative px-4 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap transition-colors ${
-                  !activeCategory ? "text-black" : "text-gray-400 hover:text-black"
-                }`}
-              >
-                Бүгд
-                {!activeCategory && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFAD02]" />}
-              </button>
-              {apiCategories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => handleCategoryClick(cat.id)}
-                  className={`relative px-4 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap transition-colors ${
-                    activeCategory === cat.id ? "text-black" : "text-gray-400 hover:text-black"
-                  }`}
-                >
-                  {cat.name}
-                  {activeCategory === cat.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFAD02]" />}
-                </button>
-              ))}
             </div>
-            {tabsCanRight && (
-              <button
-                onClick={() => scrollTabs("right")}
-                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
-              >
-                <ChevronRight size={16} />
-              </button>
-            )}
-          </div>
 
-          {/* Filter trigger button */}
-          <div className="relative shrink-0 ml-4" ref={filterPanelRef}>
-            <button
-              onClick={() => setFilterPanelOpen((v) => !v)}
-              className={`flex items-center gap-2 px-4 py-2.5 border text-xs font-bold uppercase tracking-wider transition-colors ${
-                filterPanelOpen || activeFilterCount > 0
-                  ? "bg-black text-white border-black"
-                  : "text-black border-black hover:bg-black hover:text-white"
-              }`}
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              Шүүлт & Эрэмбэ
-              {activeFilterCount > 0 && (
-                <span className="ml-0.5 w-4 h-4 rounded-full bg-[#FFAD02] text-black text-[10px] font-black flex items-center justify-center">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
+            <div className="space-y-5 p-4">
+              <div>
+                <p className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">Дэлгүүр</p>
+                <select
+                  value={selectedOrganization}
+                  onChange={(event) => {
+                    setSelectedOrganization(event.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-orange-400"
+                >
+                  <option value="">Бүх дэлгүүр</option>
+                  {availableOrganizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name} ({org.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Dropdown panel */}
-            {filterPanelOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 max-h-[75vh] w-[min(92vw,28rem)] overflow-y-auto border border-gray-200 bg-white shadow-xl">
-                {/* Panel header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                  <span className="text-xs font-bold uppercase tracking-wider text-black">Шүүлт & Эрэмбэ</span>
-                  <button
-                    onClick={clearFilters}
-                    className="text-[11px] text-gray-400 hover:text-black underline transition-colors"
-                  >
-                    Цэвэрлэх
-                  </button>
-                </div>
-
-                <div className="p-4 space-y-5">
-                  {/* Sort */}
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Эрэмбэлэх</p>
-                    <div className="space-y-1">
-                      {SORT_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.key}
-                          onClick={() => { setSortKey(opt.key); setCurrentPage(1); }}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
-                            sortKey === opt.key
-                              ? "bg-black text-white font-medium"
-                              : "text-gray-700 hover:bg-gray-50"
-                          }`}
-                        >
-                          {sortKey === opt.key && (
-                            <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                          <span className={sortKey === opt.key ? "" : "ml-[22px]"}>{opt.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="border-t border-gray-100" />
-
-                  <div>
-                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">Дэлгүүр</p>
-                    <select
-                      value={selectedOrganization}
-                      onChange={(e) => {
-                        setSelectedOrganization(e.target.value);
+              <div>
+                <p className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">Нөөц</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {STOCK_OPTIONS.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => {
+                        setStockFilter(option.key);
                         setCurrentPage(1);
                       }}
-                      className="w-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none transition-colors focus:border-black"
-                    >
-                      <option value="">Бүх дэлгүүр</option>
-                      {availableOrganizations.map((org) => (
-                        <option key={org.id} value={org.id}>
-                          {org.name} ({org.count})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">Нөөц</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {STOCK_OPTIONS.map((option) => (
-                        <button
-                          key={option.key}
-                          type="button"
-                          onClick={() => {
-                            setStockFilter(option.key);
-                            setCurrentPage(1);
-                          }}
-                          className={`min-h-16 border px-3 py-2 text-left transition-colors ${
-                            stockFilter === option.key
-                              ? "border-black bg-black text-white"
-                              : "border-gray-200 text-gray-700 hover:border-black"
-                          }`}
-                        >
-                          <span className="flex items-center gap-1.5 text-xs font-bold">
-                            {stockFilter === option.key && <Check className="h-3.5 w-3.5" />}
-                            {option.label}
-                          </span>
-                          <span className={`mt-1 block text-[11px] ${
-                            stockFilter === option.key ? "text-white/70" : "text-gray-400"
-                          }`}>
-                            {option.description}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div className="border-t border-gray-100" />
-
-                  {/* Price range */}
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Үнийн хязгаар</p>
-                    {maxPrice > 0 && (
-                      <p className="text-[11px] text-gray-400 mb-2">
-                        ₮{minPrice.toLocaleString()} – ₮{maxPrice.toLocaleString()}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        placeholder="Доод"
-                        value={priceMin}
-                        min={0}
-                        onChange={(e) => { setPriceMin(e.target.value); setCurrentPage(1); }}
-                        className="w-full px-3 py-1.5 border border-gray-200 text-sm focus:outline-none focus:border-black transition-colors"
-                      />
-                      <span className="text-gray-300 text-sm">—</span>
-                      <input
-                        type="number"
-                        placeholder="Дээд"
-                        value={priceMax}
-                        min={0}
-                        onChange={(e) => { setPriceMax(e.target.value); setCurrentPage(1); }}
-                        className="w-full px-3 py-1.5 border border-gray-200 text-sm focus:outline-none focus:border-black transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div className="border-t border-gray-100" />
-
-                  {/* Discount toggle */}
-                  <div>
-                    <button
-                      onClick={() => { setDiscountOnly((v) => !v); setCurrentPage(1); }}
-                      className="w-full flex items-center justify-between group"
-                    >
-                      <div className="text-left">
-                        <p className="text-sm font-medium text-black">Зөвхөн хямдралтай</p>
-                        <p className="text-[11px] text-gray-400">
-                          {apiProducts.filter((p) => p.discounts.length > 0).length} бараа хямдралтай
-                        </p>
-                      </div>
-                      <div className={`w-10 h-5.5 rounded-full transition-colors relative ${
-                        discountOnly ? "bg-black" : "bg-gray-200"
+                      className={`min-h-16 rounded-xl border px-3 py-2 text-left transition ${
+                        stockFilter === option.key
+                          ? "border-slate-950 bg-slate-950 text-white"
+                          : "border-slate-200 text-slate-700 hover:border-orange-200"
                       }`}
-                        style={{ minWidth: "40px", height: "22px" }}
-                      >
-                        <span className={`absolute top-0.5 w-4.5 h-4.5 rounded-full bg-white shadow transition-all ${
-                          discountOnly ? "left-[18px]" : "left-0.5"
-                        }`}
-                          style={{ width: "18px", height: "18px", left: discountOnly ? "20px" : "2px" }}
-                        />
-                      </div>
+                    >
+                      <span className="flex items-center gap-1.5 text-xs font-black">
+                        {stockFilter === option.key && <Check className="h-3.5 w-3.5" />}
+                        {option.label}
+                      </span>
+                      <span className={`mt-1 block text-[11px] ${
+                        stockFilter === option.key ? "text-white/70" : "text-slate-400"
+                      }`}>
+                        {option.description}
+                      </span>
                     </button>
-                  </div>
-                </div>
-
-                {/* Apply/close button */}
-                <div className="px-4 pb-4">
-                  <button
-                    onClick={() => setFilterPanelOpen(false)}
-                    className="w-full py-2.5 bg-black text-white text-xs font-bold uppercase tracking-wider hover:bg-[#FFAD02] hover:text-black transition-colors"
-                  >
-                    Хэрэглэх
-                  </button>
+                  ))}
                 </div>
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Active filter chips */}
+              <div className="border-t border-slate-100" />
+
+              <div>
+                <p className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">Үнийн хязгаар</p>
+                {maxPrice > 0 && (
+                  <p className="mb-2 text-[11px] font-semibold text-slate-400">
+                    ₮{minPrice.toLocaleString()} - ₮{maxPrice.toLocaleString()}
+                  </p>
+                )}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    placeholder="Доод"
+                    value={priceMin}
+                    min={0}
+                    onChange={(event) => {
+                      setPriceMin(event.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-orange-400"
+                  />
+                  <span className="text-slate-300">-</span>
+                  <input
+                    type="number"
+                    placeholder="Дээд"
+                    value={priceMax}
+                    min={0}
+                    onChange={(event) => {
+                      setPriceMax(event.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-orange-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="px-4 pb-4">
+              <button
+                type="button"
+                onClick={() => setFilterPanelOpen(false)}
+                className="h-11 w-full rounded-xl bg-slate-950 text-xs font-black uppercase tracking-wider text-white transition hover:bg-orange-500"
+              >
+                Хэрэглэх
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeFilterCount > 0 && (
-          <div className="flex flex-wrap items-center gap-2 pt-3 pb-1">
-            <span className="text-[11px] text-gray-400 uppercase tracking-wider">Идэвхтэй:</span>
+          <div className="flex flex-wrap items-center gap-2 py-3">
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">Идэвхтэй:</span>
             {sortKey !== "newest" && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
-                {SORT_OPTIONS.find((o) => o.key === sortKey)?.label}
-                <button onClick={() => setSortKey("newest")} className="ml-1 text-gray-400 hover:text-black">×</button>
-              </span>
+              <FilterChip label={SORT_OPTIONS.find((option) => option.key === sortKey)?.label} onClear={() => setSortKey("newest")} />
             )}
             {discountOnly && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
-                Хямдралтай
-                <button onClick={() => setDiscountOnly(false)} className="ml-1 text-gray-400 hover:text-black">×</button>
-              </span>
+              <FilterChip label="Хямдралтай" onClear={() => setDiscountOnly(false)} />
             )}
             {(priceMin !== "" || priceMax !== "") && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
-                ₮{priceMin || "0"} – ₮{priceMax || "∞"}
-                <button onClick={() => { setPriceMin(""); setPriceMax(""); }} className="ml-1 text-gray-400 hover:text-black">×</button>
-              </span>
+              <FilterChip label={`₮${priceMin || "0"} - ₮${priceMax || "∞"}`} onClear={() => { setPriceMin(""); setPriceMax(""); }} />
             )}
             {selectedOrganization && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
-                {activeOrganizationName}
-                <button onClick={() => setSelectedOrganization("")} className="ml-1 text-gray-400 hover:text-black">×</button>
-              </span>
+              <FilterChip label={activeOrganizationName} onClear={() => setSelectedOrganization("")} />
             )}
             {stockFilter !== "all" && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
-                {STOCK_OPTIONS.find((option) => option.key === stockFilter)?.label}
-                <button onClick={() => setStockFilter("all")} className="ml-1 text-gray-400 hover:text-black">×</button>
-              </span>
+              <FilterChip label={STOCK_OPTIONS.find((option) => option.key === stockFilter)?.label} onClear={() => setStockFilter("all")} />
             )}
             {supplyFilter !== "all" && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
-                {activeSupplyName}
-                <button
-                  onClick={() => handleSupplyClick("all")}
-                  className="ml-1 text-gray-400 hover:text-black"
-                >
-                  ×
-                </button>
-              </span>
+              <FilterChip label={activeSupplyName} onClear={() => handleSupplyClick("all")} />
             )}
             {searchQuery && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-xs font-medium">
-                "{searchQuery}"
-                <button
-                  onClick={() => {
-                    setSearchQuery("");
-                    setDebouncedSearch("");
-                    setCurrentPage(1);
-                    router.replace(buildProductsUrl(activeCategory, "", supplyFilter), { scroll: false });
-                  }}
-                  className="ml-1 text-gray-400 hover:text-black"
-                >
-                  ×
-                </button>
-              </span>
+              <FilterChip
+                label={`"${searchQuery}"`}
+                onClear={() => {
+                  setSearchQuery("");
+                  setDebouncedSearch("");
+                  setCurrentPage(1);
+                  router.replace(buildProductsUrl(activeCategory, "", supplyFilter), { scroll: false });
+                }}
+              />
             )}
-            <button onClick={clearFilters} className="text-[11px] text-gray-400 hover:text-black underline ml-1">
+            <button type="button" onClick={clearFilters} className="text-[11px] font-bold text-slate-400 underline hover:text-slate-950">
               Бүгдийг арилгах
             </button>
           </div>
         )}
       </div>
 
-      {/* Product Grid */}
-      <div className="container mx-auto px-4 lg:px-8 pb-12 mt-6">
-        {productsLoading ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-80 animate-pulse rounded-lg bg-gray-100" />
-            ))}
-          </div>
-        ) : displayProducts.length === 0 ? (
-          <div className="py-24 text-center">
-            <svg className="w-12 h-12 text-gray-200 mx-auto mb-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <p className="text-gray-400 text-sm font-medium">
-              {searchQuery || discountOnly || priceMin || priceMax || selectedOrganization || supplyFilter !== "all" || stockFilter !== "all"
-                ? "Шүүлтэд тохирох бараа олдсонгүй"
-                : "Энэ ангилалд бараа байхгүй байна"}
-            </p>
-            {activeFilterCount > 0 && (
-              <button
-                onClick={clearFilters}
-                className="mt-3 text-xs underline text-gray-400 hover:text-black"
-              >
-                Шүүлтийг цэвэрлэх
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {displayProducts.map((product) => {
-              const discount = product.discounts?.[0]?.percent;
-              const originalPrice = discount ? product.price : undefined;
-              const finalPrice = discount ? Math.round(product.price * (1 - discount / 100)) : product.price;
-              return (
-                <div
-                  key={product.id}
-                >
-                  <ProductCard
-                    href={`/products/${product.id}`}
-                    image={product.images?.[0]?.url}
-                    price={finalPrice}
-                    name={product.name}
-                    category={product.businessCategory?.name}
-                    originalPrice={originalPrice}
-                    storeName={product.organization?.name}
-                    stock={product.stock}
-                    isPreorder={product.supplyType === "CHINA_PREORDER"}
-                    preorderLeadTimeDays={product.preorderLeadTimeDays}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="mt-12 flex flex-col items-center gap-4">
-            <p className="text-xs text-gray-400">
-              {(currentPage - 1) * PRODUCTS_PER_PAGE + 1}–{Math.min(currentPage * PRODUCTS_PER_PAGE, processedProducts.length)}{" "}/
-              {" "}{processedProducts.length} бараа
-            </p>
-
-            <div className="flex items-center gap-1">
-              {/* Prev */}
-              <button
-                onClick={() => goToPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="flex h-9 w-9 items-center justify-center border border-black text-black transition-colors hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
-              >
-                <ChevronLeft size={16} />
-              </button>
-
-              {/* Page numbers */}
-              {(() => {
-                const pages: (number | "…")[] = [];
-                if (totalPages <= 7) {
-                  for (let i = 1; i <= totalPages; i++) pages.push(i);
-                } else {
-                  pages.push(1);
-                  if (currentPage > 3) pages.push("…");
-                  const start = Math.max(2, currentPage - 1);
-                  const end = Math.min(totalPages - 1, currentPage + 1);
-                  for (let i = start; i <= end; i++) pages.push(i);
-                  if (currentPage < totalPages - 2) pages.push("…");
-                  pages.push(totalPages);
-                }
-                return pages.map((p, idx) =>
-                  p === "…" ? (
-                    <span key={`e${idx}`} className="flex h-9 w-9 items-center justify-center text-sm text-gray-300">
-                      …
-                    </span>
-                  ) : (
-                    <button
-                      key={p}
-                      onClick={() => goToPage(p as number)}
-                      className={`flex h-9 w-9 items-center justify-center border text-xs font-bold uppercase tracking-wider transition-colors ${
-                        currentPage === p
-                          ? "border-black bg-black text-white"
-                          : "border-gray-200 text-black hover:border-black hover:bg-black hover:text-white"
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  )
-                );
-              })()}
-
-              {/* Next */}
-              <button
-                onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-                className="flex h-9 w-9 items-center justify-center border border-black text-black transition-colors hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
+      <div className="container mx-auto px-4 pb-12 pt-4 lg:px-8">
+        <ProductResultsGrid
+          products={displayProducts}
+          loading={productsLoading}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalProducts={processedProducts.length}
+          pageSize={PRODUCTS_PER_PAGE}
+          hasActiveFilters={activeFilterCount > 0}
+          onClearFilters={clearFilters}
+          onPageChange={goToPage}
+        />
       </div>
     </div>
   );
 }
 
+function FilterChip({ label, onClear }: { label?: string; onClear: () => void }) {
+  if (!label) return null;
+
+  return (
+    <span className="inline-flex h-8 items-center gap-1 rounded-full bg-slate-100 px-3 text-xs font-black text-slate-700">
+      {label}
+      <button
+        type="button"
+        onClick={onClear}
+        className="ml-1 text-slate-400 transition hover:text-slate-950"
+        aria-label={`${label} шүүлтийг арилгах`}
+      >
+        ×
+      </button>
+    </span>
+  );
+}

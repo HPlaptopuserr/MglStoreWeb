@@ -19,6 +19,7 @@ interface ServiceQPayModalProps {
   qrImage: string;
   invoiceId: string;
   deepLinks: DeepLink[];
+  request?: (url: string, init?: RequestInit) => Promise<Response>;
   onSuccess: () => void;
   onClose: () => void;
 }
@@ -29,6 +30,7 @@ export function ServiceQPayModal({
   qrImage,
   invoiceId,
   deepLinks,
+  request,
   onSuccess,
   onClose,
 }: ServiceQPayModalProps) {
@@ -41,7 +43,7 @@ export function ServiceQPayModal({
   // Check payment status
   const checkPayment = useCallback(async () => {
     try {
-      const res = await fetch(
+      const res = await (request || fetch)(
         `${API}/site-settings/mgl-services/qpay/check?invoiceId=${invoiceId}`,
       );
       const data = await res.json();
@@ -55,7 +57,7 @@ export function ServiceQPayModal({
       // silent â€” retry on next poll
     }
     return false;
-  }, [invoiceId, onSuccess]);
+  }, [invoiceId, onSuccess, request]);
 
   // Auto-poll every 3 seconds
   useEffect(() => {

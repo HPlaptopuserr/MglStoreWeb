@@ -8,7 +8,6 @@ import {
   Scale,
   Users,
 } from "lucide-react";
-import { HeroSection } from "@/components/organisms/home/HeroSection";
 import Categories from "@/components/organisms/home/CategoryRail";
 import { LocationRail } from "@/components/organisms/home/LocationRail";
 import { BrandTicker } from "@/components/organisms/home/BrandTicker";
@@ -26,17 +25,16 @@ import { SurveySection } from "@/components/organisms/home/SurveySection";
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_42%,#ffffff_100%)] text-slate-950">
+      <ProductGrid />
       <div className="border-b border-slate-100 bg-white">
-        <div className="container mx-auto space-y-4 px-4 pb-8 pt-5 md:px-6">
-          <HeroSection />
+        <div className="container mx-auto px-4 pb-4 md:px-6">
           <PromoBanner />
         </div>
       </div>
+      <Categories />
       <BrandTicker />
       <FeaturedStoresSection />
-      <Categories />
       <LocationRail />
-      <ProductGrid />
       <ServiceGrid />
       <HrServicesSpotlight />
       <SurveySection />

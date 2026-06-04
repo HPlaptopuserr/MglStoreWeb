@@ -16,11 +16,34 @@ import {
   LogOut,
   ChevronRight,
   AlertCircle,
+  ShoppingBag,
+  Coins,
+  Download,
+  FileText,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { API_BASE } from "@/lib/api";
 
-type ProfileTab = "info" | "security";
+type ProfileTab = "info" | "security" | "files" | "points";
+
+type AccountPurchase = {
+  id: string;
+  sourceType: "PROJECT" | "FRANCHISE" | "SERVICE";
+  title: string;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  amount: number;
+  purchasedAt: string;
+};
+
+type MPointHistory = {
+  id: string;
+  description: string;
+  amount: string;
+  rawAmount: number;
+  balanceAfter?: number | null;
+  date: string;
+};
 
 export default function ProfilePage() {
   const { user, loading, logout, updateUser, refreshUser, authFetch } = useAuth();
@@ -45,6 +68,10 @@ export default function ProfilePage() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [purchases, setPurchases] = useState<AccountPurchase[]>([]);
+  const [points, setPoints] = useState(0);
+  const [pointHistory, setPointHistory] = useState<MPointHistory[]>([]);
+  const [accountLoading, setAccountLoading] = useState(false);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -67,6 +94,40 @@ export default function ProfilePage() {
       setPhone(user.phone || "");
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchAccountAssets = async () => {
+      setAccountLoading(true);
+      try {
+        const [purchaseRes, pointRes, historyRes] = await Promise.all([
+          authFetch(`${API_BASE}/customer/purchases`),
+          authFetch(`${API_BASE}/customer/loyalty/points`),
+          authFetch(`${API_BASE}/customer/loyalty/history`),
+        ]);
+
+        if (purchaseRes.ok) {
+          const data = await purchaseRes.json().catch(() => ({}));
+          setPurchases(Array.isArray(data.purchases) ? data.purchases : []);
+        }
+        if (pointRes.ok) {
+          const data = await pointRes.json().catch(() => ({}));
+          setPoints(Number(data.points || 0));
+        }
+        if (historyRes.ok) {
+          const data = await historyRes.json().catch(() => []);
+          setPointHistory(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch account assets", error);
+      } finally {
+        setAccountLoading(false);
+      }
+    };
+
+    fetchAccountAssets();
+  }, [authFetch, user]);
 
   if (loading) {
     return (
@@ -198,7 +259,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-1 rounded-xl bg-gray-100 p-1">
+      <div className="mb-6 grid gap-1 rounded-xl bg-gray-100 p-1 sm:grid-cols-4">
         <button
           type="button"
           onClick={() => setTab("info")}
@@ -222,6 +283,30 @@ export default function ProfilePage() {
         >
           <Lock size={16} />
           Нууцлал
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("files")}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${
+            tab === "files"
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <ShoppingBag size={16} />
+          Файлууд
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("points")}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${
+            tab === "points"
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <Coins size={16} />
+          M point
         </button>
       </div>
 
@@ -440,6 +525,146 @@ export default function ProfilePage() {
               {changingPassword ? "Солиж байна..." : "Нууц үг солих"}
             </button>
           </form>
+        </div>
+      )}
+
+      {tab === "files" && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm md:p-8">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">
+                Худалдан авсан файлууд
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Төсөл, franchise болон төлбөртэй материалууд энд хадгалагдана.
+              </p>
+            </div>
+            <span className="w-fit rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-600">
+              {purchases.length} файл
+            </span>
+          </div>
+
+          {accountLoading ? (
+            <div className="flex min-h-40 items-center justify-center rounded-2xl bg-gray-50">
+              <Loader2 className="h-7 w-7 animate-spin text-orange-500" />
+            </div>
+          ) : purchases.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-10 text-center">
+              <FileText className="mx-auto h-10 w-10 text-gray-300" />
+              <p className="mt-4 text-sm font-bold text-gray-500">
+                Одоогоор худалдан авсан файл алга байна.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {purchases.map((purchase) => (
+                <article
+                  key={purchase.id}
+                  className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-orange-50/40 p-4 sm:flex-row sm:items-center"
+                >
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+                    <FileText size={22} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-gray-900 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">
+                        {purchase.sourceType}
+                      </span>
+                      <span className="text-xs font-semibold text-gray-400">
+                        {new Date(purchase.purchasedAt).toLocaleDateString("mn-MN")}
+                      </span>
+                    </div>
+                    <h3 className="mt-2 line-clamp-1 text-base font-black text-gray-900">
+                      {purchase.title}
+                    </h3>
+                    <p className="mt-1 text-sm font-semibold text-gray-500">
+                      ₮{Number(purchase.amount || 0).toLocaleString("mn-MN")}
+                    </p>
+                  </div>
+                  {purchase.fileUrl ? (
+                    <a
+                      href={purchase.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-3 text-sm font-black text-white transition hover:shadow-lg"
+                    >
+                      <Download size={16} />
+                      Нээх
+                    </a>
+                  ) : (
+                    <span className="rounded-xl bg-gray-100 px-4 py-3 text-sm font-bold text-gray-400">
+                      Файл оруулаагүй
+                    </span>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "points" && (
+        <div className="space-y-5">
+          <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-orange-700 p-6 text-white shadow-lg md:p-8">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-200">
+                  M point wallet
+                </p>
+                <h2 className="mt-3 text-4xl font-black">
+                  {points.toLocaleString("mn-MN")} M
+                </h2>
+                <p className="mt-2 text-sm font-semibold text-white/65">
+                  Худалдан авалт бүрээс 2% автоматаар нэмэгдэнэ.
+                </p>
+              </div>
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/12">
+                <Coins size={34} className="text-orange-200" />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm md:p-8">
+            <h2 className="mb-5 text-lg font-bold text-gray-900">
+              Онооны түүх
+            </h2>
+            {accountLoading ? (
+              <div className="flex min-h-32 items-center justify-center rounded-2xl bg-gray-50">
+                <Loader2 className="h-7 w-7 animate-spin text-orange-500" />
+              </div>
+            ) : pointHistory.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-10 text-center text-sm font-bold text-gray-500">
+                Одоогоор онооны log алга байна.
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {pointHistory.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between gap-4 py-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="line-clamp-1 text-sm font-bold text-gray-900">
+                        {entry.description}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-gray-400">
+                        {new Date(entry.date).toLocaleString("mn-MN")}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-3 py-1 text-sm font-black ${
+                        entry.rawAmount >= 0
+                          ? "bg-emerald-50 text-emerald-600"
+                          : "bg-red-50 text-red-600"
+                      }`}
+                    >
+                      {entry.amount}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

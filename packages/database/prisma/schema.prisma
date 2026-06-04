@@ -40,6 +40,8 @@ model User {
   reviewedProductRequests      ProductRequest[]          @relation("ReviewedProductRequests")
   submittedProductRequests     ProductRequest[]          @relation("SubmittedProductRequests")
   profile                      Profile?
+  paidAccessPurchases          PaidAccessPurchase[]
+  mPointLedgers                MPointLedger[]
   initiatedQPayInvoices        QPayInvoice[]             @relation("QPayInvoiceInitiatedBy")
   approvedFromRequest          RegistrationRequest?      @relation("ApprovedUserRegistrationRequest")
   reviewedRegistrationRequests RegistrationRequest[]     @relation("ReviewedRegistrationRequests")
@@ -1271,6 +1273,44 @@ model QPayInvoice {
   @@index([saleReference])
 }
 
+model PaidAccessPurchase {
+  id          String               @id @default(uuid())
+  userId      String
+  sourceType  PaidAccessSourceType
+  itemId      String
+  title       String
+  fileUrl     String?
+  fileName    String?
+  amount      Int                  @default(0)
+  invoiceId   String?              @unique
+  metadata    Json?
+  purchasedAt DateTime             @default(now())
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceType, itemId])
+  @@index([userId, purchasedAt])
+  @@index([sourceType, itemId])
+}
+
+model MPointLedger {
+  id           String              @id @default(uuid())
+  userId       String
+  type         MPointLedgerType
+  amount       Int
+  balanceAfter Int?
+  sourceType   PaidAccessSourceType?
+  sourceId     String?
+  invoiceId    String?             @unique
+  description  String
+  createdAt    DateTime            @default(now())
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([sourceType, sourceId])
+}
+
 model PosSaleIdempotency {
   id             String   @id @default(uuid())
   clientSaleId   String
@@ -1894,6 +1934,18 @@ enum PosSaleStatus {
   COMPLETED
   VOIDED
   REFUNDED
+}
+
+enum PaidAccessSourceType {
+  PROJECT
+  FRANCHISE
+  SERVICE
+}
+
+enum MPointLedgerType {
+  EARN
+  SPEND
+  ADJUST
 }
 
 enum ContractStatus {

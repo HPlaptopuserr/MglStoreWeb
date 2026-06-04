@@ -14,6 +14,22 @@ type LoginResult = {
   expiresIn?: number;
 };
 
+export type LoginMarketingBanner = {
+  imageUrl?: string;
+  eyebrow?: string;
+  title?: string;
+  quote?: string;
+  author?: string;
+  role?: string;
+  cta?: string;
+  href?: string;
+  socialLinks?: {
+    facebook?: string;
+    x?: string;
+    linkedin?: string;
+  };
+};
+
 interface LoginModalProps {
   open: boolean;
   onClose: () => void;
@@ -25,6 +41,7 @@ interface LoginModalProps {
   onRegister: (fullName: string, identifier: string, password: string) => Promise<void>;
   isLoading: boolean;
   error: string;
+  marketingBanner?: LoginMarketingBanner | null;
 }
 
 type ApiPayload = {
@@ -56,6 +73,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onRegister,
   isLoading,
   error,
+  marketingBanner,
 }) => {
   const [tab, setTab] = useState<AuthTab>("login");
   const [identifier, setIdentifier] = useState("");
@@ -942,49 +960,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             )}
           </div>
 
-          <div className="relative hidden flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-amber-600 via-orange-500 to-red-500 p-8 text-white md:flex">
-            <div className="absolute inset-0 opacity-10">
-              <div className="absolute right-10 top-10 h-40 w-40 rounded-full border border-white/20" />
-              <div className="absolute bottom-10 left-10 h-32 w-32 rounded-full border border-white/20" />
-            </div>
-
-            <div className="relative z-10 text-center">
-              <h3 className="mb-4 text-2xl font-black">Хэрэглэгчид юу хэлдэг вэ?</h3>
-
-              <div className="mb-6 text-lg leading-relaxed">
-                <p className="mb-4 text-white/90">
-                  "Энэ платформ маш ойлгомжтой, энгийн интерфейстэй. Миний бизнесийн онлайн борлуулалтад их тус болсон."
-                </p>
-                <p className="font-semibold">Мөнх Баатар</p>
-                <p className="text-sm text-white/70">MGL Store хэрэглэгч</p>
-              </div>
-
-              <div className="flex items-center justify-center gap-3">
-                <div className="h-2 w-2 rounded-full bg-white/60" />
-                <div className="h-2 w-2 rounded-full bg-white" />
-                <div className="h-2 w-2 rounded-full bg-white/60" />
-              </div>
-
-
-
-
-              <div className="mt-8 border-t border-white/20 pt-8">
-                <p className="mb-4 text-sm text-white/80">Бидэнтэй нэгдэх</p>
-                <div className="flex justify-center gap-4">
-                  {["f", "X", "in"].map((label) => (
-                    <button
-                      key={label}
-                      type="button"
-                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/30"
-                      aria-label={`${label} холбоос`}
-                    >
-                      <span className="text-xs font-bold">{label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <LoginMarketingPanel banner={marketingBanner} />
         </div>
       </div>
 
@@ -1001,3 +977,74 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     </div>
   );
 };
+
+function LoginMarketingPanel({ banner }: { banner?: LoginMarketingBanner | null }) {
+  const resolved = {
+    imageUrl: banner?.imageUrl || "",
+    eyebrow: banner?.eyebrow || "MGL Store",
+    title: banner?.title || "Хэрэглэгчид юу хэлдэг вэ?",
+    quote:
+      banner?.quote ||
+      "Энэ платформ маш ойлгомжтой, энгийн интерфейстэй. Миний бизнесийн онлайн борлуулалтад их тус болсон.",
+    author: banner?.author || "Мөнх Баатар",
+    role: banner?.role || "MGL Store хэрэглэгч",
+    cta: banner?.cta || "Бидэнтэй нэгдэх",
+    href: banner?.href || "/",
+    socialLinks: banner?.socialLinks || {},
+  };
+  const socials = [
+    { label: "f", href: resolved.socialLinks.facebook, name: "Facebook" },
+    { label: "X", href: resolved.socialLinks.x, name: "X" },
+    { label: "in", href: resolved.socialLinks.linkedin, name: "LinkedIn" },
+  ].filter((item) => item.href);
+
+  return (
+    <aside className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-amber-600 via-orange-500 to-red-500 p-8 text-white md:flex">
+      {resolved.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={resolved.imageUrl} alt={resolved.title} className="absolute inset-0 h-full w-full object-cover" />
+      ) : (
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute right-10 top-10 h-40 w-40 rounded-full border border-white/20" />
+          <div className="absolute bottom-10 left-10 h-32 w-32 rounded-full border border-white/20" />
+        </div>
+      )}
+      <div className={`absolute inset-0 ${resolved.imageUrl ? "bg-gradient-to-t from-slate-950/82 via-slate-950/30 to-slate-950/15" : "bg-transparent"}`} />
+
+      <div className="relative z-10">
+        <span className="inline-flex max-w-full rounded-2xl bg-white/16 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white/85 backdrop-blur-sm">
+          <span className="truncate">{resolved.eyebrow}</span>
+        </span>
+        <h3 className="mt-8 text-3xl font-black leading-tight">{resolved.title}</h3>
+      </div>
+
+      <div className="relative z-10 text-center">
+        <p className="mx-auto max-w-md text-xl font-semibold leading-9 text-white/90">"{resolved.quote}"</p>
+        <p className="mt-8 text-lg font-black">{resolved.author}</p>
+        <p className="mt-1 text-sm font-semibold text-white/70">{resolved.role}</p>
+      </div>
+
+      <div className="relative z-10 border-t border-white/20 pt-7 text-center">
+        <a href={resolved.href} className="text-sm font-bold text-white/85 transition hover:text-white">
+          {resolved.cta}
+        </a>
+        {socials.length > 0 && (
+          <div className="mt-4 flex justify-center gap-4">
+            {socials.map((item) => (
+              <a
+                key={item.name}
+                href={item.href}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-xs font-bold transition-colors hover:bg-white/30"
+                aria-label={`${item.name} холбоос`}
+              >
+                {item.label}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}

@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { ServiceCategory } from "../types";
 import { ServiceCategoryCard } from "./ServiceCategoryCard";
 import { CartSummary } from "./CartSummary";
 import { Loader2 } from "lucide-react";
 import { API } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { ServiceQPayModal } from "./ServiceQPayModal";
 
 interface Props {
@@ -14,6 +16,8 @@ interface Props {
 }
 
 export function ServiceSelector({ categories, loading }: Props) {
+  const router = useRouter();
+  const { user, authFetch } = useAuth();
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [selectedPrices, setSelectedPrices] = useState<Record<string, number>>({});
   
@@ -107,8 +111,12 @@ export function ServiceSelector({ categories, loading }: Props) {
               return;
             }
             try {
+              if (!user) {
+                router.push("/login");
+                return;
+              }
               setIsCheckingOut(true);
-              const res = await fetch(`${API}/site-settings/mgl-services/qpay`, {
+              const res = await authFetch(`${API}/site-settings/mgl-services/qpay`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -140,6 +148,7 @@ export function ServiceSelector({ categories, loading }: Props) {
           invoiceId={qpayData.invoiceId}
           qrImage={qpayData.qrImage}
           deepLinks={qpayData.urls}
+          request={authFetch}
           onSuccess={() => {
             setQpayData(null);
             setSelectedItems(new Set());

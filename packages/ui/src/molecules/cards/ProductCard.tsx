@@ -3,8 +3,19 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, ImageIcon, PackageCheck, ShoppingCart, Star, Store } from "lucide-react";
+import {
+  Heart,
+  ImageIcon,
+  PackageCheck,
+  ShoppingCart,
+  Star,
+  Store,
+} from "lucide-react";
 import type { ProductCardProps } from "@mgl/types";
+
+type ProductCardViewProps = ProductCardProps & {
+  showCartAction?: boolean;
+};
 
 export const ProductCard = ({
   href = "#",
@@ -21,11 +32,11 @@ export const ProductCard = ({
   storeName,
   isPrime = false,
   wishlistActive = false,
+  showCartAction = false,
   rating = 4.8,
-  reviews,
   onWishlistToggle,
   onAddToCart,
-}: ProductCardProps) => {
+}: ProductCardViewProps) => {
   const [localWishlistActive, setLocalWishlistActive] = useState(wishlistActive);
   const hasDiscount = typeof originalPrice === "number" && originalPrice > price;
   const discountPercent = hasDiscount
@@ -34,14 +45,19 @@ export const ProductCard = ({
   const soldOut = !isPreorder && typeof stock === "number" && stock <= 0;
   const lowStock = !isPreorder && typeof stock === "number" && stock > 0 && stock <= 5;
   const primaryTag = tag || tags?.[0];
-  const hasCartAction = typeof onAddToCart === "function";
+  const hasCartAction = showCartAction && typeof onAddToCart === "function";
 
   const badge = soldOut
     ? { label: "Дууссан", className: "bg-black text-white" }
     : hasDiscount
-    ? { label: `-${discountPercent}%`, className: "bg-red-500 text-white" }
+      ? { label: `-${discountPercent}%`, className: "bg-red-500 text-white" }
     : isPreorder
-      ? { label: preorderLeadTimeDays ? `${preorderLeadTimeDays} хоног` : "Захиалгаар", className: "bg-blue-500 text-white" }
+      ? {
+          label: preorderLeadTimeDays
+            ? `${preorderLeadTimeDays} хоног`
+            : "Захиалгаар",
+          className: "bg-blue-500 text-white",
+        }
     : isPrime
       ? { label: "PRIME", className: "bg-black text-white" }
       : lowStock
@@ -63,25 +79,27 @@ export const ProductCard = ({
   };
 
   return (
-    <article className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-gray-100 bg-white shadow-[0_8px_26px_rgba(15,23,42,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_42px_rgba(15,23,42,0.14)]">
-      <Link href={href} className="relative block aspect-[4/3] w-full overflow-hidden bg-gray-100">
+    <article className="group relative flex h-full min-h-[230px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-100/60 sm:min-h-[252px]">
+      <Link href={href} className="relative block aspect-[4/3] w-full overflow-hidden bg-slate-50">
         {image ? (
           <Image
             src={image}
             alt={name || "Product image"}
             fill
-            className="object-contain p-3 transition duration-500 group-hover:scale-105"
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            className="object-contain p-3 transition duration-300 group-hover:scale-105"
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 16vw"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gray-100">
-            <ImageIcon className="h-10 w-10 text-gray-300" />
+          <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(251,146,60,0.16),transparent_28%),linear-gradient(135deg,#f8fafc,#fff7ed)]">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/80 text-slate-300 shadow-sm ring-1 ring-slate-100">
+              <ImageIcon className="h-8 w-8" />
+            </div>
           </div>
         )}
 
         {badge && (
           <span
-            className={`absolute left-4 top-4 z-20 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide shadow-sm ${badge.className}`}
+            className={`absolute left-2.5 top-2.5 z-20 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide shadow-sm sm:left-3 sm:top-3 ${badge.className}`}
           >
             {badge.label}
           </span>
@@ -100,74 +118,91 @@ export const ProductCard = ({
           e.stopPropagation();
           handleWishlistClick();
         }}
-        className="absolute right-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-black shadow-sm ring-1 ring-black/5 transition hover:scale-105 hover:bg-white"
+        className="absolute right-2.5 top-2.5 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-sm ring-1 ring-black/5 transition hover:scale-105 hover:bg-white sm:right-3 sm:top-3"
       >
         <Heart
-          className={`h-5 w-5 ${localWishlistActive ? "fill-red-500 text-red-500" : ""}`}
+          className={`h-4 w-4 ${localWishlistActive ? "fill-red-500 text-red-500" : ""}`}
           strokeWidth={2}
         />
       </button>
 
-      <div className="relative flex flex-1 flex-col px-5 pb-5 pt-4">
+      <div className="relative flex flex-1 flex-col px-3 pb-3 pt-3 sm:px-4 sm:pb-4">
         {category && (
-          <span className="mb-2 w-fit rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+          <span className="mb-2 max-w-full truncate rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
             {category}
           </span>
         )}
 
         <Link
           href={href}
-          className="line-clamp-2 min-h-10 text-base font-semibold leading-5 text-gray-950 transition hover:text-orange-600"
+          className="line-clamp-2 min-h-10 text-[13px] font-bold leading-5 text-slate-950 transition hover:text-orange-600 sm:text-sm"
         >
           {name}
         </Link>
 
         {storeName && (
-          <span className="mt-1 inline-flex min-w-0 items-center gap-1 truncate text-sm text-gray-400">
-            <Store className="h-3.5 w-3.5 shrink-0 text-gray-300" />
+          <span className="mt-1 inline-flex min-w-0 items-center gap-1 truncate text-[12px] font-medium text-slate-400">
+            <Store className="h-3.5 w-3.5 shrink-0 text-slate-300" />
             {storeName}
           </span>
         )}
 
         {isPreorder && (
-          <span className="mt-2 w-fit rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
+          <span className="mt-2 w-fit rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
             Захиалгаар
           </span>
         )}
 
-        <div className="mt-3 flex items-baseline gap-2 pr-14">
-          <span className={`text-lg font-black ${hasDiscount ? "text-red-500" : "text-gray-950"}`}>
-            ₮{price.toLocaleString()}
-          </span>
-          {hasDiscount && (
-            <span className="text-sm text-gray-400 line-through">
-              ₮{originalPrice.toLocaleString()}
+        <div className="mt-auto flex items-end justify-between gap-2 pt-3">
+          <div className="min-w-0">
+            <span
+              className={`block truncate text-base font-black leading-5 sm:text-lg ${
+                hasDiscount ? "text-red-500" : "text-slate-950"
+              }`}
+            >
+              ₮{price.toLocaleString()}
             </span>
-          )}
+            {hasDiscount && (
+              <span className="block truncate text-xs text-slate-400 line-through">
+                ₮{originalPrice.toLocaleString()}
+              </span>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1 text-xs font-bold text-slate-500">
+            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+            <span>{rating.toFixed(1)}</span>
+          </div>
         </div>
 
-        <div className="mt-3 flex items-center gap-1.5 pr-14 text-sm text-gray-500">
-          <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-          <span>{rating.toFixed(1)}</span>
-          {typeof reviews === "number" && <span>({reviews})</span>}
-        </div>
-
-        <button
-          type="button"
-          disabled={soldOut}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handleCartClick();
-          }}
-          className={`absolute bottom-3 right-5 flex h-11 w-11 items-center justify-center rounded-full shadow-[0_8px_20px_rgba(15,23,42,0.12)] ring-1 ring-black/5 transition ${
-            soldOut
-              ? "cursor-not-allowed bg-gray-100 text-gray-300"
-              : "bg-white text-gray-950 hover:scale-105 hover:bg-black hover:text-white"
-          }`}
-        >
-          {soldOut ? <PackageCheck className="h-5 w-5" /> : <ShoppingCart className="h-5 w-5" />}
-        </button>
+        {showCartAction && (
+          <button
+            type="button"
+            disabled={soldOut}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleCartClick();
+            }}
+            className={`mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg text-sm font-black shadow-sm transition ${
+              soldOut
+                ? "cursor-not-allowed bg-slate-100 text-slate-300"
+                : "bg-slate-950 text-white hover:bg-orange-500"
+            }`}
+          >
+            {soldOut ? (
+              <>
+                <PackageCheck className="h-4 w-4" />
+                Дууссан
+              </>
+            ) : (
+              <>
+                <ShoppingCart className="h-4 w-4" />
+                Сагсанд
+              </>
+            )}
+          </button>
+        )}
       </div>
     </article>
   );

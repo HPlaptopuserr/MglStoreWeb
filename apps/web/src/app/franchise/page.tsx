@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   FileText,
@@ -11,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { API } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import {
   PaidAccessPaymentModal,
   type PaidAccessPaymentSession,
@@ -173,6 +175,8 @@ function FranchiseDetailModal({
 }
 
 export default function FranchisePage() {
+  const router = useRouter();
+  const { user, authFetch } = useAuth();
   const [projects, setProjects] = useState<FranchiseProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeProject, setActiveProject] = useState<FranchiseProject | null>(
@@ -215,7 +219,7 @@ export default function FranchisePage() {
     const params = invoiceId
       ? `?${new URLSearchParams({ invoiceId }).toString()}`
       : "";
-    const res = await fetch(
+    const res = await authFetch(
       `${API}/site-settings/franchise/${projectId}/detail${params}`,
     );
     const data = await res.json().catch(() => ({}));
@@ -252,7 +256,12 @@ export default function FranchisePage() {
         return;
       }
 
-      const res = await fetch(`${API}/site-settings/franchise/systemqr`, {
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const res = await authFetch(`${API}/site-settings/franchise/systemqr`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id }),
@@ -433,6 +442,7 @@ export default function FranchisePage() {
           title={paymentProject.title}
           payment={paymentSession}
           checkUrl={`${API}/site-settings/franchise/systemqr/check`}
+          request={authFetch}
           onPaid={(invoiceId) => openPaidProject(paymentProject, invoiceId)}
           onClose={() => {
             setPaymentProject(null);
