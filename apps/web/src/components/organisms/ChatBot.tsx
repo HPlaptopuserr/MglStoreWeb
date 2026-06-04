@@ -474,7 +474,7 @@ export function ChatBot() {
     <>
       {/* Greeting bubble */}
       {greeting && !open && (
-        <div className="fixed bottom-[140px] md:bottom-24 right-5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-300 md:right-8">
+        <div className="fixed bottom-[140px] right-5 z-50 hidden animate-in fade-in slide-in-from-bottom-2 duration-300 md:bottom-24 md:right-8 md:block">
           <div className="relative rounded-2xl bg-white px-4 py-3 shadow-lg ring-1 ring-gray-100 max-w-[200px]">
             <button
               type="button"
@@ -891,7 +891,7 @@ export function ChatBot() {
       <button
         type="button"
         onClick={open ? () => setOpen(false) : handleOpen}
-        className="fixed bottom-[88px] md:bottom-6 right-5 z-50 flex h-12 w-12 md:h-13 md:w-13 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg shadow-orange-500/25 transition-all hover:bg-orange-600 hover:shadow-xl hover:shadow-orange-500/30 active:scale-95 md:right-8"
+        className="fixed bottom-6 right-8 z-50 hidden h-13 w-13 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg shadow-orange-500/25 transition-all hover:bg-orange-600 hover:shadow-xl hover:shadow-orange-500/30 active:scale-95 md:flex"
       >
         {open ? <X size={22} /> : <MessageCircle size={22} />}
       </button>

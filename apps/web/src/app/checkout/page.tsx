@@ -86,7 +86,7 @@ export default function CheckoutPage() {
 
   const handlePaymentSuccess = () => {
     clearCart();
-    router.push("/orders");
+    router.push("/profile?tab=orders");
   };
 
   if (items.length === 0 && !checkoutResult) {

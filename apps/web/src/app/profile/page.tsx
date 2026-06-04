@@ -50,6 +50,21 @@ export default function ProfilePage() {
   const [ordersError, setOrdersError] = useState("");
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    const allowedTabs: ProfileTab[] = [
+      "library",
+      "orders",
+      "profile",
+      "address",
+      "security",
+    ];
+    if (requestedTab && allowedTabs.includes(requestedTab as ProfileTab)) {
+      setTab(requestedTab as ProfileTab);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, router, user]);
 

@@ -12,7 +12,7 @@ const LEFT_TABS = [
 ] as const;
 
 const RIGHT_TABS = [
-  { href: "/orders", label: "Захиалга", icon: Package },
+  { href: "/profile?tab=orders", label: "Захиалга", icon: Package },
   { href: "/profile", label: "Профайл", icon: User },
 ] as const;
 
@@ -27,11 +27,14 @@ export function MobileBottomNav({
   const { user } = useAuth();
   const { count } = useCart();
 
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+  const isActive = (href: string) => {
+    const path = href.split("?")[0];
+    return path === "/" ? pathname === "/" : pathname.startsWith(path);
+  };
 
   const handleProtected = (e: React.MouseEvent, href: string) => {
-    if (!user && (href === "/orders" || href === "/profile")) {
+    const path = href.split("?")[0];
+    if (!user && path === "/profile") {
       e.preventDefault();
       onAuthOpen();
     }

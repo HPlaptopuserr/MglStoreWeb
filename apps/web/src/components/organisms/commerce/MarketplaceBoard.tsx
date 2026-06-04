@@ -5,15 +5,12 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
-  Clock3,
-  Heart,
   PackageSearch,
-  ShoppingBag,
   Sparkles,
   Store,
-  UserRound,
   Wrench,
 } from "lucide-react";
+import { AccountStatusPanel } from "./AccountStatusPanel";
 
 export type MarketplaceCategory = {
   id: string;
@@ -139,7 +136,6 @@ export function MarketplaceBoard({
   const spotlightProducts = products.slice(0, 4);
   const discounted = products.find((product) => product.discounts?.[0]?.percent);
   const preorder = products.find((product) => product.supplyType === "CHINA_PREORDER");
-  const stockCount = products.filter((product) => product.supplyType !== "CHINA_PREORDER").length;
 
   return (
     <section className="border-b border-slate-100 bg-white">
@@ -203,13 +199,18 @@ export function MarketplaceBoard({
           </aside>
 
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-[0.9fr_1.18fr_1.36fr]">
-              <MglServicesPromoPanel promo={servicesPromo} />
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="md:col-span-2 lg:hidden">
+                <MglServicesPromoPanel promo={servicesPromo} />
+              </div>
               <ProjectHeroBanner projects={projectBanners} />
-              <DealStrip products={spotlightProducts.slice(0, 3)} total={total} />
+              <div className="hidden lg:block">
+                <DealStrip products={spotlightProducts.slice(0, 3)} total={total} />
+              </div>
             </div>
 
             <div className="hidden grid-cols-4 gap-3 lg:grid">
+              <ServiceSpotlightTile promo={servicesPromo} />
               <SpotlightTile
                 href={discounted ? `/products/${discounted.id}` : "/products"}
                 label="Хямдрал"
@@ -233,60 +234,11 @@ export function MarketplaceBoard({
                 value="Store"
                 tint="sky"
               />
-              <SpotlightTile
-                href="/products?type=stock"
-                label="Бэлэн"
-                title="Нөөцтэй бараа"
-                value={`${stockCount || total}+`}
-                product={spotlightProducts[0]}
-                tint="slate"
-              />
             </div>
           </div>
 
-          <aside className="hidden h-full rounded-2xl border border-slate-100 bg-slate-50/80 p-4 shadow-sm xl:flex xl:flex-col">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600">
-                <UserRound className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-lg font-black text-slate-950">Тавтай морил</p>
-                <p className="mt-0.5 text-xs font-semibold leading-4 text-slate-400">
-                  Нэвтэрч худалдан авалтаа удирдаарай
-                </p>
-              </div>
-            </div>
-
-            <Link
-              href="/login"
-              className="mt-4 flex h-10 items-center justify-center rounded-xl bg-orange-500 text-sm font-black text-white transition hover:bg-slate-950"
-            >
-              Нэвтрэх
-            </Link>
-
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {[
-                { label: "Сагс", icon: ShoppingBag, href: "/checkout" },
-                { label: "Захиалга", icon: Clock3, href: "/orders" },
-                { label: "Профайл", icon: Heart, href: "/profile" },
-              ].map(({ label, icon: Icon, href }) => (
-                <Link
-                  key={label}
-                  href={href}
-                  className="rounded-xl bg-white px-2 py-2.5 text-center text-[11px] font-black text-slate-600 ring-1 ring-slate-100 transition hover:text-orange-600 hover:shadow-sm"
-                >
-                  <Icon className="mx-auto mb-1 h-4 w-4" />
-                  {label}
-                </Link>
-              ))}
-            </div>
-
-            {searchQuery && (
-              <div className="mt-4 rounded-xl border border-orange-100 bg-white px-3 py-2 text-xs font-black text-orange-700">
-                <span className="text-slate-500">Хайлт:</span> "{searchQuery}"
-              </div>
-            )}
-
+          <aside className="hidden h-full xl:flex xl:flex-col">
+            <AccountStatusPanel searchQuery={searchQuery} />
             <SideBanner banner={sideBanner} />
           </aside>
         </div>
@@ -380,7 +332,7 @@ function ProjectHeroBanner({ projects }: { projects: MarketplaceProjectBanner[] 
   return (
     <Link
       href="/projects"
-      className="group relative h-[190px] overflow-hidden rounded-2xl bg-slate-950 p-5 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-100/70 lg:h-[230px]"
+      className="group relative h-[174px] overflow-hidden rounded-2xl bg-slate-950 p-4 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-100/70 sm:h-[190px] sm:p-5 lg:h-[230px]"
     >
       {slides.map((project, index) => (
         // eslint-disable-next-line @next/next/no-img-element
@@ -401,7 +353,7 @@ function ProjectHeroBanner({ projects }: { projects: MarketplaceProjectBanner[] 
             <Sparkles className="h-3.5 w-3.5" />
             Төслийн онцлох
           </span>
-          <h1 className="mt-3 line-clamp-2 text-2xl font-black leading-tight tracking-tight">
+          <h1 className="mt-2 line-clamp-2 text-[26px] font-black leading-[1.03] tracking-tight sm:mt-3 sm:text-2xl">
             {active.title}
           </h1>
           {active.summary && (
@@ -549,6 +501,47 @@ function SpotlightTile({
   );
 }
 
+function ServiceSpotlightTile({ promo }: { promo?: MarketplaceServicesPromo | null }) {
+  const resolved = {
+    eyebrow: promo?.eyebrow || "MGL үйлчилгээ",
+    title: promo?.title || "Үйлчилгээний багцууд",
+    cta: promo?.cta || "Үзэх",
+    imageUrl: promo?.imageUrl || "",
+  };
+
+  return (
+    <Link
+      href="/our-services"
+      className="group relative h-[96px] overflow-hidden rounded-2xl border border-orange-100 bg-orange-50/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:shadow-lg hover:shadow-orange-100/50"
+    >
+      {resolved.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={resolved.imageUrl}
+          alt={resolved.title}
+          className="absolute inset-0 h-full w-full object-cover opacity-35 transition group-hover:scale-105"
+        />
+      ) : null}
+      <div className="absolute inset-0 bg-gradient-to-r from-white via-white/92 to-orange-50/55" />
+      <div className="relative z-10">
+        <span className="inline-flex max-w-[72%] items-center gap-1.5 rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-black text-orange-700">
+          <Wrench className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{resolved.eyebrow}</span>
+        </span>
+        <p className="mt-3 line-clamp-1 max-w-[68%] text-sm font-black text-slate-950">
+          {resolved.title}
+        </p>
+        <p className="mt-0.5 text-sm font-black text-orange-600">
+          {resolved.cta}
+        </p>
+      </div>
+      <div className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white text-orange-500 shadow-sm ring-1 ring-orange-100">
+        <ArrowRight className="h-5 w-5" />
+      </div>
+    </Link>
+  );
+}
+
 function ProductThumb({ product }: { product?: MarketplaceProduct }) {
   const image = product?.images?.[0]?.url;
 
@@ -582,7 +575,7 @@ function MglServicesPromoPanel({ promo }: { promo?: MarketplaceServicesPromo | n
   return (
     <Link
       href="/our-services"
-      className="group relative flex h-[190px] overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_78%_78%,rgba(255,255,255,0.20),transparent_25%),linear-gradient(135deg,#111827_0%,#fb5b2f_58%,#f97316_100%)] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-100/70 lg:h-[230px]"
+      className="group relative flex h-[174px] overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_78%_78%,rgba(255,255,255,0.20),transparent_25%),linear-gradient(135deg,#111827_0%,#fb5b2f_58%,#f97316_100%)] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-100/70 sm:h-[190px] lg:h-[230px]"
     >
       {resolved.imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -611,7 +604,7 @@ function MglServicesPromoPanel({ promo }: { promo?: MarketplaceServicesPromo | n
         </div>
 
         <div>
-          <p className="line-clamp-2 max-w-[15rem] text-xl font-black leading-[1.06] tracking-tight lg:max-w-[10rem] lg:text-lg xl:max-w-[13rem] xl:text-xl">
+          <p className="line-clamp-2 max-w-[13rem] text-[25px] font-black leading-[1.02] tracking-tight sm:max-w-[15rem] sm:text-xl lg:max-w-[10rem] lg:text-lg xl:max-w-[13rem] xl:text-xl">
             {resolved.title}
           </p>
           <p className="mt-1.5 line-clamp-1 max-w-[15rem] text-[11px] font-bold leading-4 text-white/78 lg:max-w-[10rem] xl:max-w-[13rem] xl:text-xs">
@@ -634,21 +627,23 @@ function DealStrip({ products, total }: { products: MarketplaceProduct[]; total:
   return (
     <Link
       href="/products"
-      className="group relative flex h-[190px] overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_84%_18%,rgba(255,255,255,0.22),transparent_26%),linear-gradient(135deg,#db2777,#fb7185)] p-4 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-pink-100/70 md:col-span-2 lg:col-span-1 lg:h-[230px]"
+      className="group relative flex h-[172px] overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_84%_18%,rgba(255,255,255,0.22),transparent_26%),linear-gradient(135deg,#db2777,#fb7185)] p-3 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-pink-100/70 sm:h-[190px] sm:p-4 md:col-span-2 lg:col-span-1 lg:h-[230px]"
     >
-      <div className="relative z-10 grid w-full gap-3 md:grid-cols-[0.82fr_1.18fr] lg:flex lg:h-full lg:flex-col">
+      <div className="relative z-10 flex h-full w-full flex-col justify-between gap-2 md:grid md:grid-cols-[0.82fr_1.18fr] md:gap-3 lg:flex lg:h-full lg:flex-col">
         <div className="flex items-start justify-between gap-3 md:block lg:mb-0">
           <div>
-            <span className="inline-flex rounded-full bg-white/16 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] backdrop-blur-sm">
+            <span className="inline-flex rounded-full bg-white/16 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] backdrop-blur-sm sm:text-[10px]">
               Product picks
             </span>
-            <p className="mt-2 max-w-[13rem] text-2xl font-black leading-[1.05] tracking-tight lg:line-clamp-2 lg:text-base lg:leading-tight xl:text-lg">
+            <p className="mt-2 max-w-[12rem] text-[25px] font-black leading-[1.02] tracking-tight sm:max-w-[13rem] sm:text-2xl lg:line-clamp-2 lg:text-base lg:leading-tight xl:text-lg">
               Онцлох бүтээгдэхүүн
             </p>
           </div>
-          <span className="shrink-0 rounded-lg bg-white/18 px-2.5 py-1 text-xs font-black md:mt-3">{total}+</span>
+          <span className="shrink-0 rounded-lg bg-white/18 px-2.5 py-1 text-xs font-black md:mt-3">
+            {total}+
+          </span>
         </div>
-        <div className="grid grid-cols-3 gap-2 self-end lg:mt-auto lg:gap-1.5 xl:gap-2">
+        <div className="grid grid-cols-3 gap-2 lg:mt-auto lg:gap-1.5 xl:gap-2">
           {items.length > 0
             ? items.map((product) => <MiniDealProduct key={product.id} product={product} />)
             : Array.from({ length: 3 }).map((_, index) => (
@@ -668,7 +663,7 @@ function MiniDealProduct({ product }: { product: MarketplaceProduct }) {
 
   return (
     <div className="min-w-0 rounded-xl bg-white/94 p-1.5 text-slate-950 shadow-sm ring-1 ring-white/60 xl:p-2">
-      <div className="flex h-14 items-center justify-center overflow-hidden rounded-lg bg-slate-50 sm:h-16 lg:h-14 xl:h-16">
+      <div className="flex h-11 items-center justify-center overflow-hidden rounded-lg bg-slate-50 sm:h-16 lg:h-14 xl:h-16">
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={image} alt={product.name} className="h-full w-full object-contain p-1" />

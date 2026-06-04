@@ -233,7 +233,7 @@ export const Header = () => {
                       </div>
                       <div className="py-1">
                         <Link
-                          href="/orders"
+                          href="/profile?tab=orders"
                           onClick={() => setUserDropdownOpen(false)}
                           className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                         >
@@ -274,12 +274,30 @@ export const Header = () => {
               <button
                 type="button"
                 onClick={user ? () => router.push("/profile") : openAuthModal}
-                className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gray-50 text-gray-600 transition-colors active:bg-gray-100 sm:hidden"
+                className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors active:bg-gray-100 sm:hidden ${
+                  user
+                    ? "bg-slate-950 text-white shadow-md shadow-slate-200"
+                    : "bg-gray-50 text-gray-600"
+                }`}
               >
-                <User size={18} />
-                {user && (
-                  <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-white" />
+                {user?.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.fullName || "Profile"}
+                    className="h-full w-full rounded-xl object-cover"
+                  />
+                ) : user ? (
+                  <span className="text-xs font-black">
+                    {user.fullName?.trim()?.[0]?.toUpperCase() ||
+                      user.email?.[0]?.toUpperCase() ||
+                      "M"}
+                  </span>
+                ) : (
+                  <User size={18} />
                 )}
+                {user ? (
+                  <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+                ) : null}
               </button>
 
               <button
