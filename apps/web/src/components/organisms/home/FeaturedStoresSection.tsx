@@ -17,6 +17,7 @@ interface ApiPartner {
   type?: string;
   isInvestor?: boolean;
   investmentAmount?: number | null;
+  publicInfoScore?: number;
 }
 
 export const FeaturedStoresSection = () => {
@@ -51,9 +52,12 @@ export const FeaturedStoresSection = () => {
             products: [],
             isInvestor: p.isInvestor || false,
             investmentAmount: p.investmentAmount || 0,
+            publicInfoScore: p.publicInfoScore || 0,
           }));
 
         activeStores.sort((a: any, b: any) => {
+          const infoDiff = (b.publicInfoScore || 0) - (a.publicInfoScore || 0);
+          if (infoDiff !== 0) return infoDiff;
           if (a.isInvestor && !b.isInvestor) return -1;
           if (!a.isInvestor && b.isInvestor) return 1;
           if (a.isInvestor && b.isInvestor) return (b.investmentAmount || 0) - (a.investmentAmount || 0);

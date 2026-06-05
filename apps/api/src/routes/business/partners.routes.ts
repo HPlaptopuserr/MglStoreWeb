@@ -52,6 +52,49 @@ const sortProductsByExpiry = <
     );
   });
 
+const hasText = (value?: string | null) => String(value || "").trim().length > 0;
+
+const getPartnerPublicInfoScore = (partner: any) => {
+  let score = 0;
+  if (hasText(partner.logoUrl)) score += 3;
+  if (hasText(partner.bannerUrl)) score += 3;
+  if (hasText(partner.description)) score += 3;
+  if (hasText(partner.shortDescription)) score += 2;
+  if (hasText(partner.businessCategory)) score += 2;
+  if (hasText(partner.address)) score += 2;
+  if (hasText(partner.phone)) score += 1;
+  if (hasText(partner.email)) score += 1;
+  if (Array.isArray(partner.openingHours) && partner.openingHours.length > 0) score += 1;
+  if (hasText(partner.deliveryText)) score += 1;
+  if ((partner._count?.products || 0) > 0) score += 4;
+  if ((partner._count?.branches || 0) > 0) score += 2;
+  return score;
+};
+
+const getPartnerInvestmentAmount = (partner: any) =>
+  partner?.investorProfile?.investmentLevel
+    ? Number(partner.investorProfile.investmentLevel) || 0
+    : 0;
+
+const compareWebPartners = (a: any, b: any) => {
+  const publicInfoDiff = getPartnerPublicInfoScore(b) - getPartnerPublicInfoScore(a);
+  if (publicInfoDiff !== 0) return publicInfoDiff;
+
+  const investorDiff = Number(Boolean(b.investorProfile)) - Number(Boolean(a.investorProfile));
+  if (investorDiff !== 0) return investorDiff;
+
+  const investmentDiff = getPartnerInvestmentAmount(b) - getPartnerInvestmentAmount(a);
+  if (investmentDiff !== 0) return investmentDiff;
+
+  const createdDiff = getExpirySortValue(b.createdAt ?? null) - getExpirySortValue(a.createdAt ?? null);
+  if (createdDiff !== 0) return createdDiff;
+
+  return String(a.name || "").localeCompare(String(b.name || ""), "mn");
+};
+
+const sortWebPartners = <T extends any>(partners: T[]) =>
+  [...partners].sort(compareWebPartners);
+
 const getStartOfToday = () => {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -440,15 +483,34 @@ router.get("/partners/grouped", async (req, res) => {
         status: "ACTIVE",
         deletedAt: null,
       },
-      orderBy: {
-        name: "asc",
-      },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         name: true,
         slug: true,
         logoUrl: true,
+        bannerUrl: true,
         businessCategory: true,
+        email: true,
+        phone: true,
+        address: true,
+        description: true,
+        shortDescription: true,
+        openingHours: true,
+        deliveryText: true,
+        createdAt: true,
+        investorProfile: {
+          select: {
+            id: true,
+            investmentLevel: true,
+          },
+        },
+        _count: {
+          select: {
+            products: true,
+            branches: true,
+          },
+        },
       },
     });
 
@@ -477,7 +539,7 @@ router.get("/partners/grouped", async (req, res) => {
       }
     > = {};
 
-    for (const partner of partners) {
+    for (const partner of sortWebPartners(partners)) {
       const catSlugs = partner.businessCategory
         ? partner.businessCategory.split(",").filter(Boolean)
         : ["other"];
@@ -730,13 +792,7 @@ router.get("/partners", async (req, res) => {
       prisma.organization.count({ where }),
       prisma.organization.findMany({
         where,
-        orderBy: [
-          // ASC on nullable relation → NULLS LAST in PostgreSQL → investors (non-null) come first
-          { investorProfile: { id: "asc" } },
-          { createdAt: "desc" },
-        ],
-        skip,
-        take: limit,
+        orderBy: { createdAt: "desc" },
         include: {
           _count: {
             select: {
@@ -759,7 +815,9 @@ router.get("/partners", async (req, res) => {
       }),
     ]);
 
-    const result = partners.map((partner: any) => ({
+    const pagePartners = sortWebPartners(partners).slice(skip, skip + limit);
+
+    const result = pagePartners.map((partner: any) => ({
       id: partner.id,
       name: partner.name,
       slug: partner.slug,
@@ -788,6 +846,7 @@ router.get("/partners", async (req, res) => {
       investmentAmount: partner.investorProfile?.investmentLevel
         ? Number(partner.investorProfile.investmentLevel)
         : null,
+      publicInfoScore: getPartnerPublicInfoScore(partner),
       subdomainEnabled: partner.subdomainEnabled,
       planActivatedAt: partner.planActivatedAt,
       planExpiresAt: partner.planExpiresAt,
@@ -798,16 +857,6 @@ router.get("/partners", async (req, res) => {
         orders: partner._count.orders,
       },
     }));
-
-    // Sort investors first within the current page
-    result.sort((a: any, b: any) => {
-      if (a.isInvestor && !b.isInvestor) return -1;
-      if (!a.isInvestor && b.isInvestor) return 1;
-      if (a.isInvestor && b.isInvestor) {
-        return (b.investmentAmount || 0) - (a.investmentAmount || 0);
-      }
-      return 0;
-    });
 
     res.json({
       data: result,
