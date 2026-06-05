@@ -93,9 +93,11 @@ export const BANK_OPTIONS = [
   { value: "150000", label: "Голомт банк" },
   { value: "040000", label: "TDB" },
   { value: "320000", label: "ХасБанк" },
-  { value: "010000", label: "Төрийн банк" },
+  { value: "340000", label: "Төрийн банк" },
+  { value: "010000", label: "Монголбанк" },
   { value: "300000", label: "Капитрон банк" },
-  { value: "290000", label: "Богд банк" },
+  { value: "380000", label: "Богд банк" },
+  { value: "290000", label: "Үндэсний хөрөнгө оруулалтын банк" },
 ];
 
 export const parseContractPaymentAccounts = (raw?: string | null): ContractPaymentAccount[] => {
