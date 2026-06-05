@@ -585,15 +585,26 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         }
       }
     }
-    const status = isSystemQrAuthError(errorMessage) ? 400 : isSystemQrNetworkError(errorMessage) ? 503 : 500;
+    const isMinuRegisterValidationError = /subMerchant register failed \(001\)/i.test(errorMessage);
+    const status = isSystemQrAuthError(errorMessage)
+      ? 400
+      : isSystemQrNetworkError(errorMessage)
+      ? 503
+      : isMinuRegisterValidationError
+      ? 422
+      : 500;
     const friendlyError = isSystemQrAuthError(errorMessage)
       ? "Minu Dynamic QR данс шинээр холбох master login амжилтгүй байна. SYSTEMQR_USERNAME/SYSTEMQR_PASSWORD prod API env зөв эсэхийг шалгана уу. Merchant Code байгаа бол шууд дансны санд хадгалаад ашиглаж болно."
       : isSystemQrNetworkError(errorMessage)
       ? "Minu Dynamic QR данс шинээр холбох үед Minu API руу холбогдохгүй байна. API сервер api.minu.mn:443 рүү гарах эрхтэй эсэх, системийн VPN/proxy/whitelist-аа шалгана уу. Merchant Code байгаа бол шууд дансны санд хадгалаад ашиглаж болно."
-      : /subMerchant register failed \(001\)/i.test(errorMessage)
-      ? `${errorMessage}. Minu дээр merchantName давхардсан бол 0077 гэж буцдаг. 001 нь ихэвчлэн Minu талын данс/регистр/утас verification эсвэл test/prod орчны алдаа байна.`
+      : isMinuRegisterValidationError
+      ? `${errorMessage}. Энэ нь манай серверийн алдаа биш, Minu SystemQR бүртгэл дээрх validation/general system response байна. merchantName давхардсан бол Minu ихэвчлэн 0077 буцаадаг. Minu-аас bankCode/accountNumber/registerNumber/phone/corporateName талбарууд prod дээр таарч байгаа эсэхийг шалгуулна уу.`
       : errorMessage;
-    return res.status(status).json({ success: false, error: friendlyError || "Minu Dynamic QR данс холбох үед алдаа гарлаа" });
+    return res.status(status).json({
+      success: false,
+      ...(isMinuRegisterValidationError ? { upstreamStatus: "001" } : {}),
+      error: friendlyError || "Minu Dynamic QR данс холбох үед алдаа гарлаа",
+    });
   }
 });
 
