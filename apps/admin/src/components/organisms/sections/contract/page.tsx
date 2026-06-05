@@ -1432,13 +1432,9 @@ function ContractEditorTab({
             )
           : null;
         if (data.success && !data.fallback && existing?.merchantCode) {
-          await upsertCurrentPaymentAccount({
-            merchantName: existing.merchantName || config.merchantName,
-            merchantCode: existing.merchantCode,
-            username: existing.username || existing.merchantCode,
-            password: existing.password || "",
-          }, { trustedMerchantCode: true });
-          alert("Minu дээр бүртгэлтэй merchant code-г авч хадгаллаа.");
+          alert(
+            `Minu дээр "${existing.merchantName || config.merchantName}" нэртэй subMerchant аль хэдийн байна (${existing.merchantCode}). Minu API дансны дугаар буцаадаггүй тул энэ merchant ${config.accountNumber || "оруулсан"} данстай эсэхийг баталгаажуулах боломжгүй. Minu дээр linked дансыг шалгаад зөв бол merchantCode-г гараар оруулж хадгална уу.`,
+          );
           return;
         }
       } catch {

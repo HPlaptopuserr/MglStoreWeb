@@ -320,6 +320,26 @@ const isSystemQrMasterMerchantCode = (merchantCode?: string | null) => {
   return Boolean(code && masterUsername && code === masterUsername);
 };
 
+const isSystemQrMasterAccount = (account: Pick<
+  ProjectPaymentAccount,
+  "merchantCode" | "username" | "accountNumber"
+>) => {
+  const masterUsername = normalizeSystemQrLookup(process.env.SYSTEMQR_USERNAME);
+  const masterAccountNumber = normalizeSystemQrLookup(
+    process.env.SYSTEMQR_MASTER_ACCOUNT_NUMBER ||
+      process.env.SYSTEMQR_ACCOUNT_NUMBER,
+  );
+  const merchantCode = normalizeSystemQrLookup(account.merchantCode);
+  const username = normalizeSystemQrLookup(account.username);
+  const accountNumber = normalizeSystemQrLookup(account.accountNumber);
+
+  return (
+    isSystemQrMasterMerchantCode(merchantCode) ||
+    Boolean(masterUsername && username === masterUsername) ||
+    Boolean(masterAccountNumber && accountNumber === masterAccountNumber)
+  );
+};
+
 async function getProjectPaymentAccounts(): Promise<ProjectPaymentAccount[]> {
   const setting = await prisma.siteSetting
     .findUnique({ where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY } })
@@ -343,7 +363,7 @@ async function getProjectPaymentAccounts(): Promise<ProjectPaymentAccount[]> {
       .filter(
         (account) =>
           account.merchantCode &&
-          !isSystemQrMasterMerchantCode(account.merchantCode),
+          !isSystemQrMasterAccount(account),
       );
   } catch {
     return [];
@@ -361,10 +381,6 @@ async function resolveProjectPaymentAccount(project: PaidProject) {
       (paymentMerchantCode && account.merchantCode === paymentMerchantCode),
   );
   if (explicitAccount) return explicitAccount;
-
-  if (!paymentAccountId && !paymentMerchantCode && accounts.length === 1) {
-    return accounts[0];
-  }
 
   return null;
 }
@@ -444,7 +460,7 @@ async function recoverProjectSystemQrAuth(
   return auth.password ? auth : storedAuth;
 }
 
-async function createProjectSystemQrInvoiceWithFallback(params: {
+async function createProjectSystemQrInvoice(params: {
   account: ProjectPaymentAccount;
   amount: number;
   referenceNumber: string;
@@ -458,6 +474,12 @@ async function createProjectSystemQrInvoiceWithFallback(params: {
   };
   const auth = await recoverProjectSystemQrAuth(params.account);
 
+  if (!auth.username || !auth.password) {
+    throw new Error(
+      "Сонгосон Minu Dynamic QR дансны нэвтрэх эрх хадгалагдаагүй байна. Admin дээр тухайн дансыг дахин холбож хадгална уу.",
+    );
+  }
+
   try {
     return await createSystemQrInvoice(
       invoiceParams,
@@ -466,19 +488,13 @@ async function createProjectSystemQrInvoiceWithFallback(params: {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (
-      (!auth.username && !auth.password) ||
-      (!isSystemQrAuthError(message) &&
-        !/createInvoice failed \(002\)/i.test(message))
-    ) {
-      throw error;
+    if (isSystemQrAuthError(message) || /createInvoice failed \(002\)/i.test(message)) {
+      throw new Error(
+        "Сонгосон Minu Dynamic QR дансаар invoice үүсгэж чадсангүй. Буруу данс руу төлбөр орохоос сэргийлж master account-аар retry хийсэнгүй. Admin дээр тухайн дансны merchant code/password-ийг шалгаад дахин хадгална уу.",
+      );
     }
 
-    console.warn(
-      "project SystemQR subMerchant auth failed; retrying with master token",
-      message,
-    );
-    return createSystemQrInvoice(invoiceParams);
+    throw error;
   }
 }
 
@@ -1312,7 +1328,7 @@ const createProjectSystemQrPaymentSession = async (
     });
 
     try {
-      const systemQr = await createProjectSystemQrInvoiceWithFallback({
+      const systemQr = await createProjectSystemQrInvoice({
         account,
         referenceNumber: `PRJ-${invoice.id.slice(0, 8).toUpperCase()}`,
         amount,
@@ -1451,7 +1467,7 @@ const createFranchiseSystemQrPaymentSession = async (
     });
 
     try {
-      const systemQr = await createProjectSystemQrInvoiceWithFallback({
+      const systemQr = await createProjectSystemQrInvoice({
         account,
         referenceNumber: `FRN-${invoice.id.slice(0, 8).toUpperCase()}`,
         amount,

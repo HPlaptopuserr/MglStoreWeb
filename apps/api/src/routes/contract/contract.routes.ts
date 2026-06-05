@@ -57,6 +57,20 @@ const isSystemQrMasterMerchantCode = (merchantCode?: string | null) => {
   return Boolean(code && masterUsername && code === masterUsername);
 };
 
+const existingSubMerchantAccountUnverifiedError = (
+  existing: { merchantName?: string | null; merchantCode?: string | null },
+  requestedAccountNumber?: string | null,
+) => {
+  const merchantName = String(existing.merchantName || "-").trim();
+  const merchantCode = String(existing.merchantCode || "-").trim();
+  const accountNumber = String(requestedAccountNumber || "").trim();
+  const accountPart = accountNumber
+    ? `${accountNumber} данстай эсэхийг`
+    : "аль данстай холбогдсоныг";
+
+  return `Minu дээр "${merchantName}" нэртэй subMerchant аль хэдийн байна (${merchantCode}). Minu API account number буцаадаггүй тул ${accountPart} баталгаажуулах боломжгүй. Буруу данс руу төлбөр орохоос сэргийлж existing merchantCode-г автоматаар ашигласангүй. Minu дээр linked дансыг шалгаад зөв бол merchantCode-г гараар оруулж хадгална уу.`;
+};
+
 type ContractSystemQrAuth = { username?: string; password?: string };
 
 async function getContractPaymentAccounts() {
@@ -472,18 +486,15 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       );
 
       if (existing) {
-        const recoveredAuth = await recoverContractSystemQrAuth(existing.merchantCode).catch((error) => {
-          console.warn("contract minu dynamic qr existing subMerchant password recovery failed", error);
-          return null;
-        });
-        return res.json({
-          success: true,
+        return res.status(409).json({
+          success: false,
           alreadyRegistered: true,
           merchantCode: existing.merchantCode,
           merchantName: existing.merchantName,
-          username: recoveredAuth?.username || existing.merchantCode,
-          password: recoveredAuth?.password || null,
-          message: `Minu дээр "${existing.merchantName}" нэртэй subMerchant бүртгэлтэй байна. Merchant Code-г ашиглалаа.`,
+          error: existingSubMerchantAccountUnverifiedError(
+            existing,
+            body.accountNumber,
+          ),
         });
       }
     }
@@ -560,19 +571,16 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         ).catch(() => null);
 
         if (existing) {
-          const recoveredAuth = await recoverContractSystemQrAuth(existing.merchantCode).catch((error) => {
-            console.warn("contract minu dynamic qr recovered subMerchant password recovery failed", error);
-            return null;
-          });
-          return res.json({
-            success: true,
+          return res.status(409).json({
+            success: false,
             alreadyRegistered: true,
             recoveredFromSystemError: true,
             merchantCode: existing.merchantCode,
             merchantName: existing.merchantName,
-            username: recoveredAuth?.username || existing.merchantCode,
-            password: recoveredAuth?.password || null,
-            message: `Minu 001 буцаасан боловч "${existing.merchantName}" subMerchant үүссэн байна. Merchant Code-г ашиглалаа.`,
+            error: existingSubMerchantAccountUnverifiedError(
+              existing,
+              (req.body || {}).accountNumber,
+            ),
           });
         }
       }
