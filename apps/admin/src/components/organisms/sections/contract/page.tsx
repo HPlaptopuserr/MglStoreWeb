@@ -7,7 +7,11 @@ import {
   Upload, ToggleLeft, ToggleRight, Users, ClipboardList, XCircle, FileText, Building, Phone, Mail, Globe, X, Trash2
 } from "lucide-react";
 import { adminFetch, API } from "@/lib/api";
-import { DEFAULT_CONTRACT_TEXT, DEFAULT_FEE_PLANS } from "./contract-defaults";
+import {
+  ACTIVE_MEMBERSHIP_HEADER,
+  DEFAULT_ACTIVE_MEMBERSHIP_CONTRACT_HTML,
+  DEFAULT_FEE_PLANS,
+} from "./contract-defaults";
 import { OrgInfoEditor, DEFAULT_ORG_CONTACT, type OrgContactInfo } from "./OrgInfoFields";
 import {
   CONTRACT_PAYMENT_ACCOUNTS_KEY,
@@ -313,6 +317,14 @@ export const DEFAULT_MEMBER_FIELDS = [
   { key: "accountNumber", label: "Дансны дугаар:", required: false, enabled: true },
 ];
 
+const getMinuPaymentConfigError = (settings: any) => {
+  if (!settings?.isPaid) return "";
+  if (!settings.systemQr?.enabled) return "Төлбөртэй гэрээ тул Minu төлбөрийн дансаа идэвхжүүлж сонгоно уу.";
+  if (!settings.systemQr?.merchantCode) return "Minu merchantCode сонгогдоогүй байна. Дансны сангаас Minu дансаа сонгоно уу.";
+  if (!settings.systemQr?.selectedAccountId) return "Minu дансны сангаас энэ гэрээнд ашиглах дансаа сонгоно уу.";
+  return "";
+};
+
 // ─── Root component ──────────────────────────────────────────────────────────
 export function Contract() {
   const [activeTab, setActiveTab] = useState<"history" | "editor" | "preview">("history");
@@ -320,14 +332,14 @@ export function Contract() {
     presidentName: "",
     presidentTitle: "",
     orgName: "",
-    headerTitle: "",
-    headerSubtitle: "",
-    headerContractTitle: "",
-    content: DEFAULT_CONTRACT_TEXT,
-    contentIsHtml: false,
-    isPaid: false,
+    headerTitle: ACTIVE_MEMBERSHIP_HEADER.title,
+    headerSubtitle: ACTIVE_MEMBERSHIP_HEADER.subtitle,
+    headerContractTitle: ACTIVE_MEMBERSHIP_HEADER.contractTitle,
+    content: DEFAULT_ACTIVE_MEMBERSHIP_CONTRACT_HTML,
+    contentIsHtml: true,
+    isPaid: true,
     hasDuration: true,
-    defaultFeePlan: "",
+    defaultFeePlan: DEFAULT_FEE_PLANS[0]?.key || "",
     feePlans: DEFAULT_FEE_PLANS as { key: string; label: string; sublabel: string; price: number }[],
     memberFields: DEFAULT_MEMBER_FIELDS,
     orgContact: { ...DEFAULT_ORG_CONTACT } as OrgContactInfo,
@@ -868,6 +880,12 @@ function NewContractButton({ settings, setContracts, setStats }: {
   const handleCreate = async () => {
     if (!adminSignature) {
       alert("Гарын үсэг оруулна уу");
+      return;
+    }
+
+    const paymentConfigError = getMinuPaymentConfigError(settings);
+    if (paymentConfigError) {
+      alert(paymentConfigError);
       return;
     }
 
@@ -1554,9 +1572,30 @@ function ContractEditorTab({
     finally { setImportLoading(false); if (fileRef.current) fileRef.current.value = ""; }
   };
 
+  const applyActiveMembershipContract = () => {
+    setSettings((prev: any) => ({
+      ...prev,
+      headerTitle: ACTIVE_MEMBERSHIP_HEADER.title,
+      headerSubtitle: ACTIVE_MEMBERSHIP_HEADER.subtitle,
+      headerContractTitle: ACTIVE_MEMBERSHIP_HEADER.contractTitle,
+      content: DEFAULT_ACTIVE_MEMBERSHIP_CONTRACT_HTML,
+      contentIsHtml: true,
+      isPaid: true,
+      hasDuration: true,
+      defaultFeePlan: DEFAULT_FEE_PLANS[0]?.key || "",
+      feePlans: DEFAULT_FEE_PLANS,
+    }));
+  };
+
   const handleSave = async () => {
     if (!adminSignature) {
       alert("Гэрээ байгуулагчийн гарын үсэг оруулна уу");
+      return;
+    }
+
+    const paymentConfigError = getMinuPaymentConfigError(settings);
+    if (paymentConfigError) {
+      alert(paymentConfigError);
       return;
     }
 
@@ -2012,9 +2051,17 @@ function ContractEditorTab({
       {/* Content Tab */}
       {editorTab === "content" && (
         <div className="p-6 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <p className="text-sm text-neutral-500">Доорх текст шинэ гэрээнүүдэд тусгагдана.</p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={applyActiveMembershipContract}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 shadow-sm shadow-blue-100"
+              >
+                <FileText className="w-4 h-4" />
+                Идэвхтэй гэрээг оруулах
+              </button>
               <input ref={fileRef} type="file" accept=".txt,.docx" className="hidden" onChange={handleImport} />
               <button type="button" onClick={() => fileRef.current?.click()} disabled={importLoading}
                 className="flex items-center gap-2 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50">

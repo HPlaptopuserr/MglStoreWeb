@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { CheckCircle2, PenTool, Eraser, Loader2, QrCode, Smartphone, Download } from "lucide-react";
+import { CheckCircle2, PenTool, Eraser, Loader2, Download } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
 import { ContractPayment } from "../../../../../components/organisms/ContractPayment";
-import { OrgInfoTable } from "../../../../../components/organisms/OrgInfoTable";
+import { DEFAULT_ORG_CONTACT, OrgInfoTable } from "../../../../../components/organisms/OrgInfoTable";
 import type { OrgContactInfo } from "../../../../../components/organisms/OrgInfoTable";
 import { LoginModal } from "../../../../../components/organisms/auth/LoginModal";
 import { useAuth } from "@/lib/auth-context";
@@ -15,6 +15,281 @@ const API = `${API_BASE}/api`;
 // Fallback text only used when contract has no saved content
 const DEFAULT_CONTRACT_TEXT = `ХОЁР. ГЭРЭЕНИЙ ЗОРИЛГО
 2.1. Энэхүү гэрээний зорилго нь Гишүүн байгууллагыг Холбооны бүрэлдэхүүнд элсүүлэх, гишүүнчлэлийн эрх, үүрэг, хариуцлагыг тодорхойлж, талуудын харилцааг зохицуулахад оршино.`;
+
+type ContractInfo = {
+  isPaid: boolean;
+  feePlan: string | null;
+  adminSignature?: string;
+  adminName?: string;
+  adminTitle?: string;
+  adminStamp?: string;
+  isTemplate?: boolean;
+  memberSignature?: string;
+  contractContent?: string;
+  contentIsHtml?: boolean;
+  orgContact?: OrgContactInfo | null;
+  headerData?: {
+    title?: string;
+    subtitle?: string;
+    contractTitle?: string;
+    hasDuration?: boolean;
+    feePlans?: { key: string; label: string; sublabel: string; price: number }[];
+    defaultFeePlan?: string;
+    memberFields?: { key: string; label: string; required: boolean; enabled: boolean }[];
+    content?: string;
+    contentIsHtml?: boolean;
+    orgContact?: OrgContactInfo | null;
+    systemQr?: { enabled: boolean; username?: string; password?: string; merchantCode?: string } | null;
+  } | null;
+};
+
+const stripDuplicatedPrintSections = (html: string) => {
+  let nextHtml = html;
+
+  const bodyStart = nextHtml.search(/<h2[^>]*>\s*ХОЁР\.|<p><strong>\s*ХОЁР\./i);
+  if (bodyStart > 0) {
+    nextHtml = nextHtml.slice(bodyStart);
+  }
+
+  const signatureStart = nextHtml.search(/Энэхүү гэрээг уншиж танилцан|<table><tbody>\s*<tr><td><strong>ХОЛБОО/i);
+  if (signatureStart > 0) {
+    nextHtml = nextHtml.slice(0, signatureStart);
+  }
+
+  return nextHtml.trim();
+};
+
+const getFeePlanLabel = (
+  plans: { key: string; label: string; sublabel?: string; price?: number }[],
+  selectedFeePlan: string,
+) => {
+  const plan = plans.find((item) => item.key === selectedFeePlan);
+  if (!plan) return "—";
+  const price = plan.price ? ` · ${Number(plan.price).toLocaleString()}₮` : "";
+  const sublabel = plan.sublabel ? ` · ${plan.sublabel}` : "";
+  return `${plan.label}${sublabel}${price}`;
+};
+
+function PrintContractDocument({
+  contractId,
+  contractInfo,
+  memberData,
+  memberPosition,
+  selectedFeePlan,
+  feePlans,
+  memberFields,
+  today,
+}: {
+  contractId: string;
+  contractInfo: ContractInfo;
+  memberData: Record<string, string>;
+  memberPosition: string;
+  selectedFeePlan: string;
+  feePlans: { key: string; label: string; sublabel: string; price: number }[];
+  memberFields: { key: string; label: string; required: boolean; enabled: boolean }[];
+  today: string;
+}) {
+  const cleanedHtml = contractInfo.contentIsHtml && contractInfo.contractContent
+    ? stripDuplicatedPrintSections(contractInfo.contractContent)
+    : "";
+  const orgContact = contractInfo.orgContact || DEFAULT_ORG_CONTACT;
+  const orgRows = [
+    ["Байгууллагын нэр", orgContact.orgName],
+    ...(orgContact.orgRegister ? [["Байгууллагын регистр", orgContact.orgRegister]] : []),
+    ["Хаяг", orgContact.orgAddress],
+    ["Утас", orgContact.orgPhone],
+    ["И-мэйл", orgContact.orgEmail],
+    ["Вэбсайт", orgContact.orgWebsite],
+  ];
+
+  return (
+    <main className="min-h-screen bg-slate-100 py-8 print:bg-white print:py-0">
+      <article className="contract-print-page mx-auto w-[210mm] min-h-[297mm] bg-white px-[18mm] py-[16mm] text-[12px] leading-[1.65] text-slate-950 shadow-2xl print:w-auto print:min-h-0 print:px-0 print:py-0 print:shadow-none">
+        <header className="border-b-[3px] border-slate-950 pb-5 text-center">
+          <div className="whitespace-pre-line text-[16px] font-black uppercase tracking-[0.04em] text-slate-950">
+            {contractInfo.headerData?.title ?? "МОНГОЛ ЭЗЭНТЭЙ ЖИЖИГ ДУНД БИЗНЕС\nЭРХЛЭГЧДИЙН НЭГДСЭН ХОЛБОО"}
+          </div>
+          <div className="mt-1 text-[11px] font-semibold italic tracking-[0.08em] text-slate-500">
+            {contractInfo.headerData?.subtitle ?? "Mongolian SME United Association"}
+          </div>
+          <h1 className="mt-5 text-[20px] font-black uppercase tracking-[0.05em] text-slate-950">
+            {contractInfo.headerData?.contractTitle ?? "ГИШҮҮНЧЛЭЛИЙН ГЭРЭЭ"}
+          </h1>
+        </header>
+
+        <section className="mt-5 grid grid-cols-2 gap-3 text-[11px]">
+          {[
+            ["Гэрээний дугаар", `MGL-${contractId.slice(0, 8).toUpperCase()}`],
+            ["Огноо", today],
+            ["Байршил", "Улаанбаатар хот"],
+            ["Гэрээний хугацаа", getFeePlanLabel(feePlans, selectedFeePlan)],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2">
+              <div className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</div>
+              <div className="mt-0.5 font-bold text-slate-950">{value}</div>
+            </div>
+          ))}
+        </section>
+
+        <section className="mt-6">
+          <h2 className="mb-2 border-b border-slate-300 pb-1 text-[13px] font-black uppercase tracking-[0.08em] text-slate-950">
+            НЭГ. ТАЛУУДЫН МЭДЭЭЛЭЛ
+          </h2>
+          <p className="mb-4 text-justify">
+            Энэхүү гэрээг нэг талаас Монгол эзэнтэй жижиг дунд бизнес эрхлэгчдийн нэгдсэн холбоо
+            (цаашид "Холбоо" гэх) болон нөгөө талаас доор дурдсан байгууллага
+            (цаашид "Гишүүн" гэх) хооронд байгуулав.
+          </p>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="mb-2 text-[11px] font-black uppercase text-slate-700">1.1 Холбооны мэдээлэл</div>
+              <table className="w-full border-collapse text-[10.5px]">
+                <tbody>
+                  {orgRows.map(([label, value]) => (
+                    <tr key={label}>
+                      <td className="w-[42%] border border-slate-300 bg-slate-50 px-2 py-1.5 font-bold text-slate-700">
+                        {label}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-950">
+                        {value || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <div className="mb-2 text-[11px] font-black uppercase text-slate-700">1.2 Гишүүн байгууллагын мэдээлэл</div>
+              <table className="w-full border-collapse text-[10.5px]">
+                <tbody>
+                  {memberFields.filter((field) => field.enabled).map((field) => (
+                    <tr key={field.key}>
+                      <td className="w-[42%] border border-slate-300 bg-slate-50 px-2 py-1.5 font-bold text-slate-700">
+                        {field.label}
+                      </td>
+                      <td className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-950">
+                        {memberData[field.key] || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td className="border border-slate-300 bg-slate-50 px-2 py-1.5 font-bold text-slate-700">Албан тушаал</td>
+                    <td className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-950">{memberPosition || "—"}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <ContractPrintContent
+          contractInfo={contractInfo}
+          cleanedHtml={cleanedHtml}
+        />
+
+        <section className="mt-8 page-break-inside-avoid">
+          <p className="mb-3 text-center font-bold">
+            Энэхүү гэрээг уншиж танилцан, бүх нөхцөлийг бүрэн ойлгосны үндсэн дээр эрх бүхий этгээдүүд гарын үсэг зурж, тамгаар баталгаажуулав.
+          </p>
+          <div className="grid grid-cols-2 gap-5">
+            <SignaturePanel
+              title="ХОЛБОО"
+              subtitle="Монгол эзэнтэй ЖДБ эрхлэгчдийн нэгдсэн холбоо"
+              signature={contractInfo.adminSignature}
+              stamp={contractInfo.adminStamp}
+              name={contractInfo.adminName || ""}
+              position={contractInfo.adminTitle || ""}
+              today={today}
+            />
+            <SignaturePanel
+              title="ГИШҮҮН"
+              subtitle={memberData.name || "Байгууллагын нэр"}
+              signature={contractInfo.memberSignature}
+              name={memberData.director || ""}
+              position={memberPosition}
+              today={today}
+            />
+          </div>
+          <p className="mt-5 text-center text-[11px] italic text-slate-500">
+            Энэхүү гэрээг 2 хувь үйлдэж, тус бүр нэг хувийг тал бүр хадгална.
+          </p>
+        </section>
+      </article>
+    </main>
+  );
+}
+
+function ContractPrintContent({
+  contractInfo,
+  cleanedHtml,
+}: {
+  contractInfo: ContractInfo;
+  cleanedHtml: string;
+}) {
+  if (contractInfo.contentIsHtml && cleanedHtml) {
+    return (
+      <section
+        className="contract-print-content mt-6 text-justify
+          [&_h2]:mt-5 [&_h2]:border-b [&_h2]:border-slate-300 [&_h2]:pb-1 [&_h2]:text-[13px] [&_h2]:font-black [&_h2]:uppercase [&_h2]:tracking-[0.06em]
+          [&_h3]:mt-4 [&_h3]:text-[12px] [&_h3]:font-black
+          [&_p]:my-2 [&_table]:my-3 [&_table]:w-full [&_table]:border-collapse
+          [&_td]:border [&_td]:border-slate-300 [&_td]:px-2 [&_td]:py-1.5
+          [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-black
+          [&_ol]:my-2 [&_ol]:pl-5 [&_ul]:my-2 [&_ul]:pl-5 [&_li]:my-1"
+        dangerouslySetInnerHTML={{ __html: cleanedHtml }}
+      />
+    );
+  }
+
+  return (
+    <section className="mt-6 whitespace-pre-wrap text-justify">
+      {contractInfo.contractContent || DEFAULT_CONTRACT_TEXT}
+    </section>
+  );
+}
+
+function SignaturePanel({
+  title,
+  subtitle,
+  signature,
+  stamp,
+  name,
+  position,
+  today,
+}: {
+  title: string;
+  subtitle: string;
+  signature?: string;
+  stamp?: string;
+  name: string;
+  position: string;
+  today: string;
+}) {
+  return (
+    <div className="relative rounded-xl border border-slate-300 p-4 text-center">
+      {stamp && (
+        <img
+          src={stamp}
+          alt="Тамга"
+          className="absolute left-1/2 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rotate-[-5deg] object-contain opacity-70 mix-blend-multiply"
+        />
+      )}
+      <div className="text-[13px] font-black text-slate-950">{title}</div>
+      <div className="mt-1 min-h-[32px] text-[11px] font-semibold text-slate-600">{subtitle}</div>
+      <div className="relative mt-5 flex h-20 items-end justify-center border-b-2 border-slate-900">
+        {signature && <img src={signature} alt="Гарын үсэг" className="max-h-20 max-w-full object-contain mix-blend-multiply" />}
+      </div>
+      <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">Гарын үсэг</div>
+      <div className="mt-4 border-b-2 border-slate-900 pb-1 font-bold">{name || " "}</div>
+      <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">Овог нэр</div>
+      <div className="mt-4 border-b-2 border-slate-900 pb-1 font-bold">{position || " "}</div>
+      <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">Албан тушаал</div>
+      <div className="mt-4 border-b-2 border-slate-900 pb-1 font-bold">{today || " "}</div>
+      <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">Огноо</div>
+    </div>
+  );
+}
 
 export default function ContractSignPage() {
   const { user, loading: authLoading, login, register, authFetch } = useAuth();
@@ -29,23 +304,7 @@ export default function ContractSignPage() {
 
   const [step, setStep] = useState<"fill" | "qpay" | "success">("fill");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [contractInfo, setContractInfo] = useState<{
-    isPaid: boolean; feePlan: string | null;
-    adminSignature?: string; adminName?: string; adminTitle?: string; adminStamp?: string;
-    isTemplate?: boolean; memberSignature?: string;
-    contractContent?: string; contentIsHtml?: boolean;
-    orgContact?: OrgContactInfo | null;
-    headerData?: {
-      title?: string; subtitle?: string; contractTitle?: string;
-      hasDuration?: boolean;
-      feePlans?: { key: string; label: string; sublabel: string; price: number }[];
-      defaultFeePlan?: string;
-      memberFields?: { key: string; label: string; required: boolean; enabled: boolean }[];
-      content?: string; contentIsHtml?: boolean;
-      orgContact?: OrgContactInfo | null;
-      systemQr?: { enabled: boolean; username?: string; password?: string; merchantCode?: string; } | null;
-    } | null;
-  } | null>(null);
+  const [contractInfo, setContractInfo] = useState<ContractInfo | null>(null);
   const [isContractLoading, setIsContractLoading] = useState(true);
   const [contractError, setContractError] = useState<string | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
@@ -83,7 +342,7 @@ export default function ContractSignPage() {
   ];
   const MEMBER_FIELDS = contractInfo?.headerData?.memberFields ?? DEFAULT_MEMBER_FIELDS;
 
-  const [memberData, setMemberData] = useState({
+  const [memberData, setMemberData] = useState<Record<string, string>>({
     name: "", register: "", field: "", address: "", phone: "", email: "", website: "", director: ""
   });
 
@@ -222,6 +481,11 @@ export default function ContractSignPage() {
     }
     setIsSubmitting(true);
     try {
+      if (contractInfo?.isPaid && !contractInfo?.headerData?.systemQr?.enabled) {
+        alert("Энэ гэрээний Minu төлбөрийн данс тохируулагдаагүй байна. Admin дээр гэрээний template дээр Minu дансаа сонгоод шинэ link үүсгэнэ үү.");
+        return;
+      }
+
       const signature = canvasRef.current?.toDataURL("image/png") || "";
       const payload = {
         memberData: { ...memberData, position: memberPosition, stamp: memberStamp },
@@ -246,17 +510,12 @@ export default function ContractSignPage() {
       }
       if (!signData.success) throw new Error(signData.error);
 
-      // For template submissions: use the new submissionId for QPay
+      // For template submissions: use the new submissionId for Minu/SystemQR.
       const activeId = signData.submissionId || contractId;
       setSubmissionId(activeId);
 
       if (contractInfo?.isPaid) {
-        // Create QPay or SystemQR invoice for the active ID
-        const paymentSystemUrl = contractInfo?.headerData?.systemQr?.enabled
-          ? `${API}/contracts/${activeId}/systemqr`
-          : `${API}/contracts/${activeId}/qpay`;
-
-        const res = await fetch(paymentSystemUrl, {
+        const res = await fetch(`${API}/contracts/${activeId}/systemqr`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
@@ -276,16 +535,14 @@ export default function ContractSignPage() {
 
   const [pollCountdown, setPollCountdown] = useState(5);
 
-  // Auto-poll payment status every 5 seconds while on QPay step
+  // Auto-poll Minu/SystemQR payment status every 5 seconds.
   useEffect(() => {
     if (step !== "qpay" || !qpayData) return;
 
     let countdown = 5;
     setPollCountdown(5);
 
-    const checkUrl = contractInfo?.headerData?.systemQr?.enabled
-      ? `${API}/contracts/${submissionId || contractId}/systemqr/check`
-      : `${API}/contracts/${submissionId || contractId}/qpay/check`;
+    const checkUrl = `${API}/contracts/${submissionId || contractId}/systemqr/check`;
 
     const tick = setInterval(() => {
       countdown -= 1;
@@ -308,15 +565,13 @@ export default function ContractSignPage() {
     }, 1000);
 
     return () => clearInterval(tick);
-  }, [step, qpayData, contractId, submissionId, contractInfo?.headerData?.systemQr?.enabled]);
+  }, [step, qpayData, contractId, submissionId]);
 
   const checkPayment = useCallback(async () => {
     if (!qpayData || checkingPayment) return;
     setCheckingPayment(true);
     try {
-      const checkUrl = contractInfo?.headerData?.systemQr?.enabled
-        ? `${API}/contracts/${submissionId || contractId}/systemqr/check`
-        : `${API}/contracts/${submissionId || contractId}/qpay/check`;
+      const checkUrl = `${API}/contracts/${submissionId || contractId}/systemqr/check`;
 
       const res = await fetch(checkUrl);
       const data = await res.json();
@@ -324,7 +579,7 @@ export default function ContractSignPage() {
       else alert("Төлбөр бүртгэгдэх хүртэл түр хүлээнэ үү.");
     } catch { alert("Алдаа гарлаа."); }
     finally { setCheckingPayment(false); }
-  }, [qpayData, checkingPayment, contractId, submissionId, contractInfo?.headerData?.systemQr?.enabled]);
+  }, [qpayData, checkingPayment, contractId, submissionId]);
 
   if (isContractLoading) {
     return (
@@ -391,6 +646,21 @@ export default function ContractSignPage() {
         pollCountdown={pollCountdown}
         checkingPayment={checkingPayment}
         onCheckPayment={checkPayment}
+      />
+    );
+  }
+
+  if (isPrintMode && contractInfo) {
+    return (
+      <PrintContractDocument
+        contractId={contractId}
+        contractInfo={contractInfo}
+        memberData={memberData}
+        memberPosition={memberPosition}
+        selectedFeePlan={selectedFeePlan}
+        feePlans={FEE_PLANS}
+        memberFields={MEMBER_FIELDS}
+        today={today}
       />
     );
   }

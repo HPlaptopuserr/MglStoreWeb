@@ -182,6 +182,11 @@ export default function ContractSignPage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      if (contractInfo?.isPaid && !contractInfo?.headerData?.systemQr?.enabled) {
+        alert("Энэ гэрээний Minu төлбөрийн данс тохируулагдаагүй байна. Admin дээр гэрээний template дээр Minu дансаа сонгоод шинэ link үүсгэнэ үү.");
+        return;
+      }
+
       const signature = canvasRef.current?.toDataURL("image/png") || "";
       const payload = {
         memberData: { ...memberData, position: memberPosition, stamp: memberStamp },
@@ -203,17 +208,12 @@ export default function ContractSignPage() {
       const signData = await signRes.json();
       if (!signData.success) throw new Error(signData.error);
 
-      // For template submissions: use the new submissionId for QPay
+      // For template submissions: use the new submissionId for Minu/SystemQR.
       const activeId = signData.submissionId || contractId;
       setSubmissionId(activeId);
 
       if (contractInfo?.isPaid) {
-        // Create QPay or SystemQR invoice for the active ID
-        const paymentSystemUrl = contractInfo?.headerData?.systemQr?.enabled
-          ? `${API}/contracts/${activeId}/systemqr`
-          : `${API}/contracts/${activeId}/qpay`;
-
-        const res = await fetch(paymentSystemUrl, {
+        const res = await fetch(`${API}/contracts/${activeId}/systemqr`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
@@ -233,16 +233,14 @@ export default function ContractSignPage() {
 
   const [pollCountdown, setPollCountdown] = useState(5);
 
-  // Auto-poll payment status every 5 seconds while on QPay step
+  // Auto-poll Minu/SystemQR payment status every 5 seconds.
   useEffect(() => {
     if (step !== "qpay" || !qpayData) return;
 
     let countdown = 5;
     setPollCountdown(5);
 
-    const checkUrl = contractInfo?.headerData?.systemQr?.enabled
-      ? `${API}/contracts/${submissionId || contractId}/systemqr/check`
-      : `${API}/contracts/${submissionId || contractId}/qpay/check`;
+    const checkUrl = `${API}/contracts/${submissionId || contractId}/systemqr/check`;
 
     const tick = setInterval(() => {
       countdown -= 1;
@@ -265,15 +263,13 @@ export default function ContractSignPage() {
     }, 1000);
 
     return () => clearInterval(tick);
-  }, [step, qpayData, contractId, submissionId, contractInfo?.headerData?.systemQr?.enabled]);
+  }, [step, qpayData, contractId, submissionId]);
 
   const checkPayment = useCallback(async () => {
     if (!qpayData || checkingPayment) return;
     setCheckingPayment(true);
     try {
-      const checkUrl = contractInfo?.headerData?.systemQr?.enabled
-        ? `${API}/contracts/${submissionId || contractId}/systemqr/check`
-        : `${API}/contracts/${submissionId || contractId}/qpay/check`;
+      const checkUrl = `${API}/contracts/${submissionId || contractId}/systemqr/check`;
 
       const res = await fetch(checkUrl);
       const data = await res.json();
@@ -281,7 +277,7 @@ export default function ContractSignPage() {
       else alert("Төлбөр бүртгэгдэх хүртэл түр хүлээнэ үү.");
     } catch { alert("Алдаа гарлаа."); }
     finally { setCheckingPayment(false); }
-  }, [qpayData, checkingPayment, contractId, submissionId, contractInfo?.headerData?.systemQr?.enabled]);
+  }, [qpayData, checkingPayment, contractId, submissionId]);
 
   if (step === "success") {
     const base = process.env.NEXT_PUBLIC_WEB_URL || window.location.origin;
