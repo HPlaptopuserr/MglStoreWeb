@@ -16,6 +16,38 @@ const RIGHT_TABS = [
   { href: "/profile", label: "Профайл", icon: User },
 ] as const;
 
+const SHOPPING_ROUTE_PREFIXES = [
+  "/",
+  "/products",
+  "/store",
+  "/checkout",
+  "/orders",
+  "/profile",
+  "/services",
+  "/our-services",
+];
+
+const NON_SHOPPING_ROUTE_PREFIXES = [
+  "/company",
+  "/projects",
+  "/franchise",
+  "/info",
+  "/organizations",
+  "/association",
+  "/apply",
+  "/forms",
+];
+
+function shouldShowMobileBottomNav(pathname: string) {
+  if (NON_SHOPPING_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return false;
+  }
+
+  return SHOPPING_ROUTE_PREFIXES.some((prefix) =>
+    prefix === "/" ? pathname === "/" : pathname.startsWith(prefix),
+  );
+}
+
 export function MobileBottomNav({
   onCartOpen,
   onAuthOpen,
@@ -26,6 +58,10 @@ export function MobileBottomNav({
   const pathname = usePathname();
   const { user } = useAuth();
   const { count } = useCart();
+
+  if (!shouldShowMobileBottomNav(pathname)) {
+    return null;
+  }
 
   const isActive = (href: string) => {
     const path = href.split("?")[0];
@@ -62,19 +98,17 @@ export function MobileBottomNav({
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-50 md:hidden safe-bottom">
-      {/* Background bar */}
-      <div className="absolute inset-0 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]" />
+      <div className="absolute inset-0 border-t border-slate-200/80 bg-white/95 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl" />
 
       <div className="relative flex items-center h-[60px]">
-        {/* Left tabs */}
         {LEFT_TABS.map(renderTab)}
 
-        {/* Center cart button — elevated */}
         <div className="flex flex-col items-center justify-center flex-1">
           <button
             type="button"
             onClick={onCartOpen}
-            className="relative -mt-5 flex h-[52px] w-[52px] items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-500/30 active:scale-95 transition-transform"
+            aria-label="Сагс нээх"
+            className="relative -mt-5 flex h-[54px] w-[54px] items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-orange-600 text-white shadow-xl shadow-amber-500/30 ring-4 ring-white transition-transform active:scale-95"
           >
             <ShoppingCart size={22} strokeWidth={2} />
             {count > 0 && (
@@ -86,7 +120,6 @@ export function MobileBottomNav({
           <span className="text-[10px] font-medium text-gray-400 mt-[2px]">Сагс</span>
         </div>
 
-        {/* Right tabs */}
         {RIGHT_TABS.map(renderTab)}
       </div>
     </nav>

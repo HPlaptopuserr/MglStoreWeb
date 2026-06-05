@@ -16,6 +16,78 @@ const avatarUpload = multer({
 });
 
 const router: ExpressRouter = Router();
+const TEAM_DEPARTMENTS_KEY = "teamDepartments";
+const DEFAULT_TEAM_DEPARTMENTS = [
+  "Үүсгэн байгуулагчид",
+  "Хөрөнгө оруулагчид",
+  "Зөвлөхүүд",
+  "Захиргаа удирдлагын хэлтэс",
+  "Бүтээгдэхүүн хөгжүүлэлтийн хэлтэс",
+  "Технологийн хэлтэс",
+  "Маркетинг борлуулалтын хэлтэс",
+  "Үйл ажиллагааны хэлтэс",
+  "Санхүүгийн хэлтэс",
+];
+
+function uniqueDepartments(values: unknown[]) {
+  const seen = new Set<string>();
+  return values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => {
+      if (!value || seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+}
+
+async function getStoredDepartments() {
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: TEAM_DEPARTMENTS_KEY },
+  });
+
+  if (!setting?.value) return DEFAULT_TEAM_DEPARTMENTS;
+
+  try {
+    const parsed = JSON.parse(setting.value);
+    if (!Array.isArray(parsed)) return DEFAULT_TEAM_DEPARTMENTS;
+    return uniqueDepartments(parsed);
+  } catch {
+    return DEFAULT_TEAM_DEPARTMENTS;
+  }
+}
+
+async function saveDepartments(departments: string[]) {
+  const clean = uniqueDepartments(departments);
+  await prisma.siteSetting.upsert({
+    where: { key: TEAM_DEPARTMENTS_KEY },
+    update: { value: JSON.stringify(clean) },
+    create: { key: TEAM_DEPARTMENTS_KEY, value: JSON.stringify(clean) },
+  });
+  return clean;
+}
+
+async function getDepartmentRows() {
+  const [storedDepartments, members] = await Promise.all([
+    getStoredDepartments(),
+    (prisma as any).teamMember.findMany({
+      select: { department: true },
+    }),
+  ]);
+  const counts = new Map<string, number>();
+  const memberDepartments = uniqueDepartments(
+    members.map((member: { department?: string | null }) => member.department),
+  );
+
+  for (const member of members as { department?: string | null }[]) {
+    const department = member.department?.trim();
+    if (department) counts.set(department, (counts.get(department) ?? 0) + 1);
+  }
+
+  return uniqueDepartments([...storedDepartments, ...memberDepartments]).map((name) => ({
+    name,
+    count: counts.get(name) ?? 0,
+  }));
+}
 
 // Public: list active team members
 router.get("/team", async (_req, res) => {
@@ -39,6 +111,67 @@ router.get("/admin/team", requireAuth, requirePlatformPermission(Permission.MANA
     res.json(members);
   } catch {
     res.status(500).json({ message: "Серверийн алдаа" });
+  }
+});
+
+router.get("/admin/team/departments", requireAuth, requirePlatformPermission(Permission.MANAGE_SITE_SETTINGS), async (_req, res) => {
+  try {
+    res.json(await getDepartmentRows());
+  } catch {
+    res.status(500).json({ message: "Хэлтсийн мэдээлэл авахад алдаа гарлаа" });
+  }
+});
+
+router.post("/admin/team/departments", requireAuth, requirePlatformPermission(Permission.MANAGE_SITE_SETTINGS), async (req, res) => {
+  try {
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    if (!name) return res.status(400).json({ message: "Хэлтсийн нэр шаардлагатай" });
+
+    const departments = await getStoredDepartments();
+    if (!departments.includes(name)) {
+      await saveDepartments([...departments, name]);
+    }
+
+    res.status(201).json(await getDepartmentRows());
+  } catch {
+    res.status(500).json({ message: "Хэлтэс нэмэхэд алдаа гарлаа" });
+  }
+});
+
+router.patch("/admin/team/departments", requireAuth, requirePlatformPermission(Permission.MANAGE_SITE_SETTINGS), async (req, res) => {
+  try {
+    const from = typeof req.body?.from === "string" ? req.body.from.trim() : "";
+    const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
+    if (!from || !to) return res.status(400).json({ message: "Хуучин болон шинэ нэр шаардлагатай" });
+
+    const departments = await getStoredDepartments();
+    await saveDepartments(departments.map((department) => (department === from ? to : department)));
+    await (prisma as any).teamMember.updateMany({
+      where: { department: from },
+      data: { department: to },
+    });
+
+    res.json(await getDepartmentRows());
+  } catch {
+    res.status(500).json({ message: "Хэлтсийн нэр солиход алдаа гарлаа" });
+  }
+});
+
+router.delete("/admin/team/departments", requireAuth, requirePlatformPermission(Permission.MANAGE_SITE_SETTINGS), async (req, res) => {
+  try {
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    if (!name) return res.status(400).json({ message: "Хэлтсийн нэр шаардлагатай" });
+
+    const departments = await getStoredDepartments();
+    await saveDepartments(departments.filter((department) => department !== name));
+    await (prisma as any).teamMember.updateMany({
+      where: { department: name },
+      data: { department: null },
+    });
+
+    res.json(await getDepartmentRows());
+  } catch {
+    res.status(500).json({ message: "Хэлтэс устгахад алдаа гарлаа" });
   }
 });
 

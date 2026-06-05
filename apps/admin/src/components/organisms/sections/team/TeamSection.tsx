@@ -23,7 +23,59 @@ interface TeamMember {
   isActive: boolean;
 }
 
-const EMPTY_FORM: Omit<TeamMember, "id" | "isActive"> = {
+interface TeamDepartment {
+  name: string;
+  count: number;
+}
+
+type TeamMemberForm = Omit<TeamMember, "id" | "isActive">;
+
+const DEFAULT_DEPARTMENT_OPTIONS = [
+  "Үүсгэн байгуулагчид",
+  "Хөрөнгө оруулагчид",
+  "Зөвлөхүүд",
+  "Захиргаа удирдлагын хэлтэс",
+  "Бүтээгдэхүүн хөгжүүлэлтийн хэлтэс",
+  "Технологийн хэлтэс",
+  "Маркетинг борлуулалтын хэлтэс",
+  "Үйл ажиллагааны хэлтэс",
+  "Санхүүгийн хэлтэс",
+];
+const TEAM_DEPARTMENTS_SETTING_KEY = "teamDepartments";
+
+const ROLE_OPTIONS = [
+  "Үүсгэн байгуулагч, CEO",
+  "Хөрөнгө оруулагч",
+  "Стратегийн зөвлөх",
+  "HR",
+  "Бүтээгдэхүүн хөгжүүлэлтийн менежер",
+  "UI/UX дизайнер",
+  "Frontend хөгжүүлэгч",
+  "Backend хөгжүүлэгч",
+  "Маркетингийн менежер",
+  "Борлуулалтын зөвлөх",
+  "Логистик зохицуулагч",
+  "Санхүүгийн мэргэжилтэн",
+];
+
+const QUICK_SKILLS = [
+  "Founder",
+  "Strategy",
+  "Leadership",
+  "Investor",
+  "Finance",
+  "Advisor",
+  "HR",
+  "Product",
+  "UI design",
+  "Next.js",
+  "React",
+  "Prisma",
+  "Marketing",
+  "Operations",
+];
+
+const EMPTY_FORM: TeamMemberForm = {
   name: "",
   role: "",
   department: "",
@@ -36,8 +88,64 @@ const EMPTY_FORM: Omit<TeamMember, "id" | "isActive"> = {
   order: 0,
 };
 
+function getTeamSectionHint(form: TeamMemberForm) {
+  const value = `${form.role} ${form.department ?? ""} ${form.skills.join(" ")}`.toLowerCase();
+
+  if (value.includes("үүсгэн") || value.includes("founder")) {
+    return "Үүсгэн байгуулагчид tab-д автоматаар гарна.";
+  }
+
+  if (value.includes("хөрөнгө") || value.includes("investor")) {
+    return "Хөрөнгө оруулагчид хэсэгт автоматаар гарна.";
+  }
+
+  if (value.includes("зөвлөх") || value.includes("advisor")) {
+    return "Зөвлөхүүд хэсэгт автоматаар гарна.";
+  }
+
+  return "Ажилчид tab-ийн байгууллагын бүтэц дотор хэлтсээрээ харагдана.";
+}
+
+function uniqueDepartmentNames(values: unknown[]) {
+  const seen = new Set<string>();
+  return values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => {
+      if (!value || seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+}
+
+function parseStoredDepartments(value?: string) {
+  if (!value) return DEFAULT_DEPARTMENT_OPTIONS;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? uniqueDepartmentNames(parsed) : DEFAULT_DEPARTMENT_OPTIONS;
+  } catch {
+    return DEFAULT_DEPARTMENT_OPTIONS;
+  }
+}
+
+function buildDepartments(storedDepartments: string[], members: TeamMember[]) {
+  const counts = new Map<string, number>();
+  for (const member of members) {
+    const department = member.department?.trim();
+    if (department) counts.set(department, (counts.get(department) ?? 0) + 1);
+  }
+
+  return uniqueDepartmentNames([
+    ...storedDepartments,
+    ...members.map((member) => member.department),
+  ]).map((name) => ({
+    name,
+    count: counts.get(name) ?? 0,
+  }));
+}
+
 export function TeamSection() {
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [departments, setDepartments] = useState<TeamDepartment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -49,13 +157,37 @@ export function TeamSection() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [departmentInput, setDepartmentInput] = useState("");
+  const [editingDepartment, setEditingDepartment] = useState<string | null>(null);
+  const [departmentDraft, setDepartmentDraft] = useState("");
+  const [departmentSaving, setDepartmentSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const saveDepartmentSettings = async (departmentNames: string[]) => {
+    const clean = uniqueDepartmentNames(departmentNames);
+    const res = await adminFetch(`${API}/site-settings/${TEAM_DEPARTMENTS_SETTING_KEY}`, {
+      method: "PUT",
+      body: JSON.stringify({ value: JSON.stringify(clean) }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.message || "Хэлтсийн жагсаалт хадгалахад алдаа гарлаа");
+    }
+    return clean;
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await adminFetch(`${API}/admin/team`);
-      if (res.ok) setMembers(await res.json());
+      const [membersRes, settingsRes] = await Promise.all([
+        adminFetch(`${API}/admin/team`),
+        adminFetch(`${API}/site-settings/admin`),
+      ]);
+      const nextMembers = membersRes.ok ? await membersRes.json() : [];
+      const settings = settingsRes.ok ? await settingsRes.json() : {};
+      const storedDepartments = parseStoredDepartments(settings[TEAM_DEPARTMENTS_SETTING_KEY]);
+      setMembers(nextMembers);
+      setDepartments(buildDepartments(storedDepartments, nextMembers));
     } finally {
       setLoading(false);
     }
@@ -125,6 +257,110 @@ export function TeamSection() {
 
   const removeSkill = (skill: string) => {
     setForm((p) => ({ ...p, skills: p.skills.filter((s) => s !== skill) }));
+  };
+
+  const applySuggestion = (field: "role" | "department", value: string) => {
+    setForm((p) => ({ ...p, [field]: value }));
+  };
+
+  const addQuickSkill = (skill: string) => {
+    setForm((p) => (p.skills.includes(skill) ? p : { ...p, skills: [...p.skills, skill] }));
+  };
+
+  const createDepartment = async () => {
+    const name = departmentInput.trim();
+    if (!name) return;
+    setDepartmentSaving(true);
+    setError("");
+    try {
+      const stored = await saveDepartmentSettings([...departments.map((department) => department.name), name]);
+      setDepartments(buildDepartments(stored, members));
+      setDepartmentInput("");
+      showSuccess("Хэлтэс нэмэгдлээ");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Хэлтэс нэмэхэд алдаа гарлаа");
+    } finally {
+      setDepartmentSaving(false);
+    }
+  };
+
+  const startRenameDepartment = (department: string) => {
+    setEditingDepartment(department);
+    setDepartmentDraft(department);
+  };
+
+  const renameDepartment = async () => {
+    const from = editingDepartment;
+    const to = departmentDraft.trim();
+    if (!from || !to || from === to) {
+      setEditingDepartment(null);
+      return;
+    }
+    setDepartmentSaving(true);
+    setError("");
+    try {
+      const stored = await saveDepartmentSettings(
+        departments.map((department) => (department.name === from ? to : department.name)),
+      );
+      const affectedMembers = members.filter((member) => member.department === from);
+      await Promise.all(
+        affectedMembers.map((member) =>
+          adminFetch(`${API}/admin/team/${member.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ department: to }),
+          }),
+        ),
+      );
+      const nextMembers = members.map((member) =>
+        member.department === from ? { ...member, department: to } : member,
+      );
+      setMembers(nextMembers);
+      setDepartments(buildDepartments(stored, nextMembers));
+      if (form.department === from) setForm((p) => ({ ...p, department: to }));
+      setEditingDepartment(null);
+      showSuccess("Хэлтсийн нэр солигдлоо");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Хэлтсийн нэр солиход алдаа гарлаа");
+    } finally {
+      setDepartmentSaving(false);
+    }
+  };
+
+  const deleteDepartment = async (department: TeamDepartment) => {
+    const warning = department.count > 0
+      ? `"${department.name}" хэлтсийг устгавал ${department.count} ажилчны хэлтэс хоосорно. Үргэлжлүүлэх үү?`
+      : `"${department.name}" хэлтсийг устгах уу?`;
+    if (!confirm(warning)) return;
+
+    setDepartmentSaving(true);
+    setError("");
+    try {
+      const stored = await saveDepartmentSettings(
+        departments
+          .map((item) => item.name)
+          .filter((name) => name !== department.name),
+      );
+      const affectedMembers = members.filter((member) => member.department === department.name);
+      await Promise.all(
+        affectedMembers.map((member) =>
+          adminFetch(`${API}/admin/team/${member.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ department: null }),
+          }),
+        ),
+      );
+      const nextMembers = members.map((member) =>
+        member.department === department.name ? { ...member, department: null } : member,
+      );
+      setMembers(nextMembers);
+      setDepartments(buildDepartments(stored, nextMembers));
+      if (form.department === department.name) setForm((p) => ({ ...p, department: "" }));
+      showSuccess("Хэлтэс устгагдлаа");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Хэлтэс устгахад алдаа гарлаа");
+    } finally {
+      setDepartmentSaving(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -205,6 +441,34 @@ export function TeamSection() {
           <CheckCircle2 size={15} /> {success}
         </div>
       )}
+
+      {error && !modal && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError("")}
+            className="rounded-lg p-1 text-red-400 hover:bg-red-100 hover:text-red-700"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      <DepartmentManager
+        departments={departments}
+        input={departmentInput}
+        draft={departmentDraft}
+        editing={editingDepartment}
+        saving={departmentSaving}
+        onInputChange={setDepartmentInput}
+        onDraftChange={setDepartmentDraft}
+        onCreate={createDepartment}
+        onStartRename={startRenameDepartment}
+        onCancelRename={() => setEditingDepartment(null)}
+        onRename={renameDepartment}
+        onDelete={deleteDepartment}
+      />
 
       {loading ? (
         <div className="flex items-center gap-2 py-10 text-sm text-slate-400">
@@ -320,9 +584,14 @@ export function TeamSection() {
                 </div>
               )}
 
+              <div className="mb-4 rounded-2xl border border-violet-100 bg-violet-50/80 px-4 py-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-violet-700">Frontend ангилал</p>
+                <p className="mt-1 text-xs font-medium text-violet-600">{getTeamSectionHint(form)}</p>
+              </div>
+
               <div className="flex flex-col gap-4">
                 {/* Name + Role */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 md:grid-cols-2">
                   <Field icon={<User size={14} />} label="Нэр *">
                     <input
                       value={form.name}
@@ -335,20 +604,30 @@ export function TeamSection() {
                     <input
                       value={form.role}
                       onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
-                      placeholder="Frontend Developer"
+                      placeholder="Албан тушаал сонгох эсвэл бичих"
                       className={inputCls}
+                    />
+                    <SuggestionPills
+                      options={ROLE_OPTIONS}
+                      value={form.role}
+                      onSelect={(role) => applySuggestion("role", role)}
                     />
                   </Field>
                 </div>
 
                 {/* Department + Experience */}
-                <div className="grid grid-cols-2 gap-3">
-                  <Field icon={<Building2 size={14} />} label="Хэлтэс">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field icon={<Building2 size={14} />} label="Хэлтэс / бүлэг">
                     <input
                       value={form.department ?? ""}
                       onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
-                      placeholder="Технологийн баг"
+                      placeholder="Хэлтэс сонгох эсвэл бичих"
                       className={inputCls}
+                    />
+                    <SuggestionPills
+                      options={(departments.length > 0 ? departments.map((department) => department.name) : DEFAULT_DEPARTMENT_OPTIONS)}
+                      value={form.department ?? ""}
+                      onSelect={(department) => applySuggestion("department", department)}
                     />
                   </Field>
                   <Field icon={<Award size={14} />} label="Туршлага">
@@ -416,7 +695,7 @@ export function TeamSection() {
                 </div>
 
                 {/* Email + LinkedIn */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 md:grid-cols-2">
                   <Field icon={<Mail size={14} />} label="Email">
                     <input
                       value={form.email ?? ""}
@@ -467,6 +746,18 @@ export function TeamSection() {
                       Нэм
                     </button>
                   </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {QUICK_SKILLS.filter((s) => !form.skills.includes(s)).map((skill) => (
+                      <button
+                        key={skill}
+                        type="button"
+                        onClick={() => addQuickSkill(skill)}
+                        className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                      >
+                        + {skill}
+                      </button>
+                    ))}
+                  </div>
                   {form.skills.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {form.skills.map((s) => (
@@ -489,6 +780,9 @@ export function TeamSection() {
                     onChange={(e) => setForm((p) => ({ ...p, order: Number(e.target.value) }))}
                     className={inputCls}
                   />
+                  <p className="mt-1 text-[10px] font-medium text-slate-400">
+                    0 бол хамгийн түрүүнд гарна. Ижил дараалалтай үед шинээр нэмэгдсэн дарааллаар эрэмбэлнэ.
+                  </p>
                 </Field>
               </div>
             </div>
@@ -523,6 +817,212 @@ function Field({ icon, label, children }: { icon: React.ReactNode; label: string
         {icon} {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+function DepartmentManager({
+  departments,
+  input,
+  draft,
+  editing,
+  saving,
+  onInputChange,
+  onDraftChange,
+  onCreate,
+  onStartRename,
+  onCancelRename,
+  onRename,
+  onDelete,
+}: {
+  departments: TeamDepartment[];
+  input: string;
+  draft: string;
+  editing: string | null;
+  saving: boolean;
+  onInputChange: (value: string) => void;
+  onDraftChange: (value: string) => void;
+  onCreate: () => void;
+  onStartRename: (department: string) => void;
+  onCancelRename: () => void;
+  onRename: () => void;
+  onDelete: (department: TeamDepartment) => void;
+}) {
+  return (
+    <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+      <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-violet-700 shadow-sm">
+            <Building2 size={17} />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-slate-900">Алба хэлтэс нэмэх</h3>
+            <p className="text-xs font-medium text-slate-500">
+              Шинэ хэлтэс үүсгээд ажилчдын form дээр сонгодог болно.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => onInputChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onCreate();
+              }
+            }}
+            placeholder="Шинэ хэлтэс нэмэх..."
+            className={`${inputCls} flex-1`}
+          />
+          <button
+            type="button"
+            onClick={onCreate}
+            disabled={saving || !input.trim()}
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Нэмэх
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-sm font-black text-slate-900">Үүссэн алба хэлтэс засах</h3>
+            <p className="text-xs font-medium text-slate-400">
+              Нэр солих үед тухайн хэлтэстэй ажилчдын мэдээлэл хамт шинэчлэгдэнэ.
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-500">
+            {departments.length} хэлтэс
+          </span>
+        </div>
+
+        {departments.length === 0 ? (
+          <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-400">
+            Одоогоор үүссэн хэлтэс байхгүй байна.
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            {departments.map((department) => {
+              const isEditing = editing === department.name;
+              return (
+                <div
+                  key={department.name}
+                  className={`min-w-0 rounded-xl border px-3 py-3 transition-colors ${
+                    isEditing
+                      ? "border-violet-200 bg-violet-50/70"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                >
+                  {isEditing ? (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-violet-500">
+                        Хэлтсийн нэр засах
+                      </label>
+                      <input
+                        value={draft}
+                        onChange={(e) => onDraftChange(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            onRename();
+                          }
+                          if (e.key === "Escape") onCancelRename();
+                        }}
+                        autoFocus
+                        className={`${inputCls} bg-white`}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={onRename}
+                          disabled={saving || !draft.trim()}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          {saving ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                          Хадгалах
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onCancelRename}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                        >
+                          <X size={14} />
+                          Болих
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-black text-slate-900">{department.name}</p>
+                        <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+                          {department.count} ажилчин холбоотой
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onStartRename(department.name)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                        >
+                          <Pencil size={12} />
+                          Засах
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(department)}
+                          disabled={saving}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-500 transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                        >
+                          <Trash2 size={12} />
+                          Устгах
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SuggestionPills({
+  options,
+  value,
+  onSelect,
+}: {
+  options: string[];
+  value: string;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <div className="mt-2 flex max-h-20 flex-wrap gap-1.5 overflow-y-auto pr-1">
+      {options.map((option) => {
+        const active = option === value;
+        return (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onSelect(option)}
+            className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+              active
+                ? "border-violet-200 bg-violet-600 text-white shadow-sm shadow-violet-100"
+                : "border-slate-200 bg-white text-slate-500 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+            }`}
+          >
+            {option}
+          </button>
+        );
+      })}
     </div>
   );
 }
