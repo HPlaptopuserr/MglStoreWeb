@@ -28,6 +28,17 @@ const DEFAULT_TEAM_DEPARTMENTS = [
   "Үйл ажиллагааны хэлтэс",
   "Санхүүгийн хэлтэс",
 ];
+const PLATFORM_ROLE_LABELS: Record<string, { role: string; department: string; order: number }> = {
+  SUPER_ADMIN: { role: "Ерөнхий админ", department: "Захиргаа удирдлагын хэлтэс", order: 1000 },
+  ADMIN: { role: "Админ", department: "Захиргаа удирдлагын хэлтэс", order: 1001 },
+  HR_ADMIN: { role: "Хүний нөөц", department: "Захиргаа удирдлагын хэлтэс", order: 1002 },
+  CONTENT_ADMIN: { role: "Контент менежер", department: "Маркетинг борлуулалтын хэлтэс", order: 1003 },
+  PARTNER_ADMIN: { role: "Түнш менежер", department: "Маркетинг борлуулалтын хэлтэс", order: 1004 },
+  WAREHOUSE_ADMIN: { role: "Агуулахын менежер", department: "Үйл ажиллагааны хэлтэс", order: 1005 },
+  FINANCE_ADMIN: { role: "Санхүүгийн менежер", department: "Санхүүгийн хэлтэс", order: 1006 },
+  SERVICE_ADMIN: { role: "Үйлчилгээний менежер", department: "Харилцагчийн үйлчилгээний хэлтэс", order: 1007 },
+  LAWYER: { role: "Хуульч", department: "Захиргаа удирдлагын хэлтэс", order: 1008 },
+};
 
 function uniqueDepartments(values: unknown[]) {
   const seen = new Set<string>();
@@ -92,11 +103,65 @@ async function getDepartmentRows() {
 // Public: list active team members
 router.get("/team", async (_req, res) => {
   try {
-    const members = await (prisma as any).teamMember.findMany({
-      where: { isActive: true },
-      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-    });
-    res.json(members);
+    const [members, users] = await Promise.all([
+      (prisma as any).teamMember.findMany({
+        where: { isActive: true },
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      }),
+      prisma.user.findMany({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          role: { not: "USER" },
+        },
+        orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          createdAt: true,
+          profile: {
+            select: {
+              fullName: true,
+              avatarUrl: true,
+              phoneNumber: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const memberEmails = new Set(
+      (members as Array<{ email?: string | null }>).map((member) => member.email).filter(Boolean),
+    );
+    const userMembers = users
+      .filter((user) => !memberEmails.has(user.email))
+      .map((user) => {
+        const meta = PLATFORM_ROLE_LABELS[user.role] ?? {
+          role: user.role,
+          department: "Ерөнхий баг",
+          order: 1099,
+        };
+
+        return {
+          id: `user-${user.id}`,
+          name: user.profile?.fullName || user.email,
+          role: meta.role,
+          department: meta.department,
+          bio: null,
+          avatarUrl: user.profile?.avatarUrl ?? null,
+          email: user.email,
+          linkedinUrl: null,
+          experience: null,
+          skills: [user.role],
+          order: meta.order,
+          isActive: true,
+          createdAt: user.createdAt,
+          updatedAt: user.createdAt,
+        };
+      });
+
+    res.json([...members, ...userMembers].sort((a, b) => a.order - b.order));
   } catch {
     res.status(500).json({ message: "Серверийн алдаа" });
   }

@@ -13,11 +13,39 @@ import {
   getMemberSearchText,
   isLeadershipMember,
   normalizeText,
+  TeamInvestor,
+  TeamMember,
 } from "./_components/team-types";
 import { useTeam } from "./_components/use-team";
 
+function investorToMember(investor: TeamInvestor, index: number): TeamMember {
+  return {
+    id: `investor-${investor.id}`,
+    name: investor.name,
+    role: investor.tierLabel || "Хөрөнгө оруулагч",
+    department: "Хөрөнгө оруулагчид",
+    bio: investor.description,
+    avatarUrl: investor.logoUrl,
+    email: null,
+    linkedinUrl: null,
+    experience: investor.investmentLevel ? `${investor.investmentLevel}` : "Investor",
+    skills: ["Investor", investor.tier, "Partner"].filter(Boolean),
+    order: 2000 + index,
+  };
+}
+
 export default function TeamPage() {
-  const { members, loading } = useTeam();
+  const {
+    members,
+    investors,
+    networkCompanies,
+    companyInfo,
+    companyNodes,
+    departmentConnections,
+    departmentOrder,
+    orgLayout,
+    loading,
+  } = useTeam();
   const [activeDept, setActiveDept] = useState(ALL_DEPARTMENTS);
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<TeamViewTab>("employees");
@@ -26,8 +54,15 @@ export default function TeamPage() {
     () =>
       Array.from(
         new Set(members.map((member) => member.department).filter(Boolean)),
-      ) as string[],
-    [members],
+      ).sort((a, b) => {
+        const left = departmentOrder.indexOf(a as string);
+        const right = departmentOrder.indexOf(b as string);
+        if (left === -1 && right === -1) return 0;
+        if (left === -1) return 1;
+        if (right === -1) return -1;
+        return left - right;
+      }) as string[],
+    [departmentOrder, members],
   );
 
   const filteredMembers = useMemo(() => {
@@ -55,8 +90,18 @@ export default function TeamPage() {
   );
 
   const leadershipMembers = useMemo(
-    () => filteredMembers.filter(isLeadershipMember),
-    [filteredMembers],
+    () => {
+      const nonInvestorLeadership = filteredMembers.filter(
+        (member) =>
+          isLeadershipMember(member) &&
+          !getMemberSearchText(member).includes("хөрөнгө") &&
+          !getMemberSearchText(member).includes("investor"),
+      );
+
+      const investorMembers = investors.map(investorToMember);
+      return [...nonInvestorLeadership, ...investorMembers];
+    },
+    [filteredMembers, investors],
   );
 
   const visibleResultCount =
@@ -102,16 +147,25 @@ export default function TeamPage() {
 
             {activeTab === "employees" && (
               orgTreeMembers.length > 0 ? (
-                <TeamOrgTree members={orgTreeMembers} />
+                <TeamOrgTree
+                  members={orgTreeMembers}
+                  companyInfo={companyInfo}
+                  companyNodes={companyNodes}
+                  departmentConnections={departmentConnections}
+                  departmentOrder={departmentOrder}
+                  layout={orgLayout}
+                />
               ) : (
                 <EmptyState hasFilters={hasFilters} />
               )
             )}
 
-            {activeTab === "network" && <TeamCompanyNetwork />}
+            {activeTab === "network" && (
+              <TeamCompanyNetwork companies={networkCompanies} />
+            )}
 
             {activeTab === "leadership" && (
-              <TeamLeadershipSections members={filteredMembers} />
+              <TeamLeadershipSections members={leadershipMembers} />
             )}
           </>
         )}

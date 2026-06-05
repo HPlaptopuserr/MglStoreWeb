@@ -7,6 +7,11 @@ import {
   Upload, ImageIcon,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
+import {
+  DEFAULT_TEAM_ORG_LAYOUT,
+  TeamOrgLayoutEditor,
+  type TeamOrgLayoutSettings,
+} from "./TeamOrgLayoutEditor";
 
 interface TeamMember {
   id: string;
@@ -28,6 +33,28 @@ interface TeamDepartment {
   count: number;
 }
 
+interface NetworkPartner {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  businessCategory: string | null;
+  shortDescription: string | null;
+  isInvestor?: boolean;
+  stats?: {
+    users?: number;
+    products?: number;
+    branches?: number;
+  };
+}
+
+interface TeamCompanyNode {
+  id: string;
+  name: string;
+  subtitle: string;
+  order: number;
+}
+
 type TeamMemberForm = Omit<TeamMember, "id" | "isActive">;
 
 const DEFAULT_DEPARTMENT_OPTIONS = [
@@ -42,6 +69,14 @@ const DEFAULT_DEPARTMENT_OPTIONS = [
   "Санхүүгийн хэлтэс",
 ];
 const TEAM_DEPARTMENTS_SETTING_KEY = "teamDepartments";
+const TEAM_COMPANY_NAME_SETTING_KEY = "teamCompanyName";
+const TEAM_COMPANY_SUBTITLE_SETTING_KEY = "teamCompanySubtitle";
+const TEAM_COMPANY_NODES_SETTING_KEY = "teamCompanyNodes";
+const TEAM_DEPARTMENT_CONNECTIONS_SETTING_KEY = "teamDepartmentConnections";
+const TEAM_ORG_LAYOUT_SETTING_KEY = "teamOrgLayout";
+const DEFAULT_TEAM_COMPANY_NAME = "MGL STORE ХХК";
+const DEFAULT_TEAM_COMPANY_SUBTITLE = "MGL STORE LLC";
+const DISCONNECTED_COMPANY_ID = "__none__";
 
 const ROLE_OPTIONS = [
   "Үүсгэн байгуулагч, CEO",
@@ -143,9 +178,114 @@ function buildDepartments(storedDepartments: string[], members: TeamMember[]) {
   }));
 }
 
+function parseCompanyNodes(
+  value: string | undefined,
+  fallbackName: string,
+  fallbackSubtitle: string,
+): TeamCompanyNode[] {
+  if (value) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        const nodes = parsed
+          .map((node, index) => ({
+            id: typeof node?.id === "string" ? node.id : `company-${index}`,
+            name: typeof node?.name === "string" && node.name.trim() ? node.name.trim() : fallbackName,
+            subtitle: typeof node?.subtitle === "string" && node.subtitle.trim() ? node.subtitle.trim() : fallbackSubtitle,
+            order: typeof node?.order === "number" ? node.order : index,
+          }))
+          .filter((node) => node.id && node.name)
+          .sort((a, b) => a.order - b.order);
+        if (nodes.length > 0) return nodes;
+      }
+    } catch {
+      // Fall through to default node.
+    }
+  }
+
+  return [
+    {
+      id: "root-company",
+      name: fallbackName,
+      subtitle: fallbackSubtitle,
+      order: 0,
+    },
+  ];
+}
+
+function parseDepartmentConnections(value: string | undefined) {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([key, next]) => typeof key === "string" && typeof next === "string",
+      ),
+    ) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function parseTeamOrgLayout(value: string | undefined): TeamOrgLayoutSettings {
+  if (!value) return DEFAULT_TEAM_ORG_LAYOUT;
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return DEFAULT_TEAM_ORG_LAYOUT;
+    }
+    return {
+      rootCardWidth: clampNumber(parsed.rootCardWidth, 190, 340, DEFAULT_TEAM_ORG_LAYOUT.rootCardWidth),
+      departmentCardWidth: clampNumber(parsed.departmentCardWidth, 130, 260, DEFAULT_TEAM_ORG_LAYOUT.departmentCardWidth),
+      companyGap: clampNumber(parsed.companyGap, 8, 64, DEFAULT_TEAM_ORG_LAYOUT.companyGap),
+      departmentGap: clampNumber(parsed.departmentGap, 8, 72, DEFAULT_TEAM_ORG_LAYOUT.departmentGap),
+      verticalGap: clampNumber(parsed.verticalGap, 32, 110, DEFAULT_TEAM_ORG_LAYOUT.verticalGap),
+      lineColor: typeof parsed.lineColor === "string" && /^#[0-9a-fA-F]{6}$/.test(parsed.lineColor)
+        ? parsed.lineColor
+        : DEFAULT_TEAM_ORG_LAYOUT.lineColor,
+    };
+  } catch {
+    return DEFAULT_TEAM_ORG_LAYOUT;
+  }
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(numeric)));
+}
+
+function reorderItems<T>(items: T[], fromIndex: number, toIndex: number) {
+  const next = [...items];
+  const [item] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, item);
+  return next;
+}
+
+function groupMembersByDepartment(members: TeamMember[], departments: TeamDepartment[]) {
+  const grouped = new Map<string, TeamMember[]>();
+  for (const department of departments) {
+    grouped.set(department.name, []);
+  }
+
+  for (const member of members) {
+    const department = member.department || "Ерөнхий баг";
+    grouped.set(department, [...(grouped.get(department) ?? []), member]);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([department, items]) => ({
+      department,
+      members: [...items].sort((a, b) => a.order - b.order),
+    }))
+    .filter((group) => group.members.length > 0 || departments.some((item) => item.name === group.department));
+}
+
 export function TeamSection() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [departments, setDepartments] = useState<TeamDepartment[]>([]);
+  const [networkPartners, setNetworkPartners] = useState<NetworkPartner[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -161,6 +301,16 @@ export function TeamSection() {
   const [editingDepartment, setEditingDepartment] = useState<string | null>(null);
   const [departmentDraft, setDepartmentDraft] = useState("");
   const [departmentSaving, setDepartmentSaving] = useState(false);
+  const [layoutSaving, setLayoutSaving] = useState(false);
+  const [companyName, setCompanyName] = useState(DEFAULT_TEAM_COMPANY_NAME);
+  const [companySubtitle, setCompanySubtitle] = useState(DEFAULT_TEAM_COMPANY_SUBTITLE);
+  const [companyNodes, setCompanyNodes] = useState<TeamCompanyNode[]>([
+    { id: "root-company", name: DEFAULT_TEAM_COMPANY_NAME, subtitle: DEFAULT_TEAM_COMPANY_SUBTITLE, order: 0 },
+  ]);
+  const [departmentConnections, setDepartmentConnections] = useState<Record<string, string>>({});
+  const [orgLayout, setOrgLayout] = useState<TeamOrgLayoutSettings>(DEFAULT_TEAM_ORG_LAYOUT);
+  const [orgLayoutSaving, setOrgLayoutSaving] = useState(false);
+  const [companySaving, setCompanySaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const saveDepartmentSettings = async (departmentNames: string[]) => {
@@ -179,15 +329,35 @@ export function TeamSection() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [membersRes, settingsRes] = await Promise.all([
+      const [membersRes, settingsRes, partnersRes] = await Promise.all([
         adminFetch(`${API}/admin/team`),
         adminFetch(`${API}/site-settings/admin`),
+        adminFetch(`${API}/partners?limit=10000`),
       ]);
       const nextMembers = membersRes.ok ? await membersRes.json() : [];
       const settings = settingsRes.ok ? await settingsRes.json() : {};
+      const partnerData = partnersRes.ok ? await partnersRes.json() : null;
+      const partnerItems = Array.isArray(partnerData?.data)
+        ? partnerData.data
+        : Array.isArray(partnerData?.partners)
+          ? partnerData.partners
+          : [];
       const storedDepartments = parseStoredDepartments(settings[TEAM_DEPARTMENTS_SETTING_KEY]);
+      const nextCompanyName = settings[TEAM_COMPANY_NAME_SETTING_KEY] || DEFAULT_TEAM_COMPANY_NAME;
+      const nextCompanySubtitle = settings[TEAM_COMPANY_SUBTITLE_SETTING_KEY] || DEFAULT_TEAM_COMPANY_SUBTITLE;
+      const nextCompanyNodes = parseCompanyNodes(
+        settings[TEAM_COMPANY_NODES_SETTING_KEY],
+        nextCompanyName,
+        nextCompanySubtitle,
+      );
       setMembers(nextMembers);
       setDepartments(buildDepartments(storedDepartments, nextMembers));
+      setNetworkPartners(partnerItems);
+      setCompanyName(nextCompanyName);
+      setCompanySubtitle(nextCompanySubtitle);
+      setCompanyNodes(nextCompanyNodes);
+      setDepartmentConnections(parseDepartmentConnections(settings[TEAM_DEPARTMENT_CONNECTIONS_SETTING_KEY]));
+      setOrgLayout(parseTeamOrgLayout(settings[TEAM_ORG_LAYOUT_SETTING_KEY]));
     } finally {
       setLoading(false);
     }
@@ -363,6 +533,193 @@ export function TeamSection() {
     }
   };
 
+  const persistMemberLayout = async (nextMembers: TeamMember[]) => {
+    const changedMembers = nextMembers.filter((nextMember) => {
+      const current = members.find((member) => member.id === nextMember.id);
+      return current && (current.order !== nextMember.order || current.department !== nextMember.department);
+    });
+
+    if (changedMembers.length === 0) return;
+
+    await Promise.all(
+      changedMembers.map((member) =>
+        adminFetch(`${API}/admin/team/${member.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            department: member.department,
+            order: member.order,
+          }),
+        }),
+      ),
+    );
+  };
+
+  const saveLayout = async (nextDepartments: TeamDepartment[], nextMembers: TeamMember[], message: string) => {
+    setLayoutSaving(true);
+    setError("");
+    try {
+      await saveDepartmentSettings(nextDepartments.map((department) => department.name));
+      await persistMemberLayout(nextMembers);
+      setDepartments(buildDepartments(nextDepartments.map((department) => department.name), nextMembers));
+      setMembers(nextMembers);
+      showSuccess(message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Байрлал хадгалахад алдаа гарлаа");
+    } finally {
+      setLayoutSaving(false);
+    }
+  };
+
+  const saveCompanyInfo = async (next: { name: string; subtitle: string }) => {
+    setCompanySaving(true);
+    setError("");
+    setCompanyName(next.name);
+    setCompanySubtitle(next.subtitle);
+    const nextNodes = companyNodes.map((node, index) =>
+      index === 0 ? { ...node, name: next.name, subtitle: next.subtitle } : node,
+    );
+    setCompanyNodes(nextNodes);
+    try {
+      const res = await adminFetch(`${API}/site-settings`, {
+        method: "PUT",
+        body: JSON.stringify({
+          [TEAM_COMPANY_NAME_SETTING_KEY]: next.name,
+          [TEAM_COMPANY_SUBTITLE_SETTING_KEY]: next.subtitle,
+          [TEAM_COMPANY_NODES_SETTING_KEY]: JSON.stringify(nextNodes),
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || "Компанийн нэр хадгалахад алдаа гарлаа");
+      }
+      showSuccess("Компанийн нэр шинэчлэгдлээ");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Компанийн нэр хадгалахад алдаа гарлаа");
+    } finally {
+      setCompanySaving(false);
+    }
+  };
+
+  const saveCompanyNodes = async (nextNodes: TeamCompanyNode[], nextConnections = departmentConnections) => {
+    const normalizedNodes = nextNodes
+      .map((node, index) => ({ ...node, order: index }))
+      .filter((node) => node.name.trim());
+    const fallbackNodes = normalizedNodes.length > 0
+      ? normalizedNodes
+      : [{ id: "root-company", name: DEFAULT_TEAM_COMPANY_NAME, subtitle: DEFAULT_TEAM_COMPANY_SUBTITLE, order: 0 }];
+    const validIds = new Set(fallbackNodes.map((node) => node.id));
+    const normalizedConnections = Object.fromEntries(
+      Object.entries(nextConnections).filter(
+        ([, companyId]) => companyId === DISCONNECTED_COMPANY_ID || validIds.has(companyId),
+      ),
+    );
+
+    setCompanySaving(true);
+    setError("");
+    setCompanyNodes(fallbackNodes);
+    setDepartmentConnections(normalizedConnections);
+    setCompanyName(fallbackNodes[0].name);
+    setCompanySubtitle(fallbackNodes[0].subtitle);
+    try {
+      const res = await adminFetch(`${API}/site-settings`, {
+        method: "PUT",
+        body: JSON.stringify({
+          [TEAM_COMPANY_NAME_SETTING_KEY]: fallbackNodes[0].name,
+          [TEAM_COMPANY_SUBTITLE_SETTING_KEY]: fallbackNodes[0].subtitle,
+          [TEAM_COMPANY_NODES_SETTING_KEY]: JSON.stringify(fallbackNodes),
+          [TEAM_DEPARTMENT_CONNECTIONS_SETTING_KEY]: JSON.stringify(normalizedConnections),
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || "Company card хадгалахад алдаа гарлаа");
+      }
+      showSuccess("Company card шинэчлэгдлээ");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Company card хадгалахад алдаа гарлаа");
+    } finally {
+      setCompanySaving(false);
+    }
+  };
+
+  const saveDepartmentConnection = async (department: string, companyId: string) => {
+    const nextConnections = { ...departmentConnections, [department]: companyId };
+    await saveCompanyNodes(companyNodes, nextConnections);
+  };
+
+  const saveOrgLayout = async (nextLayout: TeamOrgLayoutSettings) => {
+    const normalized = parseTeamOrgLayout(JSON.stringify(nextLayout));
+    setOrgLayout(normalized);
+    setOrgLayoutSaving(true);
+    setError("");
+    try {
+      const res = await adminFetch(`${API}/site-settings/${TEAM_ORG_LAYOUT_SETTING_KEY}`, {
+        method: "PUT",
+        body: JSON.stringify({ value: JSON.stringify(normalized) }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || "Org chart layout хадгалахад алдаа гарлаа");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Org chart layout хадгалахад алдаа гарлаа");
+    } finally {
+      setOrgLayoutSaving(false);
+    }
+  };
+
+  const reorderDepartments = (from: string, to: string) => {
+    if (from === to) return;
+    const fromIndex = departments.findIndex((department) => department.name === from);
+    const toIndex = departments.findIndex((department) => department.name === to);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const nextDepartments = reorderItems(departments, fromIndex, toIndex);
+    const nextMembers = nextDepartments.flatMap((department, departmentIndex) =>
+      members
+        .filter((member) => member.department === department.name)
+        .sort((a, b) => a.order - b.order)
+        .map((member, memberIndex) => ({
+          ...member,
+          order: departmentIndex * 100 + memberIndex,
+        })),
+    );
+    const ungrouped = members.filter((member) => !member.department || !nextDepartments.some((department) => department.name === member.department));
+    saveLayout(nextDepartments, [...nextMembers, ...ungrouped], "Хэлтсийн байрлал шинэчлэгдлээ");
+  };
+
+  const moveMember = (memberId: string, targetDepartment: string, targetMemberId?: string) => {
+    const movingMember = members.find((member) => member.id === memberId);
+    if (!movingMember) return;
+
+    const groups = groupMembersByDepartment(members, departments);
+    const nextGroups = groups.map((group) => ({
+      ...group,
+      members: group.members.filter((member) => member.id !== memberId),
+    }));
+    const targetGroup = nextGroups.find((group) => group.department === targetDepartment);
+    if (!targetGroup) return;
+
+    const insertIndex = targetMemberId
+      ? Math.max(0, targetGroup.members.findIndex((member) => member.id === targetMemberId))
+      : targetGroup.members.length;
+    targetGroup.members.splice(insertIndex, 0, {
+      ...movingMember,
+      department: targetDepartment,
+    });
+
+    const departmentOrder = new Map(departments.map((department, index) => [department.name, index]));
+    const nextMembers = nextGroups.flatMap((group) => {
+      const departmentIndex = departmentOrder.get(group.department) ?? departments.length;
+      return group.members.map((member, memberIndex) => ({
+        ...member,
+        department: group.department,
+        order: departmentIndex * 100 + memberIndex,
+      }));
+    });
+
+    saveLayout(departments, nextMembers, "Ажилчны байрлал шинэчлэгдлээ");
+  };
+
   const handleSubmit = async () => {
     if (!form.name.trim() || !form.role.trim()) {
       setError("Нэр болон албан тушаал шаардлагатай");
@@ -469,6 +826,31 @@ export function TeamSection() {
         onRename={renameDepartment}
         onDelete={deleteDepartment}
       />
+
+      <TeamOrgLayoutEditor
+        departments={departments}
+        members={members}
+        companyName={companyName}
+        companySubtitle={companySubtitle}
+        companyNodes={companyNodes}
+        departmentConnections={departmentConnections}
+        layout={orgLayout}
+        saving={layoutSaving}
+        companySaving={companySaving}
+        layoutSaving={orgLayoutSaving}
+        onEditMember={(memberId) => {
+          const member = members.find((item) => item.id === memberId);
+          if (member) openEdit(member);
+        }}
+        onCompanyInfoSave={saveCompanyInfo}
+        onCompanyNodesSave={saveCompanyNodes}
+        onDepartmentConnectionChange={saveDepartmentConnection}
+        onLayoutChange={saveOrgLayout}
+        onMoveDepartment={reorderDepartments}
+        onMoveMember={moveMember}
+      />
+
+      <NetworkPartnersPreview partners={networkPartners} />
 
       {loading ? (
         <div className="flex items-center gap-2 py-10 text-sm text-slate-400">
@@ -991,6 +1373,68 @@ function DepartmentManager({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function NetworkPartnersPreview({ partners }: { partners: NetworkPartner[] }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="text-sm font-black text-slate-900">Сүлжээ компаниуд</h3>
+          <p className="text-xs font-medium text-slate-400">
+            Энэ хэсэг түнш байгууллагын бүртгэлээс шууд татагдаж public team page дээр харагдана.
+          </p>
+        </div>
+        <a
+          href="/partners"
+          className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+        >
+          Түнш байгууллага засах
+        </a>
+      </div>
+
+      {partners.length === 0 ? (
+        <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-400">
+          Түнш байгууллага байхгүй байна.
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {partners.slice(0, 9).map((partner) => (
+            <a
+              key={partner.id}
+              href={`/partners/${partner.id}`}
+              className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 transition-colors hover:border-violet-200 hover:bg-violet-50/60"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white text-slate-400 shadow-sm">
+                {partner.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={partner.logoUrl} alt={partner.name} className="h-full w-full object-cover" />
+                ) : (
+                  <Building2 size={16} />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-black text-slate-900">{partner.name}</p>
+                  {partner.isInvestor && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700">
+                      investor
+                    </span>
+                  )}
+                </div>
+                <p className="truncate text-[11px] font-semibold text-slate-400">
+                  {partner.businessCategory || partner.shortDescription || "Түнш байгууллага"}
+                </p>
+              </div>
+              <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-400">
+                {partner.stats?.branches ?? 0} салбар
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
