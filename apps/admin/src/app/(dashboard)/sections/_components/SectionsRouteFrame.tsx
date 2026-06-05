@@ -41,7 +41,7 @@ export function SectionsRouteFrame({
   return (
     <SectionsLayout
       active={active}
-      setActive={(key) => router.push(`/sections/${key}`)}
+      setActive={(key) => router.push(`/sections/${key}`, { scroll: false })}
       onSave={onSave}
       saving={saving}
       saved={saved}
