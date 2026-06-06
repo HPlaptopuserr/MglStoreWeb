@@ -24,6 +24,10 @@ type GroupedCategory = {
     name: string;
     slug: string;
     logoUrl: string | null;
+    publicInfoScore?: number;
+    productsCount?: number;
+    branchesCount?: number;
+    servicePostsCount?: number;
   }[];
 };
 
@@ -34,6 +38,53 @@ const categoryIcons: Record<string, LucideIcon> = {
   pharmacy: Pill,
   electronics: Smartphone,
   other: Store,
+};
+
+const visiblePartnerLimit = 12;
+
+const getPartnerInfoScore = (partner: GroupedCategory["partners"][number]) => {
+  if (typeof partner.publicInfoScore === "number") return partner.publicInfoScore;
+
+  let score = 0;
+  if (partner.logoUrl) score += 10;
+  if ((partner.productsCount || 0) > 0) score += 8;
+  if ((partner.servicePostsCount || 0) > 0) score += 6;
+  if ((partner.branchesCount || 0) > 0) score += 5;
+  return score;
+};
+
+const comparePartnersByInfo = (
+  a: GroupedCategory["partners"][number],
+  b: GroupedCategory["partners"][number],
+) => {
+  const scoreDiff = getPartnerInfoScore(b) - getPartnerInfoScore(a);
+  if (scoreDiff !== 0) return scoreDiff;
+  return a.name.localeCompare(b.name, "mn");
+};
+
+const getCategoryInfoScore = (category: GroupedCategory) => {
+  const visibleScores = category.partners
+    .map(getPartnerInfoScore)
+    .sort((a, b) => b - a)
+    .slice(0, visiblePartnerLimit);
+
+  if (visibleScores.length === 0) return 0;
+
+  const total = visibleScores.reduce((sum, score) => sum + score, 0);
+  const average = total / visibleScores.length;
+  const infoRichCount = visibleScores.filter((score) => score > 0).length;
+
+  return average * 100 + infoRichCount;
+};
+
+const compareCategoriesByInfo = (a: GroupedCategory, b: GroupedCategory) => {
+  const scoreDiff = getCategoryInfoScore(b) - getCategoryInfoScore(a);
+  if (scoreDiff !== 0) return scoreDiff;
+
+  const otherDiff = Number(a.category === "other") - Number(b.category === "other");
+  if (otherDiff !== 0) return otherDiff;
+
+  return b.partners.length - a.partners.length;
 };
 
 const normalizeGroupedCategories = (payload: unknown): GroupedCategory[] => {
@@ -61,13 +112,15 @@ const normalizeGroupedCategories = (payload: unknown): GroupedCategory[] => {
     })
     .map((category) => ({
       ...category,
-      partners: category.partners.filter(
-        (partner) =>
-          partner &&
-          typeof partner.id === "string" &&
-          typeof partner.name === "string" &&
-          typeof partner.slug === "string",
-      ),
+      partners: category.partners
+        .filter(
+          (partner) =>
+            partner &&
+            typeof partner.id === "string" &&
+            typeof partner.name === "string" &&
+            typeof partner.slug === "string",
+        )
+        .sort(comparePartnersByInfo),
     }));
 };
 
@@ -87,7 +140,7 @@ export const PartnerMenu = () => {
       .then((res) => res.json())
       .then((payload: unknown) => {
         const data = normalizeGroupedCategories(payload);
-        const sorted = [...data].sort((a, b) => b.partners.length - a.partners.length);
+        const sorted = [...data].sort(compareCategoriesByInfo);
         setCategories(sorted);
         setActiveIndex(0);
         setTotalCount(data.reduce((sum, cat) => sum + cat.partners.length, 0));
@@ -253,7 +306,7 @@ export const PartnerMenu = () => {
                     </div>
 
                     <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                      {activeCategory.partners.slice(0, 12).map((partner) => (
+                      {activeCategory.partners.slice(0, visiblePartnerLimit).map((partner) => (
                         <Link
                           key={partner.id}
                           href={`/organizations/${partner.slug}`}
@@ -276,14 +329,14 @@ export const PartnerMenu = () => {
                       ))}
                     </div>
 
-                    {activeCategory.partners.length > 12 && (
+                    {activeCategory.partners.length > visiblePartnerLimit && (
                       <div className="mt-5 rounded-xl border border-dashed border-orange-200 bg-orange-50/60 px-4 py-3">
                         <Link
                           href={`/organizations?category=${encodeURIComponent(activeCategory.category)}`}
                           onClick={() => setIsOpen(false)}
                           className="inline-flex items-center gap-2 text-sm font-black text-orange-700 hover:text-orange-800"
                         >
-                          + {activeCategory.partners.length - 12} байгууллага нэмэлтээр харах
+                          + {activeCategory.partners.length - visiblePartnerLimit} байгууллага нэмэлтээр харах
                           <ArrowRight className="h-4 w-4" />
                         </Link>
                       </div>

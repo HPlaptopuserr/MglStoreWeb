@@ -56,18 +56,21 @@ const hasText = (value?: string | null) => String(value || "").trim().length > 0
 
 const getPartnerPublicInfoScore = (partner: any) => {
   let score = 0;
-  if (hasText(partner.logoUrl)) score += 3;
-  if (hasText(partner.bannerUrl)) score += 3;
-  if (hasText(partner.description)) score += 3;
-  if (hasText(partner.shortDescription)) score += 2;
+  if (hasText(partner.logoUrl)) score += 10;
+  if (hasText(partner.bannerUrl)) score += 10;
+  if (hasText(partner.description)) score += 8;
+  if (hasText(partner.shortDescription)) score += 5;
+  if ((partner._count?.products || 0) > 0) score += 8;
+  if ((partner._count?.servicePosts || 0) > 0) score += 6;
+  if ((partner._count?.branches || 0) > 0) score += 5;
+  if (partner.subdomainEnabled) score += 4;
+  if (partner.isVerified) score += 2;
   if (hasText(partner.businessCategory)) score += 2;
-  if (hasText(partner.address)) score += 2;
+  if (Array.isArray(partner.openingHours) && partner.openingHours.length > 0) score += 2;
+  if (hasText(partner.deliveryText)) score += 2;
+  if (hasText(partner.address)) score += 1;
   if (hasText(partner.phone)) score += 1;
   if (hasText(partner.email)) score += 1;
-  if (Array.isArray(partner.openingHours) && partner.openingHours.length > 0) score += 1;
-  if (hasText(partner.deliveryText)) score += 1;
-  if ((partner._count?.products || 0) > 0) score += 4;
-  if ((partner._count?.branches || 0) > 0) score += 2;
   return score;
 };
 
@@ -491,6 +494,7 @@ router.get("/partners/grouped", async (req, res) => {
         logoUrl: true,
         bannerUrl: true,
         businessCategory: true,
+        isVerified: true,
         email: true,
         phone: true,
         address: true,
@@ -499,6 +503,7 @@ router.get("/partners/grouped", async (req, res) => {
         openingHours: true,
         deliveryText: true,
         createdAt: true,
+        subdomainEnabled: true,
         investorProfile: {
           select: {
             id: true,
@@ -509,6 +514,7 @@ router.get("/partners/grouped", async (req, res) => {
           select: {
             products: true,
             branches: true,
+            servicePosts: true,
           },
         },
       },
@@ -535,14 +541,22 @@ router.get("/partners/grouped", async (req, res) => {
           name: string;
           slug: string;
           logoUrl: string | null;
+          publicInfoScore: number;
+          productsCount: number;
+          branchesCount: number;
+          servicePostsCount: number;
         }[];
       }
     > = {};
 
     for (const partner of sortWebPartners(partners)) {
-      const catSlugs = partner.businessCategory
-        ? partner.businessCategory.split(",").filter(Boolean)
-        : ["other"];
+      const parsedCatSlugs = partner.businessCategory
+        ? partner.businessCategory
+            .split(",")
+            .map((category: string) => category.trim())
+            .filter(Boolean)
+        : [];
+      const catSlugs = parsedCatSlugs.length > 0 ? parsedCatSlugs : ["other"];
       for (const catSlug of catSlugs) {
         if (!grouped[catSlug]) {
           grouped[catSlug] = {
@@ -556,6 +570,10 @@ router.get("/partners/grouped", async (req, res) => {
           name: partner.name,
           slug: partner.slug,
           logoUrl: partner.logoUrl,
+          publicInfoScore: getPartnerPublicInfoScore(partner),
+          productsCount: partner._count.products,
+          branchesCount: partner._count.branches,
+          servicePostsCount: partner._count.servicePosts,
         });
       }
     }
@@ -799,6 +817,7 @@ router.get("/partners", async (req, res) => {
               members: true,
               products: true,
               branches: true,
+              servicePosts: true,
               orders: true,
             },
           },
@@ -854,6 +873,7 @@ router.get("/partners", async (req, res) => {
         users: partner._count.members,
         products: partner._count.products,
         branches: partner._count.branches,
+        servicePosts: partner._count.servicePosts,
         orders: partner._count.orders,
       },
     }));
