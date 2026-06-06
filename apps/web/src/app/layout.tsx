@@ -1,10 +1,6 @@
 import { ReactNode } from "react";
 import "./globals.css";
-import { Header } from "@/components/organisms/layouts/Header";
-import { Footer } from "@/components/organisms/layouts/Footer";
-import { SmoothScrollProvider } from "@/components/organisms/layouts/SmoothScrollProvider";
-import { AuthProvider } from "@/lib/auth-context";
-import { ChatBot } from "@/components/organisms/ChatBot";
+import { AppShell } from "@/components/organisms/layouts/AppShell";
 
 export const metadata = {
   title: "MGL Store",
@@ -27,14 +23,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         className="bg-white antialiased min-h-screen flex flex-col"
         suppressHydrationWarning
       >
-        <AuthProvider>
-        <SmoothScrollProvider>
-          <Header />
-          <main className="grow pt-40 pb-20 md:pt-32 md:pb-0">{children}</main>
-          <ChatBot />
-          <Footer />
-        </SmoothScrollProvider>
-        </AuthProvider>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

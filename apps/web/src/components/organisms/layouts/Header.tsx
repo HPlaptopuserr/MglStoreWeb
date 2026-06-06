@@ -182,7 +182,8 @@ export const Header = () => {
                   alt="MglStore Logo"
                   width={140}
                   height={52}
-                  className="h-auto w-[160px] object-contain"
+                  className="object-contain"
+                  style={{ width: 160, height: "auto" }}
                   priority
                 />
               </Link>
@@ -446,7 +447,8 @@ export const Header = () => {
                 alt="MglStore"
                 width={96}
                 height={34}
-                className="h-auto w-[90px] object-contain"
+                className="object-contain"
+                style={{ width: 90, height: "auto" }}
               />
               <span className="text-base font-bold text-gray-900">
                 MGL Store

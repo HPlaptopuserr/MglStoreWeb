@@ -145,7 +145,11 @@ export const PartnerMenu = () => {
         setActiveIndex(0);
         setTotalCount(data.reduce((sum, cat) => sum + cat.partners.length, 0));
       })
-      .catch(console.error);
+      .catch(() => {
+        setCategories([]);
+        setActiveIndex(0);
+        setTotalCount(0);
+      });
   }, []);
 
   useEffect(() => {

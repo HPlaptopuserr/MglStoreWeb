@@ -44,6 +44,16 @@ type Partner = {
   email: string | null;
   phone: string | null;
   logoUrl?: string | null;
+  imageUrl?: string | null;
+  avatarUrl?: string | null;
+  profileImage?: string | null;
+  profileImageUrl?: string | null;
+  owner?: {
+    image?: string | null;
+    imageUrl?: string | null;
+    avatarUrl?: string | null;
+    profileImage?: string | null;
+  } | null;
   address: string | null;
   createdAt: string;
   isInvestor?: boolean;
@@ -55,6 +65,21 @@ type Partner = {
     orders: number;
   };
 };
+
+function getPartnerProfileImage(partner: Partner) {
+  return (
+    partner.logoUrl ||
+    partner.profileImageUrl ||
+    partner.profileImage ||
+    partner.imageUrl ||
+    partner.avatarUrl ||
+    partner.owner?.profileImage ||
+    partner.owner?.imageUrl ||
+    partner.owner?.avatarUrl ||
+    partner.owner?.image ||
+    null
+  );
+}
 
 type ApiCategory = {
   id: string;
@@ -676,12 +701,15 @@ export default function PartnersPage() {
               </p>
             </div>
           ) : (
-            partners.map((partner) => (
-              <Link
-                href={`/partners/${partner.id}`}
-                key={partner.id}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col group hover:shadow-lg hover:border-indigo-200/60 transition-all duration-300 cursor-pointer"
-              >
+            partners.map((partner) => {
+              const profileImage = getPartnerProfileImage(partner);
+
+              return (
+                <Link
+                  href={`/partners/${partner.id}`}
+                  key={partner.id}
+                  className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col group hover:shadow-lg hover:border-indigo-200/60 transition-all duration-300 cursor-pointer"
+                >
                 <div className={`p-4 md:p-5 border-b ${partner.isInvestor ? 'border-amber-200' : 'border-slate-100'}`}>
                   {partner.isInvestor && (
                     <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg w-fit">
@@ -696,13 +724,31 @@ export default function PartnersPage() {
                     <div className="flex items-center gap-2.5 min-w-0">
                       {partner.isInvestor && partner.investmentAmount ? (
                         <div style={getInvestorRingStyle(partner.investmentAmount)} className="shrink-0">
-                          <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center bg-amber-50 text-amber-600 group-hover:bg-amber-100 transition-colors">
-                            <Building2 size={20} />
+                          <div className="w-10 h-10 md:w-11 md:h-11 overflow-hidden rounded-xl flex items-center justify-center bg-amber-50 text-amber-600 group-hover:bg-amber-100 transition-colors">
+                            {profileImage ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={profileImage}
+                                alt={partner.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <Building2 size={20} />
+                            )}
                           </div>
                         </div>
                       ) : (
-                        <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100">
-                          <Building2 size={20} />
+                        <div className="w-10 h-10 md:w-11 md:h-11 overflow-hidden rounded-xl flex items-center justify-center shrink-0 transition-colors bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100">
+                          {profileImage ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={profileImage}
+                              alt={partner.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <Building2 size={20} />
+                          )}
                         </div>
                       )}
 
@@ -814,8 +860,9 @@ export default function PartnersPage() {
                     </span>
                   </div>
                 </div>
-              </Link>
-            ))
+                </Link>
+              );
+            })
           )}
         </div>
 

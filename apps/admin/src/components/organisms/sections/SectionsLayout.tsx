@@ -127,69 +127,37 @@ export function SectionsLayout({
   return (
     <div className="relative -m-4 min-h-[calc(100vh-5rem)] bg-[#f6f7fb] p-4 sm:-m-6 sm:p-6">
       <div className="mx-auto flex max-w-[1500px] flex-col gap-5">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-violet-600">
-                Content manager
-              </p>
-              <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
-                Нэмэлт хэсгүүд
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                Нүүр хуудас болон public контент бүрийг тусдаа ажлын хэсгээр
-                удирдана. Доорх хэсгээс сонгоод, баруун дээд хадгалах үйлдлийг
-                ашиглана.
-              </p>
+        <div className="sticky top-3 z-30 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 flex-1">
+              <SectionsSidebar
+                active={active}
+                onSelect={setActive}
+                visibleSections={visibleSections}
+              />
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Нийт
-                </p>
-                <p className="mt-1 text-xl font-black text-slate-950">
-                  {(visibleSections ?? SECTIONS).length}
-                </p>
-              </div>
-              <div className="rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-violet-400">
-                  Одоо засаж буй
-                </p>
-                <p className="mt-1 text-sm font-black text-violet-800">
-                  {activeInfo.title}
-                </p>
-              </div>
-              {showSave && (
-                <button
-                  onClick={onSave}
-                  disabled={saving}
-                  className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold text-white shadow-sm transition-all disabled:opacity-60 ${
-                    saved
-                      ? "bg-emerald-500"
-                      : "bg-slate-950 hover:-translate-y-0.5 hover:bg-violet-700"
-                  }`}
-                >
-                  {saving ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : saved ? (
-                    <CheckCircle2 size={16} />
-                  ) : (
-                    <Save size={16} />
-                  )}
-                  {saved ? "Хадгалагдлаа" : "Хадгалах"}
-                </button>
-              )}
-            </div>
+            {showSave && (
+              <button
+                onClick={onSave}
+                disabled={saving}
+                className={`inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold text-white shadow-sm transition-all disabled:opacity-60 ${
+                  saved
+                    ? "bg-emerald-500"
+                    : "bg-slate-950 hover:-translate-y-0.5 hover:bg-violet-700"
+                }`}
+              >
+                {saving ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : saved ? (
+                  <CheckCircle2 size={16} />
+                ) : (
+                  <Save size={16} />
+                )}
+                {saved ? "Хадгалагдлаа" : "Хадгалах"}
+              </button>
+            )}
           </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <SectionsSidebar
-            active={active}
-            onSelect={setActive}
-            visibleSections={visibleSections}
-          />
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

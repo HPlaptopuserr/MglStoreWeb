@@ -244,6 +244,20 @@ export const PRODUCT_COL_MAP = {
   costPrice:   ["costPrice", "Өртөг", "өртөг", "Өртөг (costPrice)", "Өртөг үнэ"],
   stock:       ["stock", "Нөөц", "нөөц", "Нөөц (stock)", "Тоо ширхэг"],
   description: ["description", "Тайлбар", "тайлбар", "Тайлбар (description)"],
+  preorderLeadTimeDays: [
+    "preorderLeadTimeDays",
+    "Ирэх хоног",
+    "ирэх хоног",
+    "Ирэх хоног (preorderLeadTimeDays)",
+    "Захиалгын хугацаа",
+  ],
+  preorderNote: [
+    "preorderNote",
+    "Захиалгын тайлбар",
+    "захиалгын тайлбар",
+    "Захиалгын тайлбар (preorderNote)",
+    "Ирэх нөхцөл",
+  ],
   images:      ["images", "Зураг", "зураг", "Зураг URL", "Зураг URL (images)", "Image", "image"],
 };
 

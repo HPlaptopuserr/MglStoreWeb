@@ -220,7 +220,7 @@ export function HrServicesSection({
             />
 
             {activeHeading && (
-              <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <section className="space-y-4 rounded-2xl border border-slate-300 bg-white p-5 shadow-sm ring-1 ring-slate-100">
                 <HrHeadingEditor
                   heading={activeHeading}
                   formCount={activeFormCount}

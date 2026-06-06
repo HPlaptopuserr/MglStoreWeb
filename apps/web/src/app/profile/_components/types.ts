@@ -17,6 +17,23 @@ export type AccountPurchase = {
   purchasedAt: string;
 };
 
+export type AccountContract = {
+  id: string;
+  templateId?: string | null;
+  title: string;
+  org: string;
+  register?: string | null;
+  status: string;
+  isPaid: boolean;
+  feePlan?: string | null;
+  feePlanLabel?: string | null;
+  signedAt?: string | null;
+  expiresAt?: string | null;
+  createdAt: string;
+  pdfUrl?: string | null;
+  printUrl: string;
+};
+
 export type MPointHistory = {
   id: string;
   description: string;

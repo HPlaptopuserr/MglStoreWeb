@@ -68,8 +68,9 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
           const parts = Array.isArray(raw) ? raw : raw?.data || [];
           setApiBrands(parts.map((p: any) => ({ id: p.id, name: p.name })));
         }
-      } catch (e) {
-        console.error("SearchBar fetch error", e);
+      } catch {
+        setApiCategories([]);
+        setApiBrands([]);
       } finally {
         setRightLoading(false);
       }

@@ -76,7 +76,7 @@ export const ServicesMenu = () => {
           setActiveIndex(0);
         }
       })
-      .catch(console.error);
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

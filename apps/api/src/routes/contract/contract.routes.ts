@@ -373,6 +373,41 @@ function summarizePublicTemplate(contract: any) {
   };
 }
 
+function summarizeUserContract(contract: any) {
+  const member = contract.memberData as any;
+  const hd = (contract.headerData ?? contract.template?.headerData) as any;
+  const feePlans: any[] = hd?.feePlans ?? [];
+  const plan = feePlans.find((p: any) => p.key === contract.feePlan);
+  const planMonths = Number(plan?.months || 0);
+  const signedAt = contract.signedAt ? new Date(contract.signedAt) : null;
+  const expiresAt = member?.expiresAt
+    ? new Date(member.expiresAt)
+    : signedAt && planMonths
+      ? new Date(new Date(signedAt).setMonth(signedAt.getMonth() + planMonths))
+      : null;
+
+  return {
+    id: contract.id,
+    templateId: contract.templateId,
+    title:
+      member?.contractName ||
+      hd?.contractTitle ||
+      hd?.title ||
+      "Гэрээ",
+    org: member?.name || member?.org || "Миний байгууллага",
+    register: member?.register || null,
+    status: contract.status,
+    isPaid: contract.isPaid,
+    feePlan: contract.feePlan,
+    feePlanLabel: plan?.label || contract.feePlan || "Багцгүй",
+    signedAt: contract.signedAt,
+    expiresAt,
+    createdAt: contract.createdAt,
+    pdfUrl: contract.pdfUrl,
+    printUrl: `/contract/sign/${contract.id}?print=1`,
+  };
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // GET /api/contracts/stats  —  Admin dashboard stats
 // ──────────────────────────────────────────────────────────────────────────────
@@ -673,6 +708,39 @@ router.get("/contracts/available", async (_req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
+// GET /api/contracts/my  —  Contracts saved to the current user account
+// ──────────────────────────────────────────────────────────────────────────────
+router.get("/contracts/my", requireAuth, async (req, res) => {
+  try {
+    const userId = getContractUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Нэвтрэх шаардлагатай" });
+    }
+
+    const contracts = await prisma.contract.findMany({
+      where: {
+        userId,
+        isTemplate: false,
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        template: {
+          select: { id: true, headerData: true },
+        },
+      },
+    });
+
+    return res.json({
+      success: true,
+      contracts: contracts.map(summarizeUserContract),
+    });
+  } catch (error) {
+    console.error("my contracts error", error);
+    return res.status(500).json({ success: false, error: "Гэрээнүүд ачаалахад алдаа гарлаа" });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
 // DELETE /api/contracts/:id  —  Delete a template and its submissions (admin)
 // ──────────────────────────────────────────────────────────────────────────────
 router.delete("/contracts/:id", requireAuth, async (req, res) => {
@@ -780,7 +848,7 @@ router.get("/contracts/submissions/all", requireAuth, async (_req, res) => {
         headerData: hd,
         pdfUrl: s.pdfUrl,
         contractNumber: member?.contractNumber || null,
-        contractName: member?.contractName || null,
+        contractName: member?.contractName || hd?.contractTitle || hd?.title || null,
       };
     });
 

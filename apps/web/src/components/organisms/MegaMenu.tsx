@@ -112,7 +112,10 @@ export const MegaMenu = () => {
           setActiveCategory(mega[0]);
         }
       })
-      .catch(console.error)
+      .catch(() => {
+        setCategories([]);
+        setActiveCategory(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 

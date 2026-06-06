@@ -144,7 +144,7 @@ export const HrServicesMenu = () => {
           setActiveIndex(0);
         }
       })
-      .catch(console.error);
+      .catch(() => {});
 
     return () => {
       cancelled = true;

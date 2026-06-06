@@ -12,6 +12,11 @@ import {
 } from "lucide-react";
 import { adminFetch } from "@/lib/api";
 import { Contract } from "@/components/organisms/sections/contract/page";
+import {
+  ContractArchiveFilters,
+  ContractArchiveHeader,
+  ContractStatusCards,
+} from "@/components/organisms/contracts/ContractArchiveShell";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
 const API = `${API_BASE}/api`;
@@ -39,6 +44,32 @@ type Submission = {
 };
 
 type SortKey = "org" | "status" | "signedAt" | "expiresAt" | "createdAt";
+
+function getContractDisplayName(sub: Submission) {
+  return sub.contractName || sub.headerData?.contractTitle || sub.headerData?.title || "Нэргүй гэрээ";
+}
+
+function getContractCode(sub: Submission) {
+  return sub.contractNumber || `MGL-${sub.id.slice(0, 8).toUpperCase()}`;
+}
+
+function ContractNameCell({ sub }: { sub: Submission }) {
+  return (
+    <div className="min-w-[260px] max-w-[360px]">
+      <div className="mb-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700">
+        <FileText className="h-3 w-3 shrink-0" />
+        <span className="truncate">{getContractCode(sub)}</span>
+      </div>
+      <div className="line-clamp-2 text-[15px] font-black leading-snug text-slate-950 transition-colors group-hover:text-blue-700">
+        {getContractDisplayName(sub)}
+      </div>
+      <div className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-500">
+        <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        <span className="truncate">{sub.org}</span>
+      </div>
+    </div>
+  );
+}
 
 function statusDays(expiresAt: string | null): number | null {
   if (!expiresAt) return null;
@@ -97,10 +128,10 @@ function DetailPanel({ sub, onClose }: { sub: Submission; onClose: () => void })
             </div>
             <div>
               <h2 className="font-bold text-lg leading-tight truncate max-w-[450px]">
-                {sub.contractName ? `${sub.contractName} (${sub.org})` : sub.org}
+                {getContractDisplayName(sub)}
               </h2>
-              <p className="text-blue-100 text-xs font-mono mt-0.5">
-                {sub.contractNumber ? `Дугаар: ${sub.contractNumber}` : `ID: MGL-${sub.id.slice(0, 8).toUpperCase()}`}
+              <p className="text-blue-100 text-xs font-semibold mt-0.5 truncate max-w-[450px]">
+                {sub.org} · Дугаар: {getContractCode(sub)}
               </p>
             </div>
           </div>
@@ -855,12 +886,18 @@ function SubmissionsList() {
     expired: submissions.filter(s => { const d = statusDays(s.expiresAt); return d !== null && d < 0; }).length,
   }), [submissions]);
 
-  const FILTERS: { key: typeof statusFilter; label: string; count: number; color: string; icon: React.ElementType }[] = [
-    { key: "ALL", label: "Бүх гэрээ", count: stats.total, color: "bg-slate-100 text-slate-700", icon: Files },
-    { key: "SIGNED", label: "Баталгаажсан", count: stats.signed, color: "bg-emerald-100 text-emerald-700", icon: FileCheck },
-    { key: "PENDING", label: "Хүлээгдэж буй", count: stats.pending, color: "bg-amber-100 text-amber-700", icon: Clock },
-    { key: "EXPIRING", label: "Дуусах дөхсөн", count: stats.expiring, color: "bg-orange-100 text-orange-700", icon: AlertTriangle },
-    { key: "EXPIRED", label: "Дууссан", count: stats.expired, color: "bg-rose-100 text-rose-700", icon: XCircle },
+  const FILTERS: {
+    key: typeof statusFilter;
+    label: string;
+    count: number;
+    tone: "slate" | "emerald" | "amber" | "orange" | "rose";
+    icon: React.ElementType;
+  }[] = [
+    { key: "ALL", label: "Бүх гэрээ", count: stats.total, tone: "slate", icon: Files },
+    { key: "SIGNED", label: "Баталгаажсан", count: stats.signed, tone: "emerald", icon: FileCheck },
+    { key: "PENDING", label: "Хүлээгдэж буй", count: stats.pending, tone: "amber", icon: Clock },
+    { key: "EXPIRING", label: "Дуусах дөхсөн", count: stats.expiring, tone: "orange", icon: AlertTriangle },
+    { key: "EXPIRED", label: "Дууссан", count: stats.expired, tone: "rose", icon: XCircle },
   ];
 
   return (
@@ -875,112 +912,53 @@ function SubmissionsList() {
         />
       )}
 
-      {/* Top action row */}
-      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-        <span className="text-xs font-semibold text-slate-400">Нийт гэрээнүүдийг хянах хяналтын хэсэг</span>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setOpenRegisterScanned(true)}
-            className="flex items-center gap-2 px-3.5 py-1.5 bg-[#1e4e8c] hover:bg-[#163d70] text-white rounded-xl text-xs font-bold active:scale-[0.98] transition-all shadow-sm"
-          >
-            <Upload className="w-3.5 h-3.5" /> Скандсан гэрээ бүртгэх
-          </button>
-          <button
-            onClick={load}
-            className="flex items-center gap-2 px-3.5 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 active:scale-[0.98] transition-all bg-white"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Жагсаалт шинэчлэх
-          </button>
-        </div>
-      </div>
+      <ContractArchiveHeader
+        total={stats.total}
+        filtered={filtered.length}
+        loading={loading}
+        onRegister={() => setOpenRegisterScanned(true)}
+        onRefresh={load}
+      />
 
-      {/* Modern Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {FILTERS.map(f => {
-          const Icon = f.icon;
-          const isActive = statusFilter === f.key;
-          return (
-            <button
-              key={f.key}
-              onClick={() => setStatusFilter(f.key)}
-              className={`rounded-2xl p-4 text-left border-2 transition-all flex flex-col bg-white shadow-sm hover:shadow-md hover:border-slate-300 relative overflow-hidden group ${isActive ? "border-blue-600 ring-2 ring-blue-50" : "border-slate-100"
-                }`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className={`inline-flex items-center text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full ${f.color}`}>
-                  {f.label}
-                </span>
-                <Icon className={`w-4 h-4 transition-transform group-hover:scale-110 ${isActive ? "text-blue-600" : "text-slate-400"}`} />
-              </div>
-              <div className="text-3xl font-extrabold text-slate-800 font-sans tracking-tight">{f.count}</div>
-              <div className="text-[10px] text-slate-400 font-medium mt-1">Нийт хэмжээнд эзлэх хувь</div>
-            </button>
-          );
-        })}
-      </div>
+      <ContractStatusCards
+        filters={FILTERS}
+        active={statusFilter}
+        total={stats.total}
+        onSelect={setStatusFilter}
+      />
 
-      {/* Filters & Search Toolbar */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Шүүлтүүрийн самбар</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-
-          {/* Main Search Input */}
-          <div className="relative md:col-span-2">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Байгууллагын нэр, регистр, утас хайх..."
-              className="w-full pl-10 pr-9 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400 bg-slate-50/50"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Fee Plan Filter */}
-          <div className="relative">
-            <select
-              value={planFilter}
-              onChange={e => setPlanFilter(e.target.value)}
-              className="w-full py-2.5 px-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400 bg-slate-50/50 text-slate-600 font-semibold appearance-none cursor-pointer"
-            >
-              <option value="ALL">Бүх гэрээний багц</option>
-              {plansList.map(plan => (
-                <option key={plan} value={plan}>{plan}</option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
-              <ChevronDown className="w-4 h-4" />
-            </div>
-          </div>
-
-          {/* Results count display */}
-          <div className="flex items-center justify-between text-sm font-semibold text-slate-600 bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2.5">
-            <span>Шүүгдсэн үр дүн:</span>
-            <span className="bg-blue-500 text-white px-2 py-0.5 rounded-full text-xs font-bold">{filtered.length}</span>
-          </div>
-
-        </div>
-      </div>
+      <ContractArchiveFilters
+        search={search}
+        planFilter={planFilter}
+        plansList={plansList}
+        filteredCount={filtered.length}
+        onSearchChange={setSearch}
+        onPlanFilterChange={setPlanFilter}
+      />
 
       {/* Main Table View */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-black text-slate-950">
+              Архивын жагсаалт
+            </h2>
+            <p className="mt-0.5 text-xs font-semibold text-slate-500">
+              Мөр дээр дарж гэрээний дэлгэрэнгүй мэдээлэл болон эх хувийг
+              нээнэ.
+            </p>
+          </div>
+          <span className="w-max rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">
+            {paginatedList.length}/{filtered.length} харагдаж байна
+          </span>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm border-collapse">
             <thead className="bg-slate-50/70 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
               <tr>
-                <th className="px-6 py-4 font-semibold">
+                <th className="min-w-[320px] px-6 py-4 font-semibold">
                   <button onClick={() => toggleSort("org")} className="flex items-center gap-1 font-bold hover:text-slate-800 transition-colors">
-                    Байгууллагын нэр / ID <SortIcon k="org" />
+                    Гэрээний нэр / Байгууллага <SortIcon k="org" />
                   </button>
                 </th>
                 <th className="px-6 py-4 font-semibold">
@@ -1018,8 +996,8 @@ function SubmissionsList() {
                   <td colSpan={7} className="px-6 py-20 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <FileText className="w-12 h-12 text-slate-200" />
-                      <span className="font-bold text-slate-500">Тохирох гэрээний мэдээлэл олдсонгүй</span>
-                      <p className="text-xs text-slate-400 max-w-sm mt-1">Хайлтын утга эсвэл шүүлтүүрийн тохиргоогоо өөрчилж дахин оролдоно уу.</p>
+                      <span className="font-bold text-slate-500">Архивт тохирох гэрээ олдсонгүй</span>
+                      <p className="text-xs text-slate-400 max-w-sm mt-1">Хайлтын үг, төлөв эсвэл багцын шүүлтүүрээ өөрчлөөд дахин шалгана уу.</p>
                     </div>
                   </td>
                 </tr>
@@ -1030,15 +1008,10 @@ function SubmissionsList() {
                   <tr
                     key={s.id}
                     onClick={() => setSelected(s)}
-                    className={`cursor-pointer transition-colors border-b border-slate-100 last:border-b-0 ${rowAlert}`}
+                    className={`group cursor-pointer transition-colors border-b border-slate-100 last:border-b-0 ${rowAlert}`}
                   >
-                    <td className="px-6 py-4.5">
-                      <div className="font-bold text-slate-800 text-sm hover:text-blue-600 transition-colors">
-                        {s.contractName ? `${s.contractName} (${s.org})` : s.org}
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {s.contractNumber || `MGL-${s.id.slice(0, 8).toUpperCase()}`}
-                      </div>
+                    <td className="px-6 py-5 align-top">
+                      <ContractNameCell sub={s} />
                     </td>
                     <td className="px-6 py-4.5">
                       {s.status === "SIGNED" ? (
@@ -1166,35 +1139,35 @@ export default function ContractsPage() {
   const [activeTab, setActiveTab] = useState<"submissions" | "templates">("submissions");
 
   return (
-    <div className="flex flex-col gap-6 p-1 sm:p-2">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm">
-        <div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-            <FileText className="w-7 h-7 text-[#1e4e8c]" />
-            Гэрээний удирдлага
-          </h1>
-          <p className="text-slate-400 mt-1 text-xs font-semibold">Байгуулсан цахим гэрээнүүдийн бүртгэл хяналт болон ерөнхий загвар тохиргоо</p>
-        </div>
-        <div className="flex items-center gap-1 bg-slate-150/60 p-1.5 rounded-xl border border-slate-200 w-max shrink-0">
+    <div className="flex flex-col gap-5 p-1 sm:p-2">
+      <div className="sticky top-3 z-30 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-2 px-2">
+            <FileText className="h-4 w-4 text-slate-500" />
+            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+              Гэрээний сан
+            </span>
+          </div>
+          <div className="grid gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 sm:flex sm:w-max">
           <button
             onClick={() => setActiveTab("submissions")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === "submissions"
-              ? "bg-white text-[#1e4e8c] shadow-sm"
-              : "text-slate-500 hover:text-slate-800"
+            className={`flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-xs font-black transition-all ${activeTab === "submissions"
+              ? "bg-white text-[#1e4e8c] shadow-sm ring-1 ring-slate-200"
+              : "text-slate-500 hover:bg-white hover:text-slate-800"
               }`}
           >
             <FileText className="w-3.5 h-3.5" /> Байгуулсан гэрээнүүд
           </button>
           <button
             onClick={() => setActiveTab("templates")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${activeTab === "templates"
-              ? "bg-white text-[#1e4e8c] shadow-sm"
-              : "text-slate-500 hover:text-slate-800"
+            className={`flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-xs font-black transition-all ${activeTab === "templates"
+              ? "bg-white text-[#1e4e8c] shadow-sm ring-1 ring-slate-200"
+              : "text-slate-500 hover:bg-white hover:text-slate-800"
               }`}
           >
             <Layers className="w-3.5 h-3.5" /> Гэрээний загвар тохиргоо
           </button>
+          </div>
         </div>
       </div>
 

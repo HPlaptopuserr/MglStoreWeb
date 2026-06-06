@@ -14,6 +14,7 @@ import { ProfileTabs } from "./_components/ProfileTabs";
 import { SecurityPanel } from "./_components/SecurityPanel";
 import {
   createProfileFormState,
+  type AccountContract,
   type AccountPurchase,
   type MPointHistory,
   type ProfileOrder,
@@ -42,6 +43,7 @@ export default function ProfilePage() {
   const [passwordError, setPasswordError] = useState("");
 
   const [purchases, setPurchases] = useState<AccountPurchase[]>([]);
+  const [contracts, setContracts] = useState<AccountContract[]>([]);
   const [orders, setOrders] = useState<ProfileOrder[]>([]);
   const [points, setPoints] = useState(0);
   const [pointHistory, setPointHistory] = useState<MPointHistory[]>([]);
@@ -83,10 +85,11 @@ export default function ProfilePage() {
     const fetchAccountData = async () => {
       setAccountLoading(true);
       try {
-        const [purchaseRes, pointRes, historyRes] = await Promise.all([
+        const [purchaseRes, pointRes, historyRes, contractRes] = await Promise.all([
           authFetch(`${API}/customer/purchases`),
           authFetch(`${API}/customer/loyalty/points`),
           authFetch(`${API}/customer/loyalty/history`),
+          authFetch(`${API}/contracts/my`),
         ]);
 
         if (purchaseRes.ok) {
@@ -100,6 +103,10 @@ export default function ProfilePage() {
         if (historyRes.ok) {
           const data = await historyRes.json().catch(() => []);
           setPointHistory(Array.isArray(data) ? data : []);
+        }
+        if (contractRes.ok) {
+          const data = await contractRes.json().catch(() => ({}));
+          setContracts(Array.isArray(data.contracts) ? data.contracts : []);
         }
       } catch (error) {
         console.error("Failed to fetch profile account data", error);
@@ -284,6 +291,7 @@ export default function ProfilePage() {
         {tab === "library" && (
           <AccountLibraryPanel
             purchases={purchases}
+            contracts={contracts}
             points={points}
             history={pointHistory}
             loading={accountLoading}
