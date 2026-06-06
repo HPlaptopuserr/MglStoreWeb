@@ -102,6 +102,103 @@ select {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Contract signing page: readable tables on small screens */
+.contract-sign-page,
+.contract-print-page {
+  overflow-wrap: anywhere;
+}
+
+.contract-sign-page .contract-html-content {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.contract-sign-page .contract-html-content table,
+.contract-print-content table {
+  max-width: 100%;
+}
+
+.contract-sign-page input,
+.contract-sign-page select {
+  min-width: 0;
+}
+
+.contract-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.contract-table-scroll table {
+  min-width: 420px;
+}
+
+@media (max-width: 640px) {
+  .contract-sign-page .contract-paper {
+    overflow: visible;
+  }
+
+  .contract-sign-page .contract-html-content table {
+    display: block;
+    width: 100%;
+    min-width: 560px;
+    overflow-x: auto;
+    white-space: normal;
+  }
+
+  .contract-mobile-stack-table,
+  .contract-mobile-stack-table tbody,
+  .contract-mobile-stack-table tr,
+  .contract-mobile-stack-table td {
+    display: block;
+    width: 100% !important;
+  }
+
+  .contract-mobile-stack-table tr {
+    border-bottom: 1px solid #b4c6e7;
+  }
+
+  .contract-mobile-stack-table tr:last-child {
+    border-bottom: 0;
+  }
+
+  .contract-mobile-stack-table td {
+    border-left: 0 !important;
+    border-right: 0 !important;
+    min-height: 42px;
+  }
+
+  .contract-mobile-stack-table td + td {
+    border-top: 0 !important;
+  }
+
+  .contract-signature-table,
+  .contract-signature-table thead,
+  .contract-signature-table tbody,
+  .contract-signature-table tr,
+  .contract-signature-table th,
+  .contract-signature-table td {
+    display: block;
+    width: 100% !important;
+  }
+
+  .contract-signature-table th,
+  .contract-signature-table td {
+    border-left: 0 !important;
+    border-right: 0 !important;
+  }
+
+  .contract-signature-table th + th,
+  .contract-signature-table td + td {
+    border-top: 0 !important;
+  }
+
+  .contract-signature-table canvas {
+    touch-action: none;
+  }
+}
+
 /* ── Print / PDF Export styles ─────────────────────────────────── */
 @media print {
   @page {

@@ -39,7 +39,7 @@ export function OrgInfoTable({ data }: { data?: OrgContactInfo | null }) {
   return (
     <>
       <div className="font-medium mb-2 text-[#c00000]">1.1 Холбооны мэдээлэл</div>
-      <table className="w-full text-sm border-collapse border border-[#b4c6e7] mb-6 font-sans">
+      <table className="contract-mobile-stack-table w-full text-sm border-collapse border border-[#b4c6e7] mb-6 font-sans">
         <tbody>
           {rows.map(([label, value, extraClass]) => (
             <tr key={label}>

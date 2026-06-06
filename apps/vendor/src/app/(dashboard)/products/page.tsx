@@ -471,19 +471,34 @@ export default function ProductsPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
+          <button
+            onClick={() => canAddProduct && setImportOpen(true)}
+            disabled={!canAddProduct}
+            title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
+            className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+              canAddProduct
+                ? isPreorderView
+                  ? "bg-blue-600 shadow-blue-500/25 hover:bg-blue-700"
+                  : "bg-emerald-600 shadow-emerald-500/25 hover:bg-emerald-700"
+                : "bg-slate-300 cursor-not-allowed shadow-none"
+            }`}
+          >
+            {canAddProduct ? <FileSpreadsheet size={16} /> : <Lock size={16} />}
+            Excel импорт
+          </button>
           {!isPreorderView && (
             <button
-              onClick={() => canAddProduct && setImportOpen(true)}
+              onClick={() => canAddProduct && openAdd()}
               disabled={!canAddProduct}
               title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
               className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
                 canAddProduct
-                  ? "bg-emerald-600 shadow-emerald-500/25 hover:bg-emerald-700"
+                  ? "bg-indigo-600 shadow-indigo-500/25 hover:bg-indigo-700"
                   : "bg-slate-300 cursor-not-allowed shadow-none"
               }`}
             >
-              {canAddProduct ? <FileSpreadsheet size={16} /> : <Lock size={16} />}
-              Excel импорт
+              {canAddProduct ? <Plus size={16} /> : <Lock size={16} />}
+              Шинэ бараа
             </button>
           )}
           {isPreorderView && (
@@ -499,21 +514,6 @@ export default function ProductsPage() {
             >
               {canAddProduct ? <Package size={16} /> : <Lock size={16} />}
               Захиалгын бараа
-            </button>
-          )}
-          {!isPreorderView && (
-            <button
-              onClick={() => canAddProduct && openAdd()}
-              disabled={!canAddProduct}
-              title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
-              className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
-                canAddProduct
-                  ? "bg-indigo-600 shadow-indigo-500/25 hover:bg-indigo-700"
-                  : "bg-slate-300 cursor-not-allowed shadow-none"
-              }`}
-            >
-              {canAddProduct ? <Plus size={16} /> : <Lock size={16} />}
-              Шинэ бараа
             </button>
           )}
         </div>
@@ -543,6 +543,7 @@ export default function ProductsPage() {
       {importOpen && (
         <ExcelImportModal
           organizationId={getOrgId() || ""}
+          mode={isPreorderView ? "preorder" : "stock"}
           onClose={() => setImportOpen(false)}
           onSuccess={fetchProducts}
         />
@@ -791,13 +792,26 @@ export default function ProductsPage() {
                   : "Эхний бараагаа бүртгэж борлуулалтаа эхлүүлээрэй. Excel файл ашиглан олноор нь оруулах боломжтой."}
             </p>
             {!searchQuery && (
-              <button
-                onClick={isPreorderView ? openAddPreorder : openAdd}
-                className="inline-flex items-center gap-2 h-12 px-8 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-lg shadow-indigo-500/25 hover:bg-indigo-700 transition-colors"
-              >
-                <Plus size={18} />
-                {isPreorderView ? "Захиалгын бараа бүртгэх" : "Бараа бүртгэх"}
-              </button>
+              <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+                <button
+                  onClick={() => setImportOpen(true)}
+                  className={`inline-flex h-12 items-center gap-2 rounded-xl px-8 text-sm font-bold text-white shadow-lg transition-colors ${
+                    isPreorderView
+                      ? "bg-blue-600 shadow-blue-500/25 hover:bg-blue-700"
+                      : "bg-emerald-600 shadow-emerald-500/25 hover:bg-emerald-700"
+                  }`}
+                >
+                  <FileSpreadsheet size={18} />
+                  Excel импорт
+                </button>
+                <button
+                  onClick={isPreorderView ? openAddPreorder : openAdd}
+                  className="inline-flex h-12 items-center gap-2 rounded-xl bg-indigo-600 px-8 text-sm font-bold text-white shadow-lg shadow-indigo-500/25 transition-colors hover:bg-indigo-700"
+                >
+                  <Plus size={18} />
+                  {isPreorderView ? "Захиалгын бараа бүртгэх" : "Бараа бүртгэх"}
+                </button>
+              </div>
             )}
           </div>
         ) : (

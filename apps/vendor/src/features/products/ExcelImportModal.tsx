@@ -36,16 +36,57 @@ interface ImportResult {
 }
 
 type Step = "upload" | "importing" | "results";
+type ImportMode = "stock" | "preorder";
 
 const MAX_IMAGES_PER_PRODUCT = 5;
+
+const IMPORT_COPY: Record<ImportMode, {
+  title: string;
+  subtitle: string;
+  templateName: string;
+  accentClass: string;
+  buttonClass: string;
+}> = {
+  stock: {
+    title: "Excel-ээс бараа импорт",
+    subtitle: "Нөөцтэй барааг Excel файлаас олноор бүртгэнэ",
+    templateName: "product_import_template.xlsx",
+    accentClass: "bg-emerald-50 text-emerald-600",
+    buttonClass: "bg-emerald-600 shadow-emerald-500/25 hover:bg-emerald-700",
+  },
+  preorder: {
+    title: "Excel-ээс захиалгын бараа импорт",
+    subtitle: "Захиалгаар ирэх барааг ирэх хоног, тайлбартай нь бүртгэнэ",
+    templateName: "preorder_product_import_template.xlsx",
+    accentClass: "bg-blue-50 text-blue-600",
+    buttonClass: "bg-blue-600 shadow-blue-500/25 hover:bg-blue-700",
+  },
+};
+
+const getColumnInfo = (mode: ImportMode) => [
+  { col: "Зураг", req: false, desc: "Зургаа нүдэнд шууд оруулна (Insert > Image)" },
+  { col: "Нэр (name)", req: true, desc: "Барааны нэр" },
+  { col: "SKU (sku)", req: false, desc: "Барааны код / SKU" },
+  { col: "Үнэ (price)", req: true, desc: "Зарах үнэ (тоо)" },
+  { col: "Өртөг (costPrice)", req: false, desc: "Өртөг үнэ (тоо)" },
+  ...(mode === "stock"
+    ? [{ col: "Нөөц (stock)", req: false, desc: "Нөөцийн тоо (0 анхдагч)" }]
+    : [
+        { col: "Ирэх хоног (preorderLeadTimeDays)", req: false, desc: "Хоосон бол 14 хоног гэж авна" },
+        { col: "Захиалгын тайлбар (preorderNote)", req: false, desc: "Жишээ: Хятадаас 14-21 хоногт ирнэ" },
+      ]),
+  { col: "Тайлбар (description)", req: false, desc: "Барааны тайлбар" },
+];
 
 /* ─── Main Component ─────────────────────────────────────────────────── */
 export function ExcelImportModal({
   organizationId,
+  mode = "stock",
   onClose,
   onSuccess,
 }: {
   organizationId: string;
+  mode?: ImportMode;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -55,17 +96,20 @@ export function ExcelImportModal({
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const copy = IMPORT_COPY[mode];
+  const columnInfo = getColumnInfo(mode);
 
   /* ── Template download ── */
   const downloadTemplate = async () => {
     try {
-      const res = await authFetch(`${API}/products/import-template`);
+      const params = new URLSearchParams({ mode });
+      const res = await authFetch(`${API}/products/import-template?${params.toString()}`);
       if (!res.ok) throw new Error("Татахад алдаа гарлаа");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "product_import_template.xlsx";
+      a.download = copy.templateName;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -107,6 +151,7 @@ export function ExcelImportModal({
     const formData = new FormData();
     formData.append("file", selectedFile);
     formData.append("organizationId", organizationId);
+    formData.append("mode", mode);
 
     try {
       const res = await authFetch(`${API}/products/import`, {
@@ -142,11 +187,11 @@ export function ExcelImportModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-              <FileSpreadsheet size={20} className="text-emerald-600" />
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${copy.accentClass}`}>
+              <FileSpreadsheet size={20} />
             </div>
             <div>
-              <h2 className="text-lg font-black text-slate-900">Excel-ээс бараа импорт</h2>
+              <h2 className="text-lg font-black text-slate-900">{copy.title}</h2>
               <p className="text-xs font-medium text-slate-400 mt-0.5">
                 {step === "upload" && "Excel файлаа оруулна уу"}
                 {step === "importing" && "Файл боловсруулж байна..."}
@@ -173,7 +218,7 @@ export function ExcelImportModal({
                   <div>
                     <p className="text-sm font-bold text-slate-800">Загвар файл татах</p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Excel-н бүтэц, баганы нэрсийг харж бөглөнө үү
+                      {copy.subtitle}. Excel-н бүтэц, баганы нэрсийг харж бөглөнө үү
                     </p>
                   </div>
                 </div>
@@ -194,15 +239,7 @@ export function ExcelImportModal({
                   </p>
                 </div>
                 <div className="divide-y divide-slate-50">
-                  {[
-                    { col: "Зураг", req: false, desc: "Зургаа нүдэнд шууд оруулна (Insert > Image)" },
-                    { col: "Нэр (name)", req: true, desc: "Барааны нэр" },
-                    { col: "SKU (sku)", req: false, desc: "Барааны код / SKU" },
-                    { col: "Үнэ (price)", req: true, desc: "Зарах үнэ (тоо)" },
-                    { col: "Өртөг (costPrice)", req: false, desc: "Өртөг үнэ (тоо)" },
-                    { col: "Нөөц (stock)", req: false, desc: "Нөөцийн тоо (0 анхдагч)" },
-                    { col: "Тайлбар (description)", req: false, desc: "Барааны тайлбар" },
-                  ].map(({ col, req, desc }) => (
+                  {columnInfo.map(({ col, req, desc }) => (
                     <div key={col} className="flex items-center justify-between px-4 py-2.5 text-sm">
                       <div className="flex items-center gap-2">
                         <code className="text-xs bg-slate-100 px-2 py-0.5 rounded-md font-mono text-slate-700">{col}</code>
@@ -294,7 +331,7 @@ export function ExcelImportModal({
                 <button
                   onClick={startImport}
                   disabled={!selectedFile}
-                  className="flex items-center gap-2 h-10 px-7 rounded-xl bg-emerald-600 text-white text-sm font-bold shadow-lg shadow-emerald-500/25 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className={`flex items-center gap-2 h-10 px-7 rounded-xl text-white text-sm font-bold shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${copy.buttonClass}`}
                 >
                   <Upload size={15} />
                   Импорт эхлүүлэх

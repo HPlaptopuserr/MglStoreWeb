@@ -45,6 +45,32 @@ type Submission = {
 
 type SortKey = "org" | "status" | "signedAt" | "expiresAt" | "createdAt";
 
+function getContractDisplayName(sub: Submission) {
+  return sub.contractName || sub.headerData?.contractTitle || sub.headerData?.title || "Нэргүй гэрээ";
+}
+
+function getContractCode(sub: Submission) {
+  return sub.contractNumber || `MGL-${sub.id.slice(0, 8).toUpperCase()}`;
+}
+
+function ContractNameCell({ sub }: { sub: Submission }) {
+  return (
+    <div className="min-w-[260px] max-w-[360px]">
+      <div className="mb-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700">
+        <FileText className="h-3 w-3 shrink-0" />
+        <span className="truncate">{getContractCode(sub)}</span>
+      </div>
+      <div className="line-clamp-2 text-[15px] font-black leading-snug text-slate-950 transition-colors group-hover:text-blue-700">
+        {getContractDisplayName(sub)}
+      </div>
+      <div className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-500">
+        <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        <span className="truncate">{sub.org}</span>
+      </div>
+    </div>
+  );
+}
+
 function statusDays(expiresAt: string | null): number | null {
   if (!expiresAt) return null;
   return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86_400_000);
@@ -102,10 +128,10 @@ function DetailPanel({ sub, onClose }: { sub: Submission; onClose: () => void })
             </div>
             <div>
               <h2 className="font-bold text-lg leading-tight truncate max-w-[450px]">
-                {sub.contractName ? `${sub.contractName} (${sub.org})` : sub.org}
+                {getContractDisplayName(sub)}
               </h2>
-              <p className="text-blue-100 text-xs font-mono mt-0.5">
-                {sub.contractNumber ? `Дугаар: ${sub.contractNumber}` : `ID: MGL-${sub.id.slice(0, 8).toUpperCase()}`}
+              <p className="text-blue-100 text-xs font-semibold mt-0.5 truncate max-w-[450px]">
+                {sub.org} · Дугаар: {getContractCode(sub)}
               </p>
             </div>
           </div>
@@ -930,9 +956,9 @@ function SubmissionsList() {
           <table className="w-full text-left text-sm border-collapse">
             <thead className="bg-slate-50/70 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
               <tr>
-                <th className="px-6 py-4 font-semibold">
+                <th className="min-w-[320px] px-6 py-4 font-semibold">
                   <button onClick={() => toggleSort("org")} className="flex items-center gap-1 font-bold hover:text-slate-800 transition-colors">
-                    Байгууллагын нэр / ID <SortIcon k="org" />
+                    Гэрээний нэр / Байгууллага <SortIcon k="org" />
                   </button>
                 </th>
                 <th className="px-6 py-4 font-semibold">
@@ -982,15 +1008,10 @@ function SubmissionsList() {
                   <tr
                     key={s.id}
                     onClick={() => setSelected(s)}
-                    className={`cursor-pointer transition-colors border-b border-slate-100 last:border-b-0 ${rowAlert}`}
+                    className={`group cursor-pointer transition-colors border-b border-slate-100 last:border-b-0 ${rowAlert}`}
                   >
-                    <td className="px-6 py-4.5">
-                      <div className="font-bold text-slate-800 text-sm hover:text-blue-600 transition-colors">
-                        {s.contractName ? `${s.contractName} (${s.org})` : s.org}
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {s.contractNumber || `MGL-${s.id.slice(0, 8).toUpperCase()}`}
-                      </div>
+                    <td className="px-6 py-5 align-top">
+                      <ContractNameCell sub={s} />
                     </td>
                     <td className="px-6 py-4.5">
                       {s.status === "SIGNED" ? (

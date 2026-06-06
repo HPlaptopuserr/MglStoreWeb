@@ -387,32 +387,47 @@ router.get("/products", optionalAuth, async (req, res) => {
 });
 
 /* ─── GET /products/import-template ──────────────────────────────────── */
-router.get("/products/import-template", (_req, res) => {
+router.get("/products/import-template", (req, res) => {
   try {
+    const mode = String(req.query.mode || req.query.type || "").trim().toLowerCase();
+    const isPreorderTemplate = mode === "preorder";
     const templateData = [
       {
         "Зураг": "(зургаа энд оруулна)",
-        "Нэр (name)": "Жишээ бараа 1",
-        "SKU (sku)": "SKU-001",
+        "Нэр (name)": isPreorderTemplate ? "Жишээ захиалгын бараа 1" : "Жишээ бараа 1",
+        "SKU (sku)": isPreorderTemplate ? "PRE-001" : "SKU-001",
         "Үнэ (price)": 25000,
         "Өртөг (costPrice)": 15000,
-        "Нөөц (stock)": 100,
+        "Нөөц (stock)": isPreorderTemplate ? 0 : 100,
         "Тайлбар (description)": "Барааны тайлбар энд бичнэ",
+        ...(isPreorderTemplate
+          ? {
+              "Ирэх хоног (preorderLeadTimeDays)": 14,
+              "Захиалгын тайлбар (preorderNote)": "Хятадаас захиалгаар 14 хоногт ирнэ",
+            }
+          : {}),
       },
       {
         "Зураг": "(зургаа энд оруулна)",
-        "Нэр (name)": "Жишээ бараа 2",
-        "SKU (sku)": "SKU-002",
+        "Нэр (name)": isPreorderTemplate ? "Жишээ захиалгын бараа 2" : "Жишээ бараа 2",
+        "SKU (sku)": isPreorderTemplate ? "PRE-002" : "SKU-002",
         "Үнэ (price)": 50000,
         "Өртөг (costPrice)": 30000,
-        "Нөөц (stock)": 50,
+        "Нөөц (stock)": isPreorderTemplate ? 0 : 50,
         "Тайлбар (description)": "",
+        ...(isPreorderTemplate
+          ? {
+              "Ирэх хоног (preorderLeadTimeDays)": 21,
+              "Захиалгын тайлбар (preorderNote)": "",
+            }
+          : {}),
       },
     ];
 
     const ws = XLSX.utils.json_to_sheet(templateData);
     ws["!cols"] = [
       { wch: 18 }, { wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 35 },
+      ...(isPreorderTemplate ? [{ wch: 24 }, { wch: 36 }] : []),
     ];
     // Make image column rows taller for pasting images
     ws["!rows"] = [{ hpt: 20 }, { hpt: 60 }, { hpt: 60 }];
@@ -421,7 +436,10 @@ router.get("/products/import-template", (_req, res) => {
 
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
-    res.setHeader("Content-Disposition", 'attachment; filename="product_import_template.xlsx"');
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${isPreorderTemplate ? "preorder_product_import_template" : "product_import_template"}.xlsx"`,
+    );
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     return res.send(Buffer.from(buf));
   } catch (error) {
@@ -446,6 +464,11 @@ router.post(
 
       const perm = await assertOrgPermission(req, res, organizationId, Permission.MANAGE_PRODUCTS);
       if (!perm) return;
+
+      const importMode = String(req.body.mode || req.body.type || req.query.mode || req.query.type || "")
+        .trim()
+        .toLowerCase();
+      const isPreorderImport = importMode === "preorder";
 
       // Auto-resolve businessCategoryId from organization's businessCategory string
       let orgBusinessCategoryId: string | null = null;
@@ -548,6 +571,8 @@ router.post(
         const costPrice = resolveCol(row, colMap.costPrice);
         const stock = resolveCol(row, colMap.stock);
         const description = resolveCol(row, colMap.description);
+        const preorderLeadTimeDays = resolveCol(row, colMap.preorderLeadTimeDays);
+        const preorderNote = resolveCol(row, colMap.preorderNote);
         const imagesRaw = resolveCol(row, colMap.images);
 
         if (!name || price === undefined) {
@@ -573,6 +598,15 @@ router.post(
         const stockNum = stock !== undefined ? parseInt(String(stock)) : 0;
         if (isNaN(stockNum) || stockNum < 0 || stockNum > 2_147_483_647) {
           results.errors.push(`Мөр ${rowNum}: Нөөц буруу — "${stock}"`);
+          results.skipped++;
+          continue;
+        }
+
+        const normalizedLeadTimeDays = isPreorderImport
+          ? normalizePreorderLeadTimeDays(preorderLeadTimeDays ?? 14)
+          : null;
+        if (normalizedLeadTimeDays === undefined) {
+          results.errors.push(`Мөр ${rowNum}: Ирэх хоног 0-365 хооронд байх ёстой`);
           results.skipped++;
           continue;
         }
@@ -603,7 +637,13 @@ router.post(
               description: description ? String(description).trim() : null,
               price: priceNum,
               costPrice: costPriceNum,
-              stock: stockNum,
+              stock: isPreorderImport ? 0 : stockNum,
+              supplyType: isPreorderImport ? "CHINA_PREORDER" as const : "IN_STOCK" as const,
+              preorderLeadTimeDays: isPreorderImport ? normalizedLeadTimeDays : null,
+              preorderNote:
+                isPreorderImport && preorderNote
+                  ? String(preorderNote).trim()
+                  : null,
               businessCategoryId: orgBusinessCategoryId,
               isActive: true,
           };

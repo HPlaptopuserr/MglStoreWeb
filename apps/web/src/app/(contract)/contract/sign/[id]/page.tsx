@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { CheckCircle2, PenTool, Eraser, Loader2, Download } from "lucide-react";
+import { CheckCircle2, PenTool, Eraser, Loader2, Download, ChevronDown } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
 import { ContractPayment } from "../../../../../components/organisms/ContractPayment";
 import { DEFAULT_ORG_CONTACT, OrgInfoTable } from "../../../../../components/organisms/OrgInfoTable";
@@ -103,8 +103,8 @@ function PrintContractDocument({
   ];
 
   return (
-    <main className="min-h-screen bg-slate-100 py-8 print:bg-white print:py-0">
-      <article className="contract-print-page mx-auto w-[210mm] min-h-[297mm] bg-white px-[18mm] py-[16mm] text-[12px] leading-[1.65] text-slate-950 shadow-2xl print:w-auto print:min-h-0 print:px-0 print:py-0 print:shadow-none">
+    <main className="min-h-screen bg-slate-100 px-3 py-5 sm:py-8 print:bg-white print:px-0 print:py-0">
+      <article className="contract-print-page mx-auto w-[210mm] min-h-[297mm] max-w-full bg-white px-4 py-5 text-[11px] leading-[1.65] text-slate-950 shadow-2xl sm:px-[18mm] sm:py-[16mm] sm:text-[12px] print:w-auto print:min-h-0 print:px-0 print:py-0 print:shadow-none">
         <header className="border-b-[3px] border-slate-950 pb-5 text-center">
           <div className="whitespace-pre-line text-[16px] font-black uppercase tracking-[0.04em] text-slate-950">
             {contractInfo.headerData?.title ?? "МОНГОЛ ЭЗЭНТЭЙ ЖИЖИГ ДУНД БИЗНЕС\nЭРХЛЭГЧДИЙН НЭГДСЭН ХОЛБОО"}
@@ -117,7 +117,7 @@ function PrintContractDocument({
           </h1>
         </header>
 
-        <section className="mt-5 grid grid-cols-2 gap-3 text-[11px]">
+        <section className="mt-5 grid grid-cols-1 gap-3 text-[11px] sm:grid-cols-2">
           {[
             ["Гэрээний дугаар", `MGL-${contractId.slice(0, 8).toUpperCase()}`],
             ["Огноо", today],
@@ -141,44 +141,48 @@ function PrintContractDocument({
             (цаашид "Гишүүн" гэх) хооронд байгуулав.
           </p>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div>
               <div className="mb-2 text-[11px] font-black uppercase text-slate-700">1.1 Холбооны мэдээлэл</div>
-              <table className="w-full border-collapse text-[10.5px]">
-                <tbody>
-                  {orgRows.map(([label, value]) => (
-                    <tr key={label}>
-                      <td className="w-[42%] border border-slate-300 bg-slate-50 px-2 py-1.5 font-bold text-slate-700">
-                        {label}
-                      </td>
-                      <td className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-950">
-                        {value || "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="contract-table-scroll">
+                <table className="w-full border-collapse text-[10.5px]">
+                  <tbody>
+                    {orgRows.map(([label, value]) => (
+                      <tr key={label}>
+                        <td className="w-[42%] border border-slate-300 bg-slate-50 px-2 py-1.5 font-bold text-slate-700">
+                          {label}
+                        </td>
+                        <td className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-950">
+                          {value || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
             <div>
               <div className="mb-2 text-[11px] font-black uppercase text-slate-700">1.2 Гишүүн байгууллагын мэдээлэл</div>
-              <table className="w-full border-collapse text-[10.5px]">
-                <tbody>
-                  {memberFields.filter((field) => field.enabled).map((field) => (
-                    <tr key={field.key}>
-                      <td className="w-[42%] border border-slate-300 bg-slate-50 px-2 py-1.5 font-bold text-slate-700">
-                        {field.label}
-                      </td>
-                      <td className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-950">
-                        {memberData[field.key] || "—"}
-                      </td>
+              <div className="contract-table-scroll">
+                <table className="w-full border-collapse text-[10.5px]">
+                  <tbody>
+                    {memberFields.filter((field) => field.enabled).map((field) => (
+                      <tr key={field.key}>
+                        <td className="w-[42%] border border-slate-300 bg-slate-50 px-2 py-1.5 font-bold text-slate-700">
+                          {field.label}
+                        </td>
+                        <td className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-950">
+                          {memberData[field.key] || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td className="border border-slate-300 bg-slate-50 px-2 py-1.5 font-bold text-slate-700">Албан тушаал</td>
+                      <td className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-950">{memberPosition || "—"}</td>
                     </tr>
-                  ))}
-                  <tr>
-                    <td className="border border-slate-300 bg-slate-50 px-2 py-1.5 font-bold text-slate-700">Албан тушаал</td>
-                    <td className="border border-slate-300 px-2 py-1.5 font-semibold text-slate-950">{memberPosition || "—"}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>
@@ -192,7 +196,7 @@ function PrintContractDocument({
           <p className="mb-3 text-center font-bold">
             Энэхүү гэрээг уншиж танилцан, бүх нөхцөлийг бүрэн ойлгосны үндсэн дээр эрх бүхий этгээдүүд гарын үсэг зурж, тамгаар баталгаажуулав.
           </p>
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <SignaturePanel
               title="ХОЛБОО"
               subtitle="Монгол эзэнтэй ЖДБ эрхлэгчдийн нэгдсэн холбоо"
@@ -287,6 +291,59 @@ function SignaturePanel({
       <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">Албан тушаал</div>
       <div className="mt-4 border-b-2 border-slate-900 pb-1 font-bold">{today || " "}</div>
       <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">Огноо</div>
+    </div>
+  );
+}
+
+function ContractFeePlanSelect({
+  value,
+  plans,
+  isPaid,
+  onChange,
+}: {
+  value: string;
+  plans: { key: string; label: string; sublabel?: string; price?: number }[];
+  isPaid?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const selected = plans.find((plan) => plan.key === value);
+  const selectedText = selected
+    ? `${selected.label || "Төлбөр"}${selected.sublabel ? ` — ${selected.sublabel}` : ""}${isPaid && selected.price ? ` — ${Number(selected.price).toLocaleString()}₮` : ""}`
+    : "Хугацаа сонгох";
+
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label="Гэрээний хугацаа сонгох"
+        className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+      >
+        {plans.map((plan) => (
+          <option key={plan.key} value={plan.key}>
+            {plan.label || "Төлбөр"}
+            {plan.sublabel ? ` — ${plan.sublabel}` : ""}
+            {isPaid && plan.price ? ` — ${Number(plan.price).toLocaleString()}₮` : ""}
+          </option>
+        ))}
+      </select>
+
+      <div className="flex min-h-[64px] items-center justify-between gap-3 rounded-xl border-2 border-orange-300 bg-orange-50 px-3 py-2 shadow-sm transition peer-focus-within:border-orange-500 peer-focus-within:ring-4 peer-focus-within:ring-orange-100 peer-hover:border-orange-500">
+        <div className="min-w-0">
+          <div className="mb-1 inline-flex items-center rounded-full bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-orange-700 ring-1 ring-orange-200">
+            Сонгох
+          </div>
+          <div className="truncate text-sm font-black text-slate-950">
+            {selectedText}
+          </div>
+          <div className="mt-0.5 text-[11px] font-bold text-orange-700">
+            Дарж гэрээний хугацаагаа сонгоно уу
+          </div>
+        </div>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-md shadow-orange-200">
+          <ChevronDown className="h-5 w-5" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -668,13 +725,13 @@ export default function ContractSignPage() {
 
   // Step = "fill"
   return (
-    <div className="min-h-screen bg-neutral-100/50 py-10 px-4 sm:px-6">
+    <div className="contract-sign-page min-h-screen bg-neutral-100/50 px-3 py-6 sm:px-6 sm:py-10">
 
       {!isPrintMode && (
-        <div className="max-w-[850px] mx-auto mb-6 flex justify-between items-end no-print">
+        <div className="max-w-[850px] mx-auto mb-5 flex flex-col gap-2 no-print sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-neutral-800">Гэрээ баталгаажуулах</h1>
-            <p className="text-neutral-500 mt-1">Доорх мэдээллийг бөглөж гэрээг цахимаар байгуулна уу.</p>
+            <h1 className="text-xl font-black text-neutral-900 sm:text-2xl">Гэрээ баталгаажуулах</h1>
+            <p className="mt-1 text-sm font-semibold leading-6 text-neutral-500">Доорх мэдээллийг бөглөж гэрээг цахимаар байгуулна уу.</p>
           </div>
         </div>
       )}
@@ -695,14 +752,14 @@ export default function ContractSignPage() {
         </div>
       )}
 
-      <form onSubmit={handleProceedToPayment} className="max-w-[850px] mx-auto">
+      <form onSubmit={handleProceedToPayment} className="mx-auto max-w-[850px]">
         {/* A4 Paper container */}
-        <div className="contract-paper bg-white rounded-sm shadow-xl border border-neutral-300 overflow-hidden mb-6 relative">
+        <div className="contract-paper relative mb-5 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl sm:mb-6 sm:rounded-sm sm:border-neutral-300">
 
-          <div className="px-8 sm:px-16 py-12 sm:py-20 text-sm leading-relaxed text-black font-serif">
+          <div className="px-4 py-6 text-sm leading-relaxed text-black sm:px-16 sm:py-20">
 
             {/* HEADER */}
-            <div className="text-center font-bold text-lg mb-1 leading-snug text-[#1e4e8c] whitespace-pre-line">
+            <div className="text-center text-base font-black leading-snug text-[#1e4e8c] sm:text-lg whitespace-pre-line">
               {contractInfo?.headerData?.title ?? "МОНГОЛ ЭЗЭНТЭЙ ЖИЖИГ ДУНД БИЗНЕС\nЭРХЛЭГЧДИЙН НЭГДСЭН ХОЛБОО"}
               <br />
               <span className="font-normal text-sm italic text-neutral-600">
@@ -716,7 +773,7 @@ export default function ContractSignPage() {
               {contractInfo?.headerData?.contractTitle ?? "УДИРДАХ ЗӨВЛӨЛИЙН ГИШҮҮНЧЛЭЛИЙН ГЭРЭЭ"}
             </div>
 
-            <table className="w-full text-sm border-collapse border border-[#b4c6e7] mb-6 font-sans">
+            <table className="contract-mobile-stack-table mb-6 w-full border-collapse border border-[#b4c6e7] text-sm">
               <tbody>
                 <tr>
                   <td className="border border-[#b4c6e7] p-2 bg-[#f8f9fc] font-bold text-[#1e4e8c] w-[150px]">Гэрээний дугаар:</td>
@@ -739,21 +796,14 @@ export default function ContractSignPage() {
                           {FEE_PLANS.find(p => p.key === selectedFeePlan)?.label ?? "—"}
                         </span>
                       ) : (
-                        <select
-                          value={selectedFeePlan}
-                          onChange={(e) => setSelectedFeePlan(e.target.value)}
-                          className="w-full h-full px-2 py-2 bg-white border-0 outline-none text-sm font-medium text-neutral-900 cursor-pointer"
-                        >
-                          {FEE_PLANS.map((plan) => (
-                            <option key={plan.key} value={plan.key}>
-                              {plan.label || "Төлбөр"}
-                              {plan.sublabel ? ` — ${plan.sublabel}` : ""}
-                              {contractInfo?.isPaid && plan.price
-                                ? ` — ${Number(plan.price).toLocaleString()}₮`
-                                : ""}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="p-2">
+                          <ContractFeePlanSelect
+                            value={selectedFeePlan}
+                            plans={FEE_PLANS}
+                            isPaid={contractInfo?.isPaid}
+                            onChange={setSelectedFeePlan}
+                          />
+                        </div>
                       )}
                     </td>
                 </tr>
@@ -772,7 +822,7 @@ export default function ContractSignPage() {
             <OrgInfoTable data={contractInfo?.orgContact} />
 
             <div className="font-medium mb-2 text-[#c00000]">1.2 Гишүүн байгууллагын мэдээлэл</div>
-            <table className="w-full text-sm border-collapse border border-[#b4c6e7] mb-8 font-sans">
+            <table className="contract-mobile-stack-table mb-8 w-full border-collapse border border-[#b4c6e7] text-sm">
               <tbody>
                 {MEMBER_FIELDS.filter((f: any) => f.enabled).map((field: any) => (
                   <tr key={field.key}>
@@ -809,8 +859,8 @@ export default function ContractSignPage() {
             )}
 
             {/* TABLE BASED SIGNATURE BLOCK JUST LIKE IN THE MOCKUP */}
-            <div className="overflow-hidden page-break-inside-avoid">
-              <table className="w-full border-collapse border border-[#b4c6e7] text-sm">
+            <div className="page-break-inside-avoid overflow-hidden rounded-xl border border-[#b4c6e7]">
+              <table className="contract-signature-table w-full border-collapse text-sm">
                 <thead>
                   <tr>
                     <th className="border border-[#b4c6e7] bg-[#f8f9fc] p-4 text-center w-1/2 align-top">
