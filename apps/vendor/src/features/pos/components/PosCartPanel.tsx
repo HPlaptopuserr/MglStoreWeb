@@ -25,25 +25,25 @@ function PosCartLineRow({ line, index, onRemove, onSetQty }: CartLineRowProps) {
   const lineTotal = line.qty * line.unitPrice;
 
   return (
-    <article className="grid grid-cols-[42px_minmax(0,1fr)_116px_150px_34px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/20">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-sm font-black text-blue-700">
+    <article className="grid grid-cols-[34px_minmax(0,1fr)_104px_126px_28px] items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/20">
+      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-xs font-black text-blue-700">
         {index + 1}
       </div>
 
       <div className="min-w-0">
-        <p className="truncate text-[15px] font-black leading-tight text-slate-950">
+        <p className="truncate text-sm font-black leading-tight text-slate-950">
           {line.name}
         </p>
-        <p className="mt-0.5 truncate text-[11px] font-bold text-slate-500">
+        <p className="mt-0.5 truncate text-[10px] font-bold text-slate-500">
           Нэгж: {money(line.unitPrice)} · Нөөц: {line.stockQty}
         </p>
       </div>
 
-      <div className="flex h-9 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+      <div className="flex h-8 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
         <button
           type="button"
           onClick={() => onSetQty(line.productId, line.qty - 1)}
-          className="flex h-full w-8 items-center justify-center text-slate-700 transition hover:bg-white"
+          className="flex h-full w-7 items-center justify-center text-slate-700 transition hover:bg-white"
           aria-label="Тоо бууруулах"
         >
           <Minus size={14} />
@@ -59,24 +59,24 @@ function PosCartLineRow({ line, index, onRemove, onSetQty }: CartLineRowProps) {
               onSetQty(line.productId, Math.floor(parsed));
             }
           }}
-          className="h-full w-10 border-x border-slate-200 bg-white text-center text-base font-black text-slate-950 outline-none"
+          className="h-full w-9 border-x border-slate-200 bg-white text-center text-sm font-black text-slate-950 outline-none"
         />
         <button
           type="button"
           onClick={() => onSetQty(line.productId, line.qty + 1)}
           disabled={line.qty >= line.stockQty}
-          className="flex h-full w-8 items-center justify-center text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-full w-7 items-center justify-center text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Тоо нэмэх"
         >
           <Plus size={14} />
         </button>
       </div>
 
-      <div className="rounded-xl bg-slate-950 px-3 py-2 text-right">
-        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+      <div className="rounded-lg bg-slate-950 px-2.5 py-1.5 text-right">
+        <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">
           Мөрийн дүн
         </p>
-        <p className="text-lg font-black leading-tight tabular-nums text-white">
+        <p className="text-base font-black leading-tight tabular-nums text-white">
           {money(lineTotal)}
         </p>
       </div>
@@ -84,10 +84,10 @@ function PosCartLineRow({ line, index, onRemove, onSetQty }: CartLineRowProps) {
       <button
         type="button"
         onClick={() => onRemove(line.productId)}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
         aria-label="Сагснаас хасах"
       >
-        <Trash2 size={15} />
+        <Trash2 size={14} />
       </button>
     </article>
   );

@@ -818,12 +818,6 @@ export default function PosDemoPage() {
 
   const handleCreateDemoSale = async () => {
     if (state.cart.length === 0) return;
-    if (!registerConfig?.branchId) {
-      setScanStatus("not-found");
-      setScanMessage("POS кассын салбар сонгогдоогүй байна. POS кассаа сонгоод дахин оролдоно уу.");
-      setShowSetupPanel(true);
-      return;
-    }
 
     let confirmedPayments = paymentEntries.filter((item) => item.status === "confirmed");
     let canSubmitSale = canFinalizeSale;
@@ -873,6 +867,15 @@ export default function PosDemoPage() {
       invoiceId: item.invoiceId,
     }));
     const finalMethod = paymentBreakdown.length === 1 ? paymentBreakdown[0].method : "MIXED";
+    const branchIdForSale =
+      registerConfig?.branchId || (finalMethod === "CASH" ? `local-cash-${organizationId || "branch"}` : "");
+
+    if (!branchIdForSale) {
+      setScanStatus("not-found");
+      setScanMessage("POS кассын салбар сонгогдоогүй байна. POS кассаа сонгоод дахин оролдоно уу.");
+      setShowSetupPanel(true);
+      return;
+    }
 
     if (!clientSaleIdRef.current) {
       clientSaleIdRef.current = `sale-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -882,7 +885,7 @@ export default function PosDemoPage() {
     try {
       const receipt = await submitSale({
         shiftId: shift?.id ?? "",
-        branchId: registerConfig?.branchId ?? "",
+        branchId: branchIdForSale,
         registerId: registerConfig?.id,
         organizationId,
         clientSaleId: clientSaleIdRef.current,
@@ -1230,9 +1233,9 @@ export default function PosDemoPage() {
 
   const startAutoCheckoutFlow = async () => {
     if (state.cart.length === 0) return;
-    if (!registerConfig?.branchId) {
+    if (paymentMethod !== "CASH" && !registerConfig?.branchId) {
       setScanStatus("not-found");
-      setScanMessage("POS кассын салбар сонгогдоогүй байна. POS кассаа сонгоод дахин оролдоно уу.");
+      setScanMessage("Card болон QR төлбөр авахын тулд POS кассаа эхлээд бүртгэнэ үү. Бэлэн төлбөрийг registerгүй авч болно.");
       setShowSetupPanel(true);
       return;
     }
@@ -1264,7 +1267,7 @@ export default function PosDemoPage() {
       return;
     }
 
-    setAutoCheckoutActive(false);
+    setAutoCheckoutActive(true);
     setPaymentEntries([
       {
         id: `CASH-${Date.now()}`,
@@ -2049,7 +2052,7 @@ export default function PosDemoPage() {
 
           <form
             onSubmit={handleManualSubmit}
-            className="grid shrink-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_112px_112px]"
+            className="flex shrink-0 flex-col gap-2"
           >
             <div className="relative">
               <Barcode size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -2061,25 +2064,27 @@ export default function PosDemoPage() {
                 className="h-12 w-full rounded-lg border-2 border-blue-500 bg-white pl-12 pr-4 text-base font-bold tracking-wide text-slate-950 outline-none transition focus:ring-4 focus:ring-blue-100"
               />
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setScanBuffer("");
-                setLastScannedCode("");
-                setScanMessage("");
-                setScanStatus("idle");
-                scannerInputRef.current?.focus();
-              }}
-              className="h-12 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
-            >
-              Цэвэрлэх
-            </button>
-            <button
-              type="submit"
-              className="h-12 rounded-lg bg-blue-600 px-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
-            >
-              Унших
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setScanBuffer("");
+                  setLastScannedCode("");
+                  setScanMessage("");
+                  setScanStatus("idle");
+                  scannerInputRef.current?.focus();
+                }}
+                className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
+              >
+                Цэвэрлэх
+              </button>
+              <button
+                type="submit"
+                className="h-11 rounded-lg bg-blue-600 px-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
+              >
+                Унших
+              </button>
+            </div>
           </form>
           </div>
 
@@ -2367,15 +2372,13 @@ export default function PosDemoPage() {
                     </div>
                   </>
                 ) : (
-                  <div className="flex min-h-20 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 text-center">
-                    <div>
-                      <p className="text-sm font-black text-slate-700">eBarimt QR</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {EBARIMT_ENABLED
-                          ? "Гүйлгээ батлагдсаны дараа баримтын QR энд харагдана."
-                          : "eBarimt одоогоор идэвхгүй байна."}
-                      </p>
-                    </div>
+                  <div className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4">
+                    <p className="text-sm font-black text-slate-700">eBarimt QR</p>
+                    <p className="truncate text-right text-xs font-semibold text-slate-500">
+                      {EBARIMT_ENABLED
+                        ? "Гүйлгээ батлагдсаны дараа QR харагдана."
+                        : "eBarimt одоогоор идэвхгүй байна."}
+                    </p>
                   </div>
                 )}
               </div>
@@ -2393,8 +2396,8 @@ export default function PosDemoPage() {
                 saleLoading ||
                 isCardProcessing ||
                 autoFinalizing ||
-                !registerConfig?.branchId ||
-                registerConfig.isActive === false
+                (paymentMethod !== "CASH" && !registerConfig?.branchId) ||
+                registerConfig?.isActive === false
               }
             />
         </section>

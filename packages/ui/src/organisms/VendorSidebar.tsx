@@ -44,6 +44,8 @@ const navigation = [
   { name: "Pro Upgrade", href: "/upgrade", icon: Crown },
 ];
 
+const VENDOR_SIDEBAR_COLLAPSED_KEY = "vendor_sidebar_collapsed";
+
 export interface VendorSidebarProps {
   onSignOut?: () => void;
   userName?: string;
@@ -70,7 +72,10 @@ export function VendorSidebar({
   onMobileClose,
 }: VendorSidebarProps) {
   const pathname = usePathname();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(VENDOR_SIDEBAR_COLLAPSED_KEY) === "true";
+  });
   const [productType, setProductType] = useState<string | null>(null);
   const profileInitials =
     userInitials || userName.trim().slice(0, 2).toUpperCase() || "V";
@@ -107,6 +112,16 @@ export function VendorSidebar({
   const upgradeNav = filteredNavigation.filter((i) => i.href === "/upgrade");
   const mobileRegular = mobileNavigation.filter((i) => i.href !== "/upgrade");
   const mobileUpgrade = mobileNavigation.filter((i) => i.href === "/upgrade");
+
+  const toggleCollapsed = () => {
+    setIsCollapsed((previous) => {
+      const next = !previous;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(VENDOR_SIDEBAR_COLLAPSED_KEY, String(next));
+      }
+      return next;
+    });
+  };
 
   const SidebarContent = ({
     nav,
@@ -290,7 +305,7 @@ export function VendorSidebar({
         {/* Collapse toggle */}
         <button
           type="button"
-          onClick={() => setIsCollapsed((p) => !p)}
+          onClick={toggleCollapsed}
           className="absolute -right-3 top-1/2 z-50 flex -translate-y-1/2 rounded-full border border-white/15 bg-black p-1 text-white/70 shadow-md transition-all hover:scale-105 hover:text-[#FFAD02]"
         >
           {isCollapsed ? (

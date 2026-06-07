@@ -31,7 +31,7 @@ export function PosPaymentPanel({
 
   return (
     <section className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-[repeat(4,minmax(0,1fr))_minmax(190px,0.9fr)] gap-2">
         {PAYMENT_METHODS.map((method) => {
           const isActive = paymentMethod === method.value;
           const Icon = paymentIcon[method.value];
@@ -61,17 +61,17 @@ export function PosPaymentPanel({
           <MoreHorizontal size={18} />
           <span className="mt-1">Бусад</span>
         </button>
-      </div>
 
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onSubmit}
-        className="mt-2 flex h-10 w-full items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        <span className="flex-1 text-center">Төлбөр авах</span>
-        <span className="text-xs opacity-80">F12</span>
-      </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onSubmit}
+          className="flex h-12 items-center justify-between rounded-lg bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <span>Төлбөр авах</span>
+          <span className="text-xs opacity-80">F12</span>
+        </button>
+      </div>
 
       <p className="mt-1.5 text-right text-[10px] font-semibold text-slate-400">
         Нийт төлөх: ₮{totals.grandTotal.toLocaleString()}
