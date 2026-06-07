@@ -1992,7 +1992,7 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_390px] gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(380px,0.58fr)_minmax(720px,1.42fr)] gap-3 2xl:grid-cols-[minmax(430px,0.54fr)_minmax(860px,1.46fr)]">
         {view === "history" ? (
           <section className="flex min-h-0 flex-col gap-3">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex-1 min-h-0 flex flex-col md:flex-row gap-4">
@@ -2049,7 +2049,7 @@ export default function PosDemoPage() {
 
           <form
             onSubmit={handleManualSubmit}
-            className="grid shrink-0 grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto]"
+            className="grid shrink-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_112px_112px]"
           >
             <div className="relative">
               <Barcode size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -2070,13 +2070,13 @@ export default function PosDemoPage() {
                 setScanStatus("idle");
                 scannerInputRef.current?.focus();
               }}
-              className="h-12 rounded-lg border border-slate-200 bg-white px-6 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
+              className="h-12 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
             >
               Цэвэрлэх
             </button>
             <button
               type="submit"
-              className="h-12 rounded-lg bg-blue-600 px-8 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
+              className="h-12 rounded-lg bg-blue-600 px-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
             >
               Унших
             </button>
@@ -2157,27 +2157,27 @@ export default function PosDemoPage() {
             )}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="mb-3 flex shrink-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+            <div className="mb-2 flex shrink-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className="text-base font-black text-slate-950">Барааны жагсаалт</h2>
-                <p className="text-xs text-slate-500">
+                <h2 className="text-sm font-black text-slate-950">Барааны жагсаалт</h2>
+                <p className="text-[11px] text-slate-500">
                   {filtered.length} бараа харагдаж байна
                 </p>
               </div>
               <div className="flex flex-1 items-center justify-end gap-2">
-              <div className="relative w-full max-w-sm">
-                <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <div className="relative w-full max-w-xs">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Barcode, SKU, нэрээр хайх"
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
                 />
               </div>
               <button
                 type="button"
-                className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
               >
                 <Filter size={15} />
                 Шүүлтүүр
@@ -2185,7 +2185,7 @@ export default function PosDemoPage() {
               <button
                 type="button"
                 onClick={reloadProducts}
-                className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
               >
                 <RefreshCw size={15} />
                 Сэргээх
@@ -2193,13 +2193,13 @@ export default function PosDemoPage() {
               </div>
             </div>
 
-            <div className="mb-3 flex shrink-0 items-center gap-2 overflow-x-auto pb-2">
+            <div className="mb-2 flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1.5">
               {categories.map((category) => (
                 <button
                   key={category}
                   type="button"
                   onClick={() => setSelectedCategory(category)}
-                  className={`h-8 shrink-0 rounded-lg px-3 text-xs font-bold transition-colors ${
+                  className={`h-7 shrink-0 rounded-lg px-2.5 text-[11px] font-bold transition-colors ${
                     selectedCategory === category
                       ? "bg-blue-600 text-white"
                       : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"
@@ -2227,15 +2227,14 @@ export default function PosDemoPage() {
               </div>
             ) : (
               <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-black uppercase tracking-wide text-slate-500">
+                <table className="min-w-full text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] font-black uppercase tracking-wide text-slate-500">
                     <tr>
-                      <th className="w-12 px-3 py-3">№</th>
-                      <th className="px-3 py-3">SKU / Barcode</th>
-                      <th className="px-3 py-3">Барааны нэр</th>
-                      <th className="px-3 py-3 text-right">Үнэ</th>
-                      <th className="px-3 py-3 text-right">Нөөц</th>
-                      <th className="px-3 py-3 text-center">Нэгж</th>
+                      <th className="w-9 px-2 py-2">№</th>
+                      <th className="px-2 py-2">SKU</th>
+                      <th className="px-2 py-2">Барааны нэр</th>
+                      <th className="px-2 py-2 text-right">Үнэ</th>
+                      <th className="px-2 py-2 text-right">Нөөц</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -2257,19 +2256,18 @@ export default function PosDemoPage() {
                             inCartQty > 0 ? "bg-blue-50" : "hover:bg-slate-50"
                           } ${isOutOfStock ? "opacity-50" : ""}`}
                         >
-                          <td className="px-3 py-3 font-semibold text-slate-500">{index + 1}</td>
-                          <td className="px-3 py-3 font-mono text-xs text-slate-600">
+                          <td className="px-2 py-2.5 font-semibold text-slate-500">{index + 1}</td>
+                          <td className="max-w-28 px-2 py-2.5 font-mono text-[11px] text-slate-600">
                             {product.barcode || product.sku}
                             {product.barcode && <p className="mt-0.5 text-[11px] text-slate-400">SKU: {product.sku}</p>}
                           </td>
-                          <td className="px-3 py-3 font-bold text-slate-900">{product.name}</td>
-                          <td className="px-3 py-3 text-right font-bold tabular-nums text-slate-900">
+                          <td className="px-2 py-2.5 font-bold text-slate-900">{product.name}</td>
+                          <td className="px-2 py-2.5 text-right font-bold tabular-nums text-slate-900">
                             {product.price.toLocaleString()}
                           </td>
-                          <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-700">
+                          <td className="px-2 py-2.5 text-right font-semibold tabular-nums text-slate-700">
                             {product.stockQty}
                           </td>
-                          <td className="px-3 py-3 text-center text-slate-600">ш</td>
                         </tr>
                       );
                     })}
@@ -2281,9 +2279,9 @@ export default function PosDemoPage() {
         </section>
         )}
 
-        <section ref={paymentSectionRef} className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto_auto] gap-3 pr-1">
+        <section ref={paymentSectionRef} className="flex min-h-0 flex-col gap-3 pr-1">
             <PosCartPanel
-              className="min-h-[300px]"
+              className="min-h-[360px] flex-[1_1_360px]"
               lines={state.cart}
               totals={totals}
               onClear={() => dispatch({ type: "clear-cart" })}
@@ -2303,22 +2301,22 @@ export default function PosDemoPage() {
               </div>
             )}
 
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex h-10 items-end border-b border-slate-100 px-4">
+            <div className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex h-9 items-end border-b border-slate-100 px-4">
                 <button
                   type="button"
-                  className="h-10 border-b-2 border-blue-600 px-3 text-xs font-black text-blue-600"
+                  className="h-9 border-b-2 border-blue-600 px-3 text-xs font-black text-blue-600"
                 >
                   eBarimt
                 </button>
                 <button
                   type="button"
-                  className="h-10 px-3 text-xs font-bold text-slate-500"
+                  className="h-9 px-3 text-xs font-bold text-slate-500"
                 >
                   Төлбөр
                 </button>
               </div>
-              <div className="p-3">
+              <div className="p-2.5">
                 {receiptForPreview?.ebarimt?.status === "SUCCESS" && receiptForPreview.ebarimt.qrData ? (
                   <>
                     <div className="mb-2 flex items-center justify-between gap-3 text-xs">
@@ -2369,7 +2367,7 @@ export default function PosDemoPage() {
                     </div>
                   </>
                 ) : (
-                  <div className="flex min-h-28 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 text-center">
+                  <div className="flex min-h-20 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 text-center">
                     <div>
                       <p className="text-sm font-black text-slate-700">eBarimt QR</p>
                       <p className="mt-1 text-xs text-slate-500">

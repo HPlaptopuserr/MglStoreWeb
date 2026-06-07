@@ -29,7 +29,7 @@ const tabs: Array<{
   {
     id: "address",
     label: "Хаяг ба зөвшөөрөл",
-    description: "Гэрийн хаяг, үйлчилгээний нөхцөл",
+    description: "Хүргэлтийн хаяг, үйлчилгээний нөхцөл",
     icon: MapPin,
   },
   {

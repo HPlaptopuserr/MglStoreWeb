@@ -28,7 +28,7 @@ import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "https://mgl-api.onrender.com";
+  "http://localhost:4000";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Хүлээгдэж буй",

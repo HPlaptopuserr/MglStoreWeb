@@ -182,7 +182,10 @@ function getPartnerLocationAliases(value: string) {
 
 // 500m radius validation removed - branches can now be located at any distance
 const VENDOR_APP_URL =
-  process.env.VENDOR_APP_URL || "https://vendor.mglstore.mn";
+  process.env.VENDOR_APP_URL ||
+  (process.env.NODE_ENV === "production"
+    ? "https://vendor.mglstore.mn"
+    : "http://localhost:3002");
 
 function slugify(value: string) {
   return value
@@ -242,6 +245,10 @@ function normalizeEmail(value?: string | null): string | null {
   return raw;
 }
 
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function haversineDistanceMeters(
   lat1: number,
   lng1: number,
@@ -273,6 +280,7 @@ router.post(
         name,
         ownerEmail,
         ownerName,
+        ownerPhone,
         phone,
         address,
         type,
@@ -282,6 +290,7 @@ router.post(
         name?: string;
         ownerEmail?: string;
         ownerName?: string;
+        ownerPhone?: string;
         phone?: string;
         address?: string;
         type?: string;
@@ -432,12 +441,12 @@ router.post(
             where: { userId: user.id },
             update: {
               fullName: ownerName?.trim() || name.trim(),
-              phoneNumber: phone?.trim() || null,
+              phoneNumber: ownerPhone?.trim() || null,
             },
             create: {
               userId: user.id,
               fullName: ownerName?.trim() || name.trim(),
-              phoneNumber: phone?.trim() || null,
+              phoneNumber: ownerPhone?.trim() || null,
             },
           });
 
@@ -981,10 +990,11 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
       return res.status(404).json({ message: "Байгууллага олдсонгүй" });
     }
 
-    const [usersCount, productsCount, branchesCount, ordersCount] =
+    const [members, usersCount, productsCount, branchesCount, ordersCount] =
       await Promise.all([
+        getOrganizationLoginMembers(partner.id),
         prisma.organizationMember.count({
-          where: { organizationId: partner.id },
+          where: { organizationId: partner.id, isActive: true, deletedAt: null },
         }),
         prisma.product.count({
           where: { organizationId: partner.id, deletedAt: null },
@@ -1037,6 +1047,7 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
         branches: branchesCount,
         orders: ordersCount,
       },
+      members,
       products: visibleProducts.map((p: any) => ({
         id: p.id,
         title: p.name,
@@ -1070,6 +1081,66 @@ const ROLE_LABEL: Record<StaffRole, string> = {
   STAFF: "Ажилтан",
   VIEWER: "Ажиглагч",
 };
+
+function mapOrganizationLoginMember(member: {
+  id: string;
+  role: string;
+  isPrimary: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  user: {
+    id: string;
+    email: string | null;
+    isActive: boolean;
+    passwordHash: string | null;
+    lastLoginAt: Date | null;
+    profile: { fullName: string | null; phoneNumber: string | null } | null;
+  };
+}) {
+  return {
+    id: member.id,
+    role: member.role,
+    isPrimary: member.isPrimary,
+    memberActive: member.isActive,
+    createdAt: member.createdAt,
+    userId: member.user.id,
+    email: member.user.email,
+    fullName: member.user.profile?.fullName || null,
+    phone: member.user.profile?.phoneNumber || null,
+    isActive: member.user.isActive,
+    hasPassword: Boolean(member.user.passwordHash),
+    lastLoginAt: member.user.lastLoginAt,
+  };
+}
+
+async function getOrganizationLoginMembers(
+  organizationId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma,
+) {
+  const members = await client.organizationMember.findMany({
+    where: { organizationId, isActive: true, deletedAt: null },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      role: true,
+      isPrimary: true,
+      isActive: true,
+      createdAt: true,
+      user: {
+        select: {
+          id: true,
+          email: true,
+          isActive: true,
+          passwordHash: true,
+          lastLoginAt: true,
+          profile: { select: { fullName: true, phoneNumber: true } },
+        },
+      },
+    },
+  });
+
+  return members.map(mapOrganizationLoginMember);
+}
 
 // GET /admin/organizations/:id/staff
 router.get(
@@ -1536,18 +1607,21 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
           select: {
             id: true,
             role: true,
+            isPrimary: true,
+            isActive: true,
             createdAt: true,
             user: {
               select: {
                 id: true,
                 email: true,
                 isActive: true,
+                passwordHash: true,
                 lastLoginAt: true,
-                profile: { select: { fullName: true } },
+                profile: { select: { fullName: true, phoneNumber: true } },
               },
             },
           },
-          orderBy: { createdAt: "asc" },
+          orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
         },
         products: {
           where: {
@@ -1625,11 +1699,15 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
       members: partner.members.map((m: any) => ({
         id: m.id,
         role: m.role,
+        isPrimary: m.isPrimary,
+        memberActive: m.isActive,
         createdAt: m.createdAt,
         userId: m.user.id,
         email: m.user.email,
         fullName: m.user.profile?.fullName || null,
+        phone: m.user.profile?.phoneNumber || null,
         isActive: m.user.isActive,
+        hasPassword: Boolean(m.user.passwordHash),
         lastLoginAt: m.user.lastLoginAt,
       })),
       products: visibleProducts.map((p: any) => ({
@@ -1695,6 +1773,302 @@ router.post(
       return res
         .status(500)
         .json({ message: "Нууц үг шинэчлэхэд алдаа гарлаа" });
+    }
+  },
+);
+
+router.post(
+  "/partners/:id/members",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const { id: organizationId } = req.params;
+      const { fullName, email, phone, role } = req.body as {
+        fullName?: string;
+        email?: string;
+        phone?: string;
+        role?: string;
+      };
+
+      const normalizedEmail = normalizeEmail(email);
+      if (!fullName?.trim()) {
+        return res.status(400).json({ message: "Login хэрэглэгчийн нэр шаардлагатай" });
+      }
+      if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
+        return res.status(400).json({ message: "Login email зөв форматтай байх ёстой" });
+      }
+
+      const organization = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { id: true, name: true },
+      });
+      if (!organization) {
+        return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+      }
+
+      const activeMembersCount = await prisma.organizationMember.count({
+        where: { organizationId, isActive: true },
+      });
+      const resolvedRole: StaffRole = VALID_STAFF_ROLES.includes(role as StaffRole)
+        ? (role as StaffRole)
+        : activeMembersCount === 0
+          ? "OWNER"
+          : "ADMIN";
+      const shouldBePrimary = resolvedRole === "OWNER" || activeMembersCount === 0;
+
+      const existingUser = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        select: { id: true, passwordHash: true },
+      });
+
+      let sameOrganizationMembershipId: string | null = null;
+
+      if (existingUser) {
+        const existingMembership = await prisma.organizationMember.findFirst({
+          where: { userId: existingUser.id },
+          orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+          select: {
+            id: true,
+            organizationId: true,
+            isActive: true,
+            deletedAt: true,
+          },
+        });
+
+        if (
+          existingMembership?.organizationId === organizationId &&
+          existingMembership.isActive &&
+          !existingMembership.deletedAt
+        ) {
+          const members = await getOrganizationLoginMembers(organizationId);
+          return res
+            .status(409)
+            .json({
+              message:
+                "Энэ хэрэглэгч тухайн байгууллагад аль хэдийн login эрхтэй байна",
+              existingUserId: existingUser.id,
+              members,
+            });
+        }
+
+        if (existingMembership?.organizationId === organizationId) {
+          sameOrganizationMembershipId = existingMembership.id;
+        } else if (existingMembership?.isActive && !existingMembership.deletedAt) {
+          return res
+            .status(409)
+            .json({ message: "Энэ хэрэглэгч өөр байгууллагад идэвхтэй бүртгэлтэй байна" });
+        }
+      }
+
+      const inviteToken = existingUser?.passwordHash ? null : generateInviteToken();
+      const inviteTokenExpiresAt = inviteToken ? getInviteTokenExpiry() : null;
+
+      const result = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          if (shouldBePrimary) {
+            await tx.organizationMember.updateMany({
+              where: { organizationId },
+              data: { isPrimary: false },
+            });
+
+            if (resolvedRole === "OWNER") {
+              await tx.organizationMember.updateMany({
+                where: { organizationId, role: "OWNER" },
+                data: { role: "ADMIN" },
+              });
+            }
+          }
+
+          const user = existingUser
+            ? await tx.user.update({
+                where: { id: existingUser.id },
+                data: {
+                  role: PlatformRole.USER,
+                  isActive: true,
+                  emailVerified: true,
+                  onboardingSource: OnboardingSource.ADMIN,
+                },
+                select: { id: true, email: true, passwordHash: true },
+              })
+            : await tx.user.create({
+                data: {
+                  email: normalizedEmail,
+                  role: PlatformRole.USER,
+                  isActive: true,
+                  emailVerified: true,
+                  onboardingSource: OnboardingSource.ADMIN,
+                },
+                select: { id: true, email: true, passwordHash: true },
+              });
+
+          await tx.profile.upsert({
+            where: { userId: user.id },
+            update: {
+              fullName: fullName.trim(),
+              phoneNumber: phone?.trim() || null,
+            },
+            create: {
+              userId: user.id,
+              fullName: fullName.trim(),
+              phoneNumber: phone?.trim() || null,
+            },
+          });
+
+          if (sameOrganizationMembershipId) {
+            await tx.organizationMember.update({
+              where: { id: sameOrganizationMembershipId },
+              data: {
+                role: resolvedRole,
+                isPrimary: shouldBePrimary,
+                isActive: true,
+                deletedAt: null,
+              },
+            });
+          } else {
+            await tx.organizationMember.create({
+              data: {
+                userId: user.id,
+                organizationId,
+                role: resolvedRole,
+                isPrimary: shouldBePrimary,
+                isActive: true,
+              },
+            });
+          }
+
+          if (inviteToken && inviteTokenExpiresAt) {
+            await tx.vendorSetupToken.create({
+              data: {
+                userId: user.id,
+                token: inviteToken,
+                expiresAt: inviteTokenExpiresAt,
+              },
+            });
+          }
+
+          const members = await getOrganizationLoginMembers(organizationId, tx);
+
+          return { members, grantedUserId: user.id };
+        },
+      );
+
+      return res.status(201).json({
+        grantedUserId: result.grantedUserId,
+        inviteToken,
+        inviteTokenExpiresAt,
+        inviteLink: inviteToken ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null,
+        members: result.members,
+      });
+    } catch (error) {
+      console.error("grant vendor login error", error);
+      const maybePrisma = error as { code?: string; meta?: { target?: unknown } };
+      if (maybePrisma?.code === "P2002") {
+        return res.status(409).json({
+          message:
+            "Энэ email эсвэл хэрэглэгчийн холбоос аль хэдийн бүртгэлтэй байна. Өөр login email ашиглана уу.",
+        });
+      }
+      const detail =
+        process.env.NODE_ENV === "production" || !(error instanceof Error)
+          ? ""
+          : `: ${error.message}`;
+      return res
+        .status(500)
+        .json({ message: `Vendor login эрх олгоход алдаа гарлаа${detail}` });
+    }
+  },
+);
+
+router.post(
+  "/partners/:id/members/:userId/invite-link",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const { id, userId } = req.params;
+
+      const member = await prisma.organizationMember.findFirst({
+        where: { organizationId: id, userId, isActive: true },
+        select: { id: true, user: { select: { id: true, email: true } } },
+      });
+
+      if (!member) {
+        return res
+          .status(404)
+          .json({ message: "Энэ байгууллагын идэвхтэй login user олдсонгүй" });
+      }
+
+      const inviteToken = generateInviteToken();
+      const inviteTokenExpiresAt = getInviteTokenExpiry();
+
+      await prisma.vendorSetupToken.create({
+        data: {
+          userId: userId,
+          token: inviteToken,
+          expiresAt: inviteTokenExpiresAt,
+        },
+      });
+
+      return res.json({
+        email: member.user.email,
+        inviteToken,
+        inviteTokenExpiresAt,
+        inviteLink: `${VENDOR_APP_URL}/set-password?token=${inviteToken}`,
+      });
+    } catch (error) {
+      console.error("generate vendor invite link error", error);
+      return res
+        .status(500)
+        .json({ message: "Invite link үүсгэхэд алдаа гарлаа" });
+    }
+  },
+);
+
+router.patch(
+  "/partners/:id/members/:userId/owner",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const { id, userId } = req.params;
+
+      const target = await prisma.organizationMember.findFirst({
+        where: { organizationId: id, userId, isActive: true },
+        select: { id: true },
+      });
+
+      if (!target) {
+        return res
+          .status(404)
+          .json({ message: "Owner болгох идэвхтэй хэрэглэгч олдсонгүй" });
+      }
+
+      const members = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          await tx.organizationMember.updateMany({
+            where: { organizationId: id, userId: { not: userId }, role: "OWNER" },
+            data: { role: "ADMIN", isPrimary: false },
+          });
+
+          await tx.organizationMember.updateMany({
+            where: { organizationId: id, userId: { not: userId } },
+            data: { isPrimary: false },
+          });
+
+          await tx.organizationMember.update({
+            where: { id: target.id },
+            data: { role: "OWNER", isPrimary: true, isActive: true },
+          });
+
+          return getOrganizationLoginMembers(id, tx);
+        },
+      );
+
+      return res.json({ members });
+    } catch (error) {
+      console.error("change owner error", error);
+      return res.status(500).json({ message: "Owner солиход алдаа гарлаа" });
     }
   },
 );

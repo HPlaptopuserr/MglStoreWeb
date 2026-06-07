@@ -42,6 +42,21 @@ const VERIFY_MN_API_BASE = "https://api.verify.mn";
 
 function toWebUserPayload(user: any, orgInfo?: { orgRole?: string | null; organizationId?: string | null } | null) {
   const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
+  const addresses = Array.isArray(user.addresses)
+    ? user.addresses.map((item: any) => ({
+        id: item.id,
+        label: item.label || "",
+        fullAddress: item.fullAddress || "",
+        city: item.city || "",
+        district: item.district || "",
+        khoroo: item.khoroo || "",
+        entrance: item.entrance || "",
+        apartment: item.apartment || "",
+        lat: item.lat ?? null,
+        lng: item.lng ?? null,
+        isDefault: Boolean(item.isDefault),
+      }))
+    : [];
   const address = Array.isArray(user.addresses)
     ? user.addresses.find((item: any) => item.isDefault) || user.addresses[0]
     : null;
@@ -57,6 +72,7 @@ function toWebUserPayload(user: any, orgInfo?: { orgRole?: string | null; organi
     organizationId: orgInfo?.organizationId || null,
     termsAcceptedAt: user.termsAcceptedAt || null,
     marketingConsent: Boolean(user.marketingConsent),
+    addresses,
     defaultAddress: address
       ? {
           id: address.id,
@@ -67,6 +83,8 @@ function toWebUserPayload(user: any, orgInfo?: { orgRole?: string | null; organi
           khoroo: address.khoroo || "",
           entrance: address.entrance || "",
           apartment: address.apartment || "",
+          lat: address.lat ?? null,
+          lng: address.lng ?? null,
           isDefault: Boolean(address.isDefault),
         }
       : null,
@@ -381,7 +399,6 @@ router.get("/me", requireAuth, async (req, res) => {
         addresses: {
           where: { deletedAt: null },
           orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
-          take: 1,
         },
       },
     });
@@ -1680,6 +1697,10 @@ router.put("/web/profile", requireAuth, async (req, res) => {
         khoroo?: string;
         entrance?: string;
         apartment?: string;
+        lat?: number | string | null;
+        lng?: number | string | null;
+        id?: string | null;
+        isDefault?: boolean;
       };
     };
 
@@ -1737,7 +1758,6 @@ router.put("/web/profile", requireAuth, async (req, res) => {
           addresses: {
             where: { deletedAt: null },
             orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
-            take: 1,
           },
         },
       });
@@ -1745,12 +1765,22 @@ router.put("/web/profile", requireAuth, async (req, res) => {
       const fullAddress = address?.fullAddress?.trim();
       if (fullAddress) {
         const nextAddress = address as NonNullable<typeof address>;
-        await tx.address.updateMany({
-          where: { userId, deletedAt: null },
-          data: { isDefault: false },
-        });
+        const addressId =
+          nextAddress.id && user.addresses.some((item) => item.id === nextAddress.id)
+            ? nextAddress.id
+            : null;
+        const shouldSetDefault =
+          nextAddress.isDefault !== false || user.addresses.length === 0;
+
+        if (shouldSetDefault) {
+          await tx.address.updateMany({
+            where: { userId, deletedAt: null },
+            data: { isDefault: false },
+          });
+        }
+
         await tx.address.upsert({
-          where: { id: user.addresses[0]?.id || crypto.randomUUID() },
+          where: { id: addressId || crypto.randomUUID() },
           update: {
             label: nextAddress.label?.trim() || "Үндсэн хаяг",
             fullAddress,
@@ -1759,7 +1789,9 @@ router.put("/web/profile", requireAuth, async (req, res) => {
             khoroo: nextAddress.khoroo?.trim() || null,
             entrance: nextAddress.entrance?.trim() || null,
             apartment: nextAddress.apartment?.trim() || null,
-            isDefault: true,
+            lat: nextAddress.lat === undefined || nextAddress.lat === null || nextAddress.lat === "" ? null : Number(nextAddress.lat),
+            lng: nextAddress.lng === undefined || nextAddress.lng === null || nextAddress.lng === "" ? null : Number(nextAddress.lng),
+            ...(shouldSetDefault ? { isDefault: true } : {}),
             deletedAt: null,
           },
           create: {
@@ -1771,7 +1803,9 @@ router.put("/web/profile", requireAuth, async (req, res) => {
             khoroo: nextAddress.khoroo?.trim() || null,
             entrance: nextAddress.entrance?.trim() || null,
             apartment: nextAddress.apartment?.trim() || null,
-            isDefault: true,
+            lat: nextAddress.lat === undefined || nextAddress.lat === null || nextAddress.lat === "" ? null : Number(nextAddress.lat),
+            lng: nextAddress.lng === undefined || nextAddress.lng === null || nextAddress.lng === "" ? null : Number(nextAddress.lng),
+            isDefault: shouldSetDefault,
           },
         });
       }
@@ -1783,7 +1817,6 @@ router.put("/web/profile", requireAuth, async (req, res) => {
           addresses: {
             where: { deletedAt: null },
             orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
-            take: 1,
           },
         },
       });

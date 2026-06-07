@@ -13,6 +13,8 @@ import { ProfileInfoPanel } from "./_components/ProfileInfoPanel";
 import { ProfileTabs } from "./_components/ProfileTabs";
 import { SecurityPanel } from "./_components/SecurityPanel";
 import {
+  createAddressPatch,
+  createEmptyAddressPatch,
   createProfileFormState,
   type AccountContract,
   type AccountPurchase,
@@ -180,13 +182,16 @@ export default function ProfilePage() {
           acceptTerms: form.acceptTerms,
           marketingConsent: form.marketingConsent,
           address: {
-            label: form.addressLabel,
+            id: form.addressId || undefined,
             fullAddress: form.fullAddress,
             city: form.city,
             district: form.district,
             khoroo: form.khoroo,
             entrance: form.entrance,
             apartment: form.apartment,
+            lat: form.lat,
+            lng: form.lng,
+            isDefault: form.addressIsDefault,
           },
         }),
       });
@@ -323,10 +328,13 @@ export default function ProfilePage() {
         {tab === "address" && (
           <AddressConsentPanel
             form={form}
+            addresses={user.addresses || (user.defaultAddress ? [user.defaultAddress] : [])}
             saving={saving}
             saved={saved}
             error={profileError}
             onChange={updateForm}
+            onSelectAddress={(address) => updateForm(createAddressPatch(address))}
+            onNewAddress={() => updateForm(createEmptyAddressPatch())}
             onSubmit={saveProfile}
           />
         )}

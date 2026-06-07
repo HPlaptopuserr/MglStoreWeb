@@ -27,6 +27,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { API, adminFetch } from "@/lib/api";
@@ -94,6 +95,7 @@ type CreateOrganizationForm = {
   name: string;
   ownerEmail: string;
   ownerName: string;
+  ownerPhone: string;
   phone: string;
   address: string;
   type: string;
@@ -105,6 +107,7 @@ const EMPTY_CREATE_FORM: CreateOrganizationForm = {
   name: "",
   ownerEmail: "",
   ownerName: "",
+  ownerPhone: "",
   phone: "",
   address: "",
   type: "SUPPLIER",
@@ -364,6 +367,7 @@ export default function PartnersPage() {
           name: createForm.name.trim(),
           ownerEmail: createForm.ownerEmail.trim() || null,
           ownerName: createForm.ownerName.trim(),
+          ownerPhone: createForm.ownerPhone.trim() || null,
           phone: createForm.phone.trim(),
           address: createForm.address.trim(),
           taxId: createForm.taxId.trim(),
@@ -456,11 +460,13 @@ export default function PartnersPage() {
 
       {createModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl">
+          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
             <div className="mb-5 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">Байгууллага бүртгэх</h3>
-                <p className="text-sm text-slate-500">Шууд байгууллага үүсгээд owner invite link үүсгэнэ.</p>
+                <p className="text-sm text-slate-500">
+                  Байгууллагын контакт болон vendor login owner user-ийг тусад нь бүртгэнэ.
+                </p>
               </div>
               <button
                 onClick={() => {
@@ -479,7 +485,18 @@ export default function PartnersPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
+                    <Building2 size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-950">Байгууллагын мэдээлэл</h4>
+                    <p className="text-xs font-medium text-slate-500">Public profile болон холбоо барих үндсэн мэдээлэл.</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Байгууллагын нэр *</label>
                 <input
@@ -489,27 +506,11 @@ export default function PartnersPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Owner email</label>
-                <input
-                  type="email"
-                  value={createForm.ownerEmail}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerEmail: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Owner нэр</label>
-                <input
-                  value={createForm.ownerName}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerName: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Утас</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Байгууллагын контакт утас</label>
                 <input
                   value={createForm.phone}
                   onChange={(e) => setCreateForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  placeholder="Жишээ: 89123581"
                   className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
@@ -554,6 +555,56 @@ export default function PartnersPage() {
                   rows={3}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
+              </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm">
+                    <UserRound size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-emerald-950">Нэвтрэх owner хэрэглэгч</h4>
+                    <p className="text-xs font-medium text-emerald-700">
+                      Vendor portal дээр энэ хэрэглэгчийн и-мэйл эсвэл утсаар нэвтэрнэ.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Owner нэр</label>
+                    <input
+                      value={createForm.ownerName}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerName: e.target.value }))}
+                      placeholder="Хариуцсан хүний нэр"
+                      className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Login email</label>
+                    <input
+                      type="email"
+                      value={createForm.ownerEmail}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerEmail: e.target.value }))}
+                      placeholder="owner@company.mn"
+                      className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Login утас</label>
+                    <input
+                      value={createForm.ownerPhone}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerPhone: e.target.value }))}
+                      placeholder="Login хийх утас"
+                      className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+                <p className="mt-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold leading-5 text-emerald-800">
+                  Анхаарах: байгууллагын контакт утас болон login утас хоёр өөр байж болно.
+                  Vendor login дээр зөвхөн энэ хэсгийн login email/утас ажиллана.
+                </p>
               </div>
             </div>
 

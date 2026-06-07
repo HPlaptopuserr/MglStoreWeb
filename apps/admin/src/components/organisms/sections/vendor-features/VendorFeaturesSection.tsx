@@ -66,8 +66,11 @@ export function VendorFeaturesSection() {
     setLoadingFeatures(true);
     setError("");
     try {
-      const res = await adminFetch(`${API}/site-settings`);
-      const settings = res.ok ? ((await res.json()) as Record<string, string>) : {};
+      const res = await adminFetch(`${API}/site-settings/vendor-features/${orgId}`);
+      if (!res.ok) {
+        throw new Error(res.status === 401 ? "unauthorized" : "failed");
+      }
+      const settings = (await res.json()) as Record<string, string>;
       setToggles((prev) =>
         prev.map((t) => {
           const raw = settings[`${t.key}-${orgId}`];
@@ -80,8 +83,12 @@ export function VendorFeaturesSection() {
           return { ...t, enabled, saving: false };
         }),
       );
-    } catch {
-      setError("Тохиргоог авахад алдаа гарлаа.");
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message === "unauthorized"
+          ? "Admin session танигдсангүй. Хуудсаа refresh хийгээд, шаардлагатай бол дахин нэвтэрнэ үү."
+          : "Тохиргоог авахад алдаа гарлаа.",
+      );
     } finally {
       setLoadingFeatures(false);
     }
@@ -105,7 +112,7 @@ export function VendorFeaturesSection() {
 
     try {
       const res = await adminFetch(
-        `${API}/site-settings/${key}-${selectedOrgId}`,
+        `${API}/site-settings/vendor-features/${selectedOrgId}/${key}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -119,7 +126,11 @@ export function VendorFeaturesSection() {
           ),
         );
       } else {
-        setError("Тохиргоо хадгалахад алдаа гарлаа.");
+        setError(
+          res.status === 401
+            ? "Admin session танигдсангүй. Хуудсаа refresh хийгээд, шаардлагатай бол дахин нэвтэрнэ үү."
+            : "Тохиргоо хадгалахад алдаа гарлаа.",
+        );
         setToggles((prev) =>
           prev.map((t, i) => (i === idx ? { ...t, saving: false } : t)),
         );

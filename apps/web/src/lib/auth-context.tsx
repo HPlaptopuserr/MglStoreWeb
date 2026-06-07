@@ -3,6 +3,20 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { API_BASE } from "./api";
 
+export type AuthAddress = {
+  id: string;
+  label?: string;
+  fullAddress: string;
+  city?: string;
+  district?: string;
+  khoroo?: string;
+  entrance?: string;
+  apartment?: string;
+  lat?: number | null;
+  lng?: number | null;
+  isDefault?: boolean;
+};
+
 export type AuthUser = {
   id: string;
   email: string | null;
@@ -12,16 +26,8 @@ export type AuthUser = {
   avatarUrl?: string | null;
   termsAcceptedAt?: string | null;
   marketingConsent?: boolean;
-  defaultAddress?: {
-    id: string;
-    label?: string;
-    fullAddress: string;
-    city?: string;
-    district?: string;
-    khoroo?: string;
-    entrance?: string;
-    apartment?: string;
-  } | null;
+  addresses?: AuthAddress[];
+  defaultAddress?: AuthAddress | null;
   orgRole?: string | null;
   organizationId?: string | null;
 };

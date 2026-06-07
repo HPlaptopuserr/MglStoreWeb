@@ -205,6 +205,20 @@ export const Header = () => {
             </div>
 
             <div className="flex shrink-0 items-center gap-2 sm:gap-6">
+              <button
+                type="button"
+                onClick={() => setCartOpen(true)}
+                className="relative flex items-center gap-1.5 rounded-full bg-amber-500 px-3.5 py-2 text-sm font-bold text-white shadow-md transition-colors hover:bg-amber-600 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-base"
+              >
+                <ShoppingCart size={16} className="sm:h-5 sm:w-5" />
+                <span>₮{total > 0 ? total.toLocaleString() : "0"}</span>
+                {count > 0 && (
+                  <span className="absolute -top-2 -right-2 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white px-1 shadow">
+                    {count}
+                  </span>
+                )}
+              </button>
+
               {user ? (
                 <div className="relative hidden sm:block" ref={dropdownRef}>
                   <button
@@ -299,20 +313,6 @@ export const Header = () => {
                 {user ? (
                   <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
                 ) : null}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCartOpen(true)}
-                className="relative flex items-center gap-1.5 rounded-full bg-amber-500 px-3.5 py-2 text-sm font-bold text-white shadow-md transition-colors hover:bg-amber-600 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-base"
-              >
-                <ShoppingCart size={16} className="sm:h-5 sm:w-5" />
-                <span>₮{total > 0 ? total.toLocaleString() : "0"}</span>
-                {count > 0 && (
-                  <span className="absolute -top-2 -right-2 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white px-1 shadow">
-                    {count}
-                  </span>
-                )}
               </button>
             </div>
           </div>

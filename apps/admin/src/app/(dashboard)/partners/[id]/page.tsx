@@ -16,12 +16,6 @@ import {
   TrendingUp,
   DollarSign,
   Loader2,
-  Key,
-  RefreshCw,
-  Eye,
-  EyeOff,
-  Copy,
-  Check,
   Globe,
   Crown,
   Plus,
@@ -33,6 +27,7 @@ import {
   PlanGrantHistory,
 } from "@/components/organisms/plan-grant";
 import { PartnerContentManager } from "./PartnerContentManager";
+import { VendorLoginAccountsCard } from "./VendorLoginAccountsCard";
 
 export default function PartnerDetailsPage() {
   const params = useParams();
@@ -44,10 +39,6 @@ export default function PartnerDetailsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [addInput, setAddInput] = useState("");
   const [lastAdded, setLastAdded] = useState<number | null>(null);
-  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
-  const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
-  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [subdomainSaving, setSubdomainSaving] = useState(false);
 
   const [showGrantDialog, setShowGrantDialog] = useState(false);
@@ -201,31 +192,6 @@ export default function PartnerDetailsPage() {
     } finally {
       setInvestorSaving(false);
     }
-  };
-
-  const handleResetPassword = async (userId: string) => {
-    if (!confirm("Энэ хэрэглэгчийн нууц үгийг шинэчлэхдээ итгэлтэй байна уу?")) return;
-    setResettingUserId(userId);
-    try {
-      const res = await adminFetch(`${API}/partners/${partner.id}/members/${userId}/reset-password`, {
-        method: "POST",
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setTempPasswords((prev) => ({ ...prev, [userId]: data.tempPassword }));
-      setShowPasswords((prev) => ({ ...prev, [userId]: true }));
-    } catch {
-      alert("Нууц үг шинэчлэхэд алдаа гарлаа");
-    } finally {
-      setResettingUserId(null);
-    }
-  };
-
-  const handleCopy = (text: string, userId: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedId(userId);
-      setTimeout(() => setCopiedId(null), 2000);
-    });
   };
 
   const handleSubdomainToggle = async (enable: boolean) => {
@@ -408,60 +374,16 @@ export default function PartnerDetailsPage() {
             </div>
           </div>
 
-          {/* Login Credentials */}
-          {partner.members && partner.members.length > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
-                <Key size={15} className="text-indigo-500" /> Нэвтрэх мэдээлэл
-              </h3>
-              <div className="space-y-3">
-                {partner.members.map((member: any) => (
-                  <div key={member.id} className="border border-slate-100 rounded-xl p-4 bg-slate-50/40">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{member.role}</p>
-                        <p className="text-sm font-bold text-slate-800">{member.fullName || "Нэр байхгүй"}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <Mail size={12} className="text-slate-400 shrink-0" />
-                          <span className="text-xs text-slate-500 break-all">{member.email}</span>
-                        </div>
-                        {member.lastLoginAt && (
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            Сүүлд нэвтэрсэн: {new Date(member.lastLoginAt).toLocaleString("mn-MN")}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => handleResetPassword(member.userId)}
-                        disabled={resettingUserId === member.userId}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-100 text-indigo-600 disabled:text-slate-400 rounded-lg transition-colors shrink-0"
-                      >
-                        {resettingUserId === member.userId ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                        Нууц үг шинэчлэх
-                      </button>
-                    </div>
-                    {tempPasswords[member.userId] && (
-                      <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                        <p className="text-xs font-semibold text-amber-700 mb-1.5">Түр нууц үг:</p>
-                        <div className="flex items-center gap-2">
-                          <code className="flex-1 text-sm font-mono font-bold text-amber-900">
-                            {showPasswords[member.userId] ? tempPasswords[member.userId] : "••••••••"}
-                          </code>
-                          <button onClick={() => setShowPasswords((p) => ({ ...p, [member.userId]: !p[member.userId] }))} className="p-1.5 rounded-md hover:bg-amber-100 text-amber-600">
-                            {showPasswords[member.userId] ? <EyeOff size={13} /> : <Eye size={13} />}
-                          </button>
-                          <button onClick={() => handleCopy(tempPasswords[member.userId], member.userId)} className="p-1.5 rounded-md hover:bg-amber-100 text-amber-600">
-                            {copiedId === member.userId ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
-                          </button>
-                        </div>
-                        <p className="text-[11px] text-amber-600 mt-1.5">⚠️ Хэрэглэгчид өгч, дараа нь өөрчлүүлэхийг зөвлөнө.</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <VendorLoginAccountsCard
+            partner={partner}
+            onMembersUpdated={(members) =>
+              setPartner((prev: any) => ({
+                ...prev,
+                members,
+                stats: { ...prev.stats, users: members.length },
+              }))
+            }
+          />
         </div>
 
         {/* Right col: management cards */}

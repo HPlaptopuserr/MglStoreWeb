@@ -56,6 +56,13 @@ const PROJECT_PAYMENT_TTL_MS = 5 * 60 * 1000;
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
 const FRANCHISE_ITEMS_KEY = "paid-projects";
 const SITE_PROJECTS_KEY = "site-projects";
+const VENDOR_FEATURE_KEYS = new Set([
+  "pos-enabled",
+  "web-products-enabled",
+  "supply-products-enabled",
+  "preorder-products-enabled",
+  "service-posts-enabled",
+]);
 
 type PaidProject = {
   id: string;
@@ -906,6 +913,82 @@ router.get(
     } catch (error) {
       console.error("get admin site-settings error", error);
       res.status(500).json({ message: "Тохиргоог авахад алдаа гарлаа" });
+    }
+  },
+);
+
+// Organization-scoped vendor feature switches.
+// These are managed by partner admins, not only site-content admins.
+router.get(
+  "/site-settings/vendor-features/:organizationId",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      const settings = await prisma.siteSetting.findMany({
+        where: {
+          key: {
+            in: Array.from(VENDOR_FEATURE_KEYS).map(
+              (featureKey) => `${featureKey}-${organizationId}`,
+            ),
+          },
+        },
+      });
+
+      const values: Record<string, string> = {};
+      for (const setting of settings) {
+        values[setting.key] = setting.value;
+      }
+
+      res.json(values);
+    } catch (error) {
+      console.error("get vendor feature settings error", error);
+      res.status(500).json({ message: "Vendor тохиргоог авахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.put(
+  "/site-settings/vendor-features/:organizationId/:featureKey",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    const { organizationId, featureKey } = req.params;
+    const { value } = req.body as { value: string };
+
+    if (!VENDOR_FEATURE_KEYS.has(featureKey)) {
+      res.status(400).json({ message: "Буруу vendor feature key" });
+      return;
+    }
+
+    if (typeof value !== "string") {
+      res.status(400).json({ message: "value шаардлагатай" });
+      return;
+    }
+
+    try {
+      const organization = await prisma.organization.findFirst({
+        where: { id: organizationId, deletedAt: null },
+        select: { id: true },
+      });
+
+      if (!organization) {
+        res.status(404).json({ message: "Байгууллага олдсонгүй" });
+        return;
+      }
+
+      const settingKey = `${featureKey}-${organizationId}`;
+      const setting = await prisma.siteSetting.upsert({
+        where: { key: settingKey },
+        update: { value },
+        create: { key: settingKey, value },
+      });
+
+      res.json(setting);
+    } catch (error) {
+      console.error("put vendor feature setting error", error);
+      res.status(500).json({ message: "Vendor тохиргоо хадгалахад алдаа гарлаа" });
     }
   },
 );

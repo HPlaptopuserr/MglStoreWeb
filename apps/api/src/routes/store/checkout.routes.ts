@@ -58,6 +58,146 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
+async function getDeliveryReadiness(organizationId: string) {
+  const availableBranchCount = await prisma.branch.count({
+    where: {
+      organizationId,
+      deletedAt: null,
+      organization: {
+        deletedAt: null,
+        status: "ACTIVE",
+      },
+    },
+  });
+
+  return {
+    canDeliver: availableBranchCount > 0,
+    availableBranchCount,
+  };
+}
+
+async function advanceExpiredDispatchAttempts(orderId: string) {
+  await prisma.$transaction(async (tx) => {
+    const expired = await tx.orderDispatchAttempt.findMany({
+      where: {
+        orderId,
+        status: OrderDispatchAttemptStatus.PENDING,
+        expiresAt: { lt: new Date() },
+      },
+      select: { id: true },
+    });
+
+    if (expired.length === 0) return;
+
+    await tx.orderDispatchAttempt.updateMany({
+      where: { id: { in: expired.map((attempt) => attempt.id) } },
+      data: { status: OrderDispatchAttemptStatus.EXPIRED, respondedAt: new Date() },
+    });
+
+    const hasActiveAttempt = await tx.orderDispatchAttempt.count({
+      where: { orderId, status: OrderDispatchAttemptStatus.PENDING },
+    });
+    if (hasActiveAttempt > 0) return;
+
+    const next = await tx.orderDispatchAttempt.findFirst({
+      where: { orderId, status: OrderDispatchAttemptStatus.QUEUED },
+      orderBy: { sequence: "asc" },
+      select: { sequence: true },
+    });
+    if (!next) return;
+
+    await tx.orderDispatchAttempt.updateMany({
+      where: { orderId, status: OrderDispatchAttemptStatus.QUEUED, sequence: next.sequence },
+      data: {
+        status: OrderDispatchAttemptStatus.PENDING,
+        requestedAt: new Date(),
+        expiresAt: new Date(Date.now() + DISPATCH_WINDOW_SECONDS * 1000),
+      },
+    });
+  });
+}
+
+async function getCheckoutDispatchSnapshot(orderId: string, customerId: string) {
+  await advanceExpiredDispatchAttempts(orderId);
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      customerId: true,
+      orderNumber: true,
+      subtotal: true,
+      total: true,
+      shippingAddress: true,
+      customerLat: true,
+      customerLng: true,
+      branchId: true,
+      paymentStatus: true,
+      branch: { select: { id: true, name: true, address: true, lat: true, lng: true } },
+      dispatchAttempts: {
+        orderBy: { sequence: "asc" },
+        select: {
+          id: true,
+          branchId: true,
+          status: true,
+          sequence: true,
+          distanceKm: true,
+          requestedAt: true,
+          expiresAt: true,
+          respondedAt: true,
+          branch: { select: { id: true, name: true, address: true, lat: true, lng: true } },
+        },
+      },
+    },
+  });
+
+  if (!order || order.customerId !== customerId) return null;
+
+  const activeAttempt = order.dispatchAttempts.find((attempt) => attempt.status === OrderDispatchAttemptStatus.PENDING);
+  const queuedCount = order.dispatchAttempts.filter((attempt) => attempt.status === OrderDispatchAttemptStatus.QUEUED).length;
+  const hasAccepted = Boolean(order.branchId);
+  const activeZone = activeAttempt?.sequence || null;
+
+  return {
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    subtotal: Number(order.subtotal),
+    total: Number(order.total),
+    status: hasAccepted
+      ? "ACCEPTED"
+      : activeAttempt
+        ? "SEARCHING"
+        : queuedCount > 0
+          ? "QUEUED"
+          : order.dispatchAttempts.length > 0
+            ? "NO_BRANCH_AVAILABLE"
+            : "NOT_STARTED",
+    canPay: hasAccepted && order.paymentStatus !== PaymentStatus.PAID,
+    acceptedBranch: order.branch,
+    customerLocation: {
+      address: order.shippingAddress,
+      lat: order.customerLat,
+      lng: order.customerLng,
+    },
+    radiusZonesKm: DISPATCH_RADIUS_ZONES_KM,
+    activeZone,
+    activeRadiusKm: activeZone ? DISPATCH_RADIUS_ZONES_KM[activeZone - 1] ?? null : null,
+    activeAttemptId: activeAttempt?.id || null,
+    activeExpiresAt: activeAttempt?.expiresAt?.toISOString() || null,
+    attempts: order.dispatchAttempts.map((attempt) => ({
+      id: attempt.id,
+      branchId: attempt.branchId,
+      status: attempt.status,
+      sequence: attempt.sequence,
+      distanceKm: attempt.distanceKm,
+      requestedAt: attempt.requestedAt.toISOString(),
+      expiresAt: attempt.expiresAt?.toISOString() || null,
+      respondedAt: attempt.respondedAt?.toISOString() || null,
+      branch: attempt.branch,
+    })),
+  };
+}
+
 async function createStorePaymentInvoice(params: {
   organizationId: string;
   orderId: string;
@@ -154,8 +294,8 @@ async function checkStorePayment(params: {
   };
 }
 
-const DISPATCH_WINDOW_MINUTES = 3;
-const DISPATCH_CANDIDATE_LIMIT = 8;
+const DISPATCH_WINDOW_SECONDS = 10;
+const DISPATCH_RADIUS_ZONES_KM = [2, 5, 10, 20] as const;
 
 const toNumberOrNull = (value: unknown) => {
   const n = Number(value);
@@ -179,6 +319,7 @@ async function seedOrderDispatchRadar(
 ) {
   const existing = await tx.orderDispatchAttempt.count({ where: { orderId: order.id } });
   if (existing > 0) return;
+  if (order.customerLat === null || order.customerLng === null) return;
 
   const branches: {
     id: string;
@@ -199,40 +340,41 @@ async function seedOrderDispatchRadar(
   const ranked: {
     branchId: string;
     organizationId: string;
-    distanceKm: number | null;
+    distanceKm: number;
     createdAt: Date;
+    zone: number;
   }[] = branches
+    .filter((branch) => branch.lat !== null && branch.lng !== null)
     .map((branch) => {
-      const hasDistance =
-        order.customerLat !== null &&
-        order.customerLng !== null &&
-        branch.lat !== null &&
-        branch.lng !== null;
+      const branchDistanceKm = distanceKm(order.customerLat!, order.customerLng!, branch.lat!, branch.lng!);
       return {
         branchId: branch.id,
         organizationId: branch.organizationId,
-        distanceKm: hasDistance ? distanceKm(order.customerLat!, order.customerLng!, branch.lat!, branch.lng!) : null,
+        distanceKm: branchDistanceKm,
         createdAt: branch.createdAt,
+        zone: DISPATCH_RADIUS_ZONES_KM.findIndex((radiusKm) => branchDistanceKm <= radiusKm) + 1,
       };
     })
+    .filter((branch) => branch.zone > 0)
     .sort((a, b) => {
-      if (a.distanceKm !== null && b.distanceKm !== null) return a.distanceKm - b.distanceKm;
-      if (a.distanceKm !== null) return -1;
-      if (b.distanceKm !== null) return 1;
+      if (a.zone !== b.zone) return a.zone - b.zone;
+      if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
       return a.createdAt.getTime() - b.createdAt.getTime();
-    })
-    .slice(0, DISPATCH_CANDIDATE_LIMIT);
+    });
 
-  const expiresAt = new Date(Date.now() + DISPATCH_WINDOW_MINUTES * 60 * 1000);
+  const firstZone = ranked[0]?.zone;
+  if (!firstZone) return;
+
+  const expiresAt = new Date(Date.now() + DISPATCH_WINDOW_SECONDS * 1000);
   await tx.orderDispatchAttempt.createMany({
-    data: ranked.map((branch, index) => ({
+    data: ranked.map((branch) => ({
       orderId: order.id,
       branchId: branch.branchId,
       organizationId: branch.organizationId,
-      sequence: index + 1,
+      sequence: branch.zone,
       distanceKm: branch.distanceKm,
-      status: index === 0 ? OrderDispatchAttemptStatus.PENDING : OrderDispatchAttemptStatus.QUEUED,
-      expiresAt: index === 0 ? expiresAt : null,
+      status: branch.zone === firstZone ? OrderDispatchAttemptStatus.PENDING : OrderDispatchAttemptStatus.QUEUED,
+      expiresAt: branch.zone === firstZone ? expiresAt : null,
     })),
     skipDuplicates: true,
   });
@@ -318,7 +460,7 @@ async function decrementOrderStock(tx: any, orderId: string, customerId: string)
 /* ══════════════════════════════════════════════════════════
    POST /store/checkout
    Creates an Order + OrderItems + QPay mock invoice.
-   Body: { lines: [{productId,qty}], phone?, shippingAddress? }
+   Body: { lines: [{productId,qty}], phone, note, shippingAddress? }
    ══════════════════════════════════════════════════════════ */
 router.post("/store/checkout", async (req: Request, res: Response) => {
   try {
@@ -327,9 +469,11 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Нэвтэрнэ үү" });
     }
 
-    const { lines, phone, shippingAddress, customerLat, customerLng } = req.body as {
+    const { lines, phone, secondaryPhone, note, shippingAddress, customerLat, customerLng } = req.body as {
       lines?: { productId: string; qty: number }[];
       phone?: string;
+      secondaryPhone?: string;
+      note?: string;
       shippingAddress?: string;
       customerLat?: number | string;
       customerLng?: number | string;
@@ -338,6 +482,22 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     if (!lines || !Array.isArray(lines) || lines.length === 0) {
       return res.status(400).json({ message: "Сагс хоосон байна" });
     }
+
+    const normalizedPhone = phone?.trim();
+    if (!normalizedPhone) {
+      return res.status(400).json({ message: "Захиалга баталгаажуулах утасны дугаар шаардлагатай." });
+    }
+    const normalizedNote = note?.trim();
+    if (!normalizedNote) {
+      return res.status(400).json({ message: "Захиалгын нэмэлт мэдээлэл шаардлагатай." });
+    }
+    const normalizedSecondaryPhone = secondaryPhone?.trim();
+    const orderNote = [
+      normalizedNote,
+      normalizedSecondaryPhone ? `Нэмэлт дугаар: ${normalizedSecondaryPhone}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     // Validate all products exist and are active
     const productIds = lines.map((l) => l.productId);
@@ -408,16 +568,25 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     const normalizedCustomerLat = toNumberOrNull(customerLat);
     const normalizedCustomerLng = toNumberOrNull(customerLng);
     const total = subtotal; // no delivery fee for now
+    const deliveryReadiness = await getDeliveryReadiness(orgIds[0]);
 
-    const systemQrConfig = await getVendorSystemQrConfig(orgIds[0]);
-    const merchantRes = systemQrConfig
-      ? { success: true, config: null }
-      : await getVendorMerchantConfig(orgIds[0]);
-    if (!systemQrConfig && (!merchantRes.success || !merchantRes.config)) {
-      return res.status(400).json({ message: "Дэлгүүр QPay дансаа холбоогүй байна. Төлбөр авах боломжгүй." });
+    if (normalizedCustomerLat === null || normalizedCustomerLng === null) {
+      return res.status(400).json({
+        code: "CUSTOMER_LOCATION_REQUIRED",
+        message: "Хүргэлт хайхын тулд хэрэглэгчийн байршлын өргөрөг, уртраг тодорхой байх шаардлагатай.",
+      });
     }
 
-    // Create order + items, then prepare branch radar for after payment.
+    if (!deliveryReadiness.canDeliver) {
+      return res.status(409).json({
+        code: "DELIVERY_AREA_UNAVAILABLE",
+        message:
+          "Одоогоор энэ дэлгүүрийн хүргэлтийн байршил бэлэн болоогүй байна. Хүргэлтийн хэсэг удахгүй идэвхжинэ.",
+        delivery: deliveryReadiness,
+      });
+    }
+
+    // Create order + items, then prepare branch radar before payment.
     const order = await prisma.$transaction(async (tx) => {
       const ord = await tx.order.create({
         data: {
@@ -428,7 +597,8 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           paymentStatus: PaymentStatus.PENDING,
           paymentMethod: PaymentMethod.QPAY,
           shippingAddress: shippingAddress || "",
-          phone: phone || "",
+          phone: normalizedPhone,
+          note: orderNote || null,
           customerLat: normalizedCustomerLat,
           customerLng: normalizedCustomerLng,
           subtotal,
@@ -443,17 +613,9 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
               note: "Захиалга үүсгэж, ойр салбар хайж эхэлсэн",
             },
           },
-          payments: {
-            create: {
-              method: PaymentMethod.QPAY,
-              status: PaymentStatus.PENDING,
-              amount: total,
-            },
-          },
         },
         include: {
           items: true,
-          payments: { select: { id: true, status: true, amount: true } },
         },
       });
 
@@ -467,46 +629,17 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       return ord;
     });
 
-    let invoice;
-    try {
-      invoice = await createStorePaymentInvoice({
-        organizationId: orgIds[0],
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        amount: Number(order.total),
-      });
-    } catch (err) {
-      console.error("QPay invoice creation failed:", err);
-      if (err instanceof Error && err.message === "QPAY_NOT_CONFIGURED") {
-        return res.status(400).json({ message: "Дэлгүүр QPay төлбөрийн тохиргоо холбоогүй байна." });
-      }
-      return res.status(502).json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
-    }
-
-    const payment = order.payments[0];
-    if (payment) {
-      await prisma.paymentAttempt.update({
-        where: { id: payment.id },
-        data: {
-          providerRef: invoice.data.invoice_id,
-          rawPayload: JSON.parse(JSON.stringify(invoice.rawPayload)),
-        },
-      });
-    }
+    const dispatch = await getCheckoutDispatchSnapshot(order.id, customer.id);
 
     return res.status(201).json({
       orderId: order.id,
       orderNumber: order.orderNumber,
       total: Number(order.total),
       subtotal: Number(order.subtotal),
-      paymentId: payment?.id || null,
-      paymentRequired: true,
-      dispatchStatus: "WAITING_PAYMENT",
-      qrText: invoice.data.qr_text,
-      qrImage: invoice.data.qr_image,
-      qpayInvoiceId: invoice.data.invoice_id,
-      deepLinks: invoice.data.urls,
-      expiresIn: 300,
+      paymentId: null,
+      paymentRequired: false,
+      dispatchStatus: dispatch?.status || "SEARCHING",
+      dispatch,
       items: order.items.map((i) => ({
         productId: i.productId,
         name: i.productName,
@@ -518,6 +651,103 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("store checkout error", error);
     return res.status(500).json({ message: "Захиалга үүсгэхэд алдаа гарлаа" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   GET /store/checkout/:orderId/dispatch-status
+   Customer-facing radar status before payment is enabled.
+   ══════════════════════════════════════════════════════════ */
+router.get("/store/checkout/:orderId/dispatch-status", async (req: Request, res: Response) => {
+  try {
+    const customer = await getCustomer(req);
+    if (!customer || !customer.isActive || customer.deletedAt) {
+      return res.status(401).json({ message: "Нэвтэрнэ үү" });
+    }
+
+    const snapshot = await getCheckoutDispatchSnapshot(req.params.orderId, customer.id);
+    if (!snapshot) {
+      return res.status(404).json({ message: "Захиалгын хүргэлтийн төлөв олдсонгүй" });
+    }
+
+    return res.json(snapshot);
+  } catch (error) {
+    console.error("store dispatch status error", error);
+    return res.status(500).json({ message: "Хүргэлтийн төлөв шалгахад алдаа гарлаа" });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   POST /store/checkout/:orderId/cancel
+   Cancel a customer order while branch dispatch is still searching.
+   ══════════════════════════════════════════════════════════ */
+router.post("/store/checkout/:orderId/cancel", async (req: Request, res: Response) => {
+  try {
+    const customer = await getCustomer(req);
+    if (!customer || !customer.isActive || customer.deletedAt) {
+      return res.status(401).json({ message: "Нэвтэрнэ үү" });
+    }
+
+    const { orderId } = req.params;
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        customerId: true,
+        status: true,
+        paymentStatus: true,
+      },
+    });
+
+    if (!order) return res.status(404).json({ message: "Захиалга олдсонгүй" });
+    if (order.customerId !== customer.id) {
+      return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
+    }
+    if (order.paymentStatus === PaymentStatus.PAID) {
+      return res.status(409).json({ message: "Төлбөр төлөгдсөн захиалгыг эндээс цуцлах боломжгүй." });
+    }
+    if (order.status === OrderStatus.CANCELLED) {
+      return res.json({ message: "Захиалга аль хэдийн цуцлагдсан", status: OrderStatus.CANCELLED });
+    }
+
+    await prisma.$transaction([
+      prisma.orderDispatchAttempt.updateMany({
+        where: {
+          orderId,
+          status: {
+            in: [
+              OrderDispatchAttemptStatus.QUEUED,
+              OrderDispatchAttemptStatus.PENDING,
+            ],
+          },
+        },
+        data: {
+          status: OrderDispatchAttemptStatus.CANCELLED,
+          respondedAt: new Date(),
+          note: "Хэрэглэгч захиалгыг цуцалсан",
+        },
+      }),
+      prisma.order.update({
+        where: { id: orderId },
+        data: {
+          status: OrderStatus.CANCELLED,
+        },
+      }),
+      prisma.orderHistory.create({
+        data: {
+          orderId,
+          fromStatus: order.status as OrderStatus,
+          toStatus: OrderStatus.CANCELLED,
+          changedById: customer.id,
+          note: "Хэрэглэгч хүргэлтийн хайлтын үед захиалгыг цуцалсан",
+        },
+      }),
+    ]);
+
+    return res.json({ message: "Захиалга цуцлагдлаа", status: OrderStatus.CANCELLED });
+  } catch (error) {
+    console.error("store checkout cancel error", error);
+    return res.status(500).json({ message: "Захиалга цуцлахад алдаа гарлаа" });
   }
 });
 

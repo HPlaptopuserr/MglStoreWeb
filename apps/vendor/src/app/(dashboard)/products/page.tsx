@@ -128,7 +128,12 @@ export default function ProductsPage() {
 
   const fetchProducts = useCallback(async () => {
     const orgId = getOrgId();
-    if (!orgId) return;
+    if (!orgId) {
+      setProducts([]);
+      setLoading(false);
+      showToast("error", "Байгууллагын мэдээлэл олдсонгүй. Дахин нэвтэрнэ үү.");
+      return;
+    }
     setLoading(true);
     try {
       const params = new URLSearchParams({

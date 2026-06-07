@@ -14,7 +14,7 @@ import {
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "https://mgl-api.onrender.com";
+  "http://localhost:4000";
 
 export default function VendorDashboardLayout({
   children,
@@ -43,61 +43,67 @@ export default function VendorDashboardLayout({
       return;
     }
 
-    let organizationId = "";
-    try {
-      const storedUser = JSON.parse(
-        localStorage.getItem("vendor_user") || "{}",
-      );
+    const clearSession = () => {
+      localStorage.removeItem("vendor_token");
+      localStorage.removeItem("vendor_user");
+      router.replace("/login");
+    };
 
-      organizationId = storedUser.organizationId || "";
-      if (!organizationId) {
-        const payload = token ? JSON.parse(atob(token.split(".")[1] || "")) : null;
-        organizationId = payload?.organizationId || "";
-      }
-
-      setUserData({
-        name: storedUser.name || storedUser.fullName || "Vendor",
-        email: storedUser.email || "vendor@mglstore.mn",
-        role: storedUser.role || "VENDOR",
-        initials: storedUser.name?.slice(0, 2).toUpperCase() || "VN",
-        organizationName: storedUser.organizationName || "",
-      });
-    } catch {
-      setUserData({
-        name: "Vendor",
-        email: "vendor@mglstore.mn",
-        role: "VENDOR",
-        initials: "VN",
-        organizationName: "",
-      });
-    }
-
-    if (organizationId) {
-      fetch(`${API_URL}/api/site-settings`, { cache: "no-store" })
-        .then(async (settingRes) => {
-          const settings = settingRes.ok
-            ? ((await settingRes.json()) as Record<string, unknown>)
-            : {};
-          setShowPos(isFeatureEnabled(settings, POS_FEATURE_KEY, organizationId));
-          setShowSupplyProducts(
-            isFeatureEnabled(settings, SUPPLY_PRODUCTS_FEATURE_KEY, organizationId),
-          );
-          setShowPreorderProducts(
-            isFeatureEnabled(settings, PREORDER_PRODUCTS_FEATURE_KEY, organizationId),
-          );
-          setShowServicePosts(
-            isFeatureEnabled(settings, SERVICE_POSTS_FEATURE_KEY, organizationId, true),
-          );
-        })
-        .catch(() => {
-          setShowPos(false);
-          setShowSupplyProducts(false);
-          setShowPreorderProducts(false);
-          setShowServicePosts(true);
+    const hydrateSession = async () => {
+      try {
+        const meRes = await fetch(`${API_URL}/auth/me`, {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
         });
-    }
 
-    setIsReady(true);
+        if (!meRes.ok) {
+          clearSession();
+          return;
+        }
+
+        const me = await meRes.json();
+        if (!me.organizationId) {
+          clearSession();
+          return;
+        }
+
+        const storedUser = JSON.parse(localStorage.getItem("vendor_user") || "{}");
+        const nextUser = {
+          ...storedUser,
+          ...me,
+          organizationName: storedUser.organizationName || me.organizationName || "",
+        };
+        localStorage.setItem("vendor_user", JSON.stringify(nextUser));
+
+        setUserData({
+          name: nextUser.name || nextUser.fullName || "Vendor",
+          email: nextUser.email || "vendor@mglstore.mn",
+          role: nextUser.role || "VENDOR",
+          initials: (nextUser.name || nextUser.fullName || "VN").slice(0, 2).toUpperCase(),
+          organizationName: nextUser.organizationName || "",
+        });
+
+        const settingRes = await fetch(`${API_URL}/api/site-settings`, { cache: "no-store" });
+        const settings = settingRes.ok
+          ? ((await settingRes.json()) as Record<string, unknown>)
+          : {};
+        setShowPos(isFeatureEnabled(settings, POS_FEATURE_KEY, me.organizationId));
+        setShowSupplyProducts(
+          isFeatureEnabled(settings, SUPPLY_PRODUCTS_FEATURE_KEY, me.organizationId),
+        );
+        setShowPreorderProducts(
+          isFeatureEnabled(settings, PREORDER_PRODUCTS_FEATURE_KEY, me.organizationId),
+        );
+        setShowServicePosts(
+          isFeatureEnabled(settings, SERVICE_POSTS_FEATURE_KEY, me.organizationId, true),
+        );
+        setIsReady(true);
+      } catch {
+        clearSession();
+      }
+    };
+
+    hydrateSession();
   }, [router]);
 
   const handleLogout = () => {

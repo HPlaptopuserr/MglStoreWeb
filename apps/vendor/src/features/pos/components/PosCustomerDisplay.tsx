@@ -102,9 +102,9 @@ export function PosCustomerDisplay({
       className="fixed inset-0 z-50 flex min-h-screen flex-col overflow-hidden bg-[#0b0d14] text-[#f4efff]"
       style={displayStyle}
     >
-      <header className="flex h-[90px] shrink-0 items-center justify-between border-b border-white/10 bg-[#0d1018]/95 px-12 shadow-[0_18px_60px_rgba(0,0,0,0.42)]">
+      <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-white/10 bg-[#0d1018]/95 px-8 shadow-[0_18px_60px_rgba(0,0,0,0.42)] 2xl:h-[82px] 2xl:px-12">
         <div className="flex min-w-0 items-center gap-5">
-          <h1 className="truncate text-4xl font-black uppercase tracking-tight text-[rgb(var(--cd-light-rgb))] drop-shadow-[0_0_18px_rgba(var(--cd-rgb),0.28)]">
+          <h1 className="truncate text-3xl font-black uppercase tracking-tight text-[rgb(var(--cd-light-rgb))] drop-shadow-[0_0_18px_rgba(var(--cd-rgb),0.28)] 2xl:text-4xl">
             {storeName}
           </h1>
           <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-white/80 shadow-inner">
@@ -113,8 +113,8 @@ export function PosCustomerDisplay({
           </div>
         </div>
 
-        <div className="flex items-center gap-8 text-sm font-black uppercase tracking-[0.12em] text-white/70">
-          <div className="flex items-center gap-3 border-r border-white/15 pr-8">
+        <div className="flex items-center gap-6 text-sm font-black uppercase tracking-[0.12em] text-white/70 2xl:gap-8">
+          <div className="flex items-center gap-3 border-r border-white/15 pr-6 2xl:pr-8">
             <Radio className="h-5 w-5 text-[rgb(var(--cd-light-rgb))]" />
             Terminal #1
           </div>
@@ -127,10 +127,10 @@ export function PosCustomerDisplay({
       </header>
 
       <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_500px]">
-        <section className="relative flex min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_34%_6%,rgba(var(--cd-rgb),0.22),transparent_33%),linear-gradient(110deg,rgb(var(--cd-deep-rgb))_0%,#160b25_45%,#0b0d14_100%)] px-8 py-6">
+        <section className="relative flex min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_34%_6%,rgba(var(--cd-rgb),0.22),transparent_33%),linear-gradient(110deg,rgb(var(--cd-deep-rgb))_0%,#160b25_45%,#0b0d14_100%)] px-8 py-5 2xl:py-6">
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:72px_72px] opacity-20" />
 
-          <div className="relative z-10 mb-5 flex shrink-0 items-end justify-between gap-6">
+          <div className="relative z-10 mb-4 flex shrink-0 items-end justify-between gap-6 2xl:mb-5">
             <div>
               <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200/75">
                 Одоогийн худалдан авалт
@@ -243,23 +243,23 @@ export function PosCustomerDisplay({
           )}
         </section>
 
-        <aside className="flex min-h-0 flex-col border-l border-white/10 bg-[linear-gradient(180deg,#252833_0%,#141c24_100%)] px-10 py-10">
-          <div className="rounded-2xl border border-[rgba(var(--cd-rgb),0.7)] bg-[rgba(var(--cd-rgb),0.22)] p-8 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
-            <div className="flex items-center gap-3 text-sm font-black uppercase tracking-[0.12em] text-white/72">
-              <Star className="h-6 w-6 text-[rgb(var(--cd-light-rgb))]" />
+        <aside className="flex min-h-0 flex-col overflow-hidden border-l border-white/10 bg-[linear-gradient(180deg,#252833_0%,#141c24_100%)] px-7 py-7 2xl:px-10 2xl:py-10">
+          <div className="rounded-2xl border border-[rgba(var(--cd-rgb),0.7)] bg-[rgba(var(--cd-rgb),0.22)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.32)] 2xl:p-8">
+            <div className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.12em] text-white/72 2xl:text-sm">
+              <Star className="h-5 w-5 text-[rgb(var(--cd-light-rgb))] 2xl:h-6 2xl:w-6" />
               Лоялти хөтөлбөр
             </div>
-            <h3 className="mt-7 font-serif text-2xl font-black text-white">
+            <h3 className="mt-5 font-serif text-xl font-black text-white 2xl:mt-7 2xl:text-2xl">
               Тавтай морилно уу!
             </h3>
-            <p className="mt-3 text-lg font-medium leading-7 text-white/68">
+            <p className="mt-2 text-base font-medium leading-6 text-white/68 2xl:mt-3 2xl:text-lg 2xl:leading-7">
               Энэ худалдан авалтаас ойролцоогоор{" "}
               <span className="font-black text-white">
                 {estimatedPoints.toLocaleString("mn-MN")}
               </span>{" "}
               оноо цуглуулах боломжтой.
             </p>
-            <div className="mt-7 h-3 overflow-hidden rounded-full bg-white/10">
+            <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-white/10 2xl:mt-7 2xl:h-3">
               <div
                 className="h-full rounded-full bg-[rgb(var(--cd-rgb))]"
                 style={{
@@ -267,12 +267,12 @@ export function PosCustomerDisplay({
                 }}
               />
             </div>
-            <p className="mt-4 text-xs font-black uppercase tracking-wide text-white/55">
+            <p className="mt-3 text-[11px] font-black uppercase tracking-wide text-white/55 2xl:mt-4 2xl:text-xs">
               Дараагийн шат хүртэл худалдан авалтаа үргэлжлүүлээрэй
             </p>
           </div>
 
-          <div className="mt-10 space-y-6 text-xl font-medium text-white/78">
+          <div className="mt-7 space-y-4 text-lg font-medium text-white/78 2xl:mt-10 2xl:space-y-6 2xl:text-xl">
             <div className="flex items-center justify-between gap-6">
               <span>Нийт дүн</span>
               <span className="font-semibold tabular-nums text-white">
@@ -295,19 +295,19 @@ export function PosCustomerDisplay({
             </div>
           </div>
 
-          <div className="mt-8 border-t border-white/10 pt-8">
-            <div className="flex items-center gap-3 text-lg font-black uppercase tracking-[0.12em] text-white/78">
+          <div className="mt-6 min-h-0 border-t border-white/10 pt-6 2xl:mt-8 2xl:pt-8">
+            <div className="flex items-center gap-3 text-base font-black uppercase tracking-[0.12em] text-white/78 2xl:text-lg">
               <ReceiptText className="h-5 w-5 text-[rgb(var(--cd-light-rgb))]" />
               Төлөх дүн
             </div>
-            <p className="mt-5 break-words text-7xl font-black leading-none tracking-tight text-[rgb(var(--cd-light-rgb))] tabular-nums drop-shadow-[0_0_28px_rgba(var(--cd-rgb),0.22)]">
+            <p className="mt-4 break-words text-[clamp(3.2rem,5.4vw,5.4rem)] font-black leading-none tracking-tight text-[rgb(var(--cd-light-rgb))] tabular-nums drop-shadow-[0_0_28px_rgba(var(--cd-rgb),0.22)] 2xl:mt-5">
               {formatMoney(totals.grandTotal)}
             </p>
           </div>
         </aside>
       </main>
 
-      <footer className="flex h-[58px] shrink-0 items-center justify-between border-t border-white/10 bg-[#0d1018] px-12 text-sm font-semibold text-white/65">
+      <footer className="flex h-[44px] shrink-0 items-center justify-between border-t border-white/10 bg-[#0d1018] px-8 text-xs font-semibold text-white/65 2xl:h-[58px] 2xl:px-12 2xl:text-sm">
         <span>© 2026 MGL STORE</span>
         <span className="italic">
           Баярлалаа. Таны худалдан авалт амжилттай үргэлжилж байна.

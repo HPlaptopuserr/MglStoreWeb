@@ -1,4 +1,4 @@
-import type { AuthUser } from "@/lib/auth-context";
+import type { AuthAddress, AuthUser } from "@/lib/auth-context";
 
 export type ProfileTab =
   | "library"
@@ -69,32 +69,75 @@ export type ProfileFormState = {
   email: string;
   phone: string;
   avatarUrl: string;
-  addressLabel: string;
+  addressId: string;
   fullAddress: string;
   city: string;
   district: string;
   khoroo: string;
   entrance: string;
   apartment: string;
+  lat: string;
+  lng: string;
+  addressIsDefault: boolean;
   acceptTerms: boolean;
   marketingConsent: boolean;
 };
 
 export type ProfileSavePayload = ProfileFormState;
 
+export function createEmptyAddressPatch(): Pick<
+  ProfileFormState,
+  | "addressId"
+  | "fullAddress"
+  | "city"
+  | "district"
+  | "khoroo"
+  | "entrance"
+  | "apartment"
+  | "lat"
+  | "lng"
+  | "addressIsDefault"
+> {
+  return {
+    addressId: "",
+    fullAddress: "",
+    city: "Улаанбаатар",
+    district: "",
+    khoroo: "",
+    entrance: "",
+    apartment: "",
+    lat: "",
+    lng: "",
+    addressIsDefault: false,
+  };
+}
+
+export function createAddressPatch(address?: AuthAddress | null): ReturnType<typeof createEmptyAddressPatch> {
+  if (!address) return createEmptyAddressPatch();
+
+  return {
+    addressId: address.id || "",
+    fullAddress: address.fullAddress || "",
+    city: address.city || "Улаанбаатар",
+    district: address.district || "",
+    khoroo: address.khoroo || "",
+    entrance: address.entrance || "",
+    apartment: address.apartment || "",
+    lat: address.lat?.toString() || "",
+    lng: address.lng?.toString() || "",
+    addressIsDefault: Boolean(address.isDefault),
+  };
+}
+
 export function createProfileFormState(user: AuthUser): ProfileFormState {
+  const address = user.defaultAddress || user.addresses?.[0] || null;
+
   return {
     fullName: user.fullName || "",
     email: user.email || "",
     phone: user.phone || "",
     avatarUrl: user.avatarUrl || "",
-    addressLabel: user.defaultAddress?.label || "Гэр",
-    fullAddress: user.defaultAddress?.fullAddress || "",
-    city: user.defaultAddress?.city || "",
-    district: user.defaultAddress?.district || "",
-    khoroo: user.defaultAddress?.khoroo || "",
-    entrance: user.defaultAddress?.entrance || "",
-    apartment: user.defaultAddress?.apartment || "",
+    ...createAddressPatch(address),
     acceptTerms: Boolean(user.termsAcceptedAt),
     marketingConsent: Boolean(user.marketingConsent),
   };

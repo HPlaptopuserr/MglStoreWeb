@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "https://mgl-api.onrender.com";
+  "http://localhost:4000";
 
 function SetPasswordContent() {
   const searchParams = useSearchParams();

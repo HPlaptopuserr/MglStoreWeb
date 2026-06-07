@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "https://mgl-api.onrender.com";
+  "http://localhost:4000";
 const url = process.env.NEXT_PUBLIC_URL || "https://mglstore.mn";
 
 export default function VendorLoginPage() {
@@ -122,16 +122,28 @@ export default function VendorLoginPage() {
               Системд нэвтрэх
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Зөвхөн баталгаажсан нийлүүлэгч нар нэвтрэх боломжтой.
+              Admin-аас үүсгэсэн owner эсвэл ажилтны login эрхээр нэвтэрнэ.
             </p>
           </div>
 
           <form className="mt-8 space-y-6" onSubmit={handleLogin}>
             {error && (
-              <div className="bg-red-50 text-red-600 p-4 rounded-lg text-sm font-medium border border-red-100">
-                {error}
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                <p>{error}</p>
+                <p className="mt-1 text-xs font-medium leading-5 text-red-600">
+                  Байгууллагын контакт утас/и-мэйл биш, admin дээрх “Vendor login account” хэсгийн login утас эсвэл и-мэйлийг ашиглана.
+                </p>
               </div>
             )}
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-bold text-amber-900">
+                Нэвтрэх нэр нь байгууллагын утас биш
+              </p>
+              <p className="mt-1 text-xs font-medium leading-5 text-amber-800">
+                Admin дээр partner detail доторх “Vendor login account” хэсэгт байгаа хэрэглэгчийн и-мэйл эсвэл утсаар нэвтэрнэ.
+              </p>
+            </div>
 
             <div className="space-y-4">
               <div>
@@ -139,7 +151,7 @@ export default function VendorLoginPage() {
                   className="block text-sm font-medium text-slate-700 mb-1"
                   htmlFor="identifier"
                 >
-                  И-мэйл эсвэл утасны дугаар
+                  Login хэрэглэгчийн и-мэйл эсвэл утас
                 </label>
                 <input
                   id="identifier"
@@ -147,9 +159,12 @@ export default function VendorLoginPage() {
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors bg-slate-50 focus:bg-white text-slate-900"
-                  placeholder="vendor@company.mn эсвэл 9911xxxx"
+                  placeholder="owner@company.mn эсвэл login утас"
                   disabled={isLoading}
                 />
+                <p className="mt-2 text-xs font-medium leading-5 text-slate-500">
+                  Жишээ нь байгууллагын контакт утас 89123581 байлаа ч owner login утас өөр байж болно.
+                </p>
               </div>
 
               <div>

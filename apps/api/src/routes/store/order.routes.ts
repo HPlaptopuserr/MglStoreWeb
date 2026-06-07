@@ -45,7 +45,7 @@ function generateDeliveryCode(): string {
   return String(crypto.randomInt(100000, 999999));
 }
 
-const DISPATCH_WINDOW_MINUTES = 3;
+const DISPATCH_WINDOW_SECONDS = 10;
 
 async function advanceNextDispatchAttempt(tx: any, orderId: string) {
   const next = await tx.orderDispatchAttempt.findFirst({
@@ -54,19 +54,28 @@ async function advanceNextDispatchAttempt(tx: any, orderId: string) {
       status: OrderDispatchAttemptStatus.QUEUED,
     },
     orderBy: { sequence: "asc" },
-    select: { id: true },
+    select: { sequence: true },
   });
 
   if (!next) return null;
 
-  return tx.orderDispatchAttempt.update({
-    where: { id: next.id },
+  const result = await tx.orderDispatchAttempt.updateMany({
+    where: {
+      orderId,
+      status: OrderDispatchAttemptStatus.QUEUED,
+      sequence: next.sequence,
+    },
     data: {
       status: OrderDispatchAttemptStatus.PENDING,
       requestedAt: new Date(),
-      expiresAt: new Date(Date.now() + DISPATCH_WINDOW_MINUTES * 60 * 1000),
+      expiresAt: new Date(Date.now() + DISPATCH_WINDOW_SECONDS * 1000),
     },
   });
+
+  return {
+    zone: next.sequence,
+    count: result.count,
+  };
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -401,9 +410,12 @@ router.post("/vendor/order-dispatches/:attemptId/decline", async (req: Request, 
       orderId: attempt.orderId,
       orderNumber: attempt.order.orderNumber,
       declinedBranchId: attempt.branchId,
-      nextAttemptId: next?.id || null,
+      nextZone: next?.zone || null,
+      nextBranchCount: next?.count || 0,
       status: next ? "NEXT_BRANCH_REQUESTED" : "NO_BRANCH_AVAILABLE",
-      message: next ? "Дараагийн ойр салбар руу хүсэлт илгээгдлээ" : "Ойролцоох бүх салбар татгалзсан байна",
+      message: next
+        ? `Дараагийн бүсийн ${next.count} салбар руу хүсэлт зэрэг илгээгдлээ`
+        : "Ойролцоох бүх бүсийн салбар татгалзсан байна",
     });
   } catch (error) {
     console.error("decline order dispatch error", error);
