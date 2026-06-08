@@ -144,15 +144,40 @@ export type ShiftStatus = "OPEN" | "CLOSED";
 
 export interface PosShift {
   id: string;
+  organizationId?: string;
   cashierId: string;
   cashierName: string;
   branchId: string;
+  branchName?: string;
+  registerId?: string | null;
+  registerName?: string | null;
   openedAt: string;
   closedAt: string | null;
   openingCash: number;
   closingCash: number | null;
   expectedCash: number;
+  cashDifference?: number | null;
+  note?: string | null;
   status: ShiftStatus;
+}
+
+export interface PosShiftHistoryItem extends PosShift {
+  organizationId: string;
+  branchName: string;
+  registerId: string | null;
+  registerName: string | null;
+  cashDifference: number | null;
+  note: string | null;
+  salesCount: number;
+  totalSales: number;
+  cashSales: number;
+  cardSales: number;
+  qpaySales: number;
+  mixedSales: number;
+}
+
+export interface PosShiftHistoryResponse {
+  shifts: PosShiftHistoryItem[];
 }
 
 export interface OpenShiftPayload {

@@ -187,10 +187,13 @@ router.get("/pos/receipts", async (req, res) => {
       return res.status(404).json({ message: "Ээлж олдсонгүй" });
     }
 
-    if (shift.cashierId !== actor.id && actor.role !== "ADMIN") {
-      return res
-        .status(403)
-        .json({ message: "Энэ ээлжийн мэдээлэл харах эрхгүй" });
+    if (shift.cashierId !== actor.id && actor.role !== "ADMIN" && actor.role !== "SUPER_ADMIN") {
+      const allowed = await hasOrgMembership(actor.id, shift.organizationId);
+      if (!allowed) {
+        return res
+          .status(403)
+          .json({ message: "Энэ ээлжийн мэдээлэл харах эрхгүй" });
+      }
     }
 
     const sales = await prisma.posSale.findMany({
