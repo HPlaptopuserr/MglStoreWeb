@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { API, API_BASE } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { AccountLibraryPanel } from "./_components/AccountLibraryPanel";
@@ -23,6 +23,15 @@ import {
   type ProfileFormState,
   type ProfileTab,
 } from "./_components/types";
+
+type ConfirmAction = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  tone?: "default" | "danger";
+  onConfirm: () => void | Promise<void>;
+};
 
 export default function ProfilePage() {
   const { user, loading, logout, updateUser, refreshUser, authFetch } =
@@ -52,6 +61,8 @@ export default function ProfilePage() {
   const [accountLoading, setAccountLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState("");
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -160,8 +171,18 @@ export default function ProfilePage() {
     setProfileError("");
   };
 
-  const saveProfile = async (event: FormEvent) => {
-    event.preventDefault();
+  const runConfirmedAction = async () => {
+    if (!confirmAction) return;
+    setConfirming(true);
+    try {
+      await confirmAction.onConfirm();
+      setConfirmAction(null);
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const saveProfile = async () => {
     if (!form.acceptTerms) {
       setProfileError("Үйлчилгээний нөхцөлийг зөвшөөрөх шаардлагатай.");
       setTab("address");
@@ -211,6 +232,28 @@ export default function ProfilePage() {
     }
   };
 
+  const requestProfileSave = (event: FormEvent) => {
+    event.preventDefault();
+    setConfirmAction({
+      title: "Хувийн мэдээллээ хадгалах уу?",
+      description:
+        "Таны нэр, холбоо барих мэдээлэл болон account дээр ашиглагдах үндсэн мэдээлэл шинэчлэгдэнэ.",
+      confirmLabel: "Хадгалах",
+      onConfirm: saveProfile,
+    });
+  };
+
+  const requestAddressSave = (event: FormEvent) => {
+    event.preventDefault();
+    setConfirmAction({
+      title: "Хаяг ба зөвшөөрлийн мэдээллээ хадгалах уу?",
+      description:
+        "Хүргэлтийн хаяг, үйлчилгээний нөхцөл болон мэдэгдлийн зөвшөөрлийн тохиргоо account дээр хадгалагдана.",
+      confirmLabel: "Хадгалах",
+      onConfirm: saveProfile,
+    });
+  };
+
   const uploadAvatar = async (file: File) => {
     setUploadingAvatar(true);
     setProfileError("");
@@ -235,24 +278,7 @@ export default function ProfilePage() {
     }
   };
 
-  const changePassword = async (event: FormEvent) => {
-    event.preventDefault();
-    setPasswordError("");
-    setPasswordSuccess("");
-
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordError("Бүх талбарыг бөглөнө үү");
-      return;
-    }
-    if (newPassword.length < 6) {
-      setPasswordError("Шинэ нууц үг дор хаяж 6 тэмдэгт байх ёстой");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordError("Шинэ нууц үгүүд таарахгүй байна");
-      return;
-    }
-
+  const changePassword = async () => {
     setChangingPassword(true);
     try {
       const res = await authFetch(`${API_BASE}/auth/web/change-password`, {
@@ -276,9 +302,46 @@ export default function ProfilePage() {
     }
   };
 
+  const requestPasswordChange = (event: FormEvent) => {
+    event.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError("Бүх талбарыг бөглөнө үү");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError("Шинэ нууц үг дор хаяж 6 тэмдэгт байх ёстой");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Шинэ нууц үгүүд таарахгүй байна");
+      return;
+    }
+
+    setConfirmAction({
+      title: "Нууц үгээ солих уу?",
+      description:
+        "Нууц үг солигдсоны дараа account-д нэвтрэхдээ шинэ нууц үгээ ашиглана. Энэ үйлдлийг анхааралтай баталгаажуулна уу.",
+      confirmLabel: "Нууц үг солих",
+      tone: "danger",
+      onConfirm: changePassword,
+    });
+  };
+
   const handleLogout = () => {
-    logout();
-    router.replace("/");
+    setConfirmAction({
+      title: "Account-аас гарах уу?",
+      description:
+        "Гарсны дараа сагс болон profile-ийн зарим үйлдлийг үргэлжлүүлэхийн тулд дахин нэвтрэх шаардлагатай.",
+      confirmLabel: "Гарах",
+      tone: "danger",
+      onConfirm: () => {
+        logout();
+        router.replace("/");
+      },
+    });
   };
 
   return (
@@ -321,7 +384,7 @@ export default function ProfilePage() {
             error={profileError}
             onChange={updateForm}
             onAvatarUpload={uploadAvatar}
-            onSubmit={saveProfile}
+            onSubmit={requestProfileSave}
           />
         )}
 
@@ -335,7 +398,7 @@ export default function ProfilePage() {
             onChange={updateForm}
             onSelectAddress={(address) => updateForm(createAddressPatch(address))}
             onNewAddress={() => updateForm(createEmptyAddressPatch())}
-            onSubmit={saveProfile}
+            onSubmit={requestAddressSave}
           />
         )}
 
@@ -354,10 +417,79 @@ export default function ProfilePage() {
             onConfirmPassword={setConfirmPassword}
             onToggleCurrent={() => setShowCurrent((value) => !value)}
             onToggleNew={() => setShowNew((value) => !value)}
-            onSubmit={changePassword}
+            onSubmit={requestPasswordChange}
           />
         )}
       </div>
+      <ConfirmActionDialog
+        action={confirmAction}
+        loading={confirming}
+        onCancel={() => {
+          if (!confirming) setConfirmAction(null);
+        }}
+        onConfirm={runConfirmedAction}
+      />
     </main>
+  );
+}
+
+function ConfirmActionDialog({
+  action,
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  action: ConfirmAction | null;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!action) return null;
+
+  const isDanger = action.tone === "danger";
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.24)]">
+        <div className="p-6">
+          <div
+            className={`mb-5 flex h-12 w-12 items-center justify-center rounded-2xl ${
+              isDanger
+                ? "bg-red-50 text-red-600"
+                : "bg-orange-50 text-orange-600"
+            }`}
+          >
+            <AlertTriangle size={22} />
+          </div>
+          <h2 className="text-xl font-black text-slate-950">{action.title}</h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+            {action.description}
+          </p>
+        </div>
+        <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 p-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onCancel}
+            className="h-11 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+          >
+            {action.cancelLabel || "Буцах"}
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onConfirm}
+            className={`inline-flex h-11 items-center justify-center gap-2 rounded-2xl px-5 text-sm font-black text-white shadow-sm transition disabled:opacity-60 ${
+              isDanger
+                ? "bg-red-600 hover:bg-red-700"
+                : "bg-orange-500 hover:bg-orange-600"
+            }`}
+          >
+            {loading && <Loader2 size={16} className="animate-spin" />}
+            {action.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

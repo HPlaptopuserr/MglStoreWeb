@@ -9,6 +9,7 @@ import {
   extractExcelImages,
   uploadBufferToSupabase,
   PRODUCT_COL_MAP,
+  normalizeExcelRow,
   resolveCol,
 } from "../../lib/excel-import";
 import { adjustStock, resolveOrgWarehouse, syncProductStock } from "../../services/inventory.service";
@@ -992,7 +993,9 @@ router.post(
         return res.status(400).json({ message: "Excel файл хоосон байна" });
       }
 
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName]);
+      const rows = XLSX.utils
+        .sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName])
+        .map(normalizeExcelRow);
       if (!rows.length) {
         return res.status(400).json({ message: "Excel файлд мэдээлэл олдсонгүй" });
       }

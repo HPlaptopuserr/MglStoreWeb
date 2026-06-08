@@ -684,6 +684,12 @@ async function ensurePaidProjectAccess({
 
   const sourceType = paidAccessSourceFromKind(kind);
   if (userId) {
+    const primeUser = await prisma.user.findFirst({
+      where: { id: userId, isPrime: true, isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (primeUser) return true;
+
     const purchase = await prisma.paidAccessPurchase.findUnique({
       where: {
         userId_sourceType_itemId: {
@@ -1359,6 +1365,20 @@ const createProjectSystemQrPaymentSession = async (
       return;
     }
 
+    const primeUser = await prisma.user.findFirst({
+      where: { id: userId, isPrime: true, isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (primeUser) {
+      res.json({
+        success: true,
+        free: true,
+        primeAccess: true,
+        projectId,
+      });
+      return;
+    }
+
     const existingPurchase = await prisma.paidAccessPurchase.findUnique({
       where: {
         userId_sourceType_itemId: {
@@ -1495,6 +1515,20 @@ const createFranchiseSystemQrPaymentSession = async (
     const amount = normalizeProjectPrice(normalized.price);
     if (amount <= 0) {
       res.json({ success: true, free: true, projectId });
+      return;
+    }
+
+    const primeUser = await prisma.user.findFirst({
+      where: { id: userId, isPrime: true, isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (primeUser) {
+      res.json({
+        success: true,
+        free: true,
+        primeAccess: true,
+        projectId,
+      });
       return;
     }
 

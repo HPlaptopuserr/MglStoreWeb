@@ -21,6 +21,7 @@ export type AuthUser = {
   id: string;
   email: string | null;
   role: string;
+  isPrime?: boolean;
   fullName?: string;
   phone?: string | null;
   avatarUrl?: string | null;

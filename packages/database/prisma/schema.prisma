@@ -12,6 +12,7 @@ model User {
   email                        String                    @unique
   registerNumber               String?                   @unique
   role                         PlatformRole              @default(USER)
+  isPrime                      Boolean                   @default(false)
   isActive                     Boolean                   @default(true)
   emailVerified                Boolean                   @default(false)
   termsAcceptedAt              DateTime?
@@ -68,6 +69,7 @@ model User {
   contracts                    Contract[]
 
   @@index([role])
+  @@index([isPrime])
   @@index([isActive])
   @@index([deletedAt])
   @@index([onboardingSource])

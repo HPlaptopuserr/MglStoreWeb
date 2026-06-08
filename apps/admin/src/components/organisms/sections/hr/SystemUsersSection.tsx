@@ -26,6 +26,7 @@ import {
   X,
   Lock,
   Scale,
+  Crown,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 
@@ -37,6 +38,7 @@ type SystemUser = {
   phone: string | null;
   avatarUrl: string | null;
   role: string;
+  isPrime: boolean;
   isActive: boolean;
   emailVerified: boolean;
   lastLoginAt: string | null;
@@ -146,6 +148,7 @@ export function SystemUsersSection() {
   }, [users]);
 
   const activeCount = useMemo(() => users.filter((u) => u.isActive).length, [users]);
+  const primeCount = useMemo(() => users.filter((u) => u.isPrime).length, [users]);
 
   useEffect(() => { setPage(1); }, [search, roleFilter, statusFilter]);
 
@@ -344,6 +347,17 @@ export function SystemUsersSection() {
             </div>
           </div>
         </div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100">
+              <Crown className="h-4 w-4 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-xl font-bold text-amber-700">{primeCount}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-amber-500">Prime</p>
+            </div>
+          </div>
+        </div>
         {Object.entries(SYSTEM_ROLE_META).map(([key, meta]) => {
           const count = roleSummary[key] ?? 0;
           if (!count) return null;
@@ -497,6 +511,7 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
   const RoleIcon = meta.icon;
   const initial = user.fullName?.charAt(0)?.toUpperCase() || user.email.charAt(0).toUpperCase();
   const [changingRole, setChangingRole] = useState(false);
+  const [changingPrime, setChangingPrime] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
 
   const handleRoleChange = async (newRole: string) => {
@@ -518,6 +533,26 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
       alert("Role солиход алдаа гарлаа");
     } finally {
       setChangingRole(false);
+    }
+  };
+
+  const handlePrimeToggle = async () => {
+    setChangingPrime(true);
+    try {
+      const res = await adminFetch(`${API}/admin/users/${user.id}/prime`, {
+        method: "PATCH",
+        body: JSON.stringify({ isPrime: !user.isPrime }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        alert(data?.message || "Prime эрх солиход алдаа гарлаа");
+        return;
+      }
+      onRoleChanged();
+    } catch {
+      alert("Prime эрх солиход алдаа гарлаа");
+    } finally {
+      setChangingPrime(false);
     }
   };
 
@@ -615,6 +650,25 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
         </div>
 
         {/* verified */}
+        <button
+          type="button"
+          onClick={handlePrimeToggle}
+          disabled={changingPrime}
+          className={`inline-flex items-center gap-0.5 rounded-lg border px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+            user.isPrime
+              ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+              : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-700"
+          }`}
+          title={user.isPrime ? "Prime эрх цуцлах" : "Prime эрх өгөх"}
+        >
+          {changingPrime ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Crown className="h-3 w-3" />
+          )}
+          {user.isPrime ? "Prime user" : "Prime болгох"}
+        </button>
+
         {user.emailVerified && (
           <span className="inline-flex items-center gap-0.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
             <CheckCircle2 className="h-3 w-3" />

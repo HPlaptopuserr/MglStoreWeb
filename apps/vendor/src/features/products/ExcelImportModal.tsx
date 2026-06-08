@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   X,
   Upload,
@@ -32,8 +32,32 @@ interface ImportResult {
   updated: number;
   skipped: number;
   errors: string[];
+  errorRows?: ImportErrorRow[];
   products: ImportedProduct[];
 }
+
+interface ImportErrorRow {
+  rowNumber: number;
+  error: string;
+  name: string;
+  sku: string;
+  price: string;
+  costPrice: string;
+  stock: string;
+  preorderLeadTimeDays: string;
+  preorderNote: string;
+  description: string;
+}
+
+type EditableImportRowField =
+  | "name"
+  | "sku"
+  | "price"
+  | "costPrice"
+  | "stock"
+  | "preorderLeadTimeDays"
+  | "preorderNote"
+  | "description";
 
 type Step = "upload" | "importing" | "results";
 type ImportMode = "stock" | "preorder";
@@ -170,6 +194,47 @@ export function ExcelImportModal({
     } catch {
       setError("Сүлжээний алдаа гарлаа");
       setStep("upload");
+    }
+  };
+
+  const retryEditedRows = async (rows: ImportErrorRow[]) => {
+    if (rows.length === 0) return;
+    setStep("importing");
+    setError(null);
+
+    const payloadRows = rows.map((row) => ({
+      name: row.name,
+      sku: row.sku,
+      price: row.price,
+      costPrice: row.costPrice,
+      stock: row.stock,
+      preorderLeadTimeDays: row.preorderLeadTimeDays,
+      preorderNote: row.preorderNote,
+      description: row.description,
+    }));
+
+    try {
+      const res = await authFetch(`${API}/products/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          mode,
+          rows: payloadRows,
+        }),
+      });
+      const data: ImportResult = await res.json();
+      if (!res.ok) {
+        setError(data.message || "Алдаа гарлаа");
+        setStep("results");
+        return;
+      }
+      setResult(data);
+      setStep("results");
+      if (data.created > 0 || data.updated > 0) onSuccess();
+    } catch {
+      setError("Сүлжээний алдаа гарлаа");
+      setStep("results");
     }
   };
 
@@ -359,9 +424,12 @@ export function ExcelImportModal({
           {step === "results" && result && (
             <ImportResults
               result={result}
+              mode={mode}
+              retryError={error}
               onAddMoreImages={onSuccess}
               onClose={onClose}
               onReset={resetImport}
+              onRetryRows={retryEditedRows}
             />
           )}
         </div>
@@ -373,21 +441,42 @@ export function ExcelImportModal({
 /* ─── Import Results with Image Upload ─────────────────────────────── */
 function ImportResults({
   result,
+  mode,
+  retryError,
   onAddMoreImages,
   onClose,
   onReset,
+  onRetryRows,
 }: {
   result: ImportResult;
+  mode: ImportMode;
+  retryError: string | null;
   onAddMoreImages: () => void;
   onClose: () => void;
   onReset: () => void;
+  onRetryRows: (rows: ImportErrorRow[]) => void;
 }) {
   const [errorsExpanded, setErrorsExpanded] = useState(false);
   const [imageMode, setImageMode] = useState<string | null>(null);
+  const [editableRows, setEditableRows] = useState<ImportErrorRow[]>(result.errorRows || []);
   const [productImages, setProductImages] = useState<Record<string, string[]>>({});
   const [savingImages, setSavingImages] = useState<string | null>(null);
   const [savedImages, setSavedImages] = useState<Set<string>>(new Set());
   const [uploadingProduct, setUploadingProduct] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEditableRows(result.errorRows || []);
+  }, [result]);
+
+  const updateEditableRow = (index: number, field: EditableImportRowField, value: string) => {
+    setEditableRows((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
+    );
+  };
+
+  const removeEditableRow = (index: number) => {
+    setEditableRows((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const uploadToServer = async (file: File): Promise<string | null> => {
     const formData = new FormData();
@@ -463,6 +552,7 @@ function ImportResults({
   const allSaved = Object.keys(productImages)
     .filter((id) => productImages[id]?.length > 0)
     .every((id) => savedImages.has(id));
+  const canRetryEditedRows = editableRows.some((row) => row.name.trim() && row.price.trim());
 
   return (
     <div className="space-y-5">
@@ -514,6 +604,107 @@ function ImportResults({
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {editableRows.length > 0 && (
+        <div className="rounded-2xl border border-blue-100 overflow-hidden">
+          <div className="px-4 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-blue-700">
+                Алдаатай мөр засах
+              </p>
+              <p className="text-[11px] text-blue-600 mt-0.5">
+                SKU давхардсан бол SKU-г өөр код болгож засна. Нэр, үнэ хоосон байж болохгүй.
+              </p>
+            </div>
+            <button
+              onClick={() => onRetryRows(editableRows)}
+              disabled={!canRetryEditedRows}
+              className={`shrink-0 h-9 px-4 rounded-xl text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed ${IMPORT_COPY[mode].buttonClass}`}
+            >
+              Зассан мөрүүдийг дахин импортлох
+            </button>
+          </div>
+          {retryError && (
+            <div className="px-4 py-2 bg-red-50 border-b border-red-100 text-xs font-semibold text-red-600">
+              {retryError}
+            </div>
+          )}
+          <div className="max-h-80 overflow-auto">
+            <table className="w-full min-w-[760px] text-left">
+              <thead className="sticky top-0 z-10 bg-white border-b border-slate-100">
+                <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <th className="px-3 py-2 w-16">Мөр</th>
+                  <th className="px-3 py-2 min-w-44">Нэр</th>
+                  <th className="px-3 py-2 min-w-32">SKU</th>
+                  <th className="px-3 py-2 w-32">Үнэ</th>
+                  <th className="px-3 py-2 w-32">Өртөг</th>
+                  <th className="px-3 py-2 w-24">{mode === "stock" ? "Нөөц" : "Хоног"}</th>
+                  <th className="px-3 py-2 min-w-52">Алдаа</th>
+                  <th className="px-3 py-2 w-12" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {editableRows.map((row, index) => (
+                  <tr key={`${row.rowNumber}-${index}`} className="text-xs">
+                    <td className="px-3 py-2 font-bold text-slate-500">{row.rowNumber}</td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.name}
+                        onChange={(e) => updateEditableRow(index, "name", e.target.value)}
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.sku}
+                        onChange={(e) => updateEditableRow(index, "sku", e.target.value)}
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.price}
+                        onChange={(e) => updateEditableRow(index, "price", e.target.value)}
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.costPrice}
+                        onChange={(e) => updateEditableRow(index, "costPrice", e.target.value)}
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={mode === "stock" ? row.stock : row.preorderLeadTimeDays}
+                        onChange={(e) =>
+                          updateEditableRow(
+                            index,
+                            mode === "stock" ? "stock" : "preorderLeadTimeDays",
+                            e.target.value,
+                          )
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-red-500 font-medium">{row.error}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        onClick={() => removeEditableRow(index)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                        title="Энэ мөрийг дахин импортлохгүй"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

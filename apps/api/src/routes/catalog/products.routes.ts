@@ -21,6 +21,7 @@ import {
   extractExcelImages,
   uploadBufferToSupabase,
   PRODUCT_COL_MAP,
+  normalizeExcelRow,
   resolveCol,
 } from "../../lib/excel-import";
 
@@ -449,6 +450,44 @@ router.get("/products/import-template", (req, res) => {
 });
 
 /* ─── POST /products/import ─────────────────────────────────────────── */
+type ProductImportErrorRow = {
+  rowNumber: number;
+  error: string;
+  name: string;
+  sku: string;
+  price: string;
+  costPrice: string;
+  stock: string;
+  preorderLeadTimeDays: string;
+  preorderNote: string;
+  description: string;
+};
+
+function importRowValue(row: Record<string, unknown>, keys: string[]): string {
+  const value = resolveCol(row, keys);
+  return value === undefined || value === null ? "" : String(value);
+}
+
+function toProductImportErrorRow(
+  row: Record<string, unknown>,
+  rowNumber: number,
+  error: string,
+  colMap: typeof PRODUCT_COL_MAP,
+): ProductImportErrorRow {
+  return {
+    rowNumber,
+    error,
+    name: importRowValue(row, colMap.name),
+    sku: importRowValue(row, colMap.sku),
+    price: importRowValue(row, colMap.price),
+    costPrice: importRowValue(row, colMap.costPrice),
+    stock: importRowValue(row, colMap.stock),
+    preorderLeadTimeDays: importRowValue(row, colMap.preorderLeadTimeDays),
+    preorderNote: importRowValue(row, colMap.preorderNote),
+    description: importRowValue(row, colMap.description),
+  };
+}
+
 router.post(
   "/products/import",
   requireAuth,
@@ -484,17 +523,50 @@ router.post(
         if (matched) orgBusinessCategoryId = matched.id;
       }
 
-      if (!req.file) {
-        return res.status(400).json({ message: "Excel файл шаардлагатай (.xlsx, .xls)" });
+      let rows: Record<string, unknown>[] = [];
+      let embeddedImages = new Map<number, Buffer[]>();
+      let mediaFileCount = 0;
+      let hasRichData = false;
+      let hasDrawings = false;
+
+      if (req.file) {
+        const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) {
+          return res.status(400).json({ message: "Excel файл хоосон байна" });
+        }
+
+        rows = XLSX.utils
+          .sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName])
+          .map(normalizeExcelRow);
+
+        // Extract embedded images from xlsx (row → image buffers)
+        embeddedImages = await extractExcelImages(req.file.buffer);
+        console.log("[import] Embedded images map has", embeddedImages.size, "rows with images");
+
+        // Count media files and detect structure for debug
+        try {
+          const z = await JSZip.loadAsync(req.file.buffer);
+          const files = Object.keys(z.files);
+          mediaFileCount = files.filter((f) => f.startsWith("xl/media/")).length;
+          hasRichData = files.some((f) => f.includes("richData/richValueRel.xml"));
+          hasDrawings = files.some((f) => /xl\/drawings\/drawing\d+\.xml$/.test(f));
+        } catch { /* ignore */ }
+      } else if (req.body.rows) {
+        let parsedRows: unknown;
+        try {
+          parsedRows = typeof req.body.rows === "string" ? JSON.parse(req.body.rows) : req.body.rows;
+        } catch {
+          return res.status(400).json({ message: "rows JSON буруу байна" });
+        }
+        if (!Array.isArray(parsedRows)) {
+          return res.status(400).json({ message: "rows талбар буруу байна" });
+        }
+        rows = parsedRows.map((row) => normalizeExcelRow(row as Record<string, unknown>));
+      } else {
+        return res.status(400).json({ message: "Excel файл эсвэл зассан мөр шаардлагатай" });
       }
 
-      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-      const sheetName = workbook.SheetNames[0];
-      if (!sheetName) {
-        return res.status(400).json({ message: "Excel файл хоосон байна" });
-      }
-
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName]);
       if (!rows.length) {
         return res.status(400).json({ message: "Excel файлд мэдээлэл олдсонгүй" });
       }
@@ -513,22 +585,6 @@ router.post(
         });
       }
 
-      // Extract embedded images from xlsx (row → image buffers)
-      const embeddedImages = await extractExcelImages(req.file.buffer);
-      console.log("[import] Embedded images map has", embeddedImages.size, "rows with images");
-
-      // Count media files and detect structure for debug
-      let mediaFileCount = 0;
-      let hasRichData = false;
-      let hasDrawings = false;
-      try {
-        const z = await JSZip.loadAsync(req.file.buffer);
-        const files = Object.keys(z.files);
-        mediaFileCount = files.filter((f) => f.startsWith("xl/media/")).length;
-        hasRichData = files.some((f) => f.includes("richData/richValueRel.xml"));
-        hasDrawings = files.some((f) => /xl\/drawings\/drawing\d+\.xml$/.test(f));
-      } catch { /* ignore */ }
-
       // Column name mapping — supports both Mongolian & English headers
       const colMap = PRODUCT_COL_MAP;
 
@@ -537,9 +593,10 @@ router.post(
         updated: number;
         skipped: number;
         errors: string[];
+        errorRows: ProductImportErrorRow[];
         products: Array<{ id: string; name: string; sku: string | null; price: number; stock: number }>;
         _debug?: { embeddedImageRows: number; mediaFiles: number };
-      } = { created: 0, updated: 0, skipped: 0, errors: [], products: [] };
+      } = { created: 0, updated: 0, skipped: 0, errors: [], errorRows: [], products: [] };
 
       // Pre-scan: detect duplicate SKUs within the file
       const skusInFile = new Map<string, number>();
@@ -549,7 +606,9 @@ router.post(
         if (sku) {
           const normalized = String(sku).trim().toLowerCase();
           if (skusInFile.has(normalized)) {
-            results.errors.push(`Мөр ${i + 2}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalized)})`);
+            const message = `Мөр ${i + 2}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalized)})`;
+            results.errors.push(message);
+            results.errorRows.push(toProductImportErrorRow(rows[i], i + 2, message, colMap));
             results.skipped++;
             duplicateSkuRows.add(i);
           } else {
@@ -576,28 +635,36 @@ router.post(
         const imagesRaw = resolveCol(row, colMap.images);
 
         if (!name || price === undefined) {
-          results.errors.push(`Мөр ${rowNum}: Нэр болон үнэ заавал шаардлагатай`);
+          const message = `Мөр ${rowNum}: Нэр болон үнэ заавал шаардлагатай`;
+          results.errors.push(message);
+          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
           results.skipped++;
           continue;
         }
 
         const priceNum = parseFloat(String(price));
         if (isNaN(priceNum) || priceNum < 0) {
-          results.errors.push(`Мөр ${rowNum}: Үнэ буруу — "${price}"`);
+          const message = `Мөр ${rowNum}: Үнэ буруу — "${price}"`;
+          results.errors.push(message);
+          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
           results.skipped++;
           continue;
         }
 
         const costPriceNum = costPrice !== undefined ? parseFloat(String(costPrice)) : null;
         if (costPriceNum !== null && (isNaN(costPriceNum) || costPriceNum < 0)) {
-          results.errors.push(`Мөр ${rowNum}: Өртөг үнэ буруу — "${costPrice}"`);
+          const message = `Мөр ${rowNum}: Өртөг үнэ буруу — "${costPrice}"`;
+          results.errors.push(message);
+          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
           results.skipped++;
           continue;
         }
 
         const stockNum = stock !== undefined ? parseInt(String(stock)) : 0;
         if (isNaN(stockNum) || stockNum < 0 || stockNum > 2_147_483_647) {
-          results.errors.push(`Мөр ${rowNum}: Нөөц буруу — "${stock}"`);
+          const message = `Мөр ${rowNum}: Нөөц буруу — "${stock}"`;
+          results.errors.push(message);
+          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
           results.skipped++;
           continue;
         }
@@ -606,7 +673,9 @@ router.post(
           ? normalizePreorderLeadTimeDays(preorderLeadTimeDays ?? 14)
           : null;
         if (normalizedLeadTimeDays === undefined) {
-          results.errors.push(`Мөр ${rowNum}: Ирэх хоног 0-365 хооронд байх ёстой`);
+          const message = `Мөр ${rowNum}: Ирэх хоног 0-365 хооронд байх ёстой`;
+          results.errors.push(message);
+          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
           results.skipped++;
           continue;
         }
@@ -711,7 +780,9 @@ router.post(
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          results.errors.push(`Мөр ${rowNum}: ${msg}`);
+          const message = `Мөр ${rowNum}: ${msg}`;
+          results.errors.push(message);
+          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
           results.skipped++;
         }
       }

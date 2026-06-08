@@ -1272,6 +1272,7 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
         id: true,
         email: true,
         role: true,
+        isPrime: true,
         isActive: true,
         emailVerified: true,
         lastLoginAt: true,
@@ -1306,6 +1307,7 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
         phone: u.profile?.phoneNumber || null,
         avatarUrl: u.profile?.avatarUrl || null,
         role: u.role,
+        isPrime: u.isPrime,
         isActive: u.isActive,
         emailVerified: u.emailVerified,
         lastLoginAt: u.lastLoginAt,
@@ -1326,6 +1328,41 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
   } catch (error) {
     console.error("[admin users list error]", error);
     return res.status(500).json({ message: "Хэрэглэгчдийн жагсаалт ачаалахад алдаа гарлаа" });
+  }
+});
+
+/* ─── PATCH /admin/users/:id/prime ─── grant/revoke prime access ── */
+router.patch("/admin/users/:id/prime", requireAuth, requirePlatformPermission(Permission.MANAGE_USERS), async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const { isPrime } = req.body as { isPrime?: boolean };
+
+    if (typeof isPrime !== "boolean") {
+      return res.status(400).json({ message: "isPrime boolean утга шаардлагатай" });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { isPrime },
+      select: { id: true, email: true, isPrime: true },
+    });
+
+    return res.json({
+      message: isPrime ? "Prime эрх идэвхжлээ" : "Prime эрх цуцлагдлаа",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("[admin change prime error]", error);
+    return res.status(500).json({ message: "Prime эрх солиход алдаа гарлаа" });
   }
 });
 

@@ -265,5 +265,22 @@ export function resolveCol(row: Record<string, unknown>, keys: string[]): unknow
   for (const key of keys) {
     if (row[key] !== undefined && row[key] !== null && row[key] !== "") return row[key];
   }
+
+  const normalizedKeys = new Set(keys.map((key) => key.trim().toLowerCase()));
+  for (const [rowKey, value] of Object.entries(row)) {
+    if (value === undefined || value === null || value === "") continue;
+    if (normalizedKeys.has(rowKey.trim().toLowerCase())) return value;
+  }
+
   return undefined;
+}
+
+export function normalizeExcelRow(row: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    const normalizedKey = key.trim();
+    if (!normalizedKey) continue;
+    normalized[normalizedKey] = value;
+  }
+  return normalized;
 }

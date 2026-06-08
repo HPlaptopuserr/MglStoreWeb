@@ -10,6 +10,7 @@ export interface User extends BaseEntity, SoftDelete {
 
   registerNumber?: string | null;
   role: PlatformRole;
+  isPrime: boolean;
   isActive: boolean;
   emailVerified: boolean;
   lastLoginAt?: ISODateString | null;

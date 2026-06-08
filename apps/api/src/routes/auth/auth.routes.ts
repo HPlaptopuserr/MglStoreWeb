@@ -65,6 +65,7 @@ function toWebUserPayload(user: any, orgInfo?: { orgRole?: string | null; organi
     id: user.id,
     email: safeEmail,
     role: user.role,
+    isPrime: Boolean(user.isPrime),
     orgRole: orgInfo?.orgRole || null,
     fullName: user.profile?.fullName || "",
     phone: user.profile?.phoneNumber || null,
@@ -371,6 +372,29 @@ function createWebAccessToken(user: any, orgInfo?: Awaited<ReturnType<typeof res
   );
 }
 
+async function resolveVendorLoginMembership(userId: string) {
+  const primary = await prisma.organizationMember.findFirst({
+    where: { userId, isActive: true, deletedAt: null, isPrimary: true },
+    select: {
+      organizationId: true,
+      role: true,
+      organization: { select: { name: true } },
+    },
+  });
+
+  if (primary) return primary;
+
+  return prisma.organizationMember.findFirst({
+    where: { userId, isActive: true, deletedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: {
+      organizationId: true,
+      role: true,
+      organization: { select: { name: true } },
+    },
+  });
+}
+
 function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Awaited<ReturnType<typeof resolveOrganization>>) {
   const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
 
@@ -380,6 +404,7 @@ function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Awaited<Ret
       id: user.id,
       email: safeEmail,
       role: user.role,
+      isPrime: Boolean(user.isPrime),
       orgRole: orgInfo?.orgRole || null,
       fullName: user.profile?.fullName || "",
       phone: user.profile?.phoneNumber || null,
@@ -873,6 +898,7 @@ router.post("/login", async (req, res) => {
         id: user.id,
         email: safeEmail,
         role: user.role,
+        isPrime: Boolean(user.isPrime),
         orgRole: orgInfo?.orgRole || null,
         fullName: user.profile?.fullName || "",
         phone: user.profile?.phoneNumber || null,
@@ -936,15 +962,14 @@ router.post("/vendor/login", async (req, res) => {
       return res.status(401).json({ message: "Нууц үг буруу байна" });
     }
 
-    const orgInfo = await resolveOrganization(user.id);
-    if (!orgInfo?.organizationId) {
-      return res.status(403).json({ message: "Байгууллагад бүртгэлтэй хэрэглэгч биш байна" });
+    const membership = await resolveVendorLoginMembership(user.id);
+    if (!membership?.organizationId) {
+      return res.status(403).json({
+        message:
+          "Энэ login хэрэглэгч байгууллагын Vendor login account-д холбогдоогүй байна. Admin дээр Partner detail → Vendor login account хэсгээс owner/ажилтнаар нэмнэ үү.",
+      });
     }
-
-    const org = await prisma.organization.findUnique({
-      where: { id: orgInfo.organizationId },
-      select: { name: true },
-    });
+    const orgInfo = { organizationId: membership.organizationId, orgRole: membership.role };
 
     await prisma.user.update({
       where: { id: user.id },
@@ -963,7 +988,7 @@ router.post("/vendor/login", async (req, res) => {
         fullName: user.profile?.fullName || "",
         phone: user.profile?.phoneNumber || null,
         organizationId: orgInfo.organizationId,
-        organizationName: org?.name || "",
+        organizationName: membership.organization?.name || "",
       },
     });
   } catch (error) {
@@ -1385,6 +1410,7 @@ router.post("/web/register", async (req, res) => {
           id: updatedUser.id,
           email: safeEmail,
           role: updatedUser.role,
+          isPrime: Boolean(updatedUser.isPrime),
           fullName: updatedUser.profile?.fullName || "",
           phone: updatedUser.profile?.phoneNumber || null,
         },
@@ -1428,6 +1454,7 @@ router.post("/web/register", async (req, res) => {
         id: newUser.id,
         email: safeEmail,
         role: newUser.role,
+        isPrime: Boolean(newUser.isPrime),
         fullName: newUser.profile?.fullName || "",
         phone: newUser.profile?.phoneNumber || null,
       },

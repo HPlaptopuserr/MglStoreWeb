@@ -320,6 +320,15 @@ function getContractUserId(req: any): string | undefined {
   return (req.user?.userId || req.user?.id || req.userId) as string | undefined;
 }
 
+async function isPrimeContractUser(userId?: string | null) {
+  if (!userId) return false;
+  const user = await prisma.user.findFirst({
+    where: { id: userId, isPrime: true, isActive: true, deletedAt: null },
+    select: { id: true },
+  });
+  return Boolean(user);
+}
+
 function getTemplateTitle(contract: { headerData: any; id: string }) {
   const hd = contract.headerData as any;
   return hd?.contractTitle || hd?.title || `Гэрээний загвар MGL-${contract.id.slice(0, 8).toUpperCase()}`;
@@ -907,6 +916,8 @@ router.post("/contracts/:id/submit", requireAuth, async (req, res) => {
     }
 
     const effectivePlan = feePlan || template.feePlan;
+    const isPrimeUser = await isPrimeContractUser(userId);
+    const requiresPayment = template.isPaid && !isPrimeUser;
     const submission = await prisma.contract.create({
       data: {
         userId,
@@ -914,9 +925,9 @@ router.post("/contracts/:id/submit", requireAuth, async (req, res) => {
         templateId: template.id,
         isTemplate: false,
         feePlan: effectivePlan,
-        isPaid: template.isPaid,
-        status: template.isPaid ? "PENDING" : "SIGNED",
-        signedAt: template.isPaid ? null : new Date(),
+        isPaid: requiresPayment,
+        status: requiresPayment ? "PENDING" : "SIGNED",
+        signedAt: requiresPayment ? null : new Date(),
         version: template.version,
         adminSignature: template.adminSignature,
         adminName: template.adminName,
@@ -938,7 +949,7 @@ router.post("/contracts/:id/submit", requireAuth, async (req, res) => {
       },
     });
 
-    return res.json({ success: true, submissionId: submission.id, requiresPayment: template.isPaid });
+    return res.json({ success: true, submissionId: submission.id, requiresPayment, primeAccess: isPrimeUser });
   } catch (error) {
     console.error("contract submit error", error);
     return res.status(500).json({ success: false, error: "Гэрээ хадгалахад алдаа гарлаа" });
@@ -962,6 +973,8 @@ router.post("/contracts/:id/sign", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "Гэрээ олдсонгүй эсвэл аль хэдийн баталгаажсан" });
     }
 
+    const isPrimeUser = await isPrimeContractUser(userId);
+    const requiresPayment = contract.isPaid && !isPrimeUser;
     await prisma.contract.update({
       where: { id: req.params.id },
       data: {
@@ -970,7 +983,7 @@ router.post("/contracts/:id/sign", requireAuth, async (req, res) => {
         memberData: memberData || undefined,
         memberSignature: memberSignature || undefined,
         feePlan: feePlan || contract.feePlan,
-        ...(!contract.isPaid && { status: "SIGNED", signedAt: new Date() }),
+        ...(!requiresPayment && { status: "SIGNED", signedAt: new Date(), isPaid: false }),
       },
     });
 
@@ -984,7 +997,7 @@ router.post("/contracts/:id/sign", requireAuth, async (req, res) => {
       },
     });
 
-    return res.json({ success: true, requiresPayment: contract.isPaid });
+    return res.json({ success: true, requiresPayment, primeAccess: isPrimeUser });
   } catch (error) {
     console.error("contract sign error", error);
     return res.status(500).json({ success: false, error: "Гэрээ хадгалахад алдаа гарлаа" });
