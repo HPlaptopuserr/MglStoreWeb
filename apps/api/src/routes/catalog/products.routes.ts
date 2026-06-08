@@ -22,6 +22,7 @@ import {
   uploadBufferToSupabase,
   PRODUCT_COL_MAP,
   normalizeExcelRow,
+  getExcelRowIndex,
   resolveCol,
 } from "../../lib/excel-import";
 
@@ -602,17 +603,18 @@ router.post(
       const skusInFile = new Map<string, number>();
       const duplicateSkuRows = new Set<number>();
       for (let i = 0; i < rows.length; i++) {
+        const rowNumber = getExcelRowIndex(rows[i], i) + 1;
         const sku = resolveCol(rows[i], colMap.sku);
         if (sku) {
           const normalized = String(sku).trim().toLowerCase();
           if (skusInFile.has(normalized)) {
-            const message = `Мөр ${i + 2}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalized)})`;
+            const message = `Мөр ${rowNumber}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalized)})`;
             results.errors.push(message);
-            results.errorRows.push(toProductImportErrorRow(rows[i], i + 2, message, colMap));
+            results.errorRows.push(toProductImportErrorRow(rows[i], rowNumber, message, colMap));
             results.skipped++;
             duplicateSkuRows.add(i);
           } else {
-            skusInFile.set(normalized, i + 2);
+            skusInFile.set(normalized, rowNumber);
           }
         }
       }
@@ -622,7 +624,8 @@ router.post(
         if (duplicateSkuRows.has(i)) continue;
 
         const row = rows[i];
-        const rowNum = i + 2;
+        const excelRowIndex = getExcelRowIndex(row, i);
+        const rowNum = excelRowIndex + 1;
 
         const name = resolveCol(row, colMap.name);
         const sku = resolveCol(row, colMap.sku);
@@ -689,15 +692,15 @@ router.post(
             : [];
 
           // If no URL images, check for embedded images in this row
-          // Row index in drawing is 0-based: row 0 = header, row 1 = first data row (i=0)
+          // Row index in the xlsx drawing/richData XML is 0-based.
           if (imageUrls.length === 0) {
-            const rowBuffers = embeddedImages.get(i + 1); // i+1 because row 0 is header
-            console.log(`[import] Row ${i+1}: embedded buffers = ${rowBuffers?.length ?? 0}`);
+            const rowBuffers = embeddedImages.get(excelRowIndex);
+            console.log(`[import] Row ${rowNum}: embedded buffers = ${rowBuffers?.length ?? 0}`);
             if (rowBuffers && rowBuffers.length > 0) {
               const uploadPromises = rowBuffers.slice(0, 5).map((buf) => uploadBufferToSupabase(buf));
               const uploaded = await Promise.all(uploadPromises);
               imageUrls = uploaded.filter((u): u is string => u !== null);
-              console.log(`[import] Row ${i+1}: uploaded ${imageUrls.length} images`);
+              console.log(`[import] Row ${rowNum}: uploaded ${imageUrls.length} images`);
             }
           }
 
