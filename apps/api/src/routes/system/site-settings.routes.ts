@@ -56,6 +56,8 @@ const PROJECT_PAYMENT_TTL_MS = 5 * 60 * 1000;
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
 const FRANCHISE_ITEMS_KEY = "paid-projects";
 const SITE_PROJECTS_KEY = "site-projects";
+const SITE_STUDY_KEY = "site-study";
+const SITE_STUDY_SETTINGS_KEY = "site-study-settings";
 const VENDOR_FEATURE_KEYS = new Set([
   "pos-enabled",
   "web-products-enabled",
@@ -74,11 +76,63 @@ type PaidProject = {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
+  teacherInfo?: string;
+  duration?: string;
+  capacity?: string;
+  priceNote?: string;
   tags?: string[];
   isActive?: boolean;
   paymentAccountId?: string;
   paymentMerchantCode?: string;
 };
+
+const DEFAULT_STUDY_PROJECTS: PaidProject[] = [
+  {
+    id: "study-store-basics",
+    title: "MGL Store ашиглалтын үндсэн сургалт",
+    category: "Платформ",
+    summary:
+      "Дэлгүүрийн dashboard, бүтээгдэхүүн нэмэх, захиалга шалгах үндсэн алхмууд.",
+    details:
+      "Энэ сургалтаар MGL Store-ийн web болон admin орчны үндсэн урсгалыг ойлгож, бүтээгдэхүүн, захиалга, хэрэглэгчийн мэдээллийг зөв удирдах аргачлалыг үзнэ.",
+    price: 0,
+    imageUrl: "",
+    imageUrls: [],
+    pdfUrl: "",
+    tags: ["dashboard", "store", "beginner"],
+    isActive: true,
+  },
+  {
+    id: "study-order-workflow",
+    title: "Захиалга боловсруулах workflow",
+    category: "Захиалга",
+    summary:
+      "Захиалга хүлээн авах, төлөв солих, хүргэлтийн мэдээлэл бэлтгэх дараалал.",
+    details:
+      "Захиалгын төлөв, хэрэглэгчтэй холбогдох мэдээлэл, хүргэлтийн бэлтгэл болон тайлан шалгах практик алхмуудыг багтаасан сургалт.",
+    price: 0,
+    imageUrl: "",
+    imageUrls: [],
+    pdfUrl: "",
+    tags: ["order", "delivery", "workflow"],
+    isActive: true,
+  },
+  {
+    id: "study-marketing-content",
+    title: "Контент ба борлуулалтын материал",
+    category: "Маркетинг",
+    summary:
+      "Бүтээгдэхүүний зураг, тайлбар, promo материал бэлтгэх богино заавар.",
+    details:
+      "Борлуулалтын card, promo banner, бүтээгдэхүүний тайлбар болон хэрэглэгчид ойлгомжтой харагдах контент бэлтгэх зөвлөмжүүд.",
+    price: 0,
+    imageUrl: "",
+    imageUrls: [],
+    pdfUrl: "",
+    tags: ["content", "promo", "sales"],
+    isActive: true,
+  },
+];
 
 type ProjectPaymentAccount = {
   id?: string;
@@ -93,6 +147,7 @@ type ProjectPaymentAccount = {
 
 type PaidContentKind = "PROJECT_ACCESS" | "FRANCHISE_ACCESS";
 type PaidAccessSource = "PROJECT" | "FRANCHISE";
+type StudyRegistrationKind = "FREE" | "PRIME" | "PAID";
 
 function isSupabaseConfigured() {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
@@ -194,6 +249,24 @@ async function getFranchiseProjects(): Promise<PaidProject[]> {
 
 async function getPaidProjects(): Promise<PaidProject[]> {
   return getProjectItems(SITE_PROJECTS_KEY);
+}
+
+async function getStudyProjects(): Promise<PaidProject[]> {
+  const items = await getProjectItems(SITE_STUDY_KEY);
+  return items.length > 0 ? items : DEFAULT_STUDY_PROJECTS;
+}
+
+async function getStudySettings() {
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: SITE_STUDY_SETTINGS_KEY },
+  });
+  if (!setting?.value) return null;
+  try {
+    const parsed = JSON.parse(setting.value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeProjectPrice(value: unknown) {
@@ -327,10 +400,12 @@ const isSystemQrMasterMerchantCode = (merchantCode?: string | null) => {
   return Boolean(code && masterUsername && code === masterUsername);
 };
 
-const isSystemQrMasterAccount = (account: Pick<
-  ProjectPaymentAccount,
-  "merchantCode" | "username" | "accountNumber"
->) => {
+const isSystemQrMasterAccount = (
+  account: Pick<
+    ProjectPaymentAccount,
+    "merchantCode" | "username" | "accountNumber"
+  >,
+) => {
   const masterUsername = normalizeSystemQrLookup(process.env.SYSTEMQR_USERNAME);
   const masterAccountNumber = normalizeSystemQrLookup(
     process.env.SYSTEMQR_MASTER_ACCOUNT_NUMBER ||
@@ -368,9 +443,7 @@ async function getProjectPaymentAccounts(): Promise<ProjectPaymentAccount[]> {
         accountNumber: String(account?.accountNumber || "").trim(),
       }))
       .filter(
-        (account) =>
-          account.merchantCode &&
-          !isSystemQrMasterAccount(account),
+        (account) => account.merchantCode && !isSystemQrMasterAccount(account),
       );
   } catch {
     return [];
@@ -495,7 +568,10 @@ async function createProjectSystemQrInvoice(params: {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (isSystemQrAuthError(message) || /createInvoice failed \(002\)/i.test(message)) {
+    if (
+      isSystemQrAuthError(message) ||
+      /createInvoice failed \(002\)/i.test(message)
+    ) {
       throw new Error(
         "Сонгосон Minu Dynamic QR дансаар invoice үүсгэж чадсангүй. Буруу данс руу төлбөр орохоос сэргийлж master account-аар retry хийсэнгүй. Admin дээр тухайн дансны merchant code/password-ийг шалгаад дахин хадгална уу.",
       );
@@ -745,6 +821,14 @@ async function ensurePaidAccessPurchaseForInvoice({
   const amount = Math.max(0, Math.round(Number(invoice.amount || 0)));
   const earnedPoints = Math.floor(amount * 0.02);
   const fileUrl = String(project.pdfUrl || "").trim() || null;
+  const source = String(payload.source || "").trim();
+  const metadata = {
+    kind,
+    ...(source ? { source } : {}),
+    projectId: itemId,
+    projectTitle: project.title,
+    paidAt: invoice.paidAt?.toISOString() || new Date().toISOString(),
+  } as unknown as Prisma.JsonObject;
 
   return prisma.$transaction(async (tx) => {
     const purchase = await tx.paidAccessPurchase.upsert({
@@ -761,12 +845,7 @@ async function ensurePaidAccessPurchaseForInvoice({
         fileName: fileUrl ? paidAccessFileName(project) : null,
         amount,
         invoiceId: invoice.id,
-        metadata: {
-          kind,
-          projectId: itemId,
-          projectTitle: project.title,
-          paidAt: invoice.paidAt?.toISOString() || new Date().toISOString(),
-        } as unknown as Prisma.JsonObject,
+        metadata,
       },
       create: {
         userId,
@@ -777,12 +856,7 @@ async function ensurePaidAccessPurchaseForInvoice({
         fileName: fileUrl ? paidAccessFileName(project) : null,
         amount,
         invoiceId: invoice.id,
-        metadata: {
-          kind,
-          projectId: itemId,
-          projectTitle: project.title,
-          paidAt: invoice.paidAt?.toISOString() || new Date().toISOString(),
-        } as unknown as Prisma.JsonObject,
+        metadata,
       },
     });
 
@@ -816,6 +890,67 @@ async function ensurePaidAccessPurchaseForInvoice({
   });
 }
 
+async function ensureStudyRegistrationAccess({
+  userId,
+  project,
+  registrationKind,
+}: {
+  userId: string;
+  project: PaidProject;
+  registrationKind: StudyRegistrationKind;
+}) {
+  const itemId = String(project.id || "").trim();
+  if (!userId || !itemId) return null;
+
+  const price = normalizeProjectPrice(project.price);
+  const fileUrl = String(project.pdfUrl || "").trim() || null;
+  const now = new Date().toISOString();
+
+  return prisma.paidAccessPurchase.upsert({
+    where: {
+      userId_sourceType_itemId: {
+        userId,
+        sourceType: "PROJECT",
+        itemId,
+      },
+    },
+    update: {
+      title: project.title,
+      fileUrl,
+      fileName: fileUrl ? paidAccessFileName(project) : null,
+      metadata: {
+        kind: "PROJECT_ACCESS",
+        source: "STUDY",
+        registrationKind,
+        projectId: itemId,
+        projectTitle: project.title,
+        category: project.category || "",
+        originalPrice: price,
+        registeredAt: now,
+      } as unknown as Prisma.JsonObject,
+    },
+    create: {
+      userId,
+      sourceType: "PROJECT",
+      itemId,
+      title: project.title,
+      fileUrl,
+      fileName: fileUrl ? paidAccessFileName(project) : null,
+      amount: 0,
+      metadata: {
+        kind: "PROJECT_ACCESS",
+        source: "STUDY",
+        registrationKind,
+        projectId: itemId,
+        projectTitle: project.title,
+        category: project.category || "",
+        originalPrice: price,
+        registeredAt: now,
+      } as unknown as Prisma.JsonObject,
+    },
+  });
+}
+
 async function ensurePaidAccessPurchaseFromInvoice(
   invoice: Awaited<ReturnType<typeof refreshProjectInvoicePayment>>,
 ) {
@@ -829,10 +964,13 @@ async function ensurePaidAccessPurchaseFromInvoice(
   const projectId = String(payload.projectId || "").trim();
   if (!userId || !projectId) return null;
 
+  const source = String(payload.source || "").trim();
   const projects =
     kind === "FRANCHISE_ACCESS"
       ? await getFranchiseProjects()
-      : await getPaidProjects();
+      : source === "STUDY"
+        ? await getStudyProjects()
+        : await getPaidProjects();
   const project = projects.find(
     (item) => item.id === projectId && item.isActive !== false,
   );
@@ -923,6 +1061,122 @@ router.get(
   },
 );
 
+// GET /admin/study/registrations — unified training registrations list.
+router.get(
+  "/admin/study/registrations",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_SITE_SETTINGS),
+  async (req, res) => {
+    try {
+      const search = String(req.query.search || "")
+        .trim()
+        .toLowerCase();
+      const limit = Math.min(Math.max(Number(req.query.limit || 200), 1), 500);
+      const studyProjects = await getStudyProjects();
+      const studyProjectIds = new Set(studyProjects.map((item) => item.id));
+      const projectById = new Map(
+        studyProjects.map((item) => [item.id, normalizeProject(item)]),
+      );
+
+      const purchases = await prisma.paidAccessPurchase.findMany({
+        where: {
+          sourceType: "PROJECT",
+        },
+        orderBy: { purchasedAt: "desc" },
+        take: 1000,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              isPrime: true,
+              profile: {
+                select: {
+                  fullName: true,
+                  phoneNumber: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const registrations = purchases
+        .filter((purchase) => {
+          const metadata = (purchase.metadata || {}) as Record<string, unknown>;
+          return (
+            metadata.source === "STUDY" || studyProjectIds.has(purchase.itemId)
+          );
+        })
+        .map((purchase) => {
+          const metadata = (purchase.metadata || {}) as Record<string, unknown>;
+          const project = projectById.get(purchase.itemId);
+          const originalPrice = Number(
+            metadata.originalPrice || project?.price || 0,
+          );
+          const isPaid = purchase.amount > 0 || Boolean(purchase.invoiceId);
+          const registrationKind =
+            String(metadata.registrationKind || "") ||
+            (isPaid ? "PAID" : purchase.user.isPrime ? "PRIME" : "FREE");
+
+          return {
+            id: purchase.id,
+            courseId: purchase.itemId,
+            courseTitle: purchase.title || project?.title || "Сургалт",
+            category: String(
+              metadata.category || project?.category || "Сургалт",
+            ),
+            amount: purchase.amount,
+            originalPrice,
+            invoiceId: purchase.invoiceId,
+            registeredAt: purchase.purchasedAt,
+            registrationKind,
+            user: {
+              id: purchase.user.id,
+              email: purchase.user.email,
+              fullName: purchase.user.profile?.fullName || "",
+              phoneNumber: purchase.user.profile?.phoneNumber || "",
+              isPrime: purchase.user.isPrime,
+            },
+          };
+        })
+        .filter((registration) => {
+          if (!search) return true;
+          const haystack = [
+            registration.courseTitle,
+            registration.category,
+            registration.user.fullName,
+            registration.user.email,
+            registration.user.phoneNumber,
+          ]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(search);
+        })
+        .slice(0, limit);
+
+      const stats = registrations.reduce(
+        (acc, item) => {
+          acc.total += 1;
+          if (item.amount > 0 || item.invoiceId) acc.paid += 1;
+          else acc.free += 1;
+          if (item.user.isPrime) acc.prime += 1;
+          return acc;
+        },
+        { total: 0, paid: 0, free: 0, prime: 0 },
+      );
+
+      res.json({ success: true, data: registrations, stats });
+    } catch (error) {
+      console.error("get study registrations error", error);
+      res.status(500).json({
+        success: false,
+        message: "Сургалтын бүртгэл авахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
 // Organization-scoped vendor feature switches.
 // These are managed by partner admins, not only site-content admins.
 router.get(
@@ -994,7 +1248,9 @@ router.put(
       res.json(setting);
     } catch (error) {
       console.error("put vendor feature setting error", error);
-      res.status(500).json({ message: "Vendor тохиргоо хадгалахад алдаа гарлаа" });
+      res
+        .status(500)
+        .json({ message: "Vendor тохиргоо хадгалахад алдаа гарлаа" });
     }
   },
 );
@@ -1147,59 +1403,68 @@ router.get("/site-settings/franchise", async (_req, res) => {
 });
 
 // GET /site-settings/franchise/:projectId/detail — full Franchise detail.
-router.get("/site-settings/franchise/:projectId/detail", optionalAuth, async (req, res) => {
-  try {
-    const { projectId } = req.params;
-    const invoiceId =
-      typeof req.query.invoiceId === "string" ? req.query.invoiceId : undefined;
+router.get(
+  "/site-settings/franchise/:projectId/detail",
+  optionalAuth,
+  async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const invoiceId =
+        typeof req.query.invoiceId === "string"
+          ? req.query.invoiceId
+          : undefined;
 
-    const projects = await getFranchiseProjects();
-    const project = projects.find(
-      (item) => item.id === projectId && item.isActive !== false,
-    );
-    if (!project) {
-      res.status(404).json({ success: false, message: "Franchise олдсонгүй" });
-      return;
-    }
+      const projects = await getFranchiseProjects();
+      const project = projects.find(
+        (item) => item.id === projectId && item.isActive !== false,
+      );
+      if (!project) {
+        res
+          .status(404)
+          .json({ success: false, message: "Franchise олдсонгүй" });
+        return;
+      }
 
-    const normalized = normalizeFranchiseProject(project);
-    const price = normalizeProjectPrice(normalized.price);
-    const userId = String((req as any).user?.userId || "").trim();
-    if (price > 0 && !userId) {
-      res.status(401).json({
-        success: false,
-        requiresAuth: true,
-        message: "Franchise худалдан авахын өмнө нэвтэрнэ үү",
+      const normalized = normalizeFranchiseProject(project);
+      const price = normalizeProjectPrice(normalized.price);
+      const userId = String((req as any).user?.userId || "").trim();
+      if (price > 0 && !userId) {
+        res.status(401).json({
+          success: false,
+          requiresAuth: true,
+          message: "Franchise худалдан авахын өмнө нэвтэрнэ үү",
+        });
+        return;
+      }
+
+      const hasAccess = await ensurePaidProjectAccess({
+        userId,
+        projectId,
+        project: normalized,
+        invoiceId,
+        price,
+        kind: "FRANCHISE_ACCESS",
       });
-      return;
-    }
+      if (!hasAccess) {
+        res.status(402).json({
+          success: false,
+          requiresPayment: true,
+          message:
+            "Franchise дэлгэрэнгүй мэдээлэл үзэхийн тулд төлбөр төлнө үү",
+        });
+        return;
+      }
 
-    const hasAccess = await ensurePaidProjectAccess({
-      userId,
-      projectId,
-      project: normalized,
-      invoiceId,
-      price,
-      kind: "FRANCHISE_ACCESS",
-    });
-    if (!hasAccess) {
-      res.status(402).json({
+      res.json({ success: true, project: normalized });
+    } catch (error) {
+      console.error("get franchise detail error", error);
+      res.status(500).json({
         success: false,
-        requiresPayment: true,
-        message: "Franchise дэлгэрэнгүй мэдээлэл үзэхийн тулд төлбөр төлнө үү",
+        message: "Franchise мэдээлэл авахад алдаа гарлаа",
       });
-      return;
     }
-
-    res.json({ success: true, project: normalized });
-  } catch (error) {
-    console.error("get franchise detail error", error);
-    res.status(500).json({
-      success: false,
-      message: "Franchise мэдээлэл авахад алдаа гарлаа",
-    });
-  }
-});
+  },
+);
 
 // GET /site-settings/projects — public summary list only
 router.get("/site-settings/projects", async (_req, res) => {
@@ -1219,120 +1484,216 @@ router.get("/site-settings/projects", async (_req, res) => {
   }
 });
 
-// GET /site-settings/projects/:projectId/detail — full detail after payment check
-router.get("/site-settings/projects/:projectId/detail", optionalAuth, async (req, res) => {
+// GET /site-settings/study — public training material list.
+router.get("/site-settings/study", async (_req, res) => {
   try {
-    const { projectId } = req.params;
-    const invoiceId =
-      typeof req.query.invoiceId === "string" ? req.query.invoiceId : undefined;
-
-    const projects = await getPaidProjects();
-    const project = projects.find(
-      (item) => item.id === projectId && item.isActive !== false,
-    );
-    if (!project) {
-      res.status(404).json({ success: false, message: "Төсөл олдсонгүй" });
-      return;
-    }
-
-    const normalized = normalizeProject(project);
-    const price = normalizeProjectPrice(normalized.price);
-    const userId = String((req as any).user?.userId || "").trim();
-    if (price > 0 && !userId) {
-      res.status(401).json({
-        success: false,
-        requiresAuth: true,
-        message: "Төсөл худалдан авахын өмнө нэвтэрнэ үү",
-      });
-      return;
-    }
-
-    const hasAccess = await ensurePaidProjectAccess({
-      userId,
-      projectId,
-      project: normalized,
-      invoiceId,
-      price,
-    });
-    if (!hasAccess) {
-      res.status(402).json({
-        success: false,
-        requiresPayment: true,
-        message: "Дэлгэрэнгүй мэдээлэл үзэхийн тулд төлбөр төлнө үү",
-      });
-      return;
-    }
-
-    res.json({ success: true, project: normalized });
-  } catch (error) {
-    console.error("get project detail error", error);
-    res.status(500).json({
-      success: false,
-      message: "Төслийн мэдээлэл авахад алдаа гарлаа",
-    });
-  }
-});
-
-// POST /site-settings/mgl-services/qpay — MGL үйлчилгээ захиалах үед QPay нэхэмжлэх үүсгэх
-router.post("/site-settings/mgl-services/qpay", requireAuth, async (req, res) => {
-  try {
-    const { total, items } = req.body;
-    if (!total || isNaN(Number(total))) {
-      res.status(400).json({ success: false, message: "Буруу үнийн дүн" });
-      return;
-    }
-
-    const orderId = crypto.randomUUID();
-    const orderNumber = `SVC-${Date.now().toString().slice(-6)}`;
-    const description = `MGL Store Үйлчилгээ: ${items?.length} төрөл`;
-
-    const invoice = await createQPayInvoice({
-      orderId,
-      orderNumber,
-      amount: Number(total),
-      description,
-    });
-
+    const projects = await getStudyProjects();
+    const settings = await getStudySettings();
+    res.setHeader("Cache-Control", "no-store");
     res.json({
       success: true,
-      orderId,
-      orderNumber,
-      invoiceId: invoice.invoice_id,
-      qrText: invoice.qr_text,
-      qrImage: invoice.qr_image,
-      urls: invoice.urls,
+      settings,
+      projects: projects
+        .filter((project) => project.isActive !== false)
+        .map((project) => normalizeProject(project)),
     });
-  } catch (error: any) {
-    console.error("mgl-services qpay create error", error);
+  } catch (error) {
+    console.error("get public study materials error", error);
     res.status(500).json({
       success: false,
-      message: error.message || "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа",
+      message: "Сургалтын материал авахад алдаа гарлаа",
     });
   }
 });
 
-// GET /site-settings/mgl-services/qpay/check — Төлбөр шалгах
-router.get("/site-settings/mgl-services/qpay/check", requireAuth, async (req, res) => {
-  try {
-    const { invoiceId } = req.query;
-    if (!invoiceId || typeof invoiceId !== "string") {
-      res
-        .status(400)
-        .json({ success: false, message: "invoiceId шаардлагатай" });
-      return;
+// GET /site-settings/study/:projectId/detail — full training registration detail.
+router.get(
+  "/site-settings/study/:projectId/detail",
+  optionalAuth,
+  async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const invoiceId =
+        typeof req.query.invoiceId === "string"
+          ? req.query.invoiceId
+          : undefined;
+
+      const projects = await getStudyProjects();
+      const project = projects.find(
+        (item) => item.id === projectId && item.isActive !== false,
+      );
+      if (!project) {
+        res.status(404).json({ success: false, message: "Сургалт олдсонгүй" });
+        return;
+      }
+
+      const normalized = normalizeProject(project);
+      const price = normalizeProjectPrice(normalized.price);
+      const userId = String((req as any).user?.userId || "").trim();
+      if (price > 0 && !userId) {
+        res.status(401).json({
+          success: false,
+          requiresAuth: true,
+          message: "Сургалтад бүртгүүлэхийн өмнө нэвтэрнэ үү",
+        });
+        return;
+      }
+
+      const hasAccess = await ensurePaidProjectAccess({
+        userId,
+        projectId,
+        project: normalized,
+        invoiceId,
+        price,
+      });
+      if (!hasAccess) {
+        res.status(402).json({
+          success: false,
+          requiresPayment: true,
+          message: "Сургалтад бүртгүүлэхийн тулд төлбөр төлнө үү",
+        });
+        return;
+      }
+
+      res.json({ success: true, project: normalized });
+    } catch (error) {
+      console.error("get study detail error", error);
+      res.status(500).json({
+        success: false,
+        message: "Сургалтын мэдээлэл авахад алдаа гарлаа",
+      });
     }
+  },
+);
 
-    const result = await checkQPayPayment(invoiceId);
-    const isPaid = result.count > 0;
+// GET /site-settings/projects/:projectId/detail — full detail after payment check
+router.get(
+  "/site-settings/projects/:projectId/detail",
+  optionalAuth,
+  async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const invoiceId =
+        typeof req.query.invoiceId === "string"
+          ? req.query.invoiceId
+          : undefined;
 
-    res.json({ success: true, isPaid, paidAmount: result.paid_amount });
-  } catch (error) {
-    console.error("mgl-services qpay check error", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Төлбөр шалгахад алдаа гарлаа" });
-  }
-});
+      const projects = await getPaidProjects();
+      const project = projects.find(
+        (item) => item.id === projectId && item.isActive !== false,
+      );
+      if (!project) {
+        res.status(404).json({ success: false, message: "Төсөл олдсонгүй" });
+        return;
+      }
+
+      const normalized = normalizeProject(project);
+      const price = normalizeProjectPrice(normalized.price);
+      const userId = String((req as any).user?.userId || "").trim();
+      if (price > 0 && !userId) {
+        res.status(401).json({
+          success: false,
+          requiresAuth: true,
+          message: "Төсөл худалдан авахын өмнө нэвтэрнэ үү",
+        });
+        return;
+      }
+
+      const hasAccess = await ensurePaidProjectAccess({
+        userId,
+        projectId,
+        project: normalized,
+        invoiceId,
+        price,
+      });
+      if (!hasAccess) {
+        res.status(402).json({
+          success: false,
+          requiresPayment: true,
+          message: "Дэлгэрэнгүй мэдээлэл үзэхийн тулд төлбөр төлнө үү",
+        });
+        return;
+      }
+
+      res.json({ success: true, project: normalized });
+    } catch (error) {
+      console.error("get project detail error", error);
+      res.status(500).json({
+        success: false,
+        message: "Төслийн мэдээлэл авахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
+// POST /site-settings/mgl-services/qpay — MGL үйлчилгээ захиалах үед QPay нэхэмжлэх үүсгэх
+router.post(
+  "/site-settings/mgl-services/qpay",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { total, items } = req.body;
+      if (!total || isNaN(Number(total))) {
+        res.status(400).json({ success: false, message: "Буруу үнийн дүн" });
+        return;
+      }
+
+      const orderId = crypto.randomUUID();
+      const orderNumber = `SVC-${Date.now().toString().slice(-6)}`;
+      const description = `MGL Store Үйлчилгээ: ${items?.length} төрөл`;
+
+      const invoice = await createQPayInvoice({
+        orderId,
+        orderNumber,
+        amount: Number(total),
+        description,
+      });
+
+      res.json({
+        success: true,
+        orderId,
+        orderNumber,
+        invoiceId: invoice.invoice_id,
+        qrText: invoice.qr_text,
+        qrImage: invoice.qr_image,
+        urls: invoice.urls,
+      });
+    } catch (error: any) {
+      console.error("mgl-services qpay create error", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа",
+      });
+    }
+  },
+);
+
+// GET /site-settings/mgl-services/qpay/check — Төлбөр шалгах
+router.get(
+  "/site-settings/mgl-services/qpay/check",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { invoiceId } = req.query;
+      if (!invoiceId || typeof invoiceId !== "string") {
+        res
+          .status(400)
+          .json({ success: false, message: "invoiceId шаардлагатай" });
+        return;
+      }
+
+      const result = await checkQPayPayment(invoiceId);
+      const isPaid = result.count > 0;
+
+      res.json({ success: true, isPaid, paidAmount: result.paid_amount });
+    } catch (error) {
+      console.error("mgl-services qpay check error", error);
+      res
+        .status(500)
+        .json({ success: false, message: "Төлбөр шалгахад алдаа гарлаа" });
+    }
+  },
+);
 
 // POST /site-settings/projects/systemqr — project detail access Minu Dynamic QR invoice.
 const createProjectSystemQrPaymentSession = async (
@@ -1643,6 +2004,171 @@ const createFranchiseSystemQrPaymentSession = async (
   }
 };
 
+const createStudySystemQrPaymentSession = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const userId = String((req as any).user?.userId || "").trim();
+    const { projectId } = req.body as { projectId?: string };
+    if (!projectId) {
+      res
+        .status(400)
+        .json({ success: false, message: "projectId шаардлагатай" });
+      return;
+    }
+
+    const projects = await getStudyProjects();
+    const project = projects.find(
+      (item) => item.id === projectId && item.isActive !== false,
+    );
+    if (!project) {
+      res.status(404).json({ success: false, message: "Сургалт олдсонгүй" });
+      return;
+    }
+
+    const normalized = normalizeProject(project);
+    const amount = normalizeProjectPrice(normalized.price);
+    if (amount <= 0) {
+      await ensureStudyRegistrationAccess({
+        userId,
+        project: normalized,
+        registrationKind: "FREE",
+      });
+      res.json({ success: true, free: true, projectId });
+      return;
+    }
+
+    const primeUser = await prisma.user.findFirst({
+      where: { id: userId, isPrime: true, isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (primeUser) {
+      await ensureStudyRegistrationAccess({
+        userId,
+        project: normalized,
+        registrationKind: "PRIME",
+      });
+      res.json({
+        success: true,
+        free: true,
+        primeAccess: true,
+        projectId,
+      });
+      return;
+    }
+
+    const existingPurchase = await prisma.paidAccessPurchase.findUnique({
+      where: {
+        userId_sourceType_itemId: {
+          userId,
+          sourceType: "PROJECT",
+          itemId: projectId,
+        },
+      },
+      select: { id: true },
+    });
+    if (existingPurchase) {
+      res.json({
+        success: true,
+        free: true,
+        alreadyPurchased: true,
+        projectId,
+      });
+      return;
+    }
+
+    const expiresAt = new Date(Date.now() + PROJECT_PAYMENT_TTL_MS);
+    const account = await resolveProjectPaymentAccount(normalized);
+    if (!account?.merchantCode) {
+      res.status(400).json({
+        success: false,
+        message:
+          "Энэ сургалтын төлбөр орох Minu Dynamic QR данс сонгогдоогүй байна. Admin дээр Сургалт засахдаа төлбөрийн данс сонгоно уу.",
+      });
+      return;
+    }
+
+    const invoice = await prisma.qPayInvoice.create({
+      data: {
+        amount,
+        qrText: "",
+        status: PosQPayStatus.PENDING,
+        expiresAt,
+        saleReference: projectSaleReference(projectId),
+        webhookPayload: {
+          kind: "PROJECT_ACCESS",
+          provider: "SYSTEMQR",
+          source: "STUDY",
+          userId,
+          projectId,
+          projectTitle: normalized.title,
+          paymentAccountId: account.id || "",
+          paymentAccountLabel: account.label || account.merchantName || "",
+          merchantCode: account.merchantCode,
+        } as unknown as Prisma.JsonObject,
+      },
+    });
+
+    try {
+      const systemQr = await createProjectSystemQrInvoice({
+        account,
+        referenceNumber: `STD-${invoice.id.slice(0, 8).toUpperCase()}`,
+        amount,
+        webhook: `${getApiRouteBaseUrl(req)}/site-settings/study/systemqr/callback?invoiceId=${invoice.id}`,
+      });
+
+      const updated = await prisma.qPayInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          qrText: systemQr.qrText,
+          webhookPayload: {
+            kind: "PROJECT_ACCESS",
+            provider: "SYSTEMQR",
+            source: "STUDY",
+            userId,
+            projectId,
+            projectTitle: normalized.title,
+            paymentAccountId: account.id || "",
+            paymentAccountLabel: account.label || account.merchantName || "",
+            paymentAccountBankCode: account.bankCode || "",
+            paymentAccountNumber: account.accountNumber || "",
+            merchantCode: account.merchantCode,
+            providerInvoiceId: systemQr.invoiceId,
+            systemQrInvoiceNumber: systemQr.invoiceId,
+            qrImage: "",
+            deepLinks: systemQr.urls as unknown as Prisma.JsonArray,
+          } as unknown as Prisma.JsonObject,
+        },
+      });
+
+      res.json({
+        success: true,
+        free: false,
+        projectId,
+        invoiceId: updated.id,
+        provider: "SYSTEMQR",
+        providerInvoiceId: systemQr.invoiceId,
+        amount,
+        qrText: systemQr.qrText,
+        qrImage: "",
+        urls: systemQr.urls,
+        expiresAt: expiresAt.toISOString(),
+      });
+    } catch (systemQrError) {
+      await prisma.qPayInvoice.delete({ where: { id: invoice.id } });
+      throw systemQrError;
+    }
+  } catch (error: any) {
+    console.error("study systemqr create error", error);
+    res.status(500).json({
+      success: false,
+      message:
+        error.message || "Сургалтын Dynamic QR төлбөр үүсгэхэд алдаа гарлаа",
+    });
+  }
+};
+
 router.post(
   "/site-settings/projects/systemqr",
   requireAuth,
@@ -1662,6 +2188,16 @@ router.post(
   "/site-settings/franchise/qpay",
   requireAuth,
   createFranchiseSystemQrPaymentSession,
+);
+router.post(
+  "/site-settings/study/systemqr",
+  requireAuth,
+  createStudySystemQrPaymentSession,
+);
+router.post(
+  "/site-settings/study/qpay",
+  requireAuth,
+  createStudySystemQrPaymentSession,
 );
 
 // GET /site-settings/projects/systemqr/check — project detail payment check.
@@ -1727,6 +2263,16 @@ router.get(
 );
 router.get(
   "/site-settings/projects/qpay/check",
+  requireAuth,
+  checkProjectPaymentSession,
+);
+router.get(
+  "/site-settings/study/systemqr/check",
+  requireAuth,
+  checkProjectPaymentSession,
+);
+router.get(
+  "/site-settings/study/qpay/check",
   requireAuth,
   checkProjectPaymentSession,
 );
@@ -1830,6 +2376,11 @@ router.all(
   "/site-settings/franchise/qpay/callback",
   handleProjectPaymentCallback,
 );
+router.all(
+  "/site-settings/study/systemqr/callback",
+  handleProjectPaymentCallback,
+);
+router.all("/site-settings/study/qpay/callback", handleProjectPaymentCallback);
 
 router.use(
   (error: unknown, _req: Request, res: Response, next: NextFunction) => {

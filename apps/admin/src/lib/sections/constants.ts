@@ -12,6 +12,7 @@ import {
   UserSquare2,
   FolderKanban,
   ClipboardCheck,
+  GraduationCap,
 } from "lucide-react";
 import type { CardColorScheme } from "@mgl/ui";
 import type { SectionKey } from "./types";
@@ -56,6 +57,12 @@ export const SECTIONS: {
     key: "hr-services",
     label: "HR үйлчилгээ",
     icon: Users,
+    requires: "MANAGE_SITE_SETTINGS",
+  },
+  {
+    key: "study",
+    label: "Сургалт",
+    icon: GraduationCap,
     requires: "MANAGE_SITE_SETTINGS",
   },
   {

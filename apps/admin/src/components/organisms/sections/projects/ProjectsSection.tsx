@@ -29,7 +29,7 @@ type Props = {
   projects: ProjectItem[];
   paymentAccounts?: ProjectPaymentAccount[];
   projectShowcaseSections?: ProjectShowcaseSection[];
-  mode?: "project" | "franchise";
+  mode?: "project" | "franchise" | "study";
   setProjects: (
     update: ProjectItem[] | ((prev: ProjectItem[]) => ProjectItem[]),
   ) => void;
@@ -47,17 +47,27 @@ type Props = {
 };
 
 const emptyProject = (
-  mode: "project" | "franchise" = "project",
+  mode: "project" | "franchise" | "study" = "project",
 ): ProjectItem => ({
   id: generateId(),
-  title: mode === "franchise" ? "Шинэ franchise" : "Шинэ төсөл",
-  category: mode === "franchise" ? "Franchise" : "Төсөл",
+  title:
+    mode === "franchise"
+      ? "Шинэ franchise"
+      : mode === "study"
+        ? "Шинэ сургалт"
+        : "Шинэ төсөл",
+  category:
+    mode === "franchise" ? "Franchise" : mode === "study" ? "Сургалт" : "Төсөл",
   summary: "",
   details: "",
-  price: 5000,
+  price: mode === "study" ? 0 : 5000,
   imageUrl: "",
   imageUrls: [],
   pdfUrl: "",
+  teacherInfo: "",
+  duration: "",
+  capacity: "",
+  priceNote: "",
   tags: [],
   isActive: true,
   isFeatured: false,
@@ -223,45 +233,71 @@ export function ProjectsSection({
   const [uploadError, setUploadError] = useState("");
   const [pdfUploadError, setPdfUploadError] = useState("");
   const isFranchiseMode = mode === "franchise";
-  const showcaseSections = isFranchiseMode ? [] : projectShowcaseSections;
-  const copy = isFranchiseMode
-    ? {
-        heading: "Franchise PDF хэсэг",
-        description:
-          "Web дээр зураг, нэр, хураангуй харагдаж, дэлгэрэнгүй мэдээлэл болон PDF нь төлбөрийн дараа нээгдэнэ.",
-        add: "Franchise нэмэх",
-        empty: "Одоогоор franchise оруулаагүй байна.",
-        first: "Эхний franchise нэмэх",
-        itemLabel: "Franchise",
-        unnamed: "Нэргүй franchise",
-        deleteConfirm: "Энэ franchise-ийг устгах уу?",
-        titleLabel: "Franchise нэр",
-        titlePlaceholder: "Жишээ: MGL Store franchise багц",
-        categoryPlaceholder: "Franchise, салбар нээх эрх...",
-        pdfLabel: "Franchise PDF файл",
-        summaryPlaceholder: "Web дээр харагдах богино танилцуулга...",
-      }
-    : {
-        heading: "Төслийн хэсэг",
-        description:
-          "Web дээр зураг, нэр, хураангуй харагдаж, дэлгэрэнгүй мэдээлэл болон PDF нь төлбөрийн дараа нээгдэнэ.",
-        add: "Төсөл нэмэх",
-        empty: "Одоогоор төсөл оруулаагүй байна.",
-        first: "Эхний төсөл нэмэх",
-        itemLabel: "Төсөл",
-        unnamed: "Нэргүй төсөл",
-        deleteConfirm: "Энэ төслийг устгах уу?",
-        titleLabel: "Төслийн нэр",
-        titlePlaceholder: "Жишээ: Орон нутгийн нийлүүлэлтийн төсөл",
-        categoryPlaceholder: "Хөрөнгө оруулалт, хамтын ажиллагаа...",
-        pdfLabel: "Төслийн PDF файл",
-        summaryPlaceholder: "Web дээр үнэгүй харагдах богино танилцуулга...",
-      };
+  const isStudyMode = mode === "study";
+  const isProjectMode = mode === "project";
+  const showcaseSections = isProjectMode ? projectShowcaseSections : [];
+  const copy =
+    mode === "franchise"
+      ? {
+          heading: "Franchise PDF хэсэг",
+          description:
+            "Web дээр зураг, нэр, хураангуй харагдаж, дэлгэрэнгүй мэдээлэл болон PDF нь төлбөрийн дараа нээгдэнэ.",
+          add: "Franchise нэмэх",
+          empty: "Одоогоор franchise оруулаагүй байна.",
+          first: "Эхний franchise нэмэх",
+          itemLabel: "Franchise",
+          unnamed: "Нэргүй franchise",
+          deleteConfirm: "Энэ franchise-ийг устгах уу?",
+          titleLabel: "Franchise нэр",
+          titlePlaceholder: "Жишээ: MGL Store franchise багц",
+          categoryPlaceholder: "Franchise, салбар нээх эрх...",
+          pdfLabel: "Franchise PDF файл",
+          summaryPlaceholder: "Web дээр харагдах богино танилцуулга...",
+        }
+      : mode === "study"
+        ? {
+            heading: "Сургалт оруулах",
+            description:
+              "Энд оруулсан сургалтын нэр, зураг, багш, хөтөлбөр, үнэ болон төлбөрийн данс web-ийн /study page дээр card, дэлгэрэнгүй modal, бүртгэлийн хэсэг болж харагдана.",
+            add: "Сургалт нэмэх",
+            empty: "Одоогоор сургалт оруулаагүй байна.",
+            first: "Эхний сургалт нэмэх",
+            itemLabel: "Сургалт",
+            unnamed: "Нэргүй сургалт",
+            deleteConfirm: "Энэ сургалтыг устгах уу?",
+            titleLabel: "Сургалтын нэр",
+            titlePlaceholder: "Жишээ: MGL Store ашиглалтын үндсэн bootcamp",
+            categoryPlaceholder: "Жишээ: Платформ, Захиалга, POS, Төлбөр...",
+            pdfLabel: "",
+            summaryPlaceholder:
+              "Card болон дэлгэрэнгүй modal дээр харагдах 1-2 өгүүлбэр...",
+          }
+        : {
+            heading: "Төслийн хэсэг",
+            description:
+              "Web дээр зураг, нэр, хураангуй харагдаж, дэлгэрэнгүй мэдээлэл болон PDF нь төлбөрийн дараа нээгдэнэ.",
+            add: "Төсөл нэмэх",
+            empty: "Одоогоор төсөл оруулаагүй байна.",
+            first: "Эхний төсөл нэмэх",
+            itemLabel: "Төсөл",
+            unnamed: "Нэргүй төсөл",
+            deleteConfirm: "Энэ төслийг устгах уу?",
+            titleLabel: "Төслийн нэр",
+            titlePlaceholder: "Жишээ: Орон нутгийн нийлүүлэлтийн төсөл",
+            categoryPlaceholder: "Хөрөнгө оруулалт, хамтын ажиллагаа...",
+            pdfLabel: "Төслийн PDF файл",
+            summaryPlaceholder:
+              "Web дээр үнэгүй харагдах богино танилцуулга...",
+          };
 
   const addProject = () => {
     const project = emptyProject(mode);
-    setProjects((prev) => [project, ...prev]);
+    const nextProjects = [project, ...projects];
+    setProjects(nextProjects);
     setEditingProjectId(project.id);
+    if (mode === "study") {
+      void onSave(nextProjects, showcaseSections);
+    }
   };
 
   const moveProject = (projectId: string, direction: -1 | 1) => {
@@ -542,7 +578,33 @@ export function ProjectsSection({
         </div>
       </div>
 
-      {!isFranchiseMode && (
+      {isStudyMode && (
+        <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">
+            Сургалт оруулахдаа бөглөх үндсэн талбарууд
+          </p>
+          <div className="mt-3 grid gap-2 text-sm font-semibold text-slate-600 md:grid-cols-2 xl:grid-cols-4">
+            <span className="rounded-xl bg-white px-3 py-2">
+              1. Нэр, ангилал, хураангуй
+            </span>
+            <span className="rounded-xl bg-white px-3 py-2">
+              2. Card / hero зураг
+            </span>
+            <span className="rounded-xl bg-white px-3 py-2">
+              3. Багш, хугацаа, хүний тоо
+            </span>
+            <span className="rounded-xl bg-white px-3 py-2">
+              4. Үнэ, төлбөрийн данс, хөтөлбөр
+            </span>
+          </div>
+          <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
+            “Засах” товч дарж сургалтын хөтөлбөрийг мөр мөрөөр оруулна. Төлбөр 0
+            байвал web дээр үнэгүй бүртгэл болно.
+          </p>
+        </section>
+      )}
+
+      {isProjectMode && (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -752,7 +814,7 @@ export function ProjectsSection({
                           )}
                           {project.isActive ? "Web дээр харагдана" : "Нуусан"}
                         </button>
-                        {!isFranchiseMode && (
+                        {isProjectMode && (
                           <button
                             type="button"
                             onClick={() =>
@@ -776,7 +838,7 @@ export function ProjectsSection({
                         )}
                       </>
                     )}
-                    {!isEditing && !isFranchiseMode && (
+                    {!isEditing && isProjectMode && (
                       <button
                         type="button"
                         onClick={() =>
@@ -864,7 +926,7 @@ export function ProjectsSection({
                     </label>
                     <label className="space-y-1.5">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Ангилал
+                        {isStudyMode ? "Сургалтын ангилал" : "Ангилал"}
                       </span>
                       <input
                         value={project.category}
@@ -878,7 +940,9 @@ export function ProjectsSection({
                     <>
                       <label className="space-y-1.5">
                         <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          Дэлгэрэнгүй үзэх үнэ
+                          {isStudyMode
+                            ? "Сургалтын төлбөр"
+                            : "Дэлгэрэнгүй үзэх үнэ"}
                         </span>
                         <input
                           type="number"
@@ -893,12 +957,19 @@ export function ProjectsSection({
                             )
                           }
                           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                          placeholder="5000"
+                          placeholder={isStudyMode ? "0 бол үнэгүй" : "5000"}
                         />
+                        {isStudyMode && (
+                          <p className="text-xs font-semibold text-slate-500">
+                            0 гэж оруулбал web дээр “Үнэгүй” гэж харагдана.
+                          </p>
+                        )}
                       </label>
                       <label className="space-y-1.5">
                         <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          Төлбөр орох данс
+                          {isStudyMode
+                            ? "Төлбөртэй сургалтын данс"
+                            : "Төлбөр орох данс"}
                         </span>
                         <select
                           value={
@@ -932,7 +1003,9 @@ export function ProjectsSection({
                     <div className="space-y-1.5 lg:col-span-2">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          Зургууд
+                          {isStudyMode
+                            ? "Сургалтын card / hero зураг"
+                            : "Зургууд"}
                         </span>
                         <span className="text-xs font-bold text-slate-400">
                           {projectImages.length}/{MAX_PROJECT_IMAGES}
@@ -983,7 +1056,9 @@ export function ProjectsSection({
                           )}
                           {uploadingProjectId === project.id
                             ? "Зураг оруулж байна..."
-                            : "Зурагнууд сонгох"}
+                            : isStudyMode
+                              ? "Сургалтын зураг сонгох"
+                              : "Зурагнууд сонгох"}
                           <input
                             type="file"
                             accept="image/*"
@@ -1012,12 +1087,16 @@ export function ProjectsSection({
                         }
                         rows={3}
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Зургийн URL-уудыг мөр мөрөөр оруулж болно"
+                        placeholder={
+                          isStudyMode
+                            ? "Зургийн URL оруулах бол мөр мөрөөр бичнэ. Эхний зураг card дээр гарна."
+                            : "Зургийн URL-уудыг мөр мөрөөр оруулж болно"
+                        }
                       />
                     </div>
                     <label className="space-y-1.5 lg:col-span-2">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Tag-ууд
+                        {isStudyMode ? "Сэдэв / keyword tag-ууд" : "Tag-ууд"}
                       </span>
                       <input
                         value={tagText(project)}
@@ -1029,12 +1108,102 @@ export function ProjectsSection({
                           )
                         }
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="ус, хөрөнгө оруулалт, сум орон нутаг"
+                        placeholder={
+                          isStudyMode
+                            ? "dashboard, POS, төлбөр, beginner"
+                            : "ус, хөрөнгө оруулалт, сум орон нутаг"
+                        }
                       />
                     </label>
+                    {isStudyMode && (
+                      <>
+                        <div className="lg:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                          <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">
+                            Сургалтын дэлгэрэнгүй талбарууд
+                          </p>
+                          <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">
+                            Доорх мэдээлэл нь сургалтын hover preview,
+                            дэлгэрэнгүй modal, бүртгэлийн card дээр харагдана.
+                          </p>
+                        </div>
+                        <label className="space-y-1.5 lg:col-span-2">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Багш / сургагчийн мэдээлэл
+                          </span>
+                          <textarea
+                            value={project.teacherInfo || ""}
+                            onChange={(e) =>
+                              updateProject(
+                                project.id,
+                                "teacherInfo",
+                                e.target.value,
+                              )
+                            }
+                            rows={4}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            placeholder="Жишээ: MGL Store сургалтын баг · Store operation зөвлөхүүд"
+                          />
+                        </label>
+                        <div className="grid gap-4 lg:col-span-2 lg:grid-cols-3">
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Сургалтын хугацаа
+                            </span>
+                            <input
+                              value={project.duration || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "duration",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                              placeholder="Жишээ: 4.5 цаг / 2 өдөр"
+                            />
+                          </label>
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Хүний тоо / багийн хэмжээ
+                            </span>
+                            <input
+                              value={project.capacity || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "capacity",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                              placeholder="Жишээ: 1-10 хүн"
+                            />
+                          </label>
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Үнийн тайлбар
+                            </span>
+                            <input
+                              value={project.priceNote || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "priceNote",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                              placeholder="Жишээ: 1 хүний эрх / багийн үнэ"
+                            />
+                          </label>
+                        </div>
+                      </>
+                    )}
                     <label className="space-y-1.5 lg:col-span-2">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Хураангуй
+                        {isStudyMode
+                          ? "Card дээр харагдах хураангуй"
+                          : "Хураангуй"}
                       </span>
                       <textarea
                         value={project.summary}
@@ -1048,7 +1217,9 @@ export function ProjectsSection({
                     </label>
                     <label className="space-y-1.5 lg:col-span-2">
                       <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Дэлгэрэнгүй мэдээлэл
+                        {isStudyMode
+                          ? "Сургалтын хөтөлбөр / сурах зүйлс"
+                          : "Дэлгэрэнгүй мэдээлэл"}
                       </span>
                       <textarea
                         value={project.details}
@@ -1057,59 +1228,67 @@ export function ProjectsSection({
                         }
                         rows={6}
                         className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Төлбөр төлсний дараа харагдах дэлгэрэнгүй нөхцөл, боломж, холбоо барих мэдээлэл..."
+                        placeholder={
+                          isStudyMode
+                            ? "Мөр мөрөөр бичнэ. Жишээ:\nDashboard тохируулах\nБүтээгдэхүүн нэмэх workflow\nЗахиалга шалгах ба төлөв солих\nХэрэглэгчийн мэдээлэл удирдах"
+                            : "Төлбөр төлсний дараа харагдах дэлгэрэнгүй нөхцөл, боломж, холбоо барих мэдээлэл..."
+                        }
                       />
                     </label>
-                    <div className="space-y-1.5 lg:col-span-2">
-                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        {copy.pdfLabel}
-                      </span>
-                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
-                            {uploadingPdfProjectId === project.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <FileText className="h-4 w-4" />
+                    {!isStudyMode && (
+                      <div className="space-y-1.5 lg:col-span-2">
+                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          {copy.pdfLabel}
+                        </span>
+                        <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
+                              {uploadingPdfProjectId === project.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FileText className="h-4 w-4" />
+                              )}
+                              {uploadingPdfProjectId === project.id
+                                ? "PDF оруулж байна..."
+                                : "PDF сонгох"}
+                              <input
+                                type="file"
+                                accept="application/pdf,.pdf"
+                                className="hidden"
+                                disabled={uploadingPdfProjectId === project.id}
+                                onChange={(e) =>
+                                  uploadProjectPdf(project.id, e)
+                                }
+                              />
+                            </label>
+                            {project.pdfUrl && (
+                              <a
+                                href={project.pdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"
+                              >
+                                <FileText className="h-4 w-4" />
+                                PDF харах
+                              </a>
                             )}
-                            {uploadingPdfProjectId === project.id
-                              ? "PDF оруулж байна..."
-                              : "PDF сонгох"}
-                            <input
-                              type="file"
-                              accept="application/pdf,.pdf"
-                              className="hidden"
-                              disabled={uploadingPdfProjectId === project.id}
-                              onChange={(e) => uploadProjectPdf(project.id, e)}
-                            />
-                          </label>
-                          {project.pdfUrl && (
-                            <a
-                              href={project.pdfUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"
-                            >
-                              <FileText className="h-4 w-4" />
-                              PDF харах
-                            </a>
+                          </div>
+                          {pdfUploadError && uploadingPdfProjectId === null && (
+                            <p className="mt-2 text-xs font-semibold text-red-500">
+                              {pdfUploadError}
+                            </p>
                           )}
                         </div>
-                        {pdfUploadError && uploadingPdfProjectId === null && (
-                          <p className="mt-2 text-xs font-semibold text-red-500">
-                            {pdfUploadError}
-                          </p>
-                        )}
+                        <input
+                          value={project.pdfUrl || ""}
+                          onChange={(e) =>
+                            updateProject(project.id, "pdfUrl", e.target.value)
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                          placeholder="PDF upload хийсний дараа URL энд автоматаар орно"
+                        />
                       </div>
-                      <input
-                        value={project.pdfUrl || ""}
-                        onChange={(e) =>
-                          updateProject(project.id, "pdfUrl", e.target.value)
-                        }
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="PDF upload хийсний дараа URL энд автоматаар орно"
-                      />
-                    </div>
+                    )}
                   </div>
                 ) : (
                   <div className="rounded-2xl bg-slate-50 p-3">
@@ -1142,16 +1321,18 @@ export function ProjectsSection({
                             ? `${formatMnt(project.price)}`
                             : "Үнэгүй"}
                         </div>
-                        <div
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                            project.pdfUrl
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-amber-50 text-amber-700"
-                          }`}
-                        >
-                          <FileText className="h-3 w-3" />
-                          {project.pdfUrl ? "PDF" : "PDFгүй"}
-                        </div>
+                        {!isStudyMode && (
+                          <div
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                              project.pdfUrl
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            <FileText className="h-3 w-3" />
+                            {project.pdfUrl ? "PDF" : "PDFгүй"}
+                          </div>
+                        )}
                         <div
                           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
                             project.isActive
@@ -1166,7 +1347,7 @@ export function ProjectsSection({
                           )}
                           {project.isActive ? "Web" : "Нуусан"}
                         </div>
-                        {!isFranchiseMode && project.isFeatured && (
+                        {isProjectMode && project.isFeatured && (
                           <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
                             <Check className="h-3 w-3" />
                             Онцлох

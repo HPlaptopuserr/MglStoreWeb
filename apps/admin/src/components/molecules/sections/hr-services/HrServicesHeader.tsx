@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Loader2, Plus, Save, Users } from "lucide-react";
+import { Check, FileText, Loader2, Plus, Save, Users } from "lucide-react";
 
 type HrServicesHeaderProps = {
   onAddHeading: () => void;
@@ -24,16 +24,19 @@ export function HrServicesHeader({
           </div>
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-600">
-              HR content
+              HR services content
             </p>
             <h2 className="mt-1 text-2xl font-black text-slate-950">
-              Хүний нөөцийн dropdown контент
+              HR үйлчилгээний контент
             </h2>
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
-              1. Dropdown-ийн бүлэг сонгоно. 2. Гарчиг, тайлбарыг засна. 3.
-              Тухайн бүлэг дотор PDF, үнэ, маягттай material card-уудыг
-              холбоно.
+              Гол гарчиг, материал, маягт болон дэлгэрэнгүй тайлбар нь web дээрх
+              HR үйлчилгээний хэсэгт харагдана.
             </p>
+            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
+              <FileText className="h-3.5 w-3.5" />
+              HR үйлчилгээний материал admin-аас удирдана
+            </div>
           </div>
         </div>
 

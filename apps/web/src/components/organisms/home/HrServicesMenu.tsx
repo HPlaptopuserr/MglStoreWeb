@@ -6,109 +6,22 @@ import {
   ArrowRight,
   BriefcaseBusiness,
   ChevronDown,
-  FileText,
-  GraduationCap,
-  ShieldCheck,
   Sparkles,
-  Users,
-  type LucideIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { MGL_SERVICES_DATA } from "@/app/our-services/data";
-import type { ServiceCategory, ServiceItem } from "@/app/our-services/types";
 import { HrServiceDetailModal } from "@/components/molecules/hr/HrServiceDetailModal";
 import { HrServiceGroupButton } from "@/components/molecules/hr/HrServiceGroupButton";
 import {
   HrServiceMenuCard,
   type HrMenuService,
 } from "@/components/molecules/hr/HrServiceMenuCard";
-import { getKnownHrFormLink } from "@/components/molecules/hr/hr-service-form-links";
+import {
+  fallbackHrCategory,
+  parseHrServicesSetting,
+  toHrGroups,
+} from "@/components/molecules/hr/hr-services-data";
+import type { ServiceCategory } from "@/app/our-services/types";
 import { API } from "@/lib/api";
-
-type HrServiceGroup = {
-  id: string;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  services: HrMenuService[];
-};
-
-const hrIconByText: { test: RegExp; icon: LucideIcon }[] = [
-  { test: /гэрээ|журам|бичиг|маягт|тушаал/i, icon: FileText },
-  { test: /сонгон|бүрдүүл|ажилтан|ярилцлага/i, icon: Users },
-  { test: /аудит|эрсдэл|зөвл/i, icon: ShieldCheck },
-  { test: /сургалт|хөгжил|onboarding/i, icon: GraduationCap },
-];
-
-const fallbackHrCategory =
-  MGL_SERVICES_DATA.find((category) => category.id === "hr") ??
-  MGL_SERVICES_DATA[MGL_SERVICES_DATA.length - 1];
-
-const getPriceLabel = (item: ServiceItem) => {
-  if (item.priceLabel?.trim()) return item.priceLabel.trim();
-  if (Number.isFinite(item.price) && item.price > 0) {
-    return `₮${item.price.toLocaleString()}`;
-  }
-  return "Үнийн санал";
-};
-
-const normalizeServices = (payload: unknown): ServiceCategory[] => {
-  if (!Array.isArray(payload)) return [];
-
-  return payload.filter((category): category is ServiceCategory => {
-    if (typeof category !== "object" || category === null) return false;
-    const item = category as Partial<ServiceCategory>;
-    return (
-      typeof item.id === "string" &&
-      typeof item.title === "string" &&
-      typeof item.description === "string" &&
-      Array.isArray(item.subCategories)
-    );
-  });
-};
-
-const toHrGroups = (categories: ServiceCategory[]): HrServiceGroup[] => {
-  return categories
-    .map((category, index) => {
-      const textForIcon = `${category.id} ${category.title} ${category.description}`;
-      const Icon =
-        hrIconByText.find(({ test }) => test.test(textForIcon))?.icon ??
-        (index % 2 === 0 ? Users : BriefcaseBusiness);
-      const services = category.subCategories
-        .flatMap((subCategory) => subCategory.items)
-        .map((item) => {
-          const knownForm = getKnownHrFormLink(item);
-          const formSlug = item.formSlug || knownForm?.slug || "";
-          const formTitle = item.formTitle || knownForm?.title || "";
-
-          return {
-            id: item.id,
-            title: item.name,
-            description:
-              item.description ||
-              item.features?.slice(0, 2).join(", ") ||
-              category.description,
-            priceLabel: getPriceLabel(item),
-            href: item.fileUrl || `/our-services#${category.id}`,
-            fileUrl: item.fileUrl,
-            fileName: item.fileName,
-            hasForm: Boolean((item.hasForm && item.formSlug) || knownForm),
-            formSlug,
-            formTitle,
-            details: Array.isArray(item.features) ? item.features : [],
-          };
-        });
-
-      return {
-        id: category.id,
-        label: category.title,
-        description: category.description,
-        icon: Icon,
-        services,
-      };
-    })
-    .filter((group) => group.services.length > 0);
-};
 
 export const HrServicesMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -136,9 +49,7 @@ export const HrServicesMenu = () => {
       .then((data: unknown) => {
         if (cancelled || !data || typeof data !== "object") return;
         const rawServices = (data as Record<string, unknown>)["hr-services"];
-        if (typeof rawServices !== "string") return;
-        const parsed = JSON.parse(rawServices);
-        const normalized = normalizeServices(parsed);
+        const normalized = parseHrServicesSetting(rawServices);
         if (toHrGroups(normalized).length > 0) {
           setHrCategories(normalized);
           setActiveIndex(0);
@@ -257,7 +168,7 @@ export const HrServicesMenu = () => {
                       </div>
                     </div>
                     <Link
-                      href="/info/hr"
+                      href={`/hr/${activeGroup.id}`}
                       onClick={() => setIsOpen(false)}
                       className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
                     >
@@ -271,6 +182,7 @@ export const HrServicesMenu = () => {
                       <HrServiceMenuCard
                         key={service.id}
                         service={service}
+                        groupHref={`/hr/${activeGroup.id}`}
                         onOpen={setSelectedService}
                       />
                     ))}

@@ -22,7 +22,8 @@ export function HrEmptyHeadingsState({
         Эхний гол гарчгийг үүсгэх
       </span>
       <span className="mt-2 max-w-md text-sm text-slate-500">
-        Жишээ нь “HR бичиг баримт”, “Сонгон шалгаруулалт”, “Сургалт” гэх мэт.
+        Жишээ нь “HR бичиг баримт”, “Сонгон шалгаруулалт”, “Ажилтны үйлчилгээ”
+        гэх мэт.
       </span>
     </button>
   );

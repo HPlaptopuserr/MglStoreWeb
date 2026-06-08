@@ -40,7 +40,10 @@ export function HrServicesSection({
   const [activeId, setActiveId] = useState<string | null>(
     hrServices[0]?.id ?? null,
   );
-  const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
+  const [uploadingTarget, setUploadingTarget] = useState<{
+    id: string;
+    kind: "pdf" | "heading-image" | "material-image";
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { activeForms, loadingForms } = useHrAdminForms();
 
@@ -157,30 +160,50 @@ export function HrServicesSection({
   const uploadFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || !activeHeading || !uploadingItemId) return;
+    if (!file || !activeHeading || !uploadingTarget) return;
 
     try {
       const form = new FormData();
-      form.append("pdf", file);
-      const res = await adminFetch(`${API}/site-settings/project-pdf-upload`, {
-        method: "POST",
-        body: form,
-      });
-      if (!res.ok) throw new Error("Файл upload хийхэд алдаа гарлаа");
+      const isImage = uploadingTarget.kind !== "pdf";
+      form.append(isImage ? "image" : "pdf", file);
+      const res = await adminFetch(
+        isImage
+          ? `${API}/site-settings/banner-upload`
+          : `${API}/site-settings/project-pdf-upload`,
+        {
+          method: "POST",
+          body: form,
+        },
+      );
+      if (!res.ok) throw new Error("Upload хийхэд алдаа гарлаа");
       const data = (await res.json()) as { url?: string };
-      if (!data.url) throw new Error("Файлын холбоос буцаж ирсэнгүй");
-      updateMaterial(activeHeading.id, uploadingItemId, {
-        fileUrl: data.url,
-        fileName: file.name,
-      });
+      if (!data.url) throw new Error("Upload холбоос буцаж ирсэнгүй");
+      if (uploadingTarget.kind === "heading-image") {
+        updateHeading(uploadingTarget.id, {
+          images: [
+            {
+              id: Math.random().toString(36).slice(2, 10),
+              url: data.url,
+              caption: "",
+            },
+          ],
+        });
+      } else if (uploadingTarget.kind === "material-image") {
+        updateMaterial(activeHeading.id, uploadingTarget.id, {
+          imageUrl: data.url,
+        });
+      } else {
+        updateMaterial(activeHeading.id, uploadingTarget.id, {
+          fileUrl: data.url,
+          fileName: file.name,
+        });
+      }
     } catch (error) {
       alert(
-        error instanceof Error
-          ? error.message
-          : "Файл upload хийхэд алдаа гарлаа",
+        error instanceof Error ? error.message : "Upload хийхэд алдаа гарлаа",
       );
     } finally {
-      setUploadingItemId(null);
+      setUploadingTarget(null);
     }
   };
 
@@ -196,7 +219,9 @@ export function HrServicesSection({
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/pdf,.pdf"
+        accept={
+          uploadingTarget?.kind === "pdf" ? "application/pdf,.pdf" : "image/*"
+        }
         onChange={uploadFile}
         className="hidden"
       />
@@ -230,6 +255,13 @@ export function HrServicesSection({
                   }
                   onRemove={() => removeHeading(activeHeading.id)}
                   onAddMaterial={() => addMaterial(activeHeading.id)}
+                  onUploadImage={() => {
+                    setUploadingTarget({
+                      id: activeHeading.id,
+                      kind: "heading-image",
+                    });
+                    fileInputRef.current?.click();
+                  }}
                 />
 
                 <div className="space-y-4">
@@ -239,12 +271,26 @@ export function HrServicesSection({
                       item={item}
                       forms={activeForms}
                       loadingForms={loadingForms}
-                      uploading={uploadingItemId === item.id}
+                      uploading={
+                        uploadingTarget?.id === item.id &&
+                        uploadingTarget.kind === "pdf"
+                      }
+                      uploadingImage={
+                        uploadingTarget?.id === item.id &&
+                        uploadingTarget.kind === "material-image"
+                      }
                       onUpdate={(patch) =>
                         updateMaterial(activeHeading.id, item.id, patch)
                       }
                       onUpload={() => {
-                        setUploadingItemId(item.id);
+                        setUploadingTarget({ id: item.id, kind: "pdf" });
+                        fileInputRef.current?.click();
+                      }}
+                      onUploadImage={() => {
+                        setUploadingTarget({
+                          id: item.id,
+                          kind: "material-image",
+                        });
                         fileInputRef.current?.click();
                       }}
                       onRemove={() => removeMaterial(activeHeading.id, item.id)}

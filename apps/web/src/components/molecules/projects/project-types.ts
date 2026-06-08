@@ -8,6 +8,10 @@ export type ProjectItem = {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
+  teacherInfo?: string;
+  duration?: string;
+  capacity?: string;
+  priceNote?: string;
   tags?: string[];
   isActive?: boolean;
   isFeatured?: boolean;

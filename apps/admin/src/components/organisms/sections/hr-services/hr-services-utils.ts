@@ -7,6 +7,13 @@ export const createHrHeading = (): ServiceCategory => ({
   title: "Шинэ гол гарчиг",
   description: "",
   icon: "Users",
+  introTitle: "",
+  introDescription: "",
+  bodyTitle: "",
+  bodyText: "",
+  images: [],
+  people: [],
+  partners: [],
   subCategories: [
     {
       id: createHrId(),
@@ -23,6 +30,7 @@ export const createHrMaterial = (): ServiceItem => ({
   description: "",
   price: 0,
   priceLabel: "",
+  imageUrl: "",
   fileUrl: "",
   fileName: "",
   hasForm: false,

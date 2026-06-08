@@ -12,6 +12,7 @@ export type SectionKey =
   | "team"
   | "mgl-services"
   | "hr-services"
+  | "study"
   | "franchise"
   | "projects";
 
@@ -21,12 +22,41 @@ export interface ServiceOption {
   price: number;
 }
 
+export interface ServicePartner {
+  id: string;
+  name: string;
+  description?: string;
+  logoUrl?: string;
+  slug?: string;
+  website?: string;
+}
+
+export interface ServiceImage {
+  id: string;
+  url: string;
+  caption?: string;
+}
+
+export interface ServicePerson {
+  id: string;
+  userId?: string;
+  name: string;
+  role?: string;
+  bio?: string;
+  detail?: string;
+  email?: string;
+  phone?: string;
+  avatarUrl?: string;
+  imageUrl?: string;
+}
+
 export interface ServiceItem {
   id: string;
   name: string;
   description?: string;
   price: number;
   priceLabel?: string;
+  imageUrl?: string;
   fileUrl?: string;
   fileName?: string;
   hasForm?: boolean;
@@ -48,6 +78,13 @@ export interface ServiceCategory {
   title: string;
   description: string;
   icon: string;
+  introTitle?: string;
+  introDescription?: string;
+  bodyTitle?: string;
+  bodyText?: string;
+  images?: ServiceImage[];
+  people?: ServicePerson[];
+  partners?: ServicePartner[];
   subCategories: ServiceSubCategory[];
 }
 
@@ -71,6 +108,10 @@ export interface ProjectItem {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
+  teacherInfo?: string;
+  duration?: string;
+  capacity?: string;
+  priceNote?: string;
   tags?: string[];
   isActive: boolean;
   isFeatured?: boolean;
@@ -92,6 +133,19 @@ export interface ProjectPaymentAccount {
   merchantCode?: string;
   bankCode?: string;
   accountNumber?: string;
+}
+
+export interface StudySectionSettings {
+  eyebrow: string;
+  title: string;
+  accentTitle: string;
+  description: string;
+  countLabel: string;
+  secondaryPillLabel: string;
+  listEyebrow: string;
+  listTitle: string;
+  emptyText: string;
+  bannerUrl: string;
 }
 
 export type CardPartner = {

@@ -18,6 +18,7 @@ import {
   MessageSquare,
   FileText,
   BarChart3,
+  GraduationCap,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
 import { MobileDashboard } from "@/components/organisms/MobileDashboard";
@@ -47,7 +48,12 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     label: "Хүсэлтүүд",
     icon: Users,
     href: "/requests",
-    requires: ["MANAGE_REGISTRATIONS", "MANAGE_JOB_APPLICATIONS", "MANAGE_STOCK", "MANAGE_SERVICES"],
+    requires: [
+      "MANAGE_REGISTRATIONS",
+      "MANAGE_JOB_APPLICATIONS",
+      "MANAGE_STOCK",
+      "MANAGE_SERVICES",
+    ],
   },
   {
     id: "hr",
@@ -104,6 +110,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     icon: Users2,
     href: "/association",
     requires: ["MANAGE_REGISTRATIONS"],
+  },
+  {
+    id: "study-registrations",
+    label: "Сургалтын бүртгэл",
+    icon: GraduationCap,
+    href: "/study-registrations",
+    requires: ["MANAGE_SITE_SETTINGS"],
   },
   {
     id: "contracts",

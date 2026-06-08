@@ -16,6 +16,7 @@ import {
   Settings,
   Package,
   FolderKanban,
+  GraduationCap,
 } from "lucide-react";
 import Image from "next/image";
 import { SearchBar } from "../../molecules/SearchBar";
@@ -32,7 +33,11 @@ import { CartDrawer } from "@/components/organisms/CartDrawer";
 import { useAuth } from "@/lib/auth-context";
 import { MobileBottomNav } from "@/components/organisms/layouts/MobileBottomNav";
 import { API, resolveApiAssetUrl } from "@/lib/api";
-import { AUTH_LOGIN_BANNER_KEY, createLoginMarketingBanner, parseLoginMarketingBanner } from "@/lib/site-banners";
+import {
+  AUTH_LOGIN_BANNER_KEY,
+  createLoginMarketingBanner,
+  parseLoginMarketingBanner,
+} from "@/lib/site-banners";
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -41,7 +46,9 @@ export const Header = () => {
   const [authOpen, setAuthOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
-  const [marketingBanner, setMarketingBanner] = useState(() => createLoginMarketingBanner());
+  const [marketingBanner, setMarketingBanner] = useState(() =>
+    createLoginMarketingBanner(),
+  );
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { user, login, register, logout } = useAuth();
@@ -49,6 +56,8 @@ export const Header = () => {
   const { categories } = useBusinessCategories();
   const router = useRouter();
   const pathname = usePathname();
+  const mobileNavLinks = NAV_LINKS;
+  const hideBrowseNav = pathname.startsWith("/study");
 
   // Desktop category scroll
   const catScrollRef = useRef<HTMLDivElement>(null);
@@ -88,9 +97,17 @@ export const Header = () => {
 
   useEffect(() => {
     fetch(`${API}/site-settings`)
-      .then((response) => (response.ok ? response.json() : ({} as Record<string, string>)))
-      .then((settings) => setMarketingBanner(parseLoginMarketingBanner(settings?.[AUTH_LOGIN_BANNER_KEY])))
-      .catch(() => setMarketingBanner(createLoginMarketingBanner()));
+      .then((response) =>
+        response.ok ? response.json() : ({} as Record<string, string>),
+      )
+      .then((settings) => {
+        setMarketingBanner(
+          parseLoginMarketingBanner(settings?.[AUTH_LOGIN_BANNER_KEY]),
+        );
+      })
+      .catch(() => {
+        setMarketingBanner(createLoginMarketingBanner());
+      });
   }, []);
 
   useEffect(() => {
@@ -334,7 +351,7 @@ export const Header = () => {
           </form>
         </div>
 
-        {categories.length > 0 && (
+        {!hideBrowseNav && categories.length > 0 && (
           <div
             className="flex gap-2 overflow-x-auto border-b border-gray-100 px-4 py-2 md:hidden"
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
@@ -352,74 +369,87 @@ export const Header = () => {
           </div>
         )}
 
-        <div className="relative hidden border-t border-gray-100 md:block">
-          <div className="container mx-auto flex h-14 items-center gap-8 px-4">
-            <div className="flex h-12 items-center gap-8">
-              <MegaMenu />
-              <PartnerMenu />
-              <HrServicesMenu />
-              <Link
-                href="/franchise"
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
-                  pathname.startsWith("/franchise")
-                    ? "bg-cyan-50 text-cyan-700"
-                    : "text-gray-600 hover:bg-cyan-50 hover:text-cyan-700"
-                }`}
-              >
-                <FolderKanban size={14} />
-                Франчайз
-              </Link>
-              <Link
-                href="/projects"
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
-                  pathname.startsWith("/projects")
-                    ? "bg-violet-50 text-violet-700"
-                    : "text-gray-600 hover:bg-violet-50 hover:text-violet-700"
-                }`}
-              >
-                <FolderKanban size={14} />
-                Төсөл
-              </Link>
-            </div>
-
-            {categories.length > 0 && (
-              <div className="relative flex-1 min-w-0">
-                {canScrollLeft && (
-                  <button
-                    onClick={() => scrollCats("left")}
-                    className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                )}
-                <div
-                  ref={catScrollRef}
-                  className="flex items-center gap-1 overflow-x-auto px-8"
-                  style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        {!hideBrowseNav && (
+          <div className="relative hidden border-t border-gray-100 md:block">
+            <div className="container mx-auto flex h-14 items-center gap-8 px-4">
+              <div className="flex h-12 items-center gap-8">
+                <MegaMenu />
+                <PartnerMenu />
+                <HrServicesMenu />
+                <Link
+                  href="/study"
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                    pathname.startsWith("/study")
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "text-gray-600 hover:bg-emerald-50 hover:text-emerald-700"
+                  }`}
                 >
-                  {categories.map((cat) => (
-                    <Link
-                      key={cat.id}
-                      href={`/products?category=${cat.id}`}
-                      className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-orange-50 hover:text-orange-600"
-                    >
-                      <CategoryIcon category={cat} size={14} />
-                      {cat.name}
-                    </Link>
-                  ))}
-                </div>
-                {canScrollRight && (
-                  <button
-                    onClick={() => scrollCats("right")}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                )}
+                  <GraduationCap size={14} />
+                  Сургалт
+                </Link>
+                <Link
+                  href="/franchise"
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                    pathname.startsWith("/franchise")
+                      ? "bg-cyan-50 text-cyan-700"
+                      : "text-gray-600 hover:bg-cyan-50 hover:text-cyan-700"
+                  }`}
+                >
+                  <FolderKanban size={14} />
+                  Франчайз
+                </Link>
+                <Link
+                  href="/projects"
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                    pathname.startsWith("/projects")
+                      ? "bg-violet-50 text-violet-700"
+                      : "text-gray-600 hover:bg-violet-50 hover:text-violet-700"
+                  }`}
+                >
+                  <FolderKanban size={14} />
+                  Төсөл
+                </Link>
               </div>
-            )}
+
+              {categories.length > 0 && (
+                <div className="relative flex-1 min-w-0">
+                  {canScrollLeft && (
+                    <button
+                      onClick={() => scrollCats("left")}
+                      className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                  )}
+                  <div
+                    ref={catScrollRef}
+                    className="flex items-center gap-1 overflow-x-auto px-8"
+                    style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                  >
+                    {categories.map((cat) => (
+                      <Link
+                        key={cat.id}
+                        href={`/products?category=${cat.id}`}
+                        className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-orange-50 hover:text-orange-600"
+                      >
+                        <CategoryIcon category={cat} size={14} />
+                        {cat.name}
+                      </Link>
+                    ))}
+                  </div>
+                  {canScrollRight && (
+                    <button
+                      onClick={() => scrollCats("right")}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div
           className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
@@ -482,7 +512,7 @@ export const Header = () => {
 
           <div className="px-5 py-3">
             <div className="grid grid-cols-3 gap-2">
-              {NAV_LINKS.map((link) => (
+              {mobileNavLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}

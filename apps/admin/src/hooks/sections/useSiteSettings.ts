@@ -8,6 +8,7 @@ import {
   ProjectPaymentAccount,
   ProjectShowcaseSection,
   ServiceCategory,
+  StudySectionSettings,
   SurveySectionSettings,
 } from "@/lib/sections/types";
 
@@ -21,6 +22,71 @@ const DEFAULT_SURVEY_SETTINGS: SurveySectionSettings = {
   formTitle: "",
   actionLabel: "Судалгаа бөглөх",
 };
+
+const DEFAULT_STUDY_SETTINGS: StudySectionSettings = {
+  eyebrow: "Training access",
+  title: "Сургалт",
+  accentTitle: "бүртгэл",
+  description:
+    "MGL Store-ийн сургалт, зөвлөмж болон хэрэгжүүлэх алхмуудтай танилцаад шууд бүртгүүлж төлбөрөө баталгаажуулна уу.",
+  countLabel: "сургалт",
+  secondaryPillLabel: "Бүртгэл + төлбөр",
+  listEyebrow: "Available trainings",
+  listTitle: "Бүртгүүлэх сургалтууд",
+  emptyText: "Одоогоор бүртгэлтэй сургалт нэмэгдээгүй байна.",
+  bannerUrl: "",
+};
+
+const DEFAULT_STUDY_PROJECTS: ProjectItem[] = [
+  {
+    id: "study-store-basics",
+    title: "MGL Store ашиглалтын үндсэн сургалт",
+    category: "Платформ",
+    summary:
+      "Дэлгүүрийн dashboard, бүтээгдэхүүн нэмэх, захиалга шалгах үндсэн алхмууд.",
+    details:
+      "Энэ сургалтаар MGL Store-ийн web болон admin орчны үндсэн урсгалыг ойлгож, бүтээгдэхүүн, захиалга, хэрэглэгчийн мэдээллийг зөв удирдах аргачлалыг үзнэ.",
+    price: 0,
+    imageUrl: "",
+    imageUrls: [],
+    pdfUrl: "",
+    tags: ["dashboard", "store", "beginner"],
+    isActive: true,
+    isFeatured: false,
+  },
+  {
+    id: "study-order-workflow",
+    title: "Захиалга боловсруулах workflow",
+    category: "Захиалга",
+    summary:
+      "Захиалга хүлээн авах, төлөв солих, хүргэлтийн мэдээлэл бэлтгэх дараалал.",
+    details:
+      "Захиалгын төлөв, хэрэглэгчтэй холбогдох мэдээлэл, хүргэлтийн бэлтгэл болон тайлан шалгах практик алхмуудыг багтаасан сургалт.",
+    price: 0,
+    imageUrl: "",
+    imageUrls: [],
+    pdfUrl: "",
+    tags: ["order", "delivery", "workflow"],
+    isActive: true,
+    isFeatured: false,
+  },
+  {
+    id: "study-marketing-content",
+    title: "Контент ба борлуулалтын материал",
+    category: "Маркетинг",
+    summary:
+      "Бүтээгдэхүүний зураг, тайлбар, promo материал бэлтгэх богино заавар.",
+    details:
+      "Борлуулалтын card, promo banner, бүтээгдэхүүний тайлбар болон хэрэглэгчид ойлгомжтой харагдах контент бэлтгэх зөвлөмжүүд.",
+    price: 0,
+    imageUrl: "",
+    imageUrls: [],
+    pdfUrl: "",
+    tags: ["content", "promo", "sales"],
+    isActive: true,
+    isFeatured: false,
+  },
+];
 
 function normalizeProjectImages(project: ProjectItem): ProjectItem {
   const imageUrls = Array.from(
@@ -86,6 +152,38 @@ function normalizeProjectShowcaseSection(
   };
 }
 
+function normalizeStudySettings(raw: unknown): StudySectionSettings {
+  const parsed = raw && typeof raw === "object" ? raw : {};
+  const record = parsed as Partial<StudySectionSettings>;
+  const clean = (value: unknown, fallback: string) => {
+    const text = String(value || "").trim();
+    if (
+      !text ||
+      /PDF материал|материалууд|материал$|All training materials|Бүх сургалтын материал|Admin-аас удирдана/i.test(
+        text,
+      )
+    ) {
+      return fallback;
+    }
+    return text;
+  };
+  return {
+    eyebrow: clean(record.eyebrow, DEFAULT_STUDY_SETTINGS.eyebrow),
+    title: clean(record.title, DEFAULT_STUDY_SETTINGS.title),
+    accentTitle: clean(record.accentTitle, DEFAULT_STUDY_SETTINGS.accentTitle),
+    description: clean(record.description, DEFAULT_STUDY_SETTINGS.description),
+    countLabel: clean(record.countLabel, DEFAULT_STUDY_SETTINGS.countLabel),
+    secondaryPillLabel: clean(
+      record.secondaryPillLabel,
+      DEFAULT_STUDY_SETTINGS.secondaryPillLabel,
+    ),
+    listEyebrow: clean(record.listEyebrow, DEFAULT_STUDY_SETTINGS.listEyebrow),
+    listTitle: clean(record.listTitle, DEFAULT_STUDY_SETTINGS.listTitle),
+    emptyText: clean(record.emptyText, DEFAULT_STUDY_SETTINGS.emptyText),
+    bannerUrl: String(record.bannerUrl || ""),
+  };
+}
+
 export function useSiteSettings() {
   const [banners, setBanners] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -104,6 +202,12 @@ export function useSiteSettings() {
   const franchiseProjectsRef = useRef<ProjectItem[]>([]);
   const [projects, setProjectsRaw] = useState<ProjectItem[]>([]);
   const projectsRef = useRef<ProjectItem[]>([]);
+  const [studyProjects, setStudyProjectsRaw] = useState<ProjectItem[]>([]);
+  const studyProjectsRef = useRef<ProjectItem[]>([]);
+  const [studySettings, setStudySettingsRaw] = useState<StudySectionSettings>(
+    DEFAULT_STUDY_SETTINGS,
+  );
+  const studySettingsRef = useRef<StudySectionSettings>(DEFAULT_STUDY_SETTINGS);
   const [projectShowcaseSections, setProjectShowcaseSectionsRaw] = useState<
     ProjectShowcaseSection[]
   >([]);
@@ -154,6 +258,28 @@ export function useSiteSettings() {
     setProjectsRaw((prev) => {
       const next = typeof update === "function" ? update(prev) : update;
       projectsRef.current = next;
+      return next;
+    });
+  };
+
+  const setStudyProjects = (
+    update: ProjectItem[] | ((prev: ProjectItem[]) => ProjectItem[]),
+  ) => {
+    setStudyProjectsRaw((prev) => {
+      const next = typeof update === "function" ? update(prev) : update;
+      studyProjectsRef.current = next;
+      return next;
+    });
+  };
+
+  const setStudySettings = (
+    update:
+      | StudySectionSettings
+      | ((prev: StudySectionSettings) => StudySectionSettings),
+  ) => {
+    setStudySettingsRaw((prev) => {
+      const next = typeof update === "function" ? update(prev) : update;
+      studySettingsRef.current = next;
       return next;
     });
   };
@@ -258,6 +384,32 @@ export function useSiteSettings() {
               setFranchiseProjectsRaw(normalized);
               franchiseProjectsRef.current = normalized;
             }
+          } catch {}
+        }
+
+        if (data["site-study"]) {
+          try {
+            const parsed = JSON.parse(data["site-study"]);
+            if (Array.isArray(parsed)) {
+              const normalized = (
+                parsed.length > 0 ? parsed : DEFAULT_STUDY_PROJECTS
+              ).map(normalizeProjectImages);
+              setStudyProjectsRaw(normalized);
+              studyProjectsRef.current = normalized;
+            }
+          } catch {}
+        } else {
+          const normalized = DEFAULT_STUDY_PROJECTS.map(normalizeProjectImages);
+          setStudyProjectsRaw(normalized);
+          studyProjectsRef.current = normalized;
+        }
+
+        if (data["site-study-settings"]) {
+          try {
+            const parsed = JSON.parse(data["site-study-settings"]);
+            const normalized = normalizeStudySettings(parsed);
+            setStudySettingsRaw(normalized);
+            studySettingsRef.current = normalized;
           } catch {}
         }
 
@@ -400,7 +552,7 @@ export function useSiteSettings() {
   };
 
   const saveProjectList = async (
-    key: "paid-projects" | "site-projects",
+    key: "paid-projects" | "site-projects" | "site-study",
     currentProjects: ProjectItem[] | undefined,
     fallbackRef: { current: ProjectItem[] },
     errorMessage: string,
@@ -437,6 +589,58 @@ export function useSiteSettings() {
       franchiseProjectsRef,
       "Franchise хадгалахад алдаа гарлаа",
     );
+
+  const saveStudyProjects = async (currentProjects?: ProjectItem[]) =>
+    saveProjectList(
+      "site-study",
+      currentProjects,
+      studyProjectsRef,
+      "Сургалтын материал хадгалахад алдаа гарлаа",
+    );
+
+  const saveStudyPage = async (
+    currentProjects?: ProjectItem[],
+    currentSettings?: StudySectionSettings,
+  ) => {
+    const projectsToSave = (currentProjects ?? studyProjectsRef.current).map(
+      normalizeProjectImages,
+    );
+    const settingsToSave = normalizeStudySettings(
+      currentSettings ?? studySettingsRef.current,
+    );
+
+    setSaving(true);
+    try {
+      const res = await adminFetch(`${API}/site-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          "site-study": JSON.stringify(projectsToSave),
+          "site-study-settings": JSON.stringify(settingsToSave),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          data.message || "Сургалтын page хадгалахад алдаа гарлаа",
+        );
+      }
+      studyProjectsRef.current = projectsToSave;
+      studySettingsRef.current = settingsToSave;
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+      return true;
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Сургалтын page хадгалахад алдаа гарлаа",
+      );
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const saveProjects = async (
     currentProjects?: ProjectItem[],
@@ -514,6 +718,10 @@ export function useSiteSettings() {
     setFranchiseProjects,
     projects,
     setProjects,
+    studyProjects,
+    setStudyProjects,
+    studySettings,
+    setStudySettings,
     projectShowcaseSections,
     setProjectShowcaseSections,
     projectPaymentAccounts,
@@ -527,6 +735,8 @@ export function useSiteSettings() {
     saveHrServices,
     saveSurveySettings,
     saveFranchiseProjects,
+    saveStudyProjects,
+    saveStudyPage,
     saveProjects,
     toggleBranchMapOnWeb,
   };

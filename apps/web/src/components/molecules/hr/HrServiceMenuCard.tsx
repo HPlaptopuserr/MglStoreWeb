@@ -3,11 +3,20 @@
 import Link from "next/link";
 import { ArrowRight, ClipboardCheck } from "lucide-react";
 
+export type HrMenuPartner = {
+  id: string;
+  name: string;
+  description?: string;
+  logoUrl?: string;
+  website?: string;
+};
+
 export type HrMenuService = {
   id: string;
   title: string;
   description: string;
   priceLabel: string;
+  imageUrl?: string;
   href: string;
   fileUrl?: string;
   fileName?: string;
@@ -15,22 +24,38 @@ export type HrMenuService = {
   formSlug?: string;
   formTitle?: string;
   details: string[];
+  partners: HrMenuPartner[];
 };
 
 type HrServiceMenuCardProps = {
   service: HrMenuService;
   onOpen: (service: HrMenuService) => void;
+  groupHref?: string;
 };
 
-export function HrServiceMenuCard({ service, onOpen }: HrServiceMenuCardProps) {
+export function HrServiceMenuCard({
+  service,
+  onOpen,
+  groupHref,
+}: HrServiceMenuCardProps) {
   const formHref =
     service.hasForm && service.formSlug ? `/forms/${service.formSlug}` : "";
   const content = (
     <>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-emerald-600">
-          <ClipboardCheck className="h-4 w-4" />
-        </span>
+      <div className="mb-4 overflow-hidden rounded-xl bg-slate-100">
+        {service.imageUrl ? (
+          <img
+            src={service.imageUrl}
+            alt={service.title}
+            className="h-28 w-full object-cover transition duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex h-28 items-center justify-center text-slate-500">
+            <ClipboardCheck className="h-7 w-7" />
+          </div>
+        )}
+      </div>
+      <div className="mb-3 flex items-start justify-end gap-3">
         <div className="flex flex-wrap justify-end gap-1.5">
           {service.hasForm && (
             <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-black text-violet-700">
@@ -59,7 +84,18 @@ export function HrServiceMenuCard({ service, onOpen }: HrServiceMenuCardProps) {
     return (
       <Link
         href={formHref}
-        className="group flex min-h-[170px] flex-col rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-lg hover:shadow-emerald-100/70"
+        className="group flex min-h-[250px] flex-col rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-lg hover:shadow-emerald-100/70"
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  if (groupHref) {
+    return (
+      <Link
+        href={groupHref}
+        className="group flex min-h-[250px] flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-emerald-50/50 hover:shadow-lg hover:shadow-emerald-100/60"
       >
         {content}
       </Link>
@@ -70,7 +106,7 @@ export function HrServiceMenuCard({ service, onOpen }: HrServiceMenuCardProps) {
     <button
       type="button"
       onClick={() => onOpen(service)}
-      className="group flex min-h-[170px] flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-emerald-50/50 hover:shadow-lg hover:shadow-emerald-100/60"
+      className="group flex min-h-[250px] flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-emerald-50/50 hover:shadow-lg hover:shadow-emerald-100/60"
     >
       {content}
     </button>

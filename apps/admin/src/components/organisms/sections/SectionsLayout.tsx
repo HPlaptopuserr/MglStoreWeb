@@ -92,7 +92,13 @@ const SECTION_COPY: Record<
     eyebrow: "People services",
     title: "HR үйлчилгээ",
     description:
-      "Web header дээр гарах хүний нөөцийн үйлчилгээний бүлэг, багц, үнэ болон сонголтуудыг удирдана.",
+      "Web header дээр гарах хүний нөөцийн үйлчилгээний бүлэг, материал, үнэ болон маягтын холбоосуудыг удирдана.",
+  },
+  study: {
+    eyebrow: "Training",
+    title: "Сургалт",
+    description:
+      "Header-ийн Сургалт button-оор нээгдэх /study page-ийн сургалт, зураг, бүртгэл болон төлбөрийн тохиргоог удирдана.",
   },
   franchise: {
     eyebrow: "Franchise",
@@ -122,7 +128,8 @@ export function SectionsLayout({
     (section) => section.key === active,
   );
   const ActiveIcon = activeSection?.icon ?? Sparkles;
-  const showSave = active === "banner" || active === "categories";
+  const showSave =
+    active === "banner" || active === "categories" || active === "study";
 
   return (
     <div className="relative -m-4 min-h-[calc(100vh-5rem)] bg-[#f6f7fb] p-4 sm:-m-6 sm:p-6">
