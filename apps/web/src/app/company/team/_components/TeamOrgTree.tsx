@@ -21,6 +21,7 @@ import {
   TeamOrgLayoutSettings,
   TEAM_ORG_DISCONNECTED_COMPANY_ID,
 } from "./team-types";
+import { resolveApiAssetUrl } from "@/lib/api";
 
 const DEPARTMENT_LABELS: Record<string, string> = {
   "Захиргаа удирдлагын хэлтэс": "Administration",
@@ -92,7 +93,7 @@ function EmployeeList({
             <div className="h-7 w-7 shrink-0 overflow-hidden rounded-full border border-white bg-white shadow-sm">
               {member.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={member.avatarUrl} alt={member.name} className="h-full w-full object-cover" />
+                <img src={resolveApiAssetUrl(member.avatarUrl)} alt={member.name} className="h-full w-full object-cover" />
               ) : (
                 <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${gradient}`}>
                   <span className="text-[10px] font-black text-white">
@@ -223,7 +224,7 @@ function MobileDepartmentCard({
                     {member.avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={member.avatarUrl}
+                        src={resolveApiAssetUrl(member.avatarUrl)}
                         alt={member.name}
                         className="h-full w-full object-cover"
                       />
@@ -363,7 +364,7 @@ function MemberProfileModal({
             <div className="h-[120px] w-[120px] overflow-hidden rounded-[28px] border-4 border-white bg-white shadow-2xl shadow-slate-950/20">
               {member.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={member.avatarUrl} alt={member.name} className="h-full w-full object-cover" />
+                <img src={resolveApiAssetUrl(member.avatarUrl)} alt={member.name} className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500">
                   <span className="text-5xl font-black text-white">

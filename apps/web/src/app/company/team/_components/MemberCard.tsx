@@ -7,6 +7,7 @@ import {
   Linkedin,
   Mail,
 } from "lucide-react";
+import { resolveApiAssetUrl } from "@/lib/api";
 import { CARD_GRADIENTS, TeamMember } from "./team-types";
 
 function MemberAvatar({
@@ -22,7 +23,7 @@ function MemberAvatar({
       <div className="relative h-20 w-20 overflow-hidden rounded-2xl border-4 border-white bg-white shadow-2xl shadow-slate-950/20">
         {member.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={member.avatarUrl} alt={member.name} className="h-full w-full object-cover" />
+          <img src={resolveApiAssetUrl(member.avatarUrl)} alt={member.name} className="h-full w-full object-cover" />
         ) : (
           <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${gradient}`}>
             <span className="text-3xl font-black text-white">

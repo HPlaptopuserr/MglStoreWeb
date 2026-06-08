@@ -1250,12 +1250,17 @@ router.get("/vendor/dashboard/stats", requireAuth, requireOrgPermission({ from: 
 /* ─── GET /admin/users ─── list all system users ─────── */
 router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MANAGE_USERS), async (req, res) => {
   try {
-    const { role, search, isActive } = req.query;
+    const { role, search, isActive, isPrime } = req.query;
+    const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
+    const requestedLimit = Number.parseInt(String(req.query.limit || "15"), 10) || 15;
+    const limit = Math.min(100, Math.max(1, requestedLimit));
+    const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = { deletedAt: null };
     if (role && typeof role === "string") where.role = role;
     if (isActive === "true") where.isActive = true;
     if (isActive === "false") where.isActive = false;
+    if (isPrime === "true") where.isPrime = true;
     if (search && typeof search === "string") {
       const q = search.trim();
       where.OR = [
@@ -1265,38 +1270,51 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
       ];
     }
 
-    const users = await prisma.user.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        isPrime: true,
-        isActive: true,
-        emailVerified: true,
-        lastLoginAt: true,
-        createdAt: true,
-        profile: {
-          select: {
-            fullName: true,
-            phoneNumber: true,
-            avatarUrl: true,
+    const [users, total, totalUsers, activeCount, primeCount, roleCounts] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          isPrime: true,
+          isActive: true,
+          emailVerified: true,
+          lastLoginAt: true,
+          createdAt: true,
+          profile: {
+            select: {
+              fullName: true,
+              phoneNumber: true,
+              avatarUrl: true,
+            },
           },
-        },
-        organizationMemberships: {
-          where: { isActive: true },
-          select: {
-            role: true,
-            isActive: true,
-            isPrimary: true,
-            organization: {
-              select: { id: true, name: true },
+          organizationMemberships: {
+            where: { isActive: true },
+            select: {
+              role: true,
+              isActive: true,
+              isPrimary: true,
+              organization: {
+                select: { id: true, name: true },
+              },
             },
           },
         },
-      },
-    });
+      }),
+      prisma.user.count({ where }),
+      prisma.user.count({ where: { deletedAt: null } }),
+      prisma.user.count({ where: { deletedAt: null, isActive: true } }),
+      prisma.user.count({ where: { deletedAt: null, isPrime: true } }),
+      prisma.user.groupBy({
+        by: ["role"],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+    ]);
 
     const result = users.map((u: (typeof users)[number]) => {
       const primary = u.organizationMemberships.find((m: (typeof u.organizationMemberships)[number]) => m.isPrimary) || u.organizationMemberships[0] || null;
@@ -1324,7 +1342,24 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
       };
     });
 
-    return res.json(result);
+    return res.json({
+      items: result,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      summary: {
+        totalUsers,
+        activeUsers: activeCount,
+        primeUsers: primeCount,
+        roles: Object.fromEntries(
+          roleCounts.map((item: (typeof roleCounts)[number]) => [
+            item.role,
+            item._count._all,
+          ]),
+        ),
+      },
+    });
   } catch (error) {
     console.error("[admin users list error]", error);
     return res.status(500).json({ message: "Хэрэглэгчдийн жагсаалт ачаалахад алдаа гарлаа" });

@@ -9,6 +9,7 @@ import {
   User,
 } from "lucide-react";
 import type { FormEvent } from "react";
+import { resolveApiAssetUrl } from "@/lib/api";
 import type { ProfileFormState } from "./types";
 
 type ProfileInfoPanelProps = {
@@ -57,7 +58,7 @@ export function ProfileInfoPanel({
           <div className="mx-auto h-32 w-32 overflow-hidden rounded-3xl bg-slate-950 text-white shadow-sm">
             {form.avatarUrl ? (
               <img
-                src={form.avatarUrl}
+                src={resolveApiAssetUrl(form.avatarUrl)}
                 alt="Profile зураг"
                 className="h-full w-full object-cover"
               />

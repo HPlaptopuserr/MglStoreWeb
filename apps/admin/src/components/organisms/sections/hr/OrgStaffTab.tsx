@@ -85,16 +85,26 @@ export function OrgStaffTab() {
   const loadSystemUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
-      const res = await adminFetch(`${API}/admin/users`);
+      const params = new URLSearchParams({ page: "1", limit: "100" });
+      if (userSearch.trim()) params.set("search", userSearch.trim());
+      const res = await adminFetch(`${API}/admin/users?${params.toString()}`);
       if (!res.ok) return;
       const data = await res.json();
-      setAllUsers(Array.isArray(data) ? data : []);
+      setAllUsers(Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []);
     } catch {
       /* ignore */
     } finally {
       setLoadingUsers(false);
     }
-  }, []);
+  }, [userSearch]);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    const handle = window.setTimeout(() => {
+      loadSystemUsers();
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [formOpen, loadSystemUsers]);
 
   /* filtered user list (exclude already-assigned members) */
   const filteredUsers = useMemo(() => {

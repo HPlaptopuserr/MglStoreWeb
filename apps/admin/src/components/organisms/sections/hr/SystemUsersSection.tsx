@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Users,
   Search,
@@ -48,6 +48,22 @@ type SystemUser = {
   createdAt: string;
 };
 
+type UsersSummary = {
+  totalUsers: number;
+  activeUsers: number;
+  primeUsers: number;
+  roles: Record<string, number>;
+};
+
+type UsersResponse = {
+  items: SystemUser[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  summary: UsersSummary;
+};
+
 /* ─── constants ────────────────────────────────────────────────────── */
 const SYSTEM_ROLE_META: Record<string, { label: string; color: string; bg: string; icon: React.ElementType }> = {
   SUPER_ADMIN: { label: "Ерөнхий админ", color: "text-violet-700", bg: "bg-violet-50 border-violet-200", icon: ShieldCheck },
@@ -92,10 +108,19 @@ function timeAgo(dateStr: string | null) {
 /* ─── component ────────────────────────────────────────────────────── */
 export function SystemUsersSection() {
   const [users, setUsers] = useState<SystemUser[]>([]);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [summary, setSummary] = useState<UsersSummary>({
+    totalUsers: 0,
+    activeUsers: 0,
+    primeUsers: 0,
+    roles: {},
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "active" | "inactive">("");
   const [primeFilter, setPrimeFilter] = useState<"" | "prime">("");
@@ -106,70 +131,89 @@ export function SystemUsersSection() {
     setLoading(true);
     setError("");
     try {
-      const res = await adminFetch(`${API}/admin/users`);
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(ITEMS_PER_PAGE),
+      });
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+      if (roleFilter) params.set("role", roleFilter);
+      if (statusFilter === "active") params.set("isActive", "true");
+      if (statusFilter === "inactive") params.set("isActive", "false");
+      if (primeFilter === "prime") params.set("isPrime", "true");
+
+      const res = await adminFetch(`${API}/admin/users?${params.toString()}`);
       if (!res.ok) throw new Error("Хэрэглэгчдийн мэдээлэл ачаалахад алдаа гарлаа");
       const data = await res.json();
-      setUsers(Array.isArray(data) ? data : []);
+      if (Array.isArray(data)) {
+        setUsers(data);
+        setTotalUsers(data.length);
+        setTotalPages(Math.max(1, Math.ceil(data.length / ITEMS_PER_PAGE)));
+        const roles: Record<string, number> = {};
+        for (const user of data) roles[user.role] = (roles[user.role] ?? 0) + 1;
+        setSummary({
+          totalUsers: data.length,
+          activeUsers: data.filter((user) => user.isActive).length,
+          primeUsers: data.filter((user) => user.isPrime).length,
+          roles,
+        });
+        return;
+      }
+
+      const payload = data as UsersResponse;
+      setUsers(Array.isArray(payload.items) ? payload.items : []);
+      setTotalUsers(Number(payload.total || 0));
+      setTotalPages(Math.max(1, Number(payload.totalPages || 1)));
+      setSummary(
+        payload.summary || {
+          totalUsers: 0,
+          activeUsers: 0,
+          primeUsers: 0,
+          roles: {},
+        },
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Алдаа гарлаа");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [debouncedSearch, page, primeFilter, roleFilter, statusFilter]);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  /* filtered + paginated */
-  const filtered = useMemo(() => {
-    let list = users;
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      list = list.filter(
-        (u) =>
-          u.email.toLowerCase().includes(q) ||
-          u.fullName.toLowerCase().includes(q) ||
-          (u.phone?.includes(q) ?? false),
-      );
-    }
-    if (roleFilter) list = list.filter((u) => u.role === roleFilter);
-    if (statusFilter === "active") list = list.filter((u) => u.isActive);
-    if (statusFilter === "inactive") list = list.filter((u) => !u.isActive);
-    if (primeFilter === "prime") list = list.filter((u) => u.isPrime);
-    return list;
-  }, [users, search, roleFilter, statusFilter, primeFilter]);
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [search]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
-  const paged = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   /* role summary */
-  const roleSummary = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const u of users) counts[u.role] = (counts[u.role] ?? 0) + 1;
-    return counts;
-  }, [users]);
+  const roleSummary = summary.roles;
 
-  const activeCount = useMemo(() => users.filter((u) => u.isActive).length, [users]);
-  const primeCount = useMemo(() => users.filter((u) => u.isPrime).length, [users]);
-
-  useEffect(() => { setPage(1); }, [search, roleFilter, statusFilter, primeFilter]);
+  const activeCount = summary.activeUsers;
+  const primeCount = summary.primeUsers;
 
   const hasActiveFilters = Boolean(search || roleFilter || statusFilter || primeFilter);
 
   const applySummaryFilter = (filter: "all" | "active" | "prime" | `role:${string}`) => {
     if (filter === "all") {
+      setPage(1);
       setRoleFilter("");
       setStatusFilter("");
       setPrimeFilter("");
       return;
     }
     if (filter === "active") {
+      setPage(1);
       setRoleFilter("");
       setPrimeFilter("");
       setStatusFilter((current) => (current === "active" ? "" : "active"));
       return;
     }
     if (filter === "prime") {
+      setPage(1);
       setRoleFilter("");
       setStatusFilter("");
       setPrimeFilter((current) => (current === "prime" ? "" : "prime"));
@@ -177,6 +221,7 @@ export function SystemUsersSection() {
     }
     setStatusFilter("");
     setPrimeFilter("");
+    setPage(1);
     setRoleFilter((current) => {
       const role = filter.replace("role:", "");
       return current === role ? "" : role;
@@ -370,7 +415,7 @@ export function SystemUsersSection() {
               <Users className="h-4 w-4 text-slate-500" />
             </div>
             <div>
-              <p className="text-xl font-bold text-slate-900">{users.length}</p>
+              <p className="text-xl font-bold text-slate-900">{summary.totalUsers}</p>
               <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Нийт</p>
             </div>
           </div>
@@ -448,7 +493,10 @@ export function SystemUsersSection() {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setSearch(e.target.value);
+            }}
             placeholder="Нэр, имэйл, утас хайх..."
             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-shadow"
           />
@@ -460,6 +508,7 @@ export function SystemUsersSection() {
           <select
             value={roleFilter}
             onChange={(e) => {
+              setPage(1);
               setRoleFilter(e.target.value);
               setPrimeFilter("");
             }}
@@ -478,6 +527,7 @@ export function SystemUsersSection() {
           <select
             value={statusFilter}
             onChange={(e) => {
+              setPage(1);
               setStatusFilter(e.target.value as typeof statusFilter);
               setPrimeFilter("");
             }}
@@ -493,7 +543,7 @@ export function SystemUsersSection() {
         {/* results count */}
         <div className="ml-auto flex items-center gap-2">
           <p className="text-xs font-medium text-slate-400">
-            {filtered.length} хэрэглэгч {hasActiveFilters ? "(шүүсэн)" : ""}
+            {totalUsers} хэрэглэгч {hasActiveFilters ? "(шүүсэн)" : ""}
           </p>
           {hasActiveFilters && (
             <button
@@ -503,6 +553,7 @@ export function SystemUsersSection() {
                 setRoleFilter("");
                 setStatusFilter("");
                 setPrimeFilter("");
+                setPage(1);
               }}
               className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
             >
@@ -529,7 +580,7 @@ export function SystemUsersSection() {
             Дахин оролдох
           </button>
         </div>
-      ) : paged.length === 0 ? (
+      ) : users.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
           <Users className="mx-auto mb-3 h-10 w-10 text-slate-300" />
           <p className="text-sm font-medium text-slate-500">
@@ -540,7 +591,7 @@ export function SystemUsersSection() {
         <>
           {/* user cards grid */}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {paged.map((u) => (
+            {users.map((u) => (
               <UserCard key={u.id} user={u} onRoleChanged={loadUsers} />
             ))}
           </div>

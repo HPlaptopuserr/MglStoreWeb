@@ -31,7 +31,7 @@ import { useCart } from "@/hooks/useCart";
 import { CartDrawer } from "@/components/organisms/CartDrawer";
 import { useAuth } from "@/lib/auth-context";
 import { MobileBottomNav } from "@/components/organisms/layouts/MobileBottomNav";
-import { API } from "@/lib/api";
+import { API, resolveApiAssetUrl } from "@/lib/api";
 import { AUTH_LOGIN_BANNER_KEY, createLoginMarketingBanner, parseLoginMarketingBanner } from "@/lib/site-banners";
 
 export const Header = () => {
@@ -297,7 +297,7 @@ export const Header = () => {
               >
                 {user?.avatarUrl ? (
                   <img
-                    src={user.avatarUrl}
+                    src={resolveApiAssetUrl(user.avatarUrl)}
                     alt={user.fullName || "Profile"}
                     className="h-full w-full rounded-xl object-cover"
                   />

@@ -12,3 +12,14 @@ export const API_BASE =
     : directApiBase;
 
 export const API = `${API_BASE}/api`;
+
+export function resolveApiAssetUrl(url?: string | null) {
+  if (!url) return "";
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+
+  const normalized = url.startsWith("/") ? url : `/${url}`;
+  if (normalized.startsWith("/api/")) {
+    return `${API_BASE}${normalized.slice(4)}`;
+  }
+  return `${API_BASE}${normalized}`;
+}

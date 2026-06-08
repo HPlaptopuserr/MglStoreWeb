@@ -1,5 +1,6 @@
 import { Coins, Crown, FileText, LogOut, PackageCheck, ShieldCheck } from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
+import { resolveApiAssetUrl } from "@/lib/api";
 import type { AccountPurchase, ProfileOrder } from "./types";
 
 type ProfileHeroProps = {
@@ -51,7 +52,7 @@ export function ProfileHero({
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center">
             {user.avatarUrl ? (
               <img
-                src={user.avatarUrl}
+                src={resolveApiAssetUrl(user.avatarUrl)}
                 alt={displayName}
                 className="h-20 w-20 shrink-0 rounded-2xl border border-white/15 object-cover shadow-xl"
               />
