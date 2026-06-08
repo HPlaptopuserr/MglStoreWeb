@@ -98,6 +98,7 @@ export function SystemUsersSection() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "active" | "inactive">("");
+  const [primeFilter, setPrimeFilter] = useState<"" | "prime">("");
   const [page, setPage] = useState(1);
 
   /* fetch users */
@@ -133,8 +134,9 @@ export function SystemUsersSection() {
     if (roleFilter) list = list.filter((u) => u.role === roleFilter);
     if (statusFilter === "active") list = list.filter((u) => u.isActive);
     if (statusFilter === "inactive") list = list.filter((u) => !u.isActive);
+    if (primeFilter === "prime") list = list.filter((u) => u.isPrime);
     return list;
-  }, [users, search, roleFilter, statusFilter]);
+  }, [users, search, roleFilter, statusFilter, primeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
@@ -150,7 +152,36 @@ export function SystemUsersSection() {
   const activeCount = useMemo(() => users.filter((u) => u.isActive).length, [users]);
   const primeCount = useMemo(() => users.filter((u) => u.isPrime).length, [users]);
 
-  useEffect(() => { setPage(1); }, [search, roleFilter, statusFilter]);
+  useEffect(() => { setPage(1); }, [search, roleFilter, statusFilter, primeFilter]);
+
+  const hasActiveFilters = Boolean(search || roleFilter || statusFilter || primeFilter);
+
+  const applySummaryFilter = (filter: "all" | "active" | "prime" | `role:${string}`) => {
+    if (filter === "all") {
+      setRoleFilter("");
+      setStatusFilter("");
+      setPrimeFilter("");
+      return;
+    }
+    if (filter === "active") {
+      setRoleFilter("");
+      setPrimeFilter("");
+      setStatusFilter((current) => (current === "active" ? "" : "active"));
+      return;
+    }
+    if (filter === "prime") {
+      setRoleFilter("");
+      setStatusFilter("");
+      setPrimeFilter((current) => (current === "prime" ? "" : "prime"));
+      return;
+    }
+    setStatusFilter("");
+    setPrimeFilter("");
+    setRoleFilter((current) => {
+      const role = filter.replace("role:", "");
+      return current === role ? "" : role;
+    });
+  };
 
   /* ─── create admin user ──────────────────────────────────────────── */
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -325,7 +356,15 @@ export function SystemUsersSection() {
       {/* summary cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {/* total */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <button
+          type="button"
+          onClick={() => applySummaryFilter("all")}
+          className={`rounded-2xl border bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+            !roleFilter && !statusFilter && !primeFilter
+              ? "border-slate-300 ring-2 ring-slate-100"
+              : "border-slate-200"
+          }`}
+        >
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
               <Users className="h-4 w-4 text-slate-500" />
@@ -335,8 +374,16 @@ export function SystemUsersSection() {
               <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Нийт</p>
             </div>
           </div>
-        </div>
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        </button>
+        <button
+          type="button"
+          onClick={() => applySummaryFilter("active")}
+          className={`rounded-2xl border bg-emerald-50 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+            statusFilter === "active"
+              ? "border-emerald-300 ring-2 ring-emerald-100"
+              : "border-emerald-200"
+          }`}
+        >
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -346,8 +393,16 @@ export function SystemUsersSection() {
               <p className="text-[10px] font-medium uppercase tracking-wider text-emerald-500">Идэвхтэй</p>
             </div>
           </div>
-        </div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        </button>
+        <button
+          type="button"
+          onClick={() => applySummaryFilter("prime")}
+          className={`rounded-2xl border bg-amber-50 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+            primeFilter === "prime"
+              ? "border-amber-300 ring-2 ring-amber-100"
+              : "border-amber-200"
+          }`}
+        >
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100">
               <Crown className="h-4 w-4 text-amber-600" />
@@ -357,13 +412,20 @@ export function SystemUsersSection() {
               <p className="text-[10px] font-medium uppercase tracking-wider text-amber-500">Prime</p>
             </div>
           </div>
-        </div>
+        </button>
         {Object.entries(SYSTEM_ROLE_META).map(([key, meta]) => {
           const count = roleSummary[key] ?? 0;
           if (!count) return null;
           const Icon = meta.icon;
           return (
-            <div key={key} className={`rounded-2xl border p-4 ${meta.bg}`}>
+            <button
+              key={key}
+              type="button"
+              onClick={() => applySummaryFilter(`role:${key}`)}
+              className={`rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${meta.bg} ${
+                roleFilter === key ? "ring-2 ring-violet-100" : ""
+              }`}
+            >
               <div className="flex items-center gap-2">
                 <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-white/60`}>
                   <Icon className={`h-4 w-4 ${meta.color}`} />
@@ -373,7 +435,7 @@ export function SystemUsersSection() {
                   <p className="text-[10px] font-medium uppercase tracking-wider opacity-60">{meta.label}</p>
                 </div>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -397,7 +459,10 @@ export function SystemUsersSection() {
           <Filter className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <select
             value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
+            onChange={(e) => {
+              setRoleFilter(e.target.value);
+              setPrimeFilter("");
+            }}
             className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-shadow"
           >
             <option value="">Бүх төрөл</option>
@@ -412,7 +477,10 @@ export function SystemUsersSection() {
         <div className="relative">
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as typeof statusFilter);
+              setPrimeFilter("");
+            }}
             className="appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 transition-shadow"
           >
             <option value="">Бүх статус</option>
@@ -423,9 +491,25 @@ export function SystemUsersSection() {
         </div>
 
         {/* results count */}
-        <p className="text-xs font-medium text-slate-400 ml-auto">
-          {filtered.length} хэрэглэгч {search || roleFilter || statusFilter ? "(шүүсэн)" : ""}
-        </p>
+        <div className="ml-auto flex items-center gap-2">
+          <p className="text-xs font-medium text-slate-400">
+            {filtered.length} хэрэглэгч {hasActiveFilters ? "(шүүсэн)" : ""}
+          </p>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setRoleFilter("");
+                setStatusFilter("");
+                setPrimeFilter("");
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+            >
+              Цэвэрлэх
+            </button>
+          )}
+        </div>
       </div>
 
       {/* content */}
@@ -449,7 +533,7 @@ export function SystemUsersSection() {
         <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
           <Users className="mx-auto mb-3 h-10 w-10 text-slate-300" />
           <p className="text-sm font-medium text-slate-500">
-            {search || roleFilter || statusFilter ? "Хайлтад тохирох хэрэглэгч олдсонгүй" : "Хэрэглэгч бүртгэгдээгүй"}
+            {hasActiveFilters ? "Хайлтад тохирох хэрэглэгч олдсонгүй" : "Хэрэглэгч бүртгэгдээгүй"}
           </p>
         </div>
       ) : (
