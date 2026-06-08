@@ -1488,30 +1488,40 @@ router.post(
           });
       }
 
-      const parsedLat =
-        lat === undefined || lat === null || lat === "" ? null : Number(lat);
-      const parsedLng =
-        lng === undefined || lng === null || lng === "" ? null : Number(lng);
+      const hasLatInput =
+        lat !== undefined && lat !== null && String(lat).trim() !== "";
+      const hasLngInput =
+        lng !== undefined && lng !== null && String(lng).trim() !== "";
+      const parsedLat = hasLatInput ? Number(lat) : null;
+      const parsedLng = hasLngInput ? Number(lng) : null;
 
-      if (
-        parsedLat === null ||
-        parsedLng === null ||
-        !Number.isFinite(parsedLat) ||
-        !Number.isFinite(parsedLng)
-      ) {
+      if (hasLatInput !== hasLngInput) {
         return res
           .status(400)
-          .json({ message: "Өргөрөг/уртраг зөв тоо байх ёстой" });
+          .json({ message: "Өргөрөг/уртраг хоёуланг нь оруулна уу" });
       }
-      if (
-        parsedLat < -90 ||
-        parsedLat > 90 ||
-        parsedLng < -180 ||
-        parsedLng > 180
-      ) {
-        return res
-          .status(400)
-          .json({ message: "Өргөрөг/уртрагийн range буруу байна" });
+
+      if (hasLatInput && hasLngInput) {
+        if (
+          parsedLat === null ||
+          parsedLng === null ||
+          !Number.isFinite(parsedLat) ||
+          !Number.isFinite(parsedLng)
+        ) {
+          return res
+            .status(400)
+            .json({ message: "Өргөрөг/уртраг зөв тоо байх ёстой" });
+        }
+        if (
+          parsedLat < -90 ||
+          parsedLat > 90 ||
+          parsedLng < -180 ||
+          parsedLng > 180
+        ) {
+          return res
+            .status(400)
+            .json({ message: "Өргөрөг/уртрагийн range буруу байна" });
+        }
       }
 
       const duplicate = await prisma.branch.findFirst({
@@ -1553,12 +1563,16 @@ router.post(
         },
       });
 
+      const hasCoordinates = created.lat !== null && created.lng !== null;
+
       res.status(201).json({
         ...created,
         latitude: created.lat,
         longitude: created.lng,
-        hasCoordinates: true,
-        mapsUrl: `https://maps.google.com/?q=${created.lat},${created.lng}`,
+        hasCoordinates,
+        mapsUrl: hasCoordinates
+          ? `https://maps.google.com/?q=${created.lat},${created.lng}`
+          : null,
         organization: {
           id: organization.id,
           name: organization.name,
