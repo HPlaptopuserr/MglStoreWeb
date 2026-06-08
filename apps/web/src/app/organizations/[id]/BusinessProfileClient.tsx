@@ -460,7 +460,11 @@ function ProductsSection({ products }: { products: ProductItem[] }) {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {filtered.map((product) => {
-            const available = typeof product.stock === "number" ? product.stock > 0 : true;
+            const isPreorder = product.supplyType === "CHINA_PREORDER";
+            const available = isPreorder || (typeof product.stock === "number" ? product.stock > 0 : true);
+            const preorderLabel = product.preorderLeadTimeDays
+              ? `${product.preorderLeadTimeDays} хоног`
+              : "Захиалгаар";
             return (
               <motion.div
                 key={product.id}
@@ -477,6 +481,11 @@ function ProductsSection({ products }: { products: ProductItem[] }) {
                     className="object-cover group-hover:scale-105 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />
+                  {isPreorder && (
+                    <span className="absolute left-2.5 top-2.5 z-10 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
+                      {preorderLabel}
+                    </span>
+                  )}
                   {!available && (
                     <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] flex items-center justify-center">
                       <span className="bg-slate-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-full">

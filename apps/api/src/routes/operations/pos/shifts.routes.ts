@@ -19,6 +19,61 @@ import {
 
 const router: ExpressRouter = Router();
 
+const isAdminActor = (actor: AuthUser) =>
+  actor.role === "ADMIN" || actor.role === "SUPER_ADMIN";
+
+const toShiftResponse = (shift: any) => ({
+  id: shift.id,
+  organizationId: shift.organizationId,
+  cashierId: shift.cashierId,
+  cashierName: shift.cashier?.email || "",
+  branchId: shift.branchId,
+  branchName: shift.branch?.name,
+  registerId: shift.registerId ?? null,
+  registerName: shift.register?.name ?? null,
+  openedAt: shift.openedAt.toISOString(),
+  closedAt: shift.closedAt?.toISOString() ?? null,
+  openingCash: Number(shift.openingCash),
+  closingCash: shift.closingCash === null ? null : Number(shift.closingCash),
+  expectedCash: shift.expectedCash === null ? 0 : Number(shift.expectedCash),
+  cashDifference: shift.cashDifference === null ? null : Number(shift.cashDifference),
+  note: shift.note ?? null,
+  status: shift.status,
+});
+
+const summarizeShiftSales = (
+  sales: Array<{ grandTotal: unknown; paymentMethod: string | null }>,
+) => {
+  const summary = {
+    salesCount: sales.length,
+    totalSales: 0,
+    cashSales: 0,
+    cardSales: 0,
+    qpaySales: 0,
+    mixedSales: 0,
+  };
+
+  for (const sale of sales) {
+    const amount = Number(sale.grandTotal);
+    if (!Number.isFinite(amount)) continue;
+    summary.totalSales += amount;
+    const method = String(sale.paymentMethod || "").toUpperCase();
+    if (method === "CASH") summary.cashSales += amount;
+    else if (method === "CARD") summary.cardSales += amount;
+    else if (method === "QPAY" || method === "QR") summary.qpaySales += amount;
+    else summary.mixedSales += amount;
+  }
+
+  return {
+    salesCount: summary.salesCount,
+    totalSales: roundMoney(summary.totalSales),
+    cashSales: roundMoney(summary.cashSales),
+    cardSales: roundMoney(summary.cardSales),
+    qpaySales: roundMoney(summary.qpaySales),
+    mixedSales: roundMoney(summary.mixedSales),
+  };
+};
+
 router.post("/pos/shifts/open", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
@@ -163,6 +218,8 @@ router.post("/pos/shifts/close", async (req, res) => {
       openingCash: Number(updatedShift.openingCash),
       closingCash: Number(updatedShift.closingCash),
       expectedCash: Number(updatedShift.expectedCash),
+      cashDifference: Number(updatedShift.cashDifference),
+      note: updatedShift.note,
       status: updatedShift.status,
     };
 
@@ -214,5 +271,87 @@ router.get("/pos/shifts/current", async (req, res) => {
  * GET /pos/products?branchId=<uuid>
  * ─────────────────────────────────────────────────────────────────────── */
 
+
+router.get("/pos/shifts/history", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const branchId = String(req.query.branchId || "").trim();
+    const statusRaw = String(req.query.status || "CLOSED").trim().toUpperCase();
+    const status =
+      statusRaw === "OPEN" || statusRaw === "CLOSED" ? statusRaw : "";
+    const fromRaw = String(req.query.from || "").trim();
+    const toRaw = String(req.query.to || "").trim();
+    const parsedLimit = Number(req.query.limit);
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.isFinite(parsedLimit) ? Math.floor(parsedLimit) : 30),
+    );
+
+    const from = fromRaw ? new Date(fromRaw) : null;
+    const to = toRaw ? new Date(toRaw) : null;
+    if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) {
+      return res.status(400).json({ message: "from, to буруу огноо формат" });
+    }
+
+    const where: Prisma.PosShiftWhereInput = {};
+    if (status) where.status = status as ShiftStatus;
+
+    if (branchId) {
+      const branch = await prisma.branch.findUnique({
+        where: { id: branchId },
+        select: { id: true, organizationId: true },
+      });
+      if (!branch) {
+        return res.status(404).json({ message: "Салбар олдсонгүй" });
+      }
+      if (!isAdminActor(actor) && !(await hasOrgMembership(actor.id, branch.organizationId))) {
+        return res.status(403).json({ message: "Энэ байгууллагын хаалтын түүх харах эрхгүй" });
+      }
+      where.branchId = branchId;
+    } else if (!isAdminActor(actor)) {
+      if (actor.organizationId) where.organizationId = actor.organizationId;
+      else where.cashierId = actor.id;
+    }
+
+    if (status === "CLOSED") {
+      const closedAt: Prisma.DateTimeNullableFilter = { not: null };
+      if (from) closedAt.gte = from;
+      if (to) closedAt.lte = to;
+      where.closedAt = closedAt;
+    } else if (from || to) {
+      where.openedAt = {
+        ...(from ? { gte: from } : {}),
+        ...(to ? { lte: to } : {}),
+      };
+    }
+
+    const shifts = await prisma.posShift.findMany({
+      where,
+      take: limit,
+      orderBy: status === "CLOSED" ? { closedAt: "desc" } : { openedAt: "desc" },
+      include: {
+        cashier: { select: { id: true, email: true } },
+        branch: { select: { id: true, name: true } },
+        register: { select: { id: true, name: true } },
+        sales: {
+          where: { status: PosSaleStatus.COMPLETED },
+          select: { grandTotal: true, paymentMethod: true },
+        },
+      },
+    });
+
+    res.status(200).json({
+      shifts: shifts.map((shift) => ({
+        ...toShiftResponse(shift),
+        ...summarizeShiftSales(shift.sales),
+      })),
+    });
+  } catch (error) {
+    console.error("get shift history error", error);
+    res.status(500).json({ message: "Ээлжийн хаалтын түүх авахад алдаа гарлаа" });
+  }
+});
 
 export default router;

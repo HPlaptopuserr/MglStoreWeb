@@ -3,6 +3,17 @@ import JSZip from "jszip";
 import crypto from "crypto";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "./supabase";
 
+export const EXCEL_ROW_INDEX_KEY = "__excelRowIndex";
+
+function parseExcelRowIndex(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+export function getExcelRowIndex(row: Record<string, unknown>, fallbackDataIndex: number): number {
+  return parseExcelRowIndex(row[EXCEL_ROW_INDEX_KEY]) ?? fallbackDataIndex + 1;
+}
+
 /**
  * Extract embedded images from an XLSX file buffer.
  * Returns a map: row index (0-based, row 0 = header) → array of image Buffers.
@@ -76,10 +87,10 @@ export async function extractExcelImages(buffer: Buffer): Promise<Map<number, Bu
         }
       }
 
-      const sheetFile = zip.file("xl/worksheets/sheet1.xml") ||
-        allFiles.filter(f => /xl\/worksheets\/sheet\d+\.xml$/.test(f)).sort()[0]
-          ? zip.file(allFiles.filter(f => /xl\/worksheets\/sheet\d+\.xml$/.test(f)).sort()[0])
-          : null;
+      const sheetPath = zip.file("xl/worksheets/sheet1.xml")
+        ? "xl/worksheets/sheet1.xml"
+        : allFiles.filter(f => /xl\/worksheets\/sheet\d+\.xml$/.test(f)).sort()[0];
+      const sheetFile = sheetPath ? zip.file(sheetPath) : null;
 
       if (sheetFile) {
         const sheetXml = await sheetFile.async("text");
@@ -169,8 +180,9 @@ export async function extractExcelImages(buffer: Buffer): Promise<Map<number, Bu
 
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
-    const rows = sheetName ? XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) : [];
-    const dataRowCount = rows.length;
+    const rows = sheetName ? XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName]) : [];
+    const rowIndexes = rows.map((row, idx) => getExcelRowIndex(normalizeExcelRow(row), idx));
+    const dataRowCount = rowIndexes.length;
 
     if (sortedMedia.length > 0 && sortedMedia.length <= dataRowCount * 5) {
       const imagesPerRow = Math.ceil(sortedMedia.length / dataRowCount);
@@ -178,7 +190,7 @@ export async function extractExcelImages(buffer: Buffer): Promise<Map<number, Bu
         const mediaFile = zip.file(sortedMedia[i]);
         if (mediaFile) {
           const imgBuffer = Buffer.from(await mediaFile.async("arraybuffer"));
-          const rowIdx = Math.floor(i / imagesPerRow) + 1;
+          const rowIdx = rowIndexes[Math.floor(i / imagesPerRow)] ?? Math.floor(i / imagesPerRow) + 1;
           const existing = rowImages.get(rowIdx) || [];
           if (existing.length < 5) {
             existing.push(imgBuffer);
@@ -277,9 +289,12 @@ export function resolveCol(row: Record<string, unknown>, keys: string[]): unknow
 
 export function normalizeExcelRow(row: Record<string, unknown>): Record<string, unknown> {
   const normalized: Record<string, unknown> = {};
+  const rowIndex = parseExcelRowIndex((row as { __rowNum__?: unknown }).__rowNum__);
+  if (rowIndex !== null) normalized[EXCEL_ROW_INDEX_KEY] = rowIndex;
+
   for (const [key, value] of Object.entries(row)) {
     const normalizedKey = key.trim();
-    if (!normalizedKey) continue;
+    if (!normalizedKey || normalizedKey === "__rowNum__") continue;
     normalized[normalizedKey] = value;
   }
   return normalized;

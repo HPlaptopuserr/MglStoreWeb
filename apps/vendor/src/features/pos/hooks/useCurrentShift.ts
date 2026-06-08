@@ -59,7 +59,7 @@ export function useCurrentShift() {
         }
       }
       const closed = await closeShift({ shiftId: shift.id, closingCash, note });
-      setShift(closed);
+      setShift(null);
       return closed;
     } catch (e: any) {
       setError(e?.message || "Shift close failed");

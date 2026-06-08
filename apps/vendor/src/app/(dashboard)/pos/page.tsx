@@ -61,10 +61,12 @@ import {
   confirmQPayInvoice,
   fetchRegisterConfig,
   getReceipts,
+  getShiftHistory,
   issueLocalEbarimtReceipt,
   attachEbarimtReceipt,
   type AttachEbarimtPayload,
   type RegisterConfig,
+  type PosShiftHistoryItem,
   CUSTOMER_DISPLAY_THEME_OPTIONS,
   CUSTOMER_DISPLAY_THEME_STORAGE_KEY,
   type CustomerDisplayThemeId,
@@ -131,6 +133,37 @@ const getEffectiveCardProvider = (register?: RegisterConfig | null) =>
   register?.cardProviderType || (register?.minuAgentEnabled ? "MINU_AGENT" : null);
 const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 const formatMoney = (value: number) => `₮${Math.round(Number(value) || 0).toLocaleString("mn-MN")}`;
+const padTimePart = (value: number) => String(value).padStart(2, "0");
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return `${date.getFullYear()} оны ${date.getMonth() + 1}-р сарын ${date.getDate()} ${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`;
+};
+
+const SHIFT_HISTORY_RANGE_OPTIONS = [
+  { id: "7", label: "7 хоног", description: "Сүүлийн 7 хоногийн", days: 7 },
+  { id: "14", label: "14 хоног", description: "Сүүлийн 14 хоногийн", days: 14 },
+  { id: "30", label: "30 хоног", description: "Сүүлийн 30 хоногийн", days: 30 },
+  { id: "100", label: "100 хаалт", description: "Сүүлийн 100 хаалтын", days: null },
+] as const;
+type ShiftHistoryRangeId = (typeof SHIFT_HISTORY_RANGE_OPTIONS)[number]["id"];
+
+const getShiftHistoryRangeParams = (rangeId: ShiftHistoryRangeId) => {
+  const option =
+    SHIFT_HISTORY_RANGE_OPTIONS.find((item) => item.id === rangeId) ??
+    SHIFT_HISTORY_RANGE_OPTIONS[0];
+  if (!option.days) return { limit: 100 };
+
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - option.days);
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+    limit: 100,
+  };
+};
 
 const normalizeProductCode = (value: string) => value.trim().replace(/\s+/g, "").toLowerCase();
 
@@ -275,6 +308,7 @@ export default function PosDemoPage() {
   const [setupExistingId, setSetupExistingId] = useState("");
   // Shift management
   const [showShiftPanel, setShowShiftPanel] = useState(false);
+  const [showShiftHistoryPanel, setShowShiftHistoryPanel] = useState(false);
   const [openingCashInput, setOpeningCashInput] = useState("");
   const [closingCashInput, setClosingCashInput] = useState("");
   const [shiftFetched, setShiftFetched] = useState(false);
@@ -305,14 +339,36 @@ export default function PosDemoPage() {
   const [receiptHistoryLoading, setReceiptHistoryLoading] = useState(false);
   const [receiptHistoryError, setReceiptHistoryError] = useState("");
   const [receiptReloadToken, setReceiptReloadToken] = useState(0);
+  const [shiftHistory, setShiftHistory] = useState<PosShiftHistoryItem[]>([]);
+  const [shiftHistoryLoading, setShiftHistoryLoading] = useState(false);
+  const [shiftHistoryError, setShiftHistoryError] = useState("");
+  const [shiftHistoryReloadToken, setShiftHistoryReloadToken] = useState(0);
+  const [shiftHistoryRange, setShiftHistoryRange] = useState<ShiftHistoryRangeId>("7");
+  const [selectedShiftHistoryId, setSelectedShiftHistoryId] = useState("");
+  const [shiftHistoryReceipts, setShiftHistoryReceipts] = useState<PosReceipt[]>([]);
+  const [shiftHistoryReceiptsLoading, setShiftHistoryReceiptsLoading] = useState(false);
+  const [shiftHistoryReceiptsError, setShiftHistoryReceiptsError] = useState("");
 
   const selectedReceipt = useMemo(
     () => receiptHistory.find((receipt) => receipt.id === selectedReceiptId) || null,
     [receiptHistory, selectedReceiptId],
   );
+  const selectedShiftHistory = useMemo(
+    () => shiftHistory.find((item) => item.id === selectedShiftHistoryId) || null,
+    [shiftHistory, selectedShiftHistoryId],
+  );
+  const selectedShiftHistoryRange = useMemo(
+    () =>
+      SHIFT_HISTORY_RANGE_OPTIONS.find((item) => item.id === shiftHistoryRange) ??
+      SHIFT_HISTORY_RANGE_OPTIONS[0],
+    [shiftHistoryRange],
+  );
   const receiptForPreview = selectedReceipt || lastReceipt;
   const reloadReceiptHistory = useCallback(() => {
     setReceiptReloadToken((value) => value + 1);
+  }, []);
+  const reloadShiftHistory = useCallback(() => {
+    setShiftHistoryReloadToken((value) => value + 1);
   }, []);
 
   const handleReceiptVoided = useCallback(
@@ -507,6 +563,71 @@ export default function PosDemoPage() {
 
     return () => controller.abort();
   }, [shift?.id, receiptReloadToken]);
+
+  useEffect(() => {
+    if (!registerBranchId) {
+      setShiftHistory([]);
+      setSelectedShiftHistoryId("");
+      setShiftHistoryError("");
+      return;
+    }
+
+    const controller = new AbortController();
+    setShiftHistoryLoading(true);
+    setShiftHistoryError("");
+    const rangeParams = getShiftHistoryRangeParams(shiftHistoryRange);
+
+    getShiftHistory(
+      { branchId: registerBranchId, status: "CLOSED", ...rangeParams },
+      controller.signal,
+    )
+      .then((data) => {
+        const shifts = Array.isArray(data.shifts) ? data.shifts : [];
+        setShiftHistory(shifts);
+        setSelectedShiftHistoryId((current) =>
+          current && shifts.some((item) => item.id === current)
+            ? current
+            : shifts[0]?.id || "",
+        );
+      })
+      .catch((error: any) => {
+        if (error?.name === "AbortError") return;
+        setShiftHistoryError(error?.message || "Хаалтын түүх авахад алдаа гарлаа");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setShiftHistoryLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [registerBranchId, shiftHistoryRange, shiftHistoryReloadToken]);
+
+  useEffect(() => {
+    if (!selectedShiftHistoryId) {
+      setShiftHistoryReceipts([]);
+      setShiftHistoryReceiptsError("");
+      return;
+    }
+
+    const controller = new AbortController();
+    setShiftHistoryReceiptsLoading(true);
+    setShiftHistoryReceiptsError("");
+
+    getReceipts(selectedShiftHistoryId, controller.signal)
+      .then((items) => setShiftHistoryReceipts(items))
+      .catch((error: any) => {
+        if (error?.name === "AbortError") return;
+        setShiftHistoryReceiptsError(error?.message || "Хаалтын баримтууд авахад алдаа гарлаа");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setShiftHistoryReceiptsLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [selectedShiftHistoryId]);
 
   const [orgRegisters, setOrgRegisters] = useState<RegisterConfig[]>([]);
   const [showRegisterPicker, setShowRegisterPicker] = useState(false);
@@ -1445,6 +1566,222 @@ export default function PosDemoPage() {
     </div>
   );
 
+  const shiftHistoryPanel = (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900">Өдрийн хаалтын түүх</h3>
+          <p className="text-[11px] text-slate-500">
+            {selectedShiftHistoryRange.description} дүн, зөрүү болон баримтууд
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+            {SHIFT_HISTORY_RANGE_OPTIONS.map((option) => {
+              const selected = shiftHistoryRange === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setShiftHistoryRange(option.id)}
+                  className={`h-7 rounded-md px-2.5 text-[11px] font-bold transition-colors ${
+                    selected
+                      ? "bg-white text-slate-950 shadow-sm"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={reloadShiftHistory}
+            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Шинэчлэх
+          </button>
+        </div>
+      </div>
+
+      {shiftHistoryError && (
+        <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+          {shiftHistoryError}
+        </div>
+      )}
+
+      <div className="mt-3 grid min-h-0 grid-cols-[minmax(260px,0.85fr)_minmax(360px,1.15fr)] gap-3">
+        <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+          {shiftHistoryLoading && shiftHistory.length === 0 ? (
+            <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Хаалтын түүх ачаалж байна...
+            </div>
+          ) : shiftHistory.length === 0 ? (
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              Сонгосон хугацаанд хаалт хийгдээгүй байна.
+            </div>
+          ) : (
+            shiftHistory.map((item) => {
+              const selected = item.id === selectedShiftHistoryId;
+              const difference = Number(item.cashDifference || 0);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedShiftHistoryId(item.id)}
+                  className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                    selected
+                      ? "border-teal-300 bg-teal-50"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">
+                        Хаасан: {formatDateTime(item.closedAt)}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        Нээсэн: {formatDateTime(item.openedAt)}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        {item.cashierName} · {item.branchName}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        difference === 0
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {difference === 0 ? "Зөрүүгүй" : formatMoney(difference)}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                    <div>
+                      <p className="text-slate-400">Нийт</p>
+                      <p className="font-bold text-slate-800">{formatMoney(item.totalSales)}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400">Бэлэн</p>
+                      <p className="font-bold text-slate-800">{formatMoney(item.cashSales)}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400">Баримт</p>
+                      <p className="font-bold text-slate-800">{item.salesCount}</p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <div className="min-h-[300px] rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {selectedShiftHistory ? (
+            <div className="flex h-full flex-col gap-3">
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ["Нээсэн", formatDateTime(selectedShiftHistory.openedAt)],
+                  ["Хаасан", formatDateTime(selectedShiftHistory.closedAt)],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-lg bg-white px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 text-xs font-black text-slate-900">
+                      {value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ["Эхлэх мөнгө", selectedShiftHistory.openingCash],
+                  ["Expected cash", selectedShiftHistory.expectedCash],
+                  ["Хаасан мөнгө", selectedShiftHistory.closingCash || 0],
+                  ["Зөрүү", selectedShiftHistory.cashDifference || 0],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-lg bg-white px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                      {label}
+                    </p>
+                    <p className="mt-1 text-sm font-black text-slate-900">
+                      {formatMoney(Number(value))}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg bg-white px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Карт</p>
+                  <p className="mt-1 text-sm font-black text-slate-900">{formatMoney(selectedShiftHistory.cardSales)}</p>
+                </div>
+                <div className="rounded-lg bg-white px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">QPay</p>
+                  <p className="mt-1 text-sm font-black text-slate-900">{formatMoney(selectedShiftHistory.qpaySales)}</p>
+                </div>
+                <div className="rounded-lg bg-white px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Mixed</p>
+                  <p className="mt-1 text-sm font-black text-slate-900">{formatMoney(selectedShiftHistory.mixedSales)}</p>
+                </div>
+              </div>
+
+              {selectedShiftHistory.note && (
+                <div className="rounded-lg bg-white px-3 py-2 text-xs text-slate-600">
+                  {selectedShiftHistory.note}
+                </div>
+              )}
+
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-white p-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-800">Баримтууд</p>
+                  {shiftHistoryReceiptsLoading && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                  )}
+                </div>
+                {shiftHistoryReceiptsError ? (
+                  <p className="rounded-md bg-rose-50 px-2 py-1.5 text-xs text-rose-700">
+                    {shiftHistoryReceiptsError}
+                  </p>
+                ) : shiftHistoryReceipts.length === 0 ? (
+                  <p className="rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-500">
+                    Энэ хаалт дээр баримт алга байна.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {shiftHistoryReceipts.map((receipt) => (
+                      <div
+                        key={receipt.id}
+                        className="flex items-center justify-between gap-2 rounded-md border border-slate-100 px-2 py-1.5 text-xs"
+                      >
+                        <div>
+                          <p className="font-bold text-slate-800">#{receipt.receiptNo}</p>
+                          <p className="text-[11px] text-slate-500">
+                            {formatDateTime(receipt.createdAt)} · {receipt.paymentMethod}
+                          </p>
+                        </div>
+                        <p className="font-black text-slate-900">{formatMoney(receipt.grandTotal)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center text-xs text-slate-500">
+              Хаалт сонгоно уу.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   if (!posEnabled) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-slate-50 px-6 text-center">
@@ -1739,7 +2076,11 @@ export default function PosDemoPage() {
                           Number(openingCashInput) || 0,
                         );
                         setShowShiftPanel(false);
+                        setShowShiftHistoryPanel(false);
+                        setView("register");
                         setOpeningCashInput("");
+                        setScanMessage("Ээлж нээгдлээ. Борлуулалтаа эхлүүлнэ үү.");
+                        setScanStatus("success");
                       } catch (e: any) {
                         setScanMessage(e?.message || "Ээлж нээхэд алдаа гарлаа");
                         setScanStatus("not-found");
@@ -1776,7 +2117,9 @@ export default function PosDemoPage() {
                           undefined,
                           termId ?? undefined,
                         );
+                        reloadShiftHistory();
                         setShowShiftPanel(false);
+                        setShowShiftHistoryPanel(true);
                         setClosingCashInput("");
                       } catch (e: any) {
                         setScanMessage(e?.message || "Ээлж хаахад алдаа гарлаа");
@@ -1793,6 +2136,8 @@ export default function PosDemoPage() {
           </div>
         </div>
       )}
+
+      {showShiftHistoryPanel && registerConfig?.isActive && shiftHistoryPanel}
 
       {view === "checkout" && registerConfig?.isActive !== false && (
         <PosCheckoutView
@@ -1865,7 +2210,11 @@ export default function PosDemoPage() {
               onClick={() => {
                 if (tab.id === "shift") {
                   setShowShiftPanel(true);
+                  setShowShiftHistoryPanel(true);
+                  reloadShiftHistory();
                 } else {
+                  setShowShiftPanel(false);
+                  setShowShiftHistoryPanel(false);
                   setView(tab.id as PosView);
                   if (tab.id === "history") {
                     reloadReceiptHistory();
@@ -1873,7 +2222,7 @@ export default function PosDemoPage() {
                 }
               }}
               className={`h-9 rounded-lg px-4 text-sm font-bold transition-colors ${
-                (tab.id === "shift" ? showShiftPanel : view === tab.id || (view === "checkout" && tab.id === "register"))
+                (tab.id === "shift" ? showShiftHistoryPanel : view === tab.id || (view === "checkout" && tab.id === "register"))
                   ? "bg-blue-600 text-white shadow-sm"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
               }`}
@@ -1975,7 +2324,10 @@ export default function PosDemoPage() {
           </div>
           <button
             type="button"
-            onClick={() => setShowShiftPanel((value) => !value)}
+            onClick={() => {
+              setShowShiftHistoryPanel(false);
+              setShowShiftPanel((value) => !value);
+            }}
             className={`rounded-lg px-3 py-2 text-left font-black transition-colors ${
               shift ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
             }`}
@@ -1985,7 +2337,7 @@ export default function PosDemoPage() {
               <>
                 <span className="block">Нээлттэй</span>
                 <span className="mt-0.5 block text-[11px] font-semibold opacity-80">
-                  {new Date(shift.openedAt).toLocaleTimeString("mn-MN", { hour: "2-digit", minute: "2-digit" })} нээгдсэн
+                  {formatDateTime(shift.openedAt)} нээгдсэн
                 </span>
               </>
             ) : (

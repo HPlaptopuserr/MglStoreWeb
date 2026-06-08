@@ -962,6 +962,8 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
                   price: true,
                   costPrice: true,
                   stock: true,
+                  supplyType: true,
+                  preorderLeadTimeDays: true,
                   createdAt: true,
                   images: {
                     select: { url: true },
@@ -1058,6 +1060,8 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
         images: p.images?.map((img: any) => img.url),
         category: p.category?.name,
         stock: p.stock,
+        supplyType: p.supplyType,
+        preorderLeadTimeDays: p.preorderLeadTimeDays,
         expiryDate:
           p.warehouseInventories?.[0]?.expiryDate?.toISOString() ?? null,
       })),
@@ -1732,6 +1736,8 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
         price: Number(p.price),
         originalPrice: p.costPrice ? Number(p.costPrice) : undefined,
         stock: p.stock,
+        supplyType: p.supplyType,
+        preorderLeadTimeDays: p.preorderLeadTimeDays,
         category: p.category?.name,
         image: p.images?.[0]?.url,
         images: p.images?.map((img: any) => img.url),

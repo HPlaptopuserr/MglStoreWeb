@@ -3,6 +3,7 @@ export * from "./api/get-own-products";
 export * from "./api/create-sale";
 export * from "./api/open-shift";
 export * from "./api/close-shift";
+export * from "./api/get-shift-history";
 export * from "./api/get-receipts";
 export * from "./api/get-pos-reports";
 export * from "./api/payments";
