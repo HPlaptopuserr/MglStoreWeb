@@ -24,6 +24,8 @@ interface BackendProduct {
   rating?: number;
   reviews?: number;
   stock?: number;
+  supplyType?: "IN_STOCK" | "CHINA_PREORDER";
+  preorderLeadTimeDays?: number | null;
 }
 
 interface BackendPartner {
@@ -102,6 +104,8 @@ export interface OrganizationDetailData {
     rating?: number;
     reviews?: number;
     stock?: number;
+    supplyType?: "IN_STOCK" | "CHINA_PREORDER";
+    preorderLeadTimeDays?: number | null;
   }[];
   investor?: {
     isInvestor: boolean;
@@ -185,6 +189,8 @@ function mapPartnerToDetailData(
           rating: product.rating ?? 5,
           reviews: product.reviews ?? 0,
           stock: product.stock,
+          supplyType: product.supplyType,
+          preorderLeadTimeDays: product.preorderLeadTimeDays,
         }))
       : [],
     servicePosts: [],
