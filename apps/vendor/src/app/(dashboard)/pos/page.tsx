@@ -316,7 +316,7 @@ export default function PosDemoPage() {
   const [view, setView] = useState<PosView>("register");
   const [displayOpened, setDisplayOpened] = useState(false);
   const [customerDisplayTheme, setCustomerDisplayTheme] =
-    useState<CustomerDisplayThemeId>("violet");
+    useState<CustomerDisplayThemeId>("white");
   const [qpayModal, setQpayModal] = useState<QPayModalPayload | null>(null);
   const [isCardProcessing, setIsCardProcessing] = useState(false);
   const [isCancellingCard, setIsCancellingCard] = useState(false);

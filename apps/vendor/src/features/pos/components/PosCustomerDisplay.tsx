@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { Radio, ReceiptText, ShoppingBag, Sparkles, Star } from "lucide-react";
+import { ReceiptText, ShoppingBag, Sparkles, Star } from "lucide-react";
 import type { CartLine, CartTotals } from "../types/pos.types";
 
 export const CUSTOMER_DISPLAY_THEME_STORAGE_KEY =
@@ -22,40 +22,54 @@ export type CustomerDisplayThemeId =
 const CUSTOMER_DISPLAY_THEME_STYLES: Record<
   CustomerDisplayThemeId,
   {
-    rgb: string;
-    lightRgb: string;
-    deepRgb: string;
+    accent: string;
+    accentRgb: string;
+    borderStart: string;
+    borderEnd: string;
+    soft: string;
   }
 > = {
   violet: {
-    rgb: "139, 92, 246",
-    lightRgb: "216, 180, 254",
-    deepRgb: "34, 20, 59",
+    accent: "#7c3aed",
+    accentRgb: "124, 58, 237",
+    borderStart: "#6366f1",
+    borderEnd: "#ec4899",
+    soft: "#f5f3ff",
   },
   blue: {
-    rgb: "6, 182, 212",
-    lightRgb: "103, 232, 249",
-    deepRgb: "12, 38, 55",
+    accent: "#0284c7",
+    accentRgb: "2, 132, 199",
+    borderStart: "#2563eb",
+    borderEnd: "#06b6d4",
+    soft: "#eff6ff",
   },
   emerald: {
-    rgb: "34, 197, 94",
-    lightRgb: "134, 239, 172",
-    deepRgb: "12, 48, 32",
+    accent: "#059669",
+    accentRgb: "5, 150, 105",
+    borderStart: "#16a34a",
+    borderEnd: "#14b8a6",
+    soft: "#ecfdf5",
   },
   amber: {
-    rgb: "245, 158, 11",
-    lightRgb: "253, 230, 138",
-    deepRgb: "61, 34, 15",
+    accent: "#d97706",
+    accentRgb: "217, 119, 6",
+    borderStart: "#f59e0b",
+    borderEnd: "#fb7185",
+    soft: "#fffbeb",
   },
   rose: {
-    rgb: "236, 72, 153",
-    lightRgb: "249, 168, 212",
-    deepRgb: "58, 18, 42",
+    accent: "#e11d48",
+    accentRgb: "225, 29, 72",
+    borderStart: "#fb7185",
+    borderEnd: "#a855f7",
+    soft: "#fff1f2",
   },
   white: {
-    rgb: "248, 250, 252",
-    lightRgb: "255, 255, 255",
-    deepRgb: "36, 39, 50",
+    accent: "#2563eb",
+    accentRgb: "37, 99, 235",
+    borderStart: "#3b82f6",
+    borderEnd: "#f43f5e",
+    soft: "#f8fafc",
   },
 };
 
@@ -84,236 +98,231 @@ export function PosCustomerDisplay({
   lines,
   totals,
   storeName = "MGLSTORE",
-  theme = "violet",
+  theme = "white",
 }: Props) {
   const savings = Math.max(0, totals.discountTotal);
   const latestProductId = lines[lines.length - 1]?.productId;
   const hasItems = lines.length > 0;
   const estimatedPoints = Math.floor(Math.max(0, totals.grandTotal) / 100);
   const themeStyle = CUSTOMER_DISPLAY_THEME_STYLES[theme];
+  const progressWidth = Math.min(100, Math.max(14, estimatedPoints % 100));
   const displayStyle = {
-    "--cd-rgb": themeStyle.rgb,
-    "--cd-light-rgb": themeStyle.lightRgb,
-    "--cd-deep-rgb": themeStyle.deepRgb,
+    "--cd-accent": themeStyle.accent,
+    "--cd-accent-rgb": themeStyle.accentRgb,
+    "--cd-border-start": themeStyle.borderStart,
+    "--cd-border-end": themeStyle.borderEnd,
+    "--cd-soft": themeStyle.soft,
+    backgroundColor: "#f8fafc",
+    backgroundImage: [
+      "linear-gradient(120deg, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0) 18%, rgba(255,255,255,0.5) 32%, rgba(255,255,255,0) 48%, rgba(255,255,255,0.44) 76%, rgba(255,255,255,0) 100%)",
+      "repeating-linear-gradient(45deg, rgba(255,255,255,0.2) 0 1px, rgba(255,255,255,0) 1px 24px)",
+      "linear-gradient(135deg, #eef2ff 0%, #dbeafe 15%, #ccfbf1 30%, #fef3c7 47%, #ffe4e6 64%, #ede9fe 82%, #e0f2fe 100%)",
+    ].join(", "),
+    backgroundBlendMode: "screen, overlay, normal",
+    backgroundSize: "260% 260%, 44px 44px, 100% 100%",
+    fontFamily: '"Times New Roman", Times, serif',
   } as CSSProperties;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex min-h-screen flex-col overflow-hidden bg-[#0b0d14] text-[#f4efff]"
+      className="fixed inset-0 z-50 flex min-h-screen flex-col overflow-hidden text-[#111827]"
       style={displayStyle}
     >
-      <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-white/10 bg-[#0d1018]/95 px-8 shadow-[0_18px_60px_rgba(0,0,0,0.42)] 2xl:h-[82px] 2xl:px-12">
-        <div className="flex min-w-0 items-center gap-5">
-          <h1 className="truncate text-3xl font-black uppercase tracking-tight text-[rgb(var(--cd-light-rgb))] drop-shadow-[0_0_18px_rgba(var(--cd-rgb),0.28)] 2xl:text-4xl">
+      <header className="flex h-[68px] shrink-0 items-center justify-between border-b border-[#d9dde5] bg-white px-6 2xl:h-[74px] 2xl:px-8">
+        <div className="flex min-w-0 items-center gap-4">
+          <h1 className="truncate text-[26px] font-bold uppercase leading-none text-[#1f2937] 2xl:text-[30px]">
             {storeName}
           </h1>
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-white/80 shadow-inner">
-            <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.95)]" />
+          <div className="inline-flex h-7 items-center gap-2 rounded-full border border-[#dbeafe] bg-[#eff6ff] px-3 text-[12px] font-bold uppercase text-[#2563eb] shadow-[0_3px_14px_rgba(37,99,235,0.18)]">
+            <span className="h-2 w-2 rounded-full bg-[#2563eb]" />
             Online
           </div>
         </div>
 
-        <div className="flex items-center gap-6 text-sm font-black uppercase tracking-[0.12em] text-white/70 2xl:gap-8">
-          <div className="flex items-center gap-3 border-r border-white/15 pr-6 2xl:pr-8">
-            <Radio className="h-5 w-5 text-[rgb(var(--cd-light-rgb))]" />
+        <div className="flex h-full items-center gap-6 text-[14px] font-bold uppercase text-[#6b7280] 2xl:gap-8">
+          <div className="flex h-full items-center gap-3 border-r border-[#d1d5db] pr-6 2xl:pr-8">
+            <span className="flex h-5 w-5 items-end justify-center gap-1">
+              <span className="h-3 w-2 rounded-sm bg-[#22c55e]" />
+              <span className="h-4 w-2 rounded-sm bg-[#22c55e]" />
+            </span>
             Terminal #1
           </div>
-          <div className="flex items-center gap-7">
-            <span className="border-b-4 border-[rgb(var(--cd-light-rgb))] pb-2 text-xl text-[#efe3ff]">
-              Гүйлгээ
-            </span>
+          <div className="flex h-full items-center border-b-2 border-[#1d4ed8] px-1 text-[24px] text-[#111827] 2xl:text-[28px]">
+            Гүйлгээ
           </div>
         </div>
       </header>
 
-      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_500px]">
-        <section className="relative flex min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_34%_6%,rgba(var(--cd-rgb),0.22),transparent_33%),linear-gradient(110deg,rgb(var(--cd-deep-rgb))_0%,#160b25_45%,#0b0d14_100%)] px-8 py-5 2xl:py-6">
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:72px_72px] opacity-20" />
-
-          <div className="relative z-10 mb-4 flex shrink-0 items-end justify-between gap-6 2xl:mb-5">
-            <div>
-              <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200/75">
+      <main className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-hidden px-6 py-6 xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_440px]">
+        <section className="flex min-h-0 flex-col">
+          <div className="mb-4 flex shrink-0 items-end justify-between gap-6">
+            <div className="min-w-0">
+              <p className="text-[14px] font-bold uppercase text-[#9ca3af]">
                 Одоогийн худалдан авалт
               </p>
-              <h2 className="mt-2 font-serif text-3xl font-black leading-tight text-white md:text-[2.35rem]">
+              <h2 className="mt-1 truncate text-[32px] font-bold leading-none text-[#1f2937] 2xl:text-[38px]">
                 {hasItems ? "Авсан бараанууд" : "Бараа хүлээж байна"}
               </h2>
             </div>
-            <div className="rounded-full border border-white/10 bg-white/[0.06] px-4 py-1.5 text-base font-semibold text-white/75">
+            <div className="shrink-0 rounded-full bg-white/80 px-4 py-1.5 text-[15px] font-bold text-[#475569] shadow-[0_6px_20px_rgba(15,23,42,0.08)]">
               {lines.length} бараа
             </div>
           </div>
 
-          {lines.length === 0 ? (
-            <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center rounded-[1.75rem] border border-dashed border-[rgba(var(--cd-rgb),0.5)] bg-[#121620]/70 p-10 text-center shadow-[0_28px_100px_rgba(0,0,0,0.35)]">
-              <div className="mb-7 flex h-24 w-24 items-center justify-center rounded-3xl border border-[rgba(var(--cd-rgb),0.4)] bg-[rgba(var(--cd-rgb),0.14)] text-[rgb(var(--cd-light-rgb))] shadow-[0_0_38px_rgba(var(--cd-rgb),0.26)]">
-                <ShoppingBag className="h-12 w-12" />
+          <div className="min-h-0 flex-1 overflow-hidden border border-transparent bg-white [background:linear-gradient(#fff,#fff)_padding-box,linear-gradient(90deg,var(--cd-border-start),var(--cd-border-end))_border-box]">
+            {lines.length === 0 ? (
+              <div className="flex h-full min-h-[420px] flex-col items-center justify-center p-10 text-center">
+                <div className="mb-7 flex h-24 w-24 items-center justify-center rounded-2xl bg-[#fff9c4] text-[#b77900]">
+                  <ShoppingBag className="h-12 w-12" strokeWidth={2.4} />
+                </div>
+                <p className="text-[34px] font-bold leading-none text-[#1f2937] 2xl:text-[38px]">
+                  Бараа нэмэгдэхийг хүлээж байна
+                </p>
+                <p className="mt-4 max-w-[390px] text-[18px] font-bold leading-7 text-[#9ca3af]">
+                  Касс дээр бараа уншуулах үед таны худалдан авалтын мэдээлэл
+                  энд шууд харагдана.
+                </p>
               </div>
-              <p className="text-4xl font-black text-white">
-                Бараа нэмэгдэхийг хүлээж байна
-              </p>
-              <p className="mt-4 max-w-xl text-lg font-medium leading-8 text-white/55">
-                Касс дээр бараа уншуулах үед таны худалдан авалтын мэдээлэл энд
-                шууд харагдана.
-              </p>
-            </div>
-          ) : (
-            <div className="relative z-10 min-h-0 flex-1 overflow-y-auto pr-3">
-              <div className="space-y-2.5">
-                {lines.map((line) => {
-                  const isLatest = line.productId === latestProductId;
-                  const hasDiscount = line.discountAmount > 0;
-                  const lineTotal = getLineTotal(line);
+            ) : (
+              <div className="h-full overflow-y-auto p-4 2xl:p-5">
+                <div className="space-y-3">
+                  {lines.map((line) => {
+                    const isLatest = line.productId === latestProductId;
+                    const hasDiscount = line.discountAmount > 0;
+                    const lineTotal = getLineTotal(line);
 
-                  return (
-                    <article
-                      key={line.productId}
-                      className={`grid grid-cols-[72px_minmax(0,1fr)_78px_128px] items-center gap-4 rounded-lg border px-3 py-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.16)] transition ${
-                        isLatest
-                          ? "border-[rgb(var(--cd-light-rgb))] bg-[rgba(var(--cd-rgb),0.2)]"
-                          : "border-white/10 bg-[#10141e]/70"
-                      }`}
-                    >
-                      <div className="relative h-[72px] w-[72px] overflow-hidden rounded-md border border-white/10 bg-[#202637]">
-                        {line.imageUrl ? (
-                          <img
-                            src={line.imageUrl}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(var(--cd-rgb),0.36),#151a25)] text-2xl font-black text-[rgb(var(--cd-light-rgb))]">
-                            {line.name.charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <h3 className="truncate text-lg font-black tracking-tight text-white md:text-xl">
-                            {line.name}
-                          </h3>
-                          {isLatest && (
-                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[rgb(var(--cd-rgb))] px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">
-                              <Sparkles className="h-2.5 w-2.5" />
-                              Шинэ
-                            </span>
+                    return (
+                      <article
+                        key={line.productId}
+                        className={`grid min-h-[90px] grid-cols-[72px_minmax(0,1fr)_82px_150px] items-center gap-4 rounded-lg border bg-white px-3 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ${
+                          isLatest
+                            ? "border-[var(--cd-accent)]"
+                            : "border-[#e5e7eb]"
+                        }`}
+                      >
+                        <div className="h-[72px] w-[72px] overflow-hidden rounded-md border border-[#e5e7eb] bg-[var(--cd-soft)]">
+                          {line.imageUrl ? (
+                            <img
+                              src={line.imageUrl}
+                              alt={line.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[28px] font-bold uppercase text-[var(--cd-accent)]">
+                              {line.name.charAt(0)}
+                            </div>
                           )}
                         </div>
-                        <p className="mt-1 truncate text-sm font-semibold text-white/65">
-                          Нэгж үнэ: {formatMoney(line.unitPrice)}
-                        </p>
-                        {hasDiscount && (
-                          <p className="mt-0.5 text-[11px] font-black uppercase tracking-wide text-cyan-300">
-                            Хямдрал -{formatMoney(line.discountAmount)}
-                          </p>
-                        )}
-                      </div>
 
-                      <div className="justify-self-center rounded-md border border-white/10 bg-[#0d1018] px-4 py-2 text-center shadow-inner">
-                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/40">
-                          Тоо
-                        </p>
-                        <p className="text-2xl font-black tabular-nums text-white">
-                          {line.qty}
-                        </p>
-                      </div>
-
-                      <div className="text-right">
-                        {hasDiscount && (
-                          <p className="mb-0.5 text-xs font-semibold tabular-nums text-white/40 line-through">
-                            {formatMoney(line.qty * line.unitPrice)}
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <h3 className="truncate text-[21px] font-bold leading-6 text-[#111827]">
+                              {line.name}
+                            </h3>
+                            {isLatest && (
+                              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[rgba(var(--cd-accent-rgb),0.1)] px-2 py-1 text-[11px] font-bold uppercase text-[var(--cd-accent)]">
+                                <Sparkles className="h-3 w-3" />
+                                Шинэ
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 truncate text-[15px] font-bold text-[#6b7280]">
+                            Нэгж үнэ: {formatMoney(line.unitPrice)}
                           </p>
-                        )}
-                        <p
-                          className={`break-words text-2xl font-black leading-none tabular-nums ${
-                            hasDiscount
-                              ? "text-cyan-300"
-                              : "text-[rgb(var(--cd-light-rgb))]"
-                          }`}
-                        >
-                          {formatMoney(lineTotal)}
-                        </p>
-                      </div>
-                    </article>
-                  );
-                })}
+                          {hasDiscount && (
+                            <p className="mt-1 text-[13px] font-bold text-[#ef4444]">
+                              Хямдрал -{formatMoney(line.discountAmount)}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="justify-self-center rounded-md bg-[#f3f4f6] px-4 py-2 text-center">
+                          <p className="text-[11px] font-bold uppercase text-[#9ca3af]">
+                            Тоо
+                          </p>
+                          <p className="text-[26px] font-bold leading-none text-[#111827]">
+                            {line.qty}
+                          </p>
+                        </div>
+
+                        <div className="min-w-0 text-right">
+                          {hasDiscount && (
+                            <p className="mb-1 truncate text-[13px] font-bold text-[#9ca3af] line-through">
+                              {formatMoney(line.qty * line.unitPrice)}
+                            </p>
+                          )}
+                          <p className="break-words text-[27px] font-bold leading-none text-[#111827]">
+                            {formatMoney(lineTotal)}
+                          </p>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </section>
 
-        <aside className="flex min-h-0 flex-col overflow-hidden border-l border-white/10 bg-[linear-gradient(180deg,#252833_0%,#141c24_100%)] px-7 py-7 2xl:px-10 2xl:py-10">
-          <div className="rounded-2xl border border-[rgba(var(--cd-rgb),0.7)] bg-[rgba(var(--cd-rgb),0.22)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.32)] 2xl:p-8">
-            <div className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.12em] text-white/72 2xl:text-sm">
-              <Star className="h-5 w-5 text-[rgb(var(--cd-light-rgb))] 2xl:h-6 2xl:w-6" />
+        <aside className="flex min-h-0 flex-col gap-6 overflow-hidden">
+          <section className="shrink-0 rounded-[24px] bg-[linear-gradient(135deg,#ffcc18_0%,#ff8a00_48%,#ff3d3d_100%)] p-8 text-[#111827] 2xl:p-9">
+            <div className="flex items-center gap-3 text-[14px] font-bold uppercase">
+              <Star className="h-4 w-4 text-[#eab308]" fill="#eab308" />
               Лоялти хөтөлбөр
             </div>
-            <h3 className="mt-5 font-serif text-xl font-black text-white 2xl:mt-7 2xl:text-2xl">
+            <h3 className="mt-6 text-[26px] font-bold leading-8 2xl:text-[30px]">
+              Welcome!
+              <br />
               Тавтай морилно уу!
             </h3>
-            <p className="mt-2 text-base font-medium leading-6 text-white/68 2xl:mt-3 2xl:text-lg 2xl:leading-7">
+            <p className="mt-5 max-w-[330px] text-[16px] font-bold leading-6">
               Энэ худалдан авалтаас ойролцоогоор{" "}
-              <span className="font-black text-white">
-                {estimatedPoints.toLocaleString("mn-MN")}
-              </span>{" "}
-              оноо цуглуулах боломжтой.
+              {estimatedPoints.toLocaleString("mn-MN")} оноо цуглуулах
+              боломжтой.
             </p>
-            <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-white/10 2xl:mt-7 2xl:h-3">
+            <div className="mt-7 h-3 overflow-hidden rounded-full bg-white/85">
               <div
-                className="h-full rounded-full bg-[rgb(var(--cd-rgb))]"
-                style={{
-                  width: `${Math.min(100, Math.max(12, estimatedPoints % 100))}%`,
-                }}
+                className="h-full rounded-full bg-[#eab308]"
+                style={{ width: `${progressWidth}%` }}
               />
             </div>
-            <p className="mt-3 text-[11px] font-black uppercase tracking-wide text-white/55 2xl:mt-4 2xl:text-xs">
-              Дараагийн шат хүртэл худалдан авалтаа үргэлжлүүлээрэй
+            <p className="mt-6 text-[12px] font-bold uppercase">
+              Дараагийн шат хүртэл худалдан авалтаа үргэлжлүүлэх боломж
             </p>
-          </div>
+          </section>
 
-          <div className="mt-7 space-y-4 text-lg font-medium text-white/78 2xl:mt-10 2xl:space-y-6 2xl:text-xl">
-            <div className="flex items-center justify-between gap-6">
-              <span>Нийт дүн</span>
-              <span className="font-semibold tabular-nums text-white">
-                {formatMoney(totals.subTotal)}
-              </span>
+          <section className="min-h-0 rounded-[24px] bg-white p-8 text-[#111827] shadow-[0_1px_2px_rgba(15,23,42,0.08)] 2xl:p-9">
+            <div className="space-y-4 text-[18px] font-bold text-[#6b7280]">
+              <div className="flex items-center justify-between gap-6">
+                <span>Нийт дүн</span>
+                <span className="text-[#111827]">
+                  {formatMoney(totals.subTotal)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-6">
+                <span>Хямдрал</span>
+                <span className="text-[#111827]">-{formatMoney(savings)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-6 border-b border-[#e5e7eb] pb-4">
+                <span>НӨАТ</span>
+                <span className="text-[#111827]">
+                  {formatMoney(totals.taxTotal)}
+                </span>
+              </div>
             </div>
 
-            <div className="flex items-center justify-between gap-6">
-              <span>Хямдрал</span>
-              <span className="font-semibold tabular-nums text-cyan-300">
-                -{formatMoney(savings)}
-              </span>
+            <div className="mt-8">
+              <div className="flex items-center gap-3 text-[19px] font-bold uppercase text-[#6b7280]">
+                <ReceiptText className="h-5 w-5" />
+                Төлөх дүн
+              </div>
+              <p className="mt-5 break-words text-[76px] font-bold leading-none text-[#111827] 2xl:text-[88px]">
+                {formatMoney(totals.grandTotal)}
+              </p>
             </div>
-
-            <div className="flex items-center justify-between gap-6">
-              <span>НӨАТ</span>
-              <span className="font-semibold tabular-nums text-white">
-                {formatMoney(totals.taxTotal)}
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-6 min-h-0 border-t border-white/10 pt-6 2xl:mt-8 2xl:pt-8">
-            <div className="flex items-center gap-3 text-base font-black uppercase tracking-[0.12em] text-white/78 2xl:text-lg">
-              <ReceiptText className="h-5 w-5 text-[rgb(var(--cd-light-rgb))]" />
-              Төлөх дүн
-            </div>
-            <p className="mt-4 break-words text-[clamp(3.2rem,5.4vw,5.4rem)] font-black leading-none tracking-tight text-[rgb(var(--cd-light-rgb))] tabular-nums drop-shadow-[0_0_28px_rgba(var(--cd-rgb),0.22)] 2xl:mt-5">
-              {formatMoney(totals.grandTotal)}
-            </p>
-          </div>
+          </section>
         </aside>
       </main>
-
-      <footer className="flex h-[44px] shrink-0 items-center justify-between border-t border-white/10 bg-[#0d1018] px-8 text-xs font-semibold text-white/65 2xl:h-[58px] 2xl:px-12 2xl:text-sm">
-        <span>© 2026 MGL STORE</span>
-        <span className="italic">
-          Баярлалаа. Таны худалдан авалт амжилттай үргэлжилж байна.
-        </span>
-        <span>Тусламж · Нөхцөл</span>
-      </footer>
     </div>
   );
 }

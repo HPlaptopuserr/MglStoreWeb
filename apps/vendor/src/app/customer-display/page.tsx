@@ -45,21 +45,27 @@ function formatMoney(value: number) {
   return `₮${Math.round(Number(value) || 0).toLocaleString("mn-MN")}`;
 }
 
+const customerDisplayFont = {
+  fontFamily: '"Times New Roman", Times, serif',
+};
+
 export default function CustomerDisplayPage() {
   const [payload, setPayload] = useState<CustomerPayload>({
     lines: [],
     totals: EMPTY_TOTALS,
-    displayTheme: "violet",
+    displayTheme: "white",
     qpayModal: null,
     customerSuccess: null,
     ts: Date.now(),
   });
 
   useEffect(() => {
-    const storedTheme = localStorage.getItem(CUSTOMER_DISPLAY_THEME_STORAGE_KEY);
+    const storedTheme = localStorage.getItem(
+      CUSTOMER_DISPLAY_THEME_STORAGE_KEY,
+    );
     const fallbackTheme = isCustomerDisplayThemeId(storedTheme)
       ? storedTheme
-      : "violet";
+      : "white";
     const withTheme = (next: CustomerPayload): CustomerPayload => ({
       ...next,
       displayTheme: isCustomerDisplayThemeId(next.displayTheme)
@@ -93,7 +99,7 @@ export default function CustomerDisplayPage() {
     : null;
 
   return (
-    <>
+    <div style={customerDisplayFont}>
       <PosCustomerDisplay
         lines={payload.lines}
         totals={payload.totals}
@@ -188,7 +194,10 @@ export default function CustomerDisplayPage() {
       {!payload.qpayModal?.open && payload.customerSuccess && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-emerald-950/85 p-8 text-white backdrop-blur-md">
           <div className="flex w-full max-w-3xl flex-col items-center rounded-[2rem] border border-emerald-300/30 bg-white p-10 text-center text-slate-950 shadow-2xl">
-            <CheckCircle2 className="h-28 w-28 text-emerald-500" strokeWidth={2.2} />
+            <CheckCircle2
+              className="h-28 w-28 text-emerald-500"
+              strokeWidth={2.2}
+            />
             <p className="mt-6 text-sm font-black uppercase tracking-[0.28em] text-emerald-600">
               Төлбөр баталгаажлаа
             </p>
@@ -204,6 +213,6 @@ export default function CustomerDisplayPage() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
