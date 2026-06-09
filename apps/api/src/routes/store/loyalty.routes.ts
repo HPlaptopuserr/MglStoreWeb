@@ -4,6 +4,95 @@ import { requireAuth } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
+function normalizePhone(value: unknown) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function isMembershipActive(user: {
+  isPrime: boolean;
+  membershipExpiresAt?: Date | null;
+}) {
+  return Boolean(
+    user.isPrime &&
+      (!user.membershipExpiresAt || user.membershipExpiresAt.getTime() > Date.now()),
+  );
+}
+
+// ── GET /customer/membership/phone-discount?phone=9911xxxx
+// Without a phone query this returns the authenticated member's saved discount phone.
+// With a phone query POS/checkout flows can check whether that phone can receive member discount.
+router.get("/customer/membership/phone-discount", requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user.userId as string;
+    const phone = normalizePhone(req.query.phone);
+
+    if (!phone) {
+      const currentUser = await prisma.user.findFirst({
+        where: {
+          id: userId,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          isPrime: true,
+          membershipDiscountPhone: true,
+          membershipStartedAt: true,
+          membershipExpiresAt: true,
+          profile: { select: { phoneNumber: true } },
+        },
+      });
+      const eligible = Boolean(currentUser && isMembershipActive(currentUser));
+      const discountPhone =
+        currentUser?.membershipDiscountPhone || currentUser?.profile?.phoneNumber || null;
+
+      return res.json({
+        eligible: Boolean(eligible && discountPhone),
+        badge: eligible ? "MEMBER" : "NONE",
+        phone: eligible ? discountPhone : null,
+        startedAt: eligible ? currentUser?.membershipStartedAt || null : null,
+        expiresAt: eligible ? currentUser?.membershipExpiresAt || null : null,
+      });
+    }
+
+    if (phone.length < 6) {
+      return res.status(400).json({ message: "Утасны дугаар буруу байна" });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        isActive: true,
+        deletedAt: null,
+        OR: [
+          { membershipDiscountPhone: phone },
+          { membershipDiscountPhone: null, profile: { phoneNumber: phone } },
+        ],
+      },
+      select: {
+        id: true,
+        isPrime: true,
+        membershipDiscountPhone: true,
+        membershipStartedAt: true,
+        membershipExpiresAt: true,
+        profile: { select: { phoneNumber: true } },
+      },
+    });
+
+    const eligible = Boolean(user && isMembershipActive(user));
+
+    return res.json({
+      eligible,
+      badge: eligible ? "MEMBER" : "NONE",
+      phone,
+      startedAt: eligible ? user?.membershipStartedAt || null : null,
+      expiresAt: eligible ? user?.membershipExpiresAt || null : null,
+    });
+  } catch (error) {
+    console.error("GET /customer/membership/phone-discount error", error);
+    return res.status(500).json({ message: "Membership хөнгөлөлт шалгахад алдаа гарлаа" });
+  }
+});
+
 // ── GET /customer/purchases — paid project/franchise files owned by account
 router.get("/customer/purchases", requireAuth, async (req, res) => {
   try {

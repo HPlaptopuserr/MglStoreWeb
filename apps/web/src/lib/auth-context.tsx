@@ -22,6 +22,15 @@ export type AuthUser = {
   email: string | null;
   role: string;
   isPrime?: boolean;
+  membership?: {
+    active: boolean;
+    badge: "MEMBER" | "NONE";
+    paidAt: string | null;
+    startedAt: string | null;
+    expiresAt: string | null;
+    discountPhone: string | null;
+    phoneDiscountEligible: boolean;
+  };
   fullName?: string;
   phone?: string | null;
   avatarUrl?: string | null;

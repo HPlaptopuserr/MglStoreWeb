@@ -1,20 +1,15 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Loader2 } from "lucide-react";
-import { API, API_BASE } from "@/lib/api";
+import { AlertTriangle, Loader2, LogOut } from "lucide-react";
+import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { AccountLibraryPanel } from "./_components/AccountLibraryPanel";
-import { AddressConsentPanel } from "./_components/AddressConsentPanel";
 import { OrdersPanel } from "./_components/OrdersPanel";
 import { ProfileHero } from "./_components/ProfileHero";
-import { ProfileInfoPanel } from "./_components/ProfileInfoPanel";
 import { ProfileTabs } from "./_components/ProfileTabs";
-import { SecurityPanel } from "./_components/SecurityPanel";
 import {
-  createAddressPatch,
-  createEmptyAddressPatch,
   createProfileFormState,
   type AccountContract,
   type AccountPurchase,
@@ -34,24 +29,10 @@ type ConfirmAction = {
 };
 
 export default function ProfilePage() {
-  const { user, loading, logout, updateUser, refreshUser, authFetch } =
-    useAuth();
+  const { user, loading, logout, refreshUser, authFetch } = useAuth();
   const router = useRouter();
-  const [tab, setTab] = useState<ProfileTab>("library");
+  const [tab, setTab] = useState<ProfileTab>("orders");
   const [form, setForm] = useState<ProfileFormState | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [profileError, setProfileError] = useState("");
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
-  const [passwordSuccess, setPasswordSuccess] = useState("");
-  const [passwordError, setPasswordError] = useState("");
 
   const [purchases, setPurchases] = useState<AccountPurchase[]>([]);
   const [contracts, setContracts] = useState<AccountContract[]>([]);
@@ -67,17 +48,15 @@ export default function ProfilePage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
-    const allowedTabs: ProfileTab[] = [
-      "library",
-      "orders",
-      "profile",
-      "address",
-      "security",
-    ];
+    const allowedTabs: ProfileTab[] = ["library", "orders"];
+    if (requestedTab && ["profile", "address", "security"].includes(requestedTab)) {
+      router.replace(`/profile/settings?section=${requestedTab}`);
+      return;
+    }
     if (requestedTab && allowedTabs.includes(requestedTab as ProfileTab)) {
       setTab(requestedTab as ProfileTab);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -165,12 +144,6 @@ export default function ProfilePage() {
 
   if (!user) return null;
 
-  const updateForm = (patch: Partial<ProfileFormState>) => {
-    setForm((prev) => (prev ? { ...prev, ...patch } : prev));
-    setSaved(false);
-    setProfileError("");
-  };
-
   const runConfirmedAction = async () => {
     if (!confirmAction) return;
     setConfirming(true);
@@ -180,154 +153,6 @@ export default function ProfilePage() {
     } finally {
       setConfirming(false);
     }
-  };
-
-  const saveProfile = async () => {
-    if (!form.acceptTerms) {
-      setProfileError("Үйлчилгээний нөхцөлийг зөвшөөрөх шаардлагатай.");
-      setTab("address");
-      return;
-    }
-
-    setSaving(true);
-    setSaved(false);
-    setProfileError("");
-    try {
-      const res = await authFetch(`${API_BASE}/auth/web/profile`, {
-        method: "PUT",
-        body: JSON.stringify({
-          fullName: form.fullName.trim(),
-          email: form.email.trim() || undefined,
-          phone: form.phone.trim() || undefined,
-          avatarUrl: form.avatarUrl || null,
-          acceptTerms: form.acceptTerms,
-          marketingConsent: form.marketingConsent,
-          address: {
-            id: form.addressId || undefined,
-            fullAddress: form.fullAddress,
-            city: form.city,
-            district: form.district,
-            khoroo: form.khoroo,
-            entrance: form.entrance,
-            apartment: form.apartment,
-            lat: form.lat,
-            lng: form.lng,
-            isDefault: form.addressIsDefault,
-          },
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setProfileError(data?.message || "Мэдээлэл хадгалахад алдаа гарлаа");
-        return;
-      }
-      updateUser(data);
-      setForm(createProfileFormState(data));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setProfileError("Сервертэй холбогдоход алдаа гарлаа");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const requestProfileSave = (event: FormEvent) => {
-    event.preventDefault();
-    setConfirmAction({
-      title: "Хувийн мэдээллээ хадгалах уу?",
-      description:
-        "Таны нэр, холбоо барих мэдээлэл болон account дээр ашиглагдах үндсэн мэдээлэл шинэчлэгдэнэ.",
-      confirmLabel: "Хадгалах",
-      onConfirm: saveProfile,
-    });
-  };
-
-  const requestAddressSave = (event: FormEvent) => {
-    event.preventDefault();
-    setConfirmAction({
-      title: "Хаяг ба зөвшөөрлийн мэдээллээ хадгалах уу?",
-      description:
-        "Хүргэлтийн хаяг, үйлчилгээний нөхцөл болон мэдэгдлийн зөвшөөрлийн тохиргоо account дээр хадгалагдана.",
-      confirmLabel: "Хадгалах",
-      onConfirm: saveProfile,
-    });
-  };
-
-  const uploadAvatar = async (file: File) => {
-    setUploadingAvatar(true);
-    setProfileError("");
-    try {
-      const body = new FormData();
-      body.append("avatar", file);
-      const res = await authFetch(`${API_BASE}/auth/web/profile/avatar`, {
-        method: "POST",
-        body,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.avatarUrl) {
-        setProfileError(data?.message || "Зураг upload хийхэд алдаа гарлаа");
-        return;
-      }
-      updateForm({ avatarUrl: data.avatarUrl });
-      updateUser({ avatarUrl: data.avatarUrl });
-    } catch {
-      setProfileError("Зураг upload хийхэд алдаа гарлаа");
-    } finally {
-      setUploadingAvatar(false);
-    }
-  };
-
-  const changePassword = async () => {
-    setChangingPassword(true);
-    try {
-      const res = await authFetch(`${API_BASE}/auth/web/change-password`, {
-        method: "PUT",
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setPasswordError(data?.message || "Нууц үг солиход алдаа гарлаа");
-        return;
-      }
-      setPasswordSuccess(data.message || "Нууц үг амжилттай солигдлоо");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setTimeout(() => setPasswordSuccess(""), 4000);
-    } catch {
-      setPasswordError("Сервертэй холбогдоход алдаа гарлаа");
-    } finally {
-      setChangingPassword(false);
-    }
-  };
-
-  const requestPasswordChange = (event: FormEvent) => {
-    event.preventDefault();
-    setPasswordError("");
-    setPasswordSuccess("");
-
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordError("Бүх талбарыг бөглөнө үү");
-      return;
-    }
-    if (newPassword.length < 6) {
-      setPasswordError("Шинэ нууц үг дор хаяж 6 тэмдэгт байх ёстой");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordError("Шинэ нууц үгүүд таарахгүй байна");
-      return;
-    }
-
-    setConfirmAction({
-      title: "Нууц үгээ солих уу?",
-      description:
-        "Нууц үг солигдсоны дараа account-д нэвтрэхдээ шинэ нууц үгээ ашиглана. Энэ үйлдлийг анхааралтай баталгаажуулна уу.",
-      confirmLabel: "Нууц үг солих",
-      tone: "danger",
-      onConfirm: changePassword,
-    });
   };
 
   const handleLogout = () => {
@@ -352,7 +177,6 @@ export default function ProfilePage() {
           purchases={purchases}
           orders={orders}
           points={points}
-          onLogout={handleLogout}
         />
         <ProfileTabs active={tab} onChange={setTab} />
 
@@ -375,51 +199,7 @@ export default function ProfilePage() {
           />
         )}
 
-        {tab === "profile" && (
-          <ProfileInfoPanel
-            form={form}
-            saving={saving}
-            uploading={uploadingAvatar}
-            saved={saved}
-            error={profileError}
-            onChange={updateForm}
-            onAvatarUpload={uploadAvatar}
-            onSubmit={requestProfileSave}
-          />
-        )}
-
-        {tab === "address" && (
-          <AddressConsentPanel
-            form={form}
-            addresses={user.addresses || (user.defaultAddress ? [user.defaultAddress] : [])}
-            saving={saving}
-            saved={saved}
-            error={profileError}
-            onChange={updateForm}
-            onSelectAddress={(address) => updateForm(createAddressPatch(address))}
-            onNewAddress={() => updateForm(createEmptyAddressPatch())}
-            onSubmit={requestAddressSave}
-          />
-        )}
-
-        {tab === "security" && (
-          <SecurityPanel
-            currentPassword={currentPassword}
-            newPassword={newPassword}
-            confirmPassword={confirmPassword}
-            showCurrent={showCurrent}
-            showNew={showNew}
-            loading={changingPassword}
-            success={passwordSuccess}
-            error={passwordError}
-            onCurrentPassword={setCurrentPassword}
-            onNewPassword={setNewPassword}
-            onConfirmPassword={setConfirmPassword}
-            onToggleCurrent={() => setShowCurrent((value) => !value)}
-            onToggleNew={() => setShowNew((value) => !value)}
-            onSubmit={requestPasswordChange}
-          />
-        )}
+        <LogoutPanel onLogout={handleLogout} />
       </div>
       <ConfirmActionDialog
         action={confirmAction}
@@ -430,6 +210,21 @@ export default function ProfilePage() {
         onConfirm={runConfirmedAction}
       />
     </main>
+  );
+}
+
+function LogoutPanel({ onLogout }: { onLogout: () => void }) {
+  return (
+    <section className="rounded-[22px] border border-red-100 bg-red-50/70 p-3 shadow-sm">
+      <button
+        type="button"
+        onClick={onLogout}
+        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-white px-4 text-sm font-black text-red-600 transition hover:bg-red-50"
+      >
+        <LogOut size={18} />
+        Гарах
+      </button>
+    </section>
   );
 }
 

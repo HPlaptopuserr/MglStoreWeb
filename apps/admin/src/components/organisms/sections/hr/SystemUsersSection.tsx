@@ -39,6 +39,10 @@ type SystemUser = {
   avatarUrl: string | null;
   role: string;
   isPrime: boolean;
+  membershipPaidAt?: string | null;
+  membershipStartedAt?: string | null;
+  membershipExpiresAt?: string | null;
+  membershipDiscountPhone?: string | null;
   isActive: boolean;
   emailVerified: boolean;
   lastLoginAt: string | null;
@@ -680,12 +684,12 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        alert(data?.message || "Prime эрх солиход алдаа гарлаа");
+        alert(data?.message || "Membership эрх солиход алдаа гарлаа");
         return;
       }
       onRoleChanged();
     } catch {
-      alert("Prime эрх солиход алдаа гарлаа");
+      alert("Membership эрх солиход алдаа гарлаа");
     } finally {
       setChangingPrime(false);
     }
@@ -794,14 +798,14 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
               ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
               : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-700"
           }`}
-          title={user.isPrime ? "Prime эрх цуцлах" : "Prime эрх өгөх"}
+          title={user.isPrime ? "Membership эрх цуцлах" : "Membership эрх өгөх"}
         >
           {changingPrime ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <Crown className="h-3 w-3" />
           )}
-          {user.isPrime ? "Prime user" : "Prime болгох"}
+          {user.isPrime ? "Member" : "Member болгох"}
         </button>
 
         {user.emailVerified && (

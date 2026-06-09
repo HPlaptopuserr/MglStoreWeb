@@ -1281,6 +1281,10 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
           email: true,
           role: true,
           isPrime: true,
+          membershipPaidAt: true,
+          membershipStartedAt: true,
+          membershipExpiresAt: true,
+          membershipDiscountPhone: true,
           isActive: true,
           emailVerified: true,
           lastLoginAt: true,
@@ -1326,6 +1330,10 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
         avatarUrl: u.profile?.avatarUrl || null,
         role: u.role,
         isPrime: u.isPrime,
+        membershipPaidAt: u.membershipPaidAt,
+        membershipStartedAt: u.membershipStartedAt,
+        membershipExpiresAt: u.membershipExpiresAt,
+        membershipDiscountPhone: u.membershipDiscountPhone,
         isActive: u.isActive,
         emailVerified: u.emailVerified,
         lastLoginAt: u.lastLoginAt,
@@ -1366,7 +1374,13 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
   }
 });
 
-/* ─── PATCH /admin/users/:id/prime ─── grant/revoke prime access ── */
+function addOneMembershipMonth(date: Date) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + 1);
+  return next;
+}
+
+/* ─── PATCH /admin/users/:id/prime ─── grant/revoke membership access ── */
 router.patch("/admin/users/:id/prime", requireAuth, requirePlatformPermission(Permission.MANAGE_USERS), async (req, res) => {
   try {
     const id = req.params.id as string;
@@ -1378,26 +1392,53 @@ router.patch("/admin/users/:id/prime", requireAuth, requirePlatformPermission(Pe
 
     const user = await prisma.user.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        profile: { select: { phoneNumber: true } },
+      },
     });
 
     if (!user) {
       return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
     }
 
+    const now = new Date();
+    const membershipDiscountPhone = user.profile?.phoneNumber?.trim() || null;
     const updated = await prisma.user.update({
       where: { id },
-      data: { isPrime },
-      select: { id: true, email: true, isPrime: true },
+      data: isPrime
+        ? {
+            isPrime: true,
+            membershipPaidAt: now,
+            membershipStartedAt: now,
+            membershipExpiresAt: addOneMembershipMonth(now),
+            membershipDiscountPhone,
+          }
+        : {
+            isPrime: false,
+            membershipExpiresAt: now,
+            membershipDiscountPhone: null,
+          },
+      select: {
+        id: true,
+        email: true,
+        isPrime: true,
+        membershipPaidAt: true,
+        membershipStartedAt: true,
+        membershipExpiresAt: true,
+        membershipDiscountPhone: true,
+      },
     });
 
     return res.json({
-      message: isPrime ? "Prime эрх идэвхжлээ" : "Prime эрх цуцлагдлаа",
+      message: isPrime
+        ? "Membership эрх идэвхжлээ. Хугацаа төлбөр төлөгдсөн цагаас эхэллээ."
+        : "Membership эрх цуцлагдлаа",
       data: updated,
     });
   } catch (error) {
     console.error("[admin change prime error]", error);
-    return res.status(500).json({ message: "Prime эрх солиход алдаа гарлаа" });
+    return res.status(500).json({ message: "Membership эрх солиход алдаа гарлаа" });
   }
 });
 

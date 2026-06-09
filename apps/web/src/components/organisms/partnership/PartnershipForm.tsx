@@ -37,6 +37,11 @@ const FALLBACK_CATEGORIES: BusinessCategory[] = [
   { id: "6", slug: "other", name: "Бусад", icon: null, sortOrder: 5 },
 ];
 
+const MONGOLIAN_ORG_NAME_ALLOWED_CHARS = /[^А-Яа-яЁёӨөҮү\s"“”'.,№-]/g;
+const MONGOLIAN_ORG_NAME_PATTERN = /^[А-Яа-яЁёӨөҮү\s"“”'.,№-]+$/;
+const MONGOLIAN_ORG_NAME_ERROR =
+  "Байгууллагын нэрийг зөвхөн монгол үсгээр бичнэ үү.";
+
 export function PartnershipForm() {
   const [form, setForm] = useState({
     organizationName: "",
@@ -49,6 +54,7 @@ export function PartnershipForm() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("error");
+  const [organizationNameError, setOrganizationNameError] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
   const [categories, setCategories] = useState<BusinessCategory[]>([]);
@@ -79,9 +85,33 @@ export function PartnershipForm() {
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
+    const { name, value } = e.target;
+
+    if (name === "organizationName") {
+      const rawSanitizedValue = value.replace(
+        MONGOLIAN_ORG_NAME_ALLOWED_CHARS,
+        "",
+      );
+      const hasBlockedChars = rawSanitizedValue !== value;
+      const sanitizedValue = hasBlockedChars
+        ? rawSanitizedValue.replace(/\s{2,}/g, " ").trim()
+        : rawSanitizedValue;
+
+      setOrganizationNameError(
+        hasBlockedChars ? MONGOLIAN_ORG_NAME_ERROR : "",
+      );
+      setMessage(hasBlockedChars ? MONGOLIAN_ORG_NAME_ERROR : "");
+      setMessageType("error");
+      setForm((prev) => ({
+        ...prev,
+        organizationName: sanitizedValue,
+      }));
+      return;
+    }
+
     setForm((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: value,
     }));
   };
 
@@ -89,6 +119,12 @@ export function PartnershipForm() {
     e.preventDefault();
     setMessage("");
     setMessageType("error");
+
+    if (!MONGOLIAN_ORG_NAME_PATTERN.test(form.organizationName.trim())) {
+      setOrganizationNameError(MONGOLIAN_ORG_NAME_ERROR);
+      setMessage(MONGOLIAN_ORG_NAME_ERROR);
+      return;
+    }
 
     if (form.email && !form.email.toLowerCase().endsWith("@gmail.com")) {
       setMessage("И-мэйл хаяг @gmail.com байх шаардлагатай");
@@ -106,7 +142,7 @@ export function PartnershipForm() {
         body: JSON.stringify({
           email: form.email,
           phoneNumber: form.phoneNumber,
-          organizationName: form.organizationName,
+          organizationName: form.organizationName.trim(),
           businessCategory: form.businessCategory,
           operatingYears: form.operatingYears
             ? Number(form.operatingYears)
@@ -141,9 +177,9 @@ export function PartnershipForm() {
 
   return (
     <div className="relative group">
-      <div className="absolute -inset-1 bg-white/30 rounded-4xl blur-sm transition duration-500 group-hover:bg-white/40"></div>
+      <div className="absolute -inset-1 rounded-[28px] bg-[#FFB700]/10 blur-sm transition duration-500 group-hover:bg-[#FFB700]/15"></div>
 
-      <div className="relative bg-white rounded-[1.75rem] p-8 md:p-10 shadow-2xl flex flex-col">
+      <div className="relative flex flex-col rounded-[24px] border border-slate-200 bg-white p-5 shadow-lg shadow-slate-900/5 md:rounded-[28px] md:p-8">
         {submitted ? (
           <div className="flex flex-col items-center justify-center py-8 text-center space-y-4">
             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
@@ -163,8 +199,8 @@ export function PartnershipForm() {
           </div>
         ) : (
         <>
-        <div className="flex items-center justify-between mb-8">
-          <h3 className="text-2xl font-bold text-gray-900">Хамтран ажиллах</h3>
+        <div className="mb-6 flex items-center justify-between gap-3 md:mb-8">
+          <h3 className="text-2xl font-black text-gray-900">Бүртгүүлэх</h3>
           <div className="flex items-center gap-2 text-green-600 bg-green-50 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -174,9 +210,9 @@ export function PartnershipForm() {
           </div>
         </div>
 
-        <form className="space-y-5" onSubmit={handleSubmit}>
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-gray-700 ml-1">
+        <form className="space-y-4 md:space-y-5" onSubmit={handleSubmit}>
+          <div className="space-y-2">
+            <label className="ml-1 text-base font-bold text-gray-800">
               Байгууллагын нэр
             </label>
             <div className="relative">
@@ -184,17 +220,23 @@ export function PartnershipForm() {
               <input
                 name="organizationName"
                 type="text"
+                autoComplete="organization"
                 value={form.organizationName}
                 onChange={handleChange}
                 placeholder="Компанийн нэрээ оруулна уу"
-                className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-[#FFB700] focus:border-[#FFB700] block pl-11 p-3.5 outline-none"
+                className="block min-h-14 w-full rounded-xl border border-gray-200 bg-gray-50 p-4 pl-11 text-base text-gray-900 outline-none focus:border-[#FFB700] focus:ring-[#FFB700]"
                 required
               />
             </div>
+            {organizationNameError && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                {organizationNameError}
+              </p>
+            )}
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-gray-700 ml-1">
+          <div className="space-y-2">
+            <label className="ml-1 text-base font-bold text-gray-800">
               Үйл ажиллагааны чиглэл
             </label>
 
@@ -221,7 +263,7 @@ export function PartnershipForm() {
               <button
                 type="button"
                 onClick={() => setCatOpen((v) => !v)}
-                className={`w-full bg-gray-50 border text-left text-sm rounded-xl pl-11 pr-10 p-3.5 outline-none transition-all flex items-center ${
+                className={`flex min-h-14 w-full items-center rounded-xl border bg-gray-50 p-4 pl-11 pr-10 text-left text-base outline-none transition-all ${
                   catOpen
                     ? "border-[#FFB700] ring-2 ring-[#FFB700]/30"
                     : "border-gray-200 hover:border-gray-300"
@@ -269,7 +311,7 @@ export function PartnershipForm() {
                             }));
                             setCatOpen(false);
                           }}
-                          className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
+                          className={`flex w-full items-center gap-2.5 px-4 py-3 text-left text-base transition-colors ${
                             active
                               ? "bg-[#FFB700]/10 text-[#FFB700] font-semibold"
                               : "text-gray-700 hover:bg-gray-50"
@@ -301,8 +343,8 @@ export function PartnershipForm() {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-gray-700 ml-1">
+          <div className="space-y-2">
+            <label className="ml-1 text-base font-bold text-gray-800">
               Үйл ажиллагаа явуулсан жил
             </label>
             <div className="relative">
@@ -312,17 +354,19 @@ export function PartnershipForm() {
               <input
                 name="operatingYears"
                 type="number"
+                inputMode="numeric"
+                min="0"
                 value={form.operatingYears}
                 onChange={handleChange}
                 placeholder="Жил"
-                className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-[#FFB700] focus:border-[#FFB700] block pl-11 p-3.5 transition-colors outline-none"
+                className="block min-h-14 w-full rounded-xl border border-gray-200 bg-gray-50 p-4 pl-11 text-base text-gray-900 outline-none transition-colors focus:border-[#FFB700] focus:ring-[#FFB700]"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-gray-700 ml-1 flex items-center gap-1.5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+            <div className="space-y-2">
+              <label className="ml-1 flex items-center gap-1.5 text-base font-bold text-gray-800">
                 И-мэйл
                 <span className="text-xs font-normal text-gray-400">(сонголтот)</span>
               </label>
@@ -331,16 +375,17 @@ export function PartnershipForm() {
                 <input
                   name="email"
                   type="email"
+                  autoComplete="email"
                   value={form.email}
                   onChange={handleChange}
                   placeholder="name@example.com"
-                  className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-[#FFB700] focus:border-[#FFB700] block pl-11 p-3.5 outline-none"
+                  className="block min-h-14 w-full rounded-xl border border-gray-200 bg-gray-50 p-4 pl-11 text-base text-gray-900 outline-none focus:border-[#FFB700] focus:ring-[#FFB700]"
                 />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-gray-700 ml-1">
+            <div className="space-y-2">
+              <label className="ml-1 text-base font-bold text-gray-800">
                 Утасны дугаар
               </label>
               <div className="relative">
@@ -348,10 +393,12 @@ export function PartnershipForm() {
                 <input
                   name="phoneNumber"
                   type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   value={form.phoneNumber}
                   onChange={handleChange}
                   placeholder="9911xxxx"
-                  className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-[#FFB700] focus:border-[#FFB700] block pl-11 p-3.5 outline-none"
+                  className="block min-h-14 w-full rounded-xl border border-gray-200 bg-gray-50 p-4 pl-11 text-base text-gray-900 outline-none focus:border-[#FFB700] focus:ring-[#FFB700]"
                   required
                 />
               </div>
@@ -376,9 +423,9 @@ export function PartnershipForm() {
           <Button
             type="submit"
             disabled={loading}
-            className="w-full h-15 bg-[#FFB700] hover:bg-[#e6a600] text-white font-bold py-4 rounded-xl shadow-lg transition-all transform active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60"
+            className="flex min-h-14 w-full transform items-center justify-center gap-2 rounded-xl bg-[#FFB700] py-4 text-white shadow-lg transition-all active:scale-[0.98] disabled:opacity-60 hover:bg-[#e6a600]"
           >
-            <span className="text-lg">
+            <span className="text-lg font-black">
               {loading ? "Илгээж байна..." : "Илгээх"}
             </span>
             <ArrowRight className="h-5 w-5" />

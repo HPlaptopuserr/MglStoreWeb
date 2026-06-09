@@ -13,6 +13,10 @@ model User {
   registerNumber               String?                   @unique
   role                         PlatformRole              @default(USER)
   isPrime                      Boolean                   @default(false)
+  membershipPaidAt             DateTime?
+  membershipStartedAt          DateTime?
+  membershipExpiresAt          DateTime?
+  membershipDiscountPhone      String?
   isActive                     Boolean                   @default(true)
   emailVerified                Boolean                   @default(false)
   termsAcceptedAt              DateTime?
@@ -70,6 +74,8 @@ model User {
 
   @@index([role])
   @@index([isPrime])
+  @@index([membershipExpiresAt])
+  @@index([membershipDiscountPhone])
   @@index([isActive])
   @@index([deletedAt])
   @@index([onboardingSource])

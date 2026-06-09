@@ -40,6 +40,34 @@ router.use("/profile/uploads", express.static(profileUploadsDir));
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("FATAL: JWT_SECRET not set"); })() : "dev-secret-change-me");
 const VERIFY_MN_API_BASE = "https://api.verify.mn";
 
+function toIsoOrNull(value?: Date | string | null) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function toMembershipPayload(user: any) {
+  const expiresAt = user.membershipExpiresAt
+    ? new Date(user.membershipExpiresAt)
+    : null;
+  const active = Boolean(
+    user.isPrime && (!expiresAt || expiresAt.getTime() > Date.now()),
+  );
+  const discountPhone = active
+    ? user.membershipDiscountPhone || user.profile?.phoneNumber || null
+    : null;
+
+  return {
+    active,
+    badge: active ? "MEMBER" : "NONE",
+    paidAt: toIsoOrNull(user.membershipPaidAt),
+    startedAt: toIsoOrNull(user.membershipStartedAt),
+    expiresAt: toIsoOrNull(user.membershipExpiresAt),
+    discountPhone,
+    phoneDiscountEligible: Boolean(active && discountPhone),
+  };
+}
+
 function toWebUserPayload(user: any, orgInfo?: { orgRole?: string | null; organizationId?: string | null } | null) {
   const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
   const addresses = Array.isArray(user.addresses)
@@ -60,12 +88,14 @@ function toWebUserPayload(user: any, orgInfo?: { orgRole?: string | null; organi
   const address = Array.isArray(user.addresses)
     ? user.addresses.find((item: any) => item.isDefault) || user.addresses[0]
     : null;
+  const membership = toMembershipPayload(user);
 
   return {
     id: user.id,
     email: safeEmail,
     role: user.role,
-    isPrime: Boolean(user.isPrime),
+    isPrime: membership.active,
+    membership,
     orgRole: orgInfo?.orgRole || null,
     fullName: user.profile?.fullName || "",
     phone: user.profile?.phoneNumber || null,
@@ -397,6 +427,7 @@ async function resolveVendorLoginMembership(userId: string) {
 
 function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Awaited<ReturnType<typeof resolveOrganization>>) {
   const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
+  const membership = toMembershipPayload(user);
 
   return {
     accessToken,
@@ -404,7 +435,8 @@ function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Awaited<Ret
       id: user.id,
       email: safeEmail,
       role: user.role,
-      isPrime: Boolean(user.isPrime),
+      isPrime: membership.active,
+      membership,
       orgRole: orgInfo?.orgRole || null,
       fullName: user.profile?.fullName || "",
       phone: user.profile?.phoneNumber || null,

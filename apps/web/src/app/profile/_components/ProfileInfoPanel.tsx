@@ -1,7 +1,10 @@
+"use client";
+
 import {
   AlertCircle,
   Camera,
   Check,
+  Pencil,
   Loader2,
   Mail,
   Phone,
@@ -9,6 +12,7 @@ import {
   User,
 } from "lucide-react";
 import type { FormEvent } from "react";
+import { useState } from "react";
 import { resolveApiAssetUrl } from "@/lib/api";
 import type { ProfileFormState } from "./types";
 
@@ -33,6 +37,7 @@ export function ProfileInfoPanel({
   onAvatarUpload,
   onSubmit,
 }: ProfileInfoPanelProps) {
+  const [editing, setEditing] = useState(false);
   const initials =
     form.fullName.trim()[0]?.toUpperCase() ||
     form.email.trim()[0]?.toUpperCase() ||
@@ -40,19 +45,55 @@ export function ProfileInfoPanel({
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-      <div className="mb-6">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">
-          Profile
-        </p>
-        <h2 className="mt-2 text-2xl font-black text-slate-950">
-          Хувийн мэдээлэл
-        </h2>
-        <p className="mt-2 text-sm font-semibold text-slate-500">
-          Захиалга, төлбөртэй файл, үйлчилгээний хүсэлт дээр ашиглагдах үндсэн
-          мэдээлэл.
-        </p>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">
+            Profile
+          </p>
+          <h2 className="mt-2 text-2xl font-black text-slate-950">
+            Хувийн мэдээлэл
+          </h2>
+          <p className="mt-2 text-sm font-semibold text-slate-500">
+            Захиалга, төлбөртэй файл, үйлчилгээний хүсэлт дээр ашиглагдах үндсэн
+            мэдээлэл.
+          </p>
+        </div>
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-4 text-sm font-black text-white shadow-sm transition hover:bg-orange-600 sm:w-auto"
+          >
+            <Pencil size={16} />
+            Засах
+          </button>
+        )}
       </div>
 
+      {!editing ? (
+        <div className="grid gap-4 lg:grid-cols-[180px_1fr]">
+          <div className="flex items-center gap-4 rounded-3xl bg-slate-50 p-4">
+            <div className="h-20 w-20 overflow-hidden rounded-2xl bg-slate-950 text-white shadow-sm">
+              {form.avatarUrl ? (
+                <img
+                  src={resolveApiAssetUrl(form.avatarUrl)}
+                  alt="Profile зураг"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-3xl font-black">
+                  {initials}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <ProfileReadonlyItem label="Овог нэр" value={form.fullName || "Бөглөөгүй"} />
+            <ProfileReadonlyItem label="И-мэйл" value={form.email || "Бөглөөгүй"} />
+            <ProfileReadonlyItem label="Утас" value={form.phone || "Бөглөөгүй"} />
+          </div>
+        </div>
+      ) : (
       <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-[260px_1fr]">
         <div className="rounded-3xl bg-slate-50 p-5 text-center">
           <div className="mx-auto h-32 w-32 overflow-hidden rounded-3xl bg-slate-950 text-white shadow-sm">
@@ -68,7 +109,7 @@ export function ProfileInfoPanel({
               </div>
             )}
           </div>
-          <label className="mt-4 inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-slate-900 shadow-sm ring-1 ring-slate-200 transition hover:bg-orange-50">
+          <label className="mt-4 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-slate-900 shadow-sm ring-1 ring-slate-200 transition hover:bg-orange-50 sm:w-auto">
             {uploading ? (
               <Loader2 size={17} className="animate-spin" />
             ) : (
@@ -156,13 +197,31 @@ export function ProfileInfoPanel({
           <button
             type="submit"
             disabled={saving || uploading}
-            className="inline-flex h-13 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-4 text-sm font-black text-white shadow-lg shadow-orange-200 transition hover:brightness-105 disabled:opacity-60"
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-6 text-sm font-black text-white shadow-lg shadow-orange-200 transition hover:brightness-105 disabled:opacity-60 sm:w-auto"
           >
             {saving ? <Loader2 size={17} className="animate-spin" /> : <Save size={17} />}
             {saving ? "Хадгалж байна..." : "Хадгалах"}
           </button>
         </div>
       </form>
+      )}
     </section>
+  );
+}
+
+function ProfileReadonlyItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 truncate text-sm font-black text-slate-950">{value}</p>
+    </div>
   );
 }
