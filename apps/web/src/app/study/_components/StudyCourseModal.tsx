@@ -49,6 +49,7 @@ export function StudyCourseModal({
     programItems.length > 0 ? programItems : FALLBACK_PROGRAM_ITEMS;
   const visibleTeacherItems =
     teacherItems.length > 0 ? teacherItems : FALLBACK_TEACHER_ITEMS;
+  const hasTeacherItems = teacherItems.length > 0;
 
   useLockedBodyScroll();
 
@@ -62,13 +63,13 @@ export function StudyCourseModal({
       />
 
       <article
-        className="mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-7xl overflow-y-auto overscroll-contain rounded-[28px] bg-slate-50 shadow-2xl"
+        className="mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-6xl overflow-y-auto overscroll-contain rounded-[28px] bg-slate-50 shadow-2xl"
         onWheel={(event) => event.stopPropagation()}
         onTouchMove={(event) => event.stopPropagation()}
       >
         <div className="relative overflow-hidden bg-[#0d1b14] text-white">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.16),transparent_34%),radial-gradient(circle_at_86%_0%,rgba(249,115,22,0.16),transparent_28%)]" />
-          <div className="relative mx-auto grid max-w-6xl gap-8 px-5 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:py-10">
+          <div className="relative mx-auto grid max-w-6xl gap-7 px-5 py-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-8">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-emerald-100">
                 <span className="rounded-full bg-white/10 px-3 py-1 ring-1 ring-white/10">
@@ -89,11 +90,28 @@ export function StudyCourseModal({
               </p>
 
               <div className="mt-6 grid max-w-3xl gap-3 sm:grid-cols-2">
-                <HeroMetaCard label="Хүний тоо" value={material.capacity || "Admin-аас оруулна"} />
-                <HeroMetaCard label="Төлөв" value={material.deliveryType || "Бүртгэл"} />
-                <HeroMetaCard label="Хэлбэр" value={material.location || "Online сургалт удахгүй"} />
-                <HeroMetaCard label="Хаяг" value={material.address || "Хаяг оруулаагүй"} />
+                <HeroMetaCard
+                  label="Хүний тоо"
+                  value={material.capacity || "Admin-аас оруулна"}
+                />
+                <HeroMetaCard
+                  label="Төлөв"
+                  value={material.deliveryType || "Бүртгэл"}
+                />
+                <HeroMetaCard
+                  label="Хэлбэр"
+                  value={material.location || "Online сургалт удахгүй"}
+                />
+                <HeroMetaCard
+                  label="Хаяг"
+                  value={material.address || "Хаяг оруулаагүй"}
+                />
               </div>
+
+              <HeroTeacherPanel
+                teachers={visibleTeacherItems}
+                hasTeachers={hasTeacherItems}
+              />
             </div>
 
             <RegistrationPanel
@@ -109,17 +127,121 @@ export function StudyCourseModal({
           </div>
         </div>
 
-        <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:py-10">
+        <div className="mx-auto max-w-6xl px-5 py-7 sm:px-8 lg:py-8">
           <div className="space-y-6">
+            <TeacherGrid
+              teachers={visibleTeacherItems}
+              hasTeachers={hasTeacherItems}
+            />
             <LearningOutcomes items={visibleProgramItems} />
             <ProgramAccordion
               items={visibleProgramItems}
               duration={material.duration}
             />
-            <TeacherGrid teachers={visibleTeacherItems} />
           </div>
         </div>
       </article>
+    </div>
+  );
+}
+
+function HeroTeacherPanel({
+  teachers,
+  hasTeachers,
+}: {
+  teachers: { name: string; description: string; imageUrl?: string }[];
+  hasTeachers: boolean;
+}) {
+  const leadTeacher = teachers[0];
+  const supportingTeachers = teachers.slice(1, 4);
+
+  return (
+    <div className="mt-5 max-w-3xl overflow-hidden rounded-3xl border border-white/10 bg-white/[0.07] shadow-[0_18px_60px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+      <div className="relative p-4 sm:p-5">
+        <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-emerald-300 via-teal-300 to-orange-300" />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="relative shrink-0">
+            <TeacherAvatar
+              teacher={leadTeacher}
+              hasTeachers={hasTeachers}
+              className="h-20 w-20 rounded-[24px] ring-4 ring-white/10"
+            />
+            <span className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-300 text-emerald-950 ring-4 ring-[#17271e]">
+              <CheckCircle2 className="h-4 w-4" />
+            </span>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-200">
+                Сургалтыг хөтлөх багш
+              </p>
+              <span className="rounded-full bg-emerald-300/14 px-2.5 py-1 text-[11px] font-black text-emerald-100 ring-1 ring-emerald-200/20">
+                {hasTeachers ? `${teachers.length} багш` : "Admin-аас нэмнэ"}
+              </span>
+            </div>
+            <h3 className="mt-2 break-words text-2xl font-black leading-tight text-white">
+              {leadTeacher.name}
+            </h3>
+            <p className="mt-2 line-clamp-2 break-words text-sm font-semibold leading-6 text-white/68">
+              {leadTeacher.description ||
+                "Багшийн зураг, нэр, товч танилцуулгыг admin дээрээс оруулна."}
+            </p>
+          </div>
+
+          {supportingTeachers.length > 0 && (
+            <div className="flex items-center sm:self-end">
+              {supportingTeachers.map((teacher, index) => (
+                <TeacherAvatar
+                  key={`hero-teacher-${index}`}
+                  teacher={teacher}
+                  hasTeachers={hasTeachers}
+                  className="-ml-2 h-10 w-10 rounded-2xl ring-2 ring-[#17271e] first:ml-0"
+                />
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="mt-4 grid gap-2 border-t border-white/10 pt-4 text-xs font-black text-white/72 sm:grid-cols-3">
+          <span className="rounded-2xl bg-black/14 px-3 py-2">
+            Практик туршлага
+          </span>
+          <span className="rounded-2xl bg-black/14 px-3 py-2">
+            Асуулт хариулт
+          </span>
+          <span className="rounded-2xl bg-black/14 px-3 py-2">
+            Дадлага төвтэй
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeacherAvatar({
+  teacher,
+  hasTeachers,
+  className,
+}: {
+  teacher: { name: string; imageUrl?: string };
+  hasTeachers: boolean;
+  className: string;
+}) {
+  return (
+    <div
+      className={`flex shrink-0 items-center justify-center overflow-hidden bg-emerald-200 text-base font-black text-emerald-950 ${className}`}
+    >
+      {teacher.imageUrl ? (
+        <img
+          src={teacher.imageUrl}
+          alt={teacher.name}
+          className="h-full w-full object-cover"
+        />
+      ) : hasTeachers ? (
+        teacher.name.slice(0, 1).toUpperCase()
+      ) : (
+        <UserRound className="h-5 w-5" />
+      )}
     </div>
   );
 }
@@ -215,17 +337,33 @@ function RegistrationPanel({
           )}
         </button>
         <div className="mt-5 grid gap-3 border-t border-slate-100 pt-5 text-sm font-bold text-slate-600">
-          <RegistrationDetail icon={<Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />}>
+          <RegistrationDetail
+            icon={
+              <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            }
+          >
             {material.duration || "Хугацаа тохиролцоно"}
           </RegistrationDetail>
-          <RegistrationDetail icon={<MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />}>
+          <RegistrationDetail
+            icon={
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            }
+          >
             {material.location || "Online сургалт удахгүй"}
             {material.address ? ` · ${material.address}` : ""}
           </RegistrationDetail>
-          <RegistrationDetail icon={<Users className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />}>
+          <RegistrationDetail
+            icon={
+              <Users className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            }
+          >
             {material.capacity || "Хүний тоо admin-аас оруулна"}
           </RegistrationDetail>
-          <RegistrationDetail icon={<BookOpenCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />}>
+          <RegistrationDetail
+            icon={
+              <BookOpenCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            }
+          >
             Сургалтын хөтөлбөр багтсан
           </RegistrationDetail>
         </div>
@@ -317,37 +455,54 @@ function ProgramAccordion({
 
 function TeacherGrid({
   teachers,
+  hasTeachers,
 }: {
-  teachers: { name: string; description: string }[];
+  teachers: { name: string; description: string; imageUrl?: string }[];
+  hasTeachers: boolean;
 }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      <div className="flex items-center gap-2">
-        <UserRound className="h-5 w-5 text-emerald-600" />
-        <h3 className="text-xl font-black text-slate-950">
-          Багш нарын мэдээлэл
-        </h3>
+    <section className="overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-sm">
+      <div className="border-b border-emerald-100 bg-emerald-50/70 px-5 py-4 sm:px-6">
+        <div className="flex items-center gap-2">
+          <UserRound className="h-5 w-5 text-emerald-700" />
+          <h3 className="text-xl font-black text-slate-950">
+            Багш нарын товч танилцуулга
+          </h3>
+        </div>
+        <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+          Сургалтыг хөтлөх багш, туршлага болон чиглэлийн мэдээлэл.
+        </p>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 p-5 sm:p-6 md:grid-cols-2">
         {teachers.map((teacher, index) => (
           <article
             key={`teacher-${index}`}
-            className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+            className="group overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-lg hover:shadow-emerald-950/5"
           >
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-base font-black text-emerald-700">
-                {teacher.name.slice(0, 1).toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <h4 className="break-words text-base font-black text-slate-950">
-                  {teacher.name}
-                </h4>
-                <p className="mt-1 break-words text-sm font-semibold leading-7 text-slate-600">
+            <div className="flex gap-4 p-4">
+              <TeacherAvatar
+                teacher={teacher}
+                hasTeachers={hasTeachers}
+                className="h-20 w-20 rounded-[24px] ring-1 ring-slate-200"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="break-words text-lg font-black leading-6 text-slate-950">
+                    {teacher.name}
+                  </h4>
+                  {index === 0 && (
+                    <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-black text-orange-700">
+                      Lead
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 break-words text-sm font-semibold leading-7 text-slate-600">
                   {teacher.description ||
-                    "Албан тушаал, туршлага болон чиглэлийг admin дээрээс нэмнэ."}
+                    "Багшийн зураг, нэр болон товч танилцуулгыг admin дээрээс нэмнэ."}
                 </p>
               </div>
             </div>
+            <div className="h-1 bg-gradient-to-r from-emerald-300 via-teal-300 to-orange-300 opacity-0 transition group-hover:opacity-100" />
           </article>
         ))}
       </div>

@@ -61,6 +61,11 @@ function normalizeProjectImages(project: ProjectItem): ProjectItem {
       Number(project.originalPrice) > 0
         ? Math.round(Number(project.originalPrice))
         : 0,
+    featuredOrder:
+      Number.isFinite(Number(project.featuredOrder)) &&
+      Number(project.featuredOrder) > 0
+        ? Math.round(Number(project.featuredOrder))
+        : 0,
     imageUrl: imageUrls[0] ?? "",
     imageUrls,
     isFeatured: Boolean(project.isFeatured),

@@ -1,5 +1,12 @@
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
 
+const EMPTY_STUDY_PROGRAM_MARKER = "__EMPTY_STUDY_PROGRAM_ROW__";
+const EMPTY_STUDY_TEACHER_MARKER = "__EMPTY_STUDY_TEACHER_ROW__";
+
+function looksLikeUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim()) || value.startsWith("data:image/");
+}
+
 export type StudySettings = {
   eyebrow: string;
   title: string;
@@ -21,6 +28,7 @@ export type StudyProgramItem = {
 export type StudyTeacherItem = {
   name: string;
   description: string;
+  imageUrl?: string;
 };
 
 export const DEFAULT_STUDY_SETTINGS: StudySettings = {
@@ -60,6 +68,7 @@ export const FALLBACK_TEACHER_ITEMS: StudyTeacherItem[] = [
     name: "Багшийн мэдээлэл",
     description:
       "Багшийн нэр, албан тушаал, туршлага болон чиглэлийг admin дээрээс нэмнэ.",
+    imageUrl: "",
   },
 ];
 
@@ -100,6 +109,24 @@ export function buildStudyDisplayMaterials(materials: ProjectItem[]) {
   return materials;
 }
 
+export function buildFeaturedStudyMaterials(materials: ProjectItem[]) {
+  const manuallyOrdered = materials
+    .map((material, index) => ({
+      material,
+      index,
+      order: Number(material.featuredOrder || 0),
+    }))
+    .filter((item) => Number.isFinite(item.order) && item.order > 0)
+    .sort((a, b) => a.order - b.order || a.index - b.index)
+    .map((item) => item.material);
+
+  if (manuallyOrdered.length > 0) {
+    return manuallyOrdered.slice(0, 4);
+  }
+
+  return materials.slice(0, 4);
+}
+
 export function getCourseScheduleText(material: ProjectItem) {
   return [material.courseDate, material.courseTime]
     .map((item) => String(item || "").trim())
@@ -121,7 +148,7 @@ export function parseProgramItems(material: ProjectItem): StudyProgramItem[] {
   const lines = (material.details || material.summary || "")
     .split("\n")
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter((line) => line && line !== EMPTY_STUDY_PROGRAM_MARKER);
 
   return lines.map((line) => {
     const [rawTitle, ...rawDescriptionParts] = line.split("::");
@@ -138,12 +165,23 @@ export function parseTeacherItems(material: ProjectItem): StudyTeacherItem[] {
   return String(material.teacherInfo || "")
     .split("\n")
     .map((line) => line.trim())
-    .filter(Boolean)
+    .filter((line) => line && line !== EMPTY_STUDY_TEACHER_MARKER)
     .map((line) => {
       const [rawName, ...rawDescriptionParts] = line.split("::");
+      const description = rawDescriptionParts[0]?.trim() || "";
+      const imageUrl = rawDescriptionParts.slice(1).join("::").trim();
+      const name = rawName.trim();
+      if (looksLikeUrl(name) && !description && !imageUrl) {
+        return {
+          name: "Багшийн мэдээлэл",
+          description: "",
+          imageUrl: name,
+        };
+      }
       return {
-        name: rawName.trim() || line,
-        description: rawDescriptionParts.join("::").trim(),
+        name: name || "Багшийн мэдээлэл",
+        description,
+        imageUrl,
       };
     });
 }

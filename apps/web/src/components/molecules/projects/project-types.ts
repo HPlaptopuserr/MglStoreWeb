@@ -23,6 +23,7 @@ export type ProjectItem = {
   tags?: string[];
   isActive?: boolean;
   isFeatured?: boolean;
+  featuredOrder?: number;
 };
 
 export type ProjectShowcaseSection = {

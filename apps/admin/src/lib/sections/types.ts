@@ -123,6 +123,7 @@ export interface ProjectItem {
   tags?: string[];
   isActive: boolean;
   isFeatured?: boolean;
+  featuredOrder?: number;
   paymentAccountId?: string;
   paymentMerchantCode?: string;
 }

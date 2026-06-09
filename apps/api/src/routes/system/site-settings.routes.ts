@@ -90,6 +90,7 @@ type PaidProject = {
   originalPrice?: number;
   tags?: string[];
   isActive?: boolean;
+  featuredOrder?: number;
   paymentAccountId?: string;
   paymentMerchantCode?: string;
 };
@@ -261,6 +262,11 @@ function normalizeProject(project: PaidProject): PaidProject {
   return {
     ...project,
     price: normalizeProjectPrice(project.price),
+    featuredOrder:
+      Number.isFinite(Number(project.featuredOrder)) &&
+      Number(project.featuredOrder) > 0
+        ? Math.round(Number(project.featuredOrder))
+        : 0,
     imageUrl: imageUrls[0] ?? project.imageUrl ?? "",
     imageUrls,
   };

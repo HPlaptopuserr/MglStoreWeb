@@ -74,6 +74,7 @@ const defaultAllowedOrigins = [
   "https://admin.mglstore.mn",
   "https://vendor.mglstore.mn",
   "https://warehouse.mglstore.mn",
+  "https://org.mglstore.mn",
 ];
 
 const envAllowedOrigins = process.env.CORS_ORIGIN

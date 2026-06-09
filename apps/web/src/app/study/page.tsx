@@ -23,6 +23,7 @@ import {
 import { StudyCourseModal } from "./_components/StudyCourseModal";
 import {
   DEFAULT_STUDY_SETTINGS,
+  buildFeaturedStudyMaterials,
   buildStudyDisplayMaterials,
   getCourseScheduleText,
   normalizeStudySettings,
@@ -59,7 +60,7 @@ export default function StudyPage() {
   const displayMaterials = !loading
     ? buildStudyDisplayMaterials(materials)
     : materials;
-  const featuredMaterials = displayMaterials.slice(0, 4);
+  const featuredMaterials = buildFeaturedStudyMaterials(displayMaterials);
   const categoryNames = Array.from(
     new Set(
       displayMaterials

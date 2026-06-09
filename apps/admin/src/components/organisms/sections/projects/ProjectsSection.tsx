@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useState, type ChangeEvent, type ReactNode } from "react";
 import {
   Check,
   CreditCard,
@@ -80,10 +80,28 @@ type StudyProgramRow = {
   description: string;
 };
 
+const EMPTY_STUDY_PROGRAM_ROW: StudyProgramRow = {
+  title: "",
+  description: "",
+};
+const EMPTY_STUDY_PROGRAM_MARKER = "__EMPTY_STUDY_PROGRAM_ROW__";
+
 type StudyTeacherRow = {
   name: string;
   description: string;
+  imageUrl?: string;
 };
+
+const EMPTY_STUDY_TEACHER_ROW: StudyTeacherRow = {
+  name: "",
+  description: "",
+  imageUrl: "",
+};
+const EMPTY_STUDY_TEACHER_MARKER = "__EMPTY_STUDY_TEACHER_ROW__";
+
+function looksLikeUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim()) || value.startsWith("data:image/");
+}
 
 type Props = {
   projects: ProjectItem[];
@@ -105,6 +123,43 @@ type Props = {
   saving?: boolean;
   saved?: boolean;
 };
+
+function StudyEditorPanel({
+  title,
+  description,
+  action,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  description: string;
+  action?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details
+      className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm open:shadow-md"
+      open={defaultOpen}
+    >
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 border-b border-transparent bg-slate-50 px-4 py-3 transition hover:bg-slate-100 group-open:border-slate-100">
+        <div className="min-w-0">
+          <p className="text-sm font-black text-slate-950">{title}</p>
+          <p className="mt-0.5 text-xs font-semibold leading-5 text-slate-500">
+            {description}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {action}
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-500">
+            Нээх
+          </span>
+        </div>
+      </summary>
+      <div className="p-4">{children}</div>
+    </details>
+  );
+}
 
 const emptyProject = (
   mode: "project" | "franchise" | "study" = "project",
@@ -139,6 +194,7 @@ const emptyProject = (
   tags: [],
   isActive: true,
   isFeatured: false,
+  featuredOrder: 0,
   paymentAccountId: "",
   paymentMerchantCode: "",
 });
@@ -192,6 +248,9 @@ function parseStudyProgramRows(value?: string): StudyProgramRow[] {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
+      if (line === EMPTY_STUDY_PROGRAM_MARKER) {
+        return EMPTY_STUDY_PROGRAM_ROW;
+      }
       const [rawTitle, ...rawDescriptionParts] = line.split("::");
       return {
         title: rawTitle.trim(),
@@ -206,9 +265,12 @@ function serializeStudyProgramRows(rows: StudyProgramRow[]) {
       title: row.title.trim(),
       description: row.description.trim(),
     }))
-    .filter((row) => row.title || row.description)
     .map((row) =>
-      row.description ? `${row.title} :: ${row.description}` : row.title,
+      row.title || row.description
+        ? row.description
+          ? `${row.title} :: ${row.description}`
+          : row.title
+        : EMPTY_STUDY_PROGRAM_MARKER,
     )
     .join("\n");
 }
@@ -219,10 +281,24 @@ function parseStudyTeacherRows(value?: string): StudyTeacherRow[] {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
+      if (line === EMPTY_STUDY_TEACHER_MARKER) {
+        return EMPTY_STUDY_TEACHER_ROW;
+      }
       const [rawName, ...rawDescriptionParts] = line.split("::");
+      const description = rawDescriptionParts[0]?.trim() || "";
+      const imageUrl = rawDescriptionParts.slice(1).join("::").trim();
+      const name = rawName.trim();
+      if (looksLikeUrl(name) && !description && !imageUrl) {
+        return {
+          name: "",
+          description: "",
+          imageUrl: name,
+        };
+      }
       return {
-        name: rawName.trim(),
-        description: rawDescriptionParts.join("::").trim(),
+        name,
+        description,
+        imageUrl,
       };
     });
 }
@@ -232,10 +308,12 @@ function serializeStudyTeacherRows(rows: StudyTeacherRow[]) {
     .map((row) => ({
       name: row.name.trim(),
       description: row.description.trim(),
+      imageUrl: String(row.imageUrl || "").trim(),
     }))
-    .filter((row) => row.name || row.description)
     .map((row) =>
-      row.description ? `${row.name} :: ${row.description}` : row.name,
+      row.name || row.description || row.imageUrl
+        ? [row.name, row.description, row.imageUrl].join(" :: ")
+        : EMPTY_STUDY_TEACHER_MARKER,
     )
     .join("\n");
 }
@@ -350,6 +428,9 @@ export function ProjectsSection({
   const [uploadingProjectId, setUploadingProjectId] = useState<string | null>(
     null,
   );
+  const [uploadingTeacherImageKey, setUploadingTeacherImageKey] = useState<
+    string | null
+  >(null);
   const [uploadingPdfProjectId, setUploadingPdfProjectId] = useState<
     string | null
   >(null);
@@ -497,11 +578,32 @@ export function ProjectsSection({
     );
   };
 
-  const updateStudyProgramRows = (
+  const updateStudyProgramRows = (id: string, rows: StudyProgramRow[]) => {
+    updateProject(id, "details", serializeStudyProgramRows(rows));
+  };
+
+  const getEditableStudyProgramRows = (rows: StudyProgramRow[]) =>
+    rows.length > 0 ? rows : [EMPTY_STUDY_PROGRAM_ROW];
+
+  const addStudyProgramRow = (id: string, rows: StudyProgramRow[]) => {
+    updateStudyProgramRows(id, [
+      ...getEditableStudyProgramRows(rows),
+      EMPTY_STUDY_PROGRAM_ROW,
+    ]);
+  };
+
+  const removeStudyProgramRow = (
     id: string,
     rows: StudyProgramRow[],
+    index: number,
   ) => {
-    updateProject(id, "details", serializeStudyProgramRows(rows));
+    const next = getEditableStudyProgramRows(rows).filter(
+      (_, indexToKeep) => indexToKeep !== index,
+    );
+    updateStudyProgramRows(
+      id,
+      next.length > 0 ? next : [EMPTY_STUDY_PROGRAM_ROW],
+    );
   };
 
   const updateStudyProgramRow = (
@@ -511,9 +613,9 @@ export function ProjectsSection({
     field: keyof StudyProgramRow,
     value: string,
   ) => {
-    const next = rows.length > 0 ? [...rows] : [{ title: "", description: "" }];
+    const next = [...getEditableStudyProgramRows(rows)];
     next[index] = {
-      ...(next[index] || { title: "", description: "" }),
+      ...(next[index] || EMPTY_STUDY_PROGRAM_ROW),
       [field]: value,
     };
     updateStudyProgramRows(id, next);
@@ -523,6 +625,30 @@ export function ProjectsSection({
     updateProject(id, "teacherInfo", serializeStudyTeacherRows(rows));
   };
 
+  const getEditableStudyTeacherRows = (rows: StudyTeacherRow[]) =>
+    rows.length > 0 ? rows : [EMPTY_STUDY_TEACHER_ROW];
+
+  const addStudyTeacherRow = (id: string, rows: StudyTeacherRow[]) => {
+    updateStudyTeacherRows(id, [
+      ...getEditableStudyTeacherRows(rows),
+      EMPTY_STUDY_TEACHER_ROW,
+    ]);
+  };
+
+  const removeStudyTeacherRow = (
+    id: string,
+    rows: StudyTeacherRow[],
+    index: number,
+  ) => {
+    const next = getEditableStudyTeacherRows(rows).filter(
+      (_, indexToKeep) => indexToKeep !== index,
+    );
+    updateStudyTeacherRows(
+      id,
+      next.length > 0 ? next : [EMPTY_STUDY_TEACHER_ROW],
+    );
+  };
+
   const updateStudyTeacherRow = (
     id: string,
     rows: StudyTeacherRow[],
@@ -530,9 +656,9 @@ export function ProjectsSection({
     field: keyof StudyTeacherRow,
     value: string,
   ) => {
-    const next = rows.length > 0 ? [...rows] : [{ name: "", description: "" }];
+    const next = [...getEditableStudyTeacherRows(rows)];
     next[index] = {
-      ...(next[index] || { name: "", description: "" }),
+      ...(next[index] || EMPTY_STUDY_TEACHER_ROW),
       [field]: value,
     };
     updateStudyTeacherRows(id, next);
@@ -666,6 +792,57 @@ export function ProjectsSection({
       );
     } finally {
       setUploadingProjectId(null);
+    }
+  };
+
+  const uploadStudyTeacherImage = async (
+    id: string,
+    rows: StudyTeacherRow[],
+    index: number,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const uploadKey = `${id}-${index}`;
+    setUploadingTeacherImageKey(uploadKey);
+    setUploadError("");
+    try {
+      let imageUrl = "";
+      try {
+        const compressed = await compressImage(file, 720, 0.78);
+        const form = new FormData();
+        form.append("image", compressed, "teacher.jpg");
+        const res = await adminFetch(`${API}/site-settings/banner-upload`, {
+          method: "POST",
+          body: form,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            uploadErrorMessage(
+              data,
+              "Багшийн зураг upload хийхэд алдаа гарлаа",
+            ),
+          );
+        }
+        if (typeof data.url !== "string" || !data.url) {
+          throw new Error("Зургийн URL серверээс ирсэнгүй");
+        }
+        imageUrl = data.url;
+      } catch (error) {
+        imageUrl = await blobToDataUrl(await compressImage(file, 720, 0.72));
+      }
+      updateStudyTeacherRow(id, rows, index, "imageUrl", imageUrl);
+    } catch (error) {
+      setUploadError(
+        error instanceof Error
+          ? error.message
+          : "Багшийн зураг upload хийхэд алдаа гарлаа",
+      );
+    } finally {
+      setUploadingTeacherImageKey(null);
     }
   };
 
@@ -931,7 +1108,7 @@ export function ProjectsSection({
             const visibleStudyTeacherRows =
               studyTeacherRows.length > 0
                 ? studyTeacherRows
-                : [{ name: "", description: "" }];
+                : [{ name: "", description: "", imageUrl: "" }];
 
             return (
               <article
@@ -1334,324 +1511,437 @@ export function ProjectsSection({
                             дэлгэрэнгүй modal, бүртгэлийн card дээр харагдана.
                           </p>
                         </div>
-                        <div className="space-y-3 lg:col-span-2">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Багш нарын мэдээлэл
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateStudyTeacherRows(project.id, [
-                                  ...studyTeacherRows,
-                                  { name: "", description: "" },
-                                ])
-                              }
-                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
-                            >
-                              <Plus className="h-4 w-4" />
-                              Багш нэмэх
-                            </button>
-                          </div>
-                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                            {visibleStudyTeacherRows.map((row, rowIndex) => (
-                              <div
-                                key={`${project.id}-teacher-${rowIndex}`}
-                                className="rounded-xl border border-slate-200 bg-white p-3"
+                        <div className="lg:col-span-2">
+                          <StudyEditorPanel
+                            title="Багш нар"
+                            description="Зураг, нэр, товч танилцуулга. Web дээр mentor profile байдлаар харагдана."
+                            defaultOpen
+                            action={
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  addStudyTeacherRow(
+                                    project.id,
+                                    studyTeacherRows,
+                                  );
+                                }}
+                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
                               >
-                                <div className="mb-2 flex items-center justify-between gap-3">
-                                  <p className="text-xs font-black text-slate-400">
-                                    Багш #{rowIndex + 1}
-                                  </p>
-                                  {studyTeacherRows.length > 1 && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        updateStudyTeacherRows(
-                                          project.id,
-                                          studyTeacherRows.filter(
-                                            (_, indexToKeep) =>
-                                              indexToKeep !== rowIndex,
-                                          ),
-                                        )
-                                      }
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
-                                      aria-label="Багш устгах"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </button>
-                                  )}
+                                <Plus className="h-4 w-4" />
+                                Багш нэмэх
+                              </button>
+                            }
+                          >
+                            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                              {visibleStudyTeacherRows.map((row, rowIndex) => (
+                                <div
+                                  key={`${project.id}-teacher-${rowIndex}`}
+                                  className="rounded-xl border border-slate-200 bg-white p-3"
+                                >
+                                  <div className="mb-2 flex items-center justify-between gap-3">
+                                    <p className="text-xs font-black text-slate-400">
+                                      Багш #{rowIndex + 1}
+                                    </p>
+                                    {visibleStudyTeacherRows.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          removeStudyTeacherRow(
+                                            project.id,
+                                            studyTeacherRows,
+                                            rowIndex,
+                                          )
+                                        }
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
+                                        aria-label="Багш устгах"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                                    <div className="space-y-2 lg:col-span-2">
+                                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                        Багшийн зураг
+                                      </span>
+                                      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                                        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-400">
+                                          {row.imageUrl ? (
+                                            <img
+                                              src={row.imageUrl}
+                                              alt={row.name || "Багшийн зураг"}
+                                              className="h-full w-full object-cover"
+                                            />
+                                          ) : (
+                                            <ImagePlus className="h-7 w-7" />
+                                          )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
+                                            {uploadingTeacherImageKey ===
+                                            `${project.id}-${rowIndex}` ? (
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                              <ImagePlus className="h-4 w-4" />
+                                            )}
+                                            {uploadingTeacherImageKey ===
+                                            `${project.id}-${rowIndex}`
+                                              ? "Upload хийж байна..."
+                                              : "Зураг upload"}
+                                            <input
+                                              type="file"
+                                              accept="image/*"
+                                              className="hidden"
+                                              disabled={
+                                                uploadingTeacherImageKey ===
+                                                `${project.id}-${rowIndex}`
+                                              }
+                                              onChange={(event) =>
+                                                uploadStudyTeacherImage(
+                                                  project.id,
+                                                  studyTeacherRows,
+                                                  rowIndex,
+                                                  event,
+                                                )
+                                              }
+                                            />
+                                          </label>
+                                          <input
+                                            value={row.imageUrl || ""}
+                                            onChange={(e) =>
+                                              updateStudyTeacherRow(
+                                                project.id,
+                                                studyTeacherRows,
+                                                rowIndex,
+                                                "imageUrl",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            placeholder="Зургийн URL эсвэл upload хийсний дараа автоматаар орно"
+                                          />
+                                          {row.imageUrl && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                updateStudyTeacherRow(
+                                                  project.id,
+                                                  studyTeacherRows,
+                                                  rowIndex,
+                                                  "imageUrl",
+                                                  "",
+                                                )
+                                              }
+                                              className="mt-2 text-xs font-bold text-red-600 hover:text-red-700"
+                                            >
+                                              Зураг устгах
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <label className="space-y-1.5">
+                                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                        Багшийн нэр
+                                      </span>
+                                      <input
+                                        value={row.name}
+                                        onChange={(e) =>
+                                          updateStudyTeacherRow(
+                                            project.id,
+                                            studyTeacherRows,
+                                            rowIndex,
+                                            "name",
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        placeholder="Жишээ: Б. Бат-Эрдэнэ"
+                                      />
+                                    </label>
+                                    <label className="space-y-1.5">
+                                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                        Товч танилцуулга
+                                      </span>
+                                      <textarea
+                                        value={row.description}
+                                        onChange={(e) =>
+                                          updateStudyTeacherRow(
+                                            project.id,
+                                            studyTeacherRows,
+                                            rowIndex,
+                                            "description",
+                                            e.target.value,
+                                          )
+                                        }
+                                        rows={2}
+                                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        placeholder="Жишээ: Store operation зөвлөх. POS, захиалга, байгууллагын workflow дээр 5+ жил ажилласан туршлагатай."
+                                      />
+                                    </label>
+                                  </div>
                                 </div>
-                                <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-                                  <label className="space-y-1.5">
-                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                      Багшийн нэр
-                                    </span>
-                                    <input
-                                      value={row.name}
-                                      onChange={(e) =>
-                                        updateStudyTeacherRow(
-                                          project.id,
-                                          studyTeacherRows,
-                                          rowIndex,
-                                          "name",
-                                          e.target.value,
-                                        )
-                                      }
-                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                      placeholder="Жишээ: MGL Store сургалтын баг"
-                                    />
-                                  </label>
-                                  <label className="space-y-1.5">
-                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                      Албан тушаал / тайлбар
-                                    </span>
-                                    <textarea
-                                      value={row.description}
-                                      onChange={(e) =>
-                                        updateStudyTeacherRow(
-                                          project.id,
-                                          studyTeacherRows,
-                                          rowIndex,
-                                          "description",
-                                          e.target.value,
-                                        )
-                                      }
-                                      rows={2}
-                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                      placeholder="Жишээ: Store operation зөвлөх, POS болон захиалгын workflow дээр ажилласан туршлагатай."
-                                    />
-                                  </label>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                              ))}
+                            </div>
+                          </StudyEditorPanel>
                         </div>
-                        <div className="grid gap-4 lg:col-span-2 lg:grid-cols-3">
-                          <label className="space-y-1.5">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Сургалт болох өдөр
-                            </span>
-                            <input
-                              type="date"
-                              value={project.courseDate || ""}
-                              onChange={(e) =>
-                                updateProject(
-                                  project.id,
-                                  "courseDate",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            />
-                          </label>
-                          <label className="space-y-1.5">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Эхлэх цаг
-                            </span>
-                            <input
-                              type="time"
-                              value={project.courseTime || ""}
-                              onChange={(e) =>
-                                updateProject(
-                                  project.id,
-                                  "courseTime",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            />
-                          </label>
-                          <label className="space-y-1.5">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Төрөл / төлөв
-                            </span>
-                            <select
-                              value={project.deliveryType || ""}
-                              onChange={(e) =>
-                                updateProject(
-                                  project.id,
-                                  "deliveryType",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            >
-                              <option value="">Сонгоно уу</option>
-                              {getSelectOptions(
-                                STUDY_DELIVERY_TYPE_OPTIONS,
-                                project.deliveryType,
-                              ).map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="space-y-1.5">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Сургалтын хугацаа
-                            </span>
-                            <select
-                              value={project.duration || ""}
-                              onChange={(e) =>
-                                updateProject(
-                                  project.id,
-                                  "duration",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            >
-                              <option value="">Сонгоно уу</option>
-                              {getSelectOptions(
-                                STUDY_DURATION_OPTIONS,
-                                project.duration,
-                              ).map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="space-y-1.5">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Байршил / хэлбэр
-                            </span>
-                            <select
-                              value={project.location || ""}
-                              onChange={(e) =>
-                                updateProject(
-                                  project.id,
-                                  "location",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            >
-                              <option value="">Сонгоно уу</option>
-                              {getSelectOptions(
-                                STUDY_LOCATION_OPTIONS,
-                                project.location,
-                              ).map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="space-y-1.5">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Хаяг
-                            </span>
-                            <input
-                              value={project.address || ""}
-                              onChange={(e) =>
-                                updateProject(
-                                  project.id,
-                                  "address",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                              placeholder="Жишээ: УБ, СБД, ... тоот"
-                            />
-                          </label>
-                          <label className="space-y-1.5">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Хүний тоо / багийн хэмжээ
-                            </span>
-                            <select
-                              value={project.capacity || ""}
-                              onChange={(e) =>
-                                updateProject(
-                                  project.id,
-                                  "capacity",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            >
-                              <option value="">Сонгоно уу</option>
-                              {getSelectOptions(
-                                STUDY_CAPACITY_OPTIONS,
-                                project.capacity,
-                              ).map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="space-y-1.5">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Үнийн тайлбар
-                            </span>
-                            <select
-                              value={project.priceNote || ""}
-                              onChange={(e) =>
-                                updateProject(
-                                  project.id,
-                                  "priceNote",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            >
-                              <option value="">Сонгоно уу</option>
-                              {getSelectOptions(
-                                STUDY_PRICE_NOTE_OPTIONS,
-                                project.priceNote,
-                              ).map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="space-y-1.5">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Бүртгэлийн label
-                            </span>
-                            <select
-                              value={project.registrationLabel || ""}
-                              onChange={(e) =>
-                                updateProject(
-                                  project.id,
-                                  "registrationLabel",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            >
-                              <option value="">Сонгоно уу</option>
-                              {getSelectOptions(
-                                STUDY_REGISTRATION_LABEL_OPTIONS,
-                                project.registrationLabel,
-                              ).map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="space-y-1.5 lg:col-span-3">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Өдөр, цагийн нэмэлт тайлбар
-                            </span>
-                            <input
-                              value={project.scheduleNote || ""}
-                              onChange={(e) =>
-                                updateProject(
-                                  project.id,
-                                  "scheduleNote",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                              placeholder="Жишээ: Огноо баталгаажмагц бүртгүүлсэн хүмүүст мэдэгдэнэ"
-                            />
-                          </label>
+                        <div className="lg:col-span-2">
+                          <StudyEditorPanel
+                            title="Хугацаа, байршил, бүртгэл"
+                            description="Онцлох байрлал, өдөр цаг, хэлбэр, хаяг, хүний тоо болон label."
+                          >
+                            <div className="grid gap-4 lg:grid-cols-3">
+                              <label className="space-y-1.5">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Онцлох байрлал
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  value={project.featuredOrder || 0}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "featuredOrder",
+                                      parsePrice(e.target.value),
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                  placeholder="Жишээ: 1"
+                                />
+                                <p className="text-xs font-semibold text-slate-500">
+                                  1, 2, 3 гэж оруулбал web дээр онцлох хэсэгт
+                                  тэр дарааллаар гарна. 0 бол автомат.
+                                </p>
+                              </label>
+                              <label className="space-y-1.5">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Сургалт болох өдөр
+                                </span>
+                                <input
+                                  type="date"
+                                  value={project.courseDate || ""}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "courseDate",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                />
+                              </label>
+                              <label className="space-y-1.5">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Эхлэх цаг
+                                </span>
+                                <input
+                                  type="time"
+                                  value={project.courseTime || ""}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "courseTime",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                />
+                              </label>
+                              <label className="space-y-1.5">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Төрөл / төлөв
+                                </span>
+                                <select
+                                  value={project.deliveryType || ""}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "deliveryType",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                >
+                                  <option value="">Сонгоно уу</option>
+                                  {getSelectOptions(
+                                    STUDY_DELIVERY_TYPE_OPTIONS,
+                                    project.deliveryType,
+                                  ).map((option) => (
+                                    <option key={option} value={option}>
+                                      {option}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="space-y-1.5">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Сургалтын хугацаа
+                                </span>
+                                <select
+                                  value={project.duration || ""}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "duration",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                >
+                                  <option value="">Сонгоно уу</option>
+                                  {getSelectOptions(
+                                    STUDY_DURATION_OPTIONS,
+                                    project.duration,
+                                  ).map((option) => (
+                                    <option key={option} value={option}>
+                                      {option}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="space-y-1.5">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Байршил / хэлбэр
+                                </span>
+                                <select
+                                  value={project.location || ""}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "location",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                >
+                                  <option value="">Сонгоно уу</option>
+                                  {getSelectOptions(
+                                    STUDY_LOCATION_OPTIONS,
+                                    project.location,
+                                  ).map((option) => (
+                                    <option key={option} value={option}>
+                                      {option}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="space-y-1.5">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Хаяг
+                                </span>
+                                <input
+                                  value={project.address || ""}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "address",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                  placeholder="Жишээ: УБ, СБД, ... тоот"
+                                />
+                              </label>
+                              <label className="space-y-1.5">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Хүний тоо / багийн хэмжээ
+                                </span>
+                                <select
+                                  value={project.capacity || ""}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "capacity",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                >
+                                  <option value="">Сонгоно уу</option>
+                                  {getSelectOptions(
+                                    STUDY_CAPACITY_OPTIONS,
+                                    project.capacity,
+                                  ).map((option) => (
+                                    <option key={option} value={option}>
+                                      {option}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="space-y-1.5">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Үнийн тайлбар
+                                </span>
+                                <select
+                                  value={project.priceNote || ""}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "priceNote",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                >
+                                  <option value="">Сонгоно уу</option>
+                                  {getSelectOptions(
+                                    STUDY_PRICE_NOTE_OPTIONS,
+                                    project.priceNote,
+                                  ).map((option) => (
+                                    <option key={option} value={option}>
+                                      {option}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="space-y-1.5">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Бүртгэлийн label
+                                </span>
+                                <select
+                                  value={project.registrationLabel || ""}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "registrationLabel",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                >
+                                  <option value="">Сонгоно уу</option>
+                                  {getSelectOptions(
+                                    STUDY_REGISTRATION_LABEL_OPTIONS,
+                                    project.registrationLabel,
+                                  ).map((option) => (
+                                    <option key={option} value={option}>
+                                      {option}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="space-y-1.5 lg:col-span-3">
+                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Өдөр, цагийн нэмэлт тайлбар
+                                </span>
+                                <input
+                                  value={project.scheduleNote || ""}
+                                  onChange={(e) =>
+                                    updateProject(
+                                      project.id,
+                                      "scheduleNote",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                  placeholder="Жишээ: Огноо баталгаажмагц бүртгүүлсэн хүмүүст мэдэгдэнэ"
+                                />
+                              </label>
+                            </div>
+                          </StudyEditorPanel>
                         </div>
                       </>
                     )}
@@ -1672,98 +1962,100 @@ export function ProjectsSection({
                       />
                     </label>
                     {isStudyMode ? (
-                      <div className="space-y-3 lg:col-span-2">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                            Сургалтын хөтөлбөр
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateStudyProgramRows(project.id, [
-                                ...studyProgramRows,
-                                { title: "", description: "" },
-                              ])
-                            }
-                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Хөтөлбөр нэмэх
-                          </button>
-                        </div>
-                        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                          {visibleStudyProgramRows.map((row, rowIndex) => (
-                            <div
-                              key={`${project.id}-program-${rowIndex}`}
-                              className="rounded-xl border border-slate-200 bg-white p-3"
+                      <div className="lg:col-span-2">
+                        <StudyEditorPanel
+                          title="Сургалтын хөтөлбөр"
+                          description="Гарчиг нь accordion дээр харагдаж, дэлгэрэнгүй нь дарахад нээгдэнэ."
+                          defaultOpen
+                          action={
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                addStudyProgramRow(
+                                  project.id,
+                                  studyProgramRows,
+                                );
+                              }}
+                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
                             >
-                              <div className="mb-2 flex items-center justify-between gap-3">
-                                <p className="text-xs font-black text-slate-400">
-                                  Хөтөлбөр #{rowIndex + 1}
-                                </p>
-                                {studyProgramRows.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateStudyProgramRows(
-                                        project.id,
-                                        studyProgramRows.filter(
-                                          (_, indexToKeep) =>
-                                            indexToKeep !== rowIndex,
-                                        ),
-                                      )
-                                    }
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
-                                    aria-label="Хөтөлбөр устгах"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                )}
+                              <Plus className="h-4 w-4" />
+                              Хөтөлбөр нэмэх
+                            </button>
+                          }
+                        >
+                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                            {visibleStudyProgramRows.map((row, rowIndex) => (
+                              <div
+                                key={`${project.id}-program-${rowIndex}`}
+                                className="rounded-xl border border-slate-200 bg-white p-3"
+                              >
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <p className="text-xs font-black text-slate-400">
+                                    Хөтөлбөр #{rowIndex + 1}
+                                  </p>
+                                  {visibleStudyProgramRows.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        removeStudyProgramRow(
+                                          project.id,
+                                          studyProgramRows,
+                                          rowIndex,
+                                        )
+                                      }
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
+                                      aria-label="Хөтөлбөр устгах"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Гарчиг
+                                    </span>
+                                    <input
+                                      value={row.title}
+                                      onChange={(e) =>
+                                        updateStudyProgramRow(
+                                          project.id,
+                                          studyProgramRows,
+                                          rowIndex,
+                                          "title",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: Dashboard тохируулах"
+                                    />
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Холбогдох дэлгэрэнгүй
+                                    </span>
+                                    <textarea
+                                      value={row.description}
+                                      onChange={(e) =>
+                                        updateStudyProgramRow(
+                                          project.id,
+                                          studyProgramRows,
+                                          rowIndex,
+                                          "description",
+                                          e.target.value,
+                                        )
+                                      }
+                                      rows={2}
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: Борлуулалт, захиалга, тайлангийн үндсэн хэсгүүдийг тохируулж сурна."
+                                    />
+                                  </label>
+                                </div>
                               </div>
-                              <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-                                <label className="space-y-1.5">
-                                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                    Гарчиг
-                                  </span>
-                                  <input
-                                    value={row.title}
-                                    onChange={(e) =>
-                                      updateStudyProgramRow(
-                                        project.id,
-                                        studyProgramRows,
-                                        rowIndex,
-                                        "title",
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                    placeholder="Жишээ: Dashboard тохируулах"
-                                  />
-                                </label>
-                                <label className="space-y-1.5">
-                                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                    Холбогдох дэлгэрэнгүй
-                                  </span>
-                                  <textarea
-                                    value={row.description}
-                                    onChange={(e) =>
-                                      updateStudyProgramRow(
-                                        project.id,
-                                        studyProgramRows,
-                                        rowIndex,
-                                        "description",
-                                        e.target.value,
-                                      )
-                                    }
-                                    rows={2}
-                                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                    placeholder="Жишээ: Борлуулалт, захиалга, тайлангийн үндсэн хэсгүүдийг тохируулж сурна."
-                                  />
-                                </label>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                            ))}
+                          </div>
+                        </StudyEditorPanel>
                       </div>
                     ) : (
                       <label className="space-y-1.5 lg:col-span-2">
