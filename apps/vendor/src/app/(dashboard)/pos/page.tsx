@@ -2392,138 +2392,140 @@ export default function PosDemoPage() {
 
       {/* ── Shift open/close panel ─────────────────────────────── */}
       {showShiftPanel && registerConfig?.isActive && (
-        <div className="rounded-2xl border border-teal-200 bg-white shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-            <p className="text-sm font-bold text-slate-800">
-              {shift ? "Ээлж хаах" : "Ээлж нээх"}
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowShiftPanel(false)}
-              className="text-slate-400 hover:text-slate-600"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <div className="px-5 py-4 space-y-3">
-            {!shift ? (
-              <>
-                <p className="text-xs text-slate-500">Эхлэх мөнгийг оруулна уу.</p>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    value={openingCashInput}
-                    onChange={(e) => setOpeningCashInput(e.target.value)}
-                    placeholder="Эхлэх мөнгө ₮"
-                    className="flex-1 h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
-                  />
-                  <button
-                    type="button"
-                    disabled={shiftLoading}
-                    onClick={async () => {
-                      if (!registerConfig?.branchId) return;
-                      try {
-                        await openShift(
-                          registerConfig.branchId,
-                          Number(openingCashInput) || 0,
-                          registerConfig.id,
-                        );
-                        setShowShiftPanel(false);
-                        setShowShiftHistoryPanel(false);
-                        setView("register");
-                        setOpeningCashInput("");
-                        setScanMessage("Ээлж нээгдлээ. Борлуулалтаа эхлүүлнэ үү.");
-                        setScanStatus("success");
-                      } catch (e: any) {
-                        setScanMessage(e?.message || "Ээлж нээхэд алдаа гарлаа");
-                        setScanStatus("not-found");
-                      }
-                    }}
-                    className="h-9 px-4 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-50"
-                  >
-                    {shiftLoading ? <Loader2 size={14} className="animate-spin" /> : "Нээх"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-xs text-slate-500">Хаах үеийн бэлэн мөнгийг оруулна уу.</p>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-black text-slate-700">Задгай мөнгө тоолох</p>
-                    <p className="text-xs font-black text-slate-900">{formatMoney(countedCashTotal)}</p>
+        <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-950/35 p-4 backdrop-blur-sm sm:p-6">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-teal-200 bg-white shadow-2xl sm:max-h-[calc(100vh-3rem)]">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-3">
+              <p className="text-sm font-bold text-slate-800">
+                {shift ? "Ээлж хаах" : "Ээлж нээх"}
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowShiftPanel(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+              {!shift ? (
+                <>
+                  <p className="text-xs text-slate-500">Эхлэх мөнгийг оруулна уу.</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={openingCashInput}
+                      onChange={(e) => setOpeningCashInput(e.target.value)}
+                      placeholder="Эхлэх мөнгө ₮"
+                      className="flex-1 h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                    />
+                    <button
+                      type="button"
+                      disabled={shiftLoading}
+                      onClick={async () => {
+                        if (!registerConfig?.branchId) return;
+                        try {
+                          await openShift(
+                            registerConfig.branchId,
+                            Number(openingCashInput) || 0,
+                            registerConfig.id,
+                          );
+                          setShowShiftPanel(false);
+                          setShowShiftHistoryPanel(false);
+                          setView("register");
+                          setOpeningCashInput("");
+                          setScanMessage("Ээлж нээгдлээ. Борлуулалтаа эхлүүлнэ үү.");
+                          setScanStatus("success");
+                        } catch (e: any) {
+                          setScanMessage(e?.message || "Ээлж нээхэд алдаа гарлаа");
+                          setScanStatus("not-found");
+                        }
+                      }}
+                      className="h-9 px-4 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-50"
+                    >
+                      {shiftLoading ? <Loader2 size={14} className="animate-spin" /> : "Нээх"}
+                    </button>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 lg:grid-cols-5">
-                    {CASH_DENOMINATIONS.map((denomination) => (
-                      <label key={denomination} className="rounded-lg bg-white px-2 py-1.5">
-                        <span className="block text-[10px] font-bold text-slate-400">
-                          {formatMoney(denomination)}
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          value={cashCounts[denomination] ?? ""}
-                          onChange={(event) =>
-                            setCashCounts((current) => ({
-                              ...current,
-                              [denomination]: Math.max(0, Math.floor(Number(event.target.value) || 0)),
-                            }))
-                          }
-                          className="mt-1 h-7 w-full rounded-md border border-slate-200 px-2 text-sm font-bold outline-none focus:border-teal-400"
-                          placeholder="0"
-                        />
-                      </label>
-                    ))}
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-500">Хаах үеийн бэлэн мөнгийг оруулна уу.</p>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-xs font-black text-slate-700">Задгай мөнгө тоолох</p>
+                      <p className="text-xs font-black text-slate-900">{formatMoney(countedCashTotal)}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                      {CASH_DENOMINATIONS.map((denomination) => (
+                        <label key={denomination} className="rounded-lg bg-white px-2 py-1.5">
+                          <span className="block text-[10px] font-bold text-slate-400">
+                            {formatMoney(denomination)}
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={cashCounts[denomination] ?? ""}
+                            onChange={(event) =>
+                              setCashCounts((current) => ({
+                                ...current,
+                                [denomination]: Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                              }))
+                            }
+                            className="mt-1 h-7 w-full rounded-md border border-slate-200 px-2 text-sm font-bold outline-none focus:border-teal-400"
+                            placeholder="0"
+                          />
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    value={countedCashTotal > 0 ? String(countedCashTotal) : closingCashInput}
-                    onChange={(e) => setClosingCashInput(e.target.value)}
-                    placeholder="Хаах мөнгө ₮"
-                    className="flex-1 h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
-                  />
-                  <button
-                    type="button"
-                    disabled={shiftLoading}
-                    onClick={async () => {
-                      try {
-                        const activeCashCount = countedCashItems.some((item) => item.count > 0)
-                          ? countedCashItems
-                          : undefined;
-                        const countedClosingCash = activeCashCount
-                          ? countedCashTotal
-                          : Number(closingCashInput) || 0;
-                        const termId = getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
-                          ? registerConfig.cardTerminalId
-                          : undefined;
-                        await closeShiftFn(
-                          countedClosingCash,
-                          undefined,
-                          termId ?? undefined,
-                          activeCashCount,
-                        );
-                        reloadShiftHistory();
-                        setShowShiftPanel(false);
-                        setShowCashDrawerPanel(false);
-                        setShowShiftHistoryPanel(true);
-                        setClosingCashInput("");
-                        setCashCounts({});
-                      } catch (e: any) {
-                        setScanMessage(e?.message || "Ээлж хаахад алдаа гарлаа");
-                        setScanStatus("not-found");
-                      }
-                    }}
-                    className="h-9 px-4 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50"
-                  >
-                    {shiftLoading ? <Loader2 size={14} className="animate-spin" /> : "Хаах"}
-                  </button>
-                </div>
-              </>
-            )}
+                  <div className="sticky bottom-0 -mx-5 flex gap-2 border-t border-slate-100 bg-white px-5 py-3">
+                    <input
+                      type="number"
+                      min="0"
+                      value={countedCashTotal > 0 ? String(countedCashTotal) : closingCashInput}
+                      onChange={(e) => setClosingCashInput(e.target.value)}
+                      placeholder="Хаах мөнгө ₮"
+                      className="flex-1 h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                    />
+                    <button
+                      type="button"
+                      disabled={shiftLoading}
+                      onClick={async () => {
+                        try {
+                          const activeCashCount = countedCashItems.some((item) => item.count > 0)
+                            ? countedCashItems
+                            : undefined;
+                          const countedClosingCash = activeCashCount
+                            ? countedCashTotal
+                            : Number(closingCashInput) || 0;
+                          const termId = getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
+                            ? registerConfig.cardTerminalId
+                            : undefined;
+                          await closeShiftFn(
+                            countedClosingCash,
+                            undefined,
+                            termId ?? undefined,
+                            activeCashCount,
+                          );
+                          reloadShiftHistory();
+                          setShowShiftPanel(false);
+                          setShowCashDrawerPanel(false);
+                          setShowShiftHistoryPanel(true);
+                          setClosingCashInput("");
+                          setCashCounts({});
+                        } catch (e: any) {
+                          setScanMessage(e?.message || "Ээлж хаахад алдаа гарлаа");
+                          setScanStatus("not-found");
+                        }
+                      }}
+                      className="h-9 px-4 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50"
+                    >
+                      {shiftLoading ? <Loader2 size={14} className="animate-spin" /> : "Хаах"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
