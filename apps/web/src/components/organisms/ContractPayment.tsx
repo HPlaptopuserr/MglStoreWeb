@@ -45,7 +45,7 @@ export function ContractPayment({
             <div className="min-w-0">
               <h2 className="text-xl font-black text-white">QPay</h2>
               <p className="truncate text-xs text-white/55">
-                Ð“ÑÑ€ÑÑÐ½Ð¸Ð¹ Ñ‚Ó©Ð»Ð±Ó©Ñ€
+                Гэрээний төлбөр
               </p>
             </div>
           </div>
@@ -62,10 +62,10 @@ export function ContractPayment({
               </div>
               <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
                 <span className="text-base font-medium text-white/85 sm:text-xl">
-                  Ð¢Ó©Ð»Ó©Ñ… Ð´Ò¯Ð½:
+                  Төлөх дүн:
                 </span>
                 <span className="shrink-0 text-xl font-black text-white sm:text-3xl">
-                  â‚®{qpayData.amount.toLocaleString()}
+                  {qpayData.amount.toLocaleString()}₮
                 </span>
               </div>
             </div>
@@ -97,7 +97,7 @@ export function ContractPayment({
               </div>
               <div className="flex items-center justify-center gap-2 text-center text-sm text-white/80">
                 <Smartphone size={18} className="shrink-0 text-white/60" />
-                <span>QPay Ð°Ð¿Ð¿Ð»Ð¸ÐºÐµÐ¹ÑˆÐ½ÑÑÑ€ ÑƒÐ½ÑˆÑƒÑƒÐ»Ð½Ð° ÑƒÑƒ</span>
+                <span>QPay аппликейшнээр уншуулна уу</span>
               </div>
             </div>
 
@@ -107,9 +107,9 @@ export function ContractPayment({
               <div className="flex items-center justify-center gap-2 text-sm text-blue-50">
                 <Loader2 className="h-4 w-4 animate-spin text-blue-200" />
                 <span>
-                  Ð”Ð°Ñ€Ð°Ð°Ð³Ð¸Ð¹Ð½ ÑˆÐ°Ð»Ð³Ð°Ð»Ñ‚:{" "}
+                  Дараагийн шалгалт:{" "}
                   <span className="font-mono font-black text-white">
-                    {pollCountdown}Ñ
+                    {pollCountdown}с
                   </span>
                 </span>
               </div>
@@ -123,19 +123,18 @@ export function ContractPayment({
               {checkingPayment ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
-                  Ð¨Ð°Ð»Ð³Ð°Ð¶ Ð±Ð°Ð¹Ð½Ð°...
+                  Шалгаж байна...
                 </>
               ) : (
                 <>
                   <CheckCircle2 size={18} />
-                  Ð¢Ó©Ð»Ð±Ó©Ñ€ ÑˆÐ°Ð»Ð³Ð°Ñ…
+                  Төлбөр шалгах
                 </>
               )}
             </button>
 
             <p className="text-center text-xs text-white/45">
-              Ð¢Ó©Ð»Ð±Ó©Ñ€ Ñ‚Ó©Ð»Ó©Ð³Ð´ÑÓ©Ð½Ð¸Ð¹ Ð´Ð°Ñ€Ð°Ð° Ð³ÑÑ€ÑÑÐ½Ð¸Ð¹
-              Ñ‚Ó©Ð»Ó©Ð² Ð°Ð²Ñ‚Ð¾Ð¼Ð°Ñ‚Ð°Ð°Ñ€ ÑˆÐ¸Ð½ÑÑ‡Ð»ÑÐ³Ð´ÑÐ½Ñ.
+              Төлбөр төлөгдсөний дараа гэрээний төлөв автоматаар шинэчлэгдэнэ.
             </p>
           </div>
         </div>
