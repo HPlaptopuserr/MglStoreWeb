@@ -70,6 +70,14 @@ services:
         sync: false
       - key: SYSTEMQR_PASSWORD
         sync: false
+      - key: PUSH_ECR_BASE_URL
+        value: https://push.easypay.mn:8443
+      - key: PUSH_ECR_API_KEY
+        sync: false
+      - key: PUSH_ECR_CLIENT_ID
+        sync: false
+      - key: PUSH_ECR_TERMINAL_ID
+        sync: false
 
 databases:
   - name: mglstore

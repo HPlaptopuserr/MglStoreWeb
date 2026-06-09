@@ -415,9 +415,27 @@ router.get("/admin/pos-registers", async (req, res) => {
     const registers = await prisma.posRegister.findMany({
       where: { organizationId },
       orderBy: { createdAt: "asc" },
-      include: { branch: { select: { id: true, name: true } } },
+      include: {
+        branch: { select: { id: true, name: true } },
+        organization: {
+          select: {
+            minuAgentEnabled: true,
+            minuAgentUsername: true,
+            minuAgentPassword: true,
+            minuAgentBranchId: true,
+            minuAgentConnectedAt: true,
+          },
+        },
+      },
     });
-    return res.json(registers);
+    return res.json(registers.map(({ organization, ...register }) => ({
+      ...register,
+      minuAgentEnabled: organization.minuAgentEnabled,
+      minuAgentUsername: organization.minuAgentUsername,
+      minuAgentBranchId: organization.minuAgentBranchId,
+      minuAgentConnectedAt: organization.minuAgentConnectedAt,
+      minuAgentPasswordSet: !!organization.minuAgentPassword,
+    })));
   } catch (error) {
     console.error("list pos-registers error", error);
     return res.status(500).json({ message: "POS жагсаалт авахад алдаа гарлаа" });
@@ -523,10 +541,12 @@ router.post("/admin/pos-registers", async (req, res) => {
     let nextMinuUsername = "";
     let nextMinuPassword = "";
     let nextMinuBranchId = "";
-    if (cardEnabled === true && cardProviderType === "MINU_AGENT" && hasMinuCredentialInput) {
+    let shouldUpdateMinuAgentConfig = false;
+    if (cardEnabled === true && cardProviderType === "MINU_AGENT") {
       const org = await prisma.organization.findUnique({
         where: { id: organizationId },
         select: {
+          minuAgentEnabled: true,
           minuAgentUsername: true,
           minuAgentPassword: true,
           minuAgentBranchId: true,
@@ -537,9 +557,10 @@ router.post("/admin/pos-registers", async (req, res) => {
       nextMinuBranchId = String(minuAgentBranchId ?? org?.minuAgentBranchId ?? "").trim();
       if (!nextMinuUsername || !nextMinuPassword || !nextMinuBranchId) {
         return res.status(400).json({
-          message: "MINU_AGENT үед Minu username, password, branchId шаардлагатай",
+          message: "MINU_AGENT үед Minu username, password, branchId шаардлагатай. Vendor profile эсвэл энэ POS form дээр Minu merchant тохиргоог бүрэн оруулна уу.",
         });
       }
+      shouldUpdateMinuAgentConfig = hasMinuCredentialInput || org?.minuAgentEnabled !== true;
     }
 
     const register = await prisma.posRegister.create({
@@ -562,7 +583,7 @@ router.post("/admin/pos-registers", async (req, res) => {
       include: { branch: { select: { id: true, name: true } } },
     });
 
-    if (cardEnabled === true && cardProviderType === "MINU_AGENT" && hasMinuCredentialInput) {
+    if (cardEnabled === true && cardProviderType === "MINU_AGENT" && shouldUpdateMinuAgentConfig) {
       await prisma.organization.update({
         where: { id: organizationId },
         data: {
@@ -711,10 +732,12 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     let nextMinuUsername = "";
     let nextMinuPassword = "";
     let nextMinuBranchId = "";
-    if (nextCardEnabled && nextCardProviderType === "MINU_AGENT" && hasMinuCredentialInput) {
+    let shouldUpdateMinuAgentConfig = false;
+    if (nextCardEnabled && nextCardProviderType === "MINU_AGENT") {
       const org = await prisma.organization.findUnique({
         where: { id: existing.organizationId },
         select: {
+          minuAgentEnabled: true,
           minuAgentUsername: true,
           minuAgentPassword: true,
           minuAgentBranchId: true,
@@ -725,9 +748,10 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
       nextMinuBranchId = String(minuAgentBranchId ?? org?.minuAgentBranchId ?? "").trim();
       if (!nextMinuUsername || !nextMinuPassword || !nextMinuBranchId) {
         return res.status(400).json({
-          message: "MINU_AGENT үед Minu username, password, branchId шаардлагатай",
+          message: "MINU_AGENT үед Minu username, password, branchId шаардлагатай. Vendor profile эсвэл энэ POS form дээр Minu merchant тохиргоог бүрэн оруулна уу.",
         });
       }
+      shouldUpdateMinuAgentConfig = hasMinuCredentialInput || org?.minuAgentEnabled !== true;
     }
 
     const updated = await prisma.posRegister.update({
@@ -752,7 +776,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
       include: { branch: { select: { id: true, name: true } } },
     });
 
-    if (nextCardEnabled && nextCardProviderType === "MINU_AGENT" && hasMinuCredentialInput) {
+    if (nextCardEnabled && nextCardProviderType === "MINU_AGENT" && shouldUpdateMinuAgentConfig) {
       await prisma.organization.update({
         where: { id: existing.organizationId },
         data: {

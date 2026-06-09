@@ -16,7 +16,7 @@ import {
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
   parseBridgeResultStatus, parseQPaySuccess, parseOptionalDate,
   makePushEcrReferral, pushEcrHeaders, pushEcrBaseUrl,
-  allowPosSimulation, isProdLikeEnv, bridgeSharedSecret,
+  pushEcrApiKey, pushEcrClientId, allowPosSimulation, isProdLikeEnv, bridgeSharedSecret,
   bridgeChargeTimeoutMs, pushEcrDefaultTerminalId, MONEY_EPSILON,
   type AuthUser, type ApiError, type SaleLineInput, type SalePaymentLineInput,
   type CreateSaleBody, type PushEcrPurchaseResponse, toApiError, parseAuthClaims, runtimeEnv,
@@ -41,6 +41,13 @@ const firstString = (...values: unknown[]) => {
   for (const value of values) {
     const text = String(value ?? "").trim();
     if (text) return text;
+  }
+  return "";
+};
+
+const pushEcrConfigError = () => {
+  if (!pushEcrApiKey || !pushEcrClientId) {
+    return "Push ECR API key/client id тохируулаагүй байна";
   }
   return "";
 };
@@ -130,6 +137,12 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     }
     if (!cardProviderType && !isMinuAgent) {
       return res.status(400).json({ message: "Картын terminal provider тохируулаагүй байна" });
+    }
+    if (isPushEcr) {
+      const configError = pushEcrConfigError();
+      if (configError) {
+        return res.status(500).json({ message: configError });
+      }
     }
   }
   const isLocalBridgeProvider = Boolean(
@@ -235,6 +248,30 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
 
     if (actor.role !== "ADMIN" && bodyOrganizationId && bodyOrganizationId !== effectiveOrganizationId) {
       return res.status(403).json({ message: "organizationId зөрүүтэй байна" });
+    }
+
+    if (isPushEcr) {
+      const effectiveTerminalId =
+        terminalId !== "terminal-1"
+          ? terminalId
+          : (registerCardTerminalId || pushEcrDefaultTerminalId || "");
+      if (!effectiveTerminalId || effectiveTerminalId === "terminal-1") {
+        return res.status(400).json({
+          message: "Push ECR terminalId тохируулаагүй байна. POS Register дээр terminalId оруулна уу.",
+        });
+      }
+    }
+
+    if (isMinuAgent) {
+      const effectiveTerminalId =
+        terminalId !== "terminal-1"
+          ? terminalId
+          : (registerCardTerminalId || "");
+      if (!effectiveTerminalId || effectiveTerminalId === "terminal-1") {
+        return res.status(400).json({
+          message: "Minu terminalId тохируулаагүй байна. POS Register дээр terminalId оруулна уу.",
+        });
+      }
     }
 
     const attempt = await prisma.cardPaymentAttempt.create({
@@ -506,6 +543,8 @@ router.post("/pos/payments/push-ecr/cancel", async (req, res) => {
   if (!terminalId) {
     return res.status(400).json({ message: "terminalId шаардлагатай" });
   }
+  const configError = pushEcrConfigError();
+  if (configError) return res.status(500).json({ message: configError });
 
   try {
     const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/cancel`, {
@@ -540,6 +579,8 @@ router.post("/pos/payments/push-ecr/inquiry", async (req, res) => {
   if (!terminalId || !referralcode) {
     return res.status(400).json({ message: "terminalId болон referralcode шаардлагатай" });
   }
+  const configError = pushEcrConfigError();
+  if (configError) return res.status(500).json({ message: configError });
 
   try {
     const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/inquiry`, {
@@ -570,6 +611,8 @@ router.post("/pos/payments/push-ecr/healthcheck", async (req, res) => {
   if (!terminalId) {
     return res.status(400).json({ message: "terminalId шаардлагатай" });
   }
+  const configError = pushEcrConfigError();
+  if (configError) return res.status(500).json({ message: configError });
 
   try {
     const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/healthcheck`, {
@@ -602,6 +645,8 @@ router.post("/pos/payments/push-ecr/void", async (req, res) => {
 
   if (!terminalId) return res.status(400).json({ message: "terminalId шаардлагатай" });
   if (!traceno) return res.status(400).json({ message: "traceno шаардлагатай" });
+  const configError = pushEcrConfigError();
+  if (configError) return res.status(500).json({ message: configError });
 
   try {
     const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/void`, {
@@ -632,6 +677,8 @@ router.post("/pos/payments/push-ecr/settlement", async (req, res) => {
   const skipPrint = req.body?.skipPrint === true;
 
   if (!terminalId) return res.status(400).json({ message: "terminalId шаардлагатай" });
+  const configError = pushEcrConfigError();
+  if (configError) return res.status(500).json({ message: configError });
 
   try {
     const ecrRes = await fetch(`${pushEcrBaseUrl}/payment/settlement`, {

@@ -59,6 +59,7 @@ type FormState = {
   minuAgentUsername: string;
   minuAgentPassword: string;
   minuAgentBranchId: string;
+  minuAgentPasswordSet: boolean;
 };
 
 const EMPTY_FORM: FormState = {
@@ -75,6 +76,7 @@ const EMPTY_FORM: FormState = {
   minuAgentUsername: "",
   minuAgentPassword: "",
   minuAgentBranchId: "",
+  minuAgentPasswordSet: false,
 };
 
 const CLOUD_CARD_PROVIDERS = ["MINU_AGENT", "PUSH_ECR"];
@@ -191,6 +193,7 @@ export function PosRegistersSection() {
       minuAgentUsername: r.minuAgentUsername ?? "",
       minuAgentPassword: "",
       minuAgentBranchId: r.minuAgentBranchId ?? "",
+      minuAgentPasswordSet: !!r.minuAgentPasswordSet,
     });
     setEditingId(r.id);
     setFormOpen(true);
@@ -249,6 +252,10 @@ export function PosRegistersSection() {
         cardProviderType: "",
         cardTerminalId: "",
         terminalBridgeUrl: "",
+        minuAgentUsername: "",
+        minuAgentPassword: "",
+        minuAgentBranchId: "",
+        minuAgentPasswordSet: false,
       };
     });
     setBridgeCheckMessage(null);
@@ -385,6 +392,13 @@ export function PosRegistersSection() {
         qpayEnabled: form.qpayEnabled,
         qpayMerchantId: form.qpayMerchantId.trim() || null,
         qpayTerminalId: form.qpayTerminalId.trim() || null,
+        ...(form.cardProviderType === "MINU_AGENT"
+          ? {
+              minuAgentUsername: form.minuAgentUsername.trim() || undefined,
+              minuAgentPassword: form.minuAgentPassword.trim() || undefined,
+              minuAgentBranchId: form.minuAgentBranchId.trim() || undefined,
+            }
+          : {}),
       };
       const url = editingId
         ? `${API}/admin/pos-registers/${editingId}`
@@ -768,10 +782,17 @@ export function PosRegistersSection() {
                         <select
                           value={form.cardProviderType}
                           onChange={(e) => {
-                            set("cardProviderType", e.target.value);
-                            if (isCloudCardProvider(e.target.value)) {
+                            const provider = e.target.value;
+                            set("cardProviderType", provider);
+                            if (isCloudCardProvider(provider)) {
                               set("terminalBridgeUrl", "");
                               setBridgeCheckMessage(null);
+                            }
+                            if (provider !== "MINU_AGENT") {
+                              set("minuAgentUsername", "");
+                              set("minuAgentPassword", "");
+                              set("minuAgentBranchId", "");
+                              set("minuAgentPasswordSet", false);
                             }
                           }}
                           className={SELECT}
@@ -792,6 +813,35 @@ export function PosRegistersSection() {
                         className={INPUT}
                       />
                     </Field>
+                    {form.cardProviderType === "MINU_AGENT" && (
+                      <>
+                        <Field label="Minu username">
+                          <input
+                            value={form.minuAgentUsername}
+                            onChange={(e) => set("minuAgentUsername", e.target.value)}
+                            placeholder="Merchant username"
+                            className={INPUT}
+                          />
+                        </Field>
+                        <Field label="Minu branchId">
+                          <input
+                            value={form.minuAgentBranchId}
+                            onChange={(e) => set("minuAgentBranchId", e.target.value)}
+                            placeholder="Branch ID"
+                            className={INPUT}
+                          />
+                        </Field>
+                        <Field label="Minu password" className="col-span-2">
+                          <input
+                            type="password"
+                            value={form.minuAgentPassword}
+                            onChange={(e) => set("minuAgentPassword", e.target.value)}
+                            placeholder={form.minuAgentPasswordSet ? "Хадгалагдсан. Солих бол шинээр бичнэ." : "Merchant password"}
+                            className={INPUT}
+                          />
+                        </Field>
+                      </>
+                    )}
                     {!isCloudCardProvider(form.cardProviderType) && <Field label="Bridge URL" className="col-span-2">
                       <input
                         value={form.terminalBridgeUrl}
