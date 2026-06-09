@@ -509,6 +509,67 @@ router.post("/contracts", requireAuth, async (req, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
+// PUT /api/contracts/:id  --  Update an existing template (admin)
+// ──────────────────────────────────────────────────────────────────────────────
+router.put("/contracts/:id", requireAuth, async (req, res) => {
+  try {
+    const userId = getContractUserId(req);
+    const { feePlan, isPaid = false, adminSignature, adminName, adminTitle, adminStamp, headerData } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Хэрэглэгч тодорхойгүй байна" });
+    }
+
+    if (!adminSignature) {
+      return res.status(400).json({ success: false, error: "Админы гарын үсэг шаардлагатай" });
+    }
+
+    const existing = await prisma.contract.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, isTemplate: true },
+    });
+
+    if (!existing || !existing.isTemplate) {
+      return res.status(404).json({ success: false, error: "Гэрээний загвар олдсонгүй" });
+    }
+
+    const updated = await prisma.contract.update({
+      where: { id: req.params.id },
+      data: {
+        feePlan: feePlan || null,
+        isPaid: Boolean(isPaid),
+        adminSignature,
+        adminName: adminName || null,
+        adminTitle: adminTitle || null,
+        adminStamp: adminStamp || null,
+        headerData: headerData || null,
+      },
+      include: {
+        user: { select: { email: true, profile: { select: { fullName: true } } } },
+        _count: { select: { submissions: true } },
+      },
+    });
+
+    await prisma.contractAuditLog.create({
+      data: {
+        contractId: updated.id,
+        action: "CONTRACT_TEMPLATE_UPDATED",
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent") || undefined,
+        deviceInfo: { userId },
+      },
+    }).catch((error) => {
+      console.warn("contract template update audit failed", error);
+    });
+
+    return res.json({ success: true, contract: summarizeTemplate(updated) });
+  } catch (error: any) {
+    console.error("contract update error", error);
+    return res.status(500).json({ success: false, error: error?.message || "Гэрээ шинэчлэхэд алдаа гарлаа" });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
 // POST /api/contracts/minu-dynamic-qr/register — Admin registers a per-contract
 // Minu Dynamic QR sub-merchant and stores the returned merchantCode in template settings.
 // ──────────────────────────────────────────────────────────────────────────────

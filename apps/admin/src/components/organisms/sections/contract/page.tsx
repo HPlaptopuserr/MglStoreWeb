@@ -325,10 +325,74 @@ const getMinuPaymentConfigError = (settings: any) => {
   return "";
 };
 
+// ─── Settings mapping helpers ────────────────────────────────────────────────
+const emptySystemQr = (prevSystemQr: any = {}) => ({
+  ...prevSystemQr,
+  enabled: false,
+  selectedAccountId: "",
+  label: "",
+  merchantName: "",
+  accountNumber: "",
+  bankCode: "050000",
+  registerNumber: "",
+  phone: "",
+  email: "",
+  merchantCode: "",
+  username: "",
+  password: "",
+  ...DEFAULT_SYSTEMQR_LOCATION,
+  firstName: "",
+  lastName: "",
+  corporateName: "",
+});
+
+const settingsFromContract = (
+  contract: any,
+  paymentAccounts: ContractPaymentAccount[],
+  prev: any,
+) => {
+  const hd = (contract.headerData || {}) as any;
+  const accountBackedSystemQr = hd?.systemQr?.merchantCode
+    ? (() => {
+        const matchedAccount = paymentAccounts.find((account) =>
+          (hd.systemQr.selectedAccountId && account.id === hd.systemQr.selectedAccountId)
+          || account.merchantCode === hd.systemQr.merchantCode
+        );
+
+        return matchedAccount
+          ? toSystemQrConfig(matchedAccount, hd.systemQr)
+          : emptySystemQr(prev.systemQr);
+      })()
+    : (hd?.systemQr || prev.systemQr);
+
+  return {
+    ...prev,
+    adminSignature: contract.adminSignature || "",
+    adminStamp: contract.adminStamp || null,
+    presidentName: contract.adminName || "",
+    presidentTitle: contract.adminTitle || "",
+    isPaid: contract.isPaid ?? prev.isPaid,
+    hasDuration: hd?.hasDuration ?? prev.hasDuration,
+    headerTitle: hd?.title || prev.headerTitle,
+    headerSubtitle: hd?.subtitle || prev.headerSubtitle,
+    headerContractTitle: hd?.contractTitle || prev.headerContractTitle,
+    defaultFeePlan: hd?.defaultFeePlan || contract.feePlan || prev.defaultFeePlan,
+    feePlans: (Array.isArray(hd?.feePlans) && hd.feePlans.length > 0 ? hd.feePlans : prev.feePlans),
+    memberFields: (Array.isArray(hd?.memberFields) && hd.memberFields.length > 0 ? hd.memberFields : prev.memberFields),
+    content: hd?.content || prev.content,
+    contentIsHtml: hd?.contentIsHtml ?? prev.contentIsHtml,
+    orgContact: hd?.orgContact || prev.orgContact,
+    paymentAccounts,
+    systemQr: accountBackedSystemQr,
+  };
+};
+
 // ─── Root component ──────────────────────────────────────────────────────────
 export function Contract() {
   const [activeTab, setActiveTab] = useState<"history" | "editor" | "preview">("history");
   const [settings, setSettings] = useState({
+    adminSignature: "",
+    adminStamp: null as string | null,
     presidentName: "",
     presidentTitle: "",
     orgName: "",
@@ -366,6 +430,8 @@ export function Contract() {
   const [contracts, setContracts] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, signed: 0, pending: 0 });
   const [loading, setLoading] = useState(true);
+  const [editingContractId, setEditingContractId] = useState<string | null>(null);
+  const [loadingEditorId, setLoadingEditorId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -387,53 +453,7 @@ export function Contract() {
               .then(detail => {
                 if (detail.success && detail.contract) {
                   const c = detail.contract;
-                  const hd = c.headerData as any;
-                  setSettings(prev => ({
-                    ...prev,
-                    presidentName: c.adminName || prev.presidentName,
-                    presidentTitle: c.adminTitle || prev.presidentTitle,
-                    isPaid: c.isPaid ?? prev.isPaid,
-                    hasDuration: hd?.hasDuration ?? prev.hasDuration,
-                    headerTitle: hd?.title || prev.headerTitle,
-                    headerSubtitle: hd?.subtitle || prev.headerSubtitle,
-                    headerContractTitle: hd?.contractTitle || prev.headerContractTitle,
-                    defaultFeePlan: hd?.defaultFeePlan || prev.defaultFeePlan,
-                    feePlans: (hd?.feePlans?.length > 0 ? hd.feePlans : prev.feePlans),
-                    memberFields: (hd?.memberFields?.length > 0 ? hd.memberFields : prev.memberFields),
-                    content: hd?.content || prev.content,
-                    contentIsHtml: hd?.contentIsHtml ?? prev.contentIsHtml,
-                    orgContact: hd?.orgContact || prev.orgContact,
-                    paymentAccounts: storedPaymentAccounts,
-                    systemQr: hd?.systemQr?.merchantCode
-                      ? (() => {
-                          const matchedAccount = storedPaymentAccounts.find((account) =>
-                            (hd.systemQr.selectedAccountId && account.id === hd.systemQr.selectedAccountId)
-                            || account.merchantCode === hd.systemQr.merchantCode
-                          );
-                          return matchedAccount
-                            ? toSystemQrConfig(matchedAccount, hd.systemQr)
-                            : {
-                                ...prev.systemQr,
-                                enabled: false,
-                                selectedAccountId: "",
-                                label: "",
-                                merchantName: "",
-                                accountNumber: "",
-                                bankCode: "050000",
-                                registerNumber: "",
-                                phone: "",
-                                email: "",
-                                merchantCode: "",
-                                username: "",
-                                password: "",
-                                ...DEFAULT_SYSTEMQR_LOCATION,
-                                firstName: "",
-                                lastName: "",
-                                corporateName: "",
-                              };
-                        })()
-                      : (hd?.systemQr || prev.systemQr),
-                  }));
+                  setSettings(prev => settingsFromContract(c, storedPaymentAccounts, prev));
                 }
               })
               .catch(() => {});
@@ -446,6 +466,27 @@ export function Contract() {
       if (sd.success) setStats({ total: sd.total, signed: sd.signed, pending: sd.pending });
     }).catch(() => { }).finally(() => setLoading(false));
   }, []);
+
+  const handleEditContract = async (contractId: string) => {
+    setLoadingEditorId(contractId);
+    try {
+      const res = await adminFetch(`${API}/contracts/${contractId}`);
+      const data = await res.json();
+
+      if (!data.success || !data.contract) {
+        alert(data.error || "Гэрээний тохиргоо ачаалахад алдаа гарлаа");
+        return;
+      }
+
+      setSettings(prev => settingsFromContract(data.contract, prev.paymentAccounts || [], prev));
+      setEditingContractId(contractId);
+      setActiveTab("editor");
+    } catch {
+      alert("Гэрээний тохиргоо ачаалахад алдаа гарлаа");
+    } finally {
+      setLoadingEditorId(null);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6 w-full">
@@ -483,8 +524,8 @@ export function Contract() {
         ))}
       </div>
 
-      {activeTab === "history" && <ContractHistoryTab contracts={contracts} setContracts={setContracts} loading={loading} setStats={setStats} settings={settings} />}
-      {activeTab === "editor" && <ContractEditorTab settings={settings} setSettings={setSettings} setContracts={setContracts} setActiveTab={setActiveTab} setStats={setStats} />}
+      {activeTab === "history" && <ContractHistoryTab contracts={contracts} setContracts={setContracts} loading={loading} setStats={setStats} settings={settings} onEdit={handleEditContract} loadingEditorId={loadingEditorId} />}
+      {activeTab === "editor" && <ContractEditorTab settings={settings} setSettings={setSettings} setContracts={setContracts} setActiveTab={setActiveTab} setStats={setStats} editingContractId={editingContractId} setEditingContractId={setEditingContractId} />}
       {activeTab === "preview" && <ContractPreviewTab settings={settings} />}
     </div>
   );
@@ -741,13 +782,15 @@ function ContractDetailModal({ contractId, onClose, settings }: { contractId: st
 
 // ─── History tab ─────────────────────────────────────────────────────────────
 function ContractHistoryTab({
-  contracts, setContracts, loading, setStats, settings
+  contracts, setContracts, loading, setStats, settings, onEdit, loadingEditorId
 }: {
   contracts: any[],
   setContracts: React.Dispatch<React.SetStateAction<any[]>>,
   loading: boolean,
   setStats: React.Dispatch<React.SetStateAction<any>>,
   settings: any,
+  onEdit: (contractId: string) => void,
+  loadingEditorId: string | null,
 }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -832,6 +875,11 @@ function ContractHistoryTab({
                       <button onClick={() => setDetailId(c.id)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-neutral-200 rounded-lg text-sm text-neutral-600 hover:bg-neutral-100 transition-colors">
                         <Eye className="w-4 h-4" /> Дэлгэрэнгүй
+                      </button>
+                      <button onClick={() => onEdit(c.id)} disabled={loadingEditorId === c.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-blue-200 rounded-lg text-sm text-blue-700 hover:bg-blue-50 disabled:opacity-40 transition-colors">
+                        {loadingEditorId === c.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit className="w-4 h-4" />}
+                        Засах
                       </button>
                       {c.status === "SIGNED" && (
                         <button onClick={() => handleDownloadPdf(c)} title="PDF татах"
@@ -1040,13 +1088,15 @@ function NewContractButton({ settings, setContracts, setStats }: {
 
 // ─── Editor tab ───────────────────────────────────────────────────────────────
 function ContractEditorTab({
-  settings, setSettings, setContracts, setActiveTab, setStats
+  settings, setSettings, setContracts, setActiveTab, setStats, editingContractId, setEditingContractId
 }: {
   settings: any,
   setSettings: any,
   setContracts: React.Dispatch<React.SetStateAction<any[]>>,
   setActiveTab: React.Dispatch<React.SetStateAction<"history" | "editor" | "preview">>,
   setStats: React.Dispatch<React.SetStateAction<any>>,
+  editingContractId: string | null,
+  setEditingContractId: React.Dispatch<React.SetStateAction<string | null>>,
 }) {
   const [saving, setSaving] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -1060,6 +1110,11 @@ function ContractEditorTab({
   const [systemQrCategories, setSystemQrCategories] = useState<SystemQrCategory[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const stampRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setAdminSignature(settings.adminSignature || "");
+    setAdminStamp(settings.adminStamp || null);
+  }, [editingContractId, settings.adminSignature, settings.adminStamp]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1606,43 +1661,56 @@ function ContractEditorTab({
         ? settings.defaultFeePlan
         : null;
 
-      const res = await adminFetch(`${API}/contracts`, {
-        method: "POST",
-        body: JSON.stringify({
-          feePlan: selectedPlan,
-          isPaid: settings.isPaid,
-          adminSignature,
-          adminName: settings.presidentName || null,
-          adminTitle: settings.presidentTitle || null,
-          adminStamp: adminStamp || null,
-          headerData: {
-            title: settings.headerTitle || null,
-            subtitle: settings.headerSubtitle || null,
-            contractTitle: settings.headerContractTitle || null,
-            hasDuration: settings.hasDuration,
-            feePlans: settings.feePlans,
-            defaultFeePlan: settings.defaultFeePlan,
-            memberFields: settings.memberFields,
-            content: settings.content || null,
-            contentIsHtml: settings.contentIsHtml || false,
-            orgContact: settings.orgContact,
-            paymentAccounts: settings.paymentAccounts,
-            systemQr: settings.systemQr,
-          },
-        }),
-      });
+      const payload = {
+        feePlan: selectedPlan,
+        isPaid: settings.isPaid,
+        adminSignature,
+        adminName: settings.presidentName || null,
+        adminTitle: settings.presidentTitle || null,
+        adminStamp: adminStamp || null,
+        headerData: {
+          title: settings.headerTitle || null,
+          subtitle: settings.headerSubtitle || null,
+          contractTitle: settings.headerContractTitle || null,
+          hasDuration: settings.hasDuration,
+          feePlans: settings.feePlans,
+          defaultFeePlan: settings.defaultFeePlan,
+          memberFields: settings.memberFields,
+          content: settings.content || null,
+          contentIsHtml: settings.contentIsHtml || false,
+          orgContact: settings.orgContact,
+          paymentAccounts: settings.paymentAccounts,
+          systemQr: settings.systemQr,
+        },
+      };
+      const res = await adminFetch(
+        editingContractId ? `${API}/contracts/${editingContractId}` : `${API}/contracts`,
+        {
+          method: editingContractId ? "PUT" : "POST",
+          body: JSON.stringify(payload),
+        },
+      );
 
       const data = await res.json();
 
       if (data.success) {
-        setContracts(prev => [data.contract, ...prev]);
-        setStats((s: any) => ({
-          ...s,
-          total: s.total + 1,
-          pending: s.pending + 1,
-        }));
+        if (editingContractId) {
+          setContracts(prev => prev.map(contract =>
+            contract.id === editingContractId
+              ? { ...contract, ...data.contract }
+              : contract
+          ));
+          setEditingContractId(null);
+        } else {
+          setContracts(prev => [data.contract, ...prev]);
+          setStats((s: any) => ({
+            ...s,
+            total: s.total + 1,
+            pending: s.pending + 1,
+          }));
+        }
 
-        alert("Гэрээний тохиргоо хадгалагдаж, шинэ линк үүслээ!");
+        alert(editingContractId ? "Гэрээний тохиргоо шинэчлэгдлээ!" : "Гэрээний тохиргоо хадгалагдаж, шинэ линк үүслээ!");
         setActiveTab("history");
       } else {
         alert(data.error || "Алдаа гарлаа");
@@ -1658,11 +1726,23 @@ function ContractEditorTab({
     <div className="bg-white border border-neutral-200 rounded-2xl shadow-sm flex flex-col">
       <div className="p-4 border-b border-neutral-200 bg-neutral-50 flex justify-between items-center">
         <h3 className="font-bold text-neutral-800 flex items-center gap-2">
-          <Edit className="w-5 h-5 text-blue-600" /> Гэрээний тохиргоо & Загвар
+          <Edit className="w-5 h-5 text-blue-600" />
+          {editingContractId ? "Гэрээний тохиргоо засах" : "Гэрээний тохиргоо & Загвар"}
         </h3>
-        <button onClick={handleSave} disabled={saving} className="px-6 py-2 bg-neutral-900 text-white rounded-lg text-sm font-medium hover:bg-neutral-800 disabled:opacity-50 flex items-center gap-2">
-          {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Хадгалж байна...</> : "Хадгалах & Линк үүсгэх"}
-        </button>
+        <div className="flex items-center gap-2">
+          {editingContractId && (
+            <button
+              type="button"
+              onClick={() => setEditingContractId(null)}
+              className="px-4 py-2 border border-neutral-200 text-neutral-600 rounded-lg text-sm font-medium hover:bg-white transition-colors"
+            >
+              Засахаас гарах
+            </button>
+          )}
+          <button onClick={handleSave} disabled={saving} className="px-6 py-2 bg-neutral-900 text-white rounded-lg text-sm font-medium hover:bg-neutral-800 disabled:opacity-50 flex items-center gap-2">
+            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Хадгалж байна...</> : editingContractId ? "Өөрчлөлт хадгалах" : "Хадгалах & Линк үүсгэх"}
+          </button>
+        </div>
       </div>
 
       {/* Sub-tabs */}
@@ -2095,6 +2175,12 @@ function ContractEditorTab({
       {/* Signature Tab */}
       {editorTab === "signature" && (
         <div className="p-6 border-t border-neutral-100">
+          {adminSignature && (
+            <div className="mb-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">Одоогийн гарын үсэг</div>
+              <img src={adminSignature} alt="Гарын үсэг" className="h-16 max-w-[240px] object-contain mix-blend-multiply" />
+            </div>
+          )}
           <SignatureInput
             label="Гэрээ байгуулагчийн гарын үсэг"
             required
