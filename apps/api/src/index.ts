@@ -57,18 +57,6 @@ const isLocalRequest = (ip?: string) =>
 
 app.use(helmet());
 
-// Global rate limiter: 200 req / 15 min per IP
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 200,
-    skip: (req) => !isProduction && isLocalRequest(req.ip),
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { message: "Хэт олон хүсэлт илгээлээ. Түр хүлээнэ үү." },
-  }),
-);
-
 const defaultAllowedOrigins = [
   "http://mglstore.mn:3002",
   "http://admin.mglstore.mn:3003",
@@ -105,6 +93,18 @@ app.use(
       callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
+  }),
+);
+
+// Global rate limiter: 200 req / 15 min per IP
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    skip: (req) => req.method === "OPTIONS" || (!isProduction && isLocalRequest(req.ip)),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Хэт олон хүсэлт илгээлээ. Түр хүлээнэ үү." },
   }),
 );
 app.use(express.json({ limit: "20mb" }));
