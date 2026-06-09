@@ -56,192 +56,6 @@ const DEFAULT_STUDY_SETTINGS: StudySettings = {
   bannerUrl: "",
 };
 
-const DEFAULT_STUDY_MATERIALS: ProjectItem[] = [
-  {
-    id: "study-store-basics",
-    title: "MGL Store ашиглалтын үндсэн bootcamp",
-    category: "Платформ",
-    summary:
-      "Дэлгүүрийн dashboard, бүтээгдэхүүн нэмэх, захиалга шалгах үндсэн алхмууд.",
-    details:
-      "Dashboard тохируулах\nБүтээгдэхүүн нэмэх workflow\nЗахиалга шалгах ба төлөв солих\nХэрэглэгчийн мэдээлэл удирдах",
-    price: 11900,
-    imageUrl: "https://picsum.photos/seed/mgl-study-platform/900/520",
-    imageUrls: [],
-    pdfUrl: "",
-    teacherInfo: "MGL Store сургалтын баг · Store operation зөвлөхүүд",
-    duration: "4.5 цаг",
-    capacity: "1-10 хүн",
-    priceNote: "1 хүний эрх",
-    tags: ["dashboard", "store", "beginner"],
-    isActive: true,
-  },
-  {
-    id: "study-order-workflow",
-    title: "Захиалга боловсруулах workflow",
-    category: "Захиалга",
-    summary:
-      "Захиалга хүлээн авах, төлөв солих, хүргэлтийн мэдээлэл бэлтгэх дараалал.",
-    details:
-      "Захиалга хүлээн авах\nТөлөв солих стандарт\nХүргэлтийн багтай уялдуулах\nТайлан шалгах дадлага",
-    price: 15900,
-    imageUrl: "https://picsum.photos/seed/mgl-study-orders/900/520",
-    imageUrls: [],
-    pdfUrl: "",
-    teacherInfo: "Operations баг · Захиалга, хүргэлтийн workflow ментор",
-    duration: "3.5 цаг",
-    capacity: "1-8 хүн",
-    priceNote: "Багийн сургалт",
-    tags: ["order", "delivery", "workflow"],
-    isActive: true,
-  },
-  {
-    id: "study-marketing-content",
-    title: "Контент ба борлуулалтын материал",
-    category: "Маркетинг",
-    summary:
-      "Бүтээгдэхүүний зураг, тайлбар, promo материал бэлтгэх богино заавар.",
-    details:
-      "Бүтээгдэхүүний зураг сонгох\nБорлуулах гарчиг бичих\nPromo banner бэлтгэх\nКонтентын checklist ашиглах",
-    price: 9900,
-    imageUrl: "https://picsum.photos/seed/mgl-study-content/900/520",
-    imageUrls: [],
-    pdfUrl: "",
-    teacherInfo: "Маркетинг баг · Контент, худалдааны copy зөвлөх",
-    duration: "2.5 цаг",
-    capacity: "1-12 хүн",
-    priceNote: "1 хүний үнэ",
-    tags: ["content", "promo", "sales"],
-    isActive: true,
-  },
-  {
-    id: "study-ai-agent-basics",
-    title: "AI агент ашиглан борлуулалтын автоматжуулалт",
-    category: "AI",
-    summary:
-      "Lead, customer support, email follow-up ажлыг AI agent workflow-р хурдасгана.",
-    details:
-      "AI agent гэж юу вэ\nБорлуулалтын automation зураглах\nPrompt болон workflow байгуулах\nMGL Store дээр ашиглах жишээ",
-    price: 24900,
-    imageUrl: "https://picsum.photos/seed/mgl-study-ai-agent/900/520",
-    imageUrls: [],
-    teacherInfo: "AI automation зөвлөх · 6+ жилийн digital workflow туршлага",
-    duration: "6 цаг",
-    capacity: "1-15 хүн",
-    priceNote: "Beginner level",
-    tags: ["ai", "agent", "automation"],
-    isActive: true,
-  },
-  {
-    id: "study-pos-register",
-    title: "POS Register ба кассын өдөр тутмын ажиллагаа",
-    category: "POS",
-    summary:
-      "Касс нээх, борлуулалт бүртгэх, ээлж хаах, тайлан тохируулах сургалт.",
-    details:
-      "Касс нээх\nБараа уншуулах\nБуцаалт болон discount\nЭэлж хаах тайлан",
-    price: 17900,
-    imageUrl: "https://picsum.photos/seed/mgl-study-pos/900/520",
-    imageUrls: [],
-    teacherInfo: "POS deployment баг · Retail operation trainer",
-    duration: "5 цаг",
-    capacity: "2-10 хүн",
-    priceNote: "Байгууллагын багц",
-    tags: ["pos", "cashier", "retail"],
-    isActive: true,
-  },
-  {
-    id: "study-branch-management",
-    title: "Салбар, байршил, ажилтны эрх удирдах нь",
-    category: "Менежмент",
-    summary:
-      "Олон салбартай дэлгүүрийн эрх, хэрэглэгч, тайлангийн бүтцийг зөв зохион байгуулна.",
-    details:
-      "Салбарын бүтэц үүсгэх\nАжилтны role, permission\nСалбар бүрийн тайлан\nАюулгүй ажиллагааны зөвлөмж",
-    price: 19900,
-    imageUrl: "https://picsum.photos/seed/mgl-study-branch/900/520",
-    imageUrls: [],
-    teacherInfo: "MGL Store admin enablement баг",
-    duration: "4 цаг",
-    capacity: "1-20 хүн",
-    priceNote: "Manager track",
-    tags: ["branch", "admin", "permission"],
-    isActive: true,
-  },
-  {
-    id: "study-dynamic-qr-payment",
-    title: "Dynamic QR төлбөр, данс холболт, reconciliation",
-    category: "Төлбөр",
-    summary:
-      "Minu Dynamic QR данс холбож, төлбөрийн урсгал болон шалгалтыг зөв ажиллуулна.",
-    details:
-      "Merchant данс ойлгох\nQR invoice үүсэх урсгал\nТөлбөр шалгах\nАлдааг оношлох checklist",
-    price: 21900,
-    imageUrl: "https://picsum.photos/seed/mgl-study-payment/900/520",
-    imageUrls: [],
-    teacherInfo: "Payment integration engineer · QPay/SystemQR туршлагатай",
-    duration: "3 цаг",
-    capacity: "1-6 хүн",
-    priceNote: "Technical session",
-    tags: ["qpay", "payment", "qr"],
-    isActive: true,
-  },
-  {
-    id: "study-service-posts",
-    title: "Үйлчилгээний пост, HR үйлчилгээ, маягт холбох",
-    category: "Үйлчилгээ",
-    summary:
-      "Service card, form, thumbnail, file болон хэрэглэгчийн хүсэлтийг нэг урсгалд оруулна.",
-    details:
-      "Үйлчилгээний бүтэц\nМаягт холбох\nThumbnail ба file\nХүсэлт хүлээн авах workflow",
-    price: 14900,
-    imageUrl: "https://picsum.photos/seed/mgl-study-service/900/520",
-    imageUrls: [],
-    teacherInfo: "Service operations баг · HR/service content зөвлөх",
-    duration: "3.5 цаг",
-    capacity: "1-10 хүн",
-    priceNote: "Hands-on",
-    tags: ["service", "forms", "hr"],
-    isActive: true,
-  },
-  {
-    id: "study-vendor-growth",
-    title: "Vendor growth: дэлгүүрээ оновчтой байрлуулах",
-    category: "Growth",
-    summary:
-      "Дэлгүүрийн нүүр, бүтээгдэхүүн, үнэ, banner, trust signal-ийг сайжруулна.",
-    details:
-      "Store profile audit\nProduct card optimization\nҮнэ ба promo стратеги\nCustomer trust checklist",
-    price: 12900,
-    imageUrl: "https://picsum.photos/seed/mgl-study-growth/900/520",
-    imageUrls: [],
-    teacherInfo: "Growth баг · E-commerce performance зөвлөх",
-    duration: "4 цаг",
-    capacity: "1-12 хүн",
-    priceNote: "Growth basics",
-    tags: ["growth", "sales", "store"],
-    isActive: true,
-  },
-  {
-    id: "study-data-reporting",
-    title: "Тайлан унших, KPI гаргах, шийдвэр гаргалт",
-    category: "Дата",
-    summary:
-      "Борлуулалт, захиалга, хэрэглэгчийн датагаас ойлгомжтой KPI dashboard гаргана.",
-    details:
-      "Үндсэн KPI ойлгох\nТайлан унших\nExcel/Sheet export\nШийдвэрийн checklist",
-    price: 18900,
-    imageUrl: "https://picsum.photos/seed/mgl-study-data/900/520",
-    imageUrls: [],
-    teacherInfo: "Data analyst · Retail reporting consultant",
-    duration: "5.5 цаг",
-    capacity: "1-10 хүн",
-    priceNote: "Data beginner",
-    tags: ["data", "report", "kpi"],
-    isActive: true,
-  },
-];
-
 function normalizeStudySettings(raw: unknown): StudySettings {
   const record =
     raw && typeof raw === "object" ? (raw as Partial<StudySettings>) : {};
@@ -275,13 +89,7 @@ function normalizeStudySettings(raw: unknown): StudySettings {
 }
 
 function buildStudyDisplayMaterials(materials: ProjectItem[]) {
-  const seen = new Set(materials.map((material) => material.id));
-  const fallback = DEFAULT_STUDY_MATERIALS.filter(
-    (material) => !seen.has(material.id),
-  );
-  return materials.length > 0
-    ? [...materials, ...fallback.slice(0, 10)]
-    : DEFAULT_STUDY_MATERIALS;
+  return materials;
 }
 
 const ALL_STUDY_CATEGORIES = "Бүгд";
@@ -799,14 +607,10 @@ export default function StudyPage() {
         const visibleMaterials = parsed.filter(
           (item: ProjectItem) => item.isActive !== false,
         );
-        setMaterials(
-          visibleMaterials.length > 0
-            ? visibleMaterials
-            : DEFAULT_STUDY_MATERIALS,
-        );
+        setMaterials(visibleMaterials);
       } catch (error) {
         console.error("Failed to fetch study materials", error);
-        setMaterials(DEFAULT_STUDY_MATERIALS);
+        setMaterials([]);
       } finally {
         setLoading(false);
       }

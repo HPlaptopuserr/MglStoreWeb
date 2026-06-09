@@ -37,57 +37,6 @@ const DEFAULT_STUDY_SETTINGS: StudySectionSettings = {
   bannerUrl: "",
 };
 
-const DEFAULT_STUDY_PROJECTS: ProjectItem[] = [
-  {
-    id: "study-store-basics",
-    title: "MGL Store ашиглалтын үндсэн сургалт",
-    category: "Платформ",
-    summary:
-      "Дэлгүүрийн dashboard, бүтээгдэхүүн нэмэх, захиалга шалгах үндсэн алхмууд.",
-    details:
-      "Энэ сургалтаар MGL Store-ийн web болон admin орчны үндсэн урсгалыг ойлгож, бүтээгдэхүүн, захиалга, хэрэглэгчийн мэдээллийг зөв удирдах аргачлалыг үзнэ.",
-    price: 0,
-    imageUrl: "",
-    imageUrls: [],
-    pdfUrl: "",
-    tags: ["dashboard", "store", "beginner"],
-    isActive: true,
-    isFeatured: false,
-  },
-  {
-    id: "study-order-workflow",
-    title: "Захиалга боловсруулах workflow",
-    category: "Захиалга",
-    summary:
-      "Захиалга хүлээн авах, төлөв солих, хүргэлтийн мэдээлэл бэлтгэх дараалал.",
-    details:
-      "Захиалгын төлөв, хэрэглэгчтэй холбогдох мэдээлэл, хүргэлтийн бэлтгэл болон тайлан шалгах практик алхмуудыг багтаасан сургалт.",
-    price: 0,
-    imageUrl: "",
-    imageUrls: [],
-    pdfUrl: "",
-    tags: ["order", "delivery", "workflow"],
-    isActive: true,
-    isFeatured: false,
-  },
-  {
-    id: "study-marketing-content",
-    title: "Контент ба борлуулалтын материал",
-    category: "Маркетинг",
-    summary:
-      "Бүтээгдэхүүний зураг, тайлбар, promo материал бэлтгэх богино заавар.",
-    details:
-      "Борлуулалтын card, promo banner, бүтээгдэхүүний тайлбар болон хэрэглэгчид ойлгомжтой харагдах контент бэлтгэх зөвлөмжүүд.",
-    price: 0,
-    imageUrl: "",
-    imageUrls: [],
-    pdfUrl: "",
-    tags: ["content", "promo", "sales"],
-    isActive: true,
-    isFeatured: false,
-  },
-];
-
 function normalizeProjectImages(project: ProjectItem): ProjectItem {
   const imageUrls = Array.from(
     new Set(
@@ -391,17 +340,14 @@ export function useSiteSettings() {
           try {
             const parsed = JSON.parse(data["site-study"]);
             if (Array.isArray(parsed)) {
-              const normalized = (
-                parsed.length > 0 ? parsed : DEFAULT_STUDY_PROJECTS
-              ).map(normalizeProjectImages);
+              const normalized = parsed.map(normalizeProjectImages);
               setStudyProjectsRaw(normalized);
               studyProjectsRef.current = normalized;
             }
           } catch {}
         } else {
-          const normalized = DEFAULT_STUDY_PROJECTS.map(normalizeProjectImages);
-          setStudyProjectsRaw(normalized);
-          studyProjectsRef.current = normalized;
+          setStudyProjectsRaw([]);
+          studyProjectsRef.current = [];
         }
 
         if (data["site-study-settings"]) {
