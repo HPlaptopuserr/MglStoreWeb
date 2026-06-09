@@ -26,6 +26,7 @@ export {
   PosPaymentStatus,
   PosQPayStatus,
   ShiftStatus,
+  CashDrawerEventType,
   PosSaleStatus,
   ContractStatus,
   PaidAccessSourceType,

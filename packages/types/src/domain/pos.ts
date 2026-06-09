@@ -141,6 +141,40 @@ export interface SalePayload {
 // ─── Shift ───────────────────────────────────────────────────────────────────
 
 export type ShiftStatus = "OPEN" | "CLOSED";
+export type CashDrawerEventType = "PAID_IN" | "PAID_OUT" | "OPEN_DRAWER";
+
+export interface CashDenominationCount {
+  denomination: number;
+  count: number;
+  total: number;
+}
+
+export interface CashDrawerEvent {
+  id: string;
+  organizationId: string;
+  branchId: string;
+  registerId: string | null;
+  shiftId: string;
+  cashierId: string;
+  cashierName?: string;
+  type: CashDrawerEventType;
+  amount: number;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface CashDrawerSummary {
+  shift: PosShift;
+  events: CashDrawerEvent[];
+  openingCash: number;
+  cashSales: number;
+  paidIn: number;
+  paidOut: number;
+  expectedCash: number;
+  countedCash: number | null;
+  cashDifference: number | null;
+  cashCount: CashDenominationCount[];
+}
 
 export interface PosShift {
   id: string;
@@ -157,6 +191,8 @@ export interface PosShift {
   closingCash: number | null;
   expectedCash: number;
   cashDifference?: number | null;
+  cashCount?: CashDenominationCount[];
+  cashCountedAt?: string | null;
   note?: string | null;
   status: ShiftStatus;
 }
@@ -167,10 +203,14 @@ export interface PosShiftHistoryItem extends PosShift {
   registerId: string | null;
   registerName: string | null;
   cashDifference: number | null;
+  cashCount: CashDenominationCount[];
+  cashCountedAt?: string | null;
   note: string | null;
   salesCount: number;
   totalSales: number;
   cashSales: number;
+  paidIn: number;
+  paidOut: number;
   cardSales: number;
   qpaySales: number;
   mixedSales: number;
@@ -182,12 +222,14 @@ export interface PosShiftHistoryResponse {
 
 export interface OpenShiftPayload {
   branchId: string;
+  registerId?: string;
   openingCash: number;
 }
 
 export interface CloseShiftPayload {
   shiftId: string;
   closingCash: number;
+  cashCount?: CashDenominationCount[];
   note?: string;
 }
 

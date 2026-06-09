@@ -7,6 +7,7 @@ export function openShift(payload: OpenShiftPayload): Promise<PosShift> {
     method: "POST",
     body: {
       branchId: assertNonEmptyString(payload.branchId, "branchId"),
+      registerId: payload.registerId,
       openingCash: toSafePositiveNumber(payload.openingCash),
     },
   });

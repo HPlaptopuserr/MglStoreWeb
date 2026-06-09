@@ -1,5 +1,9 @@
 export type {
   ShiftStatus,
+  CashDrawerEventType,
+  CashDenominationCount,
+  CashDrawerEvent,
+  CashDrawerSummary,
   PosShift,
   PosShiftHistoryItem,
   PosShiftHistoryResponse,

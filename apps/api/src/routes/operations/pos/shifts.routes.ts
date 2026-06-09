@@ -1,6 +1,5 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus } from "@mgl/database";
-import type { Prisma } from "@mgl/database";
+import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CashDrawerEventType } from "@mgl/database";
 import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
@@ -22,6 +21,23 @@ const router: ExpressRouter = Router();
 const isAdminActor = (actor: AuthUser) =>
   actor.role === "ADMIN" || actor.role === "SUPER_ADMIN";
 
+const normalizeCashCountForResponse = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const source = item as Record<string, unknown>;
+      const denomination = Number(source.denomination);
+      const count = Math.max(0, Math.floor(Number(source.count) || 0));
+      if (!Number.isFinite(denomination) || denomination <= 0) return null;
+      return {
+        denomination,
+        count,
+        total: roundMoney(denomination * count),
+      };
+    })
+    .filter(Boolean);
+};
+
 const toShiftResponse = (shift: any) => ({
   id: shift.id,
   organizationId: shift.organizationId,
@@ -37,6 +53,8 @@ const toShiftResponse = (shift: any) => ({
   closingCash: shift.closingCash === null ? null : Number(shift.closingCash),
   expectedCash: shift.expectedCash === null ? 0 : Number(shift.expectedCash),
   cashDifference: shift.cashDifference === null ? null : Number(shift.cashDifference),
+  cashCount: normalizeCashCountForResponse(shift.cashCount),
+  cashCountedAt: shift.cashCountedAt?.toISOString?.() ?? null,
   note: shift.note ?? null,
   status: shift.status,
 });
@@ -74,12 +92,111 @@ const summarizeShiftSales = (
   };
 };
 
+const parseCashCountInput = (value: unknown) => {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value)) {
+    throw new Error("cashCount массив байх ёстой");
+  }
+
+  const counts = value
+    .map((item) => {
+      const source = item as Record<string, unknown>;
+      const denomination = Number(source.denomination);
+      const count = Math.max(0, Math.floor(Number(source.count) || 0));
+      if (!Number.isFinite(denomination) || denomination <= 0) return null;
+      return {
+        denomination,
+        count,
+        total: roundMoney(denomination * count),
+      };
+    })
+    .filter((item): item is { denomination: number; count: number; total: number } => Boolean(item));
+
+  const total = roundMoney(counts.reduce((sum, item) => sum + item.total, 0));
+  return { counts, total };
+};
+
+const mapCashDrawerEvent = (event: any) => ({
+  id: event.id,
+  organizationId: event.organizationId,
+  branchId: event.branchId,
+  registerId: event.registerId ?? null,
+  shiftId: event.shiftId,
+  cashierId: event.cashierId,
+  type: event.type,
+  amount: Number(event.amount),
+  note: event.note ?? null,
+  createdAt: event.createdAt.toISOString(),
+});
+
+async function getCashDrawerEventTotals(shiftId: string) {
+  const events = await prisma.posCashDrawerEvent.findMany({
+    where: { shiftId },
+    select: { type: true, amount: true },
+  });
+  return events.reduce<{ paidIn: number; paidOut: number }>(
+    (summary: { paidIn: number; paidOut: number }, event: { type: CashDrawerEventType; amount: unknown }) => {
+      const amount = Number(event.amount);
+      if (!Number.isFinite(amount)) return summary;
+      if (event.type === CashDrawerEventType.PAID_IN) summary.paidIn += amount;
+      if (event.type === CashDrawerEventType.PAID_OUT) summary.paidOut += amount;
+      return summary;
+    },
+    { paidIn: 0, paidOut: 0 },
+  );
+}
+
+async function buildCashDrawerSummary(shift: any) {
+  const [cashSales, events] = await Promise.all([
+    prisma.posSale.findMany({
+      where: { shiftId: shift.id, status: PosSaleStatus.COMPLETED, paymentMethod: "CASH" },
+      select: { grandTotal: true },
+    }),
+    prisma.posCashDrawerEvent.findMany({
+      where: { shiftId: shift.id },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
+  const cashSalesTotal = roundMoney(
+    cashSales.reduce((sum: number, sale: { grandTotal: unknown }) => sum + Number(sale.grandTotal), 0),
+  );
+  const totals = events.reduce<{ paidIn: number; paidOut: number }>(
+    (summary: { paidIn: number; paidOut: number }, event: { type: CashDrawerEventType; amount: unknown }) => {
+      const amount = Number(event.amount);
+      if (!Number.isFinite(amount)) return summary;
+      if (event.type === CashDrawerEventType.PAID_IN) summary.paidIn += amount;
+      if (event.type === CashDrawerEventType.PAID_OUT) summary.paidOut += amount;
+      return summary;
+    },
+    { paidIn: 0, paidOut: 0 },
+  );
+  const expectedCash = roundMoney(
+    Number(shift.openingCash) + cashSalesTotal + totals.paidIn - totals.paidOut,
+  );
+  const countedCash = shift.closingCash === null ? null : Number(shift.closingCash);
+
+  return {
+    shift: toShiftResponse(shift),
+    events: events.map(mapCashDrawerEvent),
+    openingCash: Number(shift.openingCash),
+    cashSales: cashSalesTotal,
+    paidIn: roundMoney(totals.paidIn),
+    paidOut: roundMoney(totals.paidOut),
+    expectedCash,
+    countedCash,
+    cashDifference: countedCash === null ? null : roundMoney(countedCash - expectedCash),
+    cashCount: normalizeCashCountForResponse(shift.cashCount),
+  };
+}
+
 router.post("/pos/shifts/open", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
     if (!actor) return;
 
     const branchId = String(req.body.branchId || "").trim();
+    const registerId = String(req.body.registerId || "").trim() || null;
     const openingCash = Number(req.body.openingCash);
 
     if (!branchId) {
@@ -95,6 +212,22 @@ router.post("/pos/shifts/open", async (req, res) => {
     });
     if (!branch) {
       return res.status(404).json({ message: "Салбар олдсонгүй" });
+    }
+
+    if (registerId) {
+      const register = await prisma.posRegister.findUnique({
+        where: { id: registerId },
+        select: { id: true, branchId: true, organizationId: true, isActive: true, activationStatus: true },
+      });
+      if (!register) {
+        return res.status(404).json({ message: "POS register олдсонгүй" });
+      }
+      if (register.branchId !== branchId || register.organizationId !== branch.organizationId) {
+        return res.status(400).json({ message: "POS register салбартай зөрүүтэй байна" });
+      }
+      if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
+        return res.status(403).json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
+      }
     }
 
     if (actor.role !== "ADMIN") {
@@ -119,29 +252,19 @@ router.post("/pos/shifts/open", async (req, res) => {
       data: {
         organizationId: branch.organizationId,
         branchId,
+        registerId,
         cashierId: actor.id,
         openingCash,
         status: ShiftStatus.OPEN,
       },
       include: {
         cashier: { select: { id: true, email: true } },
+        branch: { select: { id: true, name: true } },
+        register: { select: { id: true, name: true } },
       },
     });
 
-    const response = {
-      id: shift.id,
-      cashierId: shift.cashierId,
-      cashierName: shift.cashier.email,
-      branchId: shift.branchId,
-      openedAt: shift.openedAt.toISOString(),
-      closedAt: null,
-      openingCash: Number(shift.openingCash),
-      closingCash: null,
-      expectedCash: 0,
-      status: shift.status,
-    };
-
-    res.status(201).json(response);
+    res.status(201).json(toShiftResponse(shift));
   } catch (error) {
     console.error("open shift error", error);
     res.status(500).json({ message: "Ээлж нээхэд алдаа гарлаа" });
@@ -154,11 +277,17 @@ router.post("/pos/shifts/close", async (req, res) => {
     if (!actor) return;
 
     const shiftId = String(req.body.shiftId || "").trim();
-    const closingCash = Number(req.body.closingCash);
     const note = String(req.body.note || "").trim().slice(0, 500) || null;
+    let parsedCashCount: ReturnType<typeof parseCashCountInput> = null;
+    try {
+      parsedCashCount = parseCashCountInput(req.body.cashCount);
+    } catch (error) {
+      return res.status(400).json({ message: error instanceof Error ? error.message : "cashCount буруу байна" });
+    }
+    const closingCash = parsedCashCount ? parsedCashCount.total : Number(req.body.closingCash);
 
     if (!shiftId) {
-      return res.status(400).json({ message: "shiftId шаардлагатай" });
+      return res.status(400).json({ message: "Ээлжийн ID шаардлагатай" });
     }
     if (!Number.isFinite(closingCash) || closingCash < 0) {
       return res.status(400).json({ message: "closingCash 0 буюу түүнээс дээш байх ёстой" });
@@ -168,6 +297,8 @@ router.post("/pos/shifts/close", async (req, res) => {
       where: { id: shiftId },
       include: {
         cashier: { select: { id: true, email: true } },
+        branch: { select: { id: true, name: true } },
+        register: { select: { id: true, name: true } },
       },
     });
     if (!shift) {
@@ -188,9 +319,12 @@ router.post("/pos/shifts/close", async (req, res) => {
     // Sum up all CASH payment totals. For mixed payments we'd need breakdown, 
     // but for simplicity, when paymentMethod is CASH, add grandTotal.
     const expectedCashFromSales = cashSales
-      .filter((s) => s.paymentMethod === "CASH")
-      .reduce((sum, s) => sum + Number(s.grandTotal), 0);
-    const expectedCash = Number(shift.openingCash) + expectedCashFromSales;
+      .filter((s: { paymentMethod: string | null }) => s.paymentMethod === "CASH")
+      .reduce((sum: number, s: { grandTotal: unknown }) => sum + Number(s.grandTotal), 0);
+    const drawerTotals = await getCashDrawerEventTotals(shift.id);
+    const expectedCash = roundMoney(
+      Number(shift.openingCash) + expectedCashFromSales + drawerTotals.paidIn - drawerTotals.paidOut,
+    );
     const cashDifference = roundMoney(closingCash - expectedCash);
 
     const updatedShift = await prisma.posShift.update({
@@ -200,30 +334,19 @@ router.post("/pos/shifts/close", async (req, res) => {
         closingCash,
         expectedCash,
         cashDifference,
+        cashCount: parsedCashCount?.counts ?? undefined,
+        cashCountedAt: parsedCashCount ? new Date() : undefined,
         note,
         closedAt: new Date(),
       },
       include: {
         cashier: { select: { id: true, email: true } },
+        branch: { select: { id: true, name: true } },
+        register: { select: { id: true, name: true } },
       },
     });
 
-    const response = {
-      id: updatedShift.id,
-      cashierId: updatedShift.cashierId,
-      cashierName: updatedShift.cashier.email,
-      branchId: updatedShift.branchId,
-      openedAt: updatedShift.openedAt.toISOString(),
-      closedAt: updatedShift.closedAt?.toISOString() ?? null,
-      openingCash: Number(updatedShift.openingCash),
-      closingCash: Number(updatedShift.closingCash),
-      expectedCash: Number(updatedShift.expectedCash),
-      cashDifference: Number(updatedShift.cashDifference),
-      note: updatedShift.note,
-      status: updatedShift.status,
-    };
-
-    res.status(200).json(response);
+    res.status(200).json(toShiftResponse(updatedShift));
   } catch (error) {
     console.error("close shift error", error);
     res.status(500).json({ message: "Ээлж хаахад алдаа гарлаа" });
@@ -239,6 +362,8 @@ router.get("/pos/shifts/current", async (req, res) => {
       where: { cashierId: actor.id, status: ShiftStatus.OPEN },
       include: {
         cashier: { select: { id: true, email: true } },
+        branch: { select: { id: true, name: true } },
+        register: { select: { id: true, name: true } },
       },
     });
 
@@ -246,20 +371,7 @@ router.get("/pos/shifts/current", async (req, res) => {
       return res.status(200).json(null);
     }
 
-    const response = {
-      id: shift.id,
-      cashierId: shift.cashierId,
-      cashierName: shift.cashier.email,
-      branchId: shift.branchId,
-      openedAt: shift.openedAt.toISOString(),
-      closedAt: null,
-      openingCash: Number(shift.openingCash),
-      closingCash: null,
-      expectedCash: 0,
-      status: shift.status,
-    };
-
-    res.status(200).json(response);
+    res.status(200).json(toShiftResponse(shift));
   } catch (error) {
     console.error("get current shift error", error);
     res.status(500).json({ message: "Ээлж мэдээлэл авахад алдаа гарлаа" });
@@ -271,6 +383,113 @@ router.get("/pos/shifts/current", async (req, res) => {
  * GET /pos/products?branchId=<uuid>
  * ─────────────────────────────────────────────────────────────────────── */
 
+
+router.get("/pos/shifts/:shiftId/drawer", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const shiftId = String(req.params.shiftId || "").trim();
+    if (!shiftId) {
+      return res.status(400).json({ message: "Ээлжийн ID шаардлагатай" });
+    }
+
+    const shift = await prisma.posShift.findUnique({
+      where: { id: shiftId },
+      include: {
+        cashier: { select: { id: true, email: true } },
+        branch: { select: { id: true, name: true } },
+        register: { select: { id: true, name: true } },
+      },
+    });
+    if (!shift) {
+      return res.status(404).json({ message: "Ээлж олдсонгүй" });
+    }
+    if (
+      shift.cashierId !== actor.id &&
+      !isAdminActor(actor) &&
+      !(await hasOrgMembership(actor.id, shift.organizationId))
+    ) {
+      return res.status(403).json({ message: "Энэ шургуулгын тайлан харах эрхгүй" });
+    }
+
+    return res.json(await buildCashDrawerSummary(shift));
+  } catch (error) {
+    console.error("get cash drawer summary error", error);
+    return res.status(500).json({ message: "Кассын шургуулгын мэдээлэл авахад алдаа гарлаа" });
+  }
+});
+
+router.post("/pos/shifts/drawer-events", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const shiftId = String(req.body.shiftId || "").trim();
+    const typeRaw = String(req.body.type || "").trim().toUpperCase();
+    const note = String(req.body.note || "").trim().slice(0, 500) || null;
+    const type =
+      typeRaw === CashDrawerEventType.PAID_IN ||
+      typeRaw === CashDrawerEventType.PAID_OUT ||
+      typeRaw === CashDrawerEventType.OPEN_DRAWER
+        ? (typeRaw as CashDrawerEventType)
+        : null;
+    const amount = type === CashDrawerEventType.OPEN_DRAWER ? 0 : Number(req.body.amount);
+
+    if (!shiftId) {
+      return res.status(400).json({ message: "Ээлжийн ID шаардлагатай" });
+    }
+    if (!type) {
+      return res.status(400).json({ message: "Хөдөлгөөний төрөл буруу байна" });
+    }
+    if (!Number.isFinite(amount) || amount < 0 || (type !== CashDrawerEventType.OPEN_DRAWER && amount <= 0)) {
+      return res.status(400).json({ message: "Дүн 0-оос их байх ёстой" });
+    }
+
+    const shift = await prisma.posShift.findUnique({
+      where: { id: shiftId },
+      include: {
+        cashier: { select: { id: true, email: true } },
+        branch: { select: { id: true, name: true } },
+        register: { select: { id: true, name: true } },
+      },
+    });
+    if (!shift) {
+      return res.status(404).json({ message: "Ээлж олдсонгүй" });
+    }
+    if (shift.status !== ShiftStatus.OPEN) {
+      return res.status(409).json({ message: "Хаагдсан ээлж дээр шургуулгын хөдөлгөөн хийх боломжгүй" });
+    }
+    if (
+      shift.cashierId !== actor.id &&
+      !isAdminActor(actor) &&
+      !(await hasOrgMembership(actor.id, shift.organizationId))
+    ) {
+      return res.status(403).json({ message: "Энэ шургуулга дээр хөдөлгөөн хийх эрхгүй" });
+    }
+
+    const event = await prisma.posCashDrawerEvent.create({
+      data: {
+        organizationId: shift.organizationId,
+        branchId: shift.branchId,
+        registerId: shift.registerId,
+        shiftId: shift.id,
+        cashierId: actor.id,
+        type,
+        amount,
+        note,
+      },
+    });
+
+    return res.status(201).json({
+      event: mapCashDrawerEvent(event),
+      summary: await buildCashDrawerSummary(shift),
+    });
+  } catch (error) {
+    console.error("create cash drawer event error", error);
+    return res.status(500).json({ message: "Кассын шургуулгын хөдөлгөөн бүртгэхэд алдаа гарлаа" });
+  }
+});
 
 router.get("/pos/shifts/history", async (req, res) => {
   try {
@@ -295,7 +514,7 @@ router.get("/pos/shifts/history", async (req, res) => {
       return res.status(400).json({ message: "from, to буруу огноо формат" });
     }
 
-    const where: Prisma.PosShiftWhereInput = {};
+    const where: any = {};
     if (status) where.status = status as ShiftStatus;
 
     if (branchId) {
@@ -316,7 +535,7 @@ router.get("/pos/shifts/history", async (req, res) => {
     }
 
     if (status === "CLOSED") {
-      const closedAt: Prisma.DateTimeNullableFilter = { not: null };
+      const closedAt: any = { not: null };
       if (from) closedAt.gte = from;
       if (to) closedAt.lte = to;
       where.closedAt = closedAt;
@@ -341,12 +560,31 @@ router.get("/pos/shifts/history", async (req, res) => {
         },
       },
     });
+    const drawerEvents = shifts.length
+      ? await prisma.posCashDrawerEvent.findMany({
+          where: { shiftId: { in: shifts.map((shift: { id: string }) => shift.id) } },
+          select: { shiftId: true, type: true, amount: true },
+        })
+      : [];
+    const drawerTotalsByShift = new Map<string, { paidIn: number; paidOut: number }>();
+    for (const event of drawerEvents) {
+      const totals = drawerTotalsByShift.get(event.shiftId) || { paidIn: 0, paidOut: 0 };
+      const amount = Number(event.amount);
+      if (event.type === CashDrawerEventType.PAID_IN) totals.paidIn += amount;
+      if (event.type === CashDrawerEventType.PAID_OUT) totals.paidOut += amount;
+      drawerTotalsByShift.set(event.shiftId, totals);
+    }
 
     res.status(200).json({
-      shifts: shifts.map((shift) => ({
-        ...toShiftResponse(shift),
-        ...summarizeShiftSales(shift.sales),
-      })),
+      shifts: shifts.map((shift: any) => {
+        const drawerTotals = drawerTotalsByShift.get(shift.id) || { paidIn: 0, paidOut: 0 };
+        return {
+          ...toShiftResponse(shift),
+          ...summarizeShiftSales(shift.sales),
+          paidIn: roundMoney(drawerTotals.paidIn),
+          paidOut: roundMoney(drawerTotals.paidOut),
+        };
+      }),
     });
   } catch (error) {
     console.error("get shift history error", error);

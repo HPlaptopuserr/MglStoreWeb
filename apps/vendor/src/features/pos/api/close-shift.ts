@@ -12,6 +12,7 @@ export function closeShift(payload: CloseShiftPayload): Promise<PosShift> {
     body: {
       shiftId: assertNonEmptyString(payload.shiftId, "shiftId"),
       closingCash: toSafePositiveNumber(payload.closingCash),
+      cashCount: payload.cashCount,
       note: sanitizeReceiptNote(payload.note),
     },
   });

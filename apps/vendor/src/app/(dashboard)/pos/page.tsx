@@ -25,11 +25,15 @@ import {
   ScanLine,
   ScanBarcode,
   AlertTriangle,
+  Banknote,
   CheckCircle2,
   Filter,
   Loader2,
   Monitor,
   Info,
+  MinusCircle,
+  PlusCircle,
+  Printer,
   RefreshCw,
   Settings,
   X,
@@ -60,12 +64,17 @@ import {
   getQPayInvoiceStatus,
   confirmQPayInvoice,
   fetchRegisterConfig,
+  createCashDrawerEvent,
+  getCashDrawerSummary,
   getReceipts,
   getShiftHistory,
   issueLocalEbarimtReceipt,
   attachEbarimtReceipt,
   type AttachEbarimtPayload,
   type RegisterConfig,
+  type CashDenominationCount,
+  type CashDrawerEventType,
+  type CashDrawerSummary,
   type PosShiftHistoryItem,
   CUSTOMER_DISPLAY_THEME_OPTIONS,
   CUSTOMER_DISPLAY_THEME_STORAGE_KEY,
@@ -148,6 +157,17 @@ const SHIFT_HISTORY_RANGE_OPTIONS = [
   { id: "100", label: "100 хаалт", description: "Сүүлийн 100 хаалтын", days: null },
 ] as const;
 type ShiftHistoryRangeId = (typeof SHIFT_HISTORY_RANGE_OPTIONS)[number]["id"];
+const CASH_DENOMINATIONS = [
+  20000,
+  10000,
+  5000,
+  1000,
+  500,
+  100,
+  50,
+  20,
+  10,
+] as const;
 
 const getShiftHistoryRangeParams = (rangeId: ShiftHistoryRangeId) => {
   const option =
@@ -164,6 +184,19 @@ const getShiftHistoryRangeParams = (rangeId: ShiftHistoryRangeId) => {
     limit: 100,
   };
 };
+
+const buildCashCount = (counts: Record<number, number>): CashDenominationCount[] =>
+  CASH_DENOMINATIONS.map((denomination) => {
+    const count = Math.max(0, Math.floor(Number(counts[denomination]) || 0));
+    return {
+      denomination,
+      count,
+      total: denomination * count,
+    };
+  });
+
+const sumCashCount = (counts: CashDenominationCount[]) =>
+  roundMoney(counts.reduce((sum, item) => sum + item.total, 0));
 
 const normalizeProductCode = (value: string) => value.trim().replace(/\s+/g, "").toLowerCase();
 
@@ -309,8 +342,17 @@ export default function PosDemoPage() {
   // Shift management
   const [showShiftPanel, setShowShiftPanel] = useState(false);
   const [showShiftHistoryPanel, setShowShiftHistoryPanel] = useState(false);
+  const [showCashDrawerPanel, setShowCashDrawerPanel] = useState(false);
   const [openingCashInput, setOpeningCashInput] = useState("");
   const [closingCashInput, setClosingCashInput] = useState("");
+  const [cashCounts, setCashCounts] = useState<Record<number, number>>({});
+  const [drawerSummary, setDrawerSummary] = useState<CashDrawerSummary | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState("");
+  const [drawerEventType, setDrawerEventType] = useState<CashDrawerEventType>("PAID_IN");
+  const [drawerEventAmount, setDrawerEventAmount] = useState("");
+  const [drawerEventNote, setDrawerEventNote] = useState("");
+  const [drawerEventSubmitting, setDrawerEventSubmitting] = useState(false);
   const [shiftFetched, setShiftFetched] = useState(false);
 
   const scannerInputRef = useRef<HTMLInputElement>(null);
@@ -370,6 +412,8 @@ export default function PosDemoPage() {
   const reloadShiftHistory = useCallback(() => {
     setShiftHistoryReloadToken((value) => value + 1);
   }, []);
+  const countedCashItems = useMemo(() => buildCashCount(cashCounts), [cashCounts]);
+  const countedCashTotal = useMemo(() => sumCashCount(countedCashItems), [countedCashItems]);
 
   const handleReceiptVoided = useCallback(
     (message: string) => {
@@ -526,6 +570,9 @@ export default function PosDemoPage() {
       setReceiptHistory([]);
       setSelectedReceiptId("");
       setReceiptHistoryError("");
+      setDrawerSummary(null);
+      setDrawerError("");
+      setCashCounts({});
       return;
     }
 
@@ -563,6 +610,37 @@ export default function PosDemoPage() {
 
     return () => controller.abort();
   }, [shift?.id, receiptReloadToken]);
+
+  useEffect(() => {
+    if (!shift?.id) return;
+
+    const controller = new AbortController();
+    setDrawerLoading(true);
+    setDrawerError("");
+
+    getCashDrawerSummary(shift.id, controller.signal)
+      .then((summary) => {
+        setDrawerSummary(summary);
+        if (summary.cashCount.length > 0) {
+          setCashCounts(
+            Object.fromEntries(
+              summary.cashCount.map((item) => [item.denomination, item.count]),
+            ) as Record<number, number>,
+          );
+        }
+      })
+      .catch((error: any) => {
+        if (error?.name === "AbortError") return;
+        setDrawerError(error?.message || "Кассын шургуулгын мэдээлэл авахад алдаа гарлаа");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setDrawerLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [shift?.id]);
 
   useEffect(() => {
     if (!registerBranchId) {
@@ -628,6 +706,153 @@ export default function PosDemoPage() {
 
     return () => controller.abort();
   }, [selectedShiftHistoryId]);
+
+  const refreshCashDrawerSummary = useCallback(async () => {
+    if (!shift?.id) return null;
+    setDrawerLoading(true);
+    setDrawerError("");
+    try {
+      const summary = await getCashDrawerSummary(shift.id);
+      setDrawerSummary(summary);
+      return summary;
+    } catch (error: any) {
+      setDrawerError(error?.message || "Кассын шургуулгын мэдээлэл авахад алдаа гарлаа");
+      return null;
+    } finally {
+      setDrawerLoading(false);
+    }
+  }, [shift?.id]);
+
+  const printPlainReport = (title: string, lines: string[]) => {
+    if (typeof window === "undefined") return;
+    const popup = window.open("", "_blank", "width=420,height=720");
+    if (!popup) return;
+    popup.document.write(`
+      <html>
+        <head>
+          <title>${escapeHtml(title)}</title>
+          <style>
+            body { font-family: monospace; margin: 0; padding: 12px; color: #111; }
+            pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.45; }
+          </style>
+        </head>
+        <body>
+          <pre>${escapeHtml(lines.join("\n"))}</pre>
+          <script>
+            window.onload = function () {
+              window.print();
+              setTimeout(function () { window.close(); }, 350);
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+  };
+
+  const printCashDrawerReport = (summary = drawerSummary) => {
+    if (!summary) return;
+    const eventLines =
+      summary.events.length === 0
+        ? ["Шургуулгын хөдөлгөөн алга"]
+        : summary.events.map((event) => {
+            const label =
+              event.type === "PAID_IN"
+                ? "Орлого нэмсэн"
+                : event.type === "PAID_OUT"
+                  ? "Зарлага гаргасан"
+                  : "Шургуулга нээсэн";
+            return `${formatDateTime(event.createdAt)}  ${label}  ${formatMoney(event.amount)}${event.note ? `  ${event.note}` : ""}`;
+          });
+    const countLines =
+      summary.cashCount.length === 0
+        ? ["Тооллого: -"]
+        : summary.cashCount
+            .filter((item) => item.count > 0)
+            .map((item) => `${formatMoney(item.denomination)} x ${item.count} = ${formatMoney(item.total)}`);
+
+    printPlainReport("Кассын шургуулгын тайлан", [
+      "КАССЫН ШУРГУУЛГЫН ТАЙЛАН",
+      "--------------------------------",
+      `Салбар: ${summary.shift.branchName || registerConfig?.branch.name || "-"}`,
+      `Касс: ${summary.shift.registerName || registerConfig?.name || "-"}`,
+      `Кассчин: ${summary.shift.cashierName}`,
+      `Нээсэн: ${formatDateTime(summary.shift.openedAt)}`,
+      `Хаасан: ${formatDateTime(summary.shift.closedAt)}`,
+      "--------------------------------",
+      `Эхлэх мөнгө: ${formatMoney(summary.openingCash)}`,
+      `Бэлэн борлуулалт: ${formatMoney(summary.cashSales)}`,
+      `Орлого нэмсэн: ${formatMoney(summary.paidIn)}`,
+      `Зарлага гаргасан: ${formatMoney(summary.paidOut)}`,
+      `Тооцоолсон бэлэн: ${formatMoney(summary.expectedCash)}`,
+      `Тоолсон бэлэн: ${summary.countedCash === null ? "-" : formatMoney(summary.countedCash)}`,
+      `Зөрүү: ${summary.cashDifference === null ? "-" : formatMoney(summary.cashDifference)}`,
+      "--------------------------------",
+      ...countLines,
+      "--------------------------------",
+      ...eventLines,
+    ]);
+  };
+
+  const printNoSaleSlip = () => {
+    printPlainReport("Кассын шургуулга нээх", [
+      "КАССЫН ШУРГУУЛГА НЭЭХ",
+      "--------------------------------",
+      `Касс: ${registerConfig?.name || "-"}`,
+      `Кассчин: ${shift?.cashierName || "-"}`,
+      `Цаг: ${formatDateTime(new Date().toISOString())}`,
+    ]);
+  };
+
+  const triggerCashDrawerKick = async () => {
+    const bridgeUrl =
+      typeof window !== "undefined"
+        ? localStorage.getItem("mgl_cash_drawer_bridge_url")?.replace(/\/$/, "")
+        : "";
+    if (!bridgeUrl) {
+      printNoSaleSlip();
+      return;
+    }
+    try {
+      await fetch(`${bridgeUrl}/drawer/open`, { method: "POST" });
+    } catch {
+      printNoSaleSlip();
+    }
+  };
+
+  const handleCreateDrawerEvent = async (type: CashDrawerEventType = drawerEventType) => {
+    if (!shift?.id) return;
+    setDrawerEventSubmitting(true);
+    setDrawerError("");
+    try {
+      const result = await createCashDrawerEvent({
+        shiftId: shift.id,
+        type,
+        amount: type === "OPEN_DRAWER" ? 0 : Number(drawerEventAmount) || 0,
+        note: type === "OPEN_DRAWER" ? drawerEventNote || "Борлуулалтгүй шургуулга нээсэн" : drawerEventNote,
+      });
+      setDrawerSummary(result.summary);
+      setDrawerEventAmount("");
+      setDrawerEventNote("");
+      setScanStatus("success");
+      setScanMessage(
+        type === "PAID_IN"
+          ? "Орлого бүртгэгдлээ"
+          : type === "PAID_OUT"
+            ? "Зарлага бүртгэгдлээ"
+            : "Шургуулга нээсэн бүртгэл үүслээ",
+      );
+      if (type === "OPEN_DRAWER") {
+        await triggerCashDrawerKick();
+      }
+    } catch (error: any) {
+      setDrawerError(error?.message || "Кассын шургуулгын хөдөлгөөн бүртгэхэд алдаа гарлаа");
+      setScanStatus("not-found");
+      setScanMessage(error?.message || "Кассын шургуулгын хөдөлгөөн бүртгэхэд алдаа гарлаа");
+    } finally {
+      setDrawerEventSubmitting(false);
+    }
+  };
 
   const [orgRegisters, setOrgRegisters] = useState<RegisterConfig[]>([]);
   const [showRegisterPicker, setShowRegisterPicker] = useState(false);
@@ -845,13 +1070,6 @@ export default function PosDemoPage() {
     !hasPendingPayment &&
     !isCardProcessing;
 
-  const canFinalizeCashSale =
-    state.cart.length > 0 &&
-    paymentMethod === "CASH" &&
-    remaining > 0 &&
-    !hasPendingPayment &&
-    !isCardProcessing;
-
   const selectedByCode = useMemo(() => {
     if (!lastScannedCode) return null;
     const normalized = lastScannedCode.trim().toLowerCase();
@@ -940,29 +1158,9 @@ export default function PosDemoPage() {
   const handleCreateDemoSale = async () => {
     if (state.cart.length === 0) return;
 
-    let confirmedPayments = paymentEntries.filter((item) => item.status === "confirmed");
-    let canSubmitSale = canFinalizeSale;
+    const confirmedPayments = paymentEntries.filter((item) => item.status === "confirmed");
 
-    if (!canSubmitSale && paymentMethod === "CASH" && !hasPendingPayment && !isCardProcessing) {
-      const confirmedTotal = roundMoney(
-        confirmedPayments.reduce((sum, item) => sum + item.amount, 0),
-      );
-      const cashRemaining = Math.max(0, roundMoney(totals.grandTotal - confirmedTotal));
-
-      if (cashRemaining > 0) {
-        const cashEntry: CheckoutPaymentEntry = {
-          id: `CASH-${Date.now()}`,
-          method: "CASH",
-          amount: cashRemaining,
-          status: "confirmed",
-        };
-        confirmedPayments = [...confirmedPayments, cashEntry];
-        setPaymentEntries((prev) => [...prev, cashEntry]);
-        canSubmitSale = true;
-      }
-    }
-
-    if (!canSubmitSale) {
+    if (!canFinalizeSale) {
       setScanStatus("not-found");
       setScanMessage("Split payment гүйцээгүй байна. Үлдэгдэл төлбөрөө дуусгана уу.");
       return;
@@ -1073,6 +1271,7 @@ export default function PosDemoPage() {
       setSelectedReceiptId(finalReceipt.id);
       reloadProducts();
       reloadReceiptHistory();
+      void refreshCashDrawerSummary();
       printReceipt(finalReceipt);
     } catch (e: any) {
       const message = e?.message || "Гүйлгээ батлах үед алдаа гарлаа.";
@@ -1170,7 +1369,7 @@ export default function PosDemoPage() {
             });
           } catch (bridgeError: any) {
             if (isCardRunCancelled()) return;
-            const message = bridgeError?.message || "Card terminal холболтын алдаа гарлаа";
+            const message = bridgeError?.message || "Картын терминалын холболтын алдаа гарлаа";
             approvedAttempt = await submitClientBridgeResult({
               attemptId: attempt.attemptId,
               result: { status: "FAILED", message },
@@ -1203,8 +1402,8 @@ export default function PosDemoPage() {
           setScanMessage(
             approvedAttempt.message ||
               (approvedAttempt.status === "PENDING"
-                ? "Terminal төлбөр баталгаажаагүй байна. Дахин оролдоно уу."
-                : "Card төлбөр цуцлагдлаа"),
+                ? "Терминалын төлбөр баталгаажаагүй байна. Дахин оролдоно уу."
+                : "Картын төлбөр цуцлагдлаа"),
           );
           return;
         }
@@ -1223,7 +1422,7 @@ export default function PosDemoPage() {
         );
         clearProgressTicker();
         setScanStatus("success");
-        setScanMessage("Card төлбөр амжилттай баталгаажлаа");
+        setScanMessage("Картын төлбөр амжилттай баталгаажлаа");
         showSuccessOverlay("Карт төлбөр амжилттай");
       } catch (error: any) {
         if (isCardRunCancelled()) return;
@@ -1231,7 +1430,7 @@ export default function PosDemoPage() {
         setPaymentEntries((prev) => prev.filter((item) => item.id !== pendingId));
         setAutoCheckoutActive(false);
         setScanStatus("not-found");
-        setScanMessage(error?.message || "Card terminal холболтын алдаа гарлаа");
+        setScanMessage(error?.message || "Картын терминалын холболтын алдаа гарлаа");
       } finally {
         if (cardPaymentRunRef.current === cardRun) {
           cardPaymentRunRef.current = null;
@@ -1356,7 +1555,7 @@ export default function PosDemoPage() {
     if (state.cart.length === 0) return;
     if (paymentMethod !== "CASH" && !registerConfig?.branchId) {
       setScanStatus("not-found");
-      setScanMessage("Card болон QR төлбөр авахын тулд POS кассаа эхлээд бүртгэнэ үү. Бэлэн төлбөрийг registerгүй авч болно.");
+      setScanMessage("Карт болон QR төлбөр авахын тулд POS кассаа эхлээд бүртгэнэ үү. Бэлэн төлбөрийг кассгүй авч болно.");
       setShowSetupPanel(true);
       return;
     }
@@ -1383,20 +1582,14 @@ export default function PosDemoPage() {
     if (paymentMethod === "CARD") {
       setAutoCheckoutActive(true);
       setScanStatus("idle");
-      setScanMessage("Card terminal руу хүсэлт илгээж байна...");
+      setScanMessage("Картын терминал руу хүсэлт илгээж байна...");
       await addPaymentEntry("CARD", total);
       return;
     }
 
-    setAutoCheckoutActive(true);
-    setPaymentEntries([
-      {
-        id: `CASH-${Date.now()}`,
-        method: "CASH",
-        amount: roundMoney(total),
-        status: "confirmed",
-      },
-    ]);
+    setAutoCheckoutActive(false);
+    setScanStatus("idle");
+    setScanMessage("Бэлэн төлбөрийн дүнгээ оруулаад Төлбөр нэмэх дарна уу.");
   };
 
   useEffect(() => {
@@ -1566,6 +1759,166 @@ export default function PosDemoPage() {
     </div>
   );
 
+  const cashDrawerPanel = (
+    <div className="rounded-xl border border-emerald-200 bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900">Кассын шургуулга</h3>
+          <p className="text-[11px] text-slate-500">
+            Орлого, зарлага, шургуулга нээх, тооллого болон тайлан
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={refreshCashDrawerSummary}
+            disabled={!shift?.id || drawerLoading}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {drawerLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Шинэчлэх
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCreateDrawerEvent("OPEN_DRAWER")}
+            disabled={!shift?.id || drawerEventSubmitting}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+          >
+            <Banknote className="h-3.5 w-3.5" />
+            Шургуулга нээх
+          </button>
+          <button
+            type="button"
+            onClick={() => printCashDrawerReport()}
+            disabled={!drawerSummary}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            Тайлан
+          </button>
+        </div>
+      </div>
+
+      {drawerError && (
+        <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+          {drawerError}
+        </div>
+      )}
+
+      {!shift ? (
+        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          Эхлээд ээлж нээнэ үү.
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_0.9fr]">
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+              {[
+                ["Эхлэх мөнгө", drawerSummary?.openingCash ?? shift.openingCash],
+                ["Бэлэн борлуулалт", drawerSummary?.cashSales ?? 0],
+                ["Орлого", drawerSummary?.paidIn ?? 0],
+                ["Зарлага", drawerSummary?.paidOut ?? 0],
+                ["Тооцоолсон", drawerSummary?.expectedCash ?? 0],
+                ["Тоолсон", countedCashTotal || drawerSummary?.countedCash || 0],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    {label}
+                  </p>
+                  <p className="mt-1 text-sm font-black text-slate-900">
+                    {formatMoney(Number(value))}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-lg border border-slate-200 p-3">
+              <div className="mb-2 flex gap-2">
+                {([
+                  ["PAID_IN", "Орлого", PlusCircle],
+                  ["PAID_OUT", "Зарлага", MinusCircle],
+                ] as const).map(([type, label, Icon]) => {
+                  const selected = drawerEventType === type;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setDrawerEventType(type)}
+                      className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold ${
+                        selected
+                          ? "bg-slate-900 text-white"
+                          : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="grid gap-2 lg:grid-cols-[160px_1fr_120px]">
+                <input
+                  type="number"
+                  min="0"
+                  value={drawerEventAmount}
+                  onChange={(event) => setDrawerEventAmount(event.target.value)}
+                  placeholder="Дүн ₮"
+                  className="h-9 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                />
+                <input
+                  value={drawerEventNote}
+                  onChange={(event) => setDrawerEventNote(event.target.value)}
+                  placeholder={drawerEventType === "PAID_IN" ? "Жишээ: нэмэлт задгай мөнгө" : "Жишээ: банканд тушаав"}
+                  className="h-9 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleCreateDrawerEvent()}
+                  disabled={drawerEventSubmitting || !shift?.id}
+                  className="h-9 rounded-lg bg-emerald-600 px-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {drawerEventSubmitting ? "..." : "Бүртгэх"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="max-h-[280px] overflow-y-auto rounded-lg bg-slate-50 p-2">
+            {drawerSummary?.events.length ? (
+              <div className="space-y-1.5">
+                {drawerSummary.events.map((event) => (
+                  <div
+                    key={event.id}
+                    className="flex items-start justify-between gap-2 rounded-md bg-white px-2 py-1.5 text-xs"
+                  >
+                    <div>
+                      <p className="font-bold text-slate-800">
+                        {event.type === "PAID_IN"
+                          ? "Орлого"
+                          : event.type === "PAID_OUT"
+                            ? "Зарлага"
+                            : "Шургуулга нээсэн"}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {formatDateTime(event.createdAt)}
+                        {event.note ? ` · ${event.note}` : ""}
+                      </p>
+                    </div>
+                    <p className="font-black text-slate-900">{formatMoney(event.amount)}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="px-2 py-1.5 text-xs text-slate-500">
+                Шургуулгын хөдөлгөөн бүртгэгдээгүй байна.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const shiftHistoryPanel = (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1701,7 +2054,7 @@ export default function PosDemoPage() {
               <div className="grid grid-cols-2 gap-2">
                 {[
                   ["Эхлэх мөнгө", selectedShiftHistory.openingCash],
-                  ["Expected cash", selectedShiftHistory.expectedCash],
+                  ["Тооцоолсон бэлэн", selectedShiftHistory.expectedCash],
                   ["Хаасан мөнгө", selectedShiftHistory.closingCash || 0],
                   ["Зөрүү", selectedShiftHistory.cashDifference || 0],
                 ].map(([label, value]) => (
@@ -1726,7 +2079,7 @@ export default function PosDemoPage() {
                   <p className="mt-1 text-sm font-black text-slate-900">{formatMoney(selectedShiftHistory.qpaySales)}</p>
                 </div>
                 <div className="rounded-lg bg-white px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Mixed</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Холимог</p>
                   <p className="mt-1 text-sm font-black text-slate-900">{formatMoney(selectedShiftHistory.mixedSales)}</p>
                 </div>
               </div>
@@ -1858,7 +2211,7 @@ export default function PosDemoPage() {
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end">
                   {reg.cardEnabled && (
-                    <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Card</span>
+                    <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Карт</span>
                   )}
                   {reg.qpayEnabled && (
                     <span className="text-[10px] font-semibold bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">QPay</span>
@@ -2074,6 +2427,7 @@ export default function PosDemoPage() {
                         await openShift(
                           registerConfig.branchId,
                           Number(openingCashInput) || 0,
+                          registerConfig.id,
                         );
                         setShowShiftPanel(false);
                         setShowShiftHistoryPanel(false);
@@ -2095,11 +2449,39 @@ export default function PosDemoPage() {
             ) : (
               <>
                 <p className="text-xs text-slate-500">Хаах үеийн бэлэн мөнгийг оруулна уу.</p>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-black text-slate-700">Задгай мөнгө тоолох</p>
+                    <p className="text-xs font-black text-slate-900">{formatMoney(countedCashTotal)}</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 lg:grid-cols-5">
+                    {CASH_DENOMINATIONS.map((denomination) => (
+                      <label key={denomination} className="rounded-lg bg-white px-2 py-1.5">
+                        <span className="block text-[10px] font-bold text-slate-400">
+                          {formatMoney(denomination)}
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={cashCounts[denomination] ?? ""}
+                          onChange={(event) =>
+                            setCashCounts((current) => ({
+                              ...current,
+                              [denomination]: Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                            }))
+                          }
+                          className="mt-1 h-7 w-full rounded-md border border-slate-200 px-2 text-sm font-bold outline-none focus:border-teal-400"
+                          placeholder="0"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <input
                     type="number"
                     min="0"
-                    value={closingCashInput}
+                    value={countedCashTotal > 0 ? String(countedCashTotal) : closingCashInput}
                     onChange={(e) => setClosingCashInput(e.target.value)}
                     placeholder="Хаах мөнгө ₮"
                     className="flex-1 h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
@@ -2109,18 +2491,27 @@ export default function PosDemoPage() {
                     disabled={shiftLoading}
                     onClick={async () => {
                       try {
+                        const activeCashCount = countedCashItems.some((item) => item.count > 0)
+                          ? countedCashItems
+                          : undefined;
+                        const countedClosingCash = activeCashCount
+                          ? countedCashTotal
+                          : Number(closingCashInput) || 0;
                         const termId = getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
                           ? registerConfig.cardTerminalId
                           : undefined;
                         await closeShiftFn(
-                          Number(closingCashInput) || 0,
+                          countedClosingCash,
                           undefined,
                           termId ?? undefined,
+                          activeCashCount,
                         );
                         reloadShiftHistory();
                         setShowShiftPanel(false);
+                        setShowCashDrawerPanel(false);
                         setShowShiftHistoryPanel(true);
                         setClosingCashInput("");
+                        setCashCounts({});
                       } catch (e: any) {
                         setScanMessage(e?.message || "Ээлж хаахад алдаа гарлаа");
                         setScanStatus("not-found");
@@ -2136,6 +2527,8 @@ export default function PosDemoPage() {
           </div>
         </div>
       )}
+
+      {showCashDrawerPanel && registerConfig?.isActive && cashDrawerPanel}
 
       {showShiftHistoryPanel && registerConfig?.isActive && shiftHistoryPanel}
 
@@ -2156,7 +2549,7 @@ export default function PosDemoPage() {
           onRemovePayment={removePaymentEntry}
           onResetPayments={resetPaymentEntries}
           onFinalize={handleCreateDemoSale}
-          canFinalize={canFinalizeSale || canFinalizeCashSale}
+          canFinalize={canFinalizeSale}
           onBack={() => {
             clearProgressTicker();
             setAutoCheckoutActive(false);
@@ -2211,10 +2604,12 @@ export default function PosDemoPage() {
                 if (tab.id === "shift") {
                   setShowShiftPanel(true);
                   setShowShiftHistoryPanel(true);
+                  setShowCashDrawerPanel(false);
                   reloadShiftHistory();
                 } else {
                   setShowShiftPanel(false);
                   setShowShiftHistoryPanel(false);
+                  setShowCashDrawerPanel(false);
                   setView(tab.id as PosView);
                   if (tab.id === "history") {
                     reloadReceiptHistory();
@@ -2260,7 +2655,7 @@ export default function PosDemoPage() {
       </div>
 
       {showPosSettings && (
-        <div className="grid shrink-0 grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm xl:grid-cols-5">
+        <div className="grid shrink-0 grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm xl:grid-cols-6">
           <div className="rounded-lg bg-slate-50 px-3 py-2">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Салбар</p>
             <p className="truncate font-black text-slate-900">{registerConfig?.branch.name ?? "Салбар"}</p>
@@ -2271,7 +2666,7 @@ export default function PosDemoPage() {
             <div className="mt-1 flex flex-wrap gap-1">
               {registerConfig?.cardEnabled && (
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                  Card
+                  Карт
                 </span>
               )}
               {registerConfig?.effectiveQpayEnabled && (
@@ -2288,12 +2683,12 @@ export default function PosDemoPage() {
               displayOpened ? "bg-amber-100 text-amber-800" : "bg-slate-50 text-slate-700 hover:bg-slate-100"
             }`}
           >
-            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Customer display</span>
+            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Хэрэглэгчийн дэлгэц</span>
             {displayOpened ? "Нээлттэй" : "Нээх"}
           </button>
           <div className="rounded-lg bg-slate-50 px-3 py-2">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-              Display өнгө
+              Дэлгэцийн өнгө
             </p>
             <div className="mt-2 flex items-center gap-1.5">
               {CUSTOMER_DISPLAY_THEME_OPTIONS.map((option) => {
@@ -2304,7 +2699,7 @@ export default function PosDemoPage() {
                     type="button"
                     onClick={() => updateCustomerDisplayTheme(option.id)}
                     title={option.label}
-                    aria-label={`Customer display өнгө: ${option.label}`}
+                    aria-label={`Хэрэглэгчийн дэлгэцийн өнгө: ${option.label}`}
                     className={`h-7 w-7 rounded-full border-2 transition ${
                       selected
                         ? "border-slate-950 ring-2 ring-slate-300"
@@ -2325,6 +2720,21 @@ export default function PosDemoPage() {
           <button
             type="button"
             onClick={() => {
+              setShowCashDrawerPanel((value) => !value);
+              setShowShiftHistoryPanel(false);
+              if (shift?.id) void refreshCashDrawerSummary();
+            }}
+            className={`rounded-lg px-3 py-2 text-left font-black transition-colors ${
+              showCashDrawerPanel ? "bg-emerald-100 text-emerald-800" : "bg-slate-50 text-slate-700 hover:bg-slate-100"
+            }`}
+          >
+            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Шургуулга</span>
+            {drawerSummary ? formatMoney(drawerSummary.expectedCash) : shift ? "Нээлттэй" : "Ээлж хэрэгтэй"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowCashDrawerPanel(false);
               setShowShiftHistoryPanel(false);
               setShowShiftPanel((value) => !value);
             }}

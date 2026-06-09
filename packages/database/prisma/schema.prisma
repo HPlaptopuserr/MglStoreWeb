@@ -1847,6 +1847,8 @@ model PosShift {
   closingCash    Decimal?     @db.Decimal(18, 2)
   expectedCash   Decimal?     @db.Decimal(18, 2)
   cashDifference Decimal?     @db.Decimal(18, 2)
+  cashCount       Json?
+  cashCountedAt   DateTime?
   note           String?
   openedAt       DateTime     @default(now())
   closedAt       DateTime?
@@ -1863,6 +1865,27 @@ model PosShift {
   @@index([cashierId])
   @@index([status])
   @@index([openedAt])
+}
+
+model PosCashDrawerEvent {
+  id             String              @id @default(uuid())
+  organizationId String
+  branchId       String
+  registerId     String?
+  shiftId        String
+  cashierId      String
+  type           CashDrawerEventType
+  amount         Decimal             @db.Decimal(18, 2)
+  note           String?
+  createdAt      DateTime            @default(now())
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([registerId])
+  @@index([shiftId])
+  @@index([cashierId])
+  @@index([type])
+  @@index([createdAt])
 }
 
 /// Structured POS sale record.
@@ -1932,6 +1955,12 @@ model PosSaleLine {
 enum ShiftStatus {
   OPEN
   CLOSED
+}
+
+enum CashDrawerEventType {
+  PAID_IN
+  PAID_OUT
+  OPEN_DRAWER
 }
 
 enum PosSaleStatus {

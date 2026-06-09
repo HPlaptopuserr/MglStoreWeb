@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { closeShift } from "../api/close-shift";
 import { openShift } from "../api/open-shift";
-import type { PosShift } from "../types/shift.types";
+import type { CashDenominationCount, PosShift } from "../types/shift.types";
 import { posRequest } from "../api/_pos-client";
 
 export function useCurrentShift() {
@@ -27,11 +27,11 @@ export function useCurrentShift() {
     }
   };
 
-  const open = async (branchId: string, openingCash: number) => {
+  const open = async (branchId: string, openingCash: number, registerId?: string) => {
     setLoading(true);
     setError(null);
     try {
-      const created = await openShift({ branchId, openingCash });
+      const created = await openShift({ branchId, registerId, openingCash });
       setShift(created);
       return created;
     } catch (e: any) {
@@ -42,7 +42,12 @@ export function useCurrentShift() {
     }
   };
 
-  const close = async (closingCash: number, note?: string, terminalId?: string) => {
+  const close = async (
+    closingCash: number,
+    note?: string,
+    terminalId?: string,
+    cashCount?: CashDenominationCount[],
+  ) => {
     if (!shift) throw new Error("No active shift");
     setLoading(true);
     setError(null);
@@ -58,7 +63,7 @@ export function useCurrentShift() {
           // settlement амжилтгүй болсон ч shift хаалтыг үргэлжлүүлнэ
         }
       }
-      const closed = await closeShift({ shiftId: shift.id, closingCash, note });
+      const closed = await closeShift({ shiftId: shift.id, closingCash, cashCount, note });
       setShift(null);
       return closed;
     } catch (e: any) {
