@@ -370,10 +370,10 @@ export function PosCheckoutView({
             </div>
           )}
 
-          {!qpayModal?.open && statusMessage && statusTone === "not-found" && paymentMethod === "QR" && (
+          {!qpayModal?.open && statusMessage && statusTone === "not-found" && (paymentMethod === "QR" || paymentMethod === "CARD") && (
             <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-rose-300">
-                QPay QR үүссэнгүй
+                {paymentMethod === "CARD" ? "Картын төлбөр амжилтгүй" : "QPay QR үүссэнгүй"}
               </p>
               <p className="mt-2 text-sm font-semibold text-rose-100">
                 {statusMessage}
