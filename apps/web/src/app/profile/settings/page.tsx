@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -88,7 +88,23 @@ const comingSoon = [
   },
 ];
 
+function SettingsLoading() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+    </div>
+  );
+}
+
 export default function ProfileSettingsPage() {
+  return (
+    <Suspense fallback={<SettingsLoading />}>
+      <ProfileSettingsContent />
+    </Suspense>
+  );
+}
+
+function ProfileSettingsContent() {
   const { user, loading, updateUser, refreshUser, authFetch } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -131,11 +147,7 @@ export default function ProfileSettingsPage() {
   }, [user]);
 
   if (loading || !form) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
-      </div>
-    );
+    return <SettingsLoading />;
   }
 
   if (!user) return null;
