@@ -11,7 +11,15 @@ export type ProjectItem = {
   teacherInfo?: string;
   duration?: string;
   capacity?: string;
+  courseDate?: string;
+  courseTime?: string;
+  deliveryType?: string;
+  location?: string;
+  address?: string;
+  registrationLabel?: string;
+  scheduleNote?: string;
   priceNote?: string;
+  originalPrice?: number;
   tags?: string[];
   isActive?: boolean;
   isFeatured?: boolean;

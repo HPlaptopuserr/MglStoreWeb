@@ -24,6 +24,66 @@ import { ProjectOrderList } from "./ProjectOrderList";
 
 const generateId = () => Math.random().toString(36).slice(2, 10);
 const MAX_PROJECT_IMAGES = 12;
+const STUDY_DELIVERY_TYPE_OPTIONS = [
+  "Бүртгэл авч байна",
+  "Танхимын сургалт",
+  "Online сургалт удахгүй",
+  "Online сургалт",
+  "Hybrid сургалт",
+  "Хаалттай сургалт",
+];
+const STUDY_DURATION_OPTIONS = [
+  "2 цаг",
+  "3 цаг",
+  "4.5 цаг",
+  "1 өдөр",
+  "2 өдөр",
+  "7 хоног",
+  "Хугацаа тохиролцоно",
+];
+const STUDY_LOCATION_OPTIONS = [
+  "Танхим",
+  "Online",
+  "Hybrid",
+  "Байгууллага дээр",
+  "Online сургалт удахгүй",
+  "Байршил тохиролцоно",
+];
+const STUDY_CAPACITY_OPTIONS = [
+  "1 хүн",
+  "1-10 хүн",
+  "10-20 хүн",
+  "20-30 хүн",
+  "30+ хүн",
+  "Багийн сургалт",
+  "Хүний тоо тохиролцоно",
+];
+const STUDY_PRICE_NOTE_OPTIONS = [
+  "1 хүний эрх",
+  "Багийн үнэ",
+  "Байгууллагын багц",
+  "Нээлттэй бүртгэл",
+  "Төлбөртэй бүртгэл",
+  "Үнэгүй бүртгэл",
+];
+const STUDY_REGISTRATION_LABEL_OPTIONS = [
+  "Бүртгэл нээлттэй",
+  "Нээлттэй",
+  "Бүртгэл авч байна",
+  "Удахгүй эхэлнэ",
+  "Дүүрсэн",
+  "Хаалттай",
+];
+
+type StudyProgramRow = {
+  title: string;
+  description: string;
+};
+
+type StudyTeacherRow = {
+  name: string;
+  description: string;
+};
 
 type Props = {
   projects: ProjectItem[];
@@ -67,7 +127,15 @@ const emptyProject = (
   teacherInfo: "",
   duration: "",
   capacity: "",
+  courseDate: "",
+  courseTime: "",
+  deliveryType: mode === "study" ? "Бүртгэл авч байна" : "",
+  location: "",
+  address: "",
+  registrationLabel: mode === "study" ? "Бүртгэл нээлттэй" : "",
+  scheduleNote: "",
   priceNote: "",
+  originalPrice: 0,
   tags: [],
   isActive: true,
   isFeatured: false,
@@ -111,6 +179,65 @@ function parseTags(value: string) {
     .split(",")
     .map((tag) => tag.trim())
     .filter(Boolean);
+}
+
+function getSelectOptions(options: string[], current?: string) {
+  const value = String(current || "").trim();
+  return Array.from(new Set(value ? [value, ...options] : options));
+}
+
+function parseStudyProgramRows(value?: string): StudyProgramRow[] {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [rawTitle, ...rawDescriptionParts] = line.split("::");
+      return {
+        title: rawTitle.trim(),
+        description: rawDescriptionParts.join("::").trim(),
+      };
+    });
+}
+
+function serializeStudyProgramRows(rows: StudyProgramRow[]) {
+  return rows
+    .map((row) => ({
+      title: row.title.trim(),
+      description: row.description.trim(),
+    }))
+    .filter((row) => row.title || row.description)
+    .map((row) =>
+      row.description ? `${row.title} :: ${row.description}` : row.title,
+    )
+    .join("\n");
+}
+
+function parseStudyTeacherRows(value?: string): StudyTeacherRow[] {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [rawName, ...rawDescriptionParts] = line.split("::");
+      return {
+        name: rawName.trim(),
+        description: rawDescriptionParts.join("::").trim(),
+      };
+    });
+}
+
+function serializeStudyTeacherRows(rows: StudyTeacherRow[]) {
+  return rows
+    .map((row) => ({
+      name: row.name.trim(),
+      description: row.description.trim(),
+    }))
+    .filter((row) => row.name || row.description)
+    .map((row) =>
+      row.description ? `${row.name} :: ${row.description}` : row.name,
+    )
+    .join("\n");
 }
 
 function formatMnt(value: number) {
@@ -368,6 +495,47 @@ export function ProjectsSection({
         project.id === id ? { ...project, [field]: value } : project,
       ),
     );
+  };
+
+  const updateStudyProgramRows = (
+    id: string,
+    rows: StudyProgramRow[],
+  ) => {
+    updateProject(id, "details", serializeStudyProgramRows(rows));
+  };
+
+  const updateStudyProgramRow = (
+    id: string,
+    rows: StudyProgramRow[],
+    index: number,
+    field: keyof StudyProgramRow,
+    value: string,
+  ) => {
+    const next = rows.length > 0 ? [...rows] : [{ title: "", description: "" }];
+    next[index] = {
+      ...(next[index] || { title: "", description: "" }),
+      [field]: value,
+    };
+    updateStudyProgramRows(id, next);
+  };
+
+  const updateStudyTeacherRows = (id: string, rows: StudyTeacherRow[]) => {
+    updateProject(id, "teacherInfo", serializeStudyTeacherRows(rows));
+  };
+
+  const updateStudyTeacherRow = (
+    id: string,
+    rows: StudyTeacherRow[],
+    index: number,
+    field: keyof StudyTeacherRow,
+    value: string,
+  ) => {
+    const next = rows.length > 0 ? [...rows] : [{ name: "", description: "" }];
+    next[index] = {
+      ...(next[index] || { name: "", description: "" }),
+      [field]: value,
+    };
+    updateStudyTeacherRows(id, next);
   };
 
   const updateProjectImages = (id: string, imageUrls: string[]) => {
@@ -750,6 +918,20 @@ export function ProjectsSection({
               project,
               paymentAccounts,
             );
+            const studyProgramRows = isStudyMode
+              ? parseStudyProgramRows(project.details)
+              : [];
+            const visibleStudyProgramRows =
+              studyProgramRows.length > 0
+                ? studyProgramRows
+                : [{ title: "", description: "" }];
+            const studyTeacherRows = isStudyMode
+              ? parseStudyTeacherRows(project.teacherInfo)
+              : [];
+            const visibleStudyTeacherRows =
+              studyTeacherRows.length > 0
+                ? studyTeacherRows
+                : [{ name: "", description: "" }];
 
             return (
               <article
@@ -965,6 +1147,32 @@ export function ProjectsSection({
                           </p>
                         )}
                       </label>
+                      {isStudyMode && (
+                        <label className="space-y-1.5">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Хямдрахаас өмнөх үнэ
+                          </span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={100}
+                            value={project.originalPrice || 0}
+                            onChange={(e) =>
+                              updateProject(
+                                project.id,
+                                "originalPrice",
+                                parsePrice(e.target.value),
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            placeholder="Жишээ: 72000"
+                          />
+                          <p className="text-xs font-semibold text-slate-500">
+                            0 бол “₮72,000” зэрэг дарсан хуучин үнэ web дээр
+                            харагдахгүй.
+                          </p>
+                        </label>
+                      )}
                       <label className="space-y-1.5">
                         <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
                           {isStudyMode
@@ -1126,30 +1334,165 @@ export function ProjectsSection({
                             дэлгэрэнгүй modal, бүртгэлийн card дээр харагдана.
                           </p>
                         </div>
-                        <label className="space-y-1.5 lg:col-span-2">
-                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                            Багш / сургагчийн мэдээлэл
-                          </span>
-                          <textarea
-                            value={project.teacherInfo || ""}
-                            onChange={(e) =>
-                              updateProject(
-                                project.id,
-                                "teacherInfo",
-                                e.target.value,
-                              )
-                            }
-                            rows={4}
-                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            placeholder="Жишээ: MGL Store сургалтын баг · Store operation зөвлөхүүд"
-                          />
-                        </label>
+                        <div className="space-y-3 lg:col-span-2">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Багш нарын мэдээлэл
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateStudyTeacherRows(project.id, [
+                                  ...studyTeacherRows,
+                                  { name: "", description: "" },
+                                ])
+                              }
+                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Багш нэмэх
+                            </button>
+                          </div>
+                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                            {visibleStudyTeacherRows.map((row, rowIndex) => (
+                              <div
+                                key={`${project.id}-teacher-${rowIndex}`}
+                                className="rounded-xl border border-slate-200 bg-white p-3"
+                              >
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <p className="text-xs font-black text-slate-400">
+                                    Багш #{rowIndex + 1}
+                                  </p>
+                                  {studyTeacherRows.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateStudyTeacherRows(
+                                          project.id,
+                                          studyTeacherRows.filter(
+                                            (_, indexToKeep) =>
+                                              indexToKeep !== rowIndex,
+                                          ),
+                                        )
+                                      }
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
+                                      aria-label="Багш устгах"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Багшийн нэр
+                                    </span>
+                                    <input
+                                      value={row.name}
+                                      onChange={(e) =>
+                                        updateStudyTeacherRow(
+                                          project.id,
+                                          studyTeacherRows,
+                                          rowIndex,
+                                          "name",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: MGL Store сургалтын баг"
+                                    />
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Албан тушаал / тайлбар
+                                    </span>
+                                    <textarea
+                                      value={row.description}
+                                      onChange={(e) =>
+                                        updateStudyTeacherRow(
+                                          project.id,
+                                          studyTeacherRows,
+                                          rowIndex,
+                                          "description",
+                                          e.target.value,
+                                        )
+                                      }
+                                      rows={2}
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: Store operation зөвлөх, POS болон захиалгын workflow дээр ажилласан туршлагатай."
+                                    />
+                                  </label>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                         <div className="grid gap-4 lg:col-span-2 lg:grid-cols-3">
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Сургалт болох өдөр
+                            </span>
+                            <input
+                              type="date"
+                              value={project.courseDate || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "courseDate",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            />
+                          </label>
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Эхлэх цаг
+                            </span>
+                            <input
+                              type="time"
+                              value={project.courseTime || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "courseTime",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            />
+                          </label>
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Төрөл / төлөв
+                            </span>
+                            <select
+                              value={project.deliveryType || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "deliveryType",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            >
+                              <option value="">Сонгоно уу</option>
+                              {getSelectOptions(
+                                STUDY_DELIVERY_TYPE_OPTIONS,
+                                project.deliveryType,
+                              ).map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                           <label className="space-y-1.5">
                             <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
                               Сургалтын хугацаа
                             </span>
-                            <input
+                            <select
                               value={project.duration || ""}
                               onChange={(e) =>
                                 updateProject(
@@ -1159,14 +1502,66 @@ export function ProjectsSection({
                                 )
                               }
                               className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                              placeholder="Жишээ: 4.5 цаг / 2 өдөр"
+                            >
+                              <option value="">Сонгоно уу</option>
+                              {getSelectOptions(
+                                STUDY_DURATION_OPTIONS,
+                                project.duration,
+                              ).map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Байршил / хэлбэр
+                            </span>
+                            <select
+                              value={project.location || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "location",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            >
+                              <option value="">Сонгоно уу</option>
+                              {getSelectOptions(
+                                STUDY_LOCATION_OPTIONS,
+                                project.location,
+                              ).map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Хаяг
+                            </span>
+                            <input
+                              value={project.address || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "address",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                              placeholder="Жишээ: УБ, СБД, ... тоот"
                             />
                           </label>
                           <label className="space-y-1.5">
                             <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
                               Хүний тоо / багийн хэмжээ
                             </span>
-                            <input
+                            <select
                               value={project.capacity || ""}
                               onChange={(e) =>
                                 updateProject(
@@ -1176,14 +1571,23 @@ export function ProjectsSection({
                                 )
                               }
                               className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                              placeholder="Жишээ: 1-10 хүн"
-                            />
+                            >
+                              <option value="">Сонгоно уу</option>
+                              {getSelectOptions(
+                                STUDY_CAPACITY_OPTIONS,
+                                project.capacity,
+                              ).map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
                           </label>
                           <label className="space-y-1.5">
                             <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
                               Үнийн тайлбар
                             </span>
-                            <input
+                            <select
                               value={project.priceNote || ""}
                               onChange={(e) =>
                                 updateProject(
@@ -1193,7 +1597,59 @@ export function ProjectsSection({
                                 )
                               }
                               className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                              placeholder="Жишээ: 1 хүний эрх / багийн үнэ"
+                            >
+                              <option value="">Сонгоно уу</option>
+                              {getSelectOptions(
+                                STUDY_PRICE_NOTE_OPTIONS,
+                                project.priceNote,
+                              ).map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Бүртгэлийн label
+                            </span>
+                            <select
+                              value={project.registrationLabel || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "registrationLabel",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            >
+                              <option value="">Сонгоно уу</option>
+                              {getSelectOptions(
+                                STUDY_REGISTRATION_LABEL_OPTIONS,
+                                project.registrationLabel,
+                              ).map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="space-y-1.5 lg:col-span-3">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Өдөр, цагийн нэмэлт тайлбар
+                            </span>
+                            <input
+                              value={project.scheduleNote || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "scheduleNote",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                              placeholder="Жишээ: Огноо баталгаажмагц бүртгүүлсэн хүмүүст мэдэгдэнэ"
                             />
                           </label>
                         </div>
@@ -1215,26 +1671,116 @@ export function ProjectsSection({
                         placeholder={copy.summaryPlaceholder}
                       />
                     </label>
-                    <label className="space-y-1.5 lg:col-span-2">
-                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        {isStudyMode
-                          ? "Сургалтын хөтөлбөр / сурах зүйлс"
-                          : "Дэлгэрэнгүй мэдээлэл"}
-                      </span>
-                      <textarea
-                        value={project.details}
-                        onChange={(e) =>
-                          updateProject(project.id, "details", e.target.value)
-                        }
-                        rows={6}
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder={
-                          isStudyMode
-                            ? "Мөр мөрөөр бичнэ. Жишээ:\nDashboard тохируулах\nБүтээгдэхүүн нэмэх workflow\nЗахиалга шалгах ба төлөв солих\nХэрэглэгчийн мэдээлэл удирдах"
-                            : "Төлбөр төлсний дараа харагдах дэлгэрэнгүй нөхцөл, боломж, холбоо барих мэдээлэл..."
-                        }
-                      />
-                    </label>
+                    {isStudyMode ? (
+                      <div className="space-y-3 lg:col-span-2">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Сургалтын хөтөлбөр
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateStudyProgramRows(project.id, [
+                                ...studyProgramRows,
+                                { title: "", description: "" },
+                              ])
+                            }
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Хөтөлбөр нэмэх
+                          </button>
+                        </div>
+                        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                          {visibleStudyProgramRows.map((row, rowIndex) => (
+                            <div
+                              key={`${project.id}-program-${rowIndex}`}
+                              className="rounded-xl border border-slate-200 bg-white p-3"
+                            >
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <p className="text-xs font-black text-slate-400">
+                                  Хөтөлбөр #{rowIndex + 1}
+                                </p>
+                                {studyProgramRows.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateStudyProgramRows(
+                                        project.id,
+                                        studyProgramRows.filter(
+                                          (_, indexToKeep) =>
+                                            indexToKeep !== rowIndex,
+                                        ),
+                                      )
+                                    }
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
+                                    aria-label="Хөтөлбөр устгах"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
+                              <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                                <label className="space-y-1.5">
+                                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                    Гарчиг
+                                  </span>
+                                  <input
+                                    value={row.title}
+                                    onChange={(e) =>
+                                      updateStudyProgramRow(
+                                        project.id,
+                                        studyProgramRows,
+                                        rowIndex,
+                                        "title",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    placeholder="Жишээ: Dashboard тохируулах"
+                                  />
+                                </label>
+                                <label className="space-y-1.5">
+                                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                    Холбогдох дэлгэрэнгүй
+                                  </span>
+                                  <textarea
+                                    value={row.description}
+                                    onChange={(e) =>
+                                      updateStudyProgramRow(
+                                        project.id,
+                                        studyProgramRows,
+                                        rowIndex,
+                                        "description",
+                                        e.target.value,
+                                      )
+                                    }
+                                    rows={2}
+                                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    placeholder="Жишээ: Борлуулалт, захиалга, тайлангийн үндсэн хэсгүүдийг тохируулж сурна."
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="space-y-1.5 lg:col-span-2">
+                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          Дэлгэрэнгүй мэдээлэл
+                        </span>
+                        <textarea
+                          value={project.details}
+                          onChange={(e) =>
+                            updateProject(project.id, "details", e.target.value)
+                          }
+                          rows={6}
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                          placeholder="Төлбөр төлсний дараа харагдах дэлгэрэнгүй нөхцөл, боломж, холбоо барих мэдээлэл..."
+                        />
+                      </label>
+                    )}
                     {!isStudyMode && (
                       <div className="space-y-1.5 lg:col-span-2">
                         <span className="text-xs font-bold uppercase tracking-wide text-slate-500">

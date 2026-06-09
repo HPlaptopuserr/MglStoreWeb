@@ -5,15 +5,8 @@ import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   BookOpenCheck,
-  CheckCircle2,
-  Clock3,
   GraduationCap,
-  ImagePlus,
   Layers3,
-  Loader2,
-  UserRound,
-  Users,
-  X,
 } from "lucide-react";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -27,518 +20,16 @@ import {
   CompactStudyMaterialCard,
   StudyMaterialCard,
 } from "./_components/StudyMaterialCards";
-import { useLockedBodyScroll } from "./_components/useLockedBodyScroll";
-
-type StudySettings = {
-  eyebrow: string;
-  title: string;
-  accentTitle: string;
-  description: string;
-  countLabel: string;
-  secondaryPillLabel: string;
-  listEyebrow: string;
-  listTitle: string;
-  emptyText: string;
-  bannerUrl: string;
-};
-
-const DEFAULT_STUDY_SETTINGS: StudySettings = {
-  eyebrow: "Training access",
-  title: "Сургалт",
-  accentTitle: "бүртгэл",
-  description:
-    "MGL Store-ийн сургалт, зөвлөмж болон хэрэгжүүлэх алхмуудтай танилцаад шууд бүртгүүлж төлбөрөө баталгаажуулна уу.",
-  countLabel: "сургалт",
-  secondaryPillLabel: "Бүртгэл + төлбөр",
-  listEyebrow: "Available trainings",
-  listTitle: "Бүртгүүлэх сургалтууд",
-  emptyText: "Одоогоор бүртгэлтэй сургалт нэмэгдээгүй байна.",
-  bannerUrl: "",
-};
-
-function normalizeStudySettings(raw: unknown): StudySettings {
-  const record =
-    raw && typeof raw === "object" ? (raw as Partial<StudySettings>) : {};
-  const clean = (value: unknown, fallback: string) => {
-    const text = String(value || "").trim();
-    if (
-      !text ||
-      /PDF материал|материалууд|материал$|All training materials|Бүх сургалтын материал|Admin-аас удирдана/i.test(
-        text,
-      )
-    ) {
-      return fallback;
-    }
-    return text;
-  };
-  return {
-    eyebrow: clean(record.eyebrow, DEFAULT_STUDY_SETTINGS.eyebrow),
-    title: clean(record.title, DEFAULT_STUDY_SETTINGS.title),
-    accentTitle: clean(record.accentTitle, DEFAULT_STUDY_SETTINGS.accentTitle),
-    description: clean(record.description, DEFAULT_STUDY_SETTINGS.description),
-    countLabel: clean(record.countLabel, DEFAULT_STUDY_SETTINGS.countLabel),
-    secondaryPillLabel: clean(
-      record.secondaryPillLabel,
-      DEFAULT_STUDY_SETTINGS.secondaryPillLabel,
-    ),
-    listEyebrow: clean(record.listEyebrow, DEFAULT_STUDY_SETTINGS.listEyebrow),
-    listTitle: clean(record.listTitle, DEFAULT_STUDY_SETTINGS.listTitle),
-    emptyText: clean(record.emptyText, DEFAULT_STUDY_SETTINGS.emptyText),
-    bannerUrl: String(record.bannerUrl || ""),
-  };
-}
-
-function buildStudyDisplayMaterials(materials: ProjectItem[]) {
-  return materials;
-}
+import { StudyCourseModal } from "./_components/StudyCourseModal";
+import {
+  DEFAULT_STUDY_SETTINGS,
+  buildStudyDisplayMaterials,
+  getCourseScheduleText,
+  normalizeStudySettings,
+  type StudySettings,
+} from "./_components/study-utils";
 
 const ALL_STUDY_CATEGORIES = "Бүгд";
-
-function StudyDetailModal({
-  material,
-  registered,
-  registering,
-  onRegister,
-  onClose,
-}: {
-  material: ProjectItem;
-  registered: boolean;
-  registering: boolean;
-  onRegister: (material: ProjectItem) => void;
-  onClose: () => void;
-}) {
-  const images = getProjectImages(material);
-  const isFree = !material.price || material.price <= 0;
-  const priceText = isFree
-    ? "Үнэгүй"
-    : `₮${Number(material.price || 0).toLocaleString("mn-MN")}`;
-  const detailLines = (material.details || material.summary || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const teacherLines = String(material.teacherInfo || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  useEffect(() => {
-    const scrollY = window.scrollY;
-    const { overflow, position, top, width } = document.body.style;
-
-    document.body.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = "100%";
-
-    return () => {
-      document.body.style.overflow = overflow;
-      document.body.style.position = position;
-      document.body.style.top = top;
-      document.body.style.width = width;
-      window.scrollTo(0, scrollY);
-    };
-  }, []);
-
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
-        onClick={onClose}
-        aria-label="Хаах"
-      />
-      <article className="relative z-10 max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-700">
-              Training detail
-            </p>
-            <h2 className="mt-2 text-2xl font-black leading-tight text-slate-950 sm:text-3xl">
-              {material.title}
-            </h2>
-            <p className="mt-2 text-sm font-bold text-slate-500">
-              {material.category || "Сургалт"} · {priceText}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-950"
-            aria-label="Хаах"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="max-h-[70vh] overscroll-contain overflow-y-auto px-6 py-6">
-          {images.length > 0 && (
-            <div className="mb-6 grid gap-3 sm:grid-cols-2">
-              {images.map((image, index) => (
-                <img
-                  key={`${image}-${index}`}
-                  src={image}
-                  alt={`${material.title} зураг ${index + 1}`}
-                  className="h-64 w-full rounded-xl border border-slate-200 object-cover"
-                />
-              ))}
-            </div>
-          )}
-
-          <div className="mb-6 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-4">
-              <p className="text-xs font-black uppercase tracking-wide text-orange-700">
-                Үнэ
-              </p>
-              <p className="mt-2 text-2xl font-black text-slate-950">
-                {priceText}
-              </p>
-              <p className="mt-1 text-sm font-bold text-orange-700">
-                {material.priceNote ||
-                  (isFree ? "Нээлттэй бүртгэл" : "Төлбөртэй бүртгэл")}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-4 py-4">
-              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-cyan-700">
-                <Users className="h-4 w-4" />
-                Хүний тоо
-              </div>
-              <p className="mt-2 text-lg font-black text-slate-950">
-                {material.capacity || "Admin-аас оруулна"}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4">
-              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-emerald-700">
-                <Clock3 className="h-4 w-4" />
-                Хугацаа
-              </div>
-              <p className="mt-2 text-lg font-black text-slate-950">
-                {material.duration || "Тохиролцоно"}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-5">
-              <section className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
-                <h3 className="text-base font-black text-slate-950">
-                  Дэлгэрэнгүй мэдээлэл
-                </h3>
-                <div className="mt-3 space-y-2">
-                  {(detailLines.length > 0
-                    ? detailLines
-                    : [
-                        "Сургалтын агуулга, хэрэгжүүлэх алхам болон бүртгэлийн нөхцөлийг admin дээрээс оруулна.",
-                      ]
-                  ).map((line, index) => (
-                    <p
-                      key={`${material.id}-detail-${index}`}
-                      className="text-sm leading-7 text-slate-600"
-                    >
-                      {line}
-                    </p>
-                  ))}
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <UserRound className="h-5 w-5 text-emerald-600" />
-                  <h3 className="text-base font-black text-slate-950">
-                    Багш нарын мэдээлэл
-                  </h3>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {(teacherLines.length > 0
-                    ? teacherLines
-                    : [
-                        "Багшийн нэр, туршлага, чиглэл болон холбоотой мэдээллийг admin дээрээс нэмнэ.",
-                      ]
-                  ).map((line, index) => (
-                    <p
-                      key={`${material.id}-teacher-${index}`}
-                      className="rounded-xl bg-slate-50 px-4 py-3 text-sm font-semibold leading-6 text-slate-600"
-                    >
-                      {line}
-                    </p>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            <aside className="rounded-2xl border border-slate-200 bg-slate-950 p-5 text-white">
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">
-                Бүртгэл
-              </p>
-              <h3 className="mt-3 text-2xl font-black">{priceText}</h3>
-              <p className="mt-2 text-sm leading-6 text-white/65">
-                {registered
-                  ? "Таны сургалтын бүртгэл баталгаажсан байна."
-                  : "Мэдээллээ шалгаад сургалтад бүртгүүлэх товч дарна уу."}
-              </p>
-              <button
-                type="button"
-                onClick={() => onRegister(material)}
-                disabled={registered || registering}
-                className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 text-sm font-black text-slate-950 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {registered ? (
-                  <>
-                    <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                    Бүртгэл баталгаажсан
-                  </>
-                ) : registering ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <>
-                    {isFree ? "Үнэгүй бүртгүүлэх" : "Бүртгүүлж төлөх"}
-                    <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
-              </button>
-            </aside>
-          </div>
-        </div>
-      </article>
-    </div>
-  );
-}
-
-function StudyCourseModal({
-  material,
-  registered,
-  registering,
-  onRegister,
-  onClose,
-}: {
-  material: ProjectItem;
-  registered: boolean;
-  registering: boolean;
-  onRegister: (material: ProjectItem) => void;
-  onClose: () => void;
-}) {
-  const images = getProjectImages(material);
-  const primaryImage = images[0];
-  const isFree = !material.price || material.price <= 0;
-  const priceText = isFree
-    ? "Үнэгүй"
-    : `₮${Number(material.price || 0).toLocaleString("mn-MN")}`;
-  const detailLines = (material.details || material.summary || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const teacherLines = String(material.teacherInfo || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const programItems =
-    detailLines.length > 0
-      ? detailLines
-      : [
-          "Сургалтын үндсэн ойлголт, зорилго болон хэрэгжүүлэх алхмууд",
-          "MGL Store дээр ажиллах бодит workflow",
-          "Дадлага, асуулт хариулт болон дараагийн алхам",
-        ];
-
-  useLockedBodyScroll();
-
-  return (
-    <div className="fixed inset-0 z-[90] overflow-hidden bg-slate-950/75 px-3 py-4 backdrop-blur-md sm:px-6">
-      <button
-        type="button"
-        className="fixed inset-0 -z-10"
-        onClick={onClose}
-        aria-label="Хаах"
-      />
-
-      <article
-        className="mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-7xl overflow-y-auto overscroll-contain rounded-[28px] bg-white shadow-2xl"
-        onWheel={(event) => event.stopPropagation()}
-        onTouchMove={(event) => event.stopPropagation()}
-      >
-        <div className="bg-[#101b16] text-white">
-          <div className="mx-auto grid max-w-6xl gap-8 px-5 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-10">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-emerald-200">
-                <span>{material.category || "Сургалт"}</span>
-                <span className="h-1 w-1 rounded-full bg-orange-400" />
-                <span>{material.duration || "Хугацаа тохиролцоно"}</span>
-              </div>
-              <h2 className="mt-4 max-w-4xl break-words text-3xl font-black leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl">
-                {material.title}
-              </h2>
-              <p className="mt-4 max-w-3xl break-words text-base leading-8 text-white/72">
-                {material.summary ||
-                  "Сургалтын зорилго, агуулга, багш нарын мэдээлэл болон бүртгэлийн нөхцөлийг нэг дороос харна."}
-              </p>
-
-              <div className="mt-6 flex flex-wrap gap-3 text-sm font-bold text-white/78">
-                <span className="rounded-lg bg-white/10 px-3 py-2">
-                  {material.capacity || "Хүний тоо admin-аас"}
-                </span>
-                <span className="rounded-lg bg-white/10 px-3 py-2">
-                  {material.priceNote ||
-                    (isFree ? "Нээлттэй бүртгэл" : "Төлбөртэй бүртгэл")}
-                </span>
-              </div>
-            </div>
-
-            <aside className="relative rounded-2xl border border-white/15 bg-white text-slate-950 shadow-2xl lg:-mb-24">
-              <button
-                type="button"
-                onClick={onClose}
-                className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-slate-500 shadow-sm transition hover:bg-slate-100 hover:text-slate-950"
-                aria-label="Хаах"
-              >
-                <X className="h-5 w-5" />
-              </button>
-              <div className="aspect-video overflow-hidden rounded-t-2xl bg-slate-100">
-                {primaryImage ? (
-                  <img
-                    src={primaryImage}
-                    alt={material.title}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-emerald-50 text-emerald-600">
-                    <GraduationCap className="h-16 w-16" />
-                  </div>
-                )}
-              </div>
-              <div className="p-5">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
-                  Бүртгэл
-                </p>
-                <p className="mt-2 text-4xl font-black">{priceText}</p>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-                  {registered
-                    ? "Таны сургалтын бүртгэл баталгаажсан."
-                    : "Мэдээллээ шалгаад сургалтад бүртгүүлнэ үү."}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onRegister(material)}
-                  disabled={registered || registering}
-                  className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-black text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {registered ? (
-                    <>
-                      <CheckCircle2 className="h-5 w-5" />
-                      Бүртгэл баталгаажсан
-                    </>
-                  ) : registering ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <>
-                      {isFree ? "Үнэгүй бүртгүүлэх" : "Бүртгүүлж төлөх"}
-                      <ArrowRight className="h-4 w-4" />
-                    </>
-                  )}
-                </button>
-                <div className="mt-5 space-y-3 border-t border-slate-100 pt-5 text-sm font-bold text-slate-600">
-                  <div className="flex items-center gap-3">
-                    <Clock3 className="h-4 w-4 text-slate-400" />
-                    {material.duration || "Хугацаа тохиролцоно"}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Users className="h-4 w-4 text-slate-400" />
-                    {material.capacity || "Хүний тоо admin-аас оруулна"}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <BookOpenCheck className="h-4 w-4 text-slate-400" />
-                    Сургалтын хөтөлбөр багтсан
-                  </div>
-                </div>
-              </div>
-            </aside>
-          </div>
-        </div>
-
-        <div className="mx-auto grid max-w-6xl gap-8 px-5 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-10">
-          <div className="space-y-8">
-            <section className="border border-slate-200 bg-white p-5 sm:p-6">
-              <h3 className="text-2xl font-black text-slate-950">
-                Энэ сургалтаар юу сурах вэ
-              </h3>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                {programItems.slice(0, 8).map((line, index) => (
-                  <div
-                    key={`${material.id}-learn-${index}`}
-                    className="flex gap-3 text-sm font-semibold leading-7 text-slate-600"
-                  >
-                    <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-emerald-600" />
-                    <span className="break-words">{line}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <h3 className="text-2xl font-black text-slate-950">
-                    Сургалтын хөтөлбөр
-                  </h3>
-                  <p className="mt-1 text-sm font-semibold text-slate-500">
-                    {programItems.length} хэсэг ·{" "}
-                    {material.duration || "хугацаа тохиролцоно"}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 divide-y divide-slate-200 border border-slate-200 bg-white">
-                {programItems.map((line, index) => (
-                  <details
-                    key={`${material.id}-program-${index}`}
-                    className="group"
-                    open={index === 0}
-                  >
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-slate-50 px-5 py-4 text-sm font-black text-slate-950 transition hover:bg-slate-100">
-                      <span className="break-words">
-                        {index + 1}. {line}
-                      </span>
-                      <span className="text-xs font-bold text-slate-400">
-                        Дэлгэрэнгүй
-                      </span>
-                    </summary>
-                    <p className="px-5 py-4 text-sm leading-7 text-slate-600">
-                      Энэ хэсгийн дэлгэрэнгүй тайлбар, дасгал ажил болон
-                      хэрэгжүүлэх алхмыг admin дээрээс мөр мөрөөр оруулж болно.
-                    </p>
-                  </details>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <div className="flex items-center gap-2">
-                <UserRound className="h-5 w-5 text-emerald-600" />
-                <h3 className="text-xl font-black text-slate-950">
-                  Багш нарын мэдээлэл
-                </h3>
-              </div>
-              <div className="mt-4 space-y-3">
-                {(teacherLines.length > 0
-                  ? teacherLines
-                  : [
-                      "Багшийн нэр, туршлага, чиглэл болон холбоотой мэдээллийг admin дээрээс нэмнэ.",
-                    ]
-                ).map((line, index) => (
-                  <p
-                    key={`${material.id}-teacher-card-${index}`}
-                    className="break-words rounded-xl bg-white px-4 py-3 text-sm font-semibold leading-7 text-slate-600"
-                  >
-                    {line}
-                  </p>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <div className="hidden lg:block" />
-        </div>
-      </article>
-    </div>
-  );
-}
 
 export default function StudyPage() {
   const router = useRouter();
@@ -703,10 +194,11 @@ export default function StudyPage() {
             <img
               src={settings.bannerUrl}
               alt={`${settings.title} banner`}
-              className="absolute inset-y-0 right-0 hidden h-full w-1/2 object-cover opacity-50 lg:block"
+              className="absolute inset-0 h-full w-full object-cover opacity-70"
             />
           )}
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,#101b16_0%,#101b16_48%,rgba(16,27,22,0.76)_100%)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(16,27,22,0.97)_0%,rgba(16,27,22,0.9)_38%,rgba(16,27,22,0.58)_68%,rgba(16,27,22,0.28)_100%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_76%_42%,rgba(249,115,22,0.14),transparent_34%)]" />
           <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
             <div className="max-w-3xl">
               <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-200">
@@ -765,13 +257,13 @@ export default function StudyPage() {
                   onClick={() => setActiveMaterial(featuredMaterials[0])}
                   className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-[0_28px_80px_rgba(249,115,22,0.14)]"
                 >
-                  <div className="grid gap-0 md:grid-cols-[280px_minmax(0,1fr)]">
-                    <div className="aspect-[16/10] bg-slate-100 md:aspect-auto">
+                  <div className="grid gap-0 md:grid-cols-[minmax(360px,0.95fr)_minmax(0,1fr)]">
+                    <div className="flex min-h-72 bg-slate-50 p-3 md:min-h-full">
                       {getProjectImages(featuredMaterials[0])[0] ? (
                         <img
                           src={getProjectImages(featuredMaterials[0])[0]}
                           alt={featuredMaterials[0].title}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-contain"
                         />
                       ) : (
                         <div className="flex h-full min-h-56 items-center justify-center bg-emerald-50 text-emerald-600">
@@ -799,6 +291,13 @@ export default function StudyPage() {
                             ? "Үнэгүй"
                             : `₮${Number(featuredMaterials[0].price).toLocaleString("mn-MN")}`}
                         </span>
+                        {(featuredMaterials[0].courseDate ||
+                          featuredMaterials[0].registrationLabel) && (
+                          <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
+                            {getCourseScheduleText(featuredMaterials[0]) ||
+                              featuredMaterials[0].registrationLabel}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

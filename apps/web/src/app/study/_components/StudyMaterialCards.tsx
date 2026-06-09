@@ -1,9 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, GraduationCap } from "lucide-react";
+import { CalendarDays, CheckCircle2, GraduationCap } from "lucide-react";
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
 import { getProjectImages } from "@/components/molecules/projects/project-utils";
+import {
+  getCourseScheduleText,
+  getPrimaryTeacherName,
+  getStudyPriceText,
+  parseProgramItems,
+} from "./study-utils";
 
 type StudyCardProps = {
   material: ProjectItem;
@@ -12,25 +18,10 @@ type StudyCardProps = {
   onOpen: (material: ProjectItem) => void;
 };
 
-function getPriceText(material: ProjectItem) {
-  if (!material.price || material.price <= 0) return "Үнэгүй";
-  return `₮${Number(material.price || 0).toLocaleString("mn-MN")}`;
-}
-
 function getOldPriceText(material: ProjectItem) {
-  if (!material.price || material.price <= 0) return "";
-  return `₮${Math.round(Number(material.price || 0) * 2.4).toLocaleString("mn-MN")}`;
-}
-
-function getInstructor(material: ProjectItem) {
-  return (
-    String(material.teacherInfo || "")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)[0] ||
-    material.category ||
-    "MGL Store Academy"
-  );
+  const originalPrice = Number(material.originalPrice || 0);
+  if (!Number.isFinite(originalPrice) || originalPrice <= 0) return "";
+  return `₮${Math.round(originalPrice).toLocaleString("mn-MN")}`;
 }
 
 export function StudyMaterialCard({
@@ -41,13 +32,13 @@ export function StudyMaterialCard({
 }: StudyCardProps) {
   const primaryImage = getProjectImages(material)[0];
   const isFree = !material.price || material.price <= 0;
-  const priceText = getPriceText(material);
+  const priceText = getStudyPriceText(material);
   const oldPriceText = getOldPriceText(material);
-  const instructor = getInstructor(material);
-  const detailLines = (material.details || material.summary || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
+  const instructor = getPrimaryTeacherName(material);
+  const scheduleText =
+    getCourseScheduleText(material) || material.registrationLabel || "";
+  const detailLines = parseProgramItems(material)
+    .map((item) => item.title)
     .slice(0, 3);
   const [previewSide, setPreviewSide] = useState<"left" | "right">("right");
   const openPreviewLeft = previewSide === "left";
@@ -100,6 +91,12 @@ export function StudyMaterialCard({
           <p className="mt-2 line-clamp-1 text-sm font-semibold text-slate-500">
             {instructor}
           </p>
+          {scheduleText && (
+            <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700">
+              <CalendarDays className="h-4 w-4" />
+              <span className="line-clamp-1">{scheduleText}</span>
+            </p>
+          )}
 
           <div className="mt-6 flex flex-wrap items-center gap-2">
             <span className="rounded-md bg-cyan-100 px-2.5 py-1 text-sm font-black text-cyan-900">
@@ -148,7 +145,8 @@ export function StudyMaterialCard({
           <span className="text-emerald-700">Updated 2026</span>
         </div>
         <p className="mt-3 text-xs font-semibold text-slate-500">
-          {material.duration || "3.5 total hours"} · Beginner Level · Mongolian
+          {material.courseDate || material.registrationLabel || "Бүртгэл авч байна"} ·{" "}
+          {material.duration || "Хугацаа тохиролцоно"} · Mongolian
         </p>
         <p className="mt-4 text-base leading-7 text-slate-700">
           {material.summary ||
@@ -191,9 +189,11 @@ export function CompactStudyMaterialCard({
   onOpen,
 }: StudyCardProps) {
   const primaryImage = getProjectImages(material)[0];
-  const priceText = getPriceText(material);
+  const priceText = getStudyPriceText(material);
   const oldPriceText = getOldPriceText(material);
-  const instructor = getInstructor(material);
+  const instructor = getPrimaryTeacherName(material);
+  const scheduleText =
+    getCourseScheduleText(material) || material.registrationLabel || "";
 
   return (
     <button
@@ -222,6 +222,11 @@ export function CompactStudyMaterialCard({
       <p className="mt-2 line-clamp-1 text-sm font-semibold text-slate-500">
         {instructor}
       </p>
+      {scheduleText && (
+        <p className="mt-2 line-clamp-1 text-sm font-bold text-emerald-700">
+          {scheduleText}
+        </p>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm font-bold">
         <span className="text-amber-700">4.{(index % 5) + 5}</span>
