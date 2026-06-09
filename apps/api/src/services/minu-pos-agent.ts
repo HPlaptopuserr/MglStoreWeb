@@ -23,6 +23,21 @@ export type MinuInvoiceResult = {
   raw: MinuAgentResponse;
 };
 
+export class MinuAgentApiError extends Error {
+  status?: string;
+  raw: MinuAgentResponse;
+
+  constructor(message: string, raw: MinuAgentResponse) {
+    super(message);
+    this.name = "MinuAgentApiError";
+    this.status = raw.status;
+    this.raw = raw;
+  }
+}
+
+export const isMinuAgentApiError = (error: unknown): error is MinuAgentApiError =>
+  error instanceof MinuAgentApiError;
+
 export type MinuTxnEntity = {
   branchId?: string;
   paySource?: string;
@@ -153,7 +168,7 @@ export async function createMinuAgentInvoice(params: {
   }, context);
 
   if (data.status !== "000") {
-    throw new Error(data.message || "Minu invoice үүсгэхэд алдаа гарлаа");
+    throw new MinuAgentApiError(data.message || "Minu invoice үүсгэхэд алдаа гарлаа", data);
   }
 
   return {

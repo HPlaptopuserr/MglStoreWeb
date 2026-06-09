@@ -9,6 +9,7 @@ import { getVendorMerchantConfig } from "../../../services/vendor-merchant.servi
 import {
   checkMinuAgentTransaction,
   createMinuAgentInvoice,
+  isMinuAgentApiError,
   type MinuAgentContext,
 } from "../../../services/minu-pos-agent";
 import {
@@ -441,16 +442,42 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
             },
           });
         } catch (err) {
+          const message = err instanceof Error ? err.message : "Minu Agent холболт амжилтгүй боллоо";
+          const branchId = minuAgentContext?.branchId || null;
+          const apiError = isMinuAgentApiError(err)
+            ? {
+                status: err.status || null,
+                message,
+                rawMessage: err.raw.message || null,
+                entity: err.raw.entity ?? null,
+              }
+            : { message };
+          console.warn("minu agent invoice failed", {
+            attemptId: attempt.id,
+            invoice,
+            terminalId: effectiveTerminalId,
+            branchId,
+            amount,
+            status: apiError.status || null,
+            message,
+          });
           await prisma.cardPaymentAttempt.update({
             where: { id: attempt.id },
             data: {
               status: PosPaymentStatus.FAILED,
-              message: err instanceof Error ? err.message : "Minu Agent холболт амжилтгүй боллоо",
+              message,
               providerPayload: {
                 provider: "MINU_AGENT",
                 invoice,
                 terminalId: effectiveTerminalId,
-                branchId: minuAgentContext?.branchId || null,
+                branchId,
+                request: {
+                  terminalId: effectiveTerminalId,
+                  branchId,
+                  amount,
+                  purchaseType: "card",
+                },
+                error: apiError,
               } as object,
             },
           });
