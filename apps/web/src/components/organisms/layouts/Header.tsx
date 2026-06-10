@@ -57,7 +57,9 @@ export const Header = () => {
   const router = useRouter();
   const pathname = usePathname();
   const mobileNavLinks = NAV_LINKS;
-  const hideBrowseNav = pathname.startsWith("/study");
+  const isProfileRoute = pathname.startsWith("/profile");
+  const hideBrowseNav = pathname.startsWith("/study") || isProfileRoute;
+  const hideSearch = isProfileRoute;
 
   // Desktop category scroll
   const catScrollRef = useRef<HTMLDivElement>(null);
@@ -217,7 +219,7 @@ export const Header = () => {
               </div>
             </div>
 
-            <div className="hidden max-w-3xl flex-1 items-center justify-center md:flex">
+            <div className={`hidden max-w-3xl flex-1 items-center justify-center md:flex ${hideSearch ? "md:hidden" : ""}`}>
               <SearchBar />
             </div>
 
@@ -335,6 +337,7 @@ export const Header = () => {
           </div>
         </div>
 
+        {!hideSearch && (
         <div className="border-b border-slate-100 px-4 py-2 md:hidden">
           <form onSubmit={handleMobileSearch} className="relative">
             <Search
@@ -350,6 +353,7 @@ export const Header = () => {
             />
           </form>
         </div>
+        )}
 
         {!hideBrowseNav && categories.length > 0 && (
           <div
@@ -493,6 +497,7 @@ export const Header = () => {
             </button>
           </div>
 
+          {!hideSearch && (
           <div className="px-5 pt-4 pb-2">
             <form onSubmit={handleMobileSearch} className="relative">
               <Search
@@ -509,6 +514,7 @@ export const Header = () => {
               />
             </form>
           </div>
+          )}
 
           <div className="px-5 py-3">
             <div className="grid grid-cols-3 gap-2">

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Save, Loader2, RotateCcw, Eye, EyeOff, Check,
-  Plus, Settings2, AlertCircle, ArrowLeft,
+  Settings2, AlertCircle, ArrowLeft,
 } from "lucide-react";
 import Link from "next/link";
 import { API, adminFetch } from "@/lib/api";
@@ -27,7 +27,17 @@ export default function AssociationSettingsPage() {
       const res = await fetch(`${API}/association/config`);
       if (res.ok) {
         const data = await res.json();
-        if (data) setConfig(data);
+        if (data) {
+          setConfig({
+            ...DEFAULT_CONFIG,
+            ...data,
+            paymentAccount: {
+              ...DEFAULT_CONFIG.paymentAccount,
+              ...(data.paymentAccount ?? {}),
+            },
+            membershipTypes: DEFAULT_CONFIG.membershipTypes,
+          });
+        }
       }
     } catch { /* use defaults */ } finally {
       setLoading(false);
@@ -60,21 +70,6 @@ export default function AssociationSettingsPage() {
     setConfig((c) => ({
       ...c,
       membershipTypes: c.membershipTypes.map((t, i) => (i === idx ? updated : t)),
-    }));
-
-  const removeType = (idx: number) =>
-    setConfig((c) => ({
-      ...c,
-      membershipTypes: c.membershipTypes.filter((_, i) => i !== idx),
-    }));
-
-  const addType = () =>
-    setConfig((c) => ({
-      ...c,
-      membershipTypes: [
-        ...c.membershipTypes,
-        { value: `TYPE_${Date.now()}`, label: "", price: "", desc: "", durations: [] },
-      ],
     }));
 
   if (loading) {
@@ -195,6 +190,130 @@ export default function AssociationSettingsPage() {
             </div>
           </div>
 
+          {/* Payment account section */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">₮</span>
+              <h2 className="text-sm font-bold text-slate-700">Төлбөр хүлээн авах данс</h2>
+            </div>
+            <div className="px-5 py-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Банк</label>
+                <input
+                  value={config.paymentAccount?.bankName ?? ""}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      paymentAccount: { ...c.paymentAccount, bankName: e.target.value },
+                    }))
+                  }
+                  className={inp}
+                  placeholder="Жишээ: Хаан банк"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Банкны код</label>
+                <input
+                  value={config.paymentAccount?.bankCode ?? ""}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      paymentAccount: { ...c.paymentAccount, bankCode: e.target.value },
+                    }))
+                  }
+                  className={inp}
+                  placeholder="Жишээ: 050000"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Дансны дугаар</label>
+                <input
+                  value={config.paymentAccount?.accountNumber ?? ""}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      paymentAccount: { ...c.paymentAccount, accountNumber: e.target.value },
+                    }))
+                  }
+                  className={inp}
+                  placeholder="Дансны дугаар"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Дансны нэр</label>
+                <input
+                  value={config.paymentAccount?.accountName ?? ""}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      paymentAccount: { ...c.paymentAccount, accountName: e.target.value },
+                    }))
+                  }
+                  className={inp}
+                  placeholder="Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн холбоо"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Merchant code</label>
+                <input
+                  value={config.paymentAccount?.merchantCode ?? ""}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      paymentAccount: { ...c.paymentAccount, merchantCode: e.target.value },
+                    }))
+                  }
+                  className={inp}
+                  placeholder="Minu Dynamic QR merchant code"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Username</label>
+                <input
+                  value={config.paymentAccount?.username ?? ""}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      paymentAccount: { ...c.paymentAccount, username: e.target.value },
+                    }))
+                  }
+                  className={inp}
+                  placeholder="Merchant username"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Password</label>
+                <input
+                  type="password"
+                  value={config.paymentAccount?.password ?? ""}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      paymentAccount: { ...c.paymentAccount, password: e.target.value },
+                    }))
+                  }
+                  className={inp}
+                  placeholder="Merchant password"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Төлбөрийн заавар</label>
+                <textarea
+                  value={config.paymentAccount?.description ?? ""}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      paymentAccount: { ...c.paymentAccount, description: e.target.value },
+                    }))
+                  }
+                  rows={2}
+                  className={`${inp} resize-none`}
+                  placeholder="Гүйлгээний утга дээр овог нэр, утас бичнэ үү."
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Membership types section */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
@@ -207,19 +326,21 @@ export default function AssociationSettingsPage() {
                   {config.membershipTypes.length} төрөл
                 </span>
               </div>
-              <button
-                onClick={addType}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-800 border border-violet-200 rounded-lg px-2.5 py-1 hover:bg-violet-50 transition-colors"
-              >
-                <Plus size={12} />Шинэ
-              </button>
+              <span className="text-[10px] font-bold text-slate-400">
+                1 төрөл · 1 сар / 6 сар
+              </span>
             </div>
             <div className="px-4 py-4 space-y-2">
               {config.membershipTypes.length === 0 ? (
                 <div className="text-center py-8 border border-dashed border-slate-200 rounded-xl">
                   <p className="text-sm text-slate-400">Гишүүнчлэлийн төрөл байхгүй байна</p>
-                  <button onClick={addType} className="mt-2 text-xs text-violet-600 font-semibold hover:underline">
-                    + Шинэ төрөл нэмэх
+                  <button
+                    onClick={() =>
+                      setConfig((c) => ({ ...c, membershipTypes: DEFAULT_CONFIG.membershipTypes }))
+                    }
+                    className="mt-2 text-xs text-violet-600 font-semibold hover:underline"
+                  >
+                    Үндсэн гишүүнчлэлийг сэргээх
                   </button>
                 </div>
               ) : (
@@ -229,7 +350,7 @@ export default function AssociationSettingsPage() {
                     type={t}
                     idx={idx}
                     onChange={(u) => updateType(idx, u)}
-                    onRemove={() => removeType(idx)}
+                    onRemove={() => undefined}
                   />
                 ))
               )}

@@ -1,9 +1,9 @@
 "use client";
 
 import { ArrowRight, ChevronLeft, ChevronRight, ImagePlus } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { ProjectItem } from "./project-types";
-import { formatMnt, getProjectImages } from "./project-utils";
+import { formatMnt, getResolvedProjectImages } from "./project-utils";
 
 type FeaturedProjectsRailProps = {
   title: string;
@@ -73,7 +73,7 @@ export function FeaturedProjectsRail({
         className="-mx-1 flex snap-x gap-4 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]"
       >
         {projects.map((project, index) => {
-          const images = getProjectImages(project);
+          const images = getResolvedProjectImages(project);
           const primaryImage = images[0];
           const isFree = !project.price || project.price <= 0;
 
@@ -84,11 +84,7 @@ export function FeaturedProjectsRail({
             >
               <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
                 {primaryImage ? (
-                  <img
-                    src={primaryImage}
-                    alt={project.title}
-                    className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                  />
+                  <RailProjectImage src={primaryImage} alt={project.title} />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-slate-400">
                     <ImagePlus className="h-10 w-10" />
@@ -143,5 +139,26 @@ export function FeaturedProjectsRail({
         })}
       </div>
     </section>
+  );
+}
+
+function RailProjectImage({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-slate-400">
+        <ImagePlus className="h-10 w-10" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={() => setFailed(true)}
+      className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+    />
   );
 }

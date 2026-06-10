@@ -2062,6 +2062,12 @@ model AssociationMemberRegistration {
   phone            String
   membershipType   AssociationMembershipType
   durationMonths   Int?
+  paymentAmount    Int                       @default(0)
+  paymentStatus    PaymentStatus             @default(PENDING)
+  paymentMethod    PaymentMethod?            @default(BANK_TRANSFER)
+  paymentReference String?
+  paymentNote      String?
+  paidAt           DateTime?
   status           ApprovalStatus            @default(PENDING)
   adminNote        String?
   reviewedAt       DateTime?

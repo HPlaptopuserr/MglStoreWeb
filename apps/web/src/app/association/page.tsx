@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle2, Loader2, AlertCircle, ChevronDown } from "lucide-react";
+import { CheckCircle2, Loader2, AlertCircle, CreditCard } from "lucide-react";
 import { API } from "@/lib/api";
 import { MembershipSelection } from "./MembershipSelection";
 
@@ -19,43 +19,29 @@ interface MembershipType {
   durations: Duration[];
 }
 
+interface PaymentAccount {
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  description: string;
+}
+
+const DEFAULT_PAYMENT_ACCOUNT: PaymentAccount = {
+  bankName: "",
+  accountNumber: "",
+  accountName: "Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн холбоо",
+  description: "Гүйлгээний утга дээр овог нэр, утас, сонгосон гишүүнчлэлийн төрлөө бичнэ үү.",
+};
+
 const DEFAULT_TYPES: MembershipType[] = [
   {
-    value: "BASIC",
-    label: "А. Энгийн гишүүн",
-    price: "0₮",
-    desc: "Уулзалт, сургалтын мэдээлэл авах, хуваалцах",
-    durations: [],
-  },
-  {
     value: "ACTIVE",
-    label: "В. Идэвхтэй гишүүн",
-    price: "60,000–180,000₮",
-    desc: "Сургалтад 50% хөнгөлөлт, 5 бараа байршуулах",
+    label: "Гишүүнчлэл",
+    price: "30,000₮ / сар",
+    desc: "Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн холбооны гишүүнчлэл",
     durations: [
-      { months: 1, price: 60000, label: "1 Сар – 60,000₮" },
-      { months: 3, price: 120000, label: "3 Сар – 120,000₮" },
+      { months: 1, price: 30000, label: "1 Сар – 30,000₮" },
       { months: 6, price: 180000, label: "6 Сар – 180,000₮" },
-    ],
-  },
-  {
-    value: "BRANCH_COUNCIL",
-    label: "С. Салбарын төлөөлөн удирдах гишүүн",
-    price: "360,000–600,000₮",
-    desc: "Идэвхтэй эрх + 10 бараа, төсөл удирдах",
-    durations: [
-      { months: 3, price: 360000, label: "3 Сар – 360,000₮" },
-      { months: 6, price: 600000, label: "6 Сар – 600,000₮" },
-    ],
-  },
-  {
-    value: "GOVERNING_COUNCIL",
-    label: "D. Төлөөлөн удирдах",
-    price: "1,800,000–3,000,000₮",
-    desc: "Бүх эрх + тендер, 20 бараа",
-    durations: [
-      { months: 6, price: 1800000, label: "6 Сар – 1,800,000₮" },
-      { months: 12, price: 3000000, label: "12 Сар – 3,000,000₮" },
     ],
   },
 ];
@@ -65,12 +51,13 @@ export default function AssociationRegisterPage() {
   const [pageLabel, setPageLabel] = useState("БҮРТГЭЛИЙН ХУУДАС");
   const [pageTitle, setPageTitle] = useState("Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн\nнэгдсэн холбооны гишүүнчлэл");
   const [pageSubtitle, setPageSubtitle] = useState("Төлөөлөн удирдах зөвлөл томилох хурлын бүртгэл");
+  const [paymentAccount, setPaymentAccount] = useState<PaymentAccount>(DEFAULT_PAYMENT_ACCOUNT);
 
   const [form, setForm] = useState({
     lastName: "", firstName: "", education: "", profession: "",
     organizationName: "", businessActivity: "", foundedYear: "",
     address: "", experience: "", phone: "",
-    membershipType: "", durationMonths: "",
+    membershipType: "", durationMonths: "", paymentReference: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -82,16 +69,19 @@ export default function AssociationRegisterPage() {
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data) {
-          if (data.membershipTypes?.length) setMembershipTypes(data.membershipTypes);
+          setMembershipTypes(DEFAULT_TYPES);
           if (data.pageLabel) setPageLabel(data.pageLabel);
           if (data.pageTitle) setPageTitle(data.pageTitle);
           if (data.pageSubtitle) setPageSubtitle(data.pageSubtitle);
+          setPaymentAccount({ ...DEFAULT_PAYMENT_ACCOUNT, ...(data.paymentAccount ?? {}) });
         }
       })
       .catch(() => { /* use defaults */ });
   }, []);
 
   const selectedType = membershipTypes.find((t) => t.value === form.membershipType);
+  const selectedDuration = selectedType?.durations.find((d) => String(d.months) === form.durationMonths);
+  const selectedAmount = selectedType?.value === "BASIC" ? 0 : selectedDuration?.price ?? 0;
 
   const f = (key: keyof typeof form, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -136,7 +126,7 @@ export default function AssociationRegisterPage() {
           </div>
           <h2 className="text-xl font-black text-slate-900 mb-2">Бүртгэл амжилттай!</h2>
           <p className="text-sm text-slate-500">
-            Таны бүртгэл хүлээн авагдлаа. Холбооны ажилтнууд тантай удахгүй холбогдох болно.
+            Таны бүртгэл хүлээн авагдлаа. Төлбөртэй гишүүнчлэл сонгосон бол шилжүүлгийг шалгасны дараа холбооны ажилтнууд баталгаажуулна.
           </p>
         </div>
       </div>
@@ -222,6 +212,17 @@ export default function AssociationRegisterPage() {
             />
           </div>
 
+          {form.membershipType && (
+            <PaymentInstruction
+              amount={selectedAmount}
+              account={paymentAccount}
+              reference={form.paymentReference}
+              onReferenceChange={(value) => f("paymentReference", value)}
+              payerName={`${form.lastName} ${form.firstName}`.trim()}
+              phone={form.phone}
+            />
+          )}
+
           <button
             type="submit"
             disabled={submitting}
@@ -236,6 +237,71 @@ export default function AssociationRegisterPage() {
 }
 
 const inputCls = "w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 bg-white";
+
+function PaymentInstruction({
+  amount,
+  account,
+  reference,
+  onReferenceChange,
+  payerName,
+  phone,
+}: {
+  amount: number;
+  account: PaymentAccount;
+  reference: string;
+  onReferenceChange: (value: string) => void;
+  payerName: string;
+  phone: string;
+}) {
+  if (amount <= 0) {
+    return (
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+        <p className="text-sm font-bold text-emerald-800">Энгийн гишүүнчлэл төлбөргүй.</p>
+      </div>
+    );
+  }
+
+  const suggestedReference = [payerName, phone].filter(Boolean).join(" · ");
+
+  return (
+    <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white">
+          <CreditCard size={17} />
+        </span>
+        <div>
+          <p className="text-sm font-black text-indigo-950">Гишүүнчлэлийн төлбөр</p>
+          <p className="text-xs font-semibold text-indigo-700">{amount.toLocaleString()}₮ шилжүүлнэ</p>
+        </div>
+      </div>
+      <div className="grid gap-2 rounded-xl border border-indigo-100 bg-white p-3 text-sm">
+        <InfoLine label="Дансны нэр" value={account.accountName} />
+        <InfoLine label="Банк" value={account.bankName || "Админ дээр банк тохируулна"} />
+        <InfoLine label="Данс" value={account.accountNumber || "Админ дээр дансны дугаар тохируулна"} />
+      </div>
+      <p className="mt-2 text-xs font-semibold leading-relaxed text-indigo-800">
+        {account.description || DEFAULT_PAYMENT_ACCOUNT.description}
+      </p>
+      <Field label="Гүйлгээний утга / reference">
+        <input
+          value={reference}
+          onChange={(e) => onReferenceChange(e.target.value)}
+          placeholder={suggestedReference || "Овог нэр · утас"}
+          className={`${inputCls} mt-1`}
+        />
+      </Field>
+    </div>
+  );
+}
+
+function InfoLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-right font-black text-slate-900">{value}</span>
+    </div>
+  );
+}
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (

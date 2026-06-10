@@ -12,6 +12,7 @@ import { AuthProvider } from "@/lib/auth-context";
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isContractRoute = pathname?.startsWith("/contract");
+  const isProfileRoute = pathname?.startsWith("/profile");
 
   return (
     <AuthProvider>
@@ -22,6 +23,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           className={
             isContractRoute
               ? "grow"
+              : isProfileRoute
+              ? "grow pt-16 pb-20 md:pt-16 md:pb-0"
               : "grow pt-40 pb-20 md:pt-32 md:pb-0"
           }
         >

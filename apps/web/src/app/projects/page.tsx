@@ -18,7 +18,8 @@ import type {
 } from "@/components/molecules/projects/project-types";
 import {
   formatMnt,
-  getProjectImages,
+  getResolvedProjectImages,
+  resolveProjectFileUrl,
 } from "@/components/molecules/projects/project-utils";
 
 function ProjectDetailModal({
@@ -28,7 +29,8 @@ function ProjectDetailModal({
   project: ProjectItem;
   onClose: () => void;
 }) {
-  const images = getProjectImages(project);
+  const images = getResolvedProjectImages(project);
+  const pdfUrl = resolveProjectFileUrl(project.pdfUrl);
 
   useEffect(() => {
     const scrollY = window.scrollY;
@@ -89,11 +91,10 @@ function ProjectDetailModal({
           {images.length > 0 && (
             <div className="mb-6 grid gap-3 sm:grid-cols-2">
               {images.map((image, index) => (
-                <img
+                <ProjectDetailImage
                   key={`${image}-${index}`}
                   src={image}
                   alt={`${project.title} зураг ${index + 1}`}
-                  className="h-64 w-full rounded-xl border border-white/10 object-cover"
                 />
               ))}
             </div>
@@ -114,17 +115,17 @@ function ProjectDetailModal({
             </div>
           )}
 
-          {project.pdfUrl ? (
+          {pdfUrl ? (
             <div className="space-y-4">
               <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
                 <iframe
-                  src={project.pdfUrl}
+                  src={pdfUrl}
                   title={`${project.title} PDF`}
                   className="h-[70vh] w-full bg-white"
                 />
               </div>
               <a
-                href={project.pdfUrl}
+                href={pdfUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-300 px-5 py-3 text-sm font-black text-black transition hover:brightness-110"
@@ -141,6 +142,27 @@ function ProjectDetailModal({
         </div>
       </article>
     </div>
+  );
+}
+
+function ProjectDetailImage({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <div className="flex h-64 w-full items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-sm font-bold text-white/50">
+        Зураг ачаалсангүй
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={() => setFailed(true)}
+      className="h-64 w-full rounded-xl border border-white/10 object-cover"
+    />
   );
 }
 

@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import {
   CheckCircle2,
   ChefHat,
@@ -14,8 +15,31 @@ import {
 import Link from "next/link";
 import type { ProfileOrder } from "./types";
 
-const STATUS_STEPS = ["CONFIRMED", "PREPARED", "SHIPPING", "COMPLETED"] as const;
+const STATUS_STEPS = [
+  "CONFIRMED",
+  "PREPARED",
+  "SHIPPING",
+  "COMPLETED",
+] as const;
 const STEP_LABELS = ["Баталгаажсан", "Бэлтгэсэн", "Хүргэлтэнд", "Авсан"];
+const ALL_YEARS = "ALL";
+const ALL_MONTHS = "ALL";
+const TODAY_FILTER = "TODAY";
+const CUSTOM_FILTER = "CUSTOM";
+const MONTH_LABELS = [
+  "1 сар",
+  "2 сар",
+  "3 сар",
+  "4 сар",
+  "5 сар",
+  "6 сар",
+  "7 сар",
+  "8 сар",
+  "9 сар",
+  "10 сар",
+  "11 сар",
+  "12 сар",
+];
 
 const STATUS_CONFIG: Record<
   string,
@@ -66,6 +90,32 @@ function formatDate(value: string) {
   });
 }
 
+function getOrderDateParts(order: ProfileOrder) {
+  const date = new Date(order.createdAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    year: String(date.getFullYear()),
+    month: String(date.getMonth() + 1),
+  };
+}
+
+function isTodayOrder(order: ProfileOrder) {
+  const date = new Date(order.createdAt);
+  if (Number.isNaN(date.getTime())) return false;
+  const today = new Date();
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
+}
+
+function hasOrderDateParts(
+  value: ReturnType<typeof getOrderDateParts>,
+): value is NonNullable<ReturnType<typeof getOrderDateParts>> {
+  return Boolean(value);
+}
+
 function StatusStepper({ status }: { status: string }) {
   if (status === "PENDING" || status === "CANCELLED") return null;
   const currentIndex = Math.max(
@@ -99,7 +149,10 @@ function StatusStepper({ status }: { status: string }) {
       </div>
       <div className="mt-2 grid grid-cols-4 gap-1 text-center text-[10px] font-bold text-slate-500">
         {STEP_LABELS.map((label, index) => (
-          <span key={label} className={index <= currentIndex ? "text-slate-900" : ""}>
+          <span
+            key={label}
+            className={index <= currentIndex ? "text-slate-900" : ""}
+          >
             {label}
           </span>
         ))}
@@ -144,6 +197,69 @@ export function OrdersPanel({
   error: string;
   onRefresh: () => void;
 }) {
+  const [dateMode, setDateMode] = useState(TODAY_FILTER);
+  const [selectedYear, setSelectedYear] = useState(ALL_YEARS);
+  const [selectedMonth, setSelectedMonth] = useState(ALL_MONTHS);
+
+  const yearOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        orders
+          .map(getOrderDateParts)
+          .filter(hasOrderDateParts)
+          .map((date) => date.year),
+      ),
+    ).sort((a, b) => Number(b) - Number(a));
+  }, [orders]);
+
+  const monthOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        orders
+          .map(getOrderDateParts)
+          .filter(hasOrderDateParts)
+          .filter(
+            (date) => selectedYear === ALL_YEARS || date.year === selectedYear,
+          )
+          .map((date) => date.month),
+      ),
+    ).sort((a, b) => Number(a) - Number(b));
+  }, [orders, selectedYear]);
+
+  const filteredOrders = useMemo(() => {
+    if (dateMode === TODAY_FILTER) {
+      return orders.filter(isTodayOrder);
+    }
+
+    return orders.filter((order) => {
+      const date = getOrderDateParts(order);
+      if (!date)
+        return selectedYear === ALL_YEARS && selectedMonth === ALL_MONTHS;
+      const matchesYear =
+        selectedYear === ALL_YEARS || date.year === selectedYear;
+      const matchesMonth =
+        selectedMonth === ALL_MONTHS || date.month === selectedMonth;
+      return matchesYear && matchesMonth;
+    });
+  }, [dateMode, orders, selectedMonth, selectedYear]);
+
+  const hasActiveFilter =
+    dateMode === TODAY_FILTER ||
+    selectedYear !== ALL_YEARS ||
+    selectedMonth !== ALL_MONTHS;
+
+  const resetFilters = () => {
+    setDateMode(CUSTOM_FILTER);
+    setSelectedYear(ALL_YEARS);
+    setSelectedMonth(ALL_MONTHS);
+  };
+
+  const showTodayOrders = () => {
+    setDateMode(TODAY_FILTER);
+    setSelectedYear(ALL_YEARS);
+    setSelectedMonth(ALL_MONTHS);
+  };
+
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -157,15 +273,84 @@ export function OrdersPanel({
           <p className="mt-2 text-sm font-semibold text-slate-500">
             Барааны захиалга, төлбөр, хүргэлтийн төлөв нэг дор харагдана.
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${
+                dateMode === TODAY_FILTER
+                  ? "bg-orange-50 text-orange-600 ring-1 ring-orange-100"
+                  : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              {dateMode === TODAY_FILTER
+                ? "Одоо: Өнөөдрийн захиалга"
+                : "Одоо: Бүх / сонгосон хугацаа"}
+            </span>
+            <span className="text-xs font-bold text-slate-400">
+              {filteredOrders.length.toLocaleString("mn-MN")} захиалга
+            </span>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          className="inline-flex h-11 w-fit items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-orange-200 hover:text-orange-600"
-        >
-          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          Шинэчлэх
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={showTodayOrders}
+            className={`h-11 rounded-xl border px-3 text-xs font-black transition ${
+              dateMode === TODAY_FILTER
+                ? "border-orange-500 bg-orange-500 text-white shadow-sm"
+                : "border-slate-200 bg-white text-slate-500 hover:border-orange-200 hover:text-orange-600"
+            }`}
+          >
+            Өнөөдөр
+          </button>
+          <OrderFilterSelect
+            label="Он"
+            value={selectedYear}
+            onChange={(value) => {
+              setDateMode(CUSTOM_FILTER);
+              setSelectedYear(value);
+              setSelectedMonth(ALL_MONTHS);
+            }}
+          >
+            <option value={ALL_YEARS}>Бүх он</option>
+            {yearOptions.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </OrderFilterSelect>
+          <OrderFilterSelect
+            label="Сар"
+            value={selectedMonth}
+            onChange={(value) => {
+              setDateMode(CUSTOM_FILTER);
+              setSelectedMonth(value);
+            }}
+          >
+            <option value={ALL_MONTHS}>Бүх сар</option>
+            {monthOptions.map((month) => (
+              <option key={month} value={month}>
+                {MONTH_LABELS[Number(month) - 1] || `${month} сар`}
+              </option>
+            ))}
+          </OrderFilterSelect>
+          {hasActiveFilter && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-500 transition hover:border-orange-200 hover:text-orange-600"
+            >
+              Цэвэрлэх
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="inline-flex h-11 w-fit items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-orange-200 hover:text-orange-600"
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            Шинэчлэх
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -198,9 +383,32 @@ export function OrdersPanel({
             Дэлгүүр хэсэх
           </Link>
         </div>
+      ) : filteredOrders.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50/50 p-10 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-orange-300 shadow-sm">
+            <Package size={34} />
+          </div>
+          <h3 className="mt-5 text-lg font-black text-slate-900">
+            {dateMode === TODAY_FILTER
+              ? "Өнөөдрийн захиалга алга"
+              : "Сонгосон хугацаанд захиалга алга"}
+          </h3>
+          <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-6 text-slate-500">
+            {dateMode === TODAY_FILTER
+              ? "Өнөөдөр үүссэн захиалга байхгүй байна."
+              : "Өөр он эсвэл сар сонгоод дахин шалгана уу."}
+          </p>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-950"
+          >
+            Бүх захиалгыг харах
+          </button>
+        </div>
       ) : (
         <div className="grid gap-4">
-          {orders.map((order) => {
+          {filteredOrders.map((order) => {
             const status = STATUS_CONFIG[order.status] || STATUS_CONFIG.PENDING;
             const StatusIcon = status.icon;
             return (
@@ -215,7 +423,9 @@ export function OrdersPanel({
                     </p>
                     <p className="mt-1 text-xs font-bold text-slate-400">
                       {formatDate(order.createdAt)}
-                      {order.organizationName ? ` · ${order.organizationName}` : ""}
+                      {order.organizationName
+                        ? ` · ${order.organizationName}`
+                        : ""}
                     </p>
                   </div>
                   <span
@@ -255,7 +465,9 @@ export function OrdersPanel({
                 </div>
 
                 <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/80 px-4 py-4">
-                  <span className="text-sm font-black text-slate-500">Нийт дүн</span>
+                  <span className="text-sm font-black text-slate-500">
+                    Нийт дүн
+                  </span>
                   <span className="text-xl font-black text-slate-950">
                     {formatMnt(order.total)}
                   </span>
@@ -266,5 +478,32 @@ export function OrdersPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function OrderFilterSelect({
+  children,
+  label,
+  value,
+  onChange,
+}: {
+  children: React.ReactNode;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-500">
+      <span className="text-xs font-black uppercase tracking-wide text-slate-400">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="bg-transparent text-sm font-black text-slate-800 outline-none"
+      >
+        {children}
+      </select>
+    </label>
   );
 }

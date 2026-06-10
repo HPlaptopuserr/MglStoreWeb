@@ -18,7 +18,7 @@ export function resolveApiAssetUrl(url?: string | null) {
   if (/^(https?:|data:|blob:)/i.test(url)) return url;
 
   const normalized = url.startsWith("/") ? url : `/${url}`;
-  if (normalized.startsWith("/api/")) {
+  if (normalized.startsWith("/api/auth/")) {
     return `${API_BASE}${normalized.slice(4)}`;
   }
   return `${API_BASE}${normalized}`;

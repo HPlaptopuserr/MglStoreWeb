@@ -1,6 +1,7 @@
 import { ArrowRight, ImagePlus, Loader2, ShieldCheck } from "lucide-react";
+import { useState } from "react";
 import type { ProjectItem } from "./project-types";
-import { formatMnt, getProjectImages } from "./project-utils";
+import { formatMnt, getResolvedProjectImages } from "./project-utils";
 
 type ProjectGridCardProps = {
   project: ProjectItem;
@@ -15,8 +16,9 @@ export function ProjectGridCard({
   openingId,
   onOpen,
 }: ProjectGridCardProps) {
-  const images = getProjectImages(project);
+  const images = getResolvedProjectImages(project);
   const primaryImage = images[0];
+  const [imageFailed, setImageFailed] = useState(false);
   const isFree = !project.price || project.price <= 0;
 
   return (
@@ -24,10 +26,11 @@ export function ProjectGridCard({
       <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent" />
 
       <div className="relative m-3 mb-0 aspect-[16/10] overflow-hidden rounded-[18px] bg-slate-100">
-        {primaryImage ? (
+        {primaryImage && !imageFailed ? (
           <img
             src={primaryImage}
             alt={project.title}
+            onError={() => setImageFailed(true)}
             className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
           />
         ) : (

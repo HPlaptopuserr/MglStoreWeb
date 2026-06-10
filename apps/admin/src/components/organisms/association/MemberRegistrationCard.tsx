@@ -5,7 +5,7 @@ import {
   Phone, Building2, Briefcase, Calendar, MapPin,
   GraduationCap, Clock3, Check, X, Loader2,
   Clock, CheckCircle2, XCircle, ChevronRight,
-  CreditCard, StickyNote, User, BadgeCheck,
+  CreditCard, StickyNote, User, BadgeCheck, Banknote,
 } from "lucide-react";
 import { MembershipTypeBadge } from "./MembershipTypeBadge";
 import { MEMBERSHIP_TYPES, STATUS_CONFIG, type MembershipTypeKey } from "./membership-constants";
@@ -25,6 +25,12 @@ export interface AssociationRegistration {
   phone: string;
   membershipType: MembershipTypeKey;
   durationMonths: number | null;
+  paymentAmount: number;
+  paymentStatus: "PENDING" | "PAID" | "FAILED" | "REFUNDED" | "CANCELLED";
+  paymentMethod: "CASH" | "CARD" | "QPAY" | "BANK_TRANSFER" | null;
+  paymentReference: string | null;
+  paymentNote: string | null;
+  paidAt: string | null;
   status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
   adminNote: string | null;
   reviewedAt: string | null;
@@ -53,6 +59,11 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
   const [open, setOpen] = useState(false);
   const [action, setAction] = useState<"APPROVED" | "REJECTED">("APPROVED");
   const [adminNote, setAdminNote] = useState(reg.adminNote ?? "");
+  const [paymentStatus, setPaymentStatus] = useState(reg.paymentStatus ?? "PENDING");
+  const [paymentMethod, setPaymentMethod] = useState(reg.paymentMethod ?? "BANK_TRANSFER");
+  const [paymentAmount, setPaymentAmount] = useState(String(reg.paymentAmount || ""));
+  const [paymentReference, setPaymentReference] = useState(reg.paymentReference ?? "");
+  const [paymentNote, setPaymentNote] = useState(reg.paymentNote ?? "");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -61,7 +72,21 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
 
   const duration = typeCfg?.durations.find((d) => d.months === reg.durationMonths);
   const durationLabel = duration?.label ?? (reg.durationMonths ? `${reg.durationMonths} сар` : "Үнэгүй");
-  const price = duration?.price ?? 0;
+  const price = reg.paymentAmount || duration?.price || 0;
+  const paymentStatusLabel = {
+    PENDING: "Төлбөр хүлээгдэж буй",
+    PAID: "Төлсөн",
+    FAILED: "Амжилтгүй",
+    REFUNDED: "Буцаагдсан",
+    CANCELLED: "Цуцлагдсан",
+  }[reg.paymentStatus ?? "PENDING"];
+  const paymentStatusColor = {
+    PENDING: "text-amber-700 bg-amber-50 border-amber-200",
+    PAID: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    FAILED: "text-red-700 bg-red-50 border-red-200",
+    REFUNDED: "text-blue-700 bg-blue-50 border-blue-200",
+    CANCELLED: "text-slate-600 bg-slate-50 border-slate-200",
+  }[reg.paymentStatus ?? "PENDING"];
 
   const fullName = `${reg.lastName} ${reg.firstName}`;
   const initials = `${reg.lastName[0] ?? ""}${reg.firstName[0] ?? ""}`;
@@ -86,7 +111,15 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
       const res = await adminFetch(`${API}/admin/association/registrations/${reg.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: action, adminNote: adminNote.trim() || undefined }),
+        body: JSON.stringify({
+          status: action,
+          adminNote: adminNote.trim() || undefined,
+          paymentStatus,
+          paymentMethod,
+          paymentAmount: Number(paymentAmount || 0),
+          paymentReference: paymentReference.trim() || undefined,
+          paymentNote: paymentNote.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setSaveError(data.message || "Алдаа гарлаа"); return; }
@@ -157,6 +190,12 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
               {price > 0 && (
                 <span className="text-xs font-bold text-indigo-600">
                   {price.toLocaleString()}₮ · {durationLabel}
+                </span>
+              )}
+              {price > 0 && (
+                <span className={`inline-flex items-center gap-1 border px-2 py-0.5 text-[11px] font-bold rounded-full ${paymentStatusColor}`}>
+                  <Banknote size={11} />
+                  {paymentStatusLabel}
                 </span>
               )}
             </div>
@@ -289,6 +328,37 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
                 </div>
               </section>
 
+              {/* Payment */}
+              {price > 0 && (
+                <section>
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1.5">
+                    <CreditCard size={11} />Төлбөрийн мэдээлэл
+                  </h3>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-lg font-black text-slate-900">{price.toLocaleString()}₮</p>
+                        <p className="text-xs font-semibold text-slate-400">{durationLabel}</p>
+                      </div>
+                      <span className={`inline-flex items-center gap-1 border px-2.5 py-1 text-[11px] font-bold rounded-full ${paymentStatusColor}`}>
+                        <Banknote size={11} />
+                        {paymentStatusLabel}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <DetailField label="Төлбөрийн хэлбэр" value={reg.paymentMethod === "BANK_TRANSFER" ? "Банк шилжүүлэг" : reg.paymentMethod} icon={<CreditCard size={12} />} />
+                      <DetailField label="Төлсөн огноо" value={reg.paidAt ? new Date(reg.paidAt).toLocaleDateString("mn-MN") : null} icon={<Calendar size={12} />} />
+                      <div className="col-span-2">
+                        <DetailField label="Гүйлгээний утга" value={reg.paymentReference} icon={<StickyNote size={12} />} />
+                      </div>
+                      <div className="col-span-2">
+                        <DetailField label="Төлбөрийн тэмдэглэл" value={reg.paymentNote} icon={<StickyNote size={12} />} />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
+
               {/* Timeline */}
               <section>
                 <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1.5">
@@ -367,6 +437,72 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
                     <X size={15} />Татгалзах
                   </button>
                 </div>
+
+                {price > 0 && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+                    <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-slate-500">
+                      <CreditCard size={13} />
+                      Төлбөр бүртгэх
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] font-bold text-slate-500">Төлөв</span>
+                        <select
+                          value={paymentStatus}
+                          onChange={(e) => setPaymentStatus(e.target.value as typeof paymentStatus)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold outline-none focus:border-indigo-400"
+                        >
+                          <option value="PENDING">Хүлээгдэж буй</option>
+                          <option value="PAID">Төлсөн</option>
+                          <option value="FAILED">Амжилтгүй</option>
+                          <option value="REFUNDED">Буцаасан</option>
+                          <option value="CANCELLED">Цуцалсан</option>
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] font-bold text-slate-500">Хэлбэр</span>
+                        <select
+                          value={paymentMethod}
+                          onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold outline-none focus:border-indigo-400"
+                        >
+                          <option value="BANK_TRANSFER">Банк шилжүүлэг</option>
+                          <option value="QPAY">QPay</option>
+                          <option value="CARD">Карт</option>
+                          <option value="CASH">Бэлэн</option>
+                        </select>
+                      </label>
+                      <label className="col-span-2 block">
+                        <span className="mb-1 block text-[10px] font-bold text-slate-500">Дүн</span>
+                        <input
+                          value={paymentAmount}
+                          onChange={(e) => setPaymentAmount(e.target.value.replace(/[^\d]/g, ""))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400"
+                          placeholder="Төлбөрийн дүн"
+                        />
+                      </label>
+                      <label className="col-span-2 block">
+                        <span className="mb-1 block text-[10px] font-bold text-slate-500">Гүйлгээний утга / reference</span>
+                        <input
+                          value={paymentReference}
+                          onChange={(e) => setPaymentReference(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                          placeholder="Гүйлгээний утга"
+                        />
+                      </label>
+                      <label className="col-span-2 block">
+                        <span className="mb-1 block text-[10px] font-bold text-slate-500">Төлбөрийн тэмдэглэл</span>
+                        <textarea
+                          value={paymentNote}
+                          onChange={(e) => setPaymentNote(e.target.value)}
+                          rows={2}
+                          className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400"
+                          placeholder="Банкны хуулга, transaction ID гэх мэт"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
 
                 {/* Note */}
                 <textarea

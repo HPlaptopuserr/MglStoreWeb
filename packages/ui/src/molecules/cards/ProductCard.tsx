@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -38,6 +38,7 @@ export const ProductCard = ({
   onAddToCart,
 }: ProductCardViewProps) => {
   const [localWishlistActive, setLocalWishlistActive] = useState(wishlistActive);
+  const [imageFailed, setImageFailed] = useState(false);
   const hasDiscount = typeof originalPrice === "number" && originalPrice > price;
   const discountPercent = hasDiscount
     ? Math.round(((originalPrice - price) / originalPrice) * 100)
@@ -46,6 +47,11 @@ export const ProductCard = ({
   const lowStock = !isPreorder && typeof stock === "number" && stock > 0 && stock <= 5;
   const primaryTag = tag || tags?.[0];
   const hasCartAction = showCartAction && typeof onAddToCart === "function";
+  const showImage = Boolean(image) && !imageFailed;
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [image]);
 
   const badge = soldOut
     ? { label: "Дууссан", className: "bg-black text-white" }
@@ -81,11 +87,12 @@ export const ProductCard = ({
   return (
     <article className="group relative flex h-full min-h-[230px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-100/60 sm:min-h-[252px]">
       <Link href={href} className="relative block aspect-[4/3] w-full overflow-hidden bg-slate-50">
-        {image ? (
+        {showImage ? (
           <Image
-            src={image}
+            src={image as string}
             alt={name || "Product image"}
             fill
+            onError={() => setImageFailed(true)}
             className="object-contain p-3 transition duration-300 group-hover:scale-105"
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 16vw"
           />

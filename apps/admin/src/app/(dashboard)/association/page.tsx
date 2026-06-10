@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Search, Users, Filter, Loader2, QrCode, X,
+  Search, Users, Loader2, QrCode, X,
   Copy, Check, RefreshCw, SlidersHorizontal,
-  ChevronDown, Settings2,
+  ChevronDown, Settings2, Banknote,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 import {
@@ -118,6 +118,12 @@ export default function AssociationPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/association/payments"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+          >
+            <Banknote size={15} />Төлбөр
+          </Link>
           <Link
             href="/association/settings"
             className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"

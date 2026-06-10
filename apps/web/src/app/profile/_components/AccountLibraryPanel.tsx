@@ -33,7 +33,7 @@ export function AccountLibraryPanel({
   const hasLibraryItems = purchases.length > 0 || contracts.length > 0;
 
   return (
-    <section className="grid gap-5 lg:grid-cols-[1.45fr_0.85fr]">
+    <section className="space-y-5">
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -96,7 +96,9 @@ export function AccountLibraryPanel({
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-100">
-                              {contract.status === "SIGNED" ? "Баталгаажсан" : "Хүлээгдэж буй"}
+                              {contract.status === "SIGNED"
+                                ? "Баталгаажсан"
+                                : "Хүлээгдэж буй"}
                             </span>
                             {contract.feePlanLabel && (
                               <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black text-emerald-700">
@@ -112,12 +114,18 @@ export function AccountLibraryPanel({
                           </p>
                           <div className="mt-2 flex flex-wrap gap-3 text-xs font-bold text-slate-400">
                             <span>
-                              Үүссэн: {new Date(contract.createdAt).toLocaleDateString("mn-MN")}
+                              Үүссэн:{" "}
+                              {new Date(contract.createdAt).toLocaleDateString(
+                                "mn-MN",
+                              )}
                             </span>
                             {contract.expiresAt && (
                               <span className="inline-flex items-center gap-1 text-amber-600">
                                 <CalendarClock size={13} />
-                                Дуусах: {new Date(contract.expiresAt).toLocaleDateString("mn-MN")}
+                                Дуусах:{" "}
+                                {new Date(
+                                  contract.expiresAt,
+                                ).toLocaleDateString("mn-MN")}
                               </span>
                             )}
                           </div>
@@ -163,15 +171,18 @@ export function AccountLibraryPanel({
                             {sourceLabel(purchase.sourceType)}
                           </span>
                           <span className="text-xs font-bold text-slate-400">
-                            {new Date(purchase.purchasedAt).toLocaleDateString("mn-MN")}
+                            {new Date(purchase.purchasedAt).toLocaleDateString(
+                              "mn-MN",
+                            )}
                           </span>
                         </div>
                         <h3 className="mt-2 line-clamp-1 text-base font-black text-slate-950">
                           {purchase.title}
                         </h3>
                         <p className="mt-1 text-sm font-semibold text-slate-500">
-                          ₮{Number(purchase.amount || 0).toLocaleString("mn-MN")} · 2%
-                          M point нэмэгдсэн
+                          ₮
+                          {Number(purchase.amount || 0).toLocaleString("mn-MN")}{" "}
+                          · 2% M point нэмэгдсэн
                         </p>
                       </div>
                       {purchase.fileUrl ? (
@@ -198,7 +209,7 @@ export function AccountLibraryPanel({
         )}
       </div>
 
-      <aside className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[0.85fr_1fr]">
         <div className="overflow-hidden rounded-3xl bg-slate-950 p-6 text-white shadow-sm">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -221,9 +232,7 @@ export function AccountLibraryPanel({
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <Sparkles size={18} className="text-orange-500" />
-            <h3 className="text-base font-black text-slate-950">
-              Онооны түүх
-            </h3>
+            <h3 className="text-base font-black text-slate-950">Онооны түүх</h3>
           </div>
           {history.length === 0 ? (
             <p className="rounded-2xl bg-slate-50 p-5 text-sm font-bold leading-6 text-slate-500">
@@ -252,7 +261,7 @@ export function AccountLibraryPanel({
             </div>
           )}
         </div>
-      </aside>
+      </div>
     </section>
   );
 }

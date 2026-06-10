@@ -1,13 +1,13 @@
 import { MEMBERSHIP_TYPES, type MembershipTypeKey } from "./membership-constants";
 
 interface Props {
-  type: MembershipTypeKey;
+  type: MembershipTypeKey | string;
   size?: "sm" | "md";
   showDot?: boolean;
 }
 
 export function MembershipTypeBadge({ type, size = "md", showDot = true }: Props) {
-  const cfg = MEMBERSHIP_TYPES[type];
+  const cfg = MEMBERSHIP_TYPES[type as MembershipTypeKey];
   if (!cfg) return null;
 
   return (

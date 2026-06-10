@@ -1,24 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Coins, Crown, FileText, PackageCheck, ShieldCheck } from "lucide-react";
+import { Crown, Phone, ShieldCheck, Upload } from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
 import { resolveApiAssetUrl } from "@/lib/api";
-import type { AccountPurchase, ProfileOrder } from "./types";
 
 type ProfileHeroProps = {
   user: AuthUser;
-  purchases: AccountPurchase[];
-  orders: ProfileOrder[];
-  points: number;
+  membershipTierLabel: string;
 };
 
-export function ProfileHero({
-  user,
-  purchases,
-  orders,
-  points,
-}: ProfileHeroProps) {
+export function ProfileHero({ membershipTierLabel, user }: ProfileHeroProps) {
   const initials =
     user.fullName?.trim()?.[0]?.toUpperCase() ||
     user.email?.[0]?.toUpperCase() ||
@@ -28,120 +20,82 @@ export function ProfileHero({
   const displayName = user.fullName?.trim() || "Хэрэглэгч";
   const contact = user.email || user.phone || "Мэдээллээ бүрэн бөглөнө үү";
   const membershipPhone = user.membership?.discountPhone || user.phone || "";
-  const stats = [
-    {
-      label: "Гишүүнчлэл",
-      value: isPrime ? "Member" : "Идэвхгүй",
-      icon: Crown,
-      tone: isPrime ? "member" : "default",
-      helper: isPrime && membershipPhone ? `${membershipPhone} дугаартай` : undefined,
-    },
-    {
-      label: "Худалдан авсан файл",
-      value: purchases.length.toLocaleString("mn-MN"),
-      icon: FileText,
-      tone: "default",
-    },
-    {
-      label: "M point",
-      value: `${points.toLocaleString("mn-MN")} M`,
-      icon: Coins,
-      tone: "default",
-    },
-    {
-      label: "Захиалга",
-      value: orders.length.toLocaleString("mn-MN"),
-      icon: PackageCheck,
-      tone: "default",
-    },
-  ];
 
   return (
-    <section className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="relative overflow-hidden bg-slate-950 px-5 py-5 text-white md:px-8 md:py-7">
-          <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(249,115,22,0.28),transparent_34%),radial-gradient(circle_at_92%_8%,rgba(59,130,246,0.20),transparent_32%)]" />
-          <div className="relative flex items-center gap-4">
-            <ProfileAvatar
-              avatarUrl={user.avatarUrl}
-              displayName={displayName}
-              initials={initials}
-            />
+    <section className="relative overflow-hidden rounded-[22px] bg-slate-950 px-5 py-6 text-white shadow-[0_26px_80px_rgba(15,23,42,0.22)] sm:px-7 md:px-8 md:py-9">
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(15,23,42,0.96)_0%,rgba(15,23,42,0.88)_46%,rgba(67,50,65,0.92)_100%)]" />
+      <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-orange-500/12 blur-3xl" />
+      <div className="absolute bottom-0 left-1/3 h-32 w-80 rounded-full bg-blue-500/10 blur-3xl" />
 
-            <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-[0.26em] text-orange-200">
-                MGL account
-              </p>
-              <h1 className="mt-1.5 truncate text-2xl font-black leading-tight md:mt-2 md:text-4xl">
-                {displayName}
-              </h1>
-              <p className="mt-1.5 truncate text-sm font-semibold text-white/62">
-                {contact}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-black text-white ring-1 ring-white/10">
-                  <ShieldCheck size={14} />
-                  {hasTerms ? "Нөхцөл зөвшөөрсөн" : "Нөхцөл хүлээгдэж байна"}
+      <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+        <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
+          <ProfileAvatar
+            avatarUrl={user.avatarUrl}
+            displayName={displayName}
+            initials={initials}
+          />
+
+          <div className="min-w-0">
+            <p className="inline-flex rounded-full bg-white/10 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.24em] text-orange-200 ring-1 ring-white/10">
+              MGL account
+            </p>
+            <h1 className="mt-4 truncate text-3xl font-black leading-tight tracking-tight md:text-5xl">
+              {displayName}
+            </h1>
+            <p className="mt-3 inline-flex max-w-full items-center gap-2 truncate text-sm font-semibold text-white/62">
+              <Phone size={15} className="shrink-0" />
+              {contact}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-black text-white ring-1 ring-white/10">
+                <ShieldCheck size={14} />
+                {hasTerms ? "Нөхцөл зөвшөөрсөн" : "Нөхцөл хүлээгдэж байна"}
+              </span>
+              <span className="inline-flex rounded-full bg-orange-400/16 px-3 py-1.5 text-xs font-black text-orange-100 ring-1 ring-orange-200/20">
+                {user.role === "USER" ? "Хэрэглэгч" : user.role}
+              </span>
+              {isPrime && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300/18 px-3 py-1.5 text-xs font-black text-amber-100 ring-1 ring-amber-200/25">
+                  <Crown size={14} />
+                  {membershipTierLabel}
                 </span>
-                <span className="inline-flex rounded-full bg-orange-400/16 px-3 py-1.5 text-xs font-black text-orange-100 ring-1 ring-orange-200/20">
-                  {user.role === "USER" ? "Хэрэглэгч" : user.role}
-                </span>
-                {isPrime && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300/18 px-3 py-1.5 text-xs font-black text-amber-100 ring-1 ring-amber-200/25">
-                    <Crown size={14} />
-                    Member
-                  </span>
-                )}
-              </div>
+              )}
+            </div>
+            <div className="mt-5">
+              <a
+                href="#membership-activation"
+                className="inline-flex min-h-11 items-center gap-3 rounded-full bg-white px-7 text-sm font-black text-slate-900 shadow-lg shadow-black/20 transition hover:bg-orange-500 hover:text-white"
+              >
+                <Upload size={17} />
+                Upgrade Membership
+              </a>
             </div>
           </div>
-          {isPrime && (
-            <div className="relative mt-4 rounded-2xl border border-amber-200/20 bg-amber-300/10 px-3 py-2 text-xs font-black leading-5 text-amber-50 sm:inline-flex sm:rounded-full sm:py-1.5">
-              Membership таних тэмдэг идэвхтэй. Утасны дугаараараа хөнгөлөлт эдлэх боломжтой.
-            </div>
-          )}
         </div>
 
-        <div className="grid gap-2 bg-slate-50 p-3 sm:grid-cols-2 md:gap-3 md:p-4 lg:grid-cols-1">
-          {stats.map((stat) => {
-            const Icon = stat.icon;
-            const isMemberStat = stat.tone === "member";
-            return (
-              <div
-                key={stat.label}
-                className={`rounded-2xl border px-3 py-3 shadow-sm md:px-4 ${
-                  isMemberStat
-                    ? "border-emerald-100 bg-emerald-50/80"
-                    : "border-slate-200 bg-white"
-                }`}
-              >
-                <div className="flex items-center gap-2 sm:justify-between md:gap-3">
-                  <span className="min-w-0 text-[11px] font-black uppercase tracking-wide text-slate-500 md:text-xs">
-                    {stat.label}
-                  </span>
-                  <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl md:h-9 md:w-9 ${
-                      isMemberStat
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-orange-50 text-orange-600"
-                    }`}
-                  >
-                    <Icon size={17} />
-                  </span>
-                </div>
-                <p className="mt-2 text-xl font-black leading-none text-slate-950 md:text-2xl">
-                  {stat.value}
-                </p>
-                {stat.helper && (
-                  <p className="mt-1 truncate text-xs font-bold text-emerald-700">
-                    {stat.helper}
-                  </p>
-                )}
-              </div>
-            );
-          })}
+        <div className="rounded-[18px] border border-white/10 bg-white/10 p-5 text-sm font-bold leading-6 text-white/68 shadow-2xl shadow-black/10 backdrop-blur sm:block">
+          <span className="text-5xl font-black leading-none text-orange-400/60">
+            ”
+          </span>
+          <p className="-mt-2">
+            {isPrime
+              ? "Membership таних тэмдэг идэвхтэй. Утасны дугаараараа хөнгөлөлт эдлэх боломжтой."
+              : "Membership идэвхжүүлснээр файл, сургалт болон хөнгөлөлтийн боломжууд нэг дор нээгдэнэ."}
+          </p>
+          {isPrime && membershipPhone && (
+            <p className="mt-3 text-xs font-black text-orange-100">
+              {membershipPhone}
+            </p>
+          )}
         </div>
       </div>
+
+      {isPrime && (
+        <div className="relative mt-6 hidden rounded-2xl border border-amber-200/20 bg-amber-300/10 px-4 py-3 text-xs font-black leading-5 text-amber-50 sm:inline-flex sm:rounded-full sm:py-2">
+          Membership таних тэмдэг идэвхтэй. Утасны дугаараараа хөнгөлөлт эдлэх
+          боломжтой.
+        </div>
+      )}
     </section>
   );
 }
@@ -164,13 +118,13 @@ function ProfileAvatar({
         src={src}
         alt={displayName}
         onError={() => setFailed(true)}
-        className="h-16 w-16 shrink-0 rounded-2xl border border-white/15 object-cover shadow-xl sm:h-20 sm:w-20"
+        className="h-24 w-24 shrink-0 rounded-[26px] border border-white/15 object-cover shadow-xl sm:h-32 sm:w-32"
       />
     );
   }
 
   return (
-    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/12 text-2xl font-black ring-1 ring-white/15 sm:h-20 sm:w-20 sm:text-3xl">
+    <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[26px] bg-white/12 text-5xl font-black ring-1 ring-white/15 sm:h-32 sm:w-32 sm:text-6xl">
       {initials}
     </div>
   );
