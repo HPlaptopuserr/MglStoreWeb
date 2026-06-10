@@ -167,6 +167,9 @@ const partnerLocationAliases: Record<string, string[]> = {
   khentii: ["Хэнтий", "Khentii", "Hentii"],
 };
 
+// Temporary public catalog hold: keep records intact while showing this location as empty.
+const temporarilyEmptyPartnerLocations = new Set(["erdenet"]);
+
 function getPartnerLocationAliases(value: string) {
   const key = value.trim().toLowerCase();
   if (!key) return [];
@@ -759,6 +762,18 @@ router.get("/partners", async (req, res) => {
     const category = String(req.query.category || "").trim();
     const location = String(req.query.location || "").trim();
     const skip = (page - 1) * limit;
+
+    if (temporarilyEmptyPartnerLocations.has(location.toLowerCase())) {
+      return res.json({
+        data: [],
+        pagination: {
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+        },
+      });
+    }
 
     const where: any = { deletedAt: null };
     const andFilters: any[] = [];
