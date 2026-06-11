@@ -11,6 +11,7 @@ import {
   PackageSearch,
   ScanLine,
   Store,
+  Globe2,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
@@ -33,12 +34,17 @@ const FEATURES = [
   { suffix: "service-posts-enabled", label: "Үйлчилгээний постууд", icon: Megaphone, defaultEnabled: true },
 ];
 
+const GLOBAL_WEB_PRODUCTS_SETTING_KEY = "web-products-enabled";
+
 export function VendorFeaturesSection() {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState("");
   const [loadingOrgs, setLoadingOrgs] = useState(true);
   const [loadingFeatures, setLoadingFeatures] = useState(false);
   const [error, setError] = useState("");
+  const [globalProductsEnabled, setGlobalProductsEnabled] = useState(true);
+  const [loadingGlobalProducts, setLoadingGlobalProducts] = useState(true);
+  const [savingGlobalProducts, setSavingGlobalProducts] = useState(false);
 
   const [toggles, setToggles] = useState<FeatureToggle[]>(
     FEATURES.map((f) => ({
@@ -59,6 +65,21 @@ export function VendorFeaturesSection() {
       })
       .catch(() => setError("Байгууллагын жагсаалт авахад алдаа гарлаа."))
       .finally(() => setLoadingOrgs(false));
+  }, []);
+
+  useEffect(() => {
+    adminFetch(`${API}/site-settings/admin`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((settings) => {
+        const raw = settings?.[GLOBAL_WEB_PRODUCTS_SETTING_KEY];
+        setGlobalProductsEnabled(
+          raw === undefined || raw === null || raw === ""
+            ? true
+            : raw === "1" || raw === "true" || raw === "on",
+        );
+      })
+      .catch(() => setError("Web бүтээгдэхүүний тохиргоо авахад алдаа гарлаа."))
+      .finally(() => setLoadingGlobalProducts(false));
   }, []);
 
   const loadFeatures = useCallback(async (orgId: string) => {
@@ -143,6 +164,37 @@ export function VendorFeaturesSection() {
     }
   };
 
+  const handleGlobalProductsToggle = async () => {
+    const next = !globalProductsEnabled;
+    setSavingGlobalProducts(true);
+    setError("");
+
+    try {
+      const res = await adminFetch(
+        `${API}/site-settings/${GLOBAL_WEB_PRODUCTS_SETTING_KEY}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: next ? "true" : "false" }),
+        },
+      );
+
+      if (!res.ok) {
+        throw new Error(res.status === 401 ? "unauthorized" : "failed");
+      }
+
+      setGlobalProductsEnabled(next);
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message === "unauthorized"
+          ? "Admin session танигдсангүй. Хуудсаа refresh хийгээд, шаардлагатай бол дахин нэвтэрнэ үү."
+          : "Web бүтээгдэхүүний тохиргоо хадгалахад алдаа гарлаа.",
+      );
+    } finally {
+      setSavingGlobalProducts(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -153,6 +205,48 @@ export function VendorFeaturesSection() {
           Байгууллага бүрт ямар цэс харагдахыг удирдана. Default-аар бүгд
           хаалттай, энд нээнэ.
         </p>
+      </div>
+
+      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex items-center gap-3">
+          <div
+            className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+              globalProductsEnabled
+                ? "bg-emerald-50 text-emerald-600"
+                : "bg-slate-100 text-slate-400"
+            }`}
+          >
+            <Globe2 size={18} />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-800">
+              Web дээр бүх бүтээгдэхүүн
+            </p>
+            <p className="text-xs text-slate-400">
+              {GLOBAL_WEB_PRODUCTS_SETTING_KEY}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleGlobalProductsToggle}
+          disabled={loadingGlobalProducts || savingGlobalProducts}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-60 ${
+            globalProductsEnabled
+              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          {loadingGlobalProducts || savingGlobalProducts ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : globalProductsEnabled ? (
+            <CheckCircle2 size={14} />
+          ) : (
+            <XCircle size={14} />
+          )}
+          {globalProductsEnabled ? "Нээлттэй" : "Хаалттай"}
+        </button>
       </div>
 
       {/* org selector */}

@@ -12,6 +12,7 @@ import { requireOrgPermission, assertOrgPermission } from "../../services/permis
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 import { requireActivePlan, checkProductLimit, checkImportLimit } from "../../middleware/plan-guard";
 import {
+  areWebProductsGloballyEnabled,
   canBypassAllWebProductsVisibility,
   canBypassWebProductsVisibility,
   getWebProductsEnabledOrganizationIds,
@@ -306,11 +307,19 @@ router.get("/products", optionalAuth, async (req, res) => {
       ];
     }
 
-    if (!canBypassAllWebProductsVisibility(req)) {
-      const canBypassRequestedOrg = requestedOrganizationId
-        ? await canBypassWebProductsVisibility(req, requestedOrganizationId)
-        : false;
+    const canBypassRequestedOrg = requestedOrganizationId
+      ? await canBypassWebProductsVisibility(req, requestedOrganizationId)
+      : false;
 
+    if (
+      !canBypassAllWebProductsVisibility(req) &&
+      !canBypassRequestedOrg &&
+      !(await areWebProductsGloballyEnabled())
+    ) {
+      return res.json([]);
+    }
+
+    if (!canBypassAllWebProductsVisibility(req)) {
       if (!canBypassRequestedOrg) {
         const visibleOrganizationIds = await getWebProductsEnabledOrganizationIds();
         if (requestedOrganizationId) {
@@ -829,6 +838,10 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
     });
     if (!product) return res.status(404).json({ message: "Бараа олдсонгүй" });
     const canBypassVisibility = await canBypassWebProductsVisibility(req, product.organizationId);
+    if (!canBypassVisibility && !(await areWebProductsGloballyEnabled())) {
+      return res.status(404).json({ message: "Бараа олдсонгүй" });
+    }
+
     const isPubliclyVisible =
       product.isActive &&
       product.organization.deletedAt === null &&

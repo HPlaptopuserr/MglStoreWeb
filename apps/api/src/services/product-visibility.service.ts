@@ -46,11 +46,25 @@ export async function isOrgWebProductsEnabled(organizationId: string) {
   return isTruthySetting(setting?.value);
 }
 
+export async function areWebProductsGloballyEnabled() {
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: WEB_PRODUCTS_FEATURE_KEY },
+    select: { value: true },
+  });
+
+  if (setting?.value === undefined || setting?.value === null || setting.value === "") {
+    return true;
+  }
+
+  return isTruthySetting(setting.value);
+}
+
 export async function shouldExposeOrgProductsOnWeb(
   req: Request,
   organizationId: string,
 ) {
   if (await canBypassWebProductsVisibility(req, organizationId)) return true;
+  if (!(await areWebProductsGloballyEnabled())) return false;
   return isOrgWebProductsEnabled(organizationId);
 }
 
