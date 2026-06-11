@@ -33,3 +33,11 @@ export function getResponsiblePeople(project: ProjectItem) {
       )
     : [];
 }
+
+export function resolveProjectFileUrl(url?: string) {
+  if (!url) return "";
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) return trimmed;
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
