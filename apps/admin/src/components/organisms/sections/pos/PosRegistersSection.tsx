@@ -365,7 +365,9 @@ export function PosRegistersSection() {
         label: form.label.trim() || null,
         cardEnabled: form.cardEnabled,
         cardProviderType: form.cardProviderType || null,
-        cardTerminalId: form.cardTerminalId.trim() || null,
+        cardTerminalId: isTerminalIdOptionalProvider(form.cardProviderType)
+          ? null
+          : form.cardTerminalId.trim() || null,
         terminalBridgeUrl: isCloudCardProvider(form.cardProviderType)
           ? null
           : (form.terminalBridgeUrl.trim() || null),
@@ -761,6 +763,9 @@ export function PosRegistersSection() {
                               set("terminalBridgeUrl", "");
                               setBridgeCheckMessage(null);
                             }
+                            if (isTerminalIdOptionalProvider(provider)) {
+                              set("cardTerminalId", "");
+                            }
                           }}
                           className={SELECT}
                         >
@@ -776,8 +781,9 @@ export function PosRegistersSection() {
                       <input
                         value={form.cardTerminalId}
                         onChange={(e) => set("cardTerminalId", e.target.value)}
+                        disabled={isTerminalIdOptionalProvider(form.cardProviderType)}
                         placeholder={isTerminalIdOptionalProvider(form.cardProviderType) ? "Terminal-аас автоматаар ирнэ" : "SN1234"}
-                        className={INPUT}
+                        className={`${INPUT} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
                       />
                     </Field>
                     {!isCloudCardProvider(form.cardProviderType) && <Field label="Bridge URL" className="col-span-2">

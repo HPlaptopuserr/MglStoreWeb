@@ -22,6 +22,12 @@ const BRIDGE_CARD_PROVIDERS = new Set(["ANDROID_PGW", "QPOSLANE", "GANTIGO", "ID
 const isBridgeCardProvider = (provider: string | null | undefined) =>
   Boolean(provider && BRIDGE_CARD_PROVIDERS.has(provider));
 const isTerminalIdOptionalProvider = (provider: string | null | undefined) => provider === "ANDROID_PGW";
+const normalizeNullableString = (value: unknown) => {
+  const normalized = String(value ?? "").trim();
+  return normalized || null;
+};
+const normalizeCardTerminalId = (provider: string | null | undefined, value: unknown) =>
+  isTerminalIdOptionalProvider(provider) ? null : normalizeNullableString(value);
 
 router.get("/pos/register-config", async (req, res) => {
   const actor = await requirePosUser(req, res);
@@ -480,15 +486,20 @@ router.post("/admin/pos-registers", async (req, res) => {
   };
 
   const normalizedName = normalizeRegisterName(name);
+  const normalizedCardProviderType = normalizeNullableString(cardProviderType);
+  const normalizedCardTerminalId = normalizeCardTerminalId(normalizedCardProviderType, cardTerminalId);
+  const normalizedTerminalBridgeUrl = normalizeNullableString(terminalBridgeUrl);
+  const normalizedQpayMerchantId = normalizeNullableString(qpayMerchantId);
+  const normalizedQpayTerminalId = normalizeNullableString(qpayTerminalId);
 
   if (!organizationId || !branchId || !normalizedName) {
     return res.status(400).json({ message: "organizationId, branchId, name шаардлагатай" });
   }
 
   // Validate terminalBridgeUrl if provided
-  if (terminalBridgeUrl) {
+  if (normalizedTerminalBridgeUrl) {
     try {
-      const parsed = new URL(terminalBridgeUrl);
+      const parsed = new URL(normalizedTerminalBridgeUrl);
       if (!["http:", "https:"].includes(parsed.protocol)) {
         return res.status(400).json({ message: "terminalBridgeUrl зөвхөн http/https байх ёстой" });
       }
@@ -497,29 +508,29 @@ router.post("/admin/pos-registers", async (req, res) => {
     }
   }
 
-  if (cardEnabled === true && !cardProviderType) {
+  if (cardEnabled === true && !normalizedCardProviderType) {
     return res.status(400).json({ message: "cardEnabled=true үед cardProviderType шаардлагатай" });
   }
 
-  if (cardEnabled === true && !isTerminalIdOptionalProvider(cardProviderType) && !cardTerminalId) {
+  if (cardEnabled === true && !isTerminalIdOptionalProvider(normalizedCardProviderType) && !normalizedCardTerminalId) {
     return res.status(400).json({ message: "cardEnabled=true үед cardTerminalId шаардлагатай" });
   }
 
-  if (cardEnabled === true && isBridgeCardProvider(cardProviderType) && !terminalBridgeUrl) {
+  if (cardEnabled === true && isBridgeCardProvider(normalizedCardProviderType) && !normalizedTerminalBridgeUrl) {
     return res.status(400).json({ message: "Bridge provider үед terminalBridgeUrl шаардлагатай" });
   }
 
-  if (cardEnabled === false && (cardProviderType || cardTerminalId || terminalBridgeUrl)) {
+  if (cardEnabled === false && (normalizedCardProviderType || normalizedCardTerminalId || normalizedTerminalBridgeUrl)) {
     return res.status(400).json({
       message: "cardEnabled=false үед cardProviderType, cardTerminalId, terminalBridgeUrl хоосон байх ёстой",
     });
   }
 
-  if (qpayEnabled === true && (!qpayMerchantId || !qpayTerminalId)) {
+  if (qpayEnabled === true && (!normalizedQpayMerchantId || !normalizedQpayTerminalId)) {
     return res.status(400).json({ message: "qpayEnabled=true үед qpayMerchantId, qpayTerminalId шаардлагатай" });
   }
 
-  if (qpayEnabled === false && (qpayMerchantId || qpayTerminalId)) {
+  if (qpayEnabled === false && (normalizedQpayMerchantId || normalizedQpayTerminalId)) {
     return res.status(400).json({
       message: "qpayEnabled=false үед qpayMerchantId, qpayTerminalId хоосон байх ёстой",
     });
@@ -542,7 +553,7 @@ router.post("/admin/pos-registers", async (req, res) => {
     let nextMinuPassword = "";
     let nextMinuBranchId = "";
     let shouldUpdateMinuAgentConfig = false;
-    if (cardEnabled === true && cardProviderType === "MINU_AGENT") {
+    if (cardEnabled === true && normalizedCardProviderType === "MINU_AGENT") {
       const org = await prisma.organization.findUnique({
         where: { id: organizationId },
         select: {
@@ -570,12 +581,12 @@ router.post("/admin/pos-registers", async (req, res) => {
         name: normalizedName,
         label: label ? String(label).trim() : null,
         cardEnabled: Boolean(cardEnabled),
-        cardProviderType: cardProviderType || null,
-        cardTerminalId: cardTerminalId || null,
-        terminalBridgeUrl: terminalBridgeUrl || null,
+        cardProviderType: normalizedCardProviderType,
+        cardTerminalId: normalizedCardTerminalId,
+        terminalBridgeUrl: normalizedTerminalBridgeUrl,
         qpayEnabled: Boolean(qpayEnabled),
-        qpayMerchantId: qpayMerchantId || null,
-        qpayTerminalId: qpayTerminalId || null,
+        qpayMerchantId: normalizedQpayMerchantId,
+        qpayTerminalId: normalizedQpayTerminalId,
         // Admin-created registers are immediately active and approved
         isActive: true,
         activationStatus: PosActivationStatus.APPROVED,
@@ -583,7 +594,7 @@ router.post("/admin/pos-registers", async (req, res) => {
       include: { branch: { select: { id: true, name: true } } },
     });
 
-    if (cardEnabled === true && cardProviderType === "MINU_AGENT" && shouldUpdateMinuAgentConfig) {
+    if (cardEnabled === true && normalizedCardProviderType === "MINU_AGENT" && shouldUpdateMinuAgentConfig) {
       await prisma.organization.update({
         where: { id: organizationId },
         data: {
@@ -661,9 +672,12 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     isActive?: boolean;
   };
 
-  if (terminalBridgeUrl !== undefined && terminalBridgeUrl !== null && terminalBridgeUrl !== "") {
+  const normalizedInputTerminalBridgeUrl =
+    terminalBridgeUrl !== undefined ? normalizeNullableString(terminalBridgeUrl) : undefined;
+
+  if (normalizedInputTerminalBridgeUrl) {
     try {
-      const parsed = new URL(terminalBridgeUrl);
+      const parsed = new URL(normalizedInputTerminalBridgeUrl);
       if (!["http:", "https:"].includes(parsed.protocol)) {
         return res.status(400).json({ message: "terminalBridgeUrl зөвхөн http/https байх ёстой" });
       }
@@ -677,23 +691,27 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     if (!existing) return res.status(404).json({ message: "POS олдсонгүй" });
 
     const nextCardEnabled = cardEnabled !== undefined ? Boolean(cardEnabled) : existing.cardEnabled;
+    const normalizedInputCardProviderType =
+      cardProviderType !== undefined ? normalizeNullableString(cardProviderType) : undefined;
+    const normalizedInputCardTerminalId =
+      cardTerminalId !== undefined ? normalizeNullableString(cardTerminalId) : undefined;
     const nextCardProviderType =
       nextCardEnabled === false
         ? null
-        : cardProviderType !== undefined
-          ? cardProviderType || null
+        : normalizedInputCardProviderType !== undefined
+          ? normalizedInputCardProviderType
           : existing.cardProviderType;
     const nextCardTerminalId =
-      nextCardEnabled === false
+      nextCardEnabled === false || isTerminalIdOptionalProvider(nextCardProviderType)
         ? null
-        : cardTerminalId !== undefined
-          ? cardTerminalId || null
+        : normalizedInputCardTerminalId !== undefined
+          ? normalizedInputCardTerminalId
           : existing.cardTerminalId;
     const nextTerminalBridgeUrl =
       nextCardEnabled === false
         ? null
-        : terminalBridgeUrl !== undefined
-          ? terminalBridgeUrl || null
+        : normalizedInputTerminalBridgeUrl !== undefined
+          ? normalizedInputTerminalBridgeUrl
           : existing.terminalBridgeUrl;
 
     if (nextCardEnabled && !nextCardProviderType) {
