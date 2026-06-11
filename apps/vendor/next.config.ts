@@ -5,6 +5,9 @@ const apiProxyTarget =
   "https://mgl-api.onrender.com";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    cpus: process.env.RENDER ? 1 : undefined,
+  },
   async rewrites() {
     return [
       {
