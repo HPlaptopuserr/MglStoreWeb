@@ -17,6 +17,7 @@ import {
   PaidAccessPaymentModal,
   type PaidAccessPaymentSession,
 } from "@/components/molecules/payments/PaidAccessPaymentModal";
+import { LockedProjectPreviewModal } from "@/components/molecules/projects/ProjectPdfPreview";
 
 type FranchiseProject = {
   id: string;
@@ -28,6 +29,7 @@ type FranchiseProject = {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
+  pdfPreviewUrl?: string;
   tags?: string[];
   isActive?: boolean;
 };
@@ -182,6 +184,8 @@ export default function FranchisePage() {
   const [activeProject, setActiveProject] = useState<FranchiseProject | null>(
     null,
   );
+  const [previewProject, setPreviewProject] =
+    useState<FranchiseProject | null>(null);
   const [loadedProjects, setLoadedProjects] = useState<
     Record<string, FranchiseProject>
   >({});
@@ -240,22 +244,9 @@ export default function FranchisePage() {
     setActiveProject(detail);
   };
 
-  const openProject = async (project: FranchiseProject) => {
-    const cachedProject = loadedProjects[project.id];
-    if (cachedProject) {
-      setActiveProject(cachedProject);
-      return;
-    }
-
+  const startFranchisePayment = async (project: FranchiseProject) => {
     try {
       setOpeningId(project.id);
-      if (!project.price || project.price <= 0) {
-        const detail = await fetchProjectDetail(project.id);
-        setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
-        setActiveProject(detail);
-        return;
-      }
-
       if (!user) {
         router.push("/login");
         return;
@@ -273,11 +264,13 @@ export default function FranchisePage() {
       if (data.free) {
         const detail = await fetchProjectDetail(project.id);
         setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+        setPreviewProject(null);
         setActiveProject(detail);
         return;
       }
 
       setPaymentProject(project);
+      setPreviewProject(null);
       setPaymentSession({
         invoiceId: data.invoiceId,
         providerInvoiceId: data.providerInvoiceId,
@@ -287,6 +280,35 @@ export default function FranchisePage() {
         urls: Array.isArray(data.urls) ? data.urls : [],
         expiresAt: data.expiresAt,
       });
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Franchise мэдээлэл авахад алдаа гарлаа",
+      );
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
+  const openProject = async (project: FranchiseProject) => {
+    const cachedProject = loadedProjects[project.id];
+    if (cachedProject) {
+      setActiveProject(cachedProject);
+      return;
+    }
+
+    try {
+      setOpeningId(project.id);
+      if (project.price && project.price > 0) {
+        setPreviewProject(project);
+        return;
+      }
+
+      const detail = await fetchProjectDetail(project.id);
+      setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+      setActiveProject(detail);
     } catch (error) {
       console.error(error);
       alert(
@@ -448,6 +470,16 @@ export default function FranchisePage() {
             setPaymentProject(null);
             setPaymentSession(null);
           }}
+        />
+      )}
+
+      {previewProject && (
+        <LockedProjectPreviewModal
+          project={previewProject}
+          kindLabel="Franchise"
+          opening={openingId === previewProject.id}
+          onClose={() => setPreviewProject(null)}
+          onUnlock={() => startFranchisePayment(previewProject)}
         />
       )}
 

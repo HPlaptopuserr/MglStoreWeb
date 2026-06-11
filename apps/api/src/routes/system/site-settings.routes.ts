@@ -17,6 +17,7 @@ import {
   requirePlatformPermission,
 } from "../../middleware/auth";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
+import { createPdfPreviewBuffer } from "../../lib/pdf-preview";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
   checkSystemQrPayment,
@@ -76,6 +77,7 @@ type PaidProject = {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
+  pdfPreviewUrl?: string;
   teacherInfo?: string;
   duration?: string;
   capacity?: string;
@@ -282,6 +284,7 @@ function normalizePublicProject(project: PaidProject): PaidProject {
     price: normalized.price,
     imageUrl: normalized.imageUrl,
     imageUrls: normalized.imageUrls,
+    pdfPreviewUrl: normalized.pdfPreviewUrl,
     tags: normalized.tags,
     isActive: normalized.isActive,
   };
@@ -1338,7 +1341,22 @@ router.post(
         req.file.buffer,
         "application/pdf",
       );
-      res.json({ url });
+      let previewUrl = "";
+      try {
+        const previewBuffer = await createPdfPreviewBuffer(req.file.buffer);
+        if (previewBuffer) {
+          previewUrl = await uploadSiteFile(
+            req,
+            fileName.replace("project-pdfs/", "project-pdf-previews/"),
+            previewBuffer,
+            "application/pdf",
+          );
+        }
+      } catch (previewError) {
+        console.warn("project-pdf preview generation failed", previewError);
+      }
+
+      res.json({ url, previewUrl });
     } catch (err) {
       console.error("project-pdf-upload error", err);
       res.status(500).json({

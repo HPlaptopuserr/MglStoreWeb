@@ -13,6 +13,7 @@ import {
   KeyRound,
   Loader2,
   Mail,
+  PencilLine,
   Phone,
   Plus,
   RefreshCw,
@@ -61,6 +62,13 @@ const roleLabel: Record<string, string> = {
 };
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+const normalizePhoneInput = (value: string) => {
+  const digits = value.replace(/[^\d]/g, "");
+  return digits.startsWith("976") && digits.length === 11
+    ? digits.slice(3)
+    : digits;
+};
 
 async function readJsonResponse(response: Response) {
   const responseText = await response.text().catch(() => "");
@@ -141,6 +149,12 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
   const [grantOpen, setGrantOpen] = useState(false);
   const [grantError, setGrantError] = useState("");
   const [grantNotice, setGrantNotice] = useState("");
+  const [editingPhoneUserId, setEditingPhoneUserId] = useState<string | null>(
+    null,
+  );
+  const [phoneDrafts, setPhoneDrafts] = useState<Record<string, string>>({});
+  const [phoneErrors, setPhoneErrors] = useState<Record<string, string>>({});
+  const [phoneNotice, setPhoneNotice] = useState("");
   const [grantForm, setGrantForm] = useState({
     fullName: "",
     email: "",
@@ -204,6 +218,78 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
       onMembersUpdated(data.members ?? []);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Owner солиход алдаа гарлаа");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const startPhoneEdit = (member: VendorLoginMember) => {
+    setEditingPhoneUserId(member.userId);
+    setPhoneNotice("");
+    setPhoneErrors((prev) => ({ ...prev, [member.userId]: "" }));
+    setPhoneDrafts((prev) => ({
+      ...prev,
+      [member.userId]: member.phone || "",
+    }));
+  };
+
+  const cancelPhoneEdit = (member: VendorLoginMember) => {
+    setEditingPhoneUserId(null);
+    setPhoneErrors((prev) => ({ ...prev, [member.userId]: "" }));
+    setPhoneDrafts((prev) => ({
+      ...prev,
+      [member.userId]: member.phone || "",
+    }));
+  };
+
+  const savePhone = async (member: VendorLoginMember) => {
+    const draft = phoneDrafts[member.userId] ?? "";
+    const normalizedPhone = normalizePhoneInput(draft);
+
+    if (draft.trim() && (normalizedPhone.length < 6 || normalizedPhone.length > 12)) {
+      setPhoneErrors((prev) => ({
+        ...prev,
+        [member.userId]: "Login утас 6-12 оронтой дугаар байх ёстой.",
+      }));
+      return;
+    }
+
+    const key = `phone:${member.userId}`;
+    setBusyAction(key);
+    setPhoneErrors((prev) => ({ ...prev, [member.userId]: "" }));
+    setPhoneNotice("");
+
+    try {
+      const res = await adminFetch(
+        `${API}/partners/${partner.id}/members/${member.userId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: normalizedPhone || null }),
+        },
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Login утас солиход алдаа гарлаа");
+      }
+
+      setEditingPhoneUserId(null);
+      if (Array.isArray(data?.members)) {
+        onMembersUpdated(data.members);
+      }
+      setPhoneNotice(
+        data?.pendingConfirmation
+          ? `${data.maskedEmail || member.email || "Login email"} рүү баталгаажуулах холбоос илгээгдлээ. Хэрэглэгч email дээрээс баталгаажуулсны дараа login утас солигдоно.`
+          : `${member.fullName || member.email || "Хэрэглэгч"}-ийн login утас шинэчлэгдлээ.`,
+      );
+    } catch (error) {
+      setPhoneErrors((prev) => ({
+        ...prev,
+        [member.userId]:
+          error instanceof Error
+            ? error.message
+            : "Login утас солиход алдаа гарлаа",
+      }));
     } finally {
       setBusyAction(null);
     }
@@ -620,6 +706,12 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
           </div>
         </div>
 
+        {phoneNotice && (
+          <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold leading-6 text-indigo-800">
+            {phoneNotice}
+          </div>
+        )}
+
         {members.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
             <UserRound className="mx-auto mb-3 h-10 w-10 text-slate-300" />
@@ -664,7 +756,84 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
                         </div>
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           <FieldLine icon={<Mail size={12} />} label="Login email" value={member.email} />
-                          <FieldLine icon={<Phone size={12} />} label="Login phone" value={member.phone} muted="Login утас алга" />
+                          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                                <Phone size={12} />
+                                Login phone
+                              </div>
+                              {editingPhoneUserId !== member.userId && (
+                                <button
+                                  type="button"
+                                  onClick={() => startPhoneEdit(member)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                                >
+                                  <PencilLine size={11} />
+                                  Засах
+                                </button>
+                              )}
+                            </div>
+                            {editingPhoneUserId === member.userId ? (
+                              <div className="space-y-2">
+                                <input
+                                  value={phoneDrafts[member.userId] ?? ""}
+                                  onChange={(event) => {
+                                    setPhoneDrafts((prev) => ({
+                                      ...prev,
+                                      [member.userId]: event.target.value,
+                                    }));
+                                    if (phoneErrors[member.userId]) {
+                                      setPhoneErrors((prev) => ({
+                                        ...prev,
+                                        [member.userId]: "",
+                                      }));
+                                    }
+                                    if (phoneNotice) setPhoneNotice("");
+                                  }}
+                                  inputMode="tel"
+                                  placeholder="9911xxxx"
+                                  className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-black text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
+                                />
+                                {phoneErrors[member.userId] && (
+                                  <p className="text-xs font-semibold leading-5 text-red-600">
+                                    {phoneErrors[member.userId]}
+                                  </p>
+                                )}
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => savePhone(member)}
+                                    disabled={busyAction === `phone:${member.userId}`}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-black text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                                  >
+                                    {busyAction === `phone:${member.userId}` ? (
+                                      <Loader2 size={13} className="animate-spin" />
+                                    ) : (
+                                      <Check size={13} />
+                                    )}
+                                    Хадгалах
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => cancelPhoneEdit(member)}
+                                    disabled={busyAction === `phone:${member.userId}`}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                                  >
+                                    <X size={13} />
+                                    Болих
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="break-all text-sm font-bold text-slate-900">
+                                {member.phone || (
+                                  <span className="text-slate-400">
+                                    Login утас алга
+                                  </span>
+                                )}
+                              </p>
+                            )}
+                          </div>
                         </div>
                         <p className="mt-2 text-xs font-medium text-slate-500">
                           {member.lastLoginAt

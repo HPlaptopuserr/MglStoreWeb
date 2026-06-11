@@ -7,6 +7,7 @@ import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { FeaturedProjectsRail } from "@/components/molecules/projects/FeaturedProjectsRail";
 import { ProjectGridCard } from "@/components/molecules/projects/ProjectGridCard";
+import { LockedProjectPreviewModal } from "@/components/molecules/projects/ProjectPdfPreview";
 import {
   PaidAccessPaymentModal,
   type PaidAccessPaymentSession,
@@ -175,6 +176,9 @@ export default function ProjectsPage() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [activeProject, setActiveProject] = useState<ProjectItem | null>(null);
+  const [previewProject, setPreviewProject] = useState<ProjectItem | null>(
+    null,
+  );
   const [loadedProjects, setLoadedProjects] = useState<
     Record<string, ProjectItem>
   >({});
@@ -258,22 +262,9 @@ export default function ProjectsPage() {
     setActiveProject(detail);
   };
 
-  const openProject = async (project: ProjectItem) => {
-    const cachedProject = loadedProjects[project.id];
-    if (cachedProject) {
-      setActiveProject(cachedProject);
-      return;
-    }
-
+  const startProjectPayment = async (project: ProjectItem) => {
     try {
       setOpeningId(project.id);
-      if (!project.price || project.price <= 0) {
-        const detail = await fetchProjectDetail(project.id);
-        setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
-        setActiveProject(detail);
-        return;
-      }
-
       if (!user) {
         router.push("/login");
         return;
@@ -291,11 +282,13 @@ export default function ProjectsPage() {
       if (data.free) {
         const detail = await fetchProjectDetail(project.id);
         setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+        setPreviewProject(null);
         setActiveProject(detail);
         return;
       }
 
       setPaymentProject(project);
+      setPreviewProject(null);
       setPaymentSession({
         invoiceId: data.invoiceId,
         providerInvoiceId: data.providerInvoiceId,
@@ -305,6 +298,35 @@ export default function ProjectsPage() {
         urls: Array.isArray(data.urls) ? data.urls : [],
         expiresAt: data.expiresAt,
       });
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Төслийн мэдээлэл авахад алдаа гарлаа",
+      );
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
+  const openProject = async (project: ProjectItem) => {
+    const cachedProject = loadedProjects[project.id];
+    if (cachedProject) {
+      setActiveProject(cachedProject);
+      return;
+    }
+
+    try {
+      setOpeningId(project.id);
+      if (project.price && project.price > 0) {
+        setPreviewProject(project);
+        return;
+      }
+
+      const detail = await fetchProjectDetail(project.id);
+      setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+      setActiveProject(detail);
     } catch (error) {
       console.error(error);
       alert(
@@ -409,6 +431,16 @@ export default function ProjectsPage() {
             setPaymentProject(null);
             setPaymentSession(null);
           }}
+        />
+      )}
+
+      {previewProject && (
+        <LockedProjectPreviewModal
+          project={previewProject}
+          kindLabel="Төсөл"
+          opening={openingId === previewProject.id}
+          onClose={() => setPreviewProject(null)}
+          onUnlock={() => startProjectPayment(previewProject)}
         />
       )}
 

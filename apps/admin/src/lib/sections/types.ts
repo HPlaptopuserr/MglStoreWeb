@@ -108,6 +108,7 @@ export interface ProjectItem {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
+  pdfPreviewUrl?: string;
   teacherInfo?: string;
   duration?: string;
   capacity?: string;

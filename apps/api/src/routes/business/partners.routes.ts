@@ -3,6 +3,7 @@ import crypto from "crypto";
 import path from "path";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import jwt from "jsonwebtoken";
 import {
   prisma,
   OnboardingSource,
@@ -21,6 +22,7 @@ import {
   type AuthPayload,
 } from "../../middleware/auth";
 import { getSupabase, ORG_IMAGES_BUCKET } from "../../lib/supabase";
+import { sendSmtpMail } from "../../lib/smtp";
 import { shouldExposeOrgProductsOnWeb } from "../../services/product-visibility.service";
 
 const router: ExpressRouter = Router();
@@ -189,6 +191,20 @@ const VENDOR_APP_URL =
   (process.env.NODE_ENV === "production"
     ? "https://vendor.mglstore.mn"
     : "http://localhost:3002");
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  (process.env.NODE_ENV === "production"
+    ? (() => {
+        throw new Error("FATAL: JWT_SECRET not set");
+      })()
+    : "dev-secret-change-me");
+
+type VendorPhoneConfirmToken = {
+  purpose: "vendor-login-phone-change";
+  organizationId: string;
+  userId: string;
+  phone: string | null;
+};
 
 function slugify(value: string) {
   return value
@@ -250,6 +266,130 @@ function normalizeEmail(value?: string | null): string | null {
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function normalizeLoginPhone(value: unknown) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return { phone: null, error: "" };
+
+  const digits = raw.replace(/[^\d]/g, "");
+  const phone =
+    digits.startsWith("976") && digits.length === 11
+      ? digits.slice(3)
+      : digits;
+
+  if (phone.length < 6 || phone.length > 12) {
+    return {
+      phone: null,
+      error: "Login утас 6-12 оронтой дугаар байх ёстой",
+    };
+  }
+
+  return { phone, error: "" };
+}
+
+async function assertVendorPhoneIsAvailable(phone: string | null, userId: string) {
+  if (!phone) return null;
+
+  return prisma.profile.findFirst({
+    where: {
+      userId: { not: userId },
+      phoneNumber: phone,
+      user: {
+        organizationMemberships: {
+          some: {
+            isActive: true,
+            deletedAt: null,
+          },
+        },
+      },
+    },
+    select: {
+      userId: true,
+      user: { select: { email: true } },
+    },
+  });
+}
+
+async function updateVendorLoginPhone(
+  organizationId: string,
+  userId: string,
+  phone: string | null,
+) {
+  const target = await prisma.organizationMember.findFirst({
+    where: {
+      organizationId,
+      userId,
+      isActive: true,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      user: {
+        select: {
+          id: true,
+          email: true,
+          profile: { select: { fullName: true } },
+        },
+      },
+    },
+  });
+
+  if (!target) {
+    return {
+      ok: false as const,
+      status: 404,
+      message: "Засах login хэрэглэгч олдсонгүй",
+    };
+  }
+
+  const duplicate = await assertVendorPhoneIsAvailable(phone, userId);
+  if (duplicate) {
+    return {
+      ok: false as const,
+      status: 409,
+      message: "Энэ login утас өөр идэвхтэй vendor user дээр бүртгэлтэй байна",
+      duplicateUserId: duplicate.userId,
+      duplicateEmail: duplicate.user.email,
+    };
+  }
+
+  await prisma.profile.upsert({
+    where: { userId },
+    update: { phoneNumber: phone },
+    create: {
+      userId,
+      fullName: target.user.profile?.fullName || target.user.email || "",
+      phoneNumber: phone,
+    },
+  });
+
+  return { ok: true as const };
+}
+
+async function sendVendorPhoneConfirmationEmail(input: {
+  email: string;
+  fullName?: string | null;
+  organizationName?: string | null;
+  phone: string | null;
+  confirmUrl: string;
+}) {
+  await sendSmtpMail({
+    to: input.email,
+    subject: "MGL Store vendor login утас баталгаажуулах",
+    text: [
+      `Сайн байна уу${input.fullName ? `, ${input.fullName}` : ""}.`,
+      "",
+      `${input.organizationName || "Таны байгууллага"}-ийн vendor login утсыг ${
+        input.phone || "хоосон"
+      } болгож өөрчлөх хүсэлт admin-аас ирлээ.`,
+      "",
+      "Та өөрөө зөвшөөрч байвал доорх холбоосоор баталгаажуулна уу:",
+      input.confirmUrl,
+      "",
+      "Энэ холбоос 24 цаг хүчинтэй. Хэрэв та энэ өөрчлөлтийг зөвшөөрөөгүй бол энэ имэйлийг үл тооно уу.",
+    ].join("\n"),
+  });
 }
 
 function haversineDistanceMeters(
@@ -2014,6 +2154,149 @@ router.post(
     }
   },
 );
+
+router.patch(
+  "/partners/:id/members/:userId",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const { id: organizationId, userId } = req.params;
+      const { phone } = req.body as { phone?: unknown };
+
+      const target = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              profile: { select: { fullName: true, phoneNumber: true } },
+            },
+          },
+          organization: { select: { name: true } },
+        },
+      });
+
+      if (!target) {
+        return res
+          .status(404)
+          .json({ message: "Засах login хэрэглэгч олдсонгүй" });
+      }
+
+      const normalized = normalizeLoginPhone(phone);
+      if (normalized.error) {
+        return res.status(400).json({ message: normalized.error });
+      }
+
+      const duplicate = await assertVendorPhoneIsAvailable(
+        normalized.phone,
+        userId,
+      );
+      if (duplicate) {
+        return res.status(409).json({
+          message:
+            "Энэ login утас өөр идэвхтэй vendor user дээр бүртгэлтэй байна",
+          duplicateUserId: duplicate.userId,
+          duplicateEmail: duplicate.user.email,
+        });
+      }
+
+      if (!target.user.email) {
+        return res.status(400).json({
+          message:
+            "Энэ login хэрэглэгч email-гүй тул email баталгаажуулалт илгээх боломжгүй",
+        });
+      }
+
+      const token = jwt.sign(
+        {
+          purpose: "vendor-login-phone-change",
+          organizationId,
+          userId,
+          phone: normalized.phone,
+        } satisfies VendorPhoneConfirmToken,
+        JWT_SECRET,
+        { expiresIn: "24h" },
+      );
+      const confirmUrl = `${VENDOR_APP_URL}/confirm-phone?token=${encodeURIComponent(token)}`;
+
+      await sendVendorPhoneConfirmationEmail({
+        email: target.user.email,
+        fullName: target.user.profile?.fullName,
+        organizationName: target.organization.name,
+        phone: normalized.phone,
+        confirmUrl,
+      });
+
+      return res.json({
+        pendingConfirmation: true,
+        email: target.user.email,
+        maskedEmail: target.user.email.replace(/^(.{2}).*(@.*)$/, "$1***$2"),
+        currentPhone: target.user.profile?.phoneNumber || null,
+        requestedPhone: normalized.phone,
+        expiresInHours: 24,
+      });
+    } catch (error) {
+      console.error("update vendor login member error", error);
+      return res
+        .status(500)
+        .json({
+          message:
+            "Login утас баталгаажуулах email илгээхэд алдаа гарлаа",
+        });
+    }
+  },
+);
+
+router.post("/partners/members/confirm-phone", async (req, res) => {
+  try {
+    const { token } = req.body as { token?: string };
+    if (!token) {
+      return res.status(400).json({ message: "Token шаардлагатай" });
+    }
+
+    let payload: VendorPhoneConfirmToken;
+    try {
+      payload = jwt.verify(token, JWT_SECRET) as VendorPhoneConfirmToken;
+    } catch {
+      return res.status(400).json({
+        message: "Баталгаажуулах холбоос буруу эсвэл хугацаа дууссан байна",
+      });
+    }
+
+    if (payload.purpose !== "vendor-login-phone-change") {
+      return res.status(400).json({ message: "Token зориулалт буруу байна" });
+    }
+
+    const result = await updateVendorLoginPhone(
+      payload.organizationId,
+      payload.userId,
+      payload.phone,
+    );
+
+    if (!result.ok) {
+      return res.status(result.status).json({
+        message: result.message,
+        duplicateUserId: result.duplicateUserId,
+        duplicateEmail: result.duplicateEmail,
+      });
+    }
+
+    return res.json({ success: true, phone: payload.phone });
+  } catch (error) {
+    console.error("confirm vendor login phone error", error);
+    return res
+      .status(500)
+      .json({ message: "Login утас баталгаажуулахад алдаа гарлаа" });
+  }
+});
 
 router.post(
   "/partners/:id/members/:userId/invite-link",

@@ -179,6 +179,7 @@ const emptyProject = (
   imageUrl: "",
   imageUrls: [],
   pdfUrl: "",
+  pdfPreviewUrl: "",
   teacherInfo: "",
   duration: "",
   capacity: "",
@@ -880,6 +881,11 @@ export function ProjectsSection({
         throw new Error("PDF URL серверээс ирсэнгүй");
       }
       updateProject(id, "pdfUrl", data.url);
+      updateProject(
+        id,
+        "pdfPreviewUrl",
+        typeof data.previewUrl === "string" ? data.previewUrl : "",
+      );
     } catch (error) {
       setPdfUploadError(
         error instanceof Error
@@ -2110,6 +2116,17 @@ export function ProjectsSection({
                                 PDF харах
                               </a>
                             )}
+                            {project.pdfPreviewUrl && (
+                              <a
+                                href={project.pdfPreviewUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 rounded-xl bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-700"
+                              >
+                                <FileText className="h-4 w-4" />
+                                Preview 4 хуудас
+                              </a>
+                            )}
                           </div>
                           {pdfUploadError && uploadingPdfProjectId === null && (
                             <p className="mt-2 text-xs font-semibold text-red-500">
@@ -2124,6 +2141,18 @@ export function ProjectsSection({
                           }
                           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                           placeholder="PDF upload хийсний дараа URL энд автоматаар орно"
+                        />
+                        <input
+                          value={project.pdfPreviewUrl || ""}
+                          onChange={(e) =>
+                            updateProject(
+                              project.id,
+                              "pdfPreviewUrl",
+                              e.target.value,
+                            )
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                          placeholder="Үнэгүй харагдах 4 хуудасны preview PDF URL"
                         />
                       </div>
                     )}
