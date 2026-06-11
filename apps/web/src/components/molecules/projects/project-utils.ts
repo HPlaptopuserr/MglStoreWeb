@@ -1,5 +1,4 @@
 import type { ProjectItem } from "./project-types";
-import { resolveApiAssetUrl } from "@/lib/api";
 
 export function formatMnt(value?: number) {
   const amount = Number(value || 0);
@@ -21,12 +20,16 @@ export function getProjectImages(project: ProjectItem) {
   );
 }
 
-export function getResolvedProjectImages(project: ProjectItem) {
-  return getProjectImages(project)
-    .map((image) => resolveApiAssetUrl(image))
-    .filter(Boolean);
-}
-
-export function resolveProjectFileUrl(url?: string | null) {
-  return resolveApiAssetUrl(url);
+export function getResponsiblePeople(project: ProjectItem) {
+  return Array.isArray(project.responsiblePeople)
+    ? project.responsiblePeople.filter(
+        (person) =>
+          person?.name ||
+          person?.role ||
+          person?.responsibility ||
+          person?.phone ||
+          person?.email ||
+          person?.avatarUrl,
+      )
+    : [];
 }

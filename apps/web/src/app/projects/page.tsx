@@ -2,12 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, X } from "lucide-react";
+import { FileText, Mail, Phone, Plus, UserRound, X } from "lucide-react";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { FeaturedProjectsRail } from "@/components/molecules/projects/FeaturedProjectsRail";
 import { ProjectGridCard } from "@/components/molecules/projects/ProjectGridCard";
-import { LockedProjectPreviewModal } from "@/components/molecules/projects/ProjectPdfPreview";
 import {
   PaidAccessPaymentModal,
   type PaidAccessPaymentSession,
@@ -19,9 +18,78 @@ import type {
 } from "@/components/molecules/projects/project-types";
 import {
   formatMnt,
-  getResolvedProjectImages,
-  resolveProjectFileUrl,
+  getProjectImages,
+  getResponsiblePeople,
 } from "@/components/molecules/projects/project-utils";
+
+function ResponsiblePeopleSection({ project }: { project: ProjectItem }) {
+  const people = getResponsiblePeople(project);
+  if (people.length === 0) return null;
+
+  return (
+    <section className="mb-6 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-4">
+      <div className="mb-4 flex items-center gap-2">
+        <UserRound className="h-5 w-5 text-cyan-300" />
+        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-cyan-200">
+          Хариуцаж байгаа ажилчид
+        </h3>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {people.map((person, index) => (
+          <article
+            key={person.id || `${person.name}-${index}`}
+            className="rounded-xl border border-white/10 bg-black/20 p-4"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/10 text-white/60">
+                {person.avatarUrl ? (
+                  <img
+                    src={person.avatarUrl}
+                    alt={person.name || "Хариуцагч"}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <UserRound className="h-5 w-5" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-base font-black text-white">
+                  {person.name || "Нэр оруулаагүй"}
+                </p>
+                {person.role && (
+                  <p className="mt-1 text-sm font-bold text-orange-200">
+                    {person.role}
+                  </p>
+                )}
+              </div>
+            </div>
+            {person.responsibility && (
+              <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-6 text-orange-50/75">
+                {person.responsibility}
+              </p>
+            )}
+            {(person.phone || person.email) && (
+              <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-orange-50/75">
+                {person.phone && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1">
+                    <Phone className="h-3.5 w-3.5" />
+                    {person.phone}
+                  </span>
+                )}
+                {person.email && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1">
+                    <Mail className="h-3.5 w-3.5" />
+                    {person.email}
+                  </span>
+                )}
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function ProjectDetailModal({
   project,
@@ -30,8 +98,7 @@ function ProjectDetailModal({
   project: ProjectItem;
   onClose: () => void;
 }) {
-  const images = getResolvedProjectImages(project);
-  const pdfUrl = resolveProjectFileUrl(project.pdfUrl);
+  const images = getProjectImages(project);
 
   useEffect(() => {
     const scrollY = window.scrollY;
@@ -92,10 +159,11 @@ function ProjectDetailModal({
           {images.length > 0 && (
             <div className="mb-6 grid gap-3 sm:grid-cols-2">
               {images.map((image, index) => (
-                <ProjectDetailImage
+                <img
                   key={`${image}-${index}`}
                   src={image}
                   alt={`${project.title} зураг ${index + 1}`}
+                  className="h-64 w-full rounded-xl border border-white/10 object-cover"
                 />
               ))}
             </div>
@@ -116,17 +184,19 @@ function ProjectDetailModal({
             </div>
           )}
 
-          {pdfUrl ? (
+          <ResponsiblePeopleSection project={project} />
+
+          {project.pdfUrl ? (
             <div className="space-y-4">
               <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
                 <iframe
-                  src={pdfUrl}
+                  src={project.pdfUrl}
                   title={`${project.title} PDF`}
                   className="h-[70vh] w-full bg-white"
                 />
               </div>
               <a
-                href={pdfUrl}
+                href={project.pdfUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-300 px-5 py-3 text-sm font-black text-black transition hover:brightness-110"
@@ -146,27 +216,6 @@ function ProjectDetailModal({
   );
 }
 
-function ProjectDetailImage({ src, alt }: { src: string; alt: string }) {
-  const [failed, setFailed] = useState(false);
-
-  if (failed) {
-    return (
-      <div className="flex h-64 w-full items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-sm font-bold text-white/50">
-        Зураг ачаалсангүй
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt={alt}
-      onError={() => setFailed(true)}
-      className="h-64 w-full rounded-xl border border-white/10 object-cover"
-    />
-  );
-}
-
 export default function ProjectsPage() {
   const router = useRouter();
   const { user, authFetch } = useAuth();
@@ -176,9 +225,6 @@ export default function ProjectsPage() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [activeProject, setActiveProject] = useState<ProjectItem | null>(null);
-  const [previewProject, setPreviewProject] = useState<ProjectItem | null>(
-    null,
-  );
   const [loadedProjects, setLoadedProjects] = useState<
     Record<string, ProjectItem>
   >({});
@@ -220,7 +266,9 @@ export default function ProjectsPage() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const res = await fetch(`${API}/site-settings/projects`);
+        const res = await fetch(`${API}/site-settings/projects`, {
+          cache: "no-store",
+        });
         if (!res.ok) return;
         const data = await res.json();
         const parsed = Array.isArray(data.projects) ? data.projects : [];
@@ -262,9 +310,22 @@ export default function ProjectsPage() {
     setActiveProject(detail);
   };
 
-  const startProjectPayment = async (project: ProjectItem) => {
+  const openProject = async (project: ProjectItem) => {
+    const cachedProject = loadedProjects[project.id];
+    if (cachedProject) {
+      setActiveProject(cachedProject);
+      return;
+    }
+
     try {
       setOpeningId(project.id);
+      if (!project.price || project.price <= 0) {
+        const detail = await fetchProjectDetail(project.id);
+        setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+        setActiveProject(detail);
+        return;
+      }
+
       if (!user) {
         router.push("/login");
         return;
@@ -282,13 +343,11 @@ export default function ProjectsPage() {
       if (data.free) {
         const detail = await fetchProjectDetail(project.id);
         setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
-        setPreviewProject(null);
         setActiveProject(detail);
         return;
       }
 
       setPaymentProject(project);
-      setPreviewProject(null);
       setPaymentSession({
         invoiceId: data.invoiceId,
         providerInvoiceId: data.providerInvoiceId,
@@ -298,35 +357,6 @@ export default function ProjectsPage() {
         urls: Array.isArray(data.urls) ? data.urls : [],
         expiresAt: data.expiresAt,
       });
-    } catch (error) {
-      console.error(error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Төслийн мэдээлэл авахад алдаа гарлаа",
-      );
-    } finally {
-      setOpeningId(null);
-    }
-  };
-
-  const openProject = async (project: ProjectItem) => {
-    const cachedProject = loadedProjects[project.id];
-    if (cachedProject) {
-      setActiveProject(cachedProject);
-      return;
-    }
-
-    try {
-      setOpeningId(project.id);
-      if (project.price && project.price > 0) {
-        setPreviewProject(project);
-        return;
-      }
-
-      const detail = await fetchProjectDetail(project.id);
-      setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
-      setActiveProject(detail);
     } catch (error) {
       console.error(error);
       alert(
@@ -431,16 +461,6 @@ export default function ProjectsPage() {
             setPaymentProject(null);
             setPaymentSession(null);
           }}
-        />
-      )}
-
-      {previewProject && (
-        <LockedProjectPreviewModal
-          project={previewProject}
-          kindLabel="Төсөл"
-          opening={openingId === previewProject.id}
-          onClose={() => setPreviewProject(null)}
-          onUnlock={() => startProjectPayment(previewProject)}
         />
       )}
 

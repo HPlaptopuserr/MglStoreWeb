@@ -108,7 +108,6 @@ export interface ProjectItem {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
-  pdfPreviewUrl?: string;
   teacherInfo?: string;
   duration?: string;
   capacity?: string;
@@ -127,6 +126,18 @@ export interface ProjectItem {
   featuredOrder?: number;
   paymentAccountId?: string;
   paymentMerchantCode?: string;
+  contractTemplateId?: string;
+  responsiblePeople?: ProjectResponsiblePerson[];
+}
+
+export interface ProjectResponsiblePerson {
+  id: string;
+  name: string;
+  role?: string;
+  responsibility?: string;
+  phone?: string;
+  email?: string;
+  avatarUrl?: string;
 }
 
 export interface ProjectShowcaseSection {

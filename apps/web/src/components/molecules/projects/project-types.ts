@@ -8,7 +8,6 @@ export type ProjectItem = {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
-  pdfPreviewUrl?: string;
   teacherInfo?: string;
   duration?: string;
   capacity?: string;
@@ -25,6 +24,17 @@ export type ProjectItem = {
   isActive?: boolean;
   isFeatured?: boolean;
   featuredOrder?: number;
+  responsiblePeople?: ProjectResponsiblePerson[];
+};
+
+export type ProjectResponsiblePerson = {
+  id?: string;
+  name?: string;
+  role?: string;
+  responsibility?: string;
+  phone?: string;
+  email?: string;
+  avatarUrl?: string;
 };
 
 export type ProjectShowcaseSection = {

@@ -17,7 +17,6 @@ import {
   requirePlatformPermission,
 } from "../../middleware/auth";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
-import { createPdfPreviewBuffer } from "../../lib/pdf-preview";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
   checkSystemQrPayment,
@@ -77,7 +76,6 @@ type PaidProject = {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
-  pdfPreviewUrl?: string;
   teacherInfo?: string;
   duration?: string;
   capacity?: string;
@@ -95,6 +93,19 @@ type PaidProject = {
   featuredOrder?: number;
   paymentAccountId?: string;
   paymentMerchantCode?: string;
+  contractTemplateId?: string;
+  contractUrl?: string;
+  responsiblePeople?: ProjectResponsiblePerson[];
+};
+
+type ProjectResponsiblePerson = {
+  id?: string;
+  name?: string;
+  role?: string;
+  responsibility?: string;
+  phone?: string;
+  email?: string;
+  avatarUrl?: string;
 };
 
 type ProjectPaymentAccount = {
@@ -258,8 +269,40 @@ function getProjectImages(project: PaidProject) {
   );
 }
 
+function normalizeResponsiblePeople(project: PaidProject) {
+  const people = Array.isArray(project.responsiblePeople)
+    ? project.responsiblePeople
+    : [];
+
+  return people
+    .map((person) => ({
+      id: String(person?.id || "").trim(),
+      name: String(person?.name || "").trim(),
+      role: String(person?.role || "").trim(),
+      responsibility: String(person?.responsibility || "").trim(),
+      phone: String(person?.phone || "").trim(),
+      email: String(person?.email || "").trim(),
+      avatarUrl: String(person?.avatarUrl || "").trim(),
+    }))
+    .filter(
+      (person) =>
+        person.name ||
+        person.role ||
+        person.responsibility ||
+        person.phone ||
+        person.email ||
+        person.avatarUrl,
+    )
+    .map((person, index) => ({
+      ...person,
+      id: person.id || `responsible-${index + 1}`,
+    }));
+}
+
 function normalizeProject(project: PaidProject): PaidProject {
   const imageUrls = getProjectImages(project);
+  const contractTemplateId = String(project.contractTemplateId || "").trim();
+  const responsiblePeople = normalizeResponsiblePeople(project);
 
   return {
     ...project,
@@ -271,6 +314,11 @@ function normalizeProject(project: PaidProject): PaidProject {
         : 0,
     imageUrl: imageUrls[0] ?? project.imageUrl ?? "",
     imageUrls,
+    contractTemplateId,
+    contractUrl: contractTemplateId
+      ? `/contract/sign/${encodeURIComponent(contractTemplateId)}`
+      : undefined,
+    responsiblePeople,
   };
 }
 
@@ -284,9 +332,11 @@ function normalizePublicProject(project: PaidProject): PaidProject {
     price: normalized.price,
     imageUrl: normalized.imageUrl,
     imageUrls: normalized.imageUrls,
-    pdfPreviewUrl: normalized.pdfPreviewUrl,
     tags: normalized.tags,
     isActive: normalized.isActive,
+    contractTemplateId: normalized.contractTemplateId,
+    contractUrl: normalized.contractUrl,
+    responsiblePeople: normalized.responsiblePeople,
   };
 }
 
@@ -1341,22 +1391,7 @@ router.post(
         req.file.buffer,
         "application/pdf",
       );
-      let previewUrl = "";
-      try {
-        const previewBuffer = await createPdfPreviewBuffer(req.file.buffer);
-        if (previewBuffer) {
-          previewUrl = await uploadSiteFile(
-            req,
-            fileName.replace("project-pdfs/", "project-pdf-previews/"),
-            previewBuffer,
-            "application/pdf",
-          );
-        }
-      } catch (previewError) {
-        console.warn("project-pdf preview generation failed", previewError);
-      }
-
-      res.json({ url, previewUrl });
+      res.json({ url });
     } catch (err) {
       console.error("project-pdf-upload error", err);
       res.status(500).json({

@@ -6,6 +6,7 @@ import { API, adminFetch } from "@/lib/api";
 import {
   ProjectItem,
   ProjectPaymentAccount,
+  ProjectResponsiblePerson,
   ProjectShowcaseSection,
   ServiceCategory,
   StudySectionSettings,
@@ -36,6 +37,34 @@ const DEFAULT_STUDY_SETTINGS: StudySectionSettings = {
   emptyText: "Одоогоор бүртгэлтэй сургалт нэмэгдээгүй байна.",
   bannerUrl: "",
 };
+
+function normalizeResponsiblePeople(
+  people?: ProjectResponsiblePerson[],
+): ProjectResponsiblePerson[] {
+  if (!Array.isArray(people)) return [];
+
+  return people
+    .map((person) => ({
+      id:
+        String(person?.id || "").trim() ||
+        Math.random().toString(36).slice(2, 10),
+      name: String(person?.name || "").trim(),
+      role: String(person?.role || "").trim(),
+      responsibility: String(person?.responsibility || "").trim(),
+      phone: String(person?.phone || "").trim(),
+      email: String(person?.email || "").trim(),
+      avatarUrl: String(person?.avatarUrl || "").trim(),
+    }))
+    .filter(
+      (person) =>
+        person.name ||
+        person.role ||
+        person.responsibility ||
+        person.phone ||
+        person.email ||
+        person.avatarUrl,
+    );
+}
 
 function normalizeProjectImages(project: ProjectItem): ProjectItem {
   const imageUrls = Array.from(
@@ -69,6 +98,8 @@ function normalizeProjectImages(project: ProjectItem): ProjectItem {
     imageUrl: imageUrls[0] ?? "",
     imageUrls,
     isFeatured: Boolean(project.isFeatured),
+    contractTemplateId: String(project.contractTemplateId || "").trim(),
+    responsiblePeople: normalizeResponsiblePeople(project.responsiblePeople),
   };
 }
 

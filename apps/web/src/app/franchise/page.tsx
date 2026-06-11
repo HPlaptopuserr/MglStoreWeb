@@ -7,8 +7,11 @@ import {
   FileText,
   ImagePlus,
   Loader2,
+  Mail,
+  Phone,
   Plus,
   ShieldCheck,
+  UserRound,
   X,
 } from "lucide-react";
 import { API } from "@/lib/api";
@@ -17,7 +20,6 @@ import {
   PaidAccessPaymentModal,
   type PaidAccessPaymentSession,
 } from "@/components/molecules/payments/PaidAccessPaymentModal";
-import { LockedProjectPreviewModal } from "@/components/molecules/projects/ProjectPdfPreview";
 
 type FranchiseProject = {
   id: string;
@@ -29,9 +31,21 @@ type FranchiseProject = {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
-  pdfPreviewUrl?: string;
+  contractTemplateId?: string;
+  contractUrl?: string;
+  responsiblePeople?: ProjectResponsiblePerson[];
   tags?: string[];
   isActive?: boolean;
+};
+
+type ProjectResponsiblePerson = {
+  id?: string;
+  name?: string;
+  role?: string;
+  responsibility?: string;
+  phone?: string;
+  email?: string;
+  avatarUrl?: string;
 };
 
 function getProjectImages(project: FranchiseProject) {
@@ -46,6 +60,20 @@ function getProjectImages(project: FranchiseProject) {
         .filter(Boolean),
     ),
   );
+}
+
+function getResponsiblePeople(project: FranchiseProject) {
+  return Array.isArray(project.responsiblePeople)
+    ? project.responsiblePeople.filter(
+        (person) =>
+          person?.name ||
+          person?.role ||
+          person?.responsibility ||
+          person?.phone ||
+          person?.email ||
+          person?.avatarUrl,
+      )
+    : [];
 }
 
 function formatMnt(value?: number) {
@@ -71,6 +99,83 @@ function sortMglStoreFranchiseFirst(projects: FranchiseProject[]) {
     .map(({ project }) => project);
 }
 
+function getContractHref(project: FranchiseProject) {
+  if (project.contractUrl) return project.contractUrl;
+  if (project.contractTemplateId) {
+    return `/contract/sign/${encodeURIComponent(project.contractTemplateId)}`;
+  }
+  return "";
+}
+
+function ResponsiblePeopleSection({ project }: { project: FranchiseProject }) {
+  const people = getResponsiblePeople(project);
+  if (people.length === 0) return null;
+
+  return (
+    <section className="mb-6 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-4">
+      <div className="mb-4 flex items-center gap-2">
+        <UserRound className="h-5 w-5 text-cyan-300" />
+        <h3 className="text-sm font-black uppercase tracking-[0.18em] text-cyan-200">
+          Хариуцаж байгаа ажилчид
+        </h3>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {people.map((person, index) => (
+          <article
+            key={person.id || `${person.name}-${index}`}
+            className="rounded-xl border border-white/10 bg-black/20 p-4"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/10 text-white/60">
+                {person.avatarUrl ? (
+                  <img
+                    src={person.avatarUrl}
+                    alt={person.name || "Хариуцагч"}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <UserRound className="h-5 w-5" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-base font-black text-white">
+                  {person.name || "Нэр оруулаагүй"}
+                </p>
+                {person.role && (
+                  <p className="mt-1 text-sm font-bold text-orange-200">
+                    {person.role}
+                  </p>
+                )}
+              </div>
+            </div>
+            {person.responsibility && (
+              <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-6 text-orange-50/75">
+                {person.responsibility}
+              </p>
+            )}
+            {(person.phone || person.email) && (
+              <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-orange-50/75">
+                {person.phone && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1">
+                    <Phone className="h-3.5 w-3.5" />
+                    {person.phone}
+                  </span>
+                )}
+                {person.email && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1">
+                    <Mail className="h-3.5 w-3.5" />
+                    {person.email}
+                  </span>
+                )}
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function FranchiseDetailModal({
   project,
   onClose,
@@ -79,6 +184,7 @@ function FranchiseDetailModal({
   onClose: () => void;
 }) {
   const images = getProjectImages(project);
+  const contractHref = getContractHref(project);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -146,6 +252,18 @@ function FranchiseDetailModal({
             </div>
           )}
 
+          <ResponsiblePeopleSection project={project} />
+
+          {contractHref && (
+            <a
+              href={contractHref}
+              className="mb-6 inline-flex items-center gap-2 rounded-xl border border-cyan-200/30 bg-cyan-300 px-5 py-3 text-sm font-black text-[#071014] transition hover:brightness-110"
+            >
+              <FileText className="h-4 w-4" />
+              Гэрээ хийх
+            </a>
+          )}
+
           {project.pdfUrl ? (
             <div className="space-y-4">
               <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
@@ -184,8 +302,6 @@ export default function FranchisePage() {
   const [activeProject, setActiveProject] = useState<FranchiseProject | null>(
     null,
   );
-  const [previewProject, setPreviewProject] =
-    useState<FranchiseProject | null>(null);
   const [loadedProjects, setLoadedProjects] = useState<
     Record<string, FranchiseProject>
   >({});
@@ -199,7 +315,9 @@ export default function FranchisePage() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const res = await fetch(`${API}/site-settings/franchise`);
+        const res = await fetch(`${API}/site-settings/franchise`, {
+          cache: "no-store",
+        });
         if (!res.ok) return;
         const data = await res.json();
         const parsed = Array.isArray(data.projects) ? data.projects : [];
@@ -244,9 +362,22 @@ export default function FranchisePage() {
     setActiveProject(detail);
   };
 
-  const startFranchisePayment = async (project: FranchiseProject) => {
+  const openProject = async (project: FranchiseProject) => {
+    const cachedProject = loadedProjects[project.id];
+    if (cachedProject) {
+      setActiveProject(cachedProject);
+      return;
+    }
+
     try {
       setOpeningId(project.id);
+      if (!project.price || project.price <= 0) {
+        const detail = await fetchProjectDetail(project.id);
+        setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+        setActiveProject(detail);
+        return;
+      }
+
       if (!user) {
         router.push("/login");
         return;
@@ -264,13 +395,11 @@ export default function FranchisePage() {
       if (data.free) {
         const detail = await fetchProjectDetail(project.id);
         setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
-        setPreviewProject(null);
         setActiveProject(detail);
         return;
       }
 
       setPaymentProject(project);
-      setPreviewProject(null);
       setPaymentSession({
         invoiceId: data.invoiceId,
         providerInvoiceId: data.providerInvoiceId,
@@ -280,35 +409,6 @@ export default function FranchisePage() {
         urls: Array.isArray(data.urls) ? data.urls : [],
         expiresAt: data.expiresAt,
       });
-    } catch (error) {
-      console.error(error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Franchise мэдээлэл авахад алдаа гарлаа",
-      );
-    } finally {
-      setOpeningId(null);
-    }
-  };
-
-  const openProject = async (project: FranchiseProject) => {
-    const cachedProject = loadedProjects[project.id];
-    if (cachedProject) {
-      setActiveProject(cachedProject);
-      return;
-    }
-
-    try {
-      setOpeningId(project.id);
-      if (project.price && project.price > 0) {
-        setPreviewProject(project);
-        return;
-      }
-
-      const detail = await fetchProjectDetail(project.id);
-      setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
-      setActiveProject(detail);
     } catch (error) {
       console.error(error);
       alert(
@@ -342,11 +442,14 @@ export default function FranchisePage() {
               </span>
             </h1>
             <p className="mt-5 max-w-2xl text-sm leading-7 text-orange-50/70">
-              Франчайзын хураангуйг үзээд, дэлгэрэнгүй мэдээлэл болон PDF файлыг
-              Dynamic QR төлбөрөөр нээнэ.
+
             </p>
           </div>
-
+          <div className="w-fit rounded-xl border border-orange-200/20 bg-white/[0.04] px-5 py-4 text-sm font-black text-orange-100 shadow-[0_18px_45px_rgba(0,0,0,0.24)]">
+          Санал гомдол авах дугаар: <a href="tel:88008800" className="underline">
+            95606060
+          </a>
+</div>
           <div className="w-fit rounded-xl border border-orange-200/20 bg-white/[0.04] px-5 py-4 text-sm font-black text-orange-100 shadow-[0_18px_45px_rgba(0,0,0,0.24)]">
             {loading ? "Ачаалж байна" : `${projects.length} бэлэн байна`}
           </div>
@@ -374,6 +477,9 @@ export default function FranchisePage() {
                 const images = getProjectImages(project);
                 const primaryImage = images[0];
                 const isFree = !project.price || project.price <= 0;
+                const contractHref = getContractHref(project);
+                const primaryResponsiblePerson =
+                  getResponsiblePeople(project)[0];
                 return (
                   <article
                     key={project.id}
@@ -420,11 +526,49 @@ export default function FranchisePage() {
                           "Франчайз танилцуулга, зураг болон PDF мэдээллийг нэг дороос үзэх боломжтой."}
                       </p>
 
+                      {primaryResponsiblePerson && (
+                        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.05] p-3">
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/10 text-white/60">
+                              {primaryResponsiblePerson.avatarUrl ? (
+                                <img
+                                  src={primaryResponsiblePerson.avatarUrl}
+                                  alt={
+                                    primaryResponsiblePerson.name ||
+                                    "Хариуцагч"
+                                  }
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <UserRound className="h-5 w-5" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-cyan-200">
+                                <UserRound className="h-3.5 w-3.5" />
+                                Хариуцагч
+                              </div>
+                              <p className="mt-1 truncate text-sm font-black text-white">
+                                {primaryResponsiblePerson.name ||
+                                  "Нэр оруулаагүй"}
+                              </p>
+                            </div>
+                          </div>
+                          {(primaryResponsiblePerson.responsibility ||
+                            primaryResponsiblePerson.role) && (
+                            <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-orange-50/60">
+                              {primaryResponsiblePerson.responsibility ||
+                                primaryResponsiblePerson.role}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => openProject(project)}
                         disabled={openingId === project.id}
-                        className="mt-auto inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-300 px-5 text-sm font-black text-black transition hover:brightness-110 disabled:opacity-60"
+                        className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-300 px-5 text-sm font-black text-black transition hover:brightness-110 disabled:opacity-60"
                       >
                         {openingId === project.id ? (
                           <Loader2 className="h-5 w-5 animate-spin" />
@@ -437,6 +581,15 @@ export default function FranchisePage() {
                           </>
                         )}
                       </button>
+                      {contractHref && (
+                        <a
+                          href={contractHref}
+                          className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-cyan-200/30 bg-white/[0.06] px-5 text-sm font-black text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-200/10"
+                        >
+                          <FileText className="h-4 w-4" />
+                          Гэрээ хийх
+                        </a>
+                      )}
                     </div>
                   </article>
                 );
@@ -470,16 +623,6 @@ export default function FranchisePage() {
             setPaymentProject(null);
             setPaymentSession(null);
           }}
-        />
-      )}
-
-      {previewProject && (
-        <LockedProjectPreviewModal
-          project={previewProject}
-          kindLabel="Franchise"
-          opening={openingId === previewProject.id}
-          onClose={() => setPreviewProject(null)}
-          onUnlock={() => startFranchisePayment(previewProject)}
         />
       )}
 

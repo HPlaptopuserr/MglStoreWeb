@@ -1,9 +1,19 @@
 "use client";
 
-import { ArrowRight, ChevronLeft, ChevronRight, ImagePlus } from "lucide-react";
-import { useRef, useState } from "react";
+import {
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  ImagePlus,
+  UserRound,
+} from "lucide-react";
+import { useRef } from "react";
 import type { ProjectItem } from "./project-types";
-import { formatMnt, getResolvedProjectImages } from "./project-utils";
+import {
+  formatMnt,
+  getProjectImages,
+  getResponsiblePeople,
+} from "./project-utils";
 
 type FeaturedProjectsRailProps = {
   title: string;
@@ -73,9 +83,10 @@ export function FeaturedProjectsRail({
         className="-mx-1 flex snap-x gap-4 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]"
       >
         {projects.map((project, index) => {
-          const images = getResolvedProjectImages(project);
+          const images = getProjectImages(project);
           const primaryImage = images[0];
           const isFree = !project.price || project.price <= 0;
+          const primaryResponsiblePerson = getResponsiblePeople(project)[0];
 
           return (
             <article
@@ -84,7 +95,11 @@ export function FeaturedProjectsRail({
             >
               <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
                 {primaryImage ? (
-                  <RailProjectImage src={primaryImage} alt={project.title} />
+                  <img
+                    src={primaryImage}
+                    alt={project.title}
+                    className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-slate-400">
                     <ImagePlus className="h-10 w-10" />
@@ -120,6 +135,25 @@ export function FeaturedProjectsRail({
                     "Admin-аас сонгосон төслийн товч мэдээлэл."}
                 </p>
 
+                {primaryResponsiblePerson && (
+                  <div className="mt-3 inline-flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-slate-400">
+                      {primaryResponsiblePerson.avatarUrl ? (
+                        <img
+                          src={primaryResponsiblePerson.avatarUrl}
+                          alt={primaryResponsiblePerson.name || "Хариуцагч"}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <UserRound className="h-3.5 w-3.5 text-cyan-700" />
+                      )}
+                    </span>
+                    <span className="truncate">
+                      {primaryResponsiblePerson.name || "Нэр оруулаагүй"}
+                    </span>
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() => onOpen(project)}
@@ -139,26 +173,5 @@ export function FeaturedProjectsRail({
         })}
       </div>
     </section>
-  );
-}
-
-function RailProjectImage({ src, alt }: { src: string; alt: string }) {
-  const [failed, setFailed] = useState(false);
-
-  if (failed) {
-    return (
-      <div className="flex h-full w-full items-center justify-center text-slate-400">
-        <ImagePlus className="h-10 w-10" />
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt={alt}
-      onError={() => setFailed(true)}
-      className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-    />
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import {
   Check,
   CreditCard,
@@ -9,14 +9,18 @@ import {
   FileText,
   ImagePlus,
   Loader2,
+  Mail,
   Pencil,
+  Phone,
   Plus,
   Save,
   Trash2,
+  UserRound,
 } from "lucide-react";
 import type {
   ProjectItem,
   ProjectPaymentAccount,
+  ProjectResponsiblePerson,
   ProjectShowcaseSection,
 } from "@/lib/sections/types";
 import { API, adminFetch } from "@/lib/api";
@@ -124,6 +128,12 @@ type Props = {
   saved?: boolean;
 };
 
+type ContractTemplateOption = {
+  id: string;
+  title: string;
+  isPaid?: boolean;
+};
+
 function StudyEditorPanel({
   title,
   description,
@@ -179,7 +189,6 @@ const emptyProject = (
   imageUrl: "",
   imageUrls: [],
   pdfUrl: "",
-  pdfPreviewUrl: "",
   teacherInfo: "",
   duration: "",
   capacity: "",
@@ -198,7 +207,25 @@ const emptyProject = (
   featuredOrder: 0,
   paymentAccountId: "",
   paymentMerchantCode: "",
+  contractTemplateId: "",
+  responsiblePeople: [],
 });
+
+const emptyResponsiblePerson = (): ProjectResponsiblePerson => ({
+  id: generateId(),
+  name: "",
+  role: "",
+  responsibility: "",
+  phone: "",
+  email: "",
+  avatarUrl: "",
+});
+
+function getResponsiblePeople(project?: ProjectItem) {
+  return Array.isArray(project?.responsiblePeople)
+    ? project.responsiblePeople
+    : [];
+}
 
 function getProjectImages(project?: ProjectItem) {
   if (!project) return [];
@@ -432,6 +459,8 @@ export function ProjectsSection({
   const [uploadingTeacherImageKey, setUploadingTeacherImageKey] = useState<
     string | null
   >(null);
+  const [uploadingResponsibleImageKey, setUploadingResponsibleImageKey] =
+    useState<string | null>(null);
   const [uploadingPdfProjectId, setUploadingPdfProjectId] = useState<
     string | null
   >(null);
@@ -441,6 +470,11 @@ export function ProjectsSection({
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState("");
   const [pdfUploadError, setPdfUploadError] = useState("");
+  const [contractTemplates, setContractTemplates] = useState<
+    ContractTemplateOption[]
+  >([]);
+  const [contractTemplatesLoading, setContractTemplatesLoading] =
+    useState(false);
   const isFranchiseMode = mode === "franchise";
   const isStudyMode = mode === "study";
   const isProjectMode = mode === "project";
@@ -498,6 +532,39 @@ export function ProjectsSection({
             summaryPlaceholder:
               "Web дээр үнэгүй харагдах богино танилцуулга...",
           };
+
+  useEffect(() => {
+    if (!isFranchiseMode) return;
+
+    let cancelled = false;
+    setContractTemplatesLoading(true);
+
+    adminFetch(`${API}/contracts`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const templates = Array.isArray(data?.contracts)
+          ? data.contracts
+              .map((contract: any) => ({
+                id: String(contract?.id || "").trim(),
+                title: String(contract?.title || "").trim(),
+                isPaid: Boolean(contract?.isPaid),
+              }))
+              .filter((contract: ContractTemplateOption) => contract.id)
+          : [];
+        setContractTemplates(templates);
+      })
+      .catch(() => {
+        if (!cancelled) setContractTemplates([]);
+      })
+      .finally(() => {
+        if (!cancelled) setContractTemplatesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isFranchiseMode]);
 
   const addProject = () => {
     const project = emptyProject(mode);
@@ -575,6 +642,57 @@ export function ProjectsSection({
     setProjects((prev) =>
       prev.map((project) =>
         project.id === id ? { ...project, [field]: value } : project,
+      ),
+    );
+  };
+
+  const addResponsiblePerson = (id: string) => {
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === id
+          ? {
+              ...project,
+              responsiblePeople: [
+                ...getResponsiblePeople(project),
+                emptyResponsiblePerson(),
+              ],
+            }
+          : project,
+      ),
+    );
+  };
+
+  const updateResponsiblePerson = <K extends keyof ProjectResponsiblePerson>(
+    projectId: string,
+    personId: string,
+    field: K,
+    value: ProjectResponsiblePerson[K],
+  ) => {
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              responsiblePeople: getResponsiblePeople(project).map((person) =>
+                person.id === personId ? { ...person, [field]: value } : person,
+              ),
+            }
+          : project,
+      ),
+    );
+  };
+
+  const removeResponsiblePerson = (projectId: string, personId: string) => {
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              responsiblePeople: getResponsiblePeople(project).filter(
+                (person) => person.id !== personId,
+              ),
+            }
+          : project,
       ),
     );
   };
@@ -847,6 +965,56 @@ export function ProjectsSection({
     }
   };
 
+  const uploadResponsiblePersonImage = async (
+    projectId: string,
+    personId: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const uploadKey = `${projectId}-${personId}`;
+    setUploadingResponsibleImageKey(uploadKey);
+    setUploadError("");
+    try {
+      let imageUrl = "";
+      try {
+        const compressed = await compressImage(file, 720, 0.78);
+        const form = new FormData();
+        form.append("image", compressed, "responsible-person.jpg");
+        const res = await adminFetch(`${API}/site-settings/banner-upload`, {
+          method: "POST",
+          body: form,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            uploadErrorMessage(
+              data,
+              "Хариуцагчийн зураг upload хийхэд алдаа гарлаа",
+            ),
+          );
+        }
+        if (typeof data.url !== "string" || !data.url) {
+          throw new Error("Зургийн URL серверээс ирсэнгүй");
+        }
+        imageUrl = data.url;
+      } catch {
+        imageUrl = await blobToDataUrl(await compressImage(file, 720, 0.72));
+      }
+      updateResponsiblePerson(projectId, personId, "avatarUrl", imageUrl);
+    } catch (error) {
+      setUploadError(
+        error instanceof Error
+          ? error.message
+          : "Хариуцагчийн зураг upload хийхэд алдаа гарлаа",
+      );
+    } finally {
+      setUploadingResponsibleImageKey(null);
+    }
+  };
+
   const uploadProjectPdf = async (
     id: string,
     event: ChangeEvent<HTMLInputElement>,
@@ -881,11 +1049,6 @@ export function ProjectsSection({
         throw new Error("PDF URL серверээс ирсэнгүй");
       }
       updateProject(id, "pdfUrl", data.url);
-      updateProject(
-        id,
-        "pdfPreviewUrl",
-        typeof data.previewUrl === "string" ? data.previewUrl : "",
-      );
     } catch (error) {
       setPdfUploadError(
         error instanceof Error
@@ -1115,6 +1278,8 @@ export function ProjectsSection({
               studyTeacherRows.length > 0
                 ? studyTeacherRows
                 : [{ name: "", description: "", imageUrl: "" }];
+            const responsiblePeople = getResponsiblePeople(project);
+            const primaryResponsiblePerson = responsiblePeople[0];
 
             return (
               <article
@@ -1390,6 +1555,43 @@ export function ProjectsSection({
                           </p>
                         )}
                       </label>
+                      {isFranchiseMode && (
+                        <label className="space-y-1.5">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Franchise гэрээний template
+                          </span>
+                          <select
+                            value={project.contractTemplateId || ""}
+                            onChange={(e) =>
+                              updateProject(
+                                project.id,
+                                "contractTemplateId",
+                                e.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                          >
+                            <option value="">
+                              {contractTemplatesLoading
+                                ? "Гэрээнүүд ачаалж байна..."
+                                : "Гэрээ сонгоогүй"}
+                            </option>
+                            {contractTemplates.map((template) => (
+                              <option key={template.id} value={template.id}>
+                                {template.title || template.id}
+                                {template.isPaid ? " · төлбөртэй" : ""}
+                              </option>
+                            ))}
+                          </select>
+                          {contractTemplates.length === 0 &&
+                            !contractTemplatesLoading && (
+                              <p className="text-xs font-semibold text-amber-600">
+                                Эхлээд "Гэрээний мэдээлэл" хэсэгт contract
+                                template үүсгээд энд сонгоно.
+                              </p>
+                            )}
+                        </label>
+                      )}
                     </>
                     <div className="space-y-1.5 lg:col-span-2">
                       <div className="flex items-center justify-between gap-3">
@@ -1506,6 +1708,253 @@ export function ProjectsSection({
                         }
                       />
                     </label>
+                    {!isStudyMode && (
+                      <div className="space-y-3 lg:col-span-2">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Хариуцаж байгаа ажилчид
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">
+                              Web дээр тухайн төсөл/franchise дээр харагдах
+                              хариуцсан хүний нэр, үүрэг, холбоо барих мэдээлэл.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => addResponsiblePerson(project.id)}
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Ажилтан нэмэх
+                          </button>
+                        </div>
+
+                        {responsiblePeople.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-500">
+                            Хариуцсан ажилтан нэмээгүй байна.
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {responsiblePeople.map((person, personIndex) => (
+                              <div
+                                key={person.id || personIndex}
+                                className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                              >
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-400">
+                                      {person.avatarUrl ? (
+                                        <img
+                                          src={person.avatarUrl}
+                                          alt={person.name || "Хариуцагч"}
+                                          className="h-full w-full object-cover"
+                                        />
+                                      ) : (
+                                        <UserRound className="h-5 w-5" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-black text-slate-400">
+                                        Хариуцагч #{personIndex + 1}
+                                      </p>
+                                      <p className="truncate text-sm font-black text-slate-900">
+                                        {person.name || "Нэр оруулаагүй"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      removeResponsiblePerson(
+                                        project.id,
+                                        person.id,
+                                      )
+                                    }
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition hover:bg-red-100"
+                                    aria-label="Хариуцагч устгах"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+
+                                <div className="grid gap-3 lg:grid-cols-2">
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Нэр
+                                    </span>
+                                    <input
+                                      value={person.name || ""}
+                                      onChange={(e) =>
+                                        updateResponsiblePerson(
+                                          project.id,
+                                          person.id,
+                                          "name",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: Б. Бат-Эрдэнэ"
+                                    />
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Албан тушаал / role
+                                    </span>
+                                    <input
+                                      value={person.role || ""}
+                                      onChange={(e) =>
+                                        updateResponsiblePerson(
+                                          project.id,
+                                          person.id,
+                                          "role",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: Төслийн менежер"
+                                    />
+                                  </label>
+                                  <label className="space-y-1.5 lg:col-span-2">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Юу хариуцаж байгаа
+                                    </span>
+                                    <textarea
+                                      value={person.responsibility || ""}
+                                      onChange={(e) =>
+                                        updateResponsiblePerson(
+                                          project.id,
+                                          person.id,
+                                          "responsibility",
+                                          e.target.value,
+                                        )
+                                      }
+                                      rows={2}
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: Гэрээ, салбар нээлт, сургалт болон өдөр тутмын хэрэгжилт хариуцна."
+                                    />
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Утас
+                                    </span>
+                                    <input
+                                      value={person.phone || ""}
+                                      onChange={(e) =>
+                                        updateResponsiblePerson(
+                                          project.id,
+                                          person.id,
+                                          "phone",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: 99112233"
+                                    />
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Email
+                                    </span>
+                                    <input
+                                      type="email"
+                                      value={person.email || ""}
+                                      onChange={(e) =>
+                                        updateResponsiblePerson(
+                                          project.id,
+                                          person.id,
+                                          "email",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: name@mglstore.mn"
+                                    />
+                                  </label>
+                                  <div className="space-y-2 lg:col-span-2">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Зураг
+                                    </span>
+                                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3">
+                                      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
+                                        {person.avatarUrl ? (
+                                          <img
+                                            src={person.avatarUrl}
+                                            alt={person.name || "Хариуцагч"}
+                                            className="h-full w-full object-cover"
+                                          />
+                                        ) : (
+                                          <UserRound className="h-7 w-7" />
+                                        )}
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
+                                          {uploadingResponsibleImageKey ===
+                                          `${project.id}-${person.id}` ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                          ) : (
+                                            <ImagePlus className="h-4 w-4" />
+                                          )}
+                                          {uploadingResponsibleImageKey ===
+                                          `${project.id}-${person.id}`
+                                            ? "Upload хийж байна..."
+                                            : "Зураг сонгох"}
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            disabled={
+                                              uploadingResponsibleImageKey ===
+                                              `${project.id}-${person.id}`
+                                            }
+                                            onChange={(event) =>
+                                              uploadResponsiblePersonImage(
+                                                project.id,
+                                                person.id,
+                                                event,
+                                              )
+                                            }
+                                          />
+                                        </label>
+                                        <input
+                                          value={person.avatarUrl || ""}
+                                          onChange={(e) =>
+                                            updateResponsiblePerson(
+                                              project.id,
+                                              person.id,
+                                              "avatarUrl",
+                                              e.target.value,
+                                            )
+                                          }
+                                          className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                          placeholder="Upload хийсний дараа URL автоматаар орно"
+                                        />
+                                        {person.avatarUrl && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              updateResponsiblePerson(
+                                                project.id,
+                                                person.id,
+                                                "avatarUrl",
+                                                "",
+                                              )
+                                            }
+                                            className="mt-2 text-xs font-bold text-red-600 hover:text-red-700"
+                                          >
+                                            Зураг устгах
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {isStudyMode && (
                       <>
                         <div className="lg:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
@@ -2116,17 +2565,6 @@ export function ProjectsSection({
                                 PDF харах
                               </a>
                             )}
-                            {project.pdfPreviewUrl && (
-                              <a
-                                href={project.pdfPreviewUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 rounded-xl bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-700"
-                              >
-                                <FileText className="h-4 w-4" />
-                                Preview 4 хуудас
-                              </a>
-                            )}
                           </div>
                           {pdfUploadError && uploadingPdfProjectId === null && (
                             <p className="mt-2 text-xs font-semibold text-red-500">
@@ -2141,18 +2579,6 @@ export function ProjectsSection({
                           }
                           className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                           placeholder="PDF upload хийсний дараа URL энд автоматаар орно"
-                        />
-                        <input
-                          value={project.pdfPreviewUrl || ""}
-                          onChange={(e) =>
-                            updateProject(
-                              project.id,
-                              "pdfPreviewUrl",
-                              e.target.value,
-                            )
-                          }
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-                          placeholder="Үнэгүй харагдах 4 хуудасны preview PDF URL"
                         />
                       </div>
                     )}
@@ -2231,6 +2657,44 @@ export function ProjectsSection({
                               #{tag}
                             </span>
                           ))}
+                        </div>
+                      )}
+                      {!isStudyMode && primaryResponsiblePerson && (
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                          <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-slate-400">
+                            <UserRound className="h-3.5 w-3.5" />
+                            Хариуцагч
+                          </div>
+                          <p className="mt-2 truncate text-sm font-black text-slate-900">
+                            {primaryResponsiblePerson.name ||
+                              "Нэр оруулаагүй"}
+                          </p>
+                          {(primaryResponsiblePerson.responsibility ||
+                            primaryResponsiblePerson.role) && (
+                            <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
+                              {primaryResponsiblePerson.responsibility ||
+                                primaryResponsiblePerson.role}
+                            </p>
+                          )}
+                          <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-slate-500">
+                            {primaryResponsiblePerson.phone && (
+                              <span className="inline-flex items-center gap-1">
+                                <Phone className="h-3 w-3" />
+                                {primaryResponsiblePerson.phone}
+                              </span>
+                            )}
+                            {primaryResponsiblePerson.email && (
+                              <span className="inline-flex items-center gap-1">
+                                <Mail className="h-3 w-3" />
+                                {primaryResponsiblePerson.email}
+                              </span>
+                            )}
+                          </div>
+                          {responsiblePeople.length > 1 && (
+                            <p className="mt-2 text-[11px] font-black text-violet-600">
+                              +{responsiblePeople.length - 1} ажилтан
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>

@@ -1,7 +1,16 @@
-import { ArrowRight, ImagePlus, Loader2, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import {
+  ArrowRight,
+  ImagePlus,
+  Loader2,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 import type { ProjectItem } from "./project-types";
-import { formatMnt, getResolvedProjectImages } from "./project-utils";
+import {
+  formatMnt,
+  getProjectImages,
+  getResponsiblePeople,
+} from "./project-utils";
 
 type ProjectGridCardProps = {
   project: ProjectItem;
@@ -16,21 +25,21 @@ export function ProjectGridCard({
   openingId,
   onOpen,
 }: ProjectGridCardProps) {
-  const images = getResolvedProjectImages(project);
+  const images = getProjectImages(project);
   const primaryImage = images[0];
-  const [imageFailed, setImageFailed] = useState(false);
   const isFree = !project.price || project.price <= 0;
+  const responsiblePeople = getResponsiblePeople(project);
+  const primaryResponsiblePerson = responsiblePeople[0];
 
   return (
     <article className="group relative flex min-h-[430px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_14px_42px_rgba(15,23,42,0.08)] transition duration-300 hover:-translate-y-1 hover:border-orange-200 hover:shadow-[0_24px_70px_rgba(251,146,60,0.18)]">
       <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent" />
 
       <div className="relative m-3 mb-0 aspect-[16/10] overflow-hidden rounded-[18px] bg-slate-100">
-        {primaryImage && !imageFailed ? (
+        {primaryImage ? (
           <img
             src={primaryImage}
             alt={project.title}
-            onError={() => setImageFailed(true)}
             className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
           />
         ) : (
@@ -84,11 +93,45 @@ export function ProjectGridCard({
           </div>
         )}
 
+        {primaryResponsiblePerson && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-400">
+                {primaryResponsiblePerson.avatarUrl ? (
+                  <img
+                    src={primaryResponsiblePerson.avatarUrl}
+                    alt={primaryResponsiblePerson.name || "Хариуцагч"}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <UserRound className="h-5 w-5" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-cyan-700">
+                  <UserRound className="h-3.5 w-3.5" />
+                  Хариуцагч
+                </div>
+                <p className="mt-1 truncate text-sm font-black text-slate-950">
+                  {primaryResponsiblePerson.name || "Нэр оруулаагүй"}
+                </p>
+              </div>
+            </div>
+            {(primaryResponsiblePerson.responsibility ||
+              primaryResponsiblePerson.role) && (
+              <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
+                {primaryResponsiblePerson.responsibility ||
+                  primaryResponsiblePerson.role}
+              </p>
+            )}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => onOpen(project)}
           disabled={openingId === project.id}
-          className="mt-auto inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white shadow-lg shadow-slate-950/15 ring-1 ring-slate-900 transition hover:bg-orange-500 hover:shadow-orange-200 disabled:opacity-60"
+          className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white shadow-lg shadow-slate-950/15 ring-1 ring-slate-900 transition hover:bg-orange-500 hover:shadow-orange-200 disabled:opacity-60"
         >
           {openingId === project.id ? (
             <Loader2 className="h-5 w-5 animate-spin" />
