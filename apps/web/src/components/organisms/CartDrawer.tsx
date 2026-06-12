@@ -108,7 +108,19 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">{item.name}</p>
-                  <p className="text-sm font-black text-amber-600 mt-0.5">₮{(item.price).toLocaleString()}</p>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-black text-amber-600">₮{item.price.toLocaleString()}</p>
+                    {item.originalPrice && item.originalPrice > item.price && (
+                      <p className="text-xs font-semibold text-gray-400 line-through">
+                        ₮{item.originalPrice.toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                  {item.memberDiscountPercent ? (
+                    <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                      Member -{item.memberDiscountPercent}%
+                    </span>
+                  ) : null}
 
                   {/* Qty controls */}
                   <div className="flex items-center gap-2 mt-2">

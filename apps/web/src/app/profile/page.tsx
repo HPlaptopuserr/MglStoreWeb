@@ -8,12 +8,14 @@ import { useAuth, type AuthUser } from "@/lib/auth-context";
 import { AccountLibraryPanel } from "./_components/AccountLibraryPanel";
 import { OrdersPanel } from "./_components/OrdersPanel";
 import { MembershipActivationPanel } from "./_components/MembershipActivationPanel";
+import { MembershipUpgradeModal } from "./_components/MembershipUpgradeModal";
 import {
   ProfileContentGrid,
   ProfileDashboardShell,
   ProfileStatsGrid,
 } from "./_components/ProfileDashboardShell";
 import { ProfileHero } from "./_components/ProfileHero";
+import { OrganizationAffiliationCard } from "./_components/OrganizationAffiliationCard";
 import {
   createProfileFormState,
   type AccountContract,
@@ -52,11 +54,16 @@ export default function ProfilePage() {
   const [accountLoading, setAccountLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState("");
+  const [membershipOpen, setMembershipOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
     const allowedTabs: ProfileTab[] = ["library", "orders"];
+    if (window.location.hash === "#membership-activation") {
+      setMembershipOpen(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
     if (
       requestedTab &&
       ["profile", "address", "security"].includes(requestedTab)
@@ -157,13 +164,16 @@ export default function ProfilePage() {
   if (!user) return null;
 
   const membershipTierLabel = getMembershipTierLabel(user);
+  const hasOrganizationContext = Boolean(user.organizationId && user.orgRole);
 
   return (
     <ProfileDashboardShell>
       <ProfileHero
         membershipTierLabel={membershipTierLabel}
+        onUpgradeClick={() => setMembershipOpen(true)}
         user={{ ...user, avatarUrl: form.avatarUrl }}
       />
+      {hasOrganizationContext && <OrganizationAffiliationCard user={user} />}
       <ProfileStatsGrid
         isMember={Boolean(user.membership?.active || user.isPrime)}
         libraryCount={purchases.length + contracts.length}
@@ -195,13 +205,16 @@ export default function ProfilePage() {
         )}
       </ProfileContentGrid>
 
-      <div id="membership-activation">
+      <MembershipUpgradeModal
+        open={membershipOpen}
+        onClose={() => setMembershipOpen(false)}
+      >
         <MembershipActivationPanel
           user={user}
           form={form}
           request={authFetch}
         />
-      </div>
+      </MembershipUpgradeModal>
     </ProfileDashboardShell>
   );
 }

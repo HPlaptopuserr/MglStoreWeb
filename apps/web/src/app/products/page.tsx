@@ -4,6 +4,7 @@ import React, { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { API } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import type {
   MarketplaceProjectBanner,
   MarketplaceServicesPromo,
@@ -163,6 +164,7 @@ export default function ProductsPage() {
 }
 
 function ProductsContent() {
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const categoryParam = searchParams.get("category");
@@ -176,6 +178,7 @@ function ProductsContent() {
     ? (sortParam as SortKey)
     : "newest";
   const initialDiscountOnly = discountParam === "1" || discountParam === "true";
+  const isMember = Boolean(user?.membership?.active || user?.isPrime);
 
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([]);
@@ -637,6 +640,7 @@ function ProductsContent() {
           totalProducts={processedProducts.length}
           pageSize={PRODUCTS_PER_PAGE}
           hasActiveFilters={activeFilterCount > 0}
+          isMember={isMember}
           onClearFilters={clearFilters}
           onPageChange={goToPage}
         />

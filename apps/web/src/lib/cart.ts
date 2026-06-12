@@ -4,6 +4,8 @@ export interface CartItem {
   id: string;
   name: string;
   price: number;
+  originalPrice?: number | null;
+  memberDiscountPercent?: number | null;
   image?: string;
   quantity: number;
 }

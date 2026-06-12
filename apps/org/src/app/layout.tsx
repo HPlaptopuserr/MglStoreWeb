@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { MglAppBootLoader } from "@mgl/ui";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -21,6 +22,7 @@ export default function RootLayout({
         className="font-sans bg-gray-50 text-gray-900"
         suppressHydrationWarning
       >
+        <MglAppBootLoader label="Байгууллагын portal ачааллаж байна" />
         <main className="min-h-screen">{children}</main>
       </body>
     </html>

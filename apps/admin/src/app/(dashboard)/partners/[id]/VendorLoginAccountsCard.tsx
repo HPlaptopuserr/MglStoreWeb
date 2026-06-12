@@ -3,8 +3,6 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
-  AlertCircle,
-  Building2,
   Check,
   Copy,
   Crown,
@@ -23,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
+import { VendorLoginContextOverview } from "./VendorLoginContextOverview";
 
 type VendorLoginMember = {
   id: string;
@@ -35,6 +34,9 @@ type VendorLoginMember = {
   fullName?: string | null;
   isActive?: boolean;
   hasPassword?: boolean;
+  canLogin?: boolean;
+  loginIdentifier?: string | null;
+  accountContext?: string | null;
   lastLoginAt?: string | null;
 };
 
@@ -136,7 +138,6 @@ function MemberStatusPill({ member }: { member: VendorLoginMember }) {
 
 export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
   const members = partner.members ?? [];
-  const reportedUsers = partner.stats?.users ?? members.length;
   const primaryOwner = useMemo(
     () => members.find((member) => member.isPrimary || member.role === "OWNER") ?? members[0],
     [members],
@@ -463,98 +464,7 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
       </div>
 
       <div className="space-y-4 p-5">
-        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 shadow-sm">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-600">
-                Нэвтрэх боломжтой user-үүд
-              </p>
-              <h4 className="mt-1 text-base font-black text-slate-950">
-                {members.length > 0
-                  ? `${members.length} login user бүртгэлтэй`
-                  : "Login user хараахан үүсээгүй"}
-              </h4>
-              <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
-                Доорх login email эсвэл login утсаар vendor portal руу нэвтэрнэ.
-              </p>
-            </div>
-            <div className="rounded-2xl bg-white px-4 py-2 text-right shadow-sm ring-1 ring-indigo-100">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-                Нийт эрх
-              </p>
-              <p className="text-2xl font-black text-indigo-700">{members.length}</p>
-            </div>
-          </div>
-
-          {members.length > 0 ? (
-            <div className="grid gap-3 xl:grid-cols-2">
-              {members.map((member) => (
-                <div
-                  key={`summary:${member.id}`}
-                  className="rounded-2xl border border-white bg-white p-3 shadow-sm"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white shadow-sm">
-                      {getInitials(member)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-black text-slate-950">
-                          {member.fullName || "Нэргүй хэрэглэгч"}
-                        </p>
-                        {member.isPrimary && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-amber-800">
-                            <Crown size={11} />
-                            Owner
-                          </span>
-                        )}
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600">
-                          {roleLabel[member.role] ?? member.role}
-                        </span>
-                      </div>
-                      <div className="mt-2 grid gap-2 md:grid-cols-2">
-                        <div className="rounded-xl bg-slate-50 px-3 py-2">
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-                            Login email
-                          </p>
-                          <p className="mt-0.5 break-all text-sm font-black text-slate-900">
-                            {member.email || <span className="text-rose-600">Email алга</span>}
-                          </p>
-                        </div>
-                        <div className="rounded-xl bg-slate-50 px-3 py-2">
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-                            Login утас
-                          </p>
-                          <p className="mt-0.5 break-all text-sm font-black text-slate-900">
-                            {member.phone || <span className="text-slate-400">Утас алга</span>}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <MemberStatusPill member={member} />
-                        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 ring-1 ring-slate-200">
-                          {member.hasPassword ? "Password OK" : "Invite хэрэгтэй"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-indigo-200 bg-white p-5 text-center">
-              <UserRound className="mx-auto mb-2 h-9 w-9 text-indigo-200" />
-              <p className="text-sm font-black text-slate-950">
-                Энэ байгууллагад vendor login user одоогоор харагдахгүй байна.
-              </p>
-              <p className="mx-auto mt-1 max-w-2xl text-xs font-semibold leading-5 text-slate-500">
-                Баруун дээд талын “Login эрх олгох” товчоор owner/admin user үүсгэнэ.
-                {reportedUsers > 0 &&
-                  " Stats дээр хэрэглэгч байгаа боловч login members API-аас ирээгүй байна. Серверээ refresh/restart хийсний дараа дахин шалгана уу."}
-              </p>
-            </div>
-          )}
-        </div>
+        <VendorLoginContextOverview members={members} partner={partner} />
 
         {grantOpen && (
           <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
@@ -672,39 +582,6 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
             </div>
           </div>
         )}
-
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-black text-slate-900">
-              <Building2 size={16} className="text-slate-500" />
-              Байгууллагын мэдээлэл
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <FieldLine icon={<Mail size={12} />} label="Контакт и-мэйл" value={partner.email} />
-              <FieldLine icon={<Phone size={12} />} label="Контакт утас" value={partner.phone} />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-black text-emerald-950">
-              <UserRound size={16} className="text-emerald-600" />
-              Нэвтрэх хэрэглэгч
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <FieldLine icon={<Mail size={12} />} label="Login и-мэйл" value={primaryOwner?.email} />
-              <FieldLine icon={<Phone size={12} />} label="Login утас" value={primaryOwner?.phone} muted="Owner login утас алга" />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900">
-          <div className="flex gap-2">
-            <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-600" />
-            <p>
-              Vendor login дээр “хэрэглэгч олдсонгүй” гэж гарвал энэ card дээрх login email/phone-г ашиглаж байгаа эсэхийг шалгана.
-            </p>
-          </div>
-        </div>
 
         {phoneNotice && (
           <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold leading-6 text-indigo-800">

@@ -4,6 +4,8 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { API } from "@/lib/api";
 import { addToCart } from "@/lib/cart";
+import { useAuth } from "@/lib/auth-context";
+import { resolveMemberPricing } from "@/lib/member-pricing";
 import { ProductDetailShell, type ProductDetailProduct } from "./_components/ProductDetailShell";
 
 function useCountdown(target?: string | null) {
@@ -35,6 +37,7 @@ function useCountdown(target?: string | null) {
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { user } = useAuth();
   const [product, setProduct] = useState<ProductDetailProduct | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImg, setActiveImg] = useState(0);
@@ -91,13 +94,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   }, [product]);
 
   const discount = product?.discounts?.[0];
-  const discountedPrice = product
-    ? discount
-      ? Math.round(product.price * (1 - discount.percent / 100))
-      : product.price
-    : 0;
-  const originalPrice = product && discount ? product.price : null;
-  const savings = originalPrice ? originalPrice - discountedPrice : 0;
+  const isMember = Boolean(user?.membership?.active || user?.isPrime);
+  const pricing = product
+    ? resolveMemberPricing(product.price, product.discounts, isMember)
+    : resolveMemberPricing(0, [], false);
+  const discountedPrice = pricing.price;
+  const originalPrice = pricing.originalPrice;
+  const savings = pricing.savings;
   const countdown = useCountdown(discount?.validUntil);
   const images = product?.images ?? [];
   const isPreorder = product?.supplyType === "CHINA_PREORDER";
@@ -169,12 +172,15 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       isOutOfStock={Boolean(isOutOfStock)}
       vendorProducts={vendorProducts}
       relatedProducts={relatedProducts}
+      isMember={isMember}
       onAddToCart={() => {
         if (isOutOfStock) return;
         addToCart({
           id: product.id,
           name: product.name,
           price: discountedPrice,
+          originalPrice,
+          memberDiscountPercent: pricing.active ? pricing.percent : null,
           image: images[0]?.url,
           quantity: 1,
         });

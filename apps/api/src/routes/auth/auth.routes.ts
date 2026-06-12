@@ -68,7 +68,13 @@ function toMembershipPayload(user: any) {
   };
 }
 
-function toWebUserPayload(user: any, orgInfo?: { orgRole?: string | null; organizationId?: string | null } | null) {
+type AuthOrgContext = {
+  organizationId: string;
+  orgRole: string;
+  organizationName?: string | null;
+};
+
+function toWebUserPayload(user: any, orgInfo?: Partial<AuthOrgContext> | null) {
   const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
   const addresses = Array.isArray(user.addresses)
     ? user.addresses.map((item: any) => ({
@@ -101,6 +107,7 @@ function toWebUserPayload(user: any, orgInfo?: { orgRole?: string | null; organi
     phone: user.profile?.phoneNumber || null,
     avatarUrl: user.profile?.avatarUrl || null,
     organizationId: orgInfo?.organizationId || null,
+    organizationName: orgInfo?.organizationName || null,
     termsAcceptedAt: user.termsAcceptedAt || null,
     marketingConsent: Boolean(user.marketingConsent),
     addresses,
@@ -302,7 +309,7 @@ async function findVendorUserByIdentifier(identifier: string, isPhone: boolean) 
     });
 
     for (const user of users) {
-      const orgInfo = await resolveOrganization(user.id);
+      const orgInfo = await resolveLoginOrganization(user.id);
       if (orgInfo) return user;
     }
 
@@ -312,7 +319,7 @@ async function findVendorUserByIdentifier(identifier: string, isPhone: boolean) 
   const user = await findWebUserByIdentifier(identifier, isPhone);
   if (!user) return null;
 
-  const orgInfo = await resolveOrganization(user.id);
+  const orgInfo = await resolveLoginOrganization(user.id);
   return orgInfo ? user : null;
 }
 
@@ -388,7 +395,7 @@ async function getVerifyMnSessionStatus(sessionId: string): Promise<VerifyMnStat
   return data as VerifyMnStatusResponse;
 }
 
-function createWebAccessToken(user: any, orgInfo?: Awaited<ReturnType<typeof resolveOrganization>>) {
+function createWebAccessToken(user: any, orgInfo?: Partial<AuthOrgContext> | null) {
   return jwt.sign(
     {
       userId: user.id,
@@ -425,7 +432,49 @@ async function resolveVendorLoginMembership(userId: string) {
   });
 }
 
-function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Awaited<ReturnType<typeof resolveOrganization>>) {
+async function resolveLoginOrganization(userId: string): Promise<AuthOrgContext | null> {
+  const membership = await resolveVendorLoginMembership(userId);
+  return membership
+    ? {
+        organizationId: membership.organizationId,
+        orgRole: membership.role,
+        organizationName: membership.organization?.name || null,
+      }
+    : null;
+}
+
+async function resolveTokenOrganization(
+  userId: string,
+  tokenOrganizationId?: string | null,
+): Promise<AuthOrgContext | null> {
+  if (tokenOrganizationId) {
+    const membership = await prisma.organizationMember.findFirst({
+      where: {
+        userId,
+        organizationId: tokenOrganizationId,
+        isActive: true,
+        deletedAt: null,
+      },
+      select: {
+        organizationId: true,
+        role: true,
+        organization: { select: { name: true } },
+      },
+    });
+
+    if (membership) {
+      return {
+        organizationId: membership.organizationId,
+        orgRole: membership.role,
+        organizationName: membership.organization?.name || null,
+      };
+    }
+  }
+
+  return resolveLoginOrganization(userId);
+}
+
+function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Partial<AuthOrgContext> | null) {
   const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
   const membership = toMembershipPayload(user);
 
@@ -441,6 +490,7 @@ function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Awaited<Ret
       fullName: user.profile?.fullName || "",
       phone: user.profile?.phoneNumber || null,
       organizationId: orgInfo?.organizationId || null,
+      organizationName: orgInfo?.organizationName || null,
     },
   };
 }
@@ -448,7 +498,7 @@ function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Awaited<Ret
 // ── GET /auth/me — Return current user profile from token ──────────────
 router.get("/me", requireAuth, async (req, res) => {
   try {
-    const { userId } = (req as any).user as AuthPayload;
+    const { userId, organizationId } = (req as any).user as AuthPayload;
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -464,7 +514,7 @@ router.get("/me", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
     }
 
-    const orgInfo = await resolveOrganization(user.id);
+    const orgInfo = await resolveTokenOrganization(user.id, organizationId);
     return res.json(toWebUserPayload(user, orgInfo));
   } catch (error) {
     console.error("[auth/me error]", error);
@@ -947,7 +997,7 @@ router.post("/login", async (req, res) => {
 router.post("/vendor/login", async (req, res) => {
   try {
     const { email, phone, password } = req.body;
-    const identifier: string | undefined = email || phone;
+    const { identifier, isPhone } = normalizeWebIdentifier(email, phone);
 
     if (!identifier || !password) {
       return res.status(400).json({
@@ -955,25 +1005,7 @@ router.post("/vendor/login", async (req, res) => {
       });
     }
 
-    const normalizedIdentifier = identifier.trim();
-    const normalizedPhone = normalizedIdentifier.replace(/\D/g, "");
-    const isPhone = /^[0-9+\-\s()]{7,15}$/.test(normalizedIdentifier) && !normalizedIdentifier.includes("@");
-    const user = isPhone
-      ? await prisma.user.findFirst({
-          where: {
-            OR: [
-              { profile: { phoneNumber: normalizedIdentifier } },
-              ...(normalizedPhone && normalizedPhone !== normalizedIdentifier
-                ? [{ profile: { phoneNumber: normalizedPhone } }]
-                : []),
-            ],
-          },
-          include: { profile: true },
-        })
-      : await prisma.user.findUnique({
-          where: { email: normalizedIdentifier.toLowerCase() },
-          include: { profile: true },
-        });
+    const user = await findVendorUserByIdentifier(identifier, isPhone);
 
     if (!user) {
       return res.status(401).json({ message: "Хэрэглэгч олдсонгүй" });
@@ -994,14 +1026,13 @@ router.post("/vendor/login", async (req, res) => {
       return res.status(401).json({ message: "Нууц үг буруу байна" });
     }
 
-    const membership = await resolveVendorLoginMembership(user.id);
-    if (!membership?.organizationId) {
+    const orgInfo = await resolveLoginOrganization(user.id);
+    if (!orgInfo?.organizationId) {
       return res.status(403).json({
         message:
           "Энэ login хэрэглэгч байгууллагын Vendor login account-д холбогдоогүй байна. Admin дээр Partner detail → Vendor login account хэсгээс owner/ажилтнаар нэмнэ үү.",
       });
     }
-    const orgInfo = { organizationId: membership.organizationId, orgRole: membership.role };
 
     await prisma.user.update({
       where: { id: user.id },
@@ -1020,7 +1051,7 @@ router.post("/vendor/login", async (req, res) => {
         fullName: user.profile?.fullName || "",
         phone: user.profile?.phoneNumber || null,
         organizationId: orgInfo.organizationId,
-        organizationName: membership.organization?.name || "",
+        organizationName: orgInfo.organizationName || "",
       },
     });
   } catch (error) {

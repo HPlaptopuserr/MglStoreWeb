@@ -702,14 +702,27 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
       productMap.set(item.productId, prev);
     }
 
-    const branchMap = new Map<string, { branchId: string; orders: number; revenue: number }>();
+    const branchMap = new Map<string, { branchId: string; orders: number; onlineOrders: number; posSales: number; revenue: number }>();
     for (const item of onlineBranches) {
       if (!item.branchId) continue;
-      branchMap.set(item.branchId, { branchId: item.branchId, orders: item._count.id, revenue: Number(item._sum.total ?? 0) });
+      branchMap.set(item.branchId, {
+        branchId: item.branchId,
+        orders: item._count.id,
+        onlineOrders: item._count.id,
+        posSales: 0,
+        revenue: Number(item._sum.total ?? 0),
+      });
     }
     for (const item of posBranches) {
-      const prev = branchMap.get(item.branchId) ?? { branchId: item.branchId, orders: 0, revenue: 0 };
+      const prev = branchMap.get(item.branchId) ?? {
+        branchId: item.branchId,
+        orders: 0,
+        onlineOrders: 0,
+        posSales: 0,
+        revenue: 0,
+      };
       prev.orders += item._count.id;
+      prev.posSales += item._count.id;
       prev.revenue += Number(item._sum.grandTotal ?? 0);
       branchMap.set(item.branchId, prev);
     }
@@ -732,6 +745,18 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
     const qpayAdoptionRate = rate(qpayEnabledOrganizations, activeOrganizations);
     const subdomainAdoptionRate = rate(subdomainEnabledOrganizations, activeOrganizations);
     const serviceConversionRate = rate(serviceRequests, servicePostViews._sum.viewCount ?? 0);
+    const unitsSold = (onlineUnits._sum.quantity ?? 0) + (posUnits._sum.qty ?? 0);
+    const avgTicket = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+    const previousMetricValues = new Map<string, number | null>([
+      ["active-users", allTime ? null : previousActiveUsers],
+      ["new-users", allTime ? null : previousNewUsers],
+      ["login-sessions", allTime ? null : previousLoginSessions],
+      ["new-organizations", allTime ? null : previousNewOrganizations],
+      ["total-revenue", allTime ? null : previousRevenue],
+      ["online-revenue", allTime ? null : Number(previousOnlineRevenue._sum.total ?? 0)],
+      ["pos-revenue", allTime ? null : Number(previousPosRevenue._sum.grandTotal ?? 0)],
+      ["service-requests", allTime ? null : previousServiceRequests],
+    ]);
 
     const topProducts = Array.from(productMap.values())
       .map((item) => {
@@ -759,12 +784,13 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
           address: meta?.address ?? "",
           organizationName: meta?.organization.name ?? "",
           avgTicket: item.orders > 0 ? Math.round(item.revenue / item.orders) : 0,
+          sharePercent: totalRevenue > 0 ? Math.round((item.revenue / totalRevenue) * 100) : 0,
         };
       })
       .sort((a, b) => b.revenue - a.revenue || b.orders - a.orders)
       .slice(0, 10);
 
-    const marketingMetrics = [
+    const rawMarketingMetrics = [
       {
         id: "active-users",
         label: "Идэвхтэй хэрэглэгч",
@@ -790,7 +816,7 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
         unit: "session",
         trend: windowTrend(loginSessions, previousLoginSessions),
         category: "Audience",
-        description: "Давтан хэрэглээ болон engagement-ийн proxy.",
+        description: "Системд үүссэн бодит нэвтрэлтийн session.",
       },
       {
         id: "new-organizations",
@@ -835,7 +861,7 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
         unit: "request",
         trend: 0,
         category: "Conversion",
-        description: "Campaign lead follow-up хийх шаардлагатай backlog.",
+        description: "Шийдвэрлэх шаардлагатай бүртгэлийн хүсэлтийн үлдэгдэл.",
       },
       {
         id: "total-revenue",
@@ -871,7 +897,7 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
         unit: "MNT",
         trend: 0,
         category: "Revenue",
-        description: "Campaign basket uplift хэмжих суурь үзүүлэлт.",
+        description: "Нэг борлуулалт тутмын дундаж төлбөр.",
       },
       {
         id: "paid-order-rate",
@@ -889,16 +915,16 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
         unit: "%",
         trend: 0,
         category: "Conversion",
-        description: "Checkout friction болон fulfillment risk-ийн дохио.",
+        description: "Online захиалгаас цуцлагдсан хувь.",
       },
       {
         id: "units-sold",
         label: "Зарагдсан нэгж",
-        value: (onlineUnits._sum.quantity ?? 0) + (posUnits._sum.qty ?? 0),
+        value: unitsSold,
         unit: "unit",
         trend: 0,
         category: "Product",
-        description: "Product demand болон campaign lift хэмжих нэгж.",
+        description: "Online болон POS сувгаар зарагдсан барааны тоо.",
       },
       {
         id: "new-products",
@@ -907,7 +933,7 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
         unit: "sku",
         trend: 0,
         category: "Product",
-        description: "Marketplace assortment growth.",
+        description: "Сонгосон хугацаанд нэмэгдсэн бараа.",
       },
       {
         id: "active-products",
@@ -988,7 +1014,7 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
         unit: "request",
         trend: 0,
         category: "Operations",
-        description: "Demand planning болон replenishment дохио.",
+        description: "Агуулахын нөхөн дүүргэлттэй холбоотой бодит хүсэлт.",
       },
       {
         id: "card-terminal-requests",
@@ -1000,6 +1026,10 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
         description: "Offline payment enablement-ийн сонирхол.",
       },
     ];
+    const marketingMetrics = rawMarketingMetrics.map((item) => ({
+      ...item,
+      previousValue: previousMetricValues.get(item.id) ?? null,
+    }));
 
     return res.json({
       generatedAt: new Date().toISOString(),
@@ -1013,8 +1043,8 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
         revenueTrend: windowTrend(totalRevenue, previousRevenue),
         totalOrders,
         ordersTrend: windowTrend(totalOrders, previousOrders),
-        unitsSold: (onlineUnits._sum.quantity ?? 0) + (posUnits._sum.qty ?? 0),
-        avgTicket: totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0,
+        unitsSold,
+        avgTicket,
       },
       topProducts,
       topBranches,

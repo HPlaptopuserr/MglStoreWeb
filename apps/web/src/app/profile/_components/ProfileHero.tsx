@@ -8,9 +8,14 @@ import { resolveApiAssetUrl } from "@/lib/api";
 type ProfileHeroProps = {
   user: AuthUser;
   membershipTierLabel: string;
+  onUpgradeClick: () => void;
 };
 
-export function ProfileHero({ membershipTierLabel, user }: ProfileHeroProps) {
+export function ProfileHero({
+  membershipTierLabel,
+  onUpgradeClick,
+  user,
+}: ProfileHeroProps) {
   const initials =
     user.fullName?.trim()?.[0]?.toUpperCase() ||
     user.email?.[0]?.toUpperCase() ||
@@ -62,13 +67,14 @@ export function ProfileHero({ membershipTierLabel, user }: ProfileHeroProps) {
               )}
             </div>
             <div className="mt-5">
-              <a
-                href="#membership-activation"
+              <button
+                type="button"
+                onClick={onUpgradeClick}
                 className="inline-flex min-h-11 items-center gap-3 rounded-full bg-white px-7 text-sm font-black text-slate-900 shadow-lg shadow-black/20 transition hover:bg-orange-500 hover:text-white"
               >
                 <Upload size={17} />
-                Upgrade Membership
-              </a>
+                Гишүүнчлэл upgrade
+              </button>
             </div>
           </div>
         </div>

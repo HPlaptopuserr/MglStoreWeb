@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { API } from "@/lib/api";
 import { addToCart } from "@/lib/cart";
+import { useAuth } from "@/lib/auth-context";
+import { resolveMemberPricing } from "@/lib/member-pricing";
 
 interface ProductImage {
   id: string;
@@ -100,6 +102,7 @@ function useCountdown(target?: string | null) {
 }
 
 export function ProductDetailOverlay({ productId, onClose }: Props) {
+  const { user } = useAuth();
   const [product, setProduct] = useState<FullProduct | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImg, setActiveImg] = useState(0);
@@ -109,13 +112,13 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
   const [imgZoom, setImgZoom] = useState(false);
 
   const discount = product?.discounts?.[0];
-  const discountedPrice = product
-    ? discount
-      ? Math.round(product.price * (1 - discount.percent / 100))
-      : product.price
-    : 0;
-  const originalPrice = product && discount ? product.price : null;
-  const savings = originalPrice ? originalPrice - discountedPrice : 0;
+  const isMember = Boolean(user?.membership?.active || user?.isPrime);
+  const pricing = product
+    ? resolveMemberPricing(product.price, product.discounts, isMember)
+    : resolveMemberPricing(0, [], false);
+  const discountedPrice = pricing.price;
+  const originalPrice = pricing.originalPrice;
+  const savings = pricing.savings;
   const countdown = useCountdown(discount?.validUntil);
 
   useEffect(() => {
@@ -146,12 +149,14 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
       id: product.id,
       name: product.name,
       price: discountedPrice,
+      originalPrice,
+      memberDiscountPercent: pricing.active ? pricing.percent : null,
       image: images[0]?.url,
       quantity,
     });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2000);
-  }, [product, isOutOfStock, discountedPrice, images, quantity]);
+  }, [product, isOutOfStock, discountedPrice, originalPrice, pricing.active, pricing.percent, images, quantity]);
 
   const handleShare = useCallback(async () => {
     if (!product) return;
@@ -350,7 +355,9 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                   {/* Countdown */}
                   {discount?.validUntil && (
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-orange-100/80">
-                      <span className="text-[11px] text-gray-500 font-medium shrink-0">Хямдрал дуусахад:</span>
+                      <span className="text-[11px] text-gray-500 font-medium shrink-0">
+                        {isMember ? "Member хөнгөлөлт дуусахад:" : `Member бол -${discount.percent}%:`}
+                      </span>
                       <div className="flex gap-1">
                         {([
                           { val: countdown.d, label: "Ө" },

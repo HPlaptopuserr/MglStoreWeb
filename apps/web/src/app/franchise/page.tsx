@@ -20,6 +20,7 @@ import {
   PaidAccessPaymentModal,
   type PaidAccessPaymentSession,
 } from "@/components/molecules/payments/PaidAccessPaymentModal";
+import { LockedProjectPreviewModal } from "@/components/molecules/projects/ProjectPdfPreview";
 
 type FranchiseProject = {
   id: string;
@@ -31,6 +32,7 @@ type FranchiseProject = {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
+  pdfPreviewUrl?: string;
   contractTemplateId?: string;
   contractUrl?: string;
   responsiblePeople?: ProjectResponsiblePerson[];
@@ -306,6 +308,8 @@ export default function FranchisePage() {
     Record<string, FranchiseProject>
   >({});
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [previewProject, setPreviewProject] =
+    useState<FranchiseProject | null>(null);
   const [paymentProject, setPaymentProject] = useState<FranchiseProject | null>(
     null,
   );
@@ -357,6 +361,7 @@ export default function FranchisePage() {
   ) => {
     const detail = await fetchProjectDetail(project.id, invoiceId);
     setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+    setPreviewProject(null);
     setPaymentProject(null);
     setPaymentSession(null);
     setActiveProject(detail);
@@ -369,15 +374,31 @@ export default function FranchisePage() {
       return;
     }
 
+    if (project.price && project.price > 0) {
+      setPreviewProject(project);
+      return;
+    }
+
     try {
       setOpeningId(project.id);
-      if (!project.price || project.price <= 0) {
-        const detail = await fetchProjectDetail(project.id);
-        setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
-        setActiveProject(detail);
-        return;
-      }
+      const detail = await fetchProjectDetail(project.id);
+      setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+      setActiveProject(detail);
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Franchise мэдээлэл авахад алдаа гарлаа",
+      );
+    } finally {
+      setOpeningId(null);
+    }
+  };
 
+  const unlockProject = async (project: FranchiseProject) => {
+    try {
+      setOpeningId(project.id);
       if (!user) {
         router.push("/login");
         return;
@@ -395,10 +416,12 @@ export default function FranchisePage() {
       if (data.free) {
         const detail = await fetchProjectDetail(project.id);
         setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+        setPreviewProject(null);
         setActiveProject(detail);
         return;
       }
 
+      setPreviewProject(null);
       setPaymentProject(project);
       setPaymentSession({
         invoiceId: data.invoiceId,
@@ -414,7 +437,7 @@ export default function FranchisePage() {
       alert(
         error instanceof Error
           ? error.message
-          : "Franchise мэдээлэл авахад алдаа гарлаа",
+          : "Төлбөрийн QR үүсгэхэд алдаа гарлаа",
       );
     } finally {
       setOpeningId(null);
@@ -576,7 +599,7 @@ export default function FranchisePage() {
                           <>
                             {isFree
                               ? "Дэлгэрэнгүй үзэх"
-                              : "Төлөөд дэлгэрэнгүй үзэх"}
+                              : "3 хуудас preview үзэх"}
                             <ArrowRight className="h-4 w-4" />
                           </>
                         )}
@@ -610,6 +633,16 @@ export default function FranchisePage() {
           </section>
         )}
       </main>
+
+      {previewProject && (
+        <LockedProjectPreviewModal
+          kindLabel="Franchise"
+          project={previewProject}
+          opening={openingId === previewProject.id}
+          onClose={() => setPreviewProject(null)}
+          onUnlock={() => unlockProject(previewProject)}
+        />
+      )}
 
       {paymentProject && paymentSession && (
         <PaidAccessPaymentModal

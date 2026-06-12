@@ -164,7 +164,7 @@ export function FeaturedProjectsRail({
                     ? "Нээж байна..."
                     : isFree
                       ? "Дэлгэрэнгүй"
-                      : "Төлөөд үзэх"}
+                      : "3 хуудас preview"}
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </div>

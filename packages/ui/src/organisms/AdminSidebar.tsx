@@ -143,6 +143,7 @@ export function AdminSidebar({
   const navGroups: NavGroup[] = navItems
     ? [{ id: "custom", title: "Цэс", items: navItems }]
     : defaultNavGroups;
+  const ToggleIcon = isCollapsed ? ChevronRight : ChevronLeft;
 
   return (
     <>
@@ -166,32 +167,38 @@ export function AdminSidebar({
           md:block
         `}
       >
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute -right-3 top-1/2 z-50 flex -translate-y-1/2 rounded-full border border-slate-200 bg-white p-1 text-slate-500 shadow-sm transition-all hover:scale-105 hover:text-[#5B4CFF]"
-          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="h-6 w-6" />
-          ) : (
-            <ChevronLeft className="h-6 w-6" />
-          )}
-        </button>
-
         <div
-          className={`mb-6 flex items-center ${
-            isCollapsed ? "justify-center" : "gap-3 px-2"
+          className={`mb-5 flex items-center ${
+            isCollapsed ? "flex-col justify-center gap-2" : "justify-between gap-3 px-1"
           }`}
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#5B4CFF] text-white shrink-0">
-            <ShieldCheck className="h-5 w-5" />
+          <div
+            className={`flex min-w-0 items-center ${
+              isCollapsed ? "justify-center" : "gap-3"
+            }`}
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#5B4CFF] text-white shadow-sm shadow-[#5B4CFF]/20">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+
+            {!isCollapsed && (
+              <span className="truncate text-lg font-bold text-slate-800">
+                Marrow
+              </span>
+            )}
           </div>
 
-          {!isCollapsed && (
-            <span className="truncate text-lg font-bold text-slate-800">
-              Marrow
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-[#5B4CFF]/30 hover:bg-[#5B4CFF]/10 hover:text-[#5B4CFF] ${
+              isCollapsed ? "mx-auto" : ""
+            }`}
+            aria-label={isCollapsed ? "Sidebar нээх" : "Sidebar хураах"}
+            title={isCollapsed ? "Sidebar нээх" : "Sidebar хураах"}
+          >
+            <ToggleIcon className="h-4.5 w-4.5" />
+          </button>
         </div>
 
         <nav className="flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">

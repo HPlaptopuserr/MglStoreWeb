@@ -5,6 +5,7 @@ import type React from "react";
 import { Check, ChevronRight, Heart, PackageCheck, Share2, ShieldCheck, ShoppingCart, Store, Truck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ProductCard } from "@mgl/ui";
+import { resolveMemberPricing } from "@/lib/member-pricing";
 
 export interface ProductImage { id: string; url: string }
 export interface Organization { id: string; name: string; logoUrl?: string | null }
@@ -46,6 +47,7 @@ type ProductDetailShellProps = {
   onShare: () => void;
   vendorProducts: ProductDetailProduct[];
   relatedProducts: ProductDetailProduct[];
+  isMember: boolean;
 };
 
 const FAQ_ITEMS = [
@@ -58,21 +60,20 @@ function formatPrice(value: number) {
   return `${value.toLocaleString("en-US")}₮`;
 }
 
-function recommendationGrid(items: ProductDetailProduct[]) {
+function recommendationGrid(items: ProductDetailProduct[], isMember: boolean) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {items.map((item) => {
-        const itemDiscount = item.discounts?.[0]?.percent;
-        const original = itemDiscount ? item.price : undefined;
-        const final = itemDiscount ? Math.round(item.price * (1 - itemDiscount / 100)) : item.price;
+        const pricing = resolveMemberPricing(item.price, item.discounts, isMember);
 
         return (
           <ProductCard
             key={item.id}
             href={`/products/${item.id}`}
             image={item.images?.[0]?.url}
-            price={final}
-            originalPrice={original}
+            price={pricing.price}
+            originalPrice={pricing.originalPrice ?? undefined}
+            memberDiscountLabel={pricing.label}
             name={item.name}
             category={item.businessCategory?.name}
             storeName={item.organization?.name}
@@ -103,6 +104,7 @@ export function ProductDetailShell({
   onShare,
   vendorProducts,
   relatedProducts,
+  isMember,
 }: ProductDetailShellProps) {
   const images = product.images ?? [];
   const discount = product.discounts?.[0];
@@ -155,6 +157,7 @@ export function ProductDetailShell({
             activeImg={activeImg}
             setActiveImg={setActiveImg}
             discountPercent={discount?.percent}
+            discountLabel={discount ? `Member -${discount.percent}%` : undefined}
           />
 
           <ProductCommercePanel
@@ -165,6 +168,7 @@ export function ProductDetailShell({
             countdown={countdown}
             wishlisted={wishlisted}
             shareCopied={shareCopied}
+            isMember={isMember}
             isPreorder={isPreorder}
             isOutOfStock={isOutOfStock}
             onAddToCart={onAddToCart}
@@ -215,7 +219,7 @@ export function ProductDetailShell({
 
         {vendorProducts.length > 0 && (
           <ProductShelf title="Энэ дэлгүүрийн бусад бараа" label="Vendor products" href={`/organizations/${product.organization.id}`}>
-            {recommendationGrid(vendorProducts)}
+            {recommendationGrid(vendorProducts, isMember)}
           </ProductShelf>
         )}
 
@@ -225,7 +229,7 @@ export function ProductDetailShell({
             label="Similar products"
             href={product.businessCategory ? `/products?category=${product.businessCategory.slug}` : "/products"}
           >
-            {recommendationGrid(relatedProducts)}
+            {recommendationGrid(relatedProducts, isMember)}
           </ProductShelf>
         )}
       </main>
@@ -257,12 +261,14 @@ function ProductImageStage({
   activeImg,
   setActiveImg,
   discountPercent,
+  discountLabel,
 }: {
   productName: string;
   images: ProductImage[];
   activeImg: number;
   setActiveImg: (index: number) => void;
   discountPercent?: number;
+  discountLabel?: string;
 }) {
   return (
     <div className="min-w-0">
@@ -288,8 +294,8 @@ function ProductImageStage({
           </div>
         )}
         {discountPercent && (
-          <span className="absolute left-4 top-4 rounded-2xl bg-red-500 px-3 py-1.5 text-sm font-black text-white shadow-lg shadow-red-500/20">
-            -{discountPercent}%
+          <span className="absolute left-4 top-4 rounded-2xl bg-emerald-600 px-3 py-1.5 text-sm font-black text-white shadow-lg shadow-emerald-500/20">
+            {discountLabel || `-${discountPercent}%`}
           </span>
         )}
       </div>
@@ -323,6 +329,7 @@ function ProductCommercePanel({
   countdown,
   wishlisted,
   shareCopied,
+  isMember,
   isPreorder,
   isOutOfStock,
   onAddToCart,
@@ -357,7 +364,9 @@ function ProductCommercePanel({
         <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-red-500 to-orange-500 px-4 py-3 text-white">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.12em] text-white/75">Онцлох хямдрал</p>
-            <p className="mt-0.5 text-sm font-black">-{discount.percent}% үнэ буурсан</p>
+            <p className="mt-0.5 text-sm font-black">
+              {isMember ? `Member -${discount.percent}% үнэ буурсан` : `Member бол -${discount.percent}% хөнгөлнө`}
+            </p>
           </div>
           <div className="grid grid-cols-4 gap-1 text-center">
             {[

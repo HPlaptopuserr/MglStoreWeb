@@ -659,7 +659,6 @@ function DealStrip({ products, total }: { products: MarketplaceProduct[]; total:
 function MiniDealProduct({ product }: { product: MarketplaceProduct }) {
   const image = product.images?.[0]?.url;
   const discount = product.discounts?.[0]?.percent;
-  const price = discount ? Math.round(product.price * (1 - discount / 100)) : product.price;
 
   return (
     <div className="min-w-0 rounded-xl bg-white/94 p-1.5 text-slate-950 shadow-sm ring-1 ring-white/60 xl:p-2">
@@ -671,8 +670,13 @@ function MiniDealProduct({ product }: { product: MarketplaceProduct }) {
           <Store className="h-6 w-6 text-slate-300" />
         )}
       </div>
+      {discount ? (
+        <p className="mt-1 truncate text-center text-[9px] font-black leading-none text-emerald-600">
+          Member -{discount}%
+        </p>
+      ) : null}
       <p className="mt-1 text-center text-[10px] font-black leading-none text-orange-600 xl:text-[11px]">
-        {formatCompactPrice(price)}
+        {formatCompactPrice(product.price)}
       </p>
     </div>
   );

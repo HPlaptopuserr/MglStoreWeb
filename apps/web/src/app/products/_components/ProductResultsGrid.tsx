@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { ProductCard } from "@mgl/ui";
+import { resolveMemberPricing } from "@/lib/member-pricing";
 
 type ProductResult = {
   id: string;
@@ -24,6 +25,7 @@ type ProductResultsGridProps = {
   totalProducts: number;
   pageSize: number;
   hasActiveFilters: boolean;
+  isMember: boolean;
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
 };
@@ -36,6 +38,7 @@ export function ProductResultsGrid({
   totalProducts,
   pageSize,
   hasActiveFilters,
+  isMember,
   onClearFilters,
   onPageChange,
 }: ProductResultsGridProps) {
@@ -74,18 +77,17 @@ export function ProductResultsGrid({
       <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
         {products.map((product) => {
-          const discount = product.discounts?.[0]?.percent;
-          const originalPrice = discount ? product.price : undefined;
-          const finalPrice = discount ? Math.round(product.price * (1 - discount / 100)) : product.price;
+          const pricing = resolveMemberPricing(product.price, product.discounts, isMember);
           return (
             <ProductCard
               key={product.id}
               href={`/products/${product.id}`}
               image={product.images?.[0]?.url}
-              price={finalPrice}
+              price={pricing.price}
               name={product.name}
               category={product.businessCategory?.name}
-              originalPrice={originalPrice}
+              originalPrice={pricing.originalPrice ?? undefined}
+              memberDiscountLabel={pricing.label}
               storeName={product.organization?.name}
               stock={product.stock}
               isPreorder={product.supplyType === "CHINA_PREORDER"}

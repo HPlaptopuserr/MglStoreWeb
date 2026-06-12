@@ -93,10 +93,6 @@ export function MembershipActivationPanel({
       setError("Гишүүнчлэлийн хугацаагаа сонгоно уу.");
       return;
     }
-    if (!organizationName.trim()) {
-      setError("Байгууллагын нэрээ оруулна уу.");
-      return;
-    }
     if (!form.phone.trim()) {
       setError("Profile дээр утасны дугаараа бөглөсний дараа идэвхжүүлнэ үү.");
       return;
@@ -114,7 +110,7 @@ export function MembershipActivationPanel({
         body: JSON.stringify({
           lastName,
           firstName,
-          organizationName: organizationName.trim(),
+          organizationName: organizationName.trim() || undefined,
           businessActivity: businessActivity.trim() || undefined,
           address: form.fullAddress.trim(),
           phone: form.phone.trim(),
@@ -184,14 +180,15 @@ export function MembershipActivationPanel({
           )}
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Байгууллагын нэр">
+            <Field label="Байгууллага / бизнес (заавал биш)">
               <input
                 value={organizationName}
                 onChange={(e) => setOrganizationName(e.target.value)}
+                placeholder="Хувь хэрэглэгч бол хоосон үлдээнэ"
                 className={inputCls}
               />
             </Field>
-            <Field label="Үйл ажиллагааны чиглэл">
+            <Field label="Үйл ажиллагааны чиглэл (заавал биш)">
               <input
                 value={businessActivity}
                 onChange={(e) => setBusinessActivity(e.target.value)}

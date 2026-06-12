@@ -31,11 +31,27 @@ const getCustomer = async (req: Request) => {
     if (!decoded?.userId) return null;
     return prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, email: true, role: true, isActive: true, deletedAt: true },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        isActive: true,
+        deletedAt: true,
+        isPrime: true,
+        membershipExpiresAt: true,
+      },
     });
   } catch {
     return null;
   }
+};
+
+const isActiveMember = (user: { isPrime: boolean; membershipExpiresAt?: Date | null }) =>
+  Boolean(user.isPrime && (!user.membershipExpiresAt || user.membershipExpiresAt.getTime() > Date.now()));
+
+const applyMemberDiscount = (price: number, percent?: number | null, eligible = false) => {
+  if (!eligible || !percent || percent <= 0) return price;
+  return Math.max(0, Math.round(price * (1 - percent / 100)));
 };
 
 /* ── helpers ──────────────────────────────────────────── */
@@ -511,6 +527,11 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         stock: true,
         supplyType: true,
         organizationId: true,
+        discounts: {
+          where: { isActive: true, validUntil: { gte: new Date() } },
+          select: { percent: true },
+          take: 1,
+        },
       },
     });
 
@@ -543,7 +564,8 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           .status(400)
           .json({ message: `${product.name} барааны нөөц хүрэлцэхгүй (${product.stock} ширхэг)` });
       }
-      const price = Number(product.price);
+      const basePrice = Number(product.price);
+      const price = applyMemberDiscount(basePrice, product.discounts[0]?.percent, isActiveMember(customer));
       const lineTotal = price * qty;
       subtotal += lineTotal;
 

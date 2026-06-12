@@ -22,6 +22,7 @@ export const ProductCard = ({
   image,
   price,
   originalPrice,
+  memberDiscountLabel,
   name,
   category,
   tag,
@@ -40,6 +41,7 @@ export const ProductCard = ({
   const [localWishlistActive, setLocalWishlistActive] = useState(wishlistActive);
   const [imageFailed, setImageFailed] = useState(false);
   const hasDiscount = typeof originalPrice === "number" && originalPrice > price;
+  const isMemberDiscount = Boolean(memberDiscountLabel);
   const discountPercent = hasDiscount
     ? Math.round(((originalPrice - price) / originalPrice) * 100)
     : 0;
@@ -55,6 +57,8 @@ export const ProductCard = ({
 
   const badge = soldOut
     ? { label: "Дууссан", className: "bg-black text-white" }
+    : memberDiscountLabel
+      ? { label: memberDiscountLabel, className: "bg-emerald-600 text-white" }
     : hasDiscount
       ? { label: `-${discountPercent}%`, className: "bg-red-500 text-white" }
     : isPreorder
@@ -164,7 +168,11 @@ export const ProductCard = ({
           <div className="min-w-0">
             <span
               className={`block truncate text-base font-black leading-5 sm:text-lg ${
-                hasDiscount ? "text-red-500" : "text-slate-950"
+                hasDiscount
+                  ? isMemberDiscount
+                    ? "text-emerald-600"
+                    : "text-red-500"
+                  : "text-slate-950"
               }`}
             >
               ₮{price.toLocaleString()}

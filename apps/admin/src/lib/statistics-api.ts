@@ -34,13 +34,17 @@ export interface StatisticsInsights {
     address: string;
     organizationName: string;
     orders: number;
+    onlineOrders: number;
+    posSales: number;
     revenue: number;
     avgTicket: number;
+    sharePercent: number;
   }[];
   marketingMetrics: {
     id: string;
     label: string;
     value: number;
+    previousValue: number | null;
     unit: string;
     trend: number;
     category: string;

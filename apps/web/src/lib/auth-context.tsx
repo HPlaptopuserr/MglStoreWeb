@@ -40,6 +40,7 @@ export type AuthUser = {
   defaultAddress?: AuthAddress | null;
   orgRole?: string | null;
   organizationId?: string | null;
+  organizationName?: string | null;
 };
 
 type AuthResponsePayload = {

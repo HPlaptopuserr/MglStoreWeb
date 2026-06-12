@@ -2,6 +2,8 @@
 
 import { ProductCard } from "@mgl/ui";
 import { resolveApiAssetUrl } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { resolveMemberPricing } from "@/lib/member-pricing";
 
 interface Props {
   product: any;
@@ -10,11 +12,10 @@ interface Props {
 }
 
 export const ProductCarouselItem = ({ product, idx, onClick }: Props) => {
-  const discount = product.discounts?.[0]?.percent;
+  const { user } = useAuth();
   const mainImage = resolveApiAssetUrl(product.images?.[0]?.url);
-
-  const originalPrice = discount ? product.price : undefined;
-  const finalPrice = discount ? Math.round(product.price * (1 - discount / 100)) : product.price;
+  const isMember = Boolean(user?.membership?.active || user?.isPrime);
+  const pricing = resolveMemberPricing(product.price, product.discounts, isMember);
 
   return (
     <div
@@ -24,13 +25,14 @@ export const ProductCarouselItem = ({ product, idx, onClick }: Props) => {
       <ProductCard
         href={`/products/${product.id}`}
         image={mainImage}
-        price={finalPrice}
+        price={pricing.price}
         name={product.name}
         category={
           product.businessCategory?.name ??
           ["Performance", "Sportswear", "Originals"][idx % 3]
         }
-        originalPrice={originalPrice}
+        originalPrice={pricing.originalPrice ?? undefined}
+        memberDiscountLabel={pricing.label}
         storeName={product.organization?.name}
         stock={product.stock}
         isPreorder={product.supplyType === "CHINA_PREORDER"}

@@ -21,17 +21,17 @@ const PLAN_META: Record<
   }
 > = {
   ACTIVE: {
-    action: "Get Silver",
+    action: "Silver сонгох",
     icon: ShieldCheck,
-    unavailable: ["Priority delivery service"],
+    unavailable: ["Priority хүргэлтийн үйлчилгээ"],
   },
   BRANCH_COUNCIL: {
-    action: "Upgrade to Gold",
+    action: "Gold сонгох",
     icon: Medal,
     recommended: true,
   },
   GOVERNING_COUNCIL: {
-    action: "Go Platinum",
+    action: "Platinum сонгох",
     icon: Gem,
   },
 };
@@ -44,21 +44,22 @@ export function MembershipPlanPicker({
   onDurationChange,
 }: Props) {
   return (
-    <div className="rounded-[24px] bg-[#171d1d] p-4 text-white shadow-inner shadow-black/20 sm:p-6">
-      <div className="mb-6 text-center">
-        <p className="mx-auto inline-flex rounded-full border border-orange-400/30 bg-orange-500/10 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-orange-100">
-          Elevate your experience
-        </p>
-        <h3 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl">
-          MGL Premium Membership
-        </h3>
-        <p className="mx-auto mt-3 max-w-2xl text-sm font-semibold leading-6 text-white/60">
-          Exclusive perks, priority service, meaningful rewards. Choose the tier
-          that moves with you.
+    <div className="rounded-[22px] border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">
+            Tier сонгох
+          </p>
+          <h3 className="text-lg font-black text-slate-950">
+            Танд тохирох membership
+          </h3>
+        </div>
+        <p className="text-xs font-bold text-slate-400">
+          1 сар эсвэл 6 сарын багцаар идэвхжүүлнэ.
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-3">
         {plans.map((plan) => (
           <MembershipTierCard
             key={plan.value}
@@ -102,27 +103,27 @@ function MembershipTierCard({
 
   return (
     <article
-      className={`relative overflow-hidden rounded-[18px] border p-5 transition ${
+      className={`relative overflow-hidden rounded-[18px] border p-4 transition ${
         selected
-          ? "border-orange-500 bg-[#121818] shadow-[0_24px_70px_rgba(249,115,22,0.22)]"
-          : "border-white/10 bg-white/[0.04] hover:border-orange-500/50"
+          ? "border-orange-500 bg-orange-50 shadow-[0_18px_45px_rgba(249,115,22,0.16)]"
+          : "border-slate-200 bg-slate-50/70 hover:border-orange-300 hover:bg-white"
       }`}
     >
       {meta.recommended && (
-        <div className="absolute -right-11 top-5 rotate-45 bg-orange-600 px-10 py-1 text-[9px] font-black uppercase tracking-wide text-orange-50">
-          Recommended
+        <div className="absolute -right-10 top-4 rotate-45 bg-orange-600 px-9 py-1 text-[9px] font-black uppercase tracking-wide text-orange-50">
+          санал болгох
         </div>
       )}
 
-      <div className="mb-5 flex items-start justify-between gap-4">
+      <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <h4 className="text-xl font-black text-white">{plan.label}</h4>
-          <div className="mt-5 flex items-end gap-2">
-            <span className="text-3xl font-black tracking-tight text-orange-100">
+          <h4 className="text-xl font-black text-slate-950">{plan.label}</h4>
+          <div className="mt-3 flex items-end gap-2">
+            <span className="text-3xl font-black tracking-tight text-slate-950">
               {plan.price.split("₮")[0]}
             </span>
-            <span className="pb-1 text-xs font-black uppercase text-slate-500">
-              MNT / Mo
+            <span className="pb-1 text-xs font-black uppercase text-slate-400">
+              ₮ / сар
             </span>
           </div>
         </div>
@@ -130,7 +131,7 @@ function MembershipTierCard({
           className={`mt-1 flex h-9 w-9 items-center justify-center rounded-xl ${
             selected
               ? "bg-orange-500 text-white"
-              : "bg-white/5 text-orange-100 ring-1 ring-white/10"
+              : "bg-white text-orange-600 ring-1 ring-slate-200"
           }`}
         >
           <Icon size={18} />
@@ -138,7 +139,7 @@ function MembershipTierCard({
       </div>
 
       {plan.durations.length > 0 && (
-        <div className="mb-6 grid gap-2">
+        <div className="mb-4 grid gap-2">
           {plan.durations.map((duration) => {
             const durationSelected =
               selected && durationMonths === String(duration.months);
@@ -153,7 +154,7 @@ function MembershipTierCard({
                 className={`min-h-11 rounded-xl border px-3 py-2 text-left text-xs font-black transition ${
                   durationSelected
                     ? "border-orange-500 bg-orange-500 text-white"
-                    : "border-white/10 bg-white/[0.06] text-white/72 hover:border-orange-500/60"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-orange-300"
                 }`}
               >
                 {duration.label}
@@ -163,7 +164,7 @@ function MembershipTierCard({
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-2.5">
         {features.map((feature) => (
           <FeatureLine key={feature} enabled>
             {feature}
@@ -182,7 +183,7 @@ function MembershipTierCard({
         className={`mt-7 flex h-12 w-full items-center justify-center rounded-xl border text-sm font-black transition ${
           selected
             ? "border-orange-600 bg-orange-600 text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
-            : "border-white/15 text-white/72 hover:border-orange-500 hover:text-white"
+            : "border-slate-200 bg-white text-slate-600 hover:border-orange-400 hover:text-orange-600"
         }`}
       >
         {selected && <CheckCircle2 size={16} className="mr-2" />}
@@ -202,12 +203,12 @@ function FeatureLine({
   return (
     <div
       className={`flex items-start gap-3 text-sm font-bold leading-6 ${
-        enabled ? "text-white/86" : "text-white/34 line-through"
+        enabled ? "text-slate-700" : "text-slate-300 line-through"
       }`}
     >
       <span
         className={`mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
-          enabled ? "text-orange-500" : "text-white/24"
+            enabled ? "text-orange-500" : "text-slate-300"
         }`}
       >
         {enabled ? (

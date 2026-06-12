@@ -5,7 +5,6 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  ChevronDown,
   Boxes,
   Megaphone,
   PackageSearch,
@@ -55,6 +54,8 @@ export function VendorFeaturesSection() {
       saving: false,
     })),
   );
+
+  const selectedOrg = orgs.find((org) => org.id === selectedOrgId) || null;
 
   useEffect(() => {
     adminFetch(`${API}/partners?minimal=true`)
@@ -196,19 +197,30 @@ export function VendorFeaturesSection() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-lg font-bold text-slate-800 mb-1">
-          Vendor цэсний тохиргоо
-        </h2>
-        <p className="text-sm text-slate-400">
-          Байгууллага бүрт ямар цэс харагдахыг удирдана. Default-аар бүгд
-          хаалттай, энд нээнэ.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+              <Store size={20} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-500">
+                Vendor app
+              </p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+                Vendor тохиргоо
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
+                Байгууллага бүрт vendor болон org дээр ямар module нээлттэй
+                харагдахыг удирдана.
+              </p>
+            </div>
+          </div>
+        </div>
 
-      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-3">
           <div
             className={`flex h-10 w-10 items-center justify-center rounded-xl ${
               globalProductsEnabled
@@ -226,41 +238,57 @@ export function VendorFeaturesSection() {
               {GLOBAL_WEB_PRODUCTS_SETTING_KEY}
             </p>
           </div>
-        </div>
+          </div>
 
-        <button
-          type="button"
-          onClick={handleGlobalProductsToggle}
-          disabled={loadingGlobalProducts || savingGlobalProducts}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-60 ${
-            globalProductsEnabled
-              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-          }`}
-        >
-          {loadingGlobalProducts || savingGlobalProducts ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : globalProductsEnabled ? (
-            <CheckCircle2 size={14} />
-          ) : (
-            <XCircle size={14} />
-          )}
-          {globalProductsEnabled ? "Нээлттэй" : "Хаалттай"}
-        </button>
+          <button
+            type="button"
+            onClick={handleGlobalProductsToggle}
+            disabled={loadingGlobalProducts || savingGlobalProducts}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors disabled:opacity-60 ${
+              globalProductsEnabled
+                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            {loadingGlobalProducts || savingGlobalProducts ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : globalProductsEnabled ? (
+              <CheckCircle2 size={14} />
+            ) : (
+              <XCircle size={14} />
+            )}
+            {globalProductsEnabled ? "Нээлттэй" : "Хаалттай"}
+          </button>
+        </div>
       </div>
 
-      {/* org selector */}
-      <OrgSearchDropdown
-        orgs={orgs}
-        value={selectedOrgId}
-        onChange={setSelectedOrgId}
-        loading={loadingOrgs}
-        label="Байгууллага сонгох"
-        className="w-80"
-      />
+      <div className="relative z-20 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="grid gap-4 lg:grid-cols-[420px_minmax(0,1fr)] lg:items-end">
+          <OrgSearchDropdown
+            orgs={orgs}
+            value={selectedOrgId}
+            onChange={setSelectedOrgId}
+            loading={loadingOrgs}
+            label="Байгууллага сонгох"
+            className="w-full"
+          />
+
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+              Сонгосон байгууллага
+            </p>
+            <p className="mt-1 truncate text-sm font-black text-slate-800">
+              {selectedOrg ? selectedOrg.name : "Эхлээд байгууллага сонгоно уу"}
+            </p>
+            <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">
+              {selectedOrg?.slug ? `@${selectedOrg.slug}` : `${orgs.length} байгууллагаас хайж сонгоно`}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-medium">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
           {error}
         </div>
       )}
@@ -269,15 +297,15 @@ export function VendorFeaturesSection() {
       {selectedOrgId && (
         <>
           {loadingFeatures ? (
-            <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 text-sm font-semibold text-slate-400">
               <Loader2 size={15} className="animate-spin" /> Ачаалж байна...
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="grid gap-3 lg:grid-cols-2">
               {toggles.map((t) => (
                 <div
                   key={t.key}
-                  className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4"
+                  className="flex items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
                 >
                   <div className="flex items-center gap-3">
                     <div
@@ -293,7 +321,7 @@ export function VendorFeaturesSection() {
                       <p className="text-sm font-bold text-slate-800">
                         {t.label}
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs font-semibold text-slate-400">
                         {t.key}-{selectedOrgId.slice(0, 8)}…
                       </p>
                     </div>
@@ -302,7 +330,7 @@ export function VendorFeaturesSection() {
                   <button
                     onClick={() => handleToggle(t.key)}
                     disabled={t.saving}
-                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-60 ${
+                    className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors disabled:opacity-60 ${
                       t.enabled
                         ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"

@@ -1256,6 +1256,12 @@ function mapOrganizationLoginMember(member: {
     profile: { fullName: string | null; phoneNumber: string | null } | null;
   };
 }) {
+  const email = member.user.email;
+  const phone = member.user.profile?.phoneNumber || null;
+  const hasPassword = Boolean(member.user.passwordHash);
+  const active = Boolean(member.user.isActive && member.isActive);
+  const loginIdentifier = email || phone || null;
+
   return {
     id: member.id,
     role: member.role,
@@ -1263,11 +1269,14 @@ function mapOrganizationLoginMember(member: {
     memberActive: member.isActive,
     createdAt: member.createdAt,
     userId: member.user.id,
-    email: member.user.email,
+    email,
     fullName: member.user.profile?.fullName || null,
-    phone: member.user.profile?.phoneNumber || null,
+    phone,
     isActive: member.user.isActive,
-    hasPassword: Boolean(member.user.passwordHash),
+    hasPassword,
+    canLogin: Boolean(active && hasPassword && loginIdentifier),
+    loginIdentifier,
+    accountContext: "organization",
     lastLoginAt: member.user.lastLoginAt,
   };
 }

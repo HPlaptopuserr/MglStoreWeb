@@ -195,7 +195,6 @@ router.post("/association/register", async (req, res) => {
       !lastName ||
       !firstName ||
       !phone ||
-      !organizationName ||
       !address ||
       !membershipType
     ) {
@@ -303,6 +302,10 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
     }
 
     const amount = await resolveMembershipPrice(membershipType, duration);
+    const resolvedOrganizationName =
+      organizationName?.trim() ||
+      [lastName, firstName].filter(Boolean).join(" ").trim() ||
+      "Хувь хэрэглэгч";
     const config = await getAssociationConfig();
     const account = getAssociationPaymentAccount(config);
     if (!account.merchantCode || !account.password) {
@@ -321,7 +324,7 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
           firstName: firstName.trim(),
           education: education?.trim() || null,
           profession: profession?.trim() || null,
-          organizationName: organizationName.trim(),
+          organizationName: resolvedOrganizationName,
           businessActivity: businessActivity?.trim() || null,
           foundedYear: foundedYear?.trim() || null,
           address: address.trim(),

@@ -137,7 +137,7 @@ export function ProjectGridCard({
             <Loader2 className="h-5 w-5 animate-spin" />
           ) : (
             <>
-              {isFree ? "Дэлгэрэнгүй үзэх" : "Төлөөд дэлгэрэнгүй үзэх"}
+              {isFree ? "Дэлгэрэнгүй үзэх" : "3 хуудас preview үзэх"}
               <ArrowRight className="h-4 w-4" />
             </>
           )}

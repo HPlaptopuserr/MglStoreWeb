@@ -9,6 +9,7 @@ export interface ProductCardProps {
   price: number;
 
   originalPrice?: number;
+  memberDiscountLabel?: string | null;
   category?: string;
   tag?: string;
 

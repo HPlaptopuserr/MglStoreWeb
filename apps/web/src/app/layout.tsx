@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import "./globals.css";
 import { AppShell } from "@/components/organisms/layouts/AppShell";
+import { MglAppBootLoader } from "@mgl/ui";
 
 export const metadata = {
   title: "MGL Store",
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         className="bg-white antialiased min-h-screen flex flex-col"
         suppressHydrationWarning
       >
+        <MglAppBootLoader label="Дэлгүүрийг ачааллаж байна" />
         <AppShell>{children}</AppShell>
       </body>
     </html>

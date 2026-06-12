@@ -7,6 +7,7 @@ import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { FeaturedProjectsRail } from "@/components/molecules/projects/FeaturedProjectsRail";
 import { ProjectGridCard } from "@/components/molecules/projects/ProjectGridCard";
+import { LockedProjectPreviewModal } from "@/components/molecules/projects/ProjectPdfPreview";
 import {
   PaidAccessPaymentModal,
   type PaidAccessPaymentSession,
@@ -229,6 +230,9 @@ export default function ProjectsPage() {
     Record<string, ProjectItem>
   >({});
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [previewProject, setPreviewProject] = useState<ProjectItem | null>(
+    null,
+  );
   const [paymentProject, setPaymentProject] = useState<ProjectItem | null>(
     null,
   );
@@ -305,6 +309,7 @@ export default function ProjectsPage() {
   const openPaidProject = async (project: ProjectItem, invoiceId: string) => {
     const detail = await fetchProjectDetail(project.id, invoiceId);
     setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+    setPreviewProject(null);
     setPaymentProject(null);
     setPaymentSession(null);
     setActiveProject(detail);
@@ -317,15 +322,31 @@ export default function ProjectsPage() {
       return;
     }
 
+    if (project.price && project.price > 0) {
+      setPreviewProject(project);
+      return;
+    }
+
     try {
       setOpeningId(project.id);
-      if (!project.price || project.price <= 0) {
-        const detail = await fetchProjectDetail(project.id);
-        setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
-        setActiveProject(detail);
-        return;
-      }
+      const detail = await fetchProjectDetail(project.id);
+      setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+      setActiveProject(detail);
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Төслийн мэдээлэл авахад алдаа гарлаа",
+      );
+    } finally {
+      setOpeningId(null);
+    }
+  };
 
+  const unlockProject = async (project: ProjectItem) => {
+    try {
+      setOpeningId(project.id);
       if (!user) {
         router.push("/login");
         return;
@@ -343,10 +364,12 @@ export default function ProjectsPage() {
       if (data.free) {
         const detail = await fetchProjectDetail(project.id);
         setLoadedProjects((prev) => ({ ...prev, [project.id]: detail }));
+        setPreviewProject(null);
         setActiveProject(detail);
         return;
       }
 
+      setPreviewProject(null);
       setPaymentProject(project);
       setPaymentSession({
         invoiceId: data.invoiceId,
@@ -362,7 +385,7 @@ export default function ProjectsPage() {
       alert(
         error instanceof Error
           ? error.message
-          : "Төслийн мэдээлэл авахад алдаа гарлаа",
+          : "Төлбөрийн QR үүсгэхэд алдаа гарлаа",
       );
     } finally {
       setOpeningId(null);
@@ -448,6 +471,16 @@ export default function ProjectsPage() {
           </section>
         )}
       </main>
+
+      {previewProject && (
+        <LockedProjectPreviewModal
+          kindLabel="Төсөл"
+          project={previewProject}
+          opening={openingId === previewProject.id}
+          onClose={() => setPreviewProject(null)}
+          onUnlock={() => unlockProject(previewProject)}
+        />
+      )}
 
       {paymentProject && paymentSession && (
         <PaidAccessPaymentModal

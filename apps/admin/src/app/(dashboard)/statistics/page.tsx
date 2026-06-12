@@ -2,22 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity,
-  ArrowUpRight,
-  Boxes,
-  Download,
   FileSpreadsheet,
   FileText,
   Flame,
-  LogIn,
-  Package,
   RefreshCw,
   Search,
   Sparkles,
   Store,
-  Target,
-  Trophy,
-  WalletCards,
 } from "lucide-react";
 import {
   Area,
@@ -31,42 +22,19 @@ import {
   YAxis,
 } from "recharts";
 import { fetchStatisticsInsights, type StatisticsInsights } from "@/lib/statistics-api";
-
-type StatisticsWindow = 7 | 30 | 90 | "all";
-
-const dayOptions: { value: StatisticsWindow; label: string }[] = [
-  { value: 7, label: "7 өдөр" },
-  { value: 30, label: "30 өдөр" },
-  { value: 90, label: "90 өдөр" },
-  { value: "all", label: "All time" },
-];
-
-function money(value: number) {
-  return new Intl.NumberFormat("mn-MN", {
-    style: "currency",
-    currency: "MNT",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-}
-
-function compact(value: number) {
-  return new Intl.NumberFormat("mn-MN", { notation: "compact", maximumFractionDigits: 1 }).format(value || 0);
-}
-
-function trendText(value: number) {
-  if (value > 0) return `+${value}%`;
-  return `${value}%`;
-}
-
-function metricValue(value: number, unit: string) {
-  if (unit === "MNT") return money(value);
-  if (unit === "%") return `${value}%`;
-  return compact(value);
-}
-
-function windowLabel(value: StatisticsInsights["windowDays"]) {
-  return value === "all" ? "All time" : `${value} өдөр`;
-}
+import { BranchLeaderboard } from "./_components/BranchLeaderboard";
+import { StatisticsHeroCards } from "./_components/StatisticsHeroCards";
+import { StatisticsMetricPanel } from "./_components/StatisticsMetricPanel";
+import { TopProductsList } from "./_components/TopProductsList";
+import {
+  compact,
+  dayOptions,
+  metricValue,
+  money,
+  trendText,
+  windowLabel,
+  type StatisticsWindow,
+} from "./_components/statistics-format";
 
 function escapeHtml(value: string) {
   return value
@@ -110,9 +78,12 @@ function buildReportHtml(data: StatisticsInsights) {
           <td>${index + 1}</td>
           <td>${escapeHtml(item.name)}</td>
           <td>${escapeHtml(item.organizationName)}</td>
+          <td>${escapeHtml(item.sku ?? "")}</td>
           <td>${item.units}</td>
           <td>${escapeHtml(money(item.revenue))}</td>
           <td>${item.transactions}</td>
+          <td>${item.stock}</td>
+          <td>${item.velocityScore}</td>
         </tr>`,
     )
     .join("");
@@ -123,9 +94,13 @@ function buildReportHtml(data: StatisticsInsights) {
           <td>${index + 1}</td>
           <td>${escapeHtml(item.name)}</td>
           <td>${escapeHtml(item.organizationName)}</td>
+          <td>${escapeHtml(item.address)}</td>
           <td>${item.orders}</td>
+          <td>${item.posSales}</td>
+          <td>${item.onlineOrders}</td>
           <td>${escapeHtml(money(item.revenue))}</td>
           <td>${escapeHtml(money(item.avgTicket))}</td>
+          <td>${item.sharePercent}%</td>
         </tr>`,
     )
     .join("");
@@ -163,14 +138,14 @@ function buildReportHtml(data: StatisticsInsights) {
         <h2>Top products</h2>
         <table>
           <thead>
-            <tr><th>#</th><th>Бараа</th><th>Байгууллага</th><th>Нэгж</th><th>Орлого</th><th>Transactions</th></tr>
+            <tr><th>#</th><th>Бараа</th><th>Байгууллага</th><th>SKU</th><th>Нэгж</th><th>Орлого</th><th>Transactions</th><th>Үлдэгдэл</th><th>Velocity</th></tr>
           </thead>
           <tbody>${productRows}</tbody>
         </table>
         <h2>Top branches</h2>
         <table>
           <thead>
-            <tr><th>#</th><th>Салбар</th><th>Байгууллага</th><th>Хөдөлгөөн</th><th>Орлого</th><th>Дундаж сагс</th></tr>
+            <tr><th>#</th><th>Салбар</th><th>Байгууллага</th><th>Хаяг</th><th>Нийт хөдөлгөөн</th><th>POS</th><th>Online</th><th>Орлого</th><th>Дундаж сагс</th><th>Эзлэх хувь</th></tr>
           </thead>
           <tbody>${branchRows}</tbody>
         </table>
@@ -268,19 +243,6 @@ export default function StatisticsPage() {
     return metrics.find((item) => item.id === selectedMetricId) ?? metrics[0] ?? null;
   }, [data, selectedMetricId]);
 
-  const selectedMetricChart = useMemo(() => {
-    if (!selectedMetric) return [];
-    if (data?.windowDays === "all" || selectedMetric.trend === 0) {
-      return [{ name: windowLabel(data?.windowDays ?? "all"), value: selectedMetric.value }];
-    }
-
-    const previousValue = Math.max(0, Math.round(selectedMetric.value / (1 + selectedMetric.trend / 100)));
-    return [
-      { name: "Өмнөх", value: previousValue },
-      { name: "Одоогийн", value: selectedMetric.value },
-    ];
-  }, [data?.windowDays, selectedMetric]);
-
   const exportExcel = () => {
     if (!data) return;
     downloadBlob(
@@ -298,39 +260,6 @@ export default function StatisticsPage() {
       buildReportHtml(data),
     );
   };
-
-  const heroCards = data
-    ? [
-        {
-          label: "Нэвтэрсэн хэрэглэгч",
-          value: compact(data.hero.activeUsers),
-          trend: trendText(data.hero.activeUsersTrend),
-          icon: LogIn,
-          tone: "bg-emerald-500",
-        },
-        {
-          label: "Login session",
-          value: compact(data.hero.loginSessions),
-          trend: trendText(data.hero.loginSessionsTrend),
-          icon: Activity,
-          tone: "bg-sky-500",
-        },
-        {
-          label: "Борлуулалтын орлого",
-          value: money(data.hero.totalRevenue),
-          trend: trendText(data.hero.revenueTrend),
-          icon: WalletCards,
-          tone: "bg-fuchsia-500",
-        },
-        {
-          label: "Захиалга / POS",
-          value: compact(data.hero.totalOrders),
-          trend: trendText(data.hero.ordersTrend),
-          icon: Boxes,
-          tone: "bg-amber-500",
-        },
-      ]
-    : [];
 
   return (
     <div className="space-y-5 pb-8">
@@ -428,126 +357,17 @@ export default function StatisticsPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {loading && !data
-          ? Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-32 animate-pulse rounded-2xl bg-white" />
-            ))
-          : heroCards.map((card) => (
-              <div key={card.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${card.tone} text-white`}>
-                    <card.icon className="h-5 w-5" />
-                  </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-700">
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                    {card.trend}
-                  </span>
-                </div>
-                <p className="mt-4 text-xs font-bold uppercase text-slate-500">{card.label}</p>
-                <p className="mt-1 truncate text-2xl font-black text-slate-950">{card.value}</p>
-              </div>
-            ))}
-      </section>
+      <StatisticsHeroCards data={data} loading={loading} />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-              <h3 className="flex items-center gap-2 text-lg font-black text-slate-950">
-                <Target className="h-5 w-5 text-lime-500" />
-                Marketing insight metrics
-              </h3>
-            <p className="text-sm font-medium text-slate-500">
-              Audience, acquisition, revenue, conversion, demand, coverage
-            </p>
-          </div>
-          <button
-            onClick={exportExcel}
-            disabled={!data}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" />
-            Тайлан татах
-          </button>
-        </div>
-        {loading && !data ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 12 }).map((_, index) => (
-              <div key={index} className="h-28 animate-pulse rounded-xl bg-slate-100" />
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-5">
-            {metricGroups.map(([category, metrics]) => (
-              <div key={category}>
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-lime-400" />
-                  <h4 className="text-sm font-black uppercase text-slate-600">{category}</h4>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {metrics.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setSelectedMetricId(item.id)}
-                      className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
-                        selectedMetric?.id === item.id
-                          ? "border-lime-300 bg-lime-50 ring-2 ring-lime-100"
-                          : "border-slate-200 bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-black uppercase text-slate-500">{item.label}</p>
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-black ${
-                            item.trend > 0
-                              ? "bg-emerald-100 text-emerald-700"
-                              : item.trend < 0
-                                ? "bg-red-100 text-red-700"
-                                : "bg-white text-slate-500"
-                          }`}
-                        >
-                          {trendText(item.trend)}
-                        </span>
-                      </div>
-                      <p className="mt-2 truncate text-2xl font-black text-slate-950">
-                        {metricValue(item.value, item.unit)}
-                      </p>
-                      <p className="mt-2 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
-                        {item.description}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {selectedMetric && (
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <h4 className="text-base font-black text-slate-950">{selectedMetric.label}</h4>
-                    <p className="text-sm font-semibold text-slate-500">{selectedMetric.description}</p>
-                  </div>
-                  <p className="text-2xl font-black text-slate-950">
-                    {metricValue(selectedMetric.value, selectedMetric.unit)}
-                  </p>
-                </div>
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={selectedMetricChart}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
-                      <YAxis tickLine={false} axisLine={false} fontSize={12} tickFormatter={compact} />
-                      <Tooltip formatter={(value) => metricValue(Number(value), selectedMetric.unit)} />
-                      <Bar dataKey="value" fill="#65a30d" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </section>
+      <StatisticsMetricPanel
+        data={data}
+        loading={loading}
+        metricGroups={metricGroups}
+        selectedMetric={selectedMetric}
+        selectedMetricId={selectedMetricId}
+        onMetricSelect={setSelectedMetricId}
+        onExport={exportExcel}
+      />
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -594,75 +414,15 @@ export default function StatisticsPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-slate-950">
-            <Trophy className="h-5 w-5 text-amber-500" />
-            Хамгийн их зарагдаж буй бараа
-          </h3>
-          <div className="space-y-3">
-            {filteredProducts.length === 0 && (
-              <p className="rounded-xl bg-slate-50 p-4 text-sm font-bold text-slate-500">
-                Хайлтад тохирох бараа олдсонгүй.
-              </p>
-            )}
-            {filteredProducts.slice(0, view === "branches" ? 4 : 8).map((item, index) => (
-              <div key={item.productId} className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 text-xs font-black text-white">
-                  {index + 1}
-                </div>
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-slate-400">
-                  <Package className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-black text-slate-950">{item.name}</p>
-                  <p className="truncate text-xs font-semibold text-slate-500">{item.organizationName || item.sku || "MGL Store"}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-black text-slate-950">{item.units} ш</p>
-                  <p className="text-xs font-bold text-emerald-600">{money(item.revenue)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-slate-950">
-            <Store className="h-5 w-5 text-sky-500" />
-            Branch leaderboard
-          </h3>
-          <div className="space-y-3">
-            {filteredBranches.length === 0 && (
-              <p className="rounded-xl bg-slate-50 p-4 text-sm font-bold text-slate-500">
-                Хайлтад тохирох салбар олдсонгүй.
-              </p>
-            )}
-            {filteredBranches.slice(0, view === "products" ? 4 : 8).map((item, index) => (
-              <div key={item.branchId} className="rounded-xl bg-slate-50 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black text-slate-950">
-                      #{index + 1} {item.name}
-                    </p>
-                    <p className="truncate text-xs font-semibold text-slate-500">{item.organizationName}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-slate-950">{money(item.revenue)}</p>
-                    <p className="text-xs font-bold text-slate-500">{item.orders} хөдөлгөөн</p>
-                  </div>
-                </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
-                  <div
-                    className="h-full rounded-full bg-sky-400"
-                    style={{
-                      width: `${Math.min(100, Math.max(8, (item.revenue / Math.max(data?.topBranches[0]?.revenue ?? 1, 1)) * 100))}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <TopProductsList
+          products={filteredProducts}
+          visibleCount={view === "branches" ? 4 : 8}
+        />
+        <BranchLeaderboard
+          branches={filteredBranches}
+          maxRevenue={data?.topBranches[0]?.revenue ?? 0}
+          visibleCount={view === "products" ? 4 : 8}
+        />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
