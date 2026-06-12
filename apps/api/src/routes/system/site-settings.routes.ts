@@ -17,6 +17,7 @@ import {
   requirePlatformPermission,
 } from "../../middleware/auth";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
+import { createPdfPreviewBuffer } from "../../lib/pdf-preview";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
   checkSystemQrPayment,
@@ -58,6 +59,7 @@ const FRANCHISE_ITEMS_KEY = "paid-projects";
 const SITE_PROJECTS_KEY = "site-projects";
 const SITE_STUDY_KEY = "site-study";
 const SITE_STUDY_SETTINGS_KEY = "site-study-settings";
+const FREE_PDF_PREVIEW_PAGE_COUNT = 3;
 const VENDOR_FEATURE_KEYS = new Set([
   "pos-enabled",
   "web-products-enabled",
@@ -76,6 +78,7 @@ type PaidProject = {
   imageUrl?: string;
   imageUrls?: string[];
   pdfUrl?: string;
+  pdfPreviewUrl?: string;
   teacherInfo?: string;
   duration?: string;
   capacity?: string;
@@ -147,6 +150,36 @@ function getApiBaseUrl(req: Request) {
 function getApiRouteBaseUrl(req: Request) {
   const base = getApiBaseUrl(req).replace(/\/+$/, "");
   return base.endsWith("/api") ? base : `${base}/api`;
+}
+
+function getPublicPdfPreviewUrl(
+  req: Request,
+  project: Pick<PaidProject, "id" | "pdfUrl">,
+  kind: "project" | "franchise",
+) {
+  const fileUrl = String(project.pdfUrl || "").trim();
+  const projectId = String(project.id || "").trim();
+  if (!fileUrl || !projectId) return "";
+
+  return `${getApiRouteBaseUrl(req)}/site-settings/${kind === "franchise" ? "franchise" : "projects"}/${encodeURIComponent(projectId)}/preview-pdf`;
+}
+
+function isAllowedPdfPreviewSource(req: Request, fileUrl: string) {
+  try {
+    const target = new URL(fileUrl);
+    const apiBase = new URL(getApiBaseUrl(req));
+    if (target.origin === apiBase.origin) return true;
+
+    const supabaseUrl = process.env.SUPABASE_URL
+      ? new URL(process.env.SUPABASE_URL)
+      : null;
+    if (supabaseUrl && target.hostname === supabaseUrl.hostname) return true;
+    if (target.hostname === "storage.mglstore.mn") return true;
+
+    return target.protocol === "https:" && target.hostname.endsWith(".supabase.co");
+  } catch {
+    return false;
+  }
 }
 
 async function saveLocalSiteUpload(
@@ -247,10 +280,10 @@ function normalizeProjectPrice(value: unknown) {
   return Number.isFinite(price) && price > 0 ? Math.round(price) : 0;
 }
 
-function getPublicProjects(projects: PaidProject[]) {
+function getPublicProjects(projects: PaidProject[], req?: Request) {
   return projects
     .filter((project) => project.isActive !== false)
-    .map((project) => normalizePublicProject(project));
+    .map((project) => normalizePublicProject(project, req, "project"));
 }
 
 function getProjectImages(project: PaidProject) {
@@ -322,8 +355,16 @@ function normalizeProject(project: PaidProject): PaidProject {
   };
 }
 
-function normalizePublicProject(project: PaidProject): PaidProject {
+function normalizePublicProject(
+  project: PaidProject,
+  req?: Request,
+  kind: "project" | "franchise" = "project",
+): PaidProject {
   const normalized = normalizeProject(project);
+  const previewUrl =
+    normalized.pdfPreviewUrl ||
+    (req ? getPublicPdfPreviewUrl(req, normalized, kind) : "");
+
   return {
     id: normalized.id,
     title: normalized.title,
@@ -332,6 +373,7 @@ function normalizePublicProject(project: PaidProject): PaidProject {
     price: normalized.price,
     imageUrl: normalized.imageUrl,
     imageUrls: normalized.imageUrls,
+    pdfPreviewUrl: previewUrl || undefined,
     tags: normalized.tags,
     isActive: normalized.isActive,
     contractTemplateId: normalized.contractTemplateId,
@@ -365,11 +407,11 @@ function sortMglStoreFranchiseFirst<T extends Pick<PaidProject, "title">>(
     .map(({ project }) => project);
 }
 
-function getPublicFranchiseProjects(projects: PaidProject[]) {
+function getPublicFranchiseProjects(projects: PaidProject[], req?: Request) {
   return sortMglStoreFranchiseFirst(
     projects
       .filter((project) => project.isActive !== false)
-      .map((project) => normalizePublicProject(project)),
+      .map((project) => normalizePublicProject(project, req, "franchise")),
   );
 }
 
@@ -1027,7 +1069,7 @@ router.use(
 );
 
 // GET all site settings as key-value object (public read for web/vendor)
-router.get("/site-settings", async (_req, res) => {
+router.get("/site-settings", async (req, res) => {
   try {
     const settings = await prisma.siteSetting.findMany();
     const obj: Record<string, string> = {};
@@ -1035,11 +1077,11 @@ router.get("/site-settings", async (_req, res) => {
       if (Buffer.byteLength(s.value, "utf8") <= SETTING_VALUE_MAX_BYTES) {
         if (s.key === FRANCHISE_ITEMS_KEY) {
           obj[s.key] = JSON.stringify(
-            getPublicFranchiseProjects(await getFranchiseProjects()),
+            getPublicFranchiseProjects(await getFranchiseProjects(), req),
           );
         } else if (s.key === SITE_PROJECTS_KEY) {
           obj[s.key] = JSON.stringify(
-            getPublicProjects(await getPaidProjects()),
+            getPublicProjects(await getPaidProjects(), req),
           );
         } else {
           obj[s.key] = s.value;
@@ -1385,13 +1427,32 @@ router.post(
     }
     try {
       const fileName = `project-pdfs/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.pdf`;
+      const previewFileName = fileName.replace(/\.pdf$/i, "-preview.pdf");
       const url = await uploadSiteFile(
         req,
         fileName,
         req.file.buffer,
         "application/pdf",
       );
-      res.json({ url });
+
+      const previewBuffer = await createPdfPreviewBuffer(
+        req.file.buffer,
+        FREE_PDF_PREVIEW_PAGE_COUNT,
+      );
+      const previewUrl = previewBuffer
+        ? await uploadSiteFile(
+            req,
+            previewFileName,
+            previewBuffer,
+            "application/pdf",
+          )
+        : "";
+
+      res.json({
+        url,
+        previewUrl,
+        previewPageCount: FREE_PDF_PREVIEW_PAGE_COUNT,
+      });
     } catch (err) {
       console.error("project-pdf-upload error", err);
       res.status(500).json({
@@ -1402,15 +1463,95 @@ router.post(
   },
 );
 
+async function sendProjectPdfPreview({
+  req,
+  res,
+  kind,
+}: {
+  req: Request;
+  res: Response;
+  kind: "project" | "franchise";
+}) {
+  try {
+    const projectId = String(req.params.projectId || "").trim();
+    const projects =
+      kind === "franchise"
+        ? await getFranchiseProjects()
+        : await getPaidProjects();
+    const project = projects.find(
+      (item) => item.id === projectId && item.isActive !== false,
+    );
+    const fileUrl = String(project?.pdfUrl || "").trim();
+
+    if (!project || !fileUrl || !isAllowedPdfPreviewSource(req, fileUrl)) {
+      res.status(404).json({ message: "Preview PDF олдсонгүй" });
+      return;
+    }
+
+    const pdfRes = await fetch(fileUrl);
+    if (!pdfRes.ok) {
+      res.status(404).json({ message: "PDF файл олдсонгүй" });
+      return;
+    }
+
+    const contentLength = Number(pdfRes.headers.get("content-length") || 0);
+    if (contentLength > 25 * 1024 * 1024) {
+      res.status(413).json({ message: "PDF файл хэт том байна" });
+      return;
+    }
+
+    const sourceBuffer = Buffer.from(await pdfRes.arrayBuffer());
+    if (sourceBuffer.byteLength > 25 * 1024 * 1024) {
+      res.status(413).json({ message: "PDF файл хэт том байна" });
+      return;
+    }
+
+    const previewBuffer = await createPdfPreviewBuffer(
+      sourceBuffer,
+      FREE_PDF_PREVIEW_PAGE_COUNT,
+    );
+    if (!previewBuffer) {
+      res.status(404).json({ message: "Preview үүсгэх хуудас олдсонгүй" });
+      return;
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Cache-Control",
+      "public, max-age=300, stale-while-revalidate=600",
+    );
+    res.send(previewBuffer);
+  } catch (err) {
+    console.error("project-pdf-preview error", err);
+    res.status(500).json({
+      message: "Preview PDF үүсгэхэд алдаа гарлаа",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+// GET /site-settings/projects/:projectId/preview-pdf — public first pages only.
+router.get("/site-settings/projects/:projectId/preview-pdf", async (req, res) => {
+  await sendProjectPdfPreview({ req, res, kind: "project" });
+});
+
+// GET /site-settings/franchise/:projectId/preview-pdf — public first pages only.
+router.get("/site-settings/franchise/:projectId/preview-pdf", async (req, res) => {
+  await sendProjectPdfPreview({ req, res, kind: "franchise" });
+});
+
 // GET /site-settings/franchise — public Franchise summary list.
-router.get("/site-settings/franchise", async (_req, res) => {
+router.get("/site-settings/franchise", async (req, res) => {
   try {
     const projects = await getFranchiseProjects();
     res.setHeader(
       "Cache-Control",
       "public, max-age=30, stale-while-revalidate=60",
     );
-    res.json({ success: true, projects: getPublicFranchiseProjects(projects) });
+    res.json({
+      success: true,
+      projects: getPublicFranchiseProjects(projects, req),
+    });
   } catch (error) {
     console.error("get franchise list error", error);
     res.status(500).json({
@@ -1485,14 +1626,14 @@ router.get(
 );
 
 // GET /site-settings/projects — public summary list only
-router.get("/site-settings/projects", async (_req, res) => {
+router.get("/site-settings/projects", async (req, res) => {
   try {
     const projects = await getPaidProjects();
     res.setHeader(
       "Cache-Control",
       "public, max-age=30, stale-while-revalidate=60",
     );
-    res.json({ success: true, projects: getPublicProjects(projects) });
+    res.json({ success: true, projects: getPublicProjects(projects, req) });
   } catch (error) {
     console.error("get public projects error", error);
     res.status(500).json({

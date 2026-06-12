@@ -189,6 +189,7 @@ const emptyProject = (
   imageUrl: "",
   imageUrls: [],
   pdfUrl: "",
+  pdfPreviewUrl: "",
   teacherInfo: "",
   duration: "",
   capacity: "",
@@ -1049,6 +1050,9 @@ export function ProjectsSection({
         throw new Error("PDF URL серверээс ирсэнгүй");
       }
       updateProject(id, "pdfUrl", data.url);
+      if (typeof data.previewUrl === "string" && data.previewUrl) {
+        updateProject(id, "pdfPreviewUrl", data.previewUrl);
+      }
     } catch (error) {
       setPdfUploadError(
         error instanceof Error

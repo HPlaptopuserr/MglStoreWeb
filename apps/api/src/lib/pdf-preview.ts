@@ -1,6 +1,6 @@
 import { PDFDocument } from "pdf-lib";
 
-const DEFAULT_PREVIEW_PAGE_COUNT = 4;
+const DEFAULT_PREVIEW_PAGE_COUNT = 3;
 
 export async function createPdfPreviewBuffer(
   source: Buffer,
