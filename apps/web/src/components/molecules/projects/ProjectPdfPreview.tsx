@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { FileText, LockKeyhole, X } from "lucide-react";
+import { FileText, ImagePlus, LockKeyhole, X } from "lucide-react";
 import type { ProjectItem } from "./project-types";
 import { formatMnt, resolveProjectFileUrl } from "./project-utils";
 
@@ -9,7 +9,12 @@ const DEFAULT_FREE_PREVIEW_PAGES = 3;
 
 type PdfPreviewItem = Pick<
   ProjectItem,
-  "title" | "summary" | "price" | "pdfPreviewUrl"
+  | "title"
+  | "summary"
+  | "price"
+  | "imageUrl"
+  | "imageUrls"
+  | "pdfThumbnailUrl"
 >;
 
 type ProjectPdfPreviewProps = {
@@ -23,17 +28,13 @@ export function ProjectPdfPreview({
   className = "",
   previewPages = DEFAULT_FREE_PREVIEW_PAGES,
 }: ProjectPdfPreviewProps) {
-  const previewUrl = resolveProjectFileUrl(project.pdfPreviewUrl);
-
-  if (!previewUrl) {
-    return (
-      <div
-        className={`rounded-2xl border border-dashed border-orange-200/30 bg-white/[0.04] p-8 text-center text-sm font-bold leading-6 text-orange-100/75 ${className}`}
-      >
-        Эхний {previewPages} хуудсын preview PDF бэлэн болоогүй байна.
-      </div>
-    );
-  }
+  const fallbackImage =
+    (Array.isArray(project.imageUrls) ? project.imageUrls[0] : "") ||
+    project.imageUrl ||
+    "";
+  const thumbnailUrl = resolveProjectFileUrl(
+    project.pdfThumbnailUrl || fallbackImage,
+  );
 
   return (
     <div className={`space-y-3 ${className}`}>
@@ -53,12 +54,30 @@ export function ProjectPdfPreview({
           Бүтэн PDF {formatMnt(project.price)}
         </span>
       </div>
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 shadow-[0_22px_70px_rgba(0,0,0,0.28)]">
-        <iframe
-          src={previewUrl}
-          title={`${project.title} preview PDF`}
-          className="h-[56vh] min-h-[420px] w-full bg-white"
-        />
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#19191c] shadow-[0_22px_70px_rgba(0,0,0,0.28)]">
+        {thumbnailUrl ? (
+          <img
+            src={thumbnailUrl}
+            alt={`${project.title} thumbnail`}
+            className="h-[46vh] min-h-[360px] w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-[46vh] min-h-[360px] w-full flex-col items-center justify-center gap-3 bg-[linear-gradient(135deg,#171717,#26231f)] text-orange-50/70">
+            <ImagePlus className="h-12 w-12 text-orange-200/70" />
+            <p className="max-w-sm text-center text-sm font-bold leading-6">
+              Preview thumbnail зураг оруулаагүй байна.
+            </p>
+          </div>
+        )}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent px-5 pb-5 pt-16">
+          <p className="max-w-2xl text-lg font-black text-white">
+            {project.title}
+          </p>
+          <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-orange-100/85">
+            Эхний {previewPages} хуудасны preview-г thumbnail байдлаар
+            харуулж байна. Үргэлжлүүлж бүтэн PDF үзэх бол төлбөрөөр нээнэ.
+          </p>
+        </div>
       </div>
     </div>
   );

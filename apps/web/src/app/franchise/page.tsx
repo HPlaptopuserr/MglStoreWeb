@@ -33,6 +33,7 @@ type FranchiseProject = {
   imageUrls?: string[];
   pdfUrl?: string;
   pdfPreviewUrl?: string;
+  pdfThumbnailUrl?: string;
   contractTemplateId?: string;
   contractUrl?: string;
   responsiblePeople?: ProjectResponsiblePerson[];

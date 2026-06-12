@@ -9,6 +9,7 @@ export type ProjectItem = {
   imageUrls?: string[];
   pdfUrl?: string;
   pdfPreviewUrl?: string;
+  pdfThumbnailUrl?: string;
   teacherInfo?: string;
   duration?: string;
   capacity?: string;

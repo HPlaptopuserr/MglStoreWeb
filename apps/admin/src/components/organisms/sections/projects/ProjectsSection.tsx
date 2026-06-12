@@ -190,6 +190,7 @@ const emptyProject = (
   imageUrls: [],
   pdfUrl: "",
   pdfPreviewUrl: "",
+  pdfThumbnailUrl: "",
   teacherInfo: "",
   duration: "",
   capacity: "",
@@ -465,6 +466,8 @@ export function ProjectsSection({
   const [uploadingPdfProjectId, setUploadingPdfProjectId] = useState<
     string | null
   >(null);
+  const [uploadingPdfThumbnailProjectId, setUploadingPdfThumbnailProjectId] =
+    useState<string | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
     null,
   );
@@ -1061,6 +1064,56 @@ export function ProjectsSection({
       );
     } finally {
       setUploadingPdfProjectId(null);
+    }
+  };
+
+  const uploadPdfThumbnail = async (
+    id: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setPdfUploadError("Thumbnail нь зураг файл байх ёстой.");
+      return;
+    }
+
+    setUploadingPdfThumbnailProjectId(id);
+    setPdfUploadError("");
+    try {
+      let thumbnailUrl = "";
+      try {
+        const compressed = await compressImage(file, 1280, 0.82);
+        const form = new FormData();
+        form.append("image", compressed, "pdf-thumbnail.jpg");
+        const res = await adminFetch(`${API}/site-settings/banner-upload`, {
+          method: "POST",
+          body: form,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            uploadErrorMessage(data, "Thumbnail upload хийхэд алдаа гарлаа"),
+          );
+        }
+        if (typeof data.url !== "string" || !data.url) {
+          throw new Error("Thumbnail URL серверээс ирсэнгүй");
+        }
+        thumbnailUrl = data.url;
+      } catch {
+        thumbnailUrl = await blobToDataUrl(await compressImage(file, 1280, 0.76));
+      }
+
+      updateProject(id, "pdfThumbnailUrl", thumbnailUrl);
+    } catch (error) {
+      setPdfUploadError(
+        error instanceof Error
+          ? error.message
+          : "Thumbnail upload хийхэд алдаа гарлаа",
+      );
+    } finally {
+      setUploadingPdfThumbnailProjectId(null);
     }
   };
 
@@ -2558,6 +2611,28 @@ export function ProjectsSection({
                                 }
                               />
                             </label>
+                            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-bold text-orange-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50">
+                              {uploadingPdfThumbnailProjectId ===
+                              project.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <ImagePlus className="h-4 w-4" />
+                              )}
+                              {uploadingPdfThumbnailProjectId === project.id
+                                ? "Thumbnail оруулж байна..."
+                                : "Thumbnail зураг"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                disabled={
+                                  uploadingPdfThumbnailProjectId === project.id
+                                }
+                                onChange={(e) =>
+                                  uploadPdfThumbnail(project.id, e)
+                                }
+                              />
+                            </label>
                             {project.pdfUrl && (
                               <a
                                 href={project.pdfUrl}
@@ -2569,6 +2644,59 @@ export function ProjectsSection({
                                 PDF харах
                               </a>
                             )}
+                          </div>
+                          <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr] md:items-center">
+                            <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-white">
+                              {project.pdfThumbnailUrl ? (
+                                <>
+                                  <img
+                                    src={project.pdfThumbnailUrl}
+                                    alt={`${project.title || copy.itemLabel} thumbnail`}
+                                    className="h-full w-full object-cover"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateProject(
+                                        project.id,
+                                        "pdfThumbnailUrl",
+                                        "",
+                                      )
+                                    }
+                                    className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm transition hover:bg-red-50"
+                                    aria-label="Thumbnail устгах"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </>
+                              ) : (
+                                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center text-slate-400">
+                                  <ImagePlus className="h-7 w-7" />
+                                  <span className="px-3 text-[11px] font-bold">
+                                    Web preview дээр харагдах thumbnail зураг
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold leading-5 text-slate-500">
+                                Төлбөртэй preview modal дээр PDF embed хийхгүй,
+                                энэ зураг харагдана. Thumbnail байхгүй бол
+                                үндсэн зураг fallback болно.
+                              </p>
+                              <input
+                                value={project.pdfThumbnailUrl || ""}
+                                onChange={(e) =>
+                                  updateProject(
+                                    project.id,
+                                    "pdfThumbnailUrl",
+                                    e.target.value,
+                                  )
+                                }
+                                className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                                placeholder="Thumbnail image URL"
+                              />
+                            </div>
                           </div>
                           {pdfUploadError && uploadingPdfProjectId === null && (
                             <p className="mt-2 text-xs font-semibold text-red-500">

@@ -79,6 +79,7 @@ type PaidProject = {
   imageUrls?: string[];
   pdfUrl?: string;
   pdfPreviewUrl?: string;
+  pdfThumbnailUrl?: string;
   teacherInfo?: string;
   duration?: string;
   capacity?: string;
@@ -374,6 +375,7 @@ function normalizePublicProject(
     imageUrl: normalized.imageUrl,
     imageUrls: normalized.imageUrls,
     pdfPreviewUrl: previewUrl || undefined,
+    pdfThumbnailUrl: normalized.pdfThumbnailUrl,
     tags: normalized.tags,
     isActive: normalized.isActive,
     contractTemplateId: normalized.contractTemplateId,
