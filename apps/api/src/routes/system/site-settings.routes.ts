@@ -68,6 +68,19 @@ const VENDOR_FEATURE_KEYS = new Set([
   "service-posts-enabled",
 ]);
 
+function activePrimeUserWhere(userId: string): Prisma.UserWhereInput {
+  return {
+    id: userId,
+    isPrime: true,
+    isActive: true,
+    deletedAt: null,
+    OR: [
+      { membershipExpiresAt: null },
+      { membershipExpiresAt: { gt: new Date() } },
+    ],
+  };
+}
+
 type PaidProject = {
   id: string;
   title: string;
@@ -823,7 +836,7 @@ async function ensurePaidProjectAccess({
   const sourceType = paidAccessSourceFromKind(kind);
   if (userId) {
     const primeUser = await prisma.user.findFirst({
-      where: { id: userId, isPrime: true, isActive: true, deletedAt: null },
+      where: activePrimeUserWhere(userId),
       select: { id: true },
     });
     if (primeUser) return true;
@@ -1888,7 +1901,7 @@ const createProjectSystemQrPaymentSession = async (
     }
 
     const primeUser = await prisma.user.findFirst({
-      where: { id: userId, isPrime: true, isActive: true, deletedAt: null },
+      where: activePrimeUserWhere(userId),
       select: { id: true },
     });
     if (primeUser) {
@@ -2041,7 +2054,7 @@ const createFranchiseSystemQrPaymentSession = async (
     }
 
     const primeUser = await prisma.user.findFirst({
-      where: { id: userId, isPrime: true, isActive: true, deletedAt: null },
+      where: activePrimeUserWhere(userId),
       select: { id: true },
     });
     if (primeUser) {
@@ -2201,7 +2214,7 @@ const createStudySystemQrPaymentSession = async (
     }
 
     const primeUser = await prisma.user.findFirst({
-      where: { id: userId, isPrime: true, isActive: true, deletedAt: null },
+      where: activePrimeUserWhere(userId),
       select: { id: true },
     });
     if (primeUser) {

@@ -90,6 +90,13 @@ const ORG_ROLE_META: Record<string, { label: string; color: string; bg: string; 
 };
 
 const ITEMS_PER_PAGE = 15;
+const DEFAULT_MEMBERSHIP_DURATION_MONTHS = 12;
+const MEMBERSHIP_DURATION_OPTIONS = [
+  { label: "1 жил", months: 12 },
+  { label: "6 сар", months: 6 },
+  { label: "3 сар", months: 3 },
+  { label: "1 сар", months: 1 },
+];
 
 /* ─── helpers ──────────────────────────────────────────────────────── */
 function formatDate(dateStr: string) {
@@ -107,6 +114,32 @@ function timeAgo(dateStr: string | null) {
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days} хоногийн өмнө`;
   return formatDate(dateStr);
+}
+
+function isMembershipActive(user: Pick<SystemUser, "isPrime" | "membershipExpiresAt">) {
+  if (!user.isPrime) return false;
+  if (!user.membershipExpiresAt) return true;
+  return new Date(user.membershipExpiresAt).getTime() > Date.now();
+}
+
+function membershipStatusText(user: SystemUser) {
+  if (!user.isPrime) return "Member биш";
+  if (!user.membershipExpiresAt) return "Хугацаагүй member";
+
+  const expiresAt = new Date(user.membershipExpiresAt);
+  const days = Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000);
+  if (days < 0) return `${formatDate(user.membershipExpiresAt)} дууссан`;
+  if (days === 0) return "Өнөөдөр дуусна";
+  if (days >= 365) {
+    const years = Math.floor(days / 365);
+    const remainingMonths = Math.round((days % 365) / 30);
+    return remainingMonths > 0
+      ? `${years} жил ${remainingMonths} сар үлдсэн`
+      : `${years} жил үлдсэн`;
+  }
+  if (days >= 45) return `${Math.round(days / 30)} сар үлдсэн`;
+  if (days >= 28) return "1 сар үлдсэн";
+  return `${days} хоног үлдсэн`;
 }
 
 /* ─── component ────────────────────────────────────────────────────── */
@@ -652,6 +685,10 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
   const [changingRole, setChangingRole] = useState(false);
   const [changingPrime, setChangingPrime] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+  const [memberMenuOpen, setMemberMenuOpen] = useState(false);
+  const [durationMonths, setDurationMonths] = useState(String(DEFAULT_MEMBERSHIP_DURATION_MONTHS));
+  const [customExpiresAt, setCustomExpiresAt] = useState("");
+  const activeMember = isMembershipActive(user);
 
   const handleRoleChange = async (newRole: string) => {
     if (newRole === user.role) { setRoleMenuOpen(false); return; }
@@ -675,18 +712,22 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
     }
   };
 
-  const handlePrimeToggle = async () => {
+  const updateMembership = async (
+    isPrime: boolean,
+    options?: { durationMonths?: number; expiresAt?: string },
+  ) => {
     setChangingPrime(true);
     try {
       const res = await adminFetch(`${API}/admin/users/${user.id}/prime`, {
         method: "PATCH",
-        body: JSON.stringify({ isPrime: !user.isPrime }),
+        body: JSON.stringify({ isPrime, ...options }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         alert(data?.message || "Membership эрх солиход алдаа гарлаа");
         return;
       }
+      setMemberMenuOpen(false);
       onRoleChanged();
     } catch {
       alert("Membership эрх солиход алдаа гарлаа");
@@ -694,6 +735,29 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
       setChangingPrime(false);
     }
   };
+
+  const grantMembership = () => {
+    if (durationMonths === "custom") {
+      if (!customExpiresAt) {
+        alert("Дуусах огноо сонгоно уу");
+        return;
+      }
+      updateMembership(true, { expiresAt: customExpiresAt });
+      return;
+    }
+
+    const months = Number(durationMonths) || DEFAULT_MEMBERSHIP_DURATION_MONTHS;
+    updateMembership(true, { durationMonths: months });
+  };
+
+  const selectedDurationLabel =
+    durationMonths === "custom"
+      ? customExpiresAt
+        ? formatDate(customExpiresAt)
+        : "Огноо сонгоно"
+      : MEMBERSHIP_DURATION_OPTIONS.find(
+          (option) => String(option.months) === durationMonths,
+        )?.label || "1 сар";
 
   return (
     <div className="group relative rounded-2xl border border-slate-200 bg-white p-5 transition-all hover:shadow-md hover:border-slate-300">
@@ -788,25 +852,116 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
           )}
         </div>
 
-        {/* verified */}
-        <button
-          type="button"
-          onClick={handlePrimeToggle}
-          disabled={changingPrime}
-          className={`inline-flex items-center gap-0.5 rounded-lg border px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
-            user.isPrime
-              ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-              : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-700"
-          }`}
-          title={user.isPrime ? "Membership эрх цуцлах" : "Membership эрх өгөх"}
-        >
-          {changingPrime ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Crown className="h-3 w-3" />
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => {
+              setDurationMonths(String(DEFAULT_MEMBERSHIP_DURATION_MONTHS));
+              setCustomExpiresAt("");
+              setMemberMenuOpen((value) => !value);
+            }}
+            disabled={changingPrime}
+            className={`inline-flex items-center gap-0.5 rounded-lg border px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+              activeMember
+                ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                : user.isPrime
+                  ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-amber-50 hover:text-amber-700"
+                  : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-700"
+            }`}
+            title={
+              activeMember
+                ? "Membership хугацаа сунгах / цуцлах"
+                : "Membership эрх өгөх"
+            }
+          >
+            {changingPrime ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Crown className="h-3 w-3" />
+            )}
+            {activeMember ? "Member" : user.isPrime ? "Сунгах" : "Member болгох"}
+          </button>
+
+          {memberMenuOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setMemberMenuOpen(false)}
+              />
+              <div className="absolute left-0 top-full z-50 mt-2 w-64 rounded-2xl border border-amber-200 bg-white p-3 shadow-xl">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-amber-600">
+                  {activeMember ? "Member сунгах" : "Member хугацаа"}
+                </p>
+                {activeMember && (
+                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                    Одоогийн хугацаа: {membershipStatusText(user)}
+                  </p>
+                )}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {MEMBERSHIP_DURATION_OPTIONS.map((option) => (
+                    <button
+                      key={option.months}
+                      type="button"
+                      onClick={() => setDurationMonths(String(option.months))}
+                      className={`rounded-xl border px-3 py-2 text-xs font-black transition ${
+                        durationMonths === String(option.months)
+                          ? "border-amber-400 bg-amber-50 text-amber-700"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setDurationMonths("custom")}
+                    className={`rounded-xl border px-3 py-2 text-xs font-black transition ${
+                      durationMonths === "custom"
+                        ? "border-amber-400 bg-amber-50 text-amber-700"
+                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    Огноо
+                  </button>
+                </div>
+                {durationMonths === "custom" && (
+                  <input
+                    type="date"
+                    value={customExpiresAt}
+                    onChange={(event) => setCustomExpiresAt(event.target.value)}
+                    className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-100"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={grantMembership}
+                  disabled={changingPrime}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-3 py-2.5 text-sm font-black text-white transition hover:bg-amber-600 disabled:opacity-60"
+                >
+                  {changingPrime && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {activeMember
+                    ? `${selectedDurationLabel}-ээр сунгах`
+                    : `${selectedDurationLabel}-ийн эрх олгох`}
+                </button>
+                {activeMember && (
+                  <button
+                    type="button"
+                    onClick={() => updateMembership(false)}
+                    disabled={changingPrime}
+                    className="mt-2 inline-flex w-full items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
+                  >
+                    Member эрх цуцлах
+                  </button>
+                )}
+                {user.isPrime && !activeMember && (
+                  <p className="mt-2 text-xs font-semibold text-rose-500">
+                    Өмнөх member хугацаа дууссан байна.
+                  </p>
+                )}
+              </div>
+            </>
           )}
-          {user.isPrime ? "Member" : "Member болгох"}
-        </button>
+        </div>
 
         {user.emailVerified && (
           <span className="inline-flex items-center gap-0.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
@@ -817,6 +972,24 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
       </div>
 
       {/* bottom row */}
+      {(user.isPrime || user.membershipExpiresAt) && (
+        <div
+          className={`mt-3 flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-bold ${
+            activeMember
+              ? "bg-amber-50 text-amber-700"
+              : "bg-rose-50 text-rose-600"
+          }`}
+        >
+          <Crown className="h-3.5 w-3.5" />
+          <span>{membershipStatusText(user)}</span>
+          {user.membershipExpiresAt && (
+            <span className="ml-auto text-[10px] opacity-70">
+              {formatDate(user.membershipExpiresAt)}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="mt-3 flex items-center justify-end text-[11px] text-slate-400">
         <span className="flex items-center gap-1 shrink-0">
           {user.lastLoginAt ? (

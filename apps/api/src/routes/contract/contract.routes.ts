@@ -323,7 +323,16 @@ function getContractUserId(req: any): string | undefined {
 async function isPrimeContractUser(userId?: string | null) {
   if (!userId) return false;
   const user = await prisma.user.findFirst({
-    where: { id: userId, isPrime: true, isActive: true, deletedAt: null },
+    where: {
+      id: userId,
+      isPrime: true,
+      isActive: true,
+      deletedAt: null,
+      OR: [
+        { membershipExpiresAt: null },
+        { membershipExpiresAt: { gt: new Date() } },
+      ],
+    },
     select: { id: true },
   });
   return Boolean(user);

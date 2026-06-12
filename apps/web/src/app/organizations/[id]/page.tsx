@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { API } from "@/lib/api";
 import BusinessProfileClient from "./BusinessProfileClient";
+
+const SITE_URL = "https://mglstore.mn";
+const FALLBACK_SOCIAL_LOGO = "/social/mglstore-og.jpg";
 
 interface PageProps {
   params: Promise<{
@@ -239,6 +243,67 @@ async function fetchServicePosts(organizationId: string): Promise<ServicePost[]>
   } catch {
     return [];
   }
+}
+
+function socialImageUrl(image?: string) {
+  if (!image) return FALLBACK_SOCIAL_LOGO;
+  if (image.startsWith("http://") || image.startsWith("https://")) return image;
+  if (image.startsWith("/")) return image;
+  return FALLBACK_SOCIAL_LOGO;
+}
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: PageProps): Promise<Metadata> {
+  const { id } = await params;
+  const query = searchParams ? await searchParams : undefined;
+  const organization = await fetchOrganization(id, query?.oid?.trim() || undefined);
+
+  if (!organization) {
+    return {
+      title: "Байгууллага олдсонгүй | MGL Store",
+      openGraph: {
+        images: [FALLBACK_SOCIAL_LOGO],
+      },
+      twitter: {
+        card: "summary_large_image",
+        images: [FALLBACK_SOCIAL_LOGO],
+      },
+    };
+  }
+
+  const title = `${organization.name} | MGL Store`;
+  const description =
+    organization.shortDescription ||
+    organization.description ||
+    "MGL Store платформ дахь байгууллагын хуудас.";
+  const image = socialImageUrl(organization.logo);
+  const url = `${SITE_URL}/organizations/${encodeURIComponent(id)}`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      type: "website",
+      siteName: "MGL Store",
+      title,
+      description,
+      url,
+      images: [
+        {
+          url: image,
+          alt: `${organization.name} logo`,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [image],
+    },
+  };
 }
 
 export default async function OrganizationDetailPage({ params, searchParams }: PageProps) {

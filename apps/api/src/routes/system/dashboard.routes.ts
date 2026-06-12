@@ -1287,18 +1287,32 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = { deletedAt: null };
+    const andFilters: Record<string, unknown>[] = [];
     if (role && typeof role === "string") where.role = role;
     if (isActive === "true") where.isActive = true;
     if (isActive === "false") where.isActive = false;
-    if (isPrime === "true") where.isPrime = true;
+    if (isPrime === "true") {
+      where.isPrime = true;
+      andFilters.push({
+        OR: [
+          { membershipExpiresAt: null },
+          { membershipExpiresAt: { gt: new Date() } },
+        ],
+      });
+    }
     if (search && typeof search === "string") {
       const q = search.trim();
-      where.OR = [
-        { email: { contains: q, mode: "insensitive" } },
-        { profile: { fullName: { contains: q, mode: "insensitive" } } },
-        { profile: { phoneNumber: { contains: q, mode: "insensitive" } } },
-      ];
+      if (q) {
+        andFilters.push({
+          OR: [
+            { email: { contains: q, mode: "insensitive" } },
+            { profile: { fullName: { contains: q, mode: "insensitive" } } },
+            { profile: { phoneNumber: { contains: q, mode: "insensitive" } } },
+          ],
+        });
+      }
     }
+    if (andFilters.length > 0) where.AND = andFilters;
 
     const [users, total, totalUsers, activeCount, primeCount, roleCounts] = await Promise.all([
       prisma.user.findMany({
@@ -1342,7 +1356,16 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
       prisma.user.count({ where }),
       prisma.user.count({ where: { deletedAt: null } }),
       prisma.user.count({ where: { deletedAt: null, isActive: true } }),
-      prisma.user.count({ where: { deletedAt: null, isPrime: true } }),
+      prisma.user.count({
+        where: {
+          deletedAt: null,
+          isPrime: true,
+          OR: [
+            { membershipExpiresAt: null },
+            { membershipExpiresAt: { gt: new Date() } },
+          ],
+        },
+      }),
       prisma.user.groupBy({
         by: ["role"],
         where: { deletedAt: null },
@@ -1404,10 +1427,34 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
   }
 });
 
-function addOneMembershipMonth(date: Date) {
+const DEFAULT_MEMBERSHIP_DURATION_MONTHS = 12;
+
+function addMembershipMonths(date: Date, months: number) {
   const next = new Date(date);
-  next.setMonth(next.getMonth() + 1);
+  next.setMonth(next.getMonth() + months);
+  next.setHours(23, 59, 59, 999);
   return next;
+}
+
+function resolveMembershipExpiresAt(body: {
+  durationMonths?: unknown;
+  expiresAt?: unknown;
+}) {
+  if (typeof body.expiresAt === "string" && body.expiresAt.trim()) {
+    const date = new Date(body.expiresAt);
+    if (Number.isNaN(date.getTime())) {
+      throw new Error("Дуусах огноо буруу байна");
+    }
+    date.setHours(23, 59, 59, 999);
+    if (date.getTime() <= Date.now()) {
+      throw new Error("Дуусах огноо өнөөдрөөс хойш байх ёстой");
+    }
+    return date;
+  }
+
+  const requestedMonths = Number(body.durationMonths ?? DEFAULT_MEMBERSHIP_DURATION_MONTHS);
+  const months = Math.max(1, Math.min(60, Math.round(requestedMonths || DEFAULT_MEMBERSHIP_DURATION_MONTHS)));
+  return addMembershipMonths(new Date(), months);
 }
 
 /* ─── PATCH /admin/users/:id/prime ─── grant/revoke membership access ── */
@@ -1434,6 +1481,18 @@ router.patch("/admin/users/:id/prime", requireAuth, requirePlatformPermission(Pe
 
     const now = new Date();
     const membershipDiscountPhone = user.profile?.phoneNumber?.trim() || null;
+    let membershipExpiresAt: Date | null = null;
+    if (isPrime) {
+      try {
+        membershipExpiresAt = resolveMembershipExpiresAt(req.body || {});
+      } catch (error) {
+        return res.status(400).json({
+          message:
+            error instanceof Error ? error.message : "Membership хугацаа буруу байна",
+        });
+      }
+    }
+
     const updated = await prisma.user.update({
       where: { id },
       data: isPrime
@@ -1441,7 +1500,7 @@ router.patch("/admin/users/:id/prime", requireAuth, requirePlatformPermission(Pe
             isPrime: true,
             membershipPaidAt: now,
             membershipStartedAt: now,
-            membershipExpiresAt: addOneMembershipMonth(now),
+            membershipExpiresAt,
             membershipDiscountPhone,
           }
         : {
