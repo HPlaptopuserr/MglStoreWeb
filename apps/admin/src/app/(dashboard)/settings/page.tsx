@@ -25,7 +25,7 @@ const SECTIONS = [
   { key: "general", label: "Ерөнхий", icon: Globe },
   { key: "appearance", label: "Гадаад харагдал", icon: Palette },
   { key: "contact", label: "Холбоо барих", icon: Phone },
-  { key: "contract-payments", label: "Гэрээний төлбөр", icon: CreditCard },
+  { key: "contract-payments", label: "Төлбөрийн данс", icon: CreditCard },
   { key: "social", label: "Нийгмийн сүлжээ", icon: Share2 },
   { key: "seo", label: "SEO", icon: Search },
 ] as const;
@@ -530,7 +530,7 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {/* ── CONTRACT PAYMENTS ── */}
+              {/* ── PAYMENT ACCOUNTS ── */}
               {active === "contract-payments" && (
                 <ContractPaymentAccountsSettings />
               )}

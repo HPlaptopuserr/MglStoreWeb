@@ -13,6 +13,7 @@ export interface MembershipType {
 }
 
 export interface PaymentAccount {
+  selectedAccountId?: string;
   bankName: string;
   accountNumber: string;
   accountName: string;
@@ -36,6 +37,7 @@ export const DEFAULT_CONFIG: AssociationConfig = {
   pageTitle: "Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн\nнэгдсэн холбооны гишүүнчлэл",
   pageSubtitle: "Төлөөлөн удирдах зөвлөл томилох хурлын бүртгэл",
   paymentAccount: {
+    selectedAccountId: "",
     bankName: "",
     accountNumber: "",
     accountName: "Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн холбоо",

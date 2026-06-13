@@ -6,7 +6,7 @@ import BusinessProfileClient from "./BusinessProfileClient";
 const SITE_URL = "https://mglstore.mn";
 const FALLBACK_SOCIAL_LOGO = "/social/mglstore-og.jpg";
 
-interface PageProps {
+export interface PageProps {
   params: Promise<{
     id: string;
   }>;
@@ -279,7 +279,7 @@ export async function generateMetadata({
     organization.description ||
     "MGL Store платформ дахь байгууллагын хуудас.";
   const image = socialImageUrl(organization.logo);
-  const url = `${SITE_URL}/organizations/${encodeURIComponent(id)}`;
+  const url = `${SITE_URL}/o/${encodeURIComponent(organization.slug || id)}`;
 
   return {
     title,
@@ -306,7 +306,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function OrganizationDetailPage({ params, searchParams }: PageProps) {
+export async function renderOrganizationDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const query = searchParams ? await searchParams : undefined;
   const fallbackId = query?.oid?.trim();
@@ -320,4 +320,8 @@ export default async function OrganizationDetailPage({ params, searchParams }: P
   organization.servicePosts = servicePosts;
 
   return <BusinessProfileClient data={organization} />;
+}
+
+export default async function OrganizationDetailPage(props: PageProps) {
+  return renderOrganizationDetailPage(props);
 }

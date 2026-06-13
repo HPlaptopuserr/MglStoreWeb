@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Gem, Medal, ShieldCheck, Sparkles } from "lucide-react";
+import { BadgeCheck, Gem, Loader2, Medal, ShieldCheck, Sparkles } from "lucide-react";
 import type { MembershipType } from "../../association/MembershipSelection";
 
 type Props = {
@@ -9,6 +9,9 @@ type Props = {
   onTypeChange: (value: string) => void;
   durationMonths: string;
   onDurationChange: (value: string) => void;
+  submitting?: boolean;
+  submittingPlanKey?: string;
+  onPay: (type: string, months: string) => void;
 };
 
 const PLAN_META: Record<
@@ -42,6 +45,9 @@ export function MembershipPlanPicker({
   onTypeChange,
   durationMonths,
   onDurationChange,
+  submitting = false,
+  submittingPlanKey = "",
+  onPay,
 }: Props) {
   return (
     <div className="rounded-[22px] border border-slate-200 bg-white p-3 sm:p-4">
@@ -74,6 +80,9 @@ export function MembershipPlanPicker({
               );
             }}
             onDurationChange={onDurationChange}
+            submitting={submitting}
+            submittingPlanKey={submittingPlanKey}
+            onPay={onPay}
           />
         ))}
       </div>
@@ -87,12 +96,18 @@ function MembershipTierCard({
   durationMonths,
   onSelect,
   onDurationChange,
+  submitting,
+  submittingPlanKey,
+  onPay,
 }: {
   plan: MembershipType;
   selected: boolean;
   durationMonths: string;
   onSelect: () => void;
   onDurationChange: (value: string) => void;
+  submitting: boolean;
+  submittingPlanKey: string;
+  onPay: (type: string, months: string) => void;
 }) {
   const meta = PLAN_META[plan.value] || PLAN_META.ACTIVE;
   const Icon = meta.icon;
@@ -100,6 +115,13 @@ function MembershipTierCard({
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
+  const defaultDuration = plan.durations[0];
+  const activeDuration =
+    plan.durations.find((duration) => durationMonths === String(duration.months)) ||
+    defaultDuration;
+  const activeDurationMonths = activeDuration ? String(activeDuration.months) : "";
+  const activePlanKey = `${plan.value}:${activeDurationMonths}`;
+  const isCreatingDefaultQr = submittingPlanKey === activePlanKey;
 
   return (
     <article
@@ -148,16 +170,26 @@ function MembershipTierCard({
                 key={duration.months}
                 type="button"
                 onClick={() => {
-                  if (!selected) onSelect();
-                  onDurationChange(String(duration.months));
+                  onSelect();
+                  const months = String(duration.months);
+                  onDurationChange(months);
+                  onPay(plan.value, months);
                 }}
+                disabled={submitting}
                 className={`min-h-11 rounded-xl border px-3 py-2 text-left text-xs font-black transition ${
                   durationSelected
                     ? "border-orange-500 bg-orange-500 text-white"
                     : "border-slate-200 bg-white text-slate-600 hover:border-orange-300"
-                }`}
+                } disabled:cursor-not-allowed disabled:opacity-70`}
               >
-                {duration.label}
+                {submittingPlanKey === `${plan.value}:${duration.months}` ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 size={13} className="animate-spin" />
+                    QR үүсгэж байна
+                  </span>
+                ) : (
+                  `${duration.label} төлөх`
+                )}
               </button>
             );
           })}
@@ -179,15 +211,32 @@ function MembershipTierCard({
 
       <button
         type="button"
-        onClick={onSelect}
+        onClick={() => {
+          if (!activeDurationMonths) return;
+          onSelect();
+          onDurationChange(activeDurationMonths);
+          onPay(plan.value, activeDurationMonths);
+        }}
+        disabled={submitting || !activeDurationMonths}
         className={`mt-7 flex h-12 w-full items-center justify-center rounded-xl border text-sm font-black transition ${
           selected
             ? "border-orange-600 bg-orange-600 text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
             : "border-slate-200 bg-white text-slate-600 hover:border-orange-400 hover:text-orange-600"
-        }`}
+        } disabled:cursor-not-allowed disabled:opacity-70`}
       >
-        {selected && <CheckCircle2 size={16} className="mr-2" />}
-        {selected ? "Сонгогдсон" : meta.action}
+        {isCreatingDefaultQr ? (
+          <>
+            <Loader2 size={16} className="mr-2 animate-spin" />
+            QR үүсгэж байна
+          </>
+        ) : (
+          <>
+            <BadgeCheck size={16} className="mr-2" />
+            {selected && activeDuration
+              ? `${activeDuration.price.toLocaleString()}₮ төлөх`
+              : meta.action.replace("сонгох", "төлөх")}
+          </>
+        )}
       </button>
     </article>
   );

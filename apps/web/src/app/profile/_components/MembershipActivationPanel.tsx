@@ -9,7 +9,6 @@ import {
   type PaidAccessPaymentSession,
 } from "@/components/molecules/payments/PaidAccessPaymentModal";
 import type { MembershipType } from "../../association/MembershipSelection";
-import { MembershipPaymentBox } from "./MembershipPaymentBox";
 import { MembershipPlanPicker } from "./MembershipPlanPicker";
 import type { ProfileFormState } from "./types";
 
@@ -46,9 +45,6 @@ const DEFAULT_TYPES: MembershipType[] = [
   },
 ];
 
-const inputCls =
-  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-500/15";
-
 export function MembershipActivationPanel({
   user,
   form,
@@ -61,35 +57,31 @@ export function MembershipActivationPanel({
   const membershipTypes = DEFAULT_TYPES;
   const [membershipType, setMembershipType] = useState("");
   const [durationMonths, setDurationMonths] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
-  const [businessActivity, setBusinessActivity] = useState("");
-  const [paymentReference, setPaymentReference] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [submittingPlanKey, setSubmittingPlanKey] = useState("");
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [paymentSession, setPaymentSession] =
     useState<PaidAccessPaymentSession | null>(null);
   const [registrationId, setRegistrationId] = useState("");
 
-  const selectedType = membershipTypes.find(
-    (item) => item.value === membershipType,
-  );
-  const selectedDuration = selectedType?.durations.find(
-    (item) => String(item.months) === durationMonths,
-  );
-  const amount = selectedDuration?.price ?? 0;
   const { firstName, lastName } = useMemo(
     () => splitName(form.fullName || user.fullName || ""),
     [form.fullName, user.fullName],
   );
 
-  const submit = async () => {
+  const submit = async (nextType = membershipType, nextDuration = durationMonths) => {
     setError("");
-    if (!membershipType) {
+    const type = membershipTypes.find((item) => item.value === nextType);
+    const duration = type?.durations.find(
+      (item) => String(item.months) === nextDuration,
+    );
+
+    if (!nextType || !type) {
       setError("Гишүүнчлэлийн төрлөө сонгоно уу.");
       return;
     }
-    if (!durationMonths || !selectedDuration) {
+    if (!nextDuration || !duration) {
       setError("Гишүүнчлэлийн хугацаагаа сонгоно уу.");
       return;
     }
@@ -102,7 +94,10 @@ export function MembershipActivationPanel({
       return;
     }
 
+    setMembershipType(nextType);
+    setDurationMonths(nextDuration);
     setSubmitting(true);
+    setSubmittingPlanKey(`${nextType}:${nextDuration}`);
     try {
       const res = await request(`${API}/association/systemqr`, {
         method: "POST",
@@ -110,13 +105,10 @@ export function MembershipActivationPanel({
         body: JSON.stringify({
           lastName,
           firstName,
-          organizationName: organizationName.trim() || undefined,
-          businessActivity: businessActivity.trim() || undefined,
           address: form.fullAddress.trim(),
           phone: form.phone.trim(),
-          membershipType,
-          durationMonths: durationMonths ? Number(durationMonths) : undefined,
-          paymentReference: paymentReference.trim() || undefined,
+          membershipType: nextType,
+          durationMonths: Number(nextDuration),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -128,7 +120,7 @@ export function MembershipActivationPanel({
       setPaymentSession({
         invoiceId: String(data.invoiceId || ""),
         providerInvoiceId: String(data.providerInvoiceId || ""),
-        amount: Number(data.amount || amount),
+        amount: Number(data.amount || duration.price),
         qrText: String(data.qrText || ""),
         qrImage: String(data.qrImage || ""),
         urls: Array.isArray(data.urls) ? data.urls : [],
@@ -138,6 +130,7 @@ export function MembershipActivationPanel({
       setError("Сүлжээний алдаа гарлаа.");
     } finally {
       setSubmitting(false);
+      setSubmittingPlanKey("");
     }
   };
 
@@ -179,45 +172,20 @@ export function MembershipActivationPanel({
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Байгууллага / бизнес (заавал биш)">
-              <input
-                value={organizationName}
-                onChange={(e) => setOrganizationName(e.target.value)}
-                placeholder="Хувь хэрэглэгч бол хоосон үлдээнэ"
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Үйл ажиллагааны чиглэл (заавал биш)">
-              <input
-                value={businessActivity}
-                onChange={(e) => setBusinessActivity(e.target.value)}
-                className={inputCls}
-              />
-            </Field>
-          </div>
-
           <MembershipPlanPicker
             plans={membershipTypes}
             selectedType={membershipType}
             onTypeChange={setMembershipType}
             durationMonths={durationMonths}
             onDurationChange={setDurationMonths}
+            submitting={submitting}
+            submittingPlanKey={submittingPlanKey}
+            onPay={(type, months) => submit(type, months)}
           />
-
-          {membershipType && (
-            <MembershipPaymentBox
-              amount={amount}
-              fullName={form.fullName}
-              phone={form.phone}
-              paymentReference={paymentReference}
-              onPaymentReferenceChange={setPaymentReference}
-            />
-          )}
 
           <button
             type="button"
-            onClick={submit}
+            onClick={() => submit()}
             disabled={submitting}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-orange-600 disabled:opacity-60"
           >
@@ -245,23 +213,6 @@ export function MembershipActivationPanel({
         />
       )}
     </section>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-black text-slate-500">
-        {label}
-      </span>
-      {children}
-    </label>
   );
 }
 

@@ -6,9 +6,10 @@ import { Check, ChevronRight, Heart, PackageCheck, Share2, ShieldCheck, Shopping
 import type { LucideIcon } from "lucide-react";
 import { ProductCard } from "@mgl/ui";
 import { resolveMemberPricing } from "@/lib/member-pricing";
+import { organizationPath } from "@/lib/organization-links";
 
 export interface ProductImage { id: string; url: string }
-export interface Organization { id: string; name: string; logoUrl?: string | null }
+export interface Organization { id: string; name: string; slug?: string | null; logoUrl?: string | null }
 export interface BusinessCategory { id: string; name: string; slug: string }
 export interface Discount { percent: number; validUntil: string }
 
@@ -218,7 +219,7 @@ export function ProductDetailShell({
         </section>
 
         {vendorProducts.length > 0 && (
-          <ProductShelf title="Энэ дэлгүүрийн бусад бараа" label="Vendor products" href={`/organizations/${product.organization.id}`}>
+          <ProductShelf title="Энэ дэлгүүрийн бусад бараа" label="Vendor products" href={organizationPath(product.organization)}>
             {recommendationGrid(vendorProducts, isMember)}
           </ProductShelf>
         )}
@@ -340,7 +341,7 @@ function ProductCommercePanel({
 
   return (
     <div className="flex min-w-0 flex-col">
-      <Link href={`/organizations/${product.organization.id}`} className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 p-3 transition hover:bg-orange-50">
+      <Link href={organizationPath(product.organization)} className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-slate-50 p-3 transition hover:bg-orange-50">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1 ring-slate-100">
             {product.organization.logoUrl ? (

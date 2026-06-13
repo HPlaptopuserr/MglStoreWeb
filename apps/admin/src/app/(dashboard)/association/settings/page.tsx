@@ -10,6 +10,12 @@ import { API, adminFetch } from "@/lib/api";
 import { DEFAULT_CONFIG, type AssociationConfig, type MembershipType } from "./_types";
 import { AssociationFormPreview } from "./AssociationFormPreview";
 import { MembershipTypeEditor } from "./MembershipTypeEditor";
+import {
+  CONTRACT_PAYMENT_ACCOUNTS_KEY,
+  type ContractPaymentAccount,
+  getBankLabel,
+  parseContractPaymentAccounts,
+} from "@/components/organisms/sections/contract/PaymentAccountPanels";
 
 const inp = "w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 bg-white";
 
@@ -20,11 +26,19 @@ export default function AssociationSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(true);
+  const [paymentAccounts, setPaymentAccounts] = useState<ContractPaymentAccount[]>([]);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/association/config`);
+      const [res, settingsRes] = await Promise.all([
+        adminFetch(`${API}/admin/association/config`),
+        adminFetch(`${API}/site-settings/admin`),
+      ]);
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
+        setPaymentAccounts(parseContractPaymentAccounts(settings?.[CONTRACT_PAYMENT_ACCOUNTS_KEY]));
+      }
       if (res.ok) {
         const data = await res.json();
         if (data) {
@@ -71,6 +85,36 @@ export default function AssociationSettingsPage() {
       ...c,
       membershipTypes: c.membershipTypes.map((t, i) => (i === idx ? updated : t)),
     }));
+
+  const selectPaymentAccount = (accountId: string) => {
+    const account = paymentAccounts.find((item) => item.id === accountId);
+    setConfig((c) => ({
+      ...c,
+      paymentAccount: account
+        ? {
+            ...c.paymentAccount,
+            selectedAccountId: account.id,
+            bankName: getBankLabel(account.bankCode),
+            bankCode: account.bankCode,
+            accountNumber: account.accountNumber,
+            accountName: account.label || account.merchantName,
+            merchantCode: account.merchantCode,
+            username: account.username || account.merchantCode,
+            password: account.password || c.paymentAccount.password || "",
+          }
+        : {
+            ...c.paymentAccount,
+            selectedAccountId: "",
+            bankName: "",
+            bankCode: "",
+            accountNumber: "",
+            accountName: "",
+            merchantCode: "",
+            username: "",
+            password: "",
+          },
+    }));
+  };
 
   if (loading) {
     return (
@@ -194,123 +238,36 @@ export default function AssociationSettingsPage() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
               <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">₮</span>
-              <h2 className="text-sm font-bold text-slate-700">Төлбөр хүлээн авах данс</h2>
+              <h2 className="text-sm font-bold text-slate-700">Гишүүнчлэлийн төлбөр авах данс</h2>
             </div>
-            <div className="px-5 py-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Банк</label>
-                <input
-                  value={config.paymentAccount?.bankName ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      paymentAccount: { ...c.paymentAccount, bankName: e.target.value },
-                    }))
-                  }
-                  className={inp}
-                  placeholder="Жишээ: Хаан банк"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Банкны код</label>
-                <input
-                  value={config.paymentAccount?.bankCode ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      paymentAccount: { ...c.paymentAccount, bankCode: e.target.value },
-                    }))
-                  }
-                  className={inp}
-                  placeholder="Жишээ: 050000"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Дансны дугаар</label>
-                <input
-                  value={config.paymentAccount?.accountNumber ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      paymentAccount: { ...c.paymentAccount, accountNumber: e.target.value },
-                    }))
-                  }
-                  className={inp}
-                  placeholder="Дансны дугаар"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Дансны нэр</label>
-                <input
-                  value={config.paymentAccount?.accountName ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      paymentAccount: { ...c.paymentAccount, accountName: e.target.value },
-                    }))
-                  }
-                  className={inp}
-                  placeholder="Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн холбоо"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Merchant code</label>
-                <input
-                  value={config.paymentAccount?.merchantCode ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      paymentAccount: { ...c.paymentAccount, merchantCode: e.target.value },
-                    }))
-                  }
-                  className={inp}
-                  placeholder="Minu Dynamic QR merchant code"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Username</label>
-                <input
-                  value={config.paymentAccount?.username ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      paymentAccount: { ...c.paymentAccount, username: e.target.value },
-                    }))
-                  }
-                  className={inp}
-                  placeholder="Merchant username"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Password</label>
-                <input
-                  type="password"
-                  value={config.paymentAccount?.password ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      paymentAccount: { ...c.paymentAccount, password: e.target.value },
-                    }))
-                  }
-                  className={inp}
-                  placeholder="Merchant password"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Төлбөрийн заавар</label>
-                <textarea
-                  value={config.paymentAccount?.description ?? ""}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      paymentAccount: { ...c.paymentAccount, description: e.target.value },
-                    }))
-                  }
-                  rows={2}
-                  className={`${inp} resize-none`}
-                  placeholder="Гүйлгээний утга дээр овог нэр, утас бичнэ үү."
-                />
-              </div>
+            <div className="px-5 py-4">
+              <label className="space-y-1.5">
+                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Төлбөр орох данс
+                </span>
+                <select
+                  value={config.paymentAccount?.selectedAccountId ?? ""}
+                  onChange={(event) => selectPaymentAccount(event.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                >
+                  <option value="">Данс сонгоно уу</option>
+                  {paymentAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.label || account.merchantName} · {getBankLabel(account.bankCode)} {account.accountNumber} · {account.merchantCode}
+                    </option>
+                  ))}
+                </select>
+                {paymentAccounts.length === 0 && (
+                  <p className="mt-2 text-xs font-semibold text-amber-700">
+                    “Гэрээний төлбөр” тохиргоонд эхлээд Minu Dynamic QR данс холбоно уу.
+                  </p>
+                )}
+              </label>
+              {!config.paymentAccount?.merchantCode && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  Гишүүнчлэлийн QuickQR ажиллуулахын тулд төлбөрийн данс сонгож хадгална уу.
+                </div>
+              )}
             </div>
           </div>
 

@@ -14,10 +14,12 @@ import {
 interface SearchOption {
   id: string;
   name: string;
+  slug?: string;
   icon?: string;
 }
 
 import { API } from "@/lib/api";
+import { organizationPath } from "@/lib/organization-links";
 
 const contextOptions = [
   "Бүгд",
@@ -66,7 +68,7 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
         if (partRes.ok) {
           const raw = await partRes.json();
           const parts = Array.isArray(raw) ? raw : raw?.data || [];
-          setApiBrands(parts.map((p: any) => ({ id: p.id, name: p.name })));
+          setApiBrands(parts.map((p: any) => ({ id: p.id, name: p.name, slug: p.slug })));
         }
       } catch {
         setApiCategories([]);
@@ -393,7 +395,7 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
                           <button
                             key={brand.id}
                             onClick={() => {
-                              router.push(`/organizations/${brand.id}`);
+                              router.push(organizationPath(brand));
                               closeSearch();
                             }}
                             className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white hover:shadow-sm transition-all text-slate-600 hover:text-orange-600 group"

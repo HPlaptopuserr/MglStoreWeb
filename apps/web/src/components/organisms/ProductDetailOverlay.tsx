@@ -25,6 +25,7 @@ import { API } from "@/lib/api";
 import { addToCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth-context";
 import { resolveMemberPricing } from "@/lib/member-pricing";
+import { organizationPath } from "@/lib/organization-links";
 
 interface ProductImage {
   id: string;
@@ -466,7 +467,7 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
 
                 {/* Store info */}
                 <Link
-                  href={`/organizations/${product.organization.id}`}
+                  href={organizationPath(product.organization)}
                   className="flex items-center gap-3 bg-gray-50 hover:bg-gray-100 rounded-xl p-3 transition-colors mb-4 group"
                 >
                   <div className="relative w-10 h-10 rounded-full overflow-hidden bg-white border border-gray-200 shrink-0">

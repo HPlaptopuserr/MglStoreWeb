@@ -94,6 +94,22 @@ function getAssociationPaymentAccount(config: any) {
   };
 }
 
+function publicAssociationConfig(config: any) {
+  if (!config || typeof config !== "object") return config;
+  const paymentAccount = config.paymentAccount || {};
+
+  return {
+    ...config,
+    paymentAccount: {
+      bankName: String(paymentAccount.bankName || ""),
+      bankCode: String(paymentAccount.bankCode || ""),
+      accountNumber: String(paymentAccount.accountNumber || ""),
+      accountName: String(paymentAccount.accountName || ""),
+      description: String(paymentAccount.description || ""),
+    },
+  };
+}
+
 async function refreshAssociationInvoicePayment(invoiceId: string) {
   const invoice = await prisma.qPayInvoice.findUnique({
     where: { id: invoiceId },
@@ -274,7 +290,6 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
       !lastName ||
       !firstName ||
       !phone ||
-      !organizationName ||
       !address ||
       !membershipType
     ) {
@@ -674,12 +689,27 @@ router.get("/association/config", async (_req, res) => {
   try {
     const config = await getAssociationConfig();
     if (!config) return res.json(null); // fallback to hardcoded
-    return res.json(config);
+    return res.json(publicAssociationConfig(config));
   } catch (e) {
     console.error("Association config get error:", e);
     return res.status(500).json({ message: "Серверийн алдаа" });
   }
 });
+
+router.get(
+  "/admin/association/config",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_REGISTRATIONS),
+  async (_req, res) => {
+    try {
+      const config = await getAssociationConfig();
+      return res.json(config);
+    } catch (e) {
+      console.error("Association admin config get error:", e);
+      return res.status(500).json({ message: "Серверийн алдаа" });
+    }
+  },
+);
 
 /* ── Admin: update association config ───────────────────── */
 router.put(

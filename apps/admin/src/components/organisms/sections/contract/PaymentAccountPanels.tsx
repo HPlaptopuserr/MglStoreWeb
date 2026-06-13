@@ -6,8 +6,6 @@ import {
   Link as LinkIcon,
   Loader2,
   Plus,
-  ToggleLeft,
-  ToggleRight,
   Trash2,
 } from "lucide-react";
 
@@ -150,7 +148,6 @@ type SharedAccountProps = {
 
 export function ContractPaymentAccountSelect({
   settings,
-  setSettings,
   selectPaymentAccount,
 }: SharedAccountProps) {
   if (!settings.isPaid) return null;
@@ -159,72 +156,39 @@ export function ContractPaymentAccountSelect({
   const selectedAccount = accounts.find((account) => account.id === settings.systemQr?.selectedAccountId);
 
   return (
-    <div className="mt-4 p-4 bg-white border border-amber-200 rounded-xl shadow-sm">
-      <div className="flex items-center justify-between gap-3 mb-4">
+    <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <div className="w-1 h-4 bg-amber-500 rounded-full" />
+          <div className="h-4 w-1 rounded-full bg-amber-500" />
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
             Энэ гэрээнд ашиглах төлбөрийн данс
           </span>
         </div>
-
-        <button
-          type="button"
-          onClick={() =>
-            setSettings({
-              ...settings,
-              systemQr: { ...settings.systemQr, enabled: !settings.systemQr?.enabled },
-            })
-          }
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            settings.systemQr?.enabled
-              ? "bg-amber-100 text-amber-700"
-              : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
-          }`}
-        >
-          {settings.systemQr?.enabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-          {settings.systemQr?.enabled ? "Идэвхтэй" : "Идэвхгүй"}
-        </button>
       </div>
 
-      {settings.systemQr?.enabled && (
-        <div className="grid grid-cols-1 gap-3">
-          <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Дансны сангаас сонгосон merchantCode энэ гэрээний template дээр хадгалагдана. Жишээ нь 1 саяын гэрээ A данс, 4 саяын гэрээ B данс руу төлбөрөө авна.
-          </div>
+      <select
+        value={settings.systemQr?.selectedAccountId || ""}
+        onChange={(event) => selectPaymentAccount(event.target.value)}
+        className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+      >
+        <option value="">Бүртгэгдсэн данс сонгоно уу</option>
+        {accounts.map((account) => (
+          <option key={account.id} value={account.id}>
+            {account.label || account.merchantName} · {getBankLabel(account.bankCode)} {account.accountNumber} · {account.merchantCode}
+          </option>
+        ))}
+      </select>
 
-          <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-neutral-500 pl-1">
-                Энэ гэрээнд ашиглах данс
-              </label>
-              <select
-                value={settings.systemQr?.selectedAccountId || ""}
-                onChange={(event) => selectPaymentAccount(event.target.value)}
-                className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
-              >
-                <option value="">Бүртгэгдсэн данс сонгоно уу</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.label || account.merchantName} - {getBankLabel(account.bankCode)} {account.accountNumber} - {account.merchantCode}
-                  </option>
-                ))}
-              </select>
+      {accounts.length === 0 && (
+        <p className="mt-2 text-xs font-semibold text-amber-700">
+          Admin → Тохиргоо → Төлбөрийн данс хэсэгт эхлээд Minu Dynamic QR данс холбоно уу.
+        </p>
+      )}
 
-              {accounts.length === 0 && (
-                <p className="text-xs text-red-500 mt-1">
-                  Данс бүртгэгдээгүй байна. "Дансны тохиргоо" хэсэгт эхлээд Minu данс холбоно уу.
-                </p>
-              )}
-
-              {selectedAccount && (
-                <p className="text-xs text-neutral-500 mt-1">
-                  Сонгосон данс: {settings.systemQr?.merchantName} · {getBankLabel(settings.systemQr?.bankCode)} {settings.systemQr?.accountNumber}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+      {selectedAccount && (
+        <p className="mt-2 text-xs text-neutral-500">
+          Сонгосон данс: {settings.systemQr?.merchantName} · {getBankLabel(settings.systemQr?.bankCode)} {settings.systemQr?.accountNumber}
+        </p>
       )}
     </div>
   );

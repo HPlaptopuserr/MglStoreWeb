@@ -54,9 +54,7 @@ export function CardsSection() {
     : null;
 
   const qrPreviewUrl = cardData
-    ? `${webBaseUrl}/organizations/${encodeURIComponent(cardData.profileTarget || cardData.slug)}${
-        cardData.profileId ? `?oid=${encodeURIComponent(cardData.profileId)}` : ""
-      }`
+    ? `${webBaseUrl}/o/${encodeURIComponent(cardData.profileTarget || cardData.slug)}`
     : "";
 
   const printSlots = Array.from({ length: PRINT_COPIES }, (_, i) => i);
