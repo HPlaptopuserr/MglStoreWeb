@@ -4,6 +4,12 @@ import { Crown, CheckCircle2, XCircle, Clock, Zap } from "lucide-react";
 
 const PLAN_LABELS: Record<string, string> = {
   trial: "Үнэгүй туршилт",
+  silver_1m: "Silver · 1 сар",
+  silver_6m: "Silver · 6 сар",
+  gold_1m: "Gold · 1 сар",
+  gold_6m: "Gold · 6 сар",
+  platinum_1m: "Platinum · 1 сар",
+  platinum_6m: "Platinum · 6 сар",
   "1m": "1 Сар",
   "3m": "3 Сар",
   "6m": "6 Сар",
@@ -16,6 +22,42 @@ const PLAN_COLORS: Record<string, { bg: string; border: string; text: string; ba
     border: "border-slate-200",
     text: "text-slate-700",
     badge: "bg-slate-100 text-slate-600",
+  },
+  silver_1m: {
+    bg: "bg-orange-50",
+    border: "border-orange-200",
+    text: "text-orange-800",
+    badge: "bg-orange-100 text-orange-700",
+  },
+  silver_6m: {
+    bg: "bg-orange-50",
+    border: "border-orange-200",
+    text: "text-orange-800",
+    badge: "bg-orange-100 text-orange-700",
+  },
+  gold_1m: {
+    bg: "bg-amber-50",
+    border: "border-amber-200",
+    text: "text-amber-800",
+    badge: "bg-amber-100 text-amber-700",
+  },
+  gold_6m: {
+    bg: "bg-amber-50",
+    border: "border-amber-200",
+    text: "text-amber-800",
+    badge: "bg-amber-100 text-amber-700",
+  },
+  platinum_1m: {
+    bg: "bg-violet-50",
+    border: "border-violet-200",
+    text: "text-violet-800",
+    badge: "bg-violet-100 text-violet-700",
+  },
+  platinum_6m: {
+    bg: "bg-violet-50",
+    border: "border-violet-200",
+    text: "text-violet-800",
+    badge: "bg-violet-100 text-violet-700",
   },
   "1m": {
     bg: "bg-blue-50",

@@ -3,6 +3,7 @@ import { prisma } from "@mgl/database";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 import { Permission } from "@mgl/types";
 import { PLANS, getPlan } from "../vendor/vendor-upgrade.routes";
+import { syncOwnerPersonalMembershipFromOrgPlan } from "../../services/owner-membership-sync.service";
 
 const router: ExpressRouter = Router();
 
@@ -119,8 +120,8 @@ router.post(
       const invoiceNo = `GRANT-${org.id.slice(0, 8).toUpperCase()}-${Date.now()}`;
       const invoiceId = `admin-grant-${org.id.slice(0, 8)}-${Date.now()}`;
 
-      await (prisma as any).$transaction([
-        (prisma.orgUpgradePlan as any).create({
+      await prisma.$transaction(async (tx) => {
+        await (tx.orgUpgradePlan as any).create({
           data: {
             organizationId: org.id,
             planType: planId,
@@ -135,8 +136,8 @@ router.post(
             grantNote: note.trim(),
             grantedById: adminUserId ?? null,
           },
-        }),
-        (prisma.organization as any).update({
+        });
+        await (tx.organization as any).update({
           where: { id: org.id },
           data: {
             subdomainEnabled: true,
@@ -145,8 +146,16 @@ router.post(
             planExpiresAt: expiresAt,
             ...(plan.isTrial ? { trialUsed: true } : {}),
           },
-        }),
-      ]);
+        });
+        if (!plan.isTrial) {
+          await syncOwnerPersonalMembershipFromOrgPlan({
+            prisma: tx,
+            organizationId: org.id,
+            paidAt: now,
+            expiresAt,
+          });
+        }
+      });
 
       return res.json({
         success: true,

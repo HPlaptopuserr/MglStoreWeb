@@ -13,13 +13,11 @@ import {
   Crown,
   Image,
   Tag,
-  BarChart2,
   Package,
   Sparkles,
   X,
   ShieldCheck,
   TrendingUp,
-  Star,
   ArrowRight,
   Clock,
 } from "lucide-react";
@@ -37,6 +35,11 @@ type Plan = {
   hasAnalytics: boolean;
   isTrial: boolean;
   badge?: string;
+  tier?: "SILVER" | "GOLD" | "PLATINUM";
+  durationMonths?: number;
+  durationLabel?: string;
+  benefits?: string[];
+  unavailable?: string[];
 };
 
 type UpgradeStatus = {
@@ -87,116 +90,230 @@ function StatCard({
   );
 }
 
-const PLAN_LABELS: Record<string, { months: string; perMonth: string }> = {
-  "1 Сар": { months: "1", perMonth: "" },
-  "3 Сар": { months: "3", perMonth: "43,300₮/сар" },
-  "6 Сар": { months: "6", perMonth: "39,983₮/сар" },
-  "1 Жил": { months: "12", perMonth: "37,492₮/сар" },
+const TIER_META: Record<
+  string,
+  {
+    label: string;
+    action: string;
+    icon: typeof ShieldCheck;
+    recommended?: boolean;
+    unavailable?: string[];
+  }
+> = {
+  SILVER: {
+    label: "Silver",
+    action: "Silver сонгох",
+    icon: ShieldCheck,
+    unavailable: ["Priority хүргэлтийн үйлчилгээ"],
+  },
+  GOLD: {
+    label: "Gold",
+    action: "Gold сонгох",
+    icon: Crown,
+    recommended: true,
+  },
+  PLATINUM: {
+    label: "Platinum",
+    action: "Platinum сонгох",
+    icon: Sparkles,
+  },
 };
 
-function PlanCard({
-  plan,
-  selected,
-  trialUsed,
-  onSelect,
-  isRenew,
-}: {
-  plan: Plan;
-  selected: boolean;
-  trialUsed: boolean;
-  onSelect: (id: string) => void;
-  isRenew?: boolean;
-}) {
-  const disabled = plan.isTrial && trialUsed;
-  const isMostPopular = plan.badge === "ХЭМНЭЛТТЭЙ" || plan.badge === "Most Popular";
-  const isBestValue = plan.badge === "ХАМГИЙН АШИГТАЙ";
-  const isUrgent = plan.badge === "АЛДАРТАЙ";
+type MembershipPlanGroup = {
+  tier: "SILVER" | "GOLD" | "PLATINUM";
+  name: string;
+  monthlyPrice: number;
+  plans: Plan[];
+  benefits: string[];
+  unavailable: string[];
+};
 
-  const getBadgeStyle = () => {
-    if (isMostPopular) return "bg-[#FFAD02] text-black";
-    if (isBestValue) return "bg-emerald-500 text-white";
-    if (isUrgent) return "bg-rose-500 text-white";
-    return "bg-slate-700 text-white";
-  };
+function groupMembershipPlans(plans: Plan[]): MembershipPlanGroup[] {
+  const order: MembershipPlanGroup["tier"][] = ["SILVER", "GOLD", "PLATINUM"];
+  return order
+    .map((tier) => {
+      const tierPlans = plans
+        .filter((plan) => plan.tier === tier && !plan.isTrial)
+        .sort((a, b) => (a.durationMonths ?? 0) - (b.durationMonths ?? 0));
+      const base = tierPlans[0];
+      if (!base) return null;
+      return {
+        tier,
+        name: base.name,
+        monthlyPrice: base.durationMonths
+          ? Math.round(base.price / base.durationMonths)
+          : base.price,
+        plans: tierPlans,
+        benefits: base.benefits ?? [],
+        unavailable: base.unavailable ?? TIER_META[tier]?.unavailable ?? [],
+      };
+    })
+    .filter(Boolean) as MembershipPlanGroup[];
+}
+
+function VendorMembershipTierCard({
+  group,
+  selected,
+  selectedPlanId,
+  onSelectPlan,
+}: {
+  group: MembershipPlanGroup;
+  selected: boolean;
+  selectedPlanId: string | null;
+  onSelectPlan: (id: string) => void;
+}) {
+  const meta = TIER_META[group.tier];
+  const Icon = meta.icon;
 
   return (
-    <button
-      onClick={() => !disabled && onSelect(plan.id)}
-      disabled={disabled}
-      className={`relative w-full text-left rounded-2xl border-2 p-5 transition-all duration-200 ${
-        disabled
-          ? "opacity-40 cursor-not-allowed border-slate-200 bg-slate-50"
-          : selected
-          ? "border-[#FFAD02] bg-gradient-to-br from-amber-50 to-white shadow-lg shadow-amber-100/60 scale-[1.02]"
-          : isMostPopular
-          ? "border-amber-200 bg-white hover:border-[#FFAD02] hover:shadow-md hover:scale-[1.01]"
-          : "border-slate-200 bg-white hover:border-amber-300 hover:shadow-sm hover:scale-[1.005]"
+    <article
+      className={`relative overflow-hidden rounded-2xl border-2 p-5 transition-all duration-200 ${
+        selected
+          ? "border-orange-500 bg-orange-50 shadow-lg shadow-orange-100/70"
+          : "border-slate-200 bg-white hover:border-orange-300 hover:shadow-sm"
       }`}
     >
-      {(plan.badge || plan.isTrial) && (
-        <span
-          className={`absolute -top-3 left-4 px-3 py-0.5 text-[10px] font-black rounded-full uppercase tracking-widest ${
-            plan.isTrial ? "bg-emerald-500 text-white" : getBadgeStyle()
-          }`}
-        >
-          {plan.isTrial ? "Үнэгүй туршилт" : plan.badge}
-        </span>
+      {meta.recommended && (
+        <div className="absolute -right-10 top-4 rotate-45 bg-orange-600 px-9 py-1 text-[9px] font-black uppercase tracking-wide text-orange-50">
+          санал болгох
+        </div>
       )}
 
       <div className="flex items-start justify-between mb-4">
         <div>
-          <p className="font-black text-slate-900 text-base leading-tight">{plan.name}</p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {plan.isTrial ? "14 хоног" : `${plan.durationDays} хоног`}
+          <p className="font-black text-slate-950 text-xl leading-tight">{group.name}</p>
+          <div className="mt-3 flex items-end gap-2">
+            <span className="text-3xl font-black tracking-tight text-slate-950">
+              {group.monthlyPrice.toLocaleString()}
+            </span>
+            <span className="pb-1 text-xs font-black uppercase text-slate-400">
+              ₮ / сар
+            </span>
+          </div>
+        </div>
+        <span
+          className={`mt-1 flex h-10 w-10 items-center justify-center rounded-xl ${
+            selected
+              ? "bg-orange-500 text-white"
+              : "bg-white text-orange-600 ring-1 ring-slate-200"
+          }`}
+        >
+          <Icon size={18} />
+        </span>
+      </div>
+
+      <div className="mb-4 grid gap-2">
+        {group.plans.map((plan) => {
+          const durationSelected = selectedPlanId === plan.id;
+          return (
+            <button
+              key={plan.id}
+              type="button"
+              onClick={() => onSelectPlan(plan.id)}
+              className={`min-h-11 rounded-xl border px-3 py-2 text-left text-xs font-black transition ${
+                durationSelected
+                  ? "border-orange-500 bg-orange-500 text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-orange-300"
+              }`}
+            >
+              {plan.durationLabel || `${plan.durationDays} хоног`}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="space-y-2.5">
+        {group.benefits.map((feature) => (
+          <FeatureLine key={feature} enabled>
+            {feature}
+          </FeatureLine>
+        ))}
+        {group.unavailable.map((feature) => (
+          <FeatureLine key={feature} enabled={false}>
+            {feature}
+          </FeatureLine>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onSelectPlan(group.plans[0]?.id || "")}
+        className={`mt-7 flex h-12 w-full items-center justify-center rounded-xl border text-sm font-black transition ${
+          selected
+            ? "border-orange-600 bg-orange-600 text-white shadow-lg shadow-orange-600/20 hover:bg-orange-500"
+            : "border-slate-200 bg-white text-slate-600 hover:border-orange-400 hover:text-orange-600"
+        }`}
+      >
+        {selected && <CheckCircle2 size={16} className="mr-2" />}
+        {selected ? "Сонгогдсон" : meta.action}
+      </button>
+    </article>
+  );
+}
+
+function FeatureLine({
+  children,
+  enabled,
+}: {
+  children: string;
+  enabled: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-start gap-3 text-sm font-bold leading-6 ${
+        enabled ? "text-slate-700" : "text-slate-300 line-through"
+      }`}
+    >
+      <span
+        className={`mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
+          enabled ? "text-orange-500" : "text-slate-300"
+        }`}
+      >
+        {enabled ? (
+          <Sparkles size={13} />
+        ) : (
+          <span className="h-2 w-2 rounded-full border border-current" />
+        )}
+      </span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function CurrentPlanName({ plan }: { plan: Plan }) {
+  return (
+    <span>
+      {plan.name}
+      {plan.durationLabel ? (
+        <span className="ml-1 text-slate-400">· {plan.durationLabel}</span>
+      ) : null}
+    </span>
+  );
+}
+
+function SelectedPaymentSummary({ plan }: { plan: Plan }) {
+  return (
+    <div className="bg-white rounded-3xl border border-orange-200 shadow-md shadow-orange-50 p-6">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            Сонгосон membership
+          </p>
+          <p className="text-xl font-black text-slate-900 mt-0.5 flex items-baseline gap-2">
+            {plan.name}
+            {plan.durationLabel && (
+              <span className="text-sm font-bold text-slate-400">{plan.durationLabel}</span>
+            )}
           </p>
         </div>
         <div className="text-right">
-          {plan.price === 0 ? (
-            <p className="text-2xl font-black text-emerald-600">Үнэгүй</p>
-          ) : (
-            <>
-              <p className="text-2xl font-black text-slate-900 leading-none">
-                {plan.price.toLocaleString()}
-                <span className="text-sm font-bold text-slate-400">₮</span>
-              </p>
-              {PLAN_LABELS[plan.name]?.perMonth && (
-                <p className="text-[10px] text-slate-400 mt-0.5">{PLAN_LABELS[plan.name].perMonth}</p>
-              )}
-            </>
-          )}
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Төлөх дүн</p>
+          <p className="mt-0.5 text-2xl font-black text-orange-500">
+            {plan.price.toLocaleString()}₮
+          </p>
         </div>
       </div>
-
-      {!isRenew && (
-        <div className="space-y-2 pt-3 border-t border-slate-100">
-          {[
-            { icon: Package, label: "Бүтээгдэхүүн", value: fmt(plan.maxProducts) },
-            { icon: Image, label: "Зураг / бараа", value: fmt(plan.maxImages) },
-            { icon: Tag, label: "Ангилал", value: fmt(plan.maxCategories) },
-            { icon: Star, label: "Banner зураг", value: plan.hasBanner },
-            { icon: BarChart2, label: "Аналитик", value: plan.hasAnalytics },
-          ].map(({ icon: Icon, label, value }) => (
-            <div key={label} className="flex items-center gap-2 text-xs">
-              <Icon className={`w-3.5 h-3.5 shrink-0 ${value === false ? "text-slate-200" : "text-amber-400"}`} />
-              <span className="text-slate-500 flex-1">{label}</span>
-              <span className={`font-bold ${value === false ? "text-slate-300" : "text-slate-700"}`}>
-                {value === true ? "✓" : value === false ? "—" : value}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {selected && !disabled && (
-        <div className="mt-3 flex items-center justify-center gap-1.5 text-xs font-bold text-amber-600 bg-amber-50 rounded-xl py-2">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          Сонгогдсон
-        </div>
-      )}
-      {disabled && (
-        <p className="mt-3 text-center text-xs font-semibold text-slate-400">Аль хэдийн ашигласан</p>
-      )}
-    </button>
+    </div>
   );
 }
 
@@ -280,26 +397,6 @@ export default function UpgradePage() {
     };
   }, [status?.pendingInvoice?.invoiceId, paid]);
 
-  const handleActivateTrial = async () => {
-    setIsActing(true);
-    setMessage(null);
-    try {
-      const res = await authFetch(withOrgId(`${API}/vendor/upgrade/trial`), { method: "POST" });
-      const data = await res.json();
-      if (data.success) {
-        setPaid(true);
-        setMessage({ type: "success", text: "14 хоногийн үнэгүй туршилт идэвхжлээ!" });
-        await loadStatus();
-      } else {
-        setMessage({ type: "error", text: data.message || "Алдаа гарлаа" });
-      }
-    } catch {
-      setMessage({ type: "error", text: "Серверийн алдаа" });
-    } finally {
-      setIsActing(false);
-    }
-  };
-
   const handleInitiate = async () => {
     if (!selectedPlan || selectedPlan === "trial") return;
     setIsActing(true);
@@ -364,6 +461,7 @@ export default function UpgradePage() {
 
   const isActive = status?.isActive || paid;
   const plans = status?.plans ?? [];
+  const membershipPlanGroups = groupMembershipPlans(plans);
   const hasPendingInvoice = !!status?.pendingInvoice && !paid && !isActive;
   const pendingPlan = hasPendingInvoice
     ? plans.find((p) => p.id === status?.pendingInvoice?.planType)
@@ -390,7 +488,7 @@ export default function UpgradePage() {
             <h1 className="text-3xl font-black text-black tracking-tight">MglStore Pro</h1>
           </div>
           <p className="text-black/70 font-medium text-base max-w-sm leading-relaxed">
-            Өөрийн брэндтэй онлайн дэлгүүр нээж, илүү олон үйлчлүүлэгчид хүр
+            Personal account-ийн membership-тэй ижил Silver, Gold, Platinum эрхээр vendor боломжуудаа идэвхжүүл
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             {[
@@ -454,7 +552,7 @@ export default function UpgradePage() {
               )}
               {status?.currentPlan && (
                 <span className="px-3 py-1 bg-amber-100 text-amber-700 text-xs font-black rounded-full">
-                  {status.currentPlan.name}
+                  <CurrentPlanName plan={status.currentPlan} />
                 </span>
               )}
             </div>
@@ -608,68 +706,59 @@ export default function UpgradePage() {
         <div className="space-y-5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-black text-slate-900">Багц сонгох</h2>
-              <p className="text-sm text-slate-400 mt-0.5">Танд тохирох хугацааг сонгоно уу</p>
+              <h2 className="text-xl font-black text-slate-900">Membership сонгох</h2>
+              <p className="text-sm text-slate-400 mt-0.5">
+                Personal account-ийн Silver, Gold, Platinum tier-тэй ижил эрхээр идэвхжүүлнэ.
+              </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {plans.map((plan) => (
-              <PlanCard
-                key={plan.id}
-                plan={plan}
-                selected={selectedPlan === plan.id}
-                trialUsed={status?.trialUsed ?? false}
-                onSelect={setSelectedPlan}
-              />
-            ))}
-          </div>
-
-          {selectedPlan && (
-            <div className="bg-white rounded-3xl border border-[#FFAD02]/30 shadow-md shadow-amber-50 p-6">
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Сонгосон багц</p>
-                  <p className="text-xl font-black text-slate-900 mt-0.5 flex items-baseline gap-2">
-                    {chosenPlan?.name}
-                    {chosenPlan && chosenPlan.price > 0 && (
-                      <span className="text-lg font-black text-[#FFAD02]">
-                        {chosenPlan.price.toLocaleString()}₮
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <div className="p-2.5 bg-amber-50 rounded-2xl">
-                  <Crown className="w-6 h-6 text-amber-500" />
-                </div>
+          <div className="rounded-[24px] border border-orange-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">
+                  Tier сонгох
+                </p>
+                <h3 className="text-lg font-black text-slate-950">
+                  Танд тохирох membership
+                </h3>
               </div>
-
-              {selectedPlan === "trial" ? (
-                <button
-                  onClick={handleActivateTrial}
-                  disabled={isActing}
-                  className="w-full flex items-center justify-center gap-2 py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white font-black rounded-2xl transition-all text-base shadow-md shadow-emerald-100 active:scale-[0.98]"
-                >
-                  {isActing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                  {isActing ? "Идэвхжүүлж байна..." : "14 хоног үнэгүй эхлэх"}
-                </button>
-              ) : (
-                <button
-                  onClick={handleInitiate}
-                  disabled={isActing}
-                  className="w-full flex items-center justify-center gap-2 py-4 bg-[#FFAD02] hover:bg-amber-500 disabled:bg-amber-300 text-black font-black rounded-2xl transition-all text-base shadow-md shadow-amber-100 active:scale-[0.98]"
-                >
-                  {isActing ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <ArrowRight className="w-5 h-5" />
-                  )}
-                  {isActing
-                    ? "Үүсгэж байна..."
-                    : `QPay-р ${chosenPlan?.price.toLocaleString()}₮ төлөх`}
-                </button>
-              )}
+              <p className="text-xs font-bold text-slate-400">
+                1 сар эсвэл 6 сарын багцаар идэвхжүүлнэ.
+              </p>
             </div>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              {membershipPlanGroups.map((group) => (
+                <VendorMembershipTierCard
+                  key={group.tier}
+                  group={group}
+                  selected={group.plans.some((plan) => plan.id === selectedPlan)}
+                  selectedPlanId={selectedPlan}
+                  onSelectPlan={setSelectedPlan}
+                />
+              ))}
+            </div>
+          </div>
+
+          {chosenPlan && (
+            <>
+              <SelectedPaymentSummary plan={chosenPlan} />
+              <button
+                onClick={handleInitiate}
+                disabled={isActing}
+                className="w-full flex items-center justify-center gap-2 py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-black rounded-2xl transition-all text-base shadow-md shadow-orange-100 active:scale-[0.98]"
+              >
+                {isActing ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <ArrowRight className="w-5 h-5" />
+                )}
+                {isActing
+                  ? "Үүсгэж байна..."
+                  : `QuickQR-р ${chosenPlan.price.toLocaleString()}₮ төлөх`}
+              </button>
+            </>
           )}
         </div>
       )}
@@ -678,52 +767,40 @@ export default function UpgradePage() {
       {isActive && !hasPendingInvoice && (
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-100">
-            <h3 className="text-base font-black text-slate-900">Багц сунгах / шинэчлэх</h3>
+            <h3 className="text-base font-black text-slate-900">Membership сунгах / шинэчлэх</h3>
             <p className="text-xs text-slate-400 mt-0.5">Хугацааг сунгаж тасалдалгүй үргэлжлүүлнэ</p>
           </div>
           <div className="p-6 space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {plans
-                .filter((p) => !p.isTrial)
-                .map((plan) => (
-                  <button
-                    key={plan.id}
-                    onClick={() => setSelectedPlan(plan.id === selectedPlan ? null : plan.id)}
-                    className={`relative rounded-2xl border-2 p-4 text-left transition-all ${
-                      selectedPlan === plan.id
-                        ? "border-[#FFAD02] bg-amber-50 shadow-sm"
-                        : "border-slate-200 hover:border-amber-300 bg-white"
-                    }`}
-                  >
-                    {plan.badge && (
-                      <span className="absolute -top-2.5 left-3 px-2 py-0.5 bg-[#FFAD02] text-black text-[9px] font-black rounded-full uppercase tracking-wide">
-                        {plan.badge}
-                      </span>
-                    )}
-                    <p className="font-black text-slate-900 text-sm">{plan.name}</p>
-                    <p className="text-base font-black text-[#FFAD02] mt-1">
-                      {plan.price.toLocaleString()}
-                      <span className="text-xs font-bold text-slate-400">₮</span>
-                    </p>
-                  </button>
-                ))}
+            <div className="grid gap-4 lg:grid-cols-3">
+              {membershipPlanGroups.map((group) => (
+                <VendorMembershipTierCard
+                  key={group.tier}
+                  group={group}
+                  selected={group.plans.some((plan) => plan.id === selectedPlan)}
+                  selectedPlanId={selectedPlan}
+                  onSelectPlan={setSelectedPlan}
+                />
+              ))}
             </div>
 
-            {selectedPlan && selectedPlan !== "trial" && (
-              <button
-                onClick={handleInitiate}
-                disabled={isActing}
-                className="w-full flex items-center justify-center gap-2 py-4 bg-[#FFAD02] hover:bg-amber-500 disabled:bg-amber-300 text-black font-black rounded-2xl transition-all shadow-sm shadow-amber-100 active:scale-[0.98]"
-              >
-                {isActing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-                {isActing
-                  ? "Үүсгэж байна..."
-                  : `${plans.find((p) => p.id === selectedPlan)?.name} багцаар сунгах`}
-              </button>
+            {chosenPlan && (
+              <>
+                <SelectedPaymentSummary plan={chosenPlan} />
+                <button
+                  onClick={handleInitiate}
+                  disabled={isActing}
+                  className="w-full flex items-center justify-center gap-2 py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-black rounded-2xl transition-all shadow-sm shadow-orange-100 active:scale-[0.98]"
+                >
+                  {isActing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  {isActing
+                    ? "Үүсгэж байна..."
+                    : `${chosenPlan.name} ${chosenPlan.durationLabel || ""}-аар сунгах`}
+                </button>
+              </>
             )}
           </div>
         </div>

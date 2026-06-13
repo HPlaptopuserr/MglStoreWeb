@@ -24,6 +24,7 @@ import {
 import { getSupabase, ORG_IMAGES_BUCKET } from "../../lib/supabase";
 import { sendSmtpMail } from "../../lib/smtp";
 import { shouldExposeOrgProductsOnWeb } from "../../services/product-visibility.service";
+import { syncOwnerPersonalMembershipFromActiveOrgPlan } from "../../services/owner-membership-sync.service";
 
 const router: ExpressRouter = Router();
 
@@ -2121,6 +2122,13 @@ router.post(
             });
           }
 
+          if (resolvedRole === "OWNER") {
+            await syncOwnerPersonalMembershipFromActiveOrgPlan({
+              prisma: tx,
+              organizationId,
+            });
+          }
+
           if (inviteToken && inviteTokenExpiresAt) {
             await tx.vendorSetupToken.create({
               data: {
@@ -2386,6 +2394,11 @@ router.patch(
           await tx.organizationMember.update({
             where: { id: target.id },
             data: { role: "OWNER", isPrimary: true, isActive: true },
+          });
+
+          await syncOwnerPersonalMembershipFromActiveOrgPlan({
+            prisma: tx,
+            organizationId: id,
           });
 
           return getOrganizationLoginMembers(id, tx);

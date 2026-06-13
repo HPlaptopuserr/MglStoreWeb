@@ -46,6 +46,12 @@ const STATUS_CONFIG = {
 
 const PLAN_LABELS: Record<string, string> = {
   trial: "Үнэгүй туршилт",
+  silver_1m: "Silver · 1 сар",
+  silver_6m: "Silver · 6 сар",
+  gold_1m: "Gold · 1 сар",
+  gold_6m: "Gold · 6 сар",
+  platinum_1m: "Platinum · 1 сар",
+  platinum_6m: "Platinum · 6 сар",
   "1m": "1 Сар",
   "3m": "3 Сар",
   "6m": "6 Сар",

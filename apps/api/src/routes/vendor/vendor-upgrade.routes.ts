@@ -2,12 +2,13 @@ import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
 import { requireAuth } from "../../middleware/auth";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
+import { syncOwnerPersonalMembershipFromOrgPlan } from "../../services/owner-membership-sync.service";
 
 const router: ExpressRouter = Router();
 
 // ─── Plan definitions ──────────────────────────────────────────────────────
 
-export type PlanId = "trial" | "1m" | "3m" | "6m" | "1y";
+export type PlanId = string;
 
 export type Plan = {
   id: PlanId;
@@ -21,21 +22,136 @@ export type Plan = {
   hasAnalytics: boolean;
   isTrial: boolean;
   badge?: string;
+  tier?: "SILVER" | "GOLD" | "PLATINUM";
+  durationMonths?: number;
+  durationLabel?: string;
+  benefits?: string[];
+  unavailable?: string[];
+};
+
+const TRIAL_PLAN: Plan = {
+  id: "trial",
+  name: "Үнэгүй туршилт",
+  price: 0,
+  durationDays: 14,
+  maxProducts: 10,
+  maxImages: 2,
+  maxCategories: 1,
+  hasBanner: false,
+  hasAnalytics: false,
+  isTrial: true,
+  durationLabel: "14 хоног",
+};
+
+const MEMBERSHIP_VENDOR_LIMITS = {
+  maxProducts: -1,
+  maxImages: -1,
+  maxCategories: -1,
+  hasBanner: true,
+  hasAnalytics: true,
 };
 
 export const PLANS: Plan[] = [
   {
-    id: "trial",
-    name: "Үнэгүй туршилт",
-    price: 0,
-    durationDays: 14,
-    maxProducts: 10,
-    maxImages: 2,
-    maxCategories: 1,
-    hasBanner: false,
-    hasAnalytics: false,
-    isTrial: true,
+    id: "silver_1m",
+    name: "Silver",
+    price: 30_000,
+    durationDays: 30,
+    isTrial: false,
+    tier: "SILVER",
+    durationMonths: 1,
+    durationLabel: "1 сар",
+    benefits: ["Стандарт бүтээгдэхүүний хөнгөлөлт", "Стандарт хэрэглэгчийн дэмжлэг"],
+    unavailable: ["Priority хүргэлтийн үйлчилгээ"],
+    ...MEMBERSHIP_VENDOR_LIMITS,
   },
+  {
+    id: "silver_6m",
+    name: "Silver",
+    price: 180_000,
+    durationDays: 180,
+    isTrial: false,
+    tier: "SILVER",
+    durationMonths: 6,
+    durationLabel: "6 сарын bundle · 180,000₮",
+    benefits: ["Стандарт бүтээгдэхүүний хөнгөлөлт", "Стандарт хэрэглэгчийн дэмжлэг"],
+    unavailable: ["Priority хүргэлтийн үйлчилгээ"],
+    ...MEMBERSHIP_VENDOR_LIMITS,
+  },
+  {
+    id: "gold_1m",
+    name: "Gold",
+    price: 50_000,
+    durationDays: 30,
+    isTrial: false,
+    tier: "GOLD",
+    durationMonths: 1,
+    durationLabel: "1 сар",
+    badge: "Санал болгох",
+    benefits: [
+      "10% нэмэлт дэлгүүрийн хөнгөлөлт",
+      "Priority 24/7 support",
+      "Үнэгүй хүргэлтийн эрх",
+      "Улирлын sale-д түрүүлж оролцох",
+    ],
+    ...MEMBERSHIP_VENDOR_LIMITS,
+  },
+  {
+    id: "gold_6m",
+    name: "Gold",
+    price: 300_000,
+    durationDays: 180,
+    isTrial: false,
+    tier: "GOLD",
+    durationMonths: 6,
+    durationLabel: "6 сарын bundle · 300,000₮",
+    badge: "Санал болгох",
+    benefits: [
+      "10% нэмэлт дэлгүүрийн хөнгөлөлт",
+      "Priority 24/7 support",
+      "Үнэгүй хүргэлтийн эрх",
+      "Улирлын sale-д түрүүлж оролцох",
+    ],
+    ...MEMBERSHIP_VENDOR_LIMITS,
+  },
+  {
+    id: "platinum_1m",
+    name: "Platinum",
+    price: 100_000,
+    durationDays: 30,
+    isTrial: false,
+    tier: "PLATINUM",
+    durationMonths: 1,
+    durationLabel: "1 сар",
+    benefits: [
+      "VIP event access",
+      "24/7 personal concierge",
+      "VIP хөнгөлөлт 25% хүртэл",
+      "Premium anniversary gift box",
+    ],
+    ...MEMBERSHIP_VENDOR_LIMITS,
+  },
+  {
+    id: "platinum_6m",
+    name: "Platinum",
+    price: 600_000,
+    durationDays: 180,
+    isTrial: false,
+    tier: "PLATINUM",
+    durationMonths: 6,
+    durationLabel: "6 сарын bundle · 600,000₮",
+    benefits: [
+      "VIP event access",
+      "24/7 personal concierge",
+      "VIP хөнгөлөлт 25% хүртэл",
+      "Premium anniversary gift box",
+    ],
+    ...MEMBERSHIP_VENDOR_LIMITS,
+  },
+];
+
+const LEGACY_PLANS: Plan[] = [
+  TRIAL_PLAN,
   {
     id: "1m",
     name: "1 Сар",
@@ -47,6 +163,8 @@ export const PLANS: Plan[] = [
     hasBanner: true,
     hasAnalytics: false,
     isTrial: false,
+    durationMonths: 1,
+    durationLabel: "1 сар",
   },
   {
     id: "3m",
@@ -60,6 +178,8 @@ export const PLANS: Plan[] = [
     hasAnalytics: true,
     isTrial: false,
     badge: "Хэмнэлттэй",
+    durationMonths: 3,
+    durationLabel: "3 сар",
   },
   {
     id: "6m",
@@ -73,6 +193,8 @@ export const PLANS: Plan[] = [
     hasAnalytics: true,
     isTrial: false,
     badge: "Алдартай",
+    durationMonths: 6,
+    durationLabel: "6 сар",
   },
   {
     id: "1y",
@@ -86,11 +208,13 @@ export const PLANS: Plan[] = [
     hasAnalytics: true,
     isTrial: false,
     badge: "Хамгийн ашигтай",
+    durationMonths: 12,
+    durationLabel: "1 жил",
   },
 ];
 
 export function getPlan(id: string): Plan | undefined {
-  return PLANS.find((p) => p.id === id);
+  return PLANS.find((p) => p.id === id) ?? LEGACY_PLANS.find((p) => p.id === id);
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -328,12 +452,12 @@ router.post("/vendor/upgrade/check/:invoiceId", requireAuth, async (req, res) =>
       const plan = getPlan(dbPlan.planType)!;
       const { now, expiresAt } = activationData(plan);
 
-      await prisma.$transaction([
-        (prisma.orgUpgradePlan as any).update({
+      await prisma.$transaction(async (tx) => {
+        await (tx.orgUpgradePlan as any).update({
           where: { id: dbPlan.id },
           data: { status: "PAID", paidAt: now, expiresAt },
-        }),
-        (prisma.organization as any).update({
+        });
+        await (tx.organization as any).update({
           where: { id: org.id },
           data: {
             subdomainEnabled: true,
@@ -341,8 +465,14 @@ router.post("/vendor/upgrade/check/:invoiceId", requireAuth, async (req, res) =>
             planActivatedAt: now,
             planExpiresAt: expiresAt,
           },
-        }),
-      ]);
+        });
+        await syncOwnerPersonalMembershipFromOrgPlan({
+          prisma: tx,
+          organizationId: org.id,
+          paidAt: now,
+          expiresAt,
+        });
+      });
 
       return res.json({
         success: true,
@@ -380,13 +510,22 @@ router.post("/vendor/upgrade/callback", async (req, res) => {
     if (isPaid) {
       const plan = getPlan(dbPlan.planType)!;
       const { now, expiresAt } = activationData(plan);
-      await prisma.$transaction([
-        (prisma.orgUpgradePlan as any).update({ where: { id: dbPlan.id }, data: { status: "PAID", paidAt: now, expiresAt } }),
-        (prisma.organization as any).update({
+      await prisma.$transaction(async (tx) => {
+        await (tx.orgUpgradePlan as any).update({
+          where: { id: dbPlan.id },
+          data: { status: "PAID", paidAt: now, expiresAt },
+        });
+        await (tx.organization as any).update({
           where: { id: orgId },
           data: { subdomainEnabled: true, planType: dbPlan.planType, planActivatedAt: now, planExpiresAt: expiresAt },
-        }),
-      ]);
+        });
+        await syncOwnerPersonalMembershipFromOrgPlan({
+          prisma: tx,
+          organizationId: orgId,
+          paidAt: now,
+          expiresAt,
+        });
+      });
     }
 
     return res.status(200).json({ message: "ok" });

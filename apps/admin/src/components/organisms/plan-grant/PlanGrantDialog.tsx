@@ -32,6 +32,12 @@ type Props = {
 
 const PLAN_ICONS: Record<string, string> = {
   trial: "🎁",
+  silver_1m: "🥈",
+  silver_6m: "🥈",
+  gold_1m: "🥇",
+  gold_6m: "🥇",
+  platinum_1m: "💎",
+  platinum_6m: "💎",
   "1m": "📅",
   "3m": "🗓️",
   "6m": "⭐",
