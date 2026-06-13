@@ -8,16 +8,31 @@ type MembershipUpgradeModalProps = {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  eyebrow?: string;
+  title?: string;
 };
 
 export function MembershipUpgradeModal({
   children,
+  eyebrow = "Membership",
   onClose,
   open,
+  title = "Гишүүнчлэл upgrade хийх",
 }: MembershipUpgradeModalProps) {
   const [mounted, setMounted] = useState(false);
+  const [entered, setEntered] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!open) {
+      setEntered(false);
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => setEntered(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -54,7 +69,7 @@ export function MembershipUpgradeModal({
   if (!mounted || !open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-end justify-center overflow-hidden overscroll-contain bg-slate-950/55 px-3 pb-3 pt-12 backdrop-blur-sm sm:items-center sm:p-6">
+    <div className="fixed inset-0 z-[120] flex items-end justify-center overflow-hidden overscroll-contain bg-slate-950/55 px-0 pb-0 pt-8 backdrop-blur-sm sm:items-center sm:p-6">
       <button
         type="button"
         aria-label="Popup хаах"
@@ -65,15 +80,17 @@ export function MembershipUpgradeModal({
         role="dialog"
         aria-modal="true"
         aria-label="Membership upgrade"
-        className="relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-white/70 bg-white shadow-[0_30px_120px_rgba(15,23,42,0.35)] sm:max-h-[calc(100dvh-3rem)]"
+        className={`relative flex h-auto max-h-[calc(100dvh-1rem)] w-full max-w-[94vw] flex-col overflow-hidden rounded-t-[24px] border border-white/70 bg-white shadow-[0_30px_120px_rgba(15,23,42,0.35)] transition-[transform,opacity] duration-300 ease-out sm:rounded-[24px] lg:max-h-[calc(100dvh-3rem)] lg:max-w-[92vw] 2xl:max-w-7xl ${
+          entered ? "translate-y-0 opacity-100" : "translate-y-12 opacity-0"
+        }`}
       >
         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-100 bg-white/95 px-4 py-3 backdrop-blur sm:px-5">
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-500">
-              Membership
+              {eyebrow}
             </p>
-            <h2 className="truncate text-lg font-black text-slate-950">
-              Гишүүнчлэл upgrade хийх
+            <h2 className="truncate text-base font-black text-slate-950 sm:text-lg">
+              {title}
             </h2>
           </div>
           <button
@@ -86,7 +103,7 @@ export function MembershipUpgradeModal({
           </button>
         </div>
         <div
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50 p-3 [scrollbar-gutter:stable] sm:p-5"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50 p-3 sm:p-4 lg:p-5"
           onWheel={(event) => event.stopPropagation()}
           onTouchMove={(event) => event.stopPropagation()}
         >

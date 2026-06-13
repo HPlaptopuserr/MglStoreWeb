@@ -431,6 +431,8 @@ router.post(
         ownerEmail,
         ownerName,
         ownerPhone,
+        ownerUserId,
+        ownerRole,
         phone,
         address,
         type,
@@ -441,6 +443,8 @@ router.post(
         ownerEmail?: string;
         ownerName?: string;
         ownerPhone?: string;
+        ownerUserId?: string;
+        ownerRole?: string;
         phone?: string;
         address?: string;
         type?: string;
@@ -460,10 +464,121 @@ router.post(
           .status(400)
           .json({ message: "Owner email зөв форматтай байх ёстой" });
       }
+      const resolvedOwnerRole: StaffRole = VALID_STAFF_ROLES.includes(ownerRole as StaffRole)
+        ? (ownerRole as StaffRole)
+        : "OWNER";
 
       const slug = await generateUniqueOrganizationSlug(name);
       const resolvedTaxId =
         taxId?.trim() || (await generateUniqueTaxId("TEMP"));
+
+      if (ownerUserId?.trim()) {
+        const existingUser = await prisma.user.findUnique({
+          where: { id: ownerUserId.trim() },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            profile: {
+              select: {
+                fullName: true,
+                phoneNumber: true,
+              },
+            },
+          },
+        });
+
+        if (!existingUser) {
+          return res
+            .status(404)
+            .json({ message: "Сонгосон personal account олдсонгүй" });
+        }
+
+        const result = await prisma.$transaction(
+          async (tx: Prisma.TransactionClient) => {
+            const organization = await tx.organization.create({
+              data: {
+                name: name.trim(),
+                slug,
+                taxId: resolvedTaxId,
+                type:
+                  type && Object.values(OrgType).includes(type as OrgType)
+                    ? (type as OrgType)
+                    : OrgType.SUPPLIER,
+                status: OrgStatus.ACTIVE,
+                email: null,
+                phone: phone?.trim() || null,
+                address: address?.trim() || null,
+                businessCategory: businessCategory?.trim() || null,
+                isVerified: false,
+                subdomainEnabled: true,
+                planType: "trial",
+                planActivatedAt: new Date(),
+                planExpiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+                trialUsed: true,
+              },
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                taxId: true,
+              },
+            });
+
+            await tx.user.update({
+              where: { id: existingUser.id },
+              data: {
+                isActive: true,
+                emailVerified: true,
+              },
+              select: { id: true },
+            });
+
+            await tx.profile.upsert({
+              where: { userId: existingUser.id },
+              update: {
+                fullName:
+                  ownerName?.trim() ||
+                  existingUser.profile?.fullName ||
+                  name.trim(),
+                phoneNumber:
+                  ownerPhone?.trim() ||
+                  existingUser.profile?.phoneNumber ||
+                  null,
+              },
+              create: {
+                userId: existingUser.id,
+                fullName: ownerName?.trim() || existingUser.profile?.fullName || name.trim(),
+                phoneNumber: ownerPhone?.trim() || existingUser.profile?.phoneNumber || null,
+              },
+            });
+
+            await tx.organizationMember.create({
+              data: {
+                userId: existingUser.id,
+                organizationId: organization.id,
+                role: resolvedOwnerRole,
+                isPrimary: resolvedOwnerRole === "OWNER",
+                isActive: true,
+              },
+            });
+
+            return { organization, user: existingUser };
+          },
+        );
+
+        return res.status(201).json({
+          organization: result.organization,
+          user: {
+            id: result.user.id,
+            email: result.user.email,
+            role: result.user.role,
+          },
+          inviteToken: null,
+          inviteTokenExpiresAt: null,
+          inviteLink: null,
+        });
+      }
 
       if (!normalizedEmail) {
         const organization = await prisma.organization.create({

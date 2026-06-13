@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Save, Loader2, RotateCcw, Eye, EyeOff, Check,
-  Settings2, AlertCircle, ArrowLeft,
+  Settings2, AlertCircle, ArrowLeft, Plus,
 } from "lucide-react";
 import Link from "next/link";
 import { API, adminFetch } from "@/lib/api";
 import { DEFAULT_CONFIG, type AssociationConfig, type MembershipType } from "./_types";
 import { AssociationFormPreview } from "./AssociationFormPreview";
 import { MembershipTypeEditor } from "./MembershipTypeEditor";
+import { createMembershipType } from "./membershipTypeUtils";
 import {
   CONTRACT_PAYMENT_ACCOUNTS_KEY,
   type ContractPaymentAccount,
@@ -18,6 +19,29 @@ import {
 } from "@/components/organisms/sections/contract/PaymentAccountPanels";
 
 const inp = "w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 bg-white";
+
+function mergePaymentAccounts(...groups: ContractPaymentAccount[][]) {
+  const map = new Map<string, ContractPaymentAccount>();
+  groups.flat().forEach((account) => {
+    const key =
+      account.id ||
+      account.merchantCode ||
+      `${account.bankCode}:${account.accountNumber}`;
+    if (!key) return;
+    map.set(key, { ...map.get(key), ...account });
+  });
+  return Array.from(map.values()).filter(
+    (account) => account.merchantCode || account.accountNumber,
+  );
+}
+
+function getPaymentAccountKey(account: Partial<ContractPaymentAccount>) {
+  return (
+    account.id ||
+    account.merchantCode ||
+    `${account.bankCode || ""}:${account.accountNumber || ""}`
+  );
+}
 
 export default function AssociationSettingsPage() {
   const [config, setConfig] = useState<AssociationConfig>(DEFAULT_CONFIG);
@@ -31,25 +55,53 @@ export default function AssociationSettingsPage() {
   const loadConfig = useCallback(async () => {
     setLoading(true);
     try {
-      const [res, settingsRes] = await Promise.all([
+      const [res, settingsRes, contractsRes] = await Promise.all([
         adminFetch(`${API}/admin/association/config`),
         adminFetch(`${API}/site-settings/admin`),
+        adminFetch(`${API}/contracts`),
       ]);
+      let loadedPaymentAccounts: ContractPaymentAccount[] = [];
       if (settingsRes.ok) {
         const settings = await settingsRes.json();
-        setPaymentAccounts(parseContractPaymentAccounts(settings?.[CONTRACT_PAYMENT_ACCOUNTS_KEY]));
+        loadedPaymentAccounts = parseContractPaymentAccounts(
+          settings?.[CONTRACT_PAYMENT_ACCOUNTS_KEY],
+        );
       }
+      if (contractsRes.ok) {
+        const contractsData = await contractsRes.json().catch(() => null);
+        const latestTemplateId = contractsData?.contracts?.[0]?.id;
+        if (latestTemplateId) {
+          const detailRes = await adminFetch(`${API}/contracts/${latestTemplateId}`);
+          const detail = await detailRes.json().catch(() => null);
+          const headerData = detail?.contract?.headerData;
+          const templateAccounts = Array.isArray(headerData?.paymentAccounts)
+            ? headerData.paymentAccounts
+            : [];
+          loadedPaymentAccounts = mergePaymentAccounts(
+            loadedPaymentAccounts,
+            templateAccounts,
+          );
+        }
+      }
+      setPaymentAccounts(loadedPaymentAccounts);
       if (res.ok) {
         const data = await res.json();
         if (data) {
           setConfig({
             ...DEFAULT_CONFIG,
             ...data,
+            upgradeModal: {
+              ...DEFAULT_CONFIG.upgradeModal,
+              ...(data.upgradeModal ?? {}),
+            },
             paymentAccount: {
               ...DEFAULT_CONFIG.paymentAccount,
               ...(data.paymentAccount ?? {}),
             },
-            membershipTypes: DEFAULT_CONFIG.membershipTypes,
+            membershipTypes:
+              Array.isArray(data.membershipTypes)
+                ? data.membershipTypes
+                : DEFAULT_CONFIG.membershipTypes,
           });
         }
       }
@@ -63,6 +115,18 @@ export default function AssociationSettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     setError(null);
+    if (config.paymentAccount.selectedAccountId) {
+      if (!config.paymentAccount.merchantCode) {
+        setSaving(false);
+        setError("Сонгосон дансны merchantCode дутуу байна. Minu дансаа дахин холбож хадгална уу.");
+        return;
+      }
+      if (!config.paymentAccount.password) {
+        setSaving(false);
+        setError("Сонгосон дансны password хадгалагдаагүй байна. Minu дансаа дахин холбож хадгална уу.");
+        return;
+      }
+    }
     try {
       const res = await adminFetch(`${API}/admin/association/config`, {
         method: "PUT",
@@ -86,14 +150,31 @@ export default function AssociationSettingsPage() {
       membershipTypes: c.membershipTypes.map((t, i) => (i === idx ? updated : t)),
     }));
 
+  const addMembershipType = () =>
+    setConfig((c) => ({
+      ...c,
+      membershipTypes: [
+        ...c.membershipTypes,
+        createMembershipType(c.membershipTypes.length),
+      ],
+    }));
+
+  const removeMembershipType = (idx: number) =>
+    setConfig((c) => ({
+      ...c,
+      membershipTypes: c.membershipTypes.filter((_, i) => i !== idx),
+    }));
+
   const selectPaymentAccount = (accountId: string) => {
-    const account = paymentAccounts.find((item) => item.id === accountId);
+    const account = paymentAccounts.find(
+      (item) => getPaymentAccountKey(item) === accountId || item.id === accountId,
+    );
     setConfig((c) => ({
       ...c,
       paymentAccount: account
         ? {
             ...c.paymentAccount,
-            selectedAccountId: account.id,
+            selectedAccountId: getPaymentAccountKey(account),
             bankName: getBankLabel(account.bankCode),
             bankCode: account.bankCode,
             accountNumber: account.accountNumber,
@@ -252,14 +333,16 @@ export default function AssociationSettingsPage() {
                 >
                   <option value="">Данс сонгоно уу</option>
                   {paymentAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
+                    <option key={getPaymentAccountKey(account)} value={getPaymentAccountKey(account)}>
                       {account.label || account.merchantName} · {getBankLabel(account.bankCode)} {account.accountNumber} · {account.merchantCode}
+                      {!account.password ? " · password дутуу" : ""}
                     </option>
                   ))}
                 </select>
                 {paymentAccounts.length === 0 && (
                   <p className="mt-2 text-xs font-semibold text-amber-700">
-                    “Гэрээний төлбөр” тохиргоонд эхлээд Minu Dynamic QR данс холбоно уу.
+                    Admin → Тохиргоо → Төлбөрийн данс эсвэл Гэрээний төлбөр
+                    хэсэгт эхлээд Minu Dynamic QR данс холбоно уу.
                   </p>
                 )}
               </label>
@@ -283,22 +366,38 @@ export default function AssociationSettingsPage() {
                   {config.membershipTypes.length} төрөл
                 </span>
               </div>
-              <span className="text-[10px] font-bold text-slate-400">
-                1 төрөл · 1 сар / 6 сар
-              </span>
+              <button
+                type="button"
+                onClick={addMembershipType}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-black text-violet-600 transition hover:bg-violet-50"
+              >
+                <Plus size={13} />
+                Card нэмэх
+              </button>
             </div>
             <div className="px-4 py-4 space-y-2">
               {config.membershipTypes.length === 0 ? (
                 <div className="text-center py-8 border border-dashed border-slate-200 rounded-xl">
                   <p className="text-sm text-slate-400">Гишүүнчлэлийн төрөл байхгүй байна</p>
-                  <button
-                    onClick={() =>
-                      setConfig((c) => ({ ...c, membershipTypes: DEFAULT_CONFIG.membershipTypes }))
-                    }
-                    className="mt-2 text-xs text-violet-600 font-semibold hover:underline"
-                  >
-                    Үндсэн гишүүнчлэлийг сэргээх
-                  </button>
+                  <div className="mt-3 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={addMembershipType}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3 py-2 text-xs font-black text-white hover:bg-violet-700"
+                    >
+                      <Plus size={13} />
+                      Шинэ card нэмэх
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfig((c) => ({ ...c, membershipTypes: DEFAULT_CONFIG.membershipTypes }))
+                      }
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50"
+                    >
+                      Үндсэн card-ууд сэргээх
+                    </button>
+                  </div>
                 </div>
               ) : (
                 config.membershipTypes.map((t, idx) => (
@@ -307,7 +406,7 @@ export default function AssociationSettingsPage() {
                     type={t}
                     idx={idx}
                     onChange={(u) => updateType(idx, u)}
-                    onRemove={() => undefined}
+                    onRemove={() => removeMembershipType(idx)}
                   />
                 ))
               )}

@@ -32,6 +32,11 @@ import {
 import Link from "next/link";
 import { API, adminFetch } from "@/lib/api";
 import { OrganizationImportModal } from "@/components/organisms/OrganizationImportModal";
+import {
+  VendorLoginAccountSelector,
+  type PersonalAccountOption,
+  type VendorLoginRole,
+} from "@/components/organisms/partners/VendorLoginAccountSelector";
 
 type Partner = {
   id: string;
@@ -96,6 +101,8 @@ type CreateOrganizationForm = {
   ownerEmail: string;
   ownerName: string;
   ownerPhone: string;
+  ownerUserId: string;
+  ownerRole: VendorLoginRole;
   phone: string;
   address: string;
   type: string;
@@ -108,6 +115,8 @@ const EMPTY_CREATE_FORM: CreateOrganizationForm = {
   ownerEmail: "",
   ownerName: "",
   ownerPhone: "",
+  ownerUserId: "",
+  ownerRole: "OWNER",
   phone: "",
   address: "",
   type: "SUPPLIER",
@@ -252,6 +261,8 @@ export default function PartnersPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createForm, setCreateForm] = useState<CreateOrganizationForm>(EMPTY_CREATE_FORM);
+  const [createLoginAccount, setCreateLoginAccount] =
+    useState<PersonalAccountOption | null>(null);
   const [inviteModal, setInviteModal] = useState<{
     organizationName: string;
     email: string;
@@ -368,7 +379,9 @@ export default function PartnersPage() {
           ownerEmail: createForm.ownerEmail.trim() || null,
           ownerName: createForm.ownerName.trim(),
           ownerPhone: createForm.ownerPhone.trim() || null,
-          phone: createForm.phone.trim(),
+          ownerUserId: createForm.ownerUserId || null,
+          ownerRole: createForm.ownerRole,
+          phone: createForm.phone.trim() || null,
           address: createForm.address.trim(),
           taxId: createForm.taxId.trim(),
           businessCategory: createForm.businessCategory || null,
@@ -382,6 +395,7 @@ export default function PartnersPage() {
 
       setCreateModalOpen(false);
       setCreateForm(EMPTY_CREATE_FORM);
+      setCreateLoginAccount(null);
       if (data.inviteLink) {
         setInviteModal({
           organizationName: data.organization?.name || createForm.name,
@@ -472,6 +486,8 @@ export default function PartnersPage() {
                 onClick={() => {
                   setCreateModalOpen(false);
                   setCreateError("");
+                  setCreateLoginAccount(null);
+                  setCreateForm(EMPTY_CREATE_FORM);
                 }}
                 className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
@@ -571,6 +587,29 @@ export default function PartnersPage() {
                     </p>
                   </div>
                 </div>
+                <VendorLoginAccountSelector
+                  selectedAccount={createLoginAccount}
+                  onSelectedAccountChange={(account) => {
+                    setCreateLoginAccount(account);
+                    setCreateForm((prev) => ({
+                      ...prev,
+                      ownerUserId: account?.id || "",
+                      ownerName: account?.fullName || prev.ownerName,
+                      ownerEmail: account?.email || "",
+                      ownerPhone: account?.phone || "",
+                    }));
+                  }}
+                  role={createForm.ownerRole}
+                  onRoleChange={(role) => setCreateForm((prev) => ({ ...prev, ownerRole: role }))}
+                  tone="emerald"
+                  title="Personal account холбох"
+                  description="Шинэ байгууллагад owner/admin зэрэг role-той login account шууд онооно."
+                  badge="Optional"
+                />
+                <div className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4">
+                  <p className="mb-3 text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                    Гараар оруулах
+                  </p>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Owner нэр</label>
@@ -601,9 +640,10 @@ export default function PartnersPage() {
                     />
                   </div>
                 </div>
+                </div>
                 <p className="mt-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold leading-5 text-emerald-800">
                   Анхаарах: байгууллагын контакт утас болон login утас хоёр өөр байж болно.
-                  Vendor login дээр зөвхөн энэ хэсгийн login email/утас ажиллана.
+                  Personal account сонгосон бол email/утас заавал биш.
                 </p>
               </div>
             </div>
@@ -613,6 +653,8 @@ export default function PartnersPage() {
                 onClick={() => {
                   setCreateModalOpen(false);
                   setCreateError("");
+                  setCreateLoginAccount(null);
+                  setCreateForm(EMPTY_CREATE_FORM);
                 }}
                 className="flex-1 rounded-xl bg-slate-100 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-200"
               >

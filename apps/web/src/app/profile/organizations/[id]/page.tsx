@@ -3,26 +3,10 @@
 import { useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { useAuth, type AuthOrganization, type AuthUser } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context";
 import { ManagedOrganizationProfile } from "../../_components/ManagedOrganizationProfile";
 import { ProfileDashboardShell } from "../../_components/ProfileDashboardShell";
-
-function getManagedOrganizations(user: AuthUser): AuthOrganization[] {
-  if (Array.isArray(user.organizations) && user.organizations.length > 0) {
-    return user.organizations;
-  }
-
-  if (!user.organizationId || !user.orgRole) return [];
-
-  return [
-    {
-      id: user.organizationId,
-      name: user.organizationName || "Байгууллага",
-      role: user.orgRole,
-      isPrimary: true,
-    },
-  ];
-}
+import { getManagedOrganizations } from "../../_components/profileUtils";
 
 export default function ManagedOrganizationPage() {
   const { user, loading, refreshUser } = useAuth();

@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { API } from "@/lib/api";
-import { useAuth, type AuthUser } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context";
 import { AccountLibraryPanel } from "./_components/AccountLibraryPanel";
 import { OrdersPanel } from "./_components/OrdersPanel";
 import { MembershipActivationPanel } from "./_components/MembershipActivationPanel";
@@ -18,85 +17,36 @@ import { ProfileHero } from "./_components/ProfileHero";
 import { OrganizationAffiliationCard } from "./_components/OrganizationAffiliationCard";
 import {
   createProfileFormState,
-  type AccountContract,
-  type AccountPurchase,
-  type MPointHistory,
-  type ProfileOrder,
   type ProfileFormState,
   type ProfileTab,
 } from "./_components/types";
-import type { AuthOrganization } from "@/lib/auth-context";
-
-function getMembershipTierLabel(user: AuthUser) {
-  const rawTier =
-    (user.membership as { tier?: string; membershipType?: string } | undefined)
-      ?.tier ||
-    (user.membership as { tier?: string; membershipType?: string } | undefined)
-      ?.membershipType ||
-    "";
-  const tier = rawTier.toUpperCase();
-  if (tier === "BRANCH_COUNCIL" || tier === "GOLD") return "Gold";
-  if (tier === "GOVERNING_COUNCIL" || tier === "PLATINUM") return "Platinum";
-  if (tier === "ACTIVE" || tier === "SILVER") return "Silver";
-  return user.membership?.active || user.isPrime ? "Member" : "Идэвхгүй";
-}
-
-function getManagedOrganizations(user: AuthUser): AuthOrganization[] {
-  if (Array.isArray(user.organizations) && user.organizations.length > 0) {
-    return user.organizations;
-  }
-
-  if (!user.organizationId || !user.orgRole) return [];
-
-  return [
-    {
-      id: user.organizationId,
-      name: user.organizationName || "Байгууллага",
-      role: user.orgRole,
-      isPrimary: true,
-    },
-  ];
-}
+import {
+  getManagedOrganizations,
+  getMembershipTierLabel,
+} from "./_components/profileUtils";
+import { useMembershipConfig } from "./_components/useMembershipConfig";
+import { useProfileAccountData } from "./_components/useProfileAccountData";
+import { useProfileNavigation } from "./_components/useProfileNavigation";
+import { useProfileOrders } from "./_components/useProfileOrders";
 
 export default function ProfilePage() {
   const { user, loading, refreshUser, authFetch } = useAuth();
   const router = useRouter();
   const [tab, setTab] = useState<ProfileTab>("orders");
   const [form, setForm] = useState<ProfileFormState | null>(null);
-
-  const [purchases, setPurchases] = useState<AccountPurchase[]>([]);
-  const [contracts, setContracts] = useState<AccountContract[]>([]);
-  const [orders, setOrders] = useState<ProfileOrder[]>([]);
-  const [points, setPoints] = useState(0);
-  const [pointHistory, setPointHistory] = useState<MPointHistory[]>([]);
-  const [accountLoading, setAccountLoading] = useState(false);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [ordersError, setOrdersError] = useState("");
   const [membershipOpen, setMembershipOpen] = useState(false);
+  const membershipConfig = useMembershipConfig();
+  const accountData = useProfileAccountData(user, authFetch);
+  const ordersData = useProfileOrders(user, authFetch);
+  const openMembership = useCallback(() => setMembershipOpen(true), []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const requestedTab = new URLSearchParams(window.location.search).get("tab");
-    const allowedTabs: ProfileTab[] = ["library", "orders"];
-    if (window.location.hash === "#membership-activation") {
-      setMembershipOpen(true);
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-    if (
-      requestedTab &&
-      ["profile", "address", "security"].includes(requestedTab)
-    ) {
-      router.replace(`/profile/settings?section=${requestedTab}`);
-      return;
-    }
-    if (requestedTab && allowedTabs.includes(requestedTab as ProfileTab)) {
-      setTab(requestedTab as ProfileTab);
-    }
-  }, [router]);
-
-  useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [loading, router, user]);
+  useProfileNavigation({
+    loading,
+    onMembershipOpen: openMembership,
+    router,
+    setTab,
+    user,
+  });
 
   useEffect(() => {
     if (user) refreshUser();
@@ -105,89 +55,6 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (user) setForm(createProfileFormState(user));
-  }, [user]);
-
-  useEffect(() => {
-    if (!user || typeof window === "undefined") return;
-
-    const organizationId = new URLSearchParams(window.location.search).get("org");
-    if (!organizationId) return;
-
-    const canManageOrganization = getManagedOrganizations(user).some(
-      (organization) => organization.id === organizationId,
-    );
-
-    if (canManageOrganization) {
-      router.replace(`/profile/organizations/${encodeURIComponent(organizationId)}`);
-    }
-  }, [router, user]);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchAccountData = async () => {
-      setAccountLoading(true);
-      try {
-        const [purchaseRes, pointRes, historyRes, contractRes] =
-          await Promise.all([
-            authFetch(`${API}/customer/purchases`),
-            authFetch(`${API}/customer/loyalty/points`),
-            authFetch(`${API}/customer/loyalty/history`),
-            authFetch(`${API}/contracts/my`),
-          ]);
-
-        if (purchaseRes.ok) {
-          const data = await purchaseRes.json().catch(() => ({}));
-          setPurchases(Array.isArray(data.purchases) ? data.purchases : []);
-        }
-        if (pointRes.ok) {
-          const data = await pointRes.json().catch(() => ({}));
-          setPoints(Number(data.points || 0));
-        }
-        if (historyRes.ok) {
-          const data = await historyRes.json().catch(() => []);
-          setPointHistory(Array.isArray(data) ? data : []);
-        }
-        if (contractRes.ok) {
-          const data = await contractRes.json().catch(() => ({}));
-          setContracts(Array.isArray(data.contracts) ? data.contracts : []);
-        }
-      } catch (error) {
-        setOrdersError(
-          error instanceof Error
-            ? error.message
-            : "Профайлын мэдээлэл ачаалахад алдаа гарлаа",
-        );
-      } finally {
-        setAccountLoading(false);
-      }
-    };
-
-    fetchAccountData();
-  }, [authFetch, user]);
-
-  const fetchOrders = async () => {
-    if (!user) return;
-    setOrdersLoading(true);
-    setOrdersError("");
-    try {
-      const res = await authFetch(`${API}/store/orders`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setOrdersError(data?.message || "Захиалгууд ачаалахад алдаа гарлаа");
-        return;
-      }
-      setOrders(Array.isArray(data.orders) ? data.orders : []);
-    } catch {
-      setOrdersError("Сүлжээний алдаа гарлаа");
-    } finally {
-      setOrdersLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   if (loading || !form) {
@@ -222,36 +89,36 @@ export default function ProfilePage() {
           ) : undefined
         }
         membershipTierLabel={membershipTierLabel}
-        onUpgradeClick={() => setMembershipOpen(true)}
+        onUpgradeClick={openMembership}
         user={{ ...user, avatarUrl: form.avatarUrl }}
       />
       <ProfileStatsGrid
         isMember={Boolean(user.membership?.active || user.isPrime)}
-        libraryCount={purchases.length + contracts.length}
+        libraryCount={accountData.purchases.length + accountData.contracts.length}
         membershipTierLabel={membershipTierLabel}
-        ordersCount={orders.length}
-        points={points}
+        ordersCount={ordersData.orders.length}
+        points={accountData.points}
       />
       <ProfileContentGrid
-        contracts={contracts}
-        orders={orders}
-        points={points}
-        purchases={purchases}
+        contracts={accountData.contracts}
+        orders={ordersData.orders}
+        points={accountData.points}
+        purchases={accountData.purchases}
       >
         {tab === "library" ? (
           <AccountLibraryPanel
-            purchases={purchases}
-            contracts={contracts}
-            points={points}
-            history={pointHistory}
-            loading={accountLoading}
+            purchases={accountData.purchases}
+            contracts={accountData.contracts}
+            points={accountData.points}
+            history={accountData.pointHistory}
+            loading={accountData.loading}
           />
         ) : (
           <OrdersPanel
-            orders={orders}
-            loading={ordersLoading}
-            error={ordersError}
-            onRefresh={fetchOrders}
+            orders={ordersData.orders}
+            loading={ordersData.loading}
+            error={ordersData.error || accountData.error}
+            onRefresh={ordersData.refresh}
           />
         )}
       </ProfileContentGrid>
@@ -259,11 +126,15 @@ export default function ProfilePage() {
       <MembershipUpgradeModal
         open={membershipOpen}
         onClose={() => setMembershipOpen(false)}
+        eyebrow={membershipConfig?.upgradeModal?.eyebrow}
+        title={membershipConfig?.upgradeModal?.title}
       >
         <MembershipActivationPanel
           user={user}
           form={form}
           request={authFetch}
+          copy={membershipConfig?.upgradeModal}
+          membershipTypes={membershipConfig?.membershipTypes}
         />
       </MembershipUpgradeModal>
     </ProfileDashboardShell>

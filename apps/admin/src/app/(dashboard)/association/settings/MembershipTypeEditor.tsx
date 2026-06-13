@@ -1,8 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import type { MembershipType, Duration } from "./_types";
+import { MembershipCardPreview } from "./MembershipCardPreview";
+import { getFeatureRows } from "./membershipTypeUtils";
 
 // ── Duration row ──────────────────────────────────────────────────────────────
 function DurationRow({
@@ -94,6 +102,9 @@ export function MembershipTypeEditor({ type, idx, onChange, onRemove }: Props) {
     "bg-amber-100 text-amber-700",
   ];
   const accent = accents[idx % accents.length];
+  const featureRows = getFeatureRows(type.desc);
+  const activeFeatureCount = featureRows.filter((row) => row.enabled).length;
+  const disabledFeatureCount = featureRows.length - activeFeatureCount;
 
   return (
     <div className={`rounded-2xl border overflow-hidden transition-all ${open ? "border-indigo-200 shadow-sm" : "border-slate-200"} bg-white`}>
@@ -112,7 +123,9 @@ export function MembershipTypeEditor({ type, idx, onChange, onRemove }: Props) {
           </p>
           {/* desc preview — always one line, truncated */}
           <p className="text-[11px] text-slate-400 truncate leading-snug">
-            {type.desc || "Тайлбар байхгүй"}
+            {featureRows.length > 0
+              ? `${featureRows.length} feature · ${type.durations.length} хугацаа`
+              : "Feature мөр байхгүй"}
           </p>
         </div>
 
@@ -137,88 +150,126 @@ export function MembershipTypeEditor({ type, idx, onChange, onRemove }: Props) {
 
       {/* Expanded body */}
       {open && (
-        <div className="border-t border-slate-100 px-4 pb-5 pt-4 space-y-4">
-
-          {/* Label + price */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1 block">
-                Нэр <span className="text-red-400">*</span>
-              </label>
-              <input
-                value={type.label}
-                onChange={(e) => onChange({ ...type, label: e.target.value })}
-                className={inp}
-                placeholder="А. Энгийн гишүүн"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1 block">
-                Үнийн дүн (текст)
-              </label>
-              <input
-                value={type.price}
-                onChange={(e) => onChange({ ...type, price: e.target.value })}
-                className={inp}
-                placeholder="60,000–180,000₮"
-              />
-            </div>
-          </div>
-
-          {/* Description — fixed height, scrollable, no overflow */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Тайлбар</label>
-              <span className="text-[9px] text-slate-300">{type.desc.length} тэмдэгт</span>
-            </div>
-            <textarea
-              value={type.desc}
-              onChange={(e) => onChange({ ...type, desc: e.target.value })}
-              rows={3}
-              className={`${inp} resize-y min-h-[72px] max-h-[160px] overflow-y-auto`}
-              placeholder="Сургалтад 50% хөнгөлөлт, 5 бараа байршуулах эрх..."
-            />
-            <p className="text-[9px] text-slate-400 mt-1">
-              Маягт дээр 2 мөр хэмжээгээр харагдана. Урт тайлбар автоматаар хаагдана.
-            </p>
-          </div>
-
-          {/* Durations */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
-                  Хугацааны сонголтууд
-                </label>
-                <p className="text-[9px] text-slate-400 mt-0.5">
-                  {type.durations.length === 0 ? "Үнэгүй — хугацаа байхгүй" : `${type.durations.length} сонголт`}
-                </p>
+        <div className="border-t border-slate-100 bg-gradient-to-b from-white to-slate-50/70 px-4 pb-5 pt-4">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">Feature</p>
+                  <p className="mt-0.5 text-lg font-black text-slate-900">{featureRows.length}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
+                  <p className="text-[9px] font-black uppercase tracking-wide text-emerald-600">Active</p>
+                  <p className="mt-0.5 text-lg font-black text-emerald-700">{activeFeatureCount}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">Disabled</p>
+                  <p className="mt-0.5 text-lg font-black text-slate-500">{disabledFeatureCount}</p>
+                </div>
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2">
+                  <p className="text-[9px] font-black uppercase tracking-wide text-indigo-500">Duration</p>
+                  <p className="mt-0.5 text-lg font-black text-indigo-700">{type.durations.length}</p>
+                </div>
               </div>
-              <button
-                onClick={addDuration}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 border border-indigo-200 rounded-lg px-2.5 py-1 hover:bg-indigo-50 transition-colors"
-              >
-                <Plus size={11} />Нэмэх
-              </button>
-            </div>
 
-            {type.durations.length === 0 ? (
-              <div className="border border-dashed border-slate-200 rounded-xl py-4 text-center">
-                <p className="text-xs text-slate-400">Хугацааны сонголт байхгүй</p>
-                <p className="text-[10px] text-slate-300 mt-0.5">Энгийн гишүүнчлэлд тохиромжтой</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {type.durations.map((d, dIdx) => (
-                  <DurationRow
-                    key={dIdx}
-                    dur={d}
-                    onChange={(u) => updateDuration(dIdx, u)}
-                    onRemove={() => removeDuration(dIdx)}
+              {/* Label + price */}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1 block">
+                    Нэр <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    value={type.label}
+                    onChange={(e) => onChange({ ...type, label: e.target.value })}
+                    className={inp}
+                    placeholder="Silver"
                   />
-                ))}
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1 block">
+                    Үнийн дүн (текст)
+                  </label>
+                  <input
+                    value={type.price}
+                    onChange={(e) => onChange({ ...type, price: e.target.value })}
+                    className={inp}
+                    placeholder="30,000₮ / сар"
+                  />
+                </div>
               </div>
-            )}
+
+              {/* Card feature text */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                      Card feature мөрүүд
+                    </label>
+                    <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                      Мөр бүр popup card дээр тусдаа bullet болж харагдана.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">
+                    {featureRows.length} мөр
+                  </span>
+                </div>
+                <textarea
+                  value={type.desc}
+                  onChange={(e) => onChange({ ...type, desc: e.target.value })}
+                  rows={6}
+                  className={`${inp} resize-y min-h-[144px] max-h-[260px] overflow-y-auto whitespace-pre-line text-[13px] leading-6`}
+                  placeholder={"Стандарт бүтээгдэхүүний хөнгөлөлт\nСтандарт хэрэглэгчийн дэмжлэг\n- Priority хүргэлтийн үйлчилгээ"}
+                />
+                <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-bold">
+                  <span className="rounded-full bg-orange-50 px-2 py-1 text-orange-600">
+                    Энгийн мөр = active
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-500">
+                    - эхэлсэн мөр = disabled
+                  </span>
+                </div>
+              </div>
+
+              {/* Durations */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                      Хугацааны сонголтууд
+                    </label>
+                    <p className="text-[9px] text-slate-400 mt-0.5">
+                      {type.durations.length === 0 ? "Үнэгүй — хугацаа байхгүй" : `${type.durations.length} сонголт`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={addDuration}
+                    className="inline-flex items-center gap-1 rounded-xl border border-indigo-200 px-3 py-2 text-xs font-black text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-800"
+                  >
+                    <Plus size={12} />Нэмэх
+                  </button>
+                </div>
+
+                {type.durations.length === 0 ? (
+                  <div className="border border-dashed border-slate-200 rounded-xl py-4 text-center">
+                    <p className="text-xs text-slate-400">Хугацааны сонголт байхгүй</p>
+                    <p className="text-[10px] text-slate-300 mt-0.5">Энгийн гишүүнчлэлд тохиромжтой</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {type.durations.map((d, dIdx) => (
+                      <DurationRow
+                        key={dIdx}
+                        dur={d}
+                        onChange={(u) => updateDuration(dIdx, u)}
+                        onRemove={() => removeDuration(dIdx)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <MembershipCardPreview type={type} idx={idx} />
           </div>
         </div>
       )}

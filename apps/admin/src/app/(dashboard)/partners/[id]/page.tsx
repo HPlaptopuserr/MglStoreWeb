@@ -27,7 +27,7 @@ import {
   PlanGrantHistory,
 } from "@/components/organisms/plan-grant";
 import { PartnerContentManager } from "./PartnerContentManager";
-import { VendorLoginAccountsCard } from "./VendorLoginAccountsCard";
+import { VendorLoginAccountsCard } from "@/components/organisms/partners/VendorLoginAccountsCard";
 
 export default function PartnerDetailsPage() {
   const params = useParams();

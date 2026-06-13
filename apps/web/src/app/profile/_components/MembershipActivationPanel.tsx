@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, BadgeCheck, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, BadgeCheck, CheckCircle2 } from "lucide-react";
 import { API } from "@/lib/api";
 import type { AuthUser } from "@/lib/auth-context";
 import {
@@ -11,6 +11,21 @@ import {
 import type { MembershipType } from "../../association/MembershipSelection";
 import { MembershipPlanPicker } from "./MembershipPlanPicker";
 import type { ProfileFormState } from "./types";
+
+export type MembershipUpgradeCopy = {
+  introLabel?: string;
+  introTitle?: string;
+  introDescription?: string;
+  tierEyebrow?: string;
+  tierTitle?: string;
+  tierDescription?: string;
+  swipeHint?: string;
+  missingPaymentConfigMessage?: string;
+  phoneRequiredMessage?: string;
+  addressRequiredMessage?: string;
+  successTitle?: string;
+  successDescription?: string;
+};
 
 const DEFAULT_TYPES: MembershipType[] = [
   {
@@ -46,15 +61,22 @@ const DEFAULT_TYPES: MembershipType[] = [
 ];
 
 export function MembershipActivationPanel({
+  copy,
+  membershipTypes: configuredMembershipTypes,
   user,
   form,
   request,
 }: {
+  copy?: MembershipUpgradeCopy;
+  membershipTypes?: MembershipType[];
   user: AuthUser;
   form: ProfileFormState;
   request: (url: string, init?: RequestInit) => Promise<Response>;
 }) {
-  const membershipTypes = DEFAULT_TYPES;
+  const membershipTypes =
+    configuredMembershipTypes && configuredMembershipTypes.length > 0
+      ? configuredMembershipTypes
+      : DEFAULT_TYPES;
   const [membershipType, setMembershipType] = useState("");
   const [durationMonths, setDurationMonths] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -86,11 +108,11 @@ export function MembershipActivationPanel({
       return;
     }
     if (!form.phone.trim()) {
-      setError("Profile дээр утасны дугаараа бөглөсний дараа идэвхжүүлнэ үү.");
+      setError(copy?.phoneRequiredMessage || "Profile дээр утасны дугаараа бөглөсний дараа идэвхжүүлнэ үү.");
       return;
     }
     if (!form.fullAddress.trim()) {
-      setError("Profile дээр хаягаа бөглөсний дараа идэвхжүүлнэ үү.");
+      setError(copy?.addressRequiredMessage || "Profile дээр хаягаа бөглөсний дараа идэвхжүүлнэ үү.");
       return;
     }
 
@@ -113,7 +135,7 @@ export function MembershipActivationPanel({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.message || "QuickQR төлбөр үүсгэхэд алдаа гарлаа.");
+        setError(data?.message || copy?.missingPaymentConfigMessage || "QuickQR төлбөр үүсгэхэд алдаа гарлаа.");
         return;
       }
       setRegistrationId(String(data.registrationId || ""));
@@ -135,20 +157,20 @@ export function MembershipActivationPanel({
   };
 
   return (
-    <section className="rounded-[24px] border border-orange-200 bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.07)] sm:p-6">
-      <div className="mb-5 flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white shadow-sm">
-          <BadgeCheck size={18} />
+    <section className="rounded-[18px] border border-orange-200 bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.07)] sm:rounded-[24px] sm:p-6">
+      <div className="mb-2 flex items-start gap-2 sm:mb-5 sm:gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white shadow-sm sm:h-10 sm:w-10">
+          <BadgeCheck size={16} className="sm:h-[18px] sm:w-[18px]" />
         </span>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-orange-500">
-            Elevate your experience
+          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-orange-500 sm:text-[10px]">
+            {copy?.introLabel || "Elevate your experience"}
           </p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">
-            MGL Premium Membership
+          <h2 className="mt-0.5 text-base font-black text-slate-950 sm:mt-1 sm:text-2xl">
+            {copy?.introTitle || "MGL Premium Membership"}
           </h2>
-          <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
-            Танд тохирох tier-ээ сонгоод QuickQR-р төлж идэвхжүүлнэ.
+          <p className="mt-1 hidden text-sm font-semibold leading-6 text-slate-500 sm:block">
+            {copy?.introDescription || "Tier болон хугацаагаа сонгоод card дээрх төлөх button-оор QR үүсгэнэ."}
           </p>
         </div>
       </div>
@@ -157,10 +179,10 @@ export function MembershipActivationPanel({
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
           <div className="flex items-center gap-2 text-sm font-black text-emerald-800">
             <CheckCircle2 size={18} />
-            Гишүүнчлэлийн хүсэлт илгээгдлээ
+            {copy?.successTitle || "Гишүүнчлэлийн хүсэлт илгээгдлээ"}
           </div>
           <p className="mt-1 text-xs font-semibold leading-relaxed text-emerald-700">
-            QuickQR төлбөр амжилттай баталгаажлаа.
+            {copy?.successDescription || "QuickQR төлбөр амжилттай баталгаажлаа."}
           </p>
         </div>
       ) : (
@@ -181,21 +203,8 @@ export function MembershipActivationPanel({
             submitting={submitting}
             submittingPlanKey={submittingPlanKey}
             onPay={(type, months) => submit(type, months)}
+            copy={copy}
           />
-
-          <button
-            type="button"
-            onClick={() => submit()}
-            disabled={submitting}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-orange-600 disabled:opacity-60"
-          >
-            {submitting ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <BadgeCheck size={16} />
-            )}
-            {submitting ? "QR үүсгэж байна..." : "QuickQR-р төлөх"}
-          </button>
         </div>
       )}
       {paymentSession && registrationId && (

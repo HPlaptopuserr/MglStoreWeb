@@ -94,6 +94,10 @@ function getAssociationPaymentAccount(config: any) {
   };
 }
 
+function getAssociationConfigMessage(config: any, key: string, fallback: string) {
+  return String(config?.upgradeModal?.[key] || fallback).trim();
+}
+
 function publicAssociationConfig(config: any) {
   if (!config || typeof config !== "object") return config;
   const paymentAccount = config.paymentAccount || {};
@@ -326,8 +330,11 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
     if (!account.merchantCode || !account.password) {
       return res.status(400).json({
         success: false,
-        message:
-          "Холбооны QuickQR данс тохируулагдаагүй байна. Admin дээр merchant code/password хадгална уу.",
+        message: getAssociationConfigMessage(
+          config,
+          "missingPaymentConfigMessage",
+          "Алдаа гарлаа Admin тай холбогдоно уу.",
+        ),
       });
     }
 
