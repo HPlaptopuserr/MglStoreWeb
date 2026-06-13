@@ -9,10 +9,15 @@ import {
   extractExcelImages,
   uploadBufferToSupabase,
   PRODUCT_COL_MAP,
+  PRODUCT_IMPORT_FILE_SIZE_LIMIT_BYTES,
   normalizeExcelRow,
   resolveCol,
 } from "../../lib/excel-import";
-import { adjustStock, resolveOrgWarehouse, syncProductStock } from "../../services/inventory.service";
+import {
+  adjustStock,
+  resolveOrgWarehouse,
+  syncProductStock,
+} from "../../services/inventory.service";
 
 const router: ExpressRouter = Router();
 
@@ -72,9 +77,14 @@ router.get("/warehouses", requireAuth, async (req, res) => {
     // Transform to include organizations array and flatten createdBy
     const result = warehouses.map((w: (typeof warehouses)[number]) => ({
       ...w,
-      organizations: w.organizations.map((wo: (typeof w.organizations)[number]) => wo.organization),
+      organizations: w.organizations.map(
+        (wo: (typeof w.organizations)[number]) => wo.organization,
+      ),
       createdBy: w.createdBy
-        ? { id: w.createdBy.id, name: w.createdBy.profile?.fullName || w.createdBy.email }
+        ? {
+            id: w.createdBy.id,
+            name: w.createdBy.profile?.fullName || w.createdBy.email,
+          }
         : null,
     }));
 
@@ -130,210 +140,236 @@ router.get("/warehouses/organization/:orgId", requireAuth, async (req, res) => {
 });
 
 // Create warehouse (Admin creates)
-router.post("/warehouses", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
-  try {
-    const {
-      name,
-      address,
-      city,
-      district,
-      phone,
-      capacity,
-      lat,
-      lng,
-      createdById,
-      organizationIds,
-    } = req.body;
-
-    if (!name || !address) {
-      return res.status(400).json({
-        message: "name, address шаардлагатай",
-      });
-    }
-
-    const warehouse = await prisma.warehouse.create({
-      data: {
+router.post(
+  "/warehouses",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
+  async (req, res) => {
+    try {
+      const {
         name,
         address,
-        city: city || "",
-        district: district || "",
-        phone: phone || null,
-        capacity: capacity || 0,
-        lat: lat || null,
-        lng: lng || null,
-        createdById: createdById || null,
-        isActive: true,
-        organizations: organizationIds?.length
-          ? {
-              create: organizationIds.map((orgId: string) => ({
-                organizationId: orgId,
-                assignedById: createdById || null,
-              })),
-            }
-          : undefined,
-      },
-      include: {
-        organizations: {
-          include: {
-            organization: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
+        city,
+        district,
+        phone,
+        capacity,
+        lat,
+        lng,
+        createdById,
+        organizationIds,
+      } = req.body;
+
+      if (!name || !address) {
+        return res.status(400).json({
+          message: "name, address шаардлагатай",
+        });
+      }
+
+      const warehouse = await prisma.warehouse.create({
+        data: {
+          name,
+          address,
+          city: city || "",
+          district: district || "",
+          phone: phone || null,
+          capacity: capacity || 0,
+          lat: lat || null,
+          lng: lng || null,
+          createdById: createdById || null,
+          isActive: true,
+          organizations: organizationIds?.length
+            ? {
+                create: organizationIds.map((orgId: string) => ({
+                  organizationId: orgId,
+                  assignedById: createdById || null,
+                })),
+              }
+            : undefined,
+        },
+        include: {
+          organizations: {
+            include: {
+              organization: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
 
-    res.status(201).json({
-      ...warehouse,
-      organizations: warehouse.organizations.map((wo: (typeof warehouse.organizations)[number]) => wo.organization),
-    });
-  } catch (error) {
-    console.error("create warehouse error", error);
-    res.status(500).json({
-      message: "Агуулах үүсгэхэд алдаа гарлаа",
-    });
-  }
-});
-
-// Update warehouse
-router.patch("/warehouses/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const {
-      name,
-      address,
-      city,
-      district,
-      phone,
-      capacity,
-      lat,
-      lng,
-      isActive,
-    } = req.body;
-
-    const updateData: any = {};
-
-    if (name !== undefined) updateData.name = name;
-    if (address !== undefined) updateData.address = address;
-    if (city !== undefined) updateData.city = city;
-    if (district !== undefined) updateData.district = district;
-    if (phone !== undefined) updateData.phone = phone;
-    if (capacity !== undefined) updateData.capacity = capacity;
-    if (lat !== undefined) updateData.lat = lat;
-    if (lng !== undefined) updateData.lng = lng;
-    if (isActive !== undefined) updateData.isActive = isActive;
-
-    const updated = await prisma.warehouse.update({
-      where: { id },
-      data: updateData,
-      include: {
-        organizations: {
-          include: {
-            organization: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    res.json({
-      ...updated,
-      organizations: updated.organizations.map((wo: (typeof updated.organizations)[number]) => wo.organization),
-    });
-  } catch (error) {
-    console.error("update warehouse error", error);
-    res.status(500).json({
-      message: "Агуулах шинэчлэхэд алдаа гарлаа",
-    });
-  }
-});
-
-// Assign/update organizations for a warehouse (Admin)
-router.post("/warehouses/:id/assign", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { organizationIds, assignedById } = req.body;
-
-    // organizationIds is an array of organization IDs to assign
-    // Empty array means remove all assignments
-
-    // First, remove all existing assignments
-    await prisma.warehouseOrganization.deleteMany({
-      where: { warehouseId: id },
-    });
-
-    // Then create new assignments if any
-    if (organizationIds && organizationIds.length > 0) {
-      await prisma.warehouseOrganization.createMany({
-        data: organizationIds.map((orgId: string) => ({
-          warehouseId: id,
-          organizationId: orgId,
-          assignedById: assignedById || null,
-        })),
+      res.status(201).json({
+        ...warehouse,
+        organizations: warehouse.organizations.map(
+          (wo: (typeof warehouse.organizations)[number]) => wo.organization,
+        ),
+      });
+    } catch (error) {
+      console.error("create warehouse error", error);
+      res.status(500).json({
+        message: "Агуулах үүсгэхэд алдаа гарлаа",
       });
     }
+  },
+);
 
-    // Fetch updated warehouse
-    const updated = await prisma.warehouse.findUnique({
-      where: { id },
-      include: {
-        organizations: {
-          include: {
-            organization: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
+// Update warehouse
+router.patch(
+  "/warehouses/:id",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        name,
+        address,
+        city,
+        district,
+        phone,
+        capacity,
+        lat,
+        lng,
+        isActive,
+      } = req.body;
+
+      const updateData: any = {};
+
+      if (name !== undefined) updateData.name = name;
+      if (address !== undefined) updateData.address = address;
+      if (city !== undefined) updateData.city = city;
+      if (district !== undefined) updateData.district = district;
+      if (phone !== undefined) updateData.phone = phone;
+      if (capacity !== undefined) updateData.capacity = capacity;
+      if (lat !== undefined) updateData.lat = lat;
+      if (lng !== undefined) updateData.lng = lng;
+      if (isActive !== undefined) updateData.isActive = isActive;
+
+      const updated = await prisma.warehouse.update({
+        where: { id },
+        data: updateData,
+        include: {
+          organizations: {
+            include: {
+              organization: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
 
-    if (!updated) {
-      return res.status(404).json({ message: "Агуулах олдсонгүй" });
+      res.json({
+        ...updated,
+        organizations: updated.organizations.map(
+          (wo: (typeof updated.organizations)[number]) => wo.organization,
+        ),
+      });
+    } catch (error) {
+      console.error("update warehouse error", error);
+      res.status(500).json({
+        message: "Агуулах шинэчлэхэд алдаа гарлаа",
+      });
     }
+  },
+);
 
-    res.json({
-      ...updated,
-      organizations: updated.organizations.map((wo: (typeof updated.organizations)[number]) => wo.organization),
-    });
-  } catch (error) {
-    console.error("assign warehouse error", error);
-    res.status(500).json({
-      message: "Агуулах оноохд алдаа гарлаа",
-    });
-  }
-});
+// Assign/update organizations for a warehouse (Admin)
+router.post(
+  "/warehouses/:id/assign",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { organizationIds, assignedById } = req.body;
+
+      // organizationIds is an array of organization IDs to assign
+      // Empty array means remove all assignments
+
+      // First, remove all existing assignments
+      await prisma.warehouseOrganization.deleteMany({
+        where: { warehouseId: id },
+      });
+
+      // Then create new assignments if any
+      if (organizationIds && organizationIds.length > 0) {
+        await prisma.warehouseOrganization.createMany({
+          data: organizationIds.map((orgId: string) => ({
+            warehouseId: id,
+            organizationId: orgId,
+            assignedById: assignedById || null,
+          })),
+        });
+      }
+
+      // Fetch updated warehouse
+      const updated = await prisma.warehouse.findUnique({
+        where: { id },
+        include: {
+          organizations: {
+            include: {
+              organization: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!updated) {
+        return res.status(404).json({ message: "Агуулах олдсонгүй" });
+      }
+
+      res.json({
+        ...updated,
+        organizations: updated.organizations.map(
+          (wo: (typeof updated.organizations)[number]) => wo.organization,
+        ),
+      });
+    } catch (error) {
+      console.error("assign warehouse error", error);
+      res.status(500).json({
+        message: "Агуулах оноохд алдаа гарлаа",
+      });
+    }
+  },
+);
 
 // Delete warehouse (soft delete)
-router.delete("/warehouses/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
-  try {
-    const { id } = req.params;
+router.delete(
+  "/warehouses/:id",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
 
-    await prisma.warehouse.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
+      await prisma.warehouse.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
 
-    res.json({ message: "Агуулах устгагдлаа" });
-  } catch (error) {
-    console.error("delete warehouse error", error);
-    res.status(500).json({
-      message: "Агуулах устгахд алдаа гарлаа",
-    });
-  }
-});
+      res.json({ message: "Агуулах устгагдлаа" });
+    } catch (error) {
+      console.error("delete warehouse error", error);
+      res.status(500).json({
+        message: "Агуулах устгахд алдаа гарлаа",
+      });
+    }
+  },
+);
 
 // Get warehouse detail with inventory
 router.get("/warehouses/:id/detail", async (req, res) => {
@@ -423,16 +459,20 @@ router.get("/warehouses/:id/detail", async (req, res) => {
     // Calculate summary stats
     const totalProducts = warehouse.inventories.length;
     const totalQuantity = warehouse.inventories.reduce(
-      (sum: number, inv: (typeof warehouse.inventories)[number]) => sum + inv.quantity,
+      (sum: number, inv: (typeof warehouse.inventories)[number]) =>
+        sum + inv.quantity,
       0,
     );
     const lowStockItems = warehouse.inventories.filter(
-      (inv: (typeof warehouse.inventories)[number]) => inv.quantity <= inv.minQuantity,
+      (inv: (typeof warehouse.inventories)[number]) =>
+        inv.quantity <= inv.minQuantity,
     ).length;
 
     res.json({
       ...warehouse,
-      organizations: warehouse.organizations.map((wo: (typeof warehouse.organizations)[number]) => wo.organization),
+      organizations: warehouse.organizations.map(
+        (wo: (typeof warehouse.organizations)[number]) => wo.organization,
+      ),
       summary: {
         totalProducts,
         totalQuantity,
@@ -453,136 +493,151 @@ router.get("/warehouses/:id/detail", async (req, res) => {
 
 // Toggle showOnWeb for a warehouse inventory item
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-router.patch("/warehouses/:id/inventory/:invId/show-on-web", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
-  try {
-    const { invId } = req.params;
-    const existing = await (prisma.warehouseInventory as any).findUnique({ where: { id: invId } });
-    if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
+router.patch(
+  "/warehouses/:id/inventory/:invId/show-on-web",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
+  async (req, res) => {
+    try {
+      const { invId } = req.params;
+      const existing = await (prisma.warehouseInventory as any).findUnique({
+        where: { id: invId },
+      });
+      if (!existing)
+        return res.status(404).json({ message: "Бараа олдсонгүй" });
 
-    const updated = await (prisma.warehouseInventory as any).update({
-      where: { id: invId },
-      data: { showOnWeb: !existing.showOnWeb },
-      select: { id: true, showOnWeb: true },
-    });
-    return res.json(updated);
-  } catch (error) {
-    console.error("toggle showOnWeb error", error);
-    return res.status(500).json({ message: "Алдаа гарлаа", error: String(error) });
-  }
-});
+      const updated = await (prisma.warehouseInventory as any).update({
+        where: { id: invId },
+        data: { showOnWeb: !existing.showOnWeb },
+        select: { id: true, showOnWeb: true },
+      });
+      return res.json(updated);
+    } catch (error) {
+      console.error("toggle showOnWeb error", error);
+      return res
+        .status(500)
+        .json({ message: "Алдаа гарлаа", error: String(error) });
+    }
+  },
+);
 
 // Add/Update inventory for a warehouse
-router.post("/warehouses/:id/inventory", requireAuth, requirePlatformPermission(Permission.MANAGE_WAREHOUSES), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const {
-      productId,
-      quantity,
-      minQuantity,
-      maxQuantity,
-      location,
-      batchNumber,
-      expiryDate,
-      note,
-    } = req.body;
+router.post(
+  "/warehouses/:id/inventory",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        productId,
+        quantity,
+        minQuantity,
+        maxQuantity,
+        location,
+        batchNumber,
+        expiryDate,
+        note,
+      } = req.body;
 
-    if (!productId || quantity === undefined) {
-      return res.status(400).json({
-        message: "productId, quantity шаардлагатай",
-      });
-    }
-
-    // Check warehouse exists
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id, deletedAt: null },
-    });
-
-    if (!warehouse) {
-      return res.status(404).json({ message: "Агуулах олдсонгүй" });
-    }
-
-    const inventory = await prisma.$transaction(async (tx) => {
-      // Get old quantity for ledger diff
-      const existing = await tx.warehouseInventory.findUnique({
-        where: { warehouseId_productId: { warehouseId: id, productId } },
-        select: { quantity: true },
-      });
-      const oldQty = existing?.quantity ?? 0;
-
-      // Upsert inventory
-      const inv = await tx.warehouseInventory.upsert({
-        where: {
-          warehouseId_productId: {
-            warehouseId: id,
-            productId,
-          },
-        },
-        create: {
-          warehouseId: id,
-          productId,
-          quantity,
-          minQuantity: minQuantity || 0,
-          maxQuantity: maxQuantity || null,
-          location: location || null,
-          batchNumber: batchNumber || null,
-          expiryDate: expiryDate ? new Date(expiryDate) : null,
-          note: note || null,
-          lastRestockedAt: new Date(),
-        },
-        update: {
-          quantity,
-          minQuantity: minQuantity !== undefined ? minQuantity : undefined,
-          maxQuantity: maxQuantity !== undefined ? maxQuantity : undefined,
-          location: location !== undefined ? location : undefined,
-          batchNumber: batchNumber !== undefined ? batchNumber : undefined,
-          expiryDate:
-            expiryDate !== undefined
-              ? expiryDate
-                ? new Date(expiryDate)
-                : null
-              : undefined,
-          note: note !== undefined ? note : undefined,
-          lastRestockedAt: new Date(),
-        },
-        include: {
-          product: {
-            select: {
-              id: true,
-              name: true,
-              sku: true,
-              price: true,
-            },
-          },
-        },
-      });
-
-      // Ledger entry for the stock change
-      const diff = quantity - oldQty;
-      if (diff !== 0) {
-        await tx.inventoryLedger.create({
-          data: {
-            productId,
-            change: diff,
-            reason: existing ? "RESTOCK" : "INITIAL_STOCK",
-            note: `Агуулахийн бүртгэл ${existing ? "шинэчилсэн" : "нэмсэн"}`,
-          },
+      if (!productId || quantity === undefined) {
+        return res.status(400).json({
+          message: "productId, quantity шаардлагатай",
         });
       }
 
-      // Sync Product.stock inside same tx
-      await syncProductStock(tx, productId);
+      // Check warehouse exists
+      const warehouse = await prisma.warehouse.findUnique({
+        where: { id, deletedAt: null },
+      });
 
-      return inv;
-    });
+      if (!warehouse) {
+        return res.status(404).json({ message: "Агуулах олдсонгүй" });
+      }
 
-    res.status(201).json(inventory);
-  } catch (error) {
-    console.error("add warehouse inventory error", error);
-    res.status(500).json({
-      message: "Агуулахийн бүртгэл нэмэхэд алдаа гарлаа",
-    });
-  }
-});
+      const inventory = await prisma.$transaction(async (tx) => {
+        // Get old quantity for ledger diff
+        const existing = await tx.warehouseInventory.findUnique({
+          where: { warehouseId_productId: { warehouseId: id, productId } },
+          select: { quantity: true },
+        });
+        const oldQty = existing?.quantity ?? 0;
+
+        // Upsert inventory
+        const inv = await tx.warehouseInventory.upsert({
+          where: {
+            warehouseId_productId: {
+              warehouseId: id,
+              productId,
+            },
+          },
+          create: {
+            warehouseId: id,
+            productId,
+            quantity,
+            minQuantity: minQuantity || 0,
+            maxQuantity: maxQuantity || null,
+            location: location || null,
+            batchNumber: batchNumber || null,
+            expiryDate: expiryDate ? new Date(expiryDate) : null,
+            note: note || null,
+            lastRestockedAt: new Date(),
+          },
+          update: {
+            quantity,
+            minQuantity: minQuantity !== undefined ? minQuantity : undefined,
+            maxQuantity: maxQuantity !== undefined ? maxQuantity : undefined,
+            location: location !== undefined ? location : undefined,
+            batchNumber: batchNumber !== undefined ? batchNumber : undefined,
+            expiryDate:
+              expiryDate !== undefined
+                ? expiryDate
+                  ? new Date(expiryDate)
+                  : null
+                : undefined,
+            note: note !== undefined ? note : undefined,
+            lastRestockedAt: new Date(),
+          },
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                price: true,
+              },
+            },
+          },
+        });
+
+        // Ledger entry for the stock change
+        const diff = quantity - oldQty;
+        if (diff !== 0) {
+          await tx.inventoryLedger.create({
+            data: {
+              productId,
+              change: diff,
+              reason: existing ? "RESTOCK" : "INITIAL_STOCK",
+              note: `Агуулахийн бүртгэл ${existing ? "шинэчилсэн" : "нэмсэн"}`,
+            },
+          });
+        }
+
+        // Sync Product.stock inside same tx
+        await syncProductStock(tx, productId);
+
+        return inv;
+      });
+
+      res.status(201).json(inventory);
+    } catch (error) {
+      console.error("add warehouse inventory error", error);
+      res.status(500).json({
+        message: "Агуулахийн бүртгэл нэмэхэд алдаа гарлаа",
+      });
+    }
+  },
+);
 
 // Update inventory quantity
 router.patch(
@@ -627,14 +682,22 @@ router.patch(
       if (name !== undefined) {
         const trimmedName = String(name).trim();
         if (!trimmedName) {
-          return res.status(400).json({ message: "Барааны нэр хоосон байж болохгүй" });
+          return res
+            .status(400)
+            .json({ message: "Барааны нэр хоосон байж болохгүй" });
         }
         productUpdateData.name = trimmedName;
       }
-      if (description !== undefined) productUpdateData.description = description ? String(description).trim() : null;
-      if (sku !== undefined) productUpdateData.sku = sku ? String(sku).trim() : null;
-      if (barcode !== undefined) productUpdateData.barcode = barcode ? String(barcode).trim() : null;
-      if (unit !== undefined) productUpdateData.unit = unit ? String(unit).trim() : null;
+      if (description !== undefined)
+        productUpdateData.description = description
+          ? String(description).trim()
+          : null;
+      if (sku !== undefined)
+        productUpdateData.sku = sku ? String(sku).trim() : null;
+      if (barcode !== undefined)
+        productUpdateData.barcode = barcode ? String(barcode).trim() : null;
+      if (unit !== undefined)
+        productUpdateData.unit = unit ? String(unit).trim() : null;
       if (price !== undefined) {
         const parsedPrice = Number(price);
         if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
@@ -643,25 +706,42 @@ router.patch(
         productUpdateData.price = parsedPrice;
       }
       if (costPrice !== undefined) {
-        const parsedCostPrice = costPrice === null || costPrice === "" ? null : Number(costPrice);
-        if (parsedCostPrice !== null && (!Number.isFinite(parsedCostPrice) || parsedCostPrice < 0)) {
+        const parsedCostPrice =
+          costPrice === null || costPrice === "" ? null : Number(costPrice);
+        if (
+          parsedCostPrice !== null &&
+          (!Number.isFinite(parsedCostPrice) || parsedCostPrice < 0)
+        ) {
           return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
         }
         productUpdateData.costPrice = parsedCostPrice;
       }
-      if (businessCategoryId !== undefined) productUpdateData.businessCategoryId = businessCategoryId || null;
+      if (businessCategoryId !== undefined)
+        productUpdateData.businessCategoryId = businessCategoryId || null;
       if (supplyType !== undefined) productUpdateData.supplyType = supplyType;
       if (preorderLeadTimeDays !== undefined) {
-        const parsedLeadTime = preorderLeadTimeDays === null || preorderLeadTimeDays === ""
-          ? null
-          : Number(preorderLeadTimeDays);
-        if (parsedLeadTime !== null && (!Number.isInteger(parsedLeadTime) || parsedLeadTime < 0 || parsedLeadTime > 365)) {
-          return res.status(400).json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
+        const parsedLeadTime =
+          preorderLeadTimeDays === null || preorderLeadTimeDays === ""
+            ? null
+            : Number(preorderLeadTimeDays);
+        if (
+          parsedLeadTime !== null &&
+          (!Number.isInteger(parsedLeadTime) ||
+            parsedLeadTime < 0 ||
+            parsedLeadTime > 365)
+        ) {
+          return res
+            .status(400)
+            .json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
         }
         productUpdateData.preorderLeadTimeDays = parsedLeadTime;
       }
-      if (preorderNote !== undefined) productUpdateData.preorderNote = preorderNote ? String(preorderNote).trim() : null;
-      if (isActive !== undefined) productUpdateData.isActive = Boolean(isActive);
+      if (preorderNote !== undefined)
+        productUpdateData.preorderNote = preorderNote
+          ? String(preorderNote).trim()
+          : null;
+      if (isActive !== undefined)
+        productUpdateData.isActive = Boolean(isActive);
 
       const targetInventory = await prisma.warehouseInventory.findUnique({
         where: { warehouseId_productId: { warehouseId, productId } },
@@ -672,12 +752,13 @@ router.patch(
       }
       const inventory = await prisma.$transaction(async (tx) => {
         // Get old quantity for ledger
-        const oldInv = quantity !== undefined
-          ? await tx.warehouseInventory.findUnique({
-              where: { warehouseId_productId: { warehouseId, productId } },
-              select: { quantity: true },
-            })
-          : null;
+        const oldInv =
+          quantity !== undefined
+            ? await tx.warehouseInventory.findUnique({
+                where: { warehouseId_productId: { warehouseId, productId } },
+                select: { quantity: true },
+              })
+            : null;
 
         if (Object.keys(productUpdateData).length > 0) {
           await tx.product.update({
@@ -830,7 +911,10 @@ router.get("/inventory-ledger", async (req, res) => {
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(
+      100,
+      Math.max(1, parseInt(limit as string, 10) || 50),
+    );
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {};
@@ -855,7 +939,11 @@ router.get("/inventory-ledger", async (req, res) => {
         where: { warehouseId: warehouseId as string },
         select: { productId: true },
       });
-      where.productId = { in: warehouseProducts.map((wp: (typeof warehouseProducts)[number]) => wp.productId) };
+      where.productId = {
+        in: warehouseProducts.map(
+          (wp: (typeof warehouseProducts)[number]) => wp.productId,
+        ),
+      };
     }
 
     const [entries, total] = await Promise.all([
@@ -863,7 +951,13 @@ router.get("/inventory-ledger", async (req, res) => {
         where,
         include: {
           product: { select: { id: true, name: true, sku: true } },
-          createdBy: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              profile: { select: { fullName: true } },
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -895,7 +989,7 @@ router.get("/inventory-ledger", async (req, res) => {
 router.get("/warehouses/:id/sku-lookup", async (req, res) => {
   try {
     const warehouseId = req.params.id;
-    const prefix = (req.query.prefix as string || "").trim().toUpperCase();
+    const prefix = ((req.query.prefix as string) || "").trim().toUpperCase();
 
     if (!prefix || prefix.length < 3) {
       return res.json([]);
@@ -906,7 +1000,8 @@ router.get("/warehouses/:id/sku-lookup", async (req, res) => {
       include: { organizations: { select: { organizationId: true }, take: 1 } },
     });
 
-    if (!warehouse) return res.status(404).json({ message: "Агуулах олдсонгүй" });
+    if (!warehouse)
+      return res.status(404).json({ message: "Агуулах олдсонгүй" });
 
     const organizationId = warehouse.organizations[0]?.organizationId;
     if (!organizationId) return res.json([]);
@@ -932,14 +1027,19 @@ router.get("/warehouses/:id/sku-lookup", async (req, res) => {
 /* ─── Multer config for Excel file upload ────────────────────────────── */
 const excelUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: PRODUCT_IMPORT_FILE_SIZE_LIMIT_BYTES },
   fileFilter: (_req, file, cb) => {
     const allowed = [
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "application/vnd.ms-excel",
       "text/csv",
     ];
-    cb(null, allowed.includes(file.mimetype) || file.originalname.endsWith(".xlsx") || file.originalname.endsWith(".xls"));
+    cb(
+      null,
+      allowed.includes(file.mimetype) ||
+        file.originalname.endsWith(".xlsx") ||
+        file.originalname.endsWith(".xls"),
+    );
   },
 });
 
@@ -958,7 +1058,9 @@ router.post(
       // Verify warehouse exists and get its organization
       const warehouse = await prisma.warehouse.findUnique({
         where: { id: warehouseId, deletedAt: null },
-        include: { organizations: { select: { organizationId: true }, take: 1 } },
+        include: {
+          organizations: { select: { organizationId: true }, take: 1 },
+        },
       });
       if (!warehouse) {
         return res.status(404).json({ message: "Агуулах олдсонгүй" });
@@ -966,7 +1068,9 @@ router.post(
 
       const organizationId = warehouse.organizations[0]?.organizationId;
       if (!organizationId) {
-        return res.status(400).json({ message: "Агуулахад байгууллага хуваарилагдаагүй байна" });
+        return res
+          .status(400)
+          .json({ message: "Агуулахад байгууллага хуваарилагдаагүй байна" });
       }
 
       // Resolve businessCategoryId from organization
@@ -977,14 +1081,18 @@ router.post(
       });
       if (org?.businessCategory) {
         const matched = await prisma.businessCategory.findFirst({
-          where: { slug: { equals: org.businessCategory, mode: "insensitive" } },
+          where: {
+            slug: { equals: org.businessCategory, mode: "insensitive" },
+          },
           select: { id: true },
         });
         if (matched) orgBusinessCategoryId = matched.id;
       }
 
       if (!req.file) {
-        return res.status(400).json({ message: "Excel файл шаардлагатай (.xlsx, .xls)" });
+        return res
+          .status(400)
+          .json({ message: "Excel файл шаардлагатай (.xlsx, .xls)" });
       }
 
       const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
@@ -997,10 +1105,14 @@ router.post(
         .sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName])
         .map(normalizeExcelRow);
       if (!rows.length) {
-        return res.status(400).json({ message: "Excel файлд мэдээлэл олдсонгүй" });
+        return res
+          .status(400)
+          .json({ message: "Excel файлд мэдээлэл олдсонгүй" });
       }
       if (rows.length > 1000) {
-        return res.status(400).json({ message: "Нэг удаад 1000-аас олон бараа оруулах боломжгүй" });
+        return res
+          .status(400)
+          .json({ message: "Нэг удаад 1000-аас олон бараа оруулах боломжгүй" });
       }
 
       // Extract embedded images
@@ -1014,9 +1126,15 @@ router.post(
         const z = await JSZip.loadAsync(req.file.buffer);
         const files = Object.keys(z.files);
         mediaFileCount = files.filter((f) => f.startsWith("xl/media/")).length;
-        hasRichData = files.some((f) => f.includes("richData/richValueRel.xml"));
-        hasDrawings = files.some((f) => /xl\/drawings\/drawing\d+\.xml$/.test(f));
-      } catch { /* ignore */ }
+        hasRichData = files.some((f) =>
+          f.includes("richData/richValueRel.xml"),
+        );
+        hasDrawings = files.some((f) =>
+          /xl\/drawings\/drawing\d+\.xml$/.test(f),
+        );
+      } catch {
+        /* ignore */
+      }
 
       const colMap = PRODUCT_COL_MAP;
 
@@ -1025,7 +1143,13 @@ router.post(
         updated: number;
         skipped: number;
         errors: string[];
-        products: Array<{ id: string; name: string; sku: string | null; price: number; stock: number }>;
+        products: Array<{
+          id: string;
+          name: string;
+          sku: string | null;
+          price: number;
+          stock: number;
+        }>;
       } = { created: 0, updated: 0, skipped: 0, errors: [], products: [] };
 
       // Pre-scan: detect duplicate SKUs within the file
@@ -1036,7 +1160,9 @@ router.post(
         if (sku) {
           const normalized = String(sku).trim().toLowerCase();
           if (skusInFile.has(normalized)) {
-            results.errors.push(`Мөр ${i + 2}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalized)})`);
+            results.errors.push(
+              `Мөр ${i + 2}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalized)})`,
+            );
             results.skipped++;
             duplicateSkuRows.add(i);
           } else {
@@ -1060,7 +1186,9 @@ router.post(
         const imagesRaw = resolveCol(row, colMap.images);
 
         if (!name || price === undefined) {
-          results.errors.push(`Мөр ${rowNum}: Нэр болон үнэ заавал шаардлагатай`);
+          results.errors.push(
+            `Мөр ${rowNum}: Нэр болон үнэ заавал шаардлагатай`,
+          );
           results.skipped++;
           continue;
         }
@@ -1072,9 +1200,15 @@ router.post(
           continue;
         }
 
-        const costPriceNum = costPrice !== undefined ? parseFloat(String(costPrice)) : null;
-        if (costPriceNum !== null && (isNaN(costPriceNum) || costPriceNum < 0)) {
-          results.errors.push(`Мөр ${rowNum}: Өртөг үнэ буруу — "${costPrice}"`);
+        const costPriceNum =
+          costPrice !== undefined ? parseFloat(String(costPrice)) : null;
+        if (
+          costPriceNum !== null &&
+          (isNaN(costPriceNum) || costPriceNum < 0)
+        ) {
+          results.errors.push(
+            `Мөр ${rowNum}: Өртөг үнэ буруу — "${costPrice}"`,
+          );
           results.skipped++;
           continue;
         }
@@ -1091,14 +1225,20 @@ router.post(
         try {
           // Parse image URLs from text column
           let imageUrls: string[] = imagesRaw
-            ? String(imagesRaw).split(",").map((u) => u.trim()).filter((u) => u.startsWith("http")).slice(0, 5)
+            ? String(imagesRaw)
+                .split(",")
+                .map((u) => u.trim())
+                .filter((u) => u.startsWith("http"))
+                .slice(0, 5)
             : [];
 
           // Check for embedded images
           if (imageUrls.length === 0) {
             const rowBuffers = embeddedImages.get(i + 1);
             if (rowBuffers && rowBuffers.length > 0) {
-              const uploadPromises = rowBuffers.slice(0, 5).map((buf) => uploadBufferToSupabase(buf));
+              const uploadPromises = rowBuffers
+                .slice(0, 5)
+                .map((buf) => uploadBufferToSupabase(buf));
               const uploaded = await Promise.all(uploadPromises);
               imageUrls = uploaded.filter((u): u is string => u !== null);
             }
@@ -1122,23 +1262,34 @@ router.post(
             if (normalizedSku) {
               // Free up SKU from any soft-deleted product
               await tx.product.updateMany({
-                where: { organizationId, sku: normalizedSku, deletedAt: { not: null } },
+                where: {
+                  organizationId,
+                  sku: normalizedSku,
+                  deletedAt: { not: null },
+                },
                 data: { sku: null },
               });
 
               const existing = await tx.product.findUnique({
-                where: { organizationId_sku: { organizationId, sku: normalizedSku } },
+                where: {
+                  organizationId_sku: { organizationId, sku: normalizedSku },
+                },
                 select: { id: true },
               });
               wasUpdate = !!existing;
 
               product = await tx.product.upsert({
-                where: { organizationId_sku: { organizationId, sku: normalizedSku } },
+                where: {
+                  organizationId_sku: { organizationId, sku: normalizedSku },
+                },
                 update: {
                   ...productData,
                   deletedAt: null,
                   ...(imageUrls.length > 0 && {
-                    images: { deleteMany: {}, create: imageUrls.map((url) => ({ url })) },
+                    images: {
+                      deleteMany: {},
+                      create: imageUrls.map((url) => ({ url })),
+                    },
                   }),
                 },
                 create: {
@@ -1149,7 +1300,13 @@ router.post(
                     images: { create: imageUrls.map((url) => ({ url })) },
                   }),
                 },
-                select: { id: true, name: true, sku: true, price: true, stock: true },
+                select: {
+                  id: true,
+                  name: true,
+                  sku: true,
+                  price: true,
+                  stock: true,
+                },
               });
             } else {
               product = await tx.product.create({
@@ -1161,19 +1318,32 @@ router.post(
                     images: { create: imageUrls.map((url) => ({ url })) },
                   }),
                 },
-                select: { id: true, name: true, sku: true, price: true, stock: true },
+                select: {
+                  id: true,
+                  name: true,
+                  sku: true,
+                  price: true,
+                  stock: true,
+                },
               });
             }
 
             // Create or update warehouse inventory
             if (stockNum > 0) {
               const existingInv = await tx.warehouseInventory.findUnique({
-                where: { warehouseId_productId: { warehouseId, productId: product.id } },
+                where: {
+                  warehouseId_productId: { warehouseId, productId: product.id },
+                },
               });
 
               if (existingInv) {
                 await tx.warehouseInventory.update({
-                  where: { warehouseId_productId: { warehouseId, productId: product.id } },
+                  where: {
+                    warehouseId_productId: {
+                      warehouseId,
+                      productId: product.id,
+                    },
+                  },
                   data: {
                     quantity: stockNum,
                     lastRestockedAt: new Date(),
@@ -1232,13 +1402,23 @@ router.post(
         message: `${results.created} бараа шинээр, ${results.updated} бараа шинэчлэгдлээ${results.skipped > 0 ? `, ${results.skipped} алгасав` : ""}`,
         total: rows.length,
         ...results,
-        _debug: { embeddedImageRows: embeddedImages.size, mediaFiles: mediaFileCount, hasRichData, hasDrawings },
+        _debug: {
+          embeddedImageRows: embeddedImages.size,
+          mediaFiles: mediaFileCount,
+          hasRichData,
+          hasDrawings,
+        },
       });
     } catch (error) {
       console.error("warehouse import products error", error);
-      return res.status(500).json({ message: "Excel импорт хийхэд алдаа гарлаа", error: String(error) });
+      return res
+        .status(500)
+        .json({
+          message: "Excel импорт хийхэд алдаа гарлаа",
+          error: String(error),
+        });
     }
-  }
+  },
 );
 
 /* ─── POST /warehouses/:id/products ─────────────────────────────────── *
@@ -1258,7 +1438,7 @@ router.post("/warehouses/:id/products", async (req, res) => {
       price,
       costPrice,
       businessCategoryId,
-      images,  // string[] of URLs
+      images, // string[] of URLs
       quantity,
       minQuantity,
       location,
@@ -1287,7 +1467,9 @@ router.post("/warehouses/:id/products", async (req, res) => {
 
     const organizationId = warehouse.organizations[0]?.organizationId;
     if (!organizationId) {
-      return res.status(400).json({ message: "Агуулахад байгууллага хуваарилагдаагүй байна" });
+      return res
+        .status(400)
+        .json({ message: "Агуулахад байгууллага хуваарилагдаагүй байна" });
     }
 
     const priceNum = parseFloat(String(price));
@@ -1295,9 +1477,10 @@ router.post("/warehouses/:id/products", async (req, res) => {
       return res.status(400).json({ message: "Үнэ буруу байна" });
     }
 
-    const costPriceNum = costPrice != null && costPrice !== ""
-      ? parseFloat(String(costPrice))
-      : null;
+    const costPriceNum =
+      costPrice != null && costPrice !== ""
+        ? parseFloat(String(costPrice))
+        : null;
     if (costPriceNum !== null && (isNaN(costPriceNum) || costPriceNum < 0)) {
       return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
     }
@@ -1309,7 +1492,9 @@ router.post("/warehouses/:id/products", async (req, res) => {
         select: { id: true },
       });
       if (existingSku) {
-        return res.status(409).json({ message: "Ижил SKU-тэй бараа бүртгэлтэй байна" });
+        return res
+          .status(409)
+          .json({ message: "Ижил SKU-тэй бараа бүртгэлтэй байна" });
       }
     }
 
@@ -1384,7 +1569,9 @@ router.post("/warehouses/:id/products", async (req, res) => {
     return res.status(201).json(product);
   } catch (error: any) {
     if (error?.code === "P2002") {
-      return res.status(409).json({ message: "Давхардсан SKU эсвэл бараа байна" });
+      return res
+        .status(409)
+        .json({ message: "Давхардсан SKU эсвэл бараа байна" });
     }
     console.error("create warehouse product error", error);
     return res.status(500).json({ message: "Бараа үүсгэхэд алдаа гарлаа" });
@@ -1402,10 +1589,14 @@ router.post("/warehouses/categories", async (req, res) => {
       return res.status(400).json({ message: "Ангилалын нэр шаардлагатай" });
     }
 
-    const slug = String(name).trim().toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/[^a-z0-9\u0400-\u04ff-]/g, "")
-      + "-" + Date.now().toString(36);
+    const slug =
+      String(name)
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9\u0400-\u04ff-]/g, "") +
+      "-" +
+      Date.now().toString(36);
 
     let level = 0;
     if (parentId) {
@@ -1418,7 +1609,9 @@ router.post("/warehouses/categories", async (req, res) => {
       }
       level = parent.level + 1;
       if (level > 2) {
-        return res.status(400).json({ message: "Хамгийн ихдээ 3 түвшин (0,1,2)" });
+        return res
+          .status(400)
+          .json({ message: "Хамгийн ихдээ 3 түвшин (0,1,2)" });
       }
     }
 

@@ -8,9 +8,16 @@ import { InventoryReason, prisma } from "@mgl/database";
 import type { PrismaClient } from "@prisma/client";
 import { Permission } from "@mgl/types";
 import { optionalAuth, requireAuth } from "../../middleware/auth";
-import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
+import {
+  requireOrgPermission,
+  assertOrgPermission,
+} from "../../services/permission.service";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
-import { requireActivePlan, checkProductLimit, checkImportLimit } from "../../middleware/plan-guard";
+import {
+  requireActivePlan,
+  checkProductLimit,
+  checkImportLimit,
+} from "../../middleware/plan-guard";
 import {
   areWebProductsGloballyEnabled,
   canBypassAllWebProductsVisibility,
@@ -22,6 +29,7 @@ import {
   extractExcelImages,
   uploadBufferToSupabase,
   PRODUCT_COL_MAP,
+  PRODUCT_IMPORT_FILE_SIZE_LIMIT_BYTES,
   normalizeExcelRow,
   getExcelRowIndex,
   resolveCol,
@@ -29,10 +37,17 @@ import {
 
 const router: ExpressRouter = Router();
 
-type Tx = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
+type Tx = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
+>;
 
 const normalizeSupplyType = (value: unknown) =>
-  String(value || "").trim().toUpperCase() === "CHINA_PREORDER" ? "CHINA_PREORDER" : "IN_STOCK";
+  String(value || "")
+    .trim()
+    .toUpperCase() === "CHINA_PREORDER"
+    ? "CHINA_PREORDER"
+    : "IN_STOCK";
 
 const normalizePreorderLeadTimeDays = (value: unknown) => {
   if (value === undefined || value === null || value === "") return null;
@@ -46,7 +61,8 @@ const TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
 
 const getExpirySortValue = (value?: Date | string | null) => {
   if (!value) return Number.POSITIVE_INFINITY;
-  const time = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  const time =
+    value instanceof Date ? value.getTime() : new Date(value).getTime();
   return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
 };
 
@@ -57,7 +73,11 @@ const getStartOfToday = () => {
 };
 
 const isTruthyQueryValue = (value: unknown) =>
-  TRUE_VALUES.has(String(value ?? "").trim().toLowerCase());
+  TRUE_VALUES.has(
+    String(value ?? "")
+      .trim()
+      .toLowerCase(),
+  );
 
 const getInventoryExpiryFilter = (includeExpired: boolean) =>
   includeExpired ? { not: null } : { gte: getStartOfToday() };
@@ -131,7 +151,11 @@ async function syncProductStock(tx: Tx, productId: string) {
   });
 }
 
-async function findProductExpiryDate(tx: Tx, productId: string, includeExpired = true) {
+async function findProductExpiryDate(
+  tx: Tx,
+  productId: string,
+  includeExpired = true,
+) {
   const inventory = await tx.warehouseInventory.findFirst({
     where: {
       productId,
@@ -169,20 +193,26 @@ async function upsertVendorProductInventory(
   if (!warehouseId) return;
 
   const existing = await tx.warehouseInventory.findUnique({
-    where: { warehouseId_productId: { warehouseId, productId: input.productId } },
+    where: {
+      warehouseId_productId: { warehouseId, productId: input.productId },
+    },
     select: { quantity: true },
   });
   const oldQuantity = existing?.quantity ?? 0;
-  const nextQuantity = input.stockProvided ? input.stock ?? 0 : oldQuantity;
+  const nextQuantity = input.stockProvided ? (input.stock ?? 0) : oldQuantity;
 
   if (!existing && nextQuantity <= 0 && !input.expiryDateProvided) return;
 
   if (existing) {
     await tx.warehouseInventory.update({
-      where: { warehouseId_productId: { warehouseId, productId: input.productId } },
+      where: {
+        warehouseId_productId: { warehouseId, productId: input.productId },
+      },
       data: {
         ...(input.stockProvided ? { quantity: nextQuantity } : {}),
-        ...(input.expiryDateProvided ? { expiryDate: input.expiryDate ?? null } : {}),
+        ...(input.expiryDateProvided
+          ? { expiryDate: input.expiryDate ?? null }
+          : {}),
         ...(input.stockProvided && nextQuantity > oldQuantity
           ? { lastRestockedAt: new Date() }
           : {}),
@@ -194,7 +224,9 @@ async function upsertVendorProductInventory(
         warehouseId,
         productId: input.productId,
         quantity: nextQuantity,
-        expiryDate: input.expiryDateProvided ? input.expiryDate ?? null : null,
+        expiryDate: input.expiryDateProvided
+          ? (input.expiryDate ?? null)
+          : null,
         lastRestockedAt: nextQuantity > 0 ? new Date() : null,
       },
     });
@@ -206,7 +238,9 @@ async function upsertVendorProductInventory(
       data: {
         productId: input.productId,
         change: diff,
-        reason: existing ? InventoryReason.RESTOCK : InventoryReason.INITIAL_STOCK,
+        reason: existing
+          ? InventoryReason.RESTOCK
+          : InventoryReason.INITIAL_STOCK,
         note: "Vendor барааны нөөц шинэчилсэн",
         createdById: input.createdById ?? null,
       },
@@ -243,14 +277,19 @@ router.get("/products/health", (_req, res) => {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: PRODUCT_IMPORT_FILE_SIZE_LIMIT_BYTES },
   fileFilter: (_req, file, cb) => {
     const allowed = [
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "application/vnd.ms-excel",
       "text/csv",
     ];
-    cb(null, allowed.includes(file.mimetype) || file.originalname.endsWith(".xlsx") || file.originalname.endsWith(".xls"));
+    cb(
+      null,
+      allowed.includes(file.mimetype) ||
+        file.originalname.endsWith(".xlsx") ||
+        file.originalname.endsWith(".xls"),
+    );
   },
 });
 
@@ -270,16 +309,23 @@ const imageUpload = multer({
 /* ─── GET /products ─────────────────────────────────────────────────── */
 router.get("/products", optionalAuth, async (req, res) => {
   try {
-    const { organizationId, businessCategoryId } = req.query as Record<string, string>;
+    const { organizationId, businessCategoryId } = req.query as Record<
+      string,
+      string
+    >;
     const search = String(req.query.search ?? req.query.q ?? "").trim();
-    const includeExpiredInventory = isTruthyQueryValue(req.query.includeExpiredInventory);
-    const includeInactive = isTruthyQueryValue(req.query.includeInactive)
-      && canBypassAllWebProductsVisibility(req);
-    const requestedOrganizationId = organizationId ? String(organizationId) : "";
+    const includeExpiredInventory = isTruthyQueryValue(
+      req.query.includeExpiredInventory,
+    );
+    const includeInactive =
+      isTruthyQueryValue(req.query.includeInactive) &&
+      canBypassAllWebProductsVisibility(req);
+    const requestedOrganizationId = organizationId
+      ? String(organizationId)
+      : "";
     const rawLimit = parseInt(String(req.query.limit || ""), 10);
-    const limit = Number.isFinite(rawLimit) && rawLimit > 0
-      ? Math.min(100, rawLimit)
-      : 0;
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, rawLimit) : 0;
 
     const where: any = {
       deletedAt: null,
@@ -321,7 +367,8 @@ router.get("/products", optionalAuth, async (req, res) => {
 
     if (!canBypassAllWebProductsVisibility(req)) {
       if (!canBypassRequestedOrg) {
-        const visibleOrganizationIds = await getWebProductsEnabledOrganizationIds();
+        const visibleOrganizationIds =
+          await getWebProductsEnabledOrganizationIds();
         if (requestedOrganizationId) {
           if (!visibleOrganizationIds.includes(requestedOrganizationId)) {
             return res.json([]);
@@ -381,9 +428,12 @@ router.get("/products", optionalAuth, async (req, res) => {
         };
       })
       .sort((a, b) => {
-        const expiryDiff = getExpirySortValue(a.expiryDate) - getExpirySortValue(b.expiryDate);
+        const expiryDiff =
+          getExpirySortValue(a.expiryDate) - getExpirySortValue(b.expiryDate);
         if (expiryDiff !== 0) return expiryDiff;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return (
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
       });
 
     if (limit > 0) {
@@ -393,19 +443,25 @@ router.get("/products", optionalAuth, async (req, res) => {
     return res.json(response);
   } catch (error) {
     console.error("get products error", error);
-    return res.status(500).json({ message: "Бараа авахад алдаа гарлаа", error: String(error) });
+    return res
+      .status(500)
+      .json({ message: "Бараа авахад алдаа гарлаа", error: String(error) });
   }
 });
 
 /* ─── GET /products/import-template ──────────────────────────────────── */
 router.get("/products/import-template", (req, res) => {
   try {
-    const mode = String(req.query.mode || req.query.type || "").trim().toLowerCase();
+    const mode = String(req.query.mode || req.query.type || "")
+      .trim()
+      .toLowerCase();
     const isPreorderTemplate = mode === "preorder";
     const templateData = [
       {
-        "Зураг": "(зургаа энд оруулна)",
-        "Нэр (name)": isPreorderTemplate ? "Жишээ захиалгын бараа 1" : "Жишээ бараа 1",
+        Зураг: "(зургаа энд оруулна)",
+        "Нэр (name)": isPreorderTemplate
+          ? "Жишээ захиалгын бараа 1"
+          : "Жишээ бараа 1",
         "SKU (sku)": isPreorderTemplate ? "PRE-001" : "SKU-001",
         "Үнэ (price)": 25000,
         "Өртөг (costPrice)": 15000,
@@ -414,13 +470,16 @@ router.get("/products/import-template", (req, res) => {
         ...(isPreorderTemplate
           ? {
               "Ирэх хоног (preorderLeadTimeDays)": 14,
-              "Захиалгын тайлбар (preorderNote)": "Хятадаас захиалгаар 14 хоногт ирнэ",
+              "Захиалгын тайлбар (preorderNote)":
+                "Хятадаас захиалгаар 14 хоногт ирнэ",
             }
           : {}),
       },
       {
-        "Зураг": "(зургаа энд оруулна)",
-        "Нэр (name)": isPreorderTemplate ? "Жишээ захиалгын бараа 2" : "Жишээ бараа 2",
+        Зураг: "(зургаа энд оруулна)",
+        "Нэр (name)": isPreorderTemplate
+          ? "Жишээ захиалгын бараа 2"
+          : "Жишээ бараа 2",
         "SKU (sku)": isPreorderTemplate ? "PRE-002" : "SKU-002",
         "Үнэ (price)": 50000,
         "Өртөг (costPrice)": 30000,
@@ -437,7 +496,13 @@ router.get("/products/import-template", (req, res) => {
 
     const ws = XLSX.utils.json_to_sheet(templateData);
     ws["!cols"] = [
-      { wch: 18 }, { wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 35 },
+      { wch: 18 },
+      { wch: 25 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 35 },
       ...(isPreorderTemplate ? [{ wch: 24 }, { wch: 36 }] : []),
     ];
     // Make image column rows taller for pasting images
@@ -451,7 +516,10 @@ router.get("/products/import-template", (req, res) => {
       "Content-Disposition",
       `attachment; filename="${isPreorderTemplate ? "preorder_product_import_template" : "product_import_template"}.xlsx"`,
     );
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
     return res.send(Buffer.from(buf));
   } catch (error) {
     console.error("template download error", error);
@@ -511,10 +579,21 @@ router.post(
         return res.status(400).json({ message: "organizationId шаардлагатай" });
       }
 
-      const perm = await assertOrgPermission(req, res, organizationId, Permission.MANAGE_PRODUCTS);
+      const perm = await assertOrgPermission(
+        req,
+        res,
+        organizationId,
+        Permission.MANAGE_PRODUCTS,
+      );
       if (!perm) return;
 
-      const importMode = String(req.body.mode || req.body.type || req.query.mode || req.query.type || "")
+      const importMode = String(
+        req.body.mode ||
+          req.body.type ||
+          req.query.mode ||
+          req.query.type ||
+          "",
+      )
         .trim()
         .toLowerCase();
       const isPreorderImport = importMode === "preorder";
@@ -527,7 +606,9 @@ router.post(
       });
       if (org?.businessCategory) {
         const matched = await prisma.businessCategory.findFirst({
-          where: { slug: { equals: org.businessCategory, mode: "insensitive" } },
+          where: {
+            slug: { equals: org.businessCategory, mode: "insensitive" },
+          },
           select: { id: true },
         });
         if (matched) orgBusinessCategoryId = matched.id;
@@ -552,41 +633,65 @@ router.post(
 
         // Extract embedded images from xlsx (row → image buffers)
         embeddedImages = await extractExcelImages(req.file.buffer);
-        console.log("[import] Embedded images map has", embeddedImages.size, "rows with images");
+        console.log(
+          "[import] Embedded images map has",
+          embeddedImages.size,
+          "rows with images",
+        );
 
         // Count media files and detect structure for debug
         try {
           const z = await JSZip.loadAsync(req.file.buffer);
           const files = Object.keys(z.files);
-          mediaFileCount = files.filter((f) => f.startsWith("xl/media/")).length;
-          hasRichData = files.some((f) => f.includes("richData/richValueRel.xml"));
-          hasDrawings = files.some((f) => /xl\/drawings\/drawing\d+\.xml$/.test(f));
-        } catch { /* ignore */ }
+          mediaFileCount = files.filter((f) =>
+            f.startsWith("xl/media/"),
+          ).length;
+          hasRichData = files.some((f) =>
+            f.includes("richData/richValueRel.xml"),
+          );
+          hasDrawings = files.some((f) =>
+            /xl\/drawings\/drawing\d+\.xml$/.test(f),
+          );
+        } catch {
+          /* ignore */
+        }
       } else if (req.body.rows) {
         let parsedRows: unknown;
         try {
-          parsedRows = typeof req.body.rows === "string" ? JSON.parse(req.body.rows) : req.body.rows;
+          parsedRows =
+            typeof req.body.rows === "string"
+              ? JSON.parse(req.body.rows)
+              : req.body.rows;
         } catch {
           return res.status(400).json({ message: "rows JSON буруу байна" });
         }
         if (!Array.isArray(parsedRows)) {
           return res.status(400).json({ message: "rows талбар буруу байна" });
         }
-        rows = parsedRows.map((row) => normalizeExcelRow(row as Record<string, unknown>));
+        rows = parsedRows.map((row) =>
+          normalizeExcelRow(row as Record<string, unknown>),
+        );
       } else {
-        return res.status(400).json({ message: "Excel файл эсвэл зассан мөр шаардлагатай" });
+        return res
+          .status(400)
+          .json({ message: "Excel файл эсвэл зассан мөр шаардлагатай" });
       }
 
       if (!rows.length) {
-        return res.status(400).json({ message: "Excel файлд мэдээлэл олдсонгүй" });
+        return res
+          .status(400)
+          .json({ message: "Excel файлд мэдээлэл олдсонгүй" });
       }
 
       if (rows.length > 1000) {
-        return res.status(400).json({ message: "Нэг удаад 1000-аас олон бараа оруулах боломжгүй" });
+        return res
+          .status(400)
+          .json({ message: "Нэг удаад 1000-аас олон бараа оруулах боломжгүй" });
       }
 
       // Enforce plan product limit during import
-      const remainingSlots: number | undefined = (req as any).remainingProductSlots;
+      const remainingSlots: number | undefined = (req as any)
+        .remainingProductSlots;
       if (remainingSlots !== undefined && rows.length > remainingSlots) {
         return res.status(400).json({
           message: `Таны планд ${remainingSlots} бараа нэмэх зай үлдсэн байна. Файлд ${rows.length} бараа байна.`,
@@ -604,9 +709,22 @@ router.post(
         skipped: number;
         errors: string[];
         errorRows: ProductImportErrorRow[];
-        products: Array<{ id: string; name: string; sku: string | null; price: number; stock: number }>;
+        products: Array<{
+          id: string;
+          name: string;
+          sku: string | null;
+          price: number;
+          stock: number;
+        }>;
         _debug?: { embeddedImageRows: number; mediaFiles: number };
-      } = { created: 0, updated: 0, skipped: 0, errors: [], errorRows: [], products: [] };
+      } = {
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        errors: [],
+        errorRows: [],
+        products: [],
+      };
 
       // Pre-scan: detect duplicate SKUs within the file
       const skusInFile = new Map<string, number>();
@@ -619,7 +737,9 @@ router.post(
           if (skusInFile.has(normalized)) {
             const message = `Мөр ${rowNumber}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalized)})`;
             results.errors.push(message);
-            results.errorRows.push(toProductImportErrorRow(rows[i], rowNumber, message, colMap));
+            results.errorRows.push(
+              toProductImportErrorRow(rows[i], rowNumber, message, colMap),
+            );
             results.skipped++;
             duplicateSkuRows.add(i);
           } else {
@@ -642,14 +762,19 @@ router.post(
         const costPrice = resolveCol(row, colMap.costPrice);
         const stock = resolveCol(row, colMap.stock);
         const description = resolveCol(row, colMap.description);
-        const preorderLeadTimeDays = resolveCol(row, colMap.preorderLeadTimeDays);
+        const preorderLeadTimeDays = resolveCol(
+          row,
+          colMap.preorderLeadTimeDays,
+        );
         const preorderNote = resolveCol(row, colMap.preorderNote);
         const imagesRaw = resolveCol(row, colMap.images);
 
         if (!name || price === undefined) {
           const message = `Мөр ${rowNum}: Нэр болон үнэ заавал шаардлагатай`;
           results.errors.push(message);
-          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
           results.skipped++;
           continue;
         }
@@ -658,16 +783,24 @@ router.post(
         if (isNaN(priceNum) || priceNum < 0) {
           const message = `Мөр ${rowNum}: Үнэ буруу — "${price}"`;
           results.errors.push(message);
-          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
           results.skipped++;
           continue;
         }
 
-        const costPriceNum = costPrice !== undefined ? parseFloat(String(costPrice)) : null;
-        if (costPriceNum !== null && (isNaN(costPriceNum) || costPriceNum < 0)) {
+        const costPriceNum =
+          costPrice !== undefined ? parseFloat(String(costPrice)) : null;
+        if (
+          costPriceNum !== null &&
+          (isNaN(costPriceNum) || costPriceNum < 0)
+        ) {
           const message = `Мөр ${rowNum}: Өртөг үнэ буруу — "${costPrice}"`;
           results.errors.push(message);
-          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
           results.skipped++;
           continue;
         }
@@ -676,7 +809,9 @@ router.post(
         if (isNaN(stockNum) || stockNum < 0 || stockNum > 2_147_483_647) {
           const message = `Мөр ${rowNum}: Нөөц буруу — "${stock}"`;
           results.errors.push(message);
-          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
           results.skipped++;
           continue;
         }
@@ -687,7 +822,9 @@ router.post(
         if (normalizedLeadTimeDays === undefined) {
           const message = `Мөр ${rowNum}: Ирэх хоног 0-365 хооронд байх ёстой`;
           results.errors.push(message);
-          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
           results.skipped++;
           continue;
         }
@@ -697,36 +834,50 @@ router.post(
         try {
           // Parse image URLs (comma-separated) from text column
           let imageUrls: string[] = imagesRaw
-            ? String(imagesRaw).split(",").map((u) => u.trim()).filter((u) => u.startsWith("http")).slice(0, 5)
+            ? String(imagesRaw)
+                .split(",")
+                .map((u) => u.trim())
+                .filter((u) => u.startsWith("http"))
+                .slice(0, 5)
             : [];
 
           // If no URL images, check for embedded images in this row
           // Row index in the xlsx drawing/richData XML is 0-based.
           if (imageUrls.length === 0) {
             const rowBuffers = embeddedImages.get(excelRowIndex);
-            console.log(`[import] Row ${rowNum}: embedded buffers = ${rowBuffers?.length ?? 0}`);
+            console.log(
+              `[import] Row ${rowNum}: embedded buffers = ${rowBuffers?.length ?? 0}`,
+            );
             if (rowBuffers && rowBuffers.length > 0) {
-              const uploadPromises = rowBuffers.slice(0, 5).map((buf) => uploadBufferToSupabase(buf));
+              const uploadPromises = rowBuffers
+                .slice(0, 5)
+                .map((buf) => uploadBufferToSupabase(buf));
               const uploaded = await Promise.all(uploadPromises);
               imageUrls = uploaded.filter((u): u is string => u !== null);
-              console.log(`[import] Row ${rowNum}: uploaded ${imageUrls.length} images`);
+              console.log(
+                `[import] Row ${rowNum}: uploaded ${imageUrls.length} images`,
+              );
             }
           }
 
           const productData = {
-              name: String(name).trim(),
-              description: description ? String(description).trim() : null,
-              price: priceNum,
-              costPrice: costPriceNum,
-              stock: isPreorderImport ? 0 : stockNum,
-              supplyType: isPreorderImport ? "CHINA_PREORDER" as const : "IN_STOCK" as const,
-              preorderLeadTimeDays: isPreorderImport ? normalizedLeadTimeDays : null,
-              preorderNote:
-                isPreorderImport && preorderNote
-                  ? String(preorderNote).trim()
-                  : null,
-              businessCategoryId: orgBusinessCategoryId,
-              isActive: true,
+            name: String(name).trim(),
+            description: description ? String(description).trim() : null,
+            price: priceNum,
+            costPrice: costPriceNum,
+            stock: isPreorderImport ? 0 : stockNum,
+            supplyType: isPreorderImport
+              ? ("CHINA_PREORDER" as const)
+              : ("IN_STOCK" as const),
+            preorderLeadTimeDays: isPreorderImport
+              ? normalizedLeadTimeDays
+              : null,
+            preorderNote:
+              isPreorderImport && preorderNote
+                ? String(preorderNote).trim()
+                : null,
+            businessCategoryId: orgBusinessCategoryId,
+            isActive: true,
           };
 
           let product;
@@ -734,12 +885,18 @@ router.post(
           if (normalizedSku) {
             // Free up SKU from any soft-deleted product first
             await prisma.product.updateMany({
-              where: { organizationId, sku: normalizedSku, deletedAt: { not: null } },
+              where: {
+                organizationId,
+                sku: normalizedSku,
+                deletedAt: { not: null },
+              },
               data: { sku: null },
             });
             // Check if active product with this SKU already exists
             const existing = await prisma.product.findUnique({
-              where: { organizationId_sku: { organizationId, sku: normalizedSku } },
+              where: {
+                organizationId_sku: { organizationId, sku: normalizedSku },
+              },
               select: { id: true },
             });
             wasUpdate = !!existing;
@@ -752,7 +909,10 @@ router.post(
                 ...productData,
                 deletedAt: null,
                 ...(imageUrls.length > 0 && {
-                  images: { deleteMany: {}, create: imageUrls.map((url) => ({ url })) },
+                  images: {
+                    deleteMany: {},
+                    create: imageUrls.map((url) => ({ url })),
+                  },
                 }),
               },
               create: {
@@ -763,7 +923,13 @@ router.post(
                   images: { create: imageUrls.map((url) => ({ url })) },
                 }),
               },
-              select: { id: true, name: true, sku: true, price: true, stock: true },
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                price: true,
+                stock: true,
+              },
             });
           } else {
             product = await prisma.product.create({
@@ -775,7 +941,13 @@ router.post(
                   images: { create: imageUrls.map((url) => ({ url })) },
                 }),
               },
-              select: { id: true, name: true, sku: true, price: true, stock: true },
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                price: true,
+                stock: true,
+              },
             });
           }
           results.products.push({
@@ -794,7 +966,9 @@ router.post(
           const msg = err instanceof Error ? err.message : String(err);
           const message = `Мөр ${rowNum}: ${msg}`;
           results.errors.push(message);
-          results.errorRows.push(toProductImportErrorRow(row, rowNum, message, colMap));
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
           results.skipped++;
         }
       }
@@ -803,13 +977,23 @@ router.post(
         message: `${results.created} бараа шинээр, ${results.updated} бараа шинэчлэгдлээ${results.skipped > 0 ? `, ${results.skipped} алгасав` : ""}`,
         total: rows.length,
         ...results,
-        _debug: { embeddedImageRows: embeddedImages.size, mediaFiles: mediaFileCount, hasRichData, hasDrawings },
+        _debug: {
+          embeddedImageRows: embeddedImages.size,
+          mediaFiles: mediaFileCount,
+          hasRichData,
+          hasDrawings,
+        },
       });
     } catch (error) {
       console.error("import products error", error);
-      return res.status(500).json({ message: "Excel импорт хийхэд алдаа гарлаа", error: String(error) });
+      return res
+        .status(500)
+        .json({
+          message: "Excel импорт хийхэд алдаа гарлаа",
+          error: String(error),
+        });
     }
-  }
+  },
 );
 
 /* ─── GET /products/:id ─────────────────────────────────────────────── */
@@ -837,7 +1021,10 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
       },
     });
     if (!product) return res.status(404).json({ message: "Бараа олдсонгүй" });
-    const canBypassVisibility = await canBypassWebProductsVisibility(req, product.organizationId);
+    const canBypassVisibility = await canBypassWebProductsVisibility(
+      req,
+      product.organizationId,
+    );
     if (!canBypassVisibility && !(await areWebProductsGloballyEnabled())) {
       return res.status(404).json({ message: "Бараа олдсонгүй" });
     }
@@ -862,7 +1049,9 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ message: "Алдаа гарлаа", error: String(error) });
+    return res
+      .status(500)
+      .json({ message: "Алдаа гарлаа", error: String(error) });
   }
 });
 
@@ -874,179 +1063,223 @@ router.post(
   requireActivePlan("body"),
   checkProductLimit(1),
   async (req, res) => {
-  try {
-    const {
-      organizationId,
-      name,
-      description,
-      sku,
-      barcode,
-      price,
-      costPrice,
-      stock,
-      expiryDate,
-      supplyType,
-      preorderLeadTimeDays,
-      preorderNote,
-      businessCategoryId: inputCategoryId,
-      images, // string[] — base64 or URL
-    } = req.body;
+    try {
+      const {
+        organizationId,
+        name,
+        description,
+        sku,
+        barcode,
+        price,
+        costPrice,
+        stock,
+        expiryDate,
+        supplyType,
+        preorderLeadTimeDays,
+        preorderNote,
+        businessCategoryId: inputCategoryId,
+        images, // string[] — base64 or URL
+      } = req.body;
 
-    let businessCategoryId = inputCategoryId;
+      let businessCategoryId = inputCategoryId;
 
-    if (!organizationId || !name || price === undefined) {
-      return res.status(400).json({ message: "organizationId, name, price шаардлагатай" });
-    }
+      if (!organizationId || !name || price === undefined) {
+        return res
+          .status(400)
+          .json({ message: "organizationId, name, price шаардлагатай" });
+      }
 
-    // Auto-resolve businessCategoryId from organization if not provided
-    if (!businessCategoryId) {
-      const org = await prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { businessCategory: true },
-      });
-      if (org?.businessCategory) {
-        const matched = await prisma.businessCategory.findFirst({
-          where: { slug: { equals: org.businessCategory, mode: "insensitive" } },
+      // Auto-resolve businessCategoryId from organization if not provided
+      if (!businessCategoryId) {
+        const org = await prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { businessCategory: true },
+        });
+        if (org?.businessCategory) {
+          const matched = await prisma.businessCategory.findFirst({
+            where: {
+              slug: { equals: org.businessCategory, mode: "insensitive" },
+            },
+            select: { id: true },
+          });
+          if (matched) businessCategoryId = matched.id;
+        }
+      }
+
+      const priceNum = parseFloat(String(price));
+      if (isNaN(priceNum) || priceNum < 0) {
+        return res.status(400).json({ message: "Үнэ буруу байна" });
+      }
+
+      const costPriceNum =
+        costPrice === undefined || costPrice === null || costPrice === ""
+          ? null
+          : parseFloat(String(costPrice));
+      if (costPriceNum !== null && (isNaN(costPriceNum) || costPriceNum < 0)) {
+        return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
+      }
+
+      const stockNum = stock ? parseInt(String(stock)) : 0;
+      if (isNaN(stockNum) || stockNum < 0 || stockNum > 2_147_483_647) {
+        return res
+          .status(400)
+          .json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
+      }
+
+      const normalizedSupplyType = normalizeSupplyType(supplyType);
+      const parsedExpiryDate =
+        normalizedSupplyType === "CHINA_PREORDER"
+          ? null
+          : parseOptionalExpiryDate(expiryDate);
+      if (expiryDate !== undefined && parsedExpiryDate === undefined) {
+        return res.status(400).json({ message: "Дуусах хугацаа буруу байна" });
+      }
+      if (
+        normalizedSupplyType === "CHINA_PREORDER" &&
+        !(await isOrgFeatureEnabled(
+          organizationId,
+          PREORDER_PRODUCTS_FEATURE_KEY,
+        ))
+      ) {
+        return res
+          .status(403)
+          .json({ message: "Захиалгын бараа бүртгэх эрх нээгдээгүй байна" });
+      }
+      const normalizedLeadTimeDays =
+        normalizePreorderLeadTimeDays(preorderLeadTimeDays);
+      if (normalizedLeadTimeDays === undefined) {
+        return res
+          .status(400)
+          .json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
+      }
+
+      const normalizedSku = sku ? String(sku).trim() : null;
+      const normalizedBarcode = barcode ? String(barcode).trim() : null;
+      if (normalizedSku) {
+        const existingSku = await prisma.product.findFirst({
+          where: {
+            organizationId,
+            sku: normalizedSku,
+            deletedAt: null,
+          },
           select: { id: true },
         });
-        if (matched) businessCategoryId = matched.id;
+        if (existingSku) {
+          return res
+            .status(409)
+            .json({
+              message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна",
+            });
+        }
       }
-    }
 
-    const priceNum = parseFloat(String(price));
-    if (isNaN(priceNum) || priceNum < 0) {
-      return res.status(400).json({ message: "Үнэ буруу байна" });
-    }
-
-    const costPriceNum =
-      costPrice === undefined || costPrice === null || costPrice === ""
-        ? null
-        : parseFloat(String(costPrice));
-    if (costPriceNum !== null && (isNaN(costPriceNum) || costPriceNum < 0)) {
-      return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
-    }
-
-    const stockNum = stock ? parseInt(String(stock)) : 0;
-    if (isNaN(stockNum) || stockNum < 0 || stockNum > 2_147_483_647) {
-      return res.status(400).json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
-    }
-
-    const normalizedSupplyType = normalizeSupplyType(supplyType);
-    const parsedExpiryDate =
-      normalizedSupplyType === "CHINA_PREORDER" ? null : parseOptionalExpiryDate(expiryDate);
-    if (expiryDate !== undefined && parsedExpiryDate === undefined) {
-      return res.status(400).json({ message: "Дуусах хугацаа буруу байна" });
-    }
-    if (
-      normalizedSupplyType === "CHINA_PREORDER" &&
-      !(await isOrgFeatureEnabled(organizationId, PREORDER_PRODUCTS_FEATURE_KEY))
-    ) {
-      return res.status(403).json({ message: "Захиалгын бараа бүртгэх эрх нээгдээгүй байна" });
-    }
-    const normalizedLeadTimeDays = normalizePreorderLeadTimeDays(preorderLeadTimeDays);
-    if (normalizedLeadTimeDays === undefined) {
-      return res.status(400).json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
-    }
-
-    const normalizedSku = sku ? String(sku).trim() : null;
-    const normalizedBarcode = barcode ? String(barcode).trim() : null;
-    if (normalizedSku) {
-      const existingSku = await prisma.product.findFirst({
-        where: {
-          organizationId,
-          sku: normalizedSku,
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-      if (existingSku) {
-        return res.status(409).json({ message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна" });
+      if (businessCategoryId) {
+        const category = await prisma.businessCategory.findUnique({
+          where: { id: String(businessCategoryId) },
+          select: { id: true },
+        });
+        if (!category) {
+          return res
+            .status(400)
+            .json({ message: "Сонгосон ангилал олдсонгүй" });
+        }
       }
-    }
 
-    if (businessCategoryId) {
-      const category = await prisma.businessCategory.findUnique({
-        where: { id: String(businessCategoryId) },
-        select: { id: true },
-      });
-      if (!category) {
-        return res.status(400).json({ message: "Сонгосон ангилал олдсонгүй" });
-      }
-    }
+      // Validate max 5 images
+      const imageUrls: string[] = Array.isArray(images)
+        ? images.slice(0, 5)
+        : [];
+      const actorId = (req as any).user?.userId ?? null;
 
-    // Validate max 5 images
-    const imageUrls: string[] = Array.isArray(images) ? images.slice(0, 5) : [];
-    const actorId = (req as any).user?.userId ?? null;
-
-    const product = await prisma.$transaction(async (tx) => {
-      const created = await tx.product.create({
-        data: {
-          organizationId,
-          name: String(name).trim(),
-          description: description ? String(description).trim() : null,
-          sku: normalizedSku,
-          barcode: normalizedBarcode,
-          price: priceNum,
-          costPrice: costPriceNum,
-          stock: stockNum,
-          supplyType: normalizedSupplyType,
-          preorderLeadTimeDays: normalizedSupplyType === "CHINA_PREORDER" ? normalizedLeadTimeDays : null,
-          preorderNote:
-            normalizedSupplyType === "CHINA_PREORDER" && preorderNote
-              ? String(preorderNote).trim()
-              : null,
-          businessCategoryId: businessCategoryId || null,
-          isActive: true,
-          images: {
-            create: imageUrls.map((url) => ({ url })),
+      const product = await prisma.$transaction(async (tx) => {
+        const created = await tx.product.create({
+          data: {
+            organizationId,
+            name: String(name).trim(),
+            description: description ? String(description).trim() : null,
+            sku: normalizedSku,
+            barcode: normalizedBarcode,
+            price: priceNum,
+            costPrice: costPriceNum,
+            stock: stockNum,
+            supplyType: normalizedSupplyType,
+            preorderLeadTimeDays:
+              normalizedSupplyType === "CHINA_PREORDER"
+                ? normalizedLeadTimeDays
+                : null,
+            preorderNote:
+              normalizedSupplyType === "CHINA_PREORDER" && preorderNote
+                ? String(preorderNote).trim()
+                : null,
+            businessCategoryId: businessCategoryId || null,
+            isActive: true,
+            images: {
+              create: imageUrls.map((url) => ({ url })),
+            },
           },
-        },
-        include: {
-          images: { select: { id: true, url: true } },
-          businessCategory: { select: { id: true, name: true, slug: true } },
-        },
+          include: {
+            images: { select: { id: true, url: true } },
+            businessCategory: { select: { id: true, name: true, slug: true } },
+          },
+        });
+
+        await upsertVendorProductInventory(tx, {
+          organizationId,
+          productId: created.id,
+          stock: stockNum,
+          stockProvided:
+            normalizedSupplyType !== "CHINA_PREORDER" || stockNum > 0,
+          expiryDate: parsedExpiryDate,
+          expiryDateProvided:
+            expiryDate !== undefined &&
+            normalizedSupplyType !== "CHINA_PREORDER",
+          createdById: actorId,
+        });
+
+        const currentExpiryDate = await findProductExpiryDate(tx, created.id);
+        return {
+          ...created,
+          expiryDate: currentExpiryDate?.toISOString() ?? null,
+        };
       });
 
-      await upsertVendorProductInventory(tx, {
-        organizationId,
-        productId: created.id,
-        stock: stockNum,
-        stockProvided: normalizedSupplyType !== "CHINA_PREORDER" || stockNum > 0,
-        expiryDate: parsedExpiryDate,
-        expiryDateProvided: expiryDate !== undefined && normalizedSupplyType !== "CHINA_PREORDER",
-        createdById: actorId,
-      });
-
-      const currentExpiryDate = await findProductExpiryDate(tx, created.id);
-      return {
-        ...created,
-        expiryDate: currentExpiryDate?.toISOString() ?? null,
+      return res.status(201).json(product);
+    } catch (error) {
+      const maybePrisma = error as {
+        code?: string;
+        meta?: { target?: unknown };
       };
-    });
-
-    return res.status(201).json(product);
-  } catch (error) {
-    const maybePrisma = error as { code?: string; meta?: { target?: unknown } };
-    if (maybePrisma?.code === "P2002") {
-      const target = Array.isArray(maybePrisma.meta?.target)
-        ? maybePrisma.meta?.target.join(",")
-        : String(maybePrisma.meta?.target || "");
-      if (target.includes("organizationId") && target.includes("sku")) {
-        return res.status(409).json({ message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна" });
+      if (maybePrisma?.code === "P2002") {
+        const target = Array.isArray(maybePrisma.meta?.target)
+          ? maybePrisma.meta?.target.join(",")
+          : String(maybePrisma.meta?.target || "");
+        if (target.includes("organizationId") && target.includes("sku")) {
+          return res
+            .status(409)
+            .json({
+              message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна",
+            });
+        }
+        return res.status(409).json({
+          message: target
+            ? `Давхардсан утга байна (${target})`
+            : "Давхардсан утга байна",
+        });
       }
-      return res.status(409).json({
-        message: target
-          ? `Давхардсан утга байна (${target})`
-          : "Давхардсан утга байна",
-      });
+      if (maybePrisma?.code === "P2003") {
+        return res
+          .status(400)
+          .json({
+            message:
+              "Холбоотой өгөгдөл буруу байна (ангилал/байгууллага шалгана уу)",
+          });
+      }
+      console.error("create product error", error);
+      return res
+        .status(500)
+        .json({ message: "Бараа үүсгэхэд алдаа гарлаа", error: String(error) });
     }
-    if (maybePrisma?.code === "P2003") {
-      return res.status(400).json({ message: "Холбоотой өгөгдөл буруу байна (ангилал/байгууллага шалгана уу)" });
-    }
-    console.error("create product error", error);
-    return res.status(500).json({ message: "Бараа үүсгэхэд алдаа гарлаа", error: String(error) });
-  }
-  }
+  },
 );
 
 /* ─── PATCH /products/:id ───────────────────────────────────────────── */
@@ -1070,16 +1303,27 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       images, // full replacement: string[]
     } = req.body;
 
-    const existing = await prisma.product.findUnique({ where: { id, deletedAt: null } });
+    const existing = await prisma.product.findUnique({
+      where: { id, deletedAt: null },
+    });
     if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
 
-    const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_PRODUCTS);
+    const perm = await assertOrgPermission(
+      req,
+      res,
+      existing.organizationId,
+      Permission.MANAGE_PRODUCTS,
+    );
     if (!perm) return;
 
     const nextSupplyType =
-      supplyType !== undefined ? normalizeSupplyType(supplyType) : existing.supplyType;
+      supplyType !== undefined
+        ? normalizeSupplyType(supplyType)
+        : existing.supplyType;
     const parsedExpiryDate =
-      nextSupplyType === "CHINA_PREORDER" ? null : parseOptionalExpiryDate(expiryDate);
+      nextSupplyType === "CHINA_PREORDER"
+        ? null
+        : parseOptionalExpiryDate(expiryDate);
     if (expiryDate !== undefined && parsedExpiryDate === undefined) {
       return res.status(400).json({ message: "Дуусах хугацаа буруу байна" });
     }
@@ -1087,27 +1331,39 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     const data: Record<string, unknown> = {};
     let stockNumForInventory: number | undefined;
     if (name !== undefined) data.name = String(name).trim();
-    if (description !== undefined) data.description = description ? String(description).trim() : null;
+    if (description !== undefined)
+      data.description = description ? String(description).trim() : null;
     if (sku !== undefined) data.sku = sku ? String(sku).trim() : null;
-    if (barcode !== undefined) data.barcode = barcode ? String(barcode).trim() : null;
+    if (barcode !== undefined)
+      data.barcode = barcode ? String(barcode).trim() : null;
     if (price !== undefined) {
       const p = parseFloat(String(price));
-      if (isNaN(p) || p < 0) return res.status(400).json({ message: "Үнэ буруу байна" });
+      if (isNaN(p) || p < 0)
+        return res.status(400).json({ message: "Үнэ буруу байна" });
       data.price = p;
     }
-    if (costPrice !== undefined) data.costPrice = costPrice ? parseFloat(String(costPrice)) : null;
+    if (costPrice !== undefined)
+      data.costPrice = costPrice ? parseFloat(String(costPrice)) : null;
     if (stock !== undefined) {
       const s = parseInt(String(stock));
-      if (isNaN(s) || s < 0 || s > 2_147_483_647) return res.status(400).json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
+      if (isNaN(s) || s < 0 || s > 2_147_483_647)
+        return res
+          .status(400)
+          .json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
       data.stock = s;
       stockNumForInventory = s;
     }
     if (supplyType !== undefined) {
       if (
         nextSupplyType === "CHINA_PREORDER" &&
-        !(await isOrgFeatureEnabled(existing.organizationId, PREORDER_PRODUCTS_FEATURE_KEY))
+        !(await isOrgFeatureEnabled(
+          existing.organizationId,
+          PREORDER_PRODUCTS_FEATURE_KEY,
+        ))
       ) {
-        return res.status(403).json({ message: "Захиалгын бараа бүртгэх эрх нээгдээгүй байна" });
+        return res
+          .status(403)
+          .json({ message: "Захиалгын бараа бүртгэх эрх нээгдээгүй байна" });
       }
       data.supplyType = nextSupplyType;
       if (nextSupplyType !== "CHINA_PREORDER") {
@@ -1118,12 +1374,16 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (preorderLeadTimeDays !== undefined) {
       const leadTimeDays = normalizePreorderLeadTimeDays(preorderLeadTimeDays);
       if (leadTimeDays === undefined) {
-        return res.status(400).json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
+        return res
+          .status(400)
+          .json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
       }
       data.preorderLeadTimeDays = leadTimeDays;
     }
-    if (preorderNote !== undefined) data.preorderNote = preorderNote ? String(preorderNote).trim() : null;
-    if (businessCategoryId !== undefined) data.businessCategoryId = businessCategoryId || null;
+    if (preorderNote !== undefined)
+      data.preorderNote = preorderNote ? String(preorderNote).trim() : null;
+    if (businessCategoryId !== undefined)
+      data.businessCategoryId = businessCategoryId || null;
     if (isActive !== undefined) data.isActive = Boolean(isActive);
 
     const actorId = (req as any).user?.userId ?? null;
@@ -1163,7 +1423,9 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     return res.json(product);
   } catch (error) {
     console.error("update product error", error);
-    return res.status(500).json({ message: "Бараа засахад алдаа гарлаа", error: String(error) });
+    return res
+      .status(500)
+      .json({ message: "Бараа засахад алдаа гарлаа", error: String(error) });
   }
 });
 
@@ -1174,13 +1436,22 @@ router.patch("/products/:id/images", requireAuth, async (req, res) => {
     const { images } = req.body;
 
     if (!Array.isArray(images)) {
-      return res.status(400).json({ message: "images талбар шаардлагатай (string[])" });
+      return res
+        .status(400)
+        .json({ message: "images талбар шаардлагатай (string[])" });
     }
 
-    const existing = await prisma.product.findUnique({ where: { id, deletedAt: null } });
+    const existing = await prisma.product.findUnique({
+      where: { id, deletedAt: null },
+    });
     if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
 
-    const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_PRODUCTS);
+    const perm = await assertOrgPermission(
+      req,
+      res,
+      existing.organizationId,
+      Permission.MANAGE_PRODUCTS,
+    );
     if (!perm) return;
 
     const imageUrls = images.slice(0, 5);
@@ -1199,67 +1470,101 @@ router.patch("/products/:id/images", requireAuth, async (req, res) => {
     return res.json(product);
   } catch (error) {
     console.error("update product images error", error);
-    return res.status(500).json({ message: "Зураг шинэчлэхэд алдаа гарлаа", error: String(error) });
+    return res
+      .status(500)
+      .json({ message: "Зураг шинэчлэхэд алдаа гарлаа", error: String(error) });
   }
 });
 
 /* ─── POST /products/upload-image ────────────────────────────────────── */
-router.post("/products/upload-image", requireAuth, imageUpload.single("image"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: "Зураг файл шаардлагатай" });
+router.post(
+  "/products/upload-image",
+  requireAuth,
+  imageUpload.single("image"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Зураг файл шаардлагатай" });
+      }
+
+      // Check env vars before attempting upload
+      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+        console.error("upload-image: Missing SUPABASE env vars!", {
+          hasUrl: !!process.env.SUPABASE_URL,
+          hasKey: !!process.env.SUPABASE_SERVICE_KEY,
+        });
+        return res.status(500).json({
+          message: "Supabase тохиргоо хийгдээгүй байна",
+          debug: {
+            hasUrl: !!process.env.SUPABASE_URL,
+            hasKey: !!process.env.SUPABASE_SERVICE_KEY,
+          },
+        });
+      }
+
+      const ext = path.extname(req.file.originalname).toLowerCase() || ".jpg";
+      const fileName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
+      const filePath = `products/${fileName}`;
+
+      console.log(
+        "upload-image: uploading",
+        filePath,
+        "size:",
+        req.file.size,
+        "type:",
+        req.file.mimetype,
+      );
+
+      const { error } = await getSupabase()
+        .storage.from(PRODUCT_IMAGES_BUCKET)
+        .upload(filePath, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: false,
+        });
+
+      if (error) {
+        console.error("supabase upload error", error);
+        return res
+          .status(500)
+          .json({
+            message: "Зураг upload хийхэд алдаа гарлаа",
+            error: error.message,
+          });
+      }
+
+      const { data: publicUrlData } = getSupabase()
+        .storage.from(PRODUCT_IMAGES_BUCKET)
+        .getPublicUrl(filePath);
+
+      console.log("upload-image: success", publicUrlData.publicUrl);
+      return res.json({ url: publicUrlData.publicUrl });
+    } catch (error) {
+      console.error("upload image error", error);
+      return res
+        .status(500)
+        .json({
+          message: "Зураг upload хийхэд алдаа гарлаа",
+          error: String(error),
+        });
     }
-
-    // Check env vars before attempting upload
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-      console.error("upload-image: Missing SUPABASE env vars!", {
-        hasUrl: !!process.env.SUPABASE_URL,
-        hasKey: !!process.env.SUPABASE_SERVICE_KEY,
-      });
-      return res.status(500).json({
-        message: "Supabase тохиргоо хийгдээгүй байна",
-        debug: { hasUrl: !!process.env.SUPABASE_URL, hasKey: !!process.env.SUPABASE_SERVICE_KEY },
-      });
-    }
-
-    const ext = path.extname(req.file.originalname).toLowerCase() || ".jpg";
-    const fileName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
-    const filePath = `products/${fileName}`;
-
-    console.log("upload-image: uploading", filePath, "size:", req.file.size, "type:", req.file.mimetype);
-
-    const { error } = await getSupabase().storage
-      .from(PRODUCT_IMAGES_BUCKET)
-      .upload(filePath, req.file.buffer, {
-        contentType: req.file.mimetype,
-        upsert: false,
-      });
-
-    if (error) {
-      console.error("supabase upload error", error);
-      return res.status(500).json({ message: "Зураг upload хийхэд алдаа гарлаа", error: error.message });
-    }
-
-    const { data: publicUrlData } = getSupabase().storage
-      .from(PRODUCT_IMAGES_BUCKET)
-      .getPublicUrl(filePath);
-
-    console.log("upload-image: success", publicUrlData.publicUrl);
-    return res.json({ url: publicUrlData.publicUrl });
-  } catch (error) {
-    console.error("upload image error", error);
-    return res.status(500).json({ message: "Зураг upload хийхэд алдаа гарлаа", error: String(error) });
-  }
-});
+  },
+);
 
 /* ─── DELETE /products/:id ──────────────────────────────────────────── */
 router.delete("/products/:id", requireAuth, async (req, res) => {
   try {
     const id = req.params.id as string;
-    const existing = await prisma.product.findUnique({ where: { id, deletedAt: null } });
+    const existing = await prisma.product.findUnique({
+      where: { id, deletedAt: null },
+    });
     if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
 
-    const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_PRODUCTS);
+    const perm = await assertOrgPermission(
+      req,
+      res,
+      existing.organizationId,
+      Permission.MANAGE_PRODUCTS,
+    );
     if (!perm) return;
 
     await prisma.product.update({
@@ -1269,7 +1574,9 @@ router.delete("/products/:id", requireAuth, async (req, res) => {
 
     return res.json({ message: "Бараа устгагдлаа" });
   } catch (error) {
-    return res.status(500).json({ message: "Бараа устгахад алдаа гарлаа", error: String(error) });
+    return res
+      .status(500)
+      .json({ message: "Бараа устгахад алдаа гарлаа", error: String(error) });
   }
 });
 
