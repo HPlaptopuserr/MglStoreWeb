@@ -74,7 +74,65 @@ type AuthOrgContext = {
   organizationName?: string | null;
 };
 
-function toWebUserPayload(user: any, orgInfo?: Partial<AuthOrgContext> | null) {
+type AuthOrganizationSummary = {
+  id: string;
+  name: string;
+  slug: string | null;
+  logoUrl: string | null;
+  role: string;
+  isPrimary: boolean;
+  capabilities: string[];
+  type: string | null;
+  status: string | null;
+  isVerified: boolean;
+};
+
+async function listUserOrganizations(userId: string): Promise<AuthOrganizationSummary[]> {
+  const memberships = await prisma.organizationMember.findMany({
+    where: {
+      userId,
+      isActive: true,
+      deletedAt: null,
+      organization: { deletedAt: null },
+    },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+    select: {
+      role: true,
+      isPrimary: true,
+      capabilities: true,
+      organization: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          logoUrl: true,
+          type: true,
+          status: true,
+          isVerified: true,
+        },
+      },
+    },
+  });
+
+  return memberships.map((membership) => ({
+    id: membership.organization.id,
+    name: membership.organization.name,
+    slug: membership.organization.slug,
+    logoUrl: membership.organization.logoUrl,
+    role: membership.role,
+    isPrimary: membership.isPrimary,
+    capabilities: membership.capabilities,
+    type: membership.organization.type,
+    status: membership.organization.status,
+    isVerified: membership.organization.isVerified,
+  }));
+}
+
+function toWebUserPayload(
+  user: any,
+  orgInfo?: Partial<AuthOrgContext> | null,
+  organizations: AuthOrganizationSummary[] = [],
+) {
   const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
   const addresses = Array.isArray(user.addresses)
     ? user.addresses.map((item: any) => ({
@@ -108,6 +166,7 @@ function toWebUserPayload(user: any, orgInfo?: Partial<AuthOrgContext> | null) {
     avatarUrl: user.profile?.avatarUrl || null,
     organizationId: orgInfo?.organizationId || null,
     organizationName: orgInfo?.organizationName || null,
+    organizations,
     termsAcceptedAt: user.termsAcceptedAt || null,
     marketingConsent: Boolean(user.marketingConsent),
     addresses,
@@ -474,7 +533,12 @@ async function resolveTokenOrganization(
   return resolveLoginOrganization(userId);
 }
 
-function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Partial<AuthOrgContext> | null) {
+function toWebAuthResponse(
+  user: any,
+  accessToken: string,
+  orgInfo?: Partial<AuthOrgContext> | null,
+  organizations: AuthOrganizationSummary[] = [],
+) {
   const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
   const membership = toMembershipPayload(user);
 
@@ -491,8 +555,21 @@ function toWebAuthResponse(user: any, accessToken: string, orgInfo?: Partial<Aut
       phone: user.profile?.phoneNumber || null,
       organizationId: orgInfo?.organizationId || null,
       organizationName: orgInfo?.organizationName || null,
+      organizations,
     },
   };
+}
+
+async function toWebAuthResponseWithOrganizations(
+  user: any,
+  orgInfo?: Partial<AuthOrgContext> | null,
+) {
+  return toWebAuthResponse(
+    user,
+    createWebAccessToken(user, orgInfo),
+    orgInfo,
+    await listUserOrganizations(user.id),
+  );
 }
 
 // ── GET /auth/me — Return current user profile from token ──────────────
@@ -514,10 +591,45 @@ router.get("/me", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
     }
 
-    const orgInfo = await resolveTokenOrganization(user.id, organizationId);
-    return res.json(toWebUserPayload(user, orgInfo));
+    const [orgInfo, organizations] = await Promise.all([
+      resolveTokenOrganization(user.id, organizationId),
+      listUserOrganizations(user.id),
+    ]);
+    return res.json(toWebUserPayload(user, orgInfo, organizations));
   } catch (error) {
     console.error("[auth/me error]", error);
+    return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
+
+router.post("/vendor/switch-organization", requireAuth, async (req, res) => {
+  try {
+    const { userId } = (req as any).user as AuthPayload;
+    const organizationId = String(req.body?.organizationId || "").trim();
+
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
+    });
+
+    if (!user || !user.isActive) {
+      return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+    }
+
+    const orgInfo = await resolveTokenOrganization(user.id, organizationId);
+    if (!orgInfo?.organizationId || orgInfo.organizationId !== organizationId) {
+      return res.status(403).json({
+        message: "Энэ байгууллагад нэвтрэх эрх олдсонгүй",
+      });
+    }
+
+    return res.json(await toWebAuthResponseWithOrganizations(user, orgInfo));
+  } catch (error) {
+    console.error("[vendor switch organization error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
   }
 });
@@ -1039,21 +1151,7 @@ router.post("/vendor/login", async (req, res) => {
       data: { lastLoginAt: new Date() },
     });
 
-    const accessToken = createWebAccessToken(user, orgInfo);
-
-    return res.json({
-      accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        orgRole: orgInfo.orgRole,
-        fullName: user.profile?.fullName || "",
-        phone: user.profile?.phoneNumber || null,
-        organizationId: orgInfo.organizationId,
-        organizationName: orgInfo.organizationName || "",
-      },
-    });
+    return res.json(await toWebAuthResponseWithOrganizations(user, orgInfo));
   } catch (error) {
     console.error("[vendor login error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
@@ -1176,7 +1274,7 @@ router.post("/web/verify-mn/complete", async (req, res) => {
         include: { profile: true },
       });
 
-      return res.status(201).json(toWebAuthResponse(newUser, createWebAccessToken(newUser)));
+      return res.status(201).json(await toWebAuthResponseWithOrganizations(newUser));
     }
 
     if (!password) {
@@ -1207,7 +1305,7 @@ router.post("/web/verify-mn/complete", async (req, res) => {
     });
 
     const orgInfo = await resolveOrganization(user.id);
-    return res.json(toWebAuthResponse(user, createWebAccessToken(user, orgInfo), orgInfo));
+    return res.json(await toWebAuthResponseWithOrganizations(user, orgInfo));
   } catch (error) {
     console.error("[verify.mn complete error]", error);
     return res.status(500).json({
@@ -1262,7 +1360,7 @@ router.post("/web/login", async (req, res) => {
       });
 
       const orgInfo = await resolveOrganization(user.id);
-      return res.json(toWebAuthResponse(user, createWebAccessToken(user, orgInfo), orgInfo));
+      return res.json(await toWebAuthResponseWithOrganizations(user, orgInfo));
     }
 
     if (!identifier || !password) {
@@ -1333,33 +1431,7 @@ router.post("/web/login", async (req, res) => {
     });
 
     const orgInfo = await resolveOrganization(user.id);
-
-    const accessToken = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        organizationId: orgInfo?.organizationId || null,
-        orgRole: orgInfo?.orgRole || null,
-      },
-      JWT_SECRET,
-      { expiresIn: "1d" },
-    );
-
-    const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
-
-    return res.json({
-      accessToken,
-      user: {
-        id: user.id,
-        email: safeEmail,
-        role: user.role,
-        orgRole: orgInfo?.orgRole || null,
-        fullName: user.profile?.fullName || "",
-        phone: user.profile?.phoneNumber || null,
-        organizationId: orgInfo?.organizationId || null,
-      },
-    });
+    return res.json(await toWebAuthResponseWithOrganizations(user, orgInfo));
   } catch (error) {
     console.error("[web login error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
@@ -1455,29 +1527,9 @@ router.post("/web/register", async (req, res) => {
         include: { profile: true },
       });
 
-      const accessToken = jwt.sign(
-        {
-          userId: updatedUser.id,
-          email: updatedUser.email,
-          role: updatedUser.role,
-        },
-        JWT_SECRET,
-        { expiresIn: "1d" },
-      );
-
-      const safeEmail = updatedUser.email?.endsWith("@temp.local") ? null : updatedUser.email;
-
-      return res.status(200).json({
-        accessToken,
-        user: {
-          id: updatedUser.id,
-          email: safeEmail,
-          role: updatedUser.role,
-          isPrime: Boolean(updatedUser.isPrime),
-          fullName: updatedUser.profile?.fullName || "",
-          phone: updatedUser.profile?.phoneNumber || null,
-        },
-      });
+      return res
+        .status(200)
+        .json(await toWebAuthResponseWithOrganizations(updatedUser));
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -1499,29 +1551,7 @@ router.post("/web/register", async (req, res) => {
       include: { profile: true },
     });
 
-    const accessToken = jwt.sign(
-      {
-        userId: newUser.id,
-        email: newUser.email,
-        role: newUser.role,
-      },
-      JWT_SECRET,
-      { expiresIn: "1d" },
-    );
-
-    const safeEmail = newUser.email?.endsWith("@temp.local") ? null : newUser.email;
-
-    return res.status(201).json({
-      accessToken,
-      user: {
-        id: newUser.id,
-        email: safeEmail,
-        role: newUser.role,
-        isPrime: Boolean(newUser.isPrime),
-        fullName: newUser.profile?.fullName || "",
-        phone: newUser.profile?.phoneNumber || null,
-      },
-    });
+    return res.status(201).json(await toWebAuthResponseWithOrganizations(newUser));
   } catch (error) {
     console.error("[web register error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });

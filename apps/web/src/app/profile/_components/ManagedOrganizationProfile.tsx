@@ -1,0 +1,3871 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ArrowUpRight,
+  Boxes,
+  CalendarDays,
+  ChevronDown,
+  Eye,
+  Globe2,
+  ImageIcon,
+  MapPin,
+  Megaphone,
+  MoreHorizontal,
+  Pencil,
+  Phone,
+  PlusCircle,
+  Send,
+  ShieldCheck,
+  Star,
+  Store,
+  Users,
+  Wrench,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { API } from "@/lib/api";
+import { useAuth, type AuthOrganization } from "@/lib/auth-context";
+
+const ORG_URL = process.env.NEXT_PUBLIC_ORG_URL || "http://localhost:3004";
+const VENDOR_URL =
+  process.env.NEXT_PUBLIC_VENDOR_URL || "http://localhost:3002";
+
+type ManagedOrgDetails = {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl?: string | null;
+  bannerUrl?: string | null;
+  businessCategory?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  shortDescription?: string | null;
+  description?: string | null;
+  openingHours?: string | null;
+  status?: string | null;
+  isVerified?: boolean;
+  rating?: number;
+  reviewCount?: number;
+  customerCount?: string | null;
+  operatingYears?: number;
+};
+
+type ManagedProduct = {
+  id: string;
+  name: string;
+  description?: string | null;
+  price?: number | string | null;
+  stock?: number | null;
+  images?: Array<{ url?: string | null }>;
+  createdAt?: string | Date;
+};
+
+type ManagedServicePost = {
+  id: string;
+  title: string;
+  description?: string | null;
+  priceText?: string | null;
+  tags?: string[];
+  images?: Array<{ url?: string | null }>;
+  isActive?: boolean;
+  createdAt?: string | Date;
+};
+
+type ManagedFeedPost = {
+  id: string;
+  content: string;
+  type?: string | null;
+  imageUrls?: string[];
+  createdAt?: string | Date;
+};
+
+type ManagedContentState = {
+  products: ManagedProduct[];
+  services: ManagedServicePost[];
+  posts: ManagedFeedPost[];
+};
+
+type ContentTab = "home" | "about" | "products" | "posts" | "ads" | "more";
+
+type ManagedTimelineItem =
+  | {
+      id: string;
+      kind: "product";
+      title: string;
+      description?: string | null;
+      image?: string | null;
+      images: string[];
+      meta: string;
+      stats?: string;
+      edit: {
+        description: string;
+        price: string;
+        stock: string;
+        title: string;
+      };
+      href: string;
+      createdAt?: string | Date;
+    }
+  | {
+      id: string;
+      kind: "service";
+      title: string;
+      description?: string | null;
+      image?: string | null;
+      images: string[];
+      meta: string;
+      stats?: string;
+      edit: {
+        description: string;
+        priceText: string;
+        title: string;
+      };
+      href: string;
+      createdAt?: string | Date;
+    }
+  | {
+      id: string;
+      kind: "post";
+      title: string;
+      description?: string | null;
+      image?: string | null;
+      images: string[];
+      meta: string;
+      stats?: string;
+      edit: {
+        content: string;
+        type: string;
+      };
+      createdAt?: string | Date;
+    };
+
+type TimelineEditForm = {
+  content: string;
+  description: string;
+  price: string;
+  priceText: string;
+  images: string[];
+  stock: string;
+  title: string;
+  type: string;
+};
+
+type QuickProductFormState = {
+  name: string;
+  price: string;
+  stock: string;
+  description: string;
+  images: string[];
+};
+
+type QuickProductTextField = Exclude<keyof QuickProductFormState, "images">;
+
+type OrgProfileFormState = {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  shortDescription: string;
+  description: string;
+  openingHours: string;
+  operatingYears: string;
+};
+
+const roleLabel: Record<string, string> = {
+  OWNER: "Эзэмшигч",
+  ADMIN: "Админ",
+  STAFF: "Ажилтан",
+  VIEWER: "Ажиглагч",
+};
+
+const contentTabs: Array<{ id: ContentTab; label: string }> = [
+  { id: "home", label: "Нүүр" },
+  { id: "about", label: "Тухай" },
+  { id: "products", label: "Бүтээгдэхүүн" },
+  { id: "ads", label: "Зар" },
+  { id: "more", label: "Илүү" },
+];
+const SHOW_POST_SECTION: boolean = false;
+
+function getInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function orgPublicHref(org: AuthOrganization | ManagedOrgDetails) {
+  return "slug" in org && org.slug
+    ? `/o/${encodeURIComponent(org.slug)}`
+    : `/organizations/${encodeURIComponent(org.id)}`;
+}
+
+function fallbackCover(id: string) {
+  return `https://picsum.photos/seed/org-cover-${id}/1600/700`;
+}
+
+function fallbackLogo(id: string) {
+  return `https://picsum.photos/seed/org-logo-${id}/400/400`;
+}
+
+function compactImageUrls(images?: Array<{ url?: string | null }> | null) {
+  return (images || [])
+    .map((image) => image.url)
+    .filter((url): url is string => Boolean(url));
+}
+
+export function ManagedOrganizationProfile({
+  activeOrganizationId,
+  onBackToPersonal,
+  onSelectOrganization,
+  organizations,
+}: {
+  activeOrganizationId: string;
+  onBackToPersonal: () => void;
+  onSelectOrganization: (organizationId: string) => void;
+  organizations: AuthOrganization[];
+}) {
+  const { authFetch } = useAuth();
+  const selectedOrg = useMemo(
+    () =>
+      organizations.find((org) => org.id === activeOrganizationId) ||
+      organizations[0],
+    [activeOrganizationId, organizations],
+  );
+  const [details, setDetails] = useState<ManagedOrgDetails | null>(null);
+  const [content, setContent] = useState<ManagedContentState>({
+    products: [],
+    services: [],
+    posts: [],
+  });
+  const [loading, setLoading] = useState(false);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [postText, setPostText] = useState("");
+  const [postType, setPostType] = useState("GENERAL");
+  const [postImages, setPostImages] = useState<string[]>([]);
+  const [postContact, setPostContact] = useState("");
+  const [postLocation, setPostLocation] = useState("");
+  const [postPromo, setPostPromo] = useState("");
+  const [activeContentTab, setActiveContentTab] = useState<ContentTab>("home");
+  const [createMode, setCreateMode] = useState<
+    "post" | "product" | "service" | "ad"
+  >("product");
+  const [posting, setPosting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [imageActionMenu, setImageActionMenu] = useState<
+    "logoUrl" | "bannerUrl" | null
+  >(null);
+  const [imageUploading, setImageUploading] = useState<
+    "logoUrl" | "bannerUrl" | null
+  >(null);
+  const [imageMessage, setImageMessage] = useState("");
+  const [imagePreview, setImagePreview] = useState<{
+    title: string;
+    url: string;
+  } | null>(null);
+  const [editingTimelineItem, setEditingTimelineItem] =
+    useState<ManagedTimelineItem | null>(null);
+  const [timelineActionMessage, setTimelineActionMessage] = useState("");
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const profileTopRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!selectedOrg) return;
+
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const key = selectedOrg.slug || selectedOrg.id;
+        const res = await fetch(`${API}/partners/${encodeURIComponent(key)}`);
+        const data = await res.json().catch(() => null);
+        if (!active) return;
+        setDetails(res.ok && data ? data : null);
+      } catch {
+        if (active) setDetails(null);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [selectedOrg]);
+
+  const loadOrgContent = useCallback(async () => {
+    if (!selectedOrg) return;
+
+    setContentLoading(true);
+    try {
+      const orgId = encodeURIComponent(selectedOrg.id);
+      const [productsRes, servicesRes, postsRes] = await Promise.all([
+        authFetch(`${API}/products?organizationId=${orgId}&includeInactive=true&limit=100`),
+        authFetch(`${API}/service-posts?organizationId=${orgId}`),
+        authFetch(`${API}/posts?organizationId=${orgId}`),
+      ]);
+
+      const [productsData, servicesData, postsData] = await Promise.all([
+        productsRes.ok ? productsRes.json().catch(() => []) : [],
+        servicesRes.ok ? servicesRes.json().catch(() => []) : [],
+        postsRes.ok ? postsRes.json().catch(() => []) : [],
+      ]);
+
+      setContent({
+        products: Array.isArray(productsData) ? productsData : [],
+        services: Array.isArray(servicesData) ? servicesData : [],
+        posts: Array.isArray(postsData) ? postsData : [],
+      });
+    } catch {
+      setContent({ products: [], services: [], posts: [] });
+    } finally {
+      setContentLoading(false);
+    }
+  }, [authFetch, selectedOrg]);
+
+  useEffect(() => {
+    void loadOrgContent();
+  }, [loadOrgContent]);
+
+  useEffect(() => {
+    const updateScrollTopVisibility = () => {
+      setShowScrollTop(window.scrollY > 720);
+    };
+
+    updateScrollTopVisibility();
+    window.addEventListener("scroll", updateScrollTopVisibility, {
+      passive: true,
+    });
+
+    return () => {
+      window.removeEventListener("scroll", updateScrollTopVisibility);
+    };
+  }, []);
+
+  const scrollToProfileTop = () => {
+    profileTopRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
+  if (!selectedOrg) return null;
+
+  const org = details;
+  const name = org?.name || selectedOrg.name;
+  const logo = org?.logoUrl || selectedOrg.logoUrl || fallbackLogo(selectedOrg.id);
+  const cover = org?.bannerUrl || fallbackCover(selectedOrg.id);
+  const isOpen = (org?.status || selectedOrg.status) === "ACTIVE";
+  const isVerified = Boolean(org?.isVerified ?? selectedOrg.isVerified);
+  const category = org?.businessCategory || selectedOrg.type || "SUPPLIER";
+  const shortDescription =
+    org?.shortDescription ||
+    org?.description ||
+    "Чанартай үйлчилгээ, найдвартай албан ёсны байгууллага.";
+  const profileInitialForm: OrgProfileFormState = {
+    name,
+    phone: org?.phone || "",
+    email: org?.email || "",
+    address: org?.address || "",
+    shortDescription: org?.shortDescription || "",
+    description: org?.description || "",
+    openingHours: org?.openingHours || "",
+    operatingYears: String(org?.operatingYears ?? 1),
+  };
+
+  const updateProfileImage = async (
+    field: "logoUrl" | "bannerUrl",
+    files: FileList | null,
+  ) => {
+    const file = files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setImageMessage("Зөвхөн зураг файл оруулна уу.");
+      return;
+    }
+
+    setImageUploading(field);
+    setImageMessage("");
+    try {
+      const body = new FormData();
+      body.append("image", file);
+      const uploadRes = await authFetch(`${API}/partners/upload-image`, {
+        method: "POST",
+        body,
+      });
+      const uploadData = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok || !uploadData?.url) {
+        setImageMessage(uploadData?.message || "Зураг upload хийхэд алдаа гарлаа.");
+        return;
+      }
+
+      const saveRes = await authFetch(`${API}/partners/${selectedOrg.id}/profile`, {
+        method: "PATCH",
+        body: JSON.stringify({ [field]: uploadData.url }),
+      });
+      const saveData = await saveRes.json().catch(() => ({}));
+      if (!saveRes.ok) {
+        setImageMessage(saveData?.message || "Зураг хадгалахад алдаа гарлаа.");
+        return;
+      }
+
+      setDetails((current) => ({
+        ...(current || {
+          id: selectedOrg.id,
+          name: selectedOrg.name,
+          slug: selectedOrg.slug || selectedOrg.id,
+        }),
+        ...saveData,
+      }));
+      setImageActionMenu(null);
+      setImageMessage("Зураг шинэчлэгдлээ.");
+    } catch {
+      setImageMessage("Зураг солиход сүлжээний алдаа гарлаа.");
+    } finally {
+      setImageUploading(null);
+    }
+  };
+
+  const publishPost = async () => {
+    const content = [
+      postText.trim(),
+      postContact.trim() ? `Холбоо барих: ${postContact.trim()}` : "",
+      postLocation.trim() ? `Байршил: ${postLocation.trim()}` : "",
+      postPromo.trim() ? `Урамшуулал: ${postPromo.trim()}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const finalContent = content || (postImages.length ? "Зурагтай пост" : "");
+    if (!finalContent || posting) return;
+
+    setPosting(true);
+    setMessage("");
+    try {
+      const tags = [
+        postContact.trim() ? "contact" : "",
+        postLocation.trim() ? "location" : "",
+        postPromo.trim() ? "promotion" : "",
+      ].filter(Boolean);
+      const res = await authFetch(`${API}/posts`, {
+        method: "POST",
+        body: JSON.stringify({
+          organizationId: selectedOrg.id,
+          content: finalContent,
+          imageUrls: postImages,
+          tags,
+          type: postPromo.trim() ? "PROMOTION" : postType,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(data?.message || "Пост нийтлэхэд алдаа гарлаа");
+        return;
+      }
+      setPostText("");
+      setPostImages([]);
+      setPostContact("");
+      setPostLocation("");
+      setPostPromo("");
+      setMessage("Пост байгууллагын page дээр нийтлэгдлээ.");
+      await loadOrgContent();
+    } catch {
+      setMessage("Пост нийтлэхэд сүлжээний алдаа гарлаа");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const updateTimelineItem = async (
+    item: ManagedTimelineItem,
+    form: TimelineEditForm,
+  ) => {
+    const endpoint =
+      item.kind === "product"
+        ? `${API}/products/${item.id}`
+        : item.kind === "service"
+          ? `${API}/service-posts/${item.id}`
+          : `${API}/posts/${item.id}`;
+    const payload =
+      item.kind === "product"
+        ? {
+            name: form.title.trim(),
+            description: form.description.trim() || null,
+            images: form.images,
+            price: Number(form.price || 0),
+            stock: Number(form.stock || 0),
+          }
+        : item.kind === "service"
+          ? {
+              title: form.title.trim(),
+              description: form.description.trim() || null,
+              images: form.images,
+              priceText: form.priceText.trim() || null,
+            }
+          : {
+              content: form.content.trim(),
+              type: form.type,
+            };
+
+    const res = await authFetch(endpoint, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.message || "Мэдээлэл засахад алдаа гарлаа");
+    }
+
+    setEditingTimelineItem(null);
+    setTimelineActionMessage("Мэдээлэл шинэчлэгдлээ.");
+    await loadOrgContent();
+  };
+
+  const deleteTimelineItem = async (item: ManagedTimelineItem) => {
+    if (!confirm(`"${item.title}" мэдээллийг устгах уу?`)) return;
+
+    const endpoint =
+      item.kind === "product"
+        ? `${API}/products/${item.id}`
+        : item.kind === "service"
+          ? `${API}/service-posts/${item.id}`
+          : `${API}/posts/${item.id}`;
+
+    try {
+      const res = await authFetch(endpoint, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || "Мэдээлэл устгахад алдаа гарлаа");
+      }
+      setTimelineActionMessage("Мэдээлэл устгагдлаа.");
+      await loadOrgContent();
+    } catch (error) {
+      setTimelineActionMessage(
+        error instanceof Error ? error.message : "Мэдээлэл устгахад алдаа гарлаа",
+      );
+    }
+  };
+
+  return (
+    <section ref={profileTopRef} className="space-y-5">
+      <div className="rounded-[24px] border border-white bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.08)] sm:p-4">
+        <button
+          type="button"
+          onClick={onBackToPersonal}
+          className="inline-flex h-10 items-center gap-2 rounded-full px-2 pr-4 text-sm font-black text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100">
+            <ArrowLeft size={17} />
+          </span>
+          Personal account
+        </button>
+
+        <label className="relative mt-3 block">
+          <span className="sr-only">Account солих</span>
+          <span className="flex min-h-[58px] items-center gap-3 rounded-[20px] border border-slate-200 bg-slate-50 px-3 pr-11 transition focus-within:border-emerald-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-emerald-100">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white">
+              {getInitials(name)}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-black text-slate-950">
+                {name}
+              </span>
+              <span className="mt-0.5 block truncate text-xs font-bold text-slate-500">
+                {roleLabel[selectedOrg.role] || selectedOrg.role}
+              </span>
+            </span>
+          </span>
+          <select
+            value={selectedOrg.id}
+            onChange={(event) => {
+              onSelectOrganization(event.target.value);
+              setMessage("");
+            }}
+            className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-[20px] opacity-0"
+          >
+            {organizations.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name} · {roleLabel[item.role] || item.role}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={18}
+            className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+        </label>
+      </div>
+
+      <MobileOrganizationHero
+        category={category}
+        cover={cover}
+        imageActionMenu={imageActionMenu}
+        imageUploading={imageUploading}
+        isOpen={isOpen}
+        isVerified={isVerified}
+        logo={logo}
+        name={name}
+        onEditProfile={() => setProfileEditorOpen(true)}
+        onPreviewImage={(title, url) => {
+          setImagePreview({ title, url });
+          setImageActionMenu(null);
+        }}
+        onToggleImageMenu={setImageActionMenu}
+        onUploadImage={updateProfileImage}
+        publicHref={orgPublicHref(org || selectedOrg)}
+        rating={org?.rating ?? 5}
+        reviewCount={org?.reviewCount ?? 0}
+        role={roleLabel[selectedOrg.role] || selectedOrg.role}
+        shortDescription={shortDescription}
+      />
+
+      <div className="hidden overflow-visible rounded-[30px] bg-white shadow-[0_22px_70px_rgba(15,23,42,0.12)] sm:block">
+        <div className="relative h-[190px] overflow-hidden rounded-t-[24px] bg-slate-200 sm:h-[340px] sm:rounded-t-[30px] lg:h-[400px]">
+          <button
+            type="button"
+            onClick={() =>
+              setImageActionMenu((current) =>
+                current === "bannerUrl" ? null : "bannerUrl",
+              )
+            }
+            className="block h-full w-full text-left"
+            aria-label="Cover зурагны сонголт"
+          >
+            <img
+              src={cover}
+              alt=""
+              className="h-full w-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          </button>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent" />
+          <ImageActionMenu
+            field="bannerUrl"
+            isOpen={imageActionMenu === "bannerUrl"}
+            label="Cover зураг"
+            onToggle={() =>
+              setImageActionMenu((current) =>
+                current === "bannerUrl" ? null : "bannerUrl",
+              )
+            }
+            onPreview={() => {
+              setImagePreview({ title: "Cover зураг", url: cover });
+              setImageActionMenu(null);
+            }}
+            onUpload={updateProfileImage}
+            uploading={imageUploading === "bannerUrl"}
+            variant="cover"
+          />
+          <a
+            href={orgPublicHref(org || selectedOrg)}
+            className="absolute right-3 top-3 inline-flex h-9 items-center gap-2 rounded-full bg-white/90 px-3 text-xs font-black text-slate-800 shadow-lg backdrop-blur transition hover:bg-white sm:right-4 sm:top-4 sm:h-10 sm:px-4 sm:text-sm"
+          >
+            <span className="hidden min-[380px]:inline">Нийтийн хуудас</span>
+            <span className="min-[380px]:hidden">Нийтэд</span>
+            <ArrowUpRight size={15} />
+          </a>
+        </div>
+
+        <div className="relative -mt-10 mx-3 rounded-[24px] border border-slate-100 bg-white p-4 shadow-xl shadow-slate-200/80 sm:-mt-16 sm:mx-8 sm:rounded-[28px] sm:p-7">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 flex-col items-center gap-4 text-center sm:flex-row sm:items-start sm:gap-6 sm:text-left">
+              <div className="relative h-24 w-24 shrink-0 rounded-[24px] bg-slate-100 shadow-xl ring-4 ring-white sm:h-28 sm:w-28">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setImageActionMenu((current) =>
+                      current === "logoUrl" ? null : "logoUrl",
+                    )
+                  }
+                  className="group h-full w-full overflow-hidden rounded-[24px]"
+                  aria-label="Profile зурагны сонголт"
+                >
+                  <img
+                    src={logo}
+                    alt=""
+                    className="h-full w-full object-cover transition group-hover:scale-105"
+                    referrerPolicy="no-referrer"
+                  />
+                  <span className="absolute inset-x-0 bottom-0 flex h-9 items-center justify-center bg-slate-950/60 text-[11px] font-black text-white opacity-0 transition group-hover:opacity-100">
+                    Зураг
+                  </span>
+                </button>
+                {isOpen && (
+                  <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-2 border-white bg-emerald-500" />
+                )}
+                <ImageActionMenu
+                  field="logoUrl"
+                  isOpen={imageActionMenu === "logoUrl"}
+                  label="Profile зураг"
+                  onToggle={() =>
+                    setImageActionMenu((current) =>
+                      current === "logoUrl" ? null : "logoUrl",
+                    )
+                  }
+                  onPreview={() => {
+                    setImagePreview({ title: "Profile зураг", url: logo });
+                    setImageActionMenu(null);
+                  }}
+                  onUpload={updateProfileImage}
+                  uploading={imageUploading === "logoUrl"}
+                  variant="avatar"
+                />
+              </div>
+
+              <div
+                className={`min-w-0 transition-[padding] ${
+                  imageActionMenu === "logoUrl" ? "pt-28 sm:pt-1" : "pt-1"
+                }`}
+              >
+                <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
+                  {isOpen && (
+                    <Badge tone="emerald">
+                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                      Нээлттэй
+                    </Badge>
+                  )}
+                  {isVerified && (
+                    <Badge tone="blue">
+                      <ShieldCheck size={13} />
+                      Баталгаат
+                    </Badge>
+                  )}
+                  <Badge tone="slate">{category}</Badge>
+                  <Badge tone="amber">
+                    {roleLabel[selectedOrg.role] || selectedOrg.role}
+                  </Badge>
+                </div>
+
+                <h1 className="mt-3 line-clamp-2 break-words text-2xl font-black tracking-tight text-slate-950 sm:truncate sm:text-4xl">
+                  {name}
+                </h1>
+
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-sm font-bold sm:justify-start">
+                  <span className="inline-flex items-center gap-1 text-slate-900">
+                    <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                    {org?.rating ?? 5} ({org?.reviewCount ?? 0})
+                  </span>
+                  {isOpen && (
+                    <span className="text-emerald-600">Яг одоо идэвхтэй</span>
+                  )}
+                  {loading && <span className="text-slate-400">Ачааллаж байна...</span>}
+                </div>
+
+                <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
+                  {shortDescription}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 lg:w-[420px] lg:grid-cols-1 xl:w-[520px] xl:grid-cols-3">
+              <QuickStat
+                icon={ShieldCheck}
+                label="Албан ёсны"
+                value={isVerified ? "Баталгаат" : "Хүлээгдэж буй"}
+              />
+              <QuickStat
+                icon={Users}
+                label="Харилцагч"
+                value={org?.customerCount || "0"}
+              />
+              <QuickStat
+                icon={CalendarDays}
+                label="Туршлага"
+                value={`${org?.operatingYears ?? 1} жил`}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {imageMessage && (
+        <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700">
+          {imageMessage}
+        </div>
+      )}
+
+      {imagePreview && (
+        <ImagePreviewModal
+          title={imagePreview.title}
+          url={imagePreview.url}
+          onClose={() => setImagePreview(null)}
+        />
+      )}
+
+      <div className="rounded-[22px] border border-white bg-white p-2 shadow-[0_14px_40px_rgba(15,23,42,0.06)] sm:px-3">
+        <div className="grid grid-cols-3 gap-1 sm:flex sm:overflow-x-auto sm:scrollbar-hide">
+          {contentTabs.map((item) => {
+            const active = activeContentTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveContentTab(item.id)}
+                className={`h-10 min-w-0 rounded-2xl px-2 text-[13px] font-black leading-none transition sm:h-11 sm:shrink-0 sm:px-4 sm:text-sm ${
+                  active
+                    ? "bg-orange-50 text-orange-600"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                <span className="block truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+          <WidgetCard
+            action={
+              <button
+                type="button"
+                onClick={() => setProfileEditorOpen(true)}
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full bg-orange-50 px-3 text-xs font-black text-orange-600 transition hover:bg-orange-100"
+              >
+                <Pencil size={14} />
+                Засах
+              </button>
+            }
+            title="Байгууллагын мэдээлэл"
+          >
+            <div className="space-y-3 text-sm font-bold text-slate-600">
+              <p className="text-[15px] leading-7 text-slate-600 sm:text-sm sm:leading-6">
+                {shortDescription}
+              </p>
+              {(org?.phone || org?.email || org?.address) && (
+                <div className="space-y-1 rounded-2xl bg-slate-50 px-3 py-3 text-xs font-bold leading-5 text-slate-500">
+                  {org?.phone && <p>Утас: {org.phone}</p>}
+                  {org?.email && <p className="break-all">И-мэйл: {org.email}</p>}
+                  {org?.address && <p className="break-words">Хаяг: {org.address}</p>}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <InfoPill label="Төрөл" value={category} />
+                <InfoPill
+                  label="Төлөв"
+                  value={isOpen ? "Нээлттэй" : "Идэвхгүй"}
+                />
+                <InfoPill
+                  label="Эрх"
+                  value={roleLabel[selectedOrg.role] || selectedOrg.role}
+                />
+                <InfoPill
+                  label="Үнэлгээ"
+                  value={`${org?.rating ?? 5} / 5`}
+                />
+              </div>
+            </div>
+          </WidgetCard>
+
+          <WidgetCard className="hidden lg:block" title="Page widgets">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-1">
+              <WidgetLink
+                href={orgPublicHref(org || selectedOrg)}
+                icon={Store}
+                label="Нийтийн хуудас харах"
+                text="Хэрэглэгчид харагдах нүүр"
+              />
+              <WidgetLink
+                href={`${ORG_URL.replace(/\/$/, "")}/dashboard`}
+                icon={ShieldCheck}
+                label="Org dashboard"
+                text="Байгууллагын удирдлага"
+              />
+              <WidgetLink
+                href={`${VENDOR_URL.replace(/\/$/, "")}/service-posts`}
+                icon={Megaphone}
+                label="Зар удирдах"
+                text="Санал, урамшуулал"
+              />
+            </div>
+          </WidgetCard>
+
+          <WidgetCard title="Товч үзүүлэлт">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-1">
+              <MiniMetric
+                icon={Users}
+                label="Харилцагч"
+                value={org?.customerCount || "0"}
+              />
+              <MiniMetric
+                icon={CalendarDays}
+                label="Туршлага"
+                value={`${org?.operatingYears ?? 1} жил`}
+              />
+              <MiniMetric
+                icon={ShieldCheck}
+                label="Баталгаажилт"
+                value={isVerified ? "Баталгаат" : "Хүлээгдэж буй"}
+              />
+            </div>
+          </WidgetCard>
+        </aside>
+
+        <div className="mx-auto w-full max-w-[820px] space-y-4">
+          <OrganizationCreateHub
+            authFetch={authFetch}
+            createMode={createMode}
+            message={message}
+            name={name}
+            onModeChange={setCreateMode}
+            onPostTextChange={setPostText}
+            onPostTypeChange={setPostType}
+            onPublishPost={publishPost}
+            onContentChanged={loadOrgContent}
+            onPostContactChange={setPostContact}
+            onPostImagesChange={setPostImages}
+            onPostLocationChange={setPostLocation}
+            onPostPromoChange={setPostPromo}
+            postContact={postContact}
+            postImages={postImages}
+            postLocation={postLocation}
+            postPromo={postPromo}
+            postText={postText}
+            postType={postType}
+            posting={posting}
+            selectedOrganizationId={selectedOrg.id}
+          />
+
+          <OrganizationContentFeed
+            activeTab={activeContentTab}
+            loading={contentLoading}
+            organization={{
+              address: org?.address || "",
+              category,
+              email: org?.email || "",
+              logo,
+              name,
+              phone: org?.phone || "",
+              shortDescription,
+              status: isOpen ? "Нээлттэй" : "Идэвхгүй",
+            }}
+            onDelete={deleteTimelineItem}
+            onEdit={setEditingTimelineItem}
+            posts={content.posts}
+            products={content.products}
+            statusMessage={timelineActionMessage}
+            services={content.services}
+          />
+
+          <aside className="grid gap-3 md:grid-cols-3">
+            <PortalLink
+              href={`${VENDOR_URL.replace(/\/$/, "")}/products`}
+              icon={Boxes}
+              label="Бүтээгдэхүүн оруулах"
+            />
+            <PortalLink
+              href={`${VENDOR_URL.replace(/\/$/, "")}/service-posts`}
+              icon={Megaphone}
+              label="Зар удирдах"
+            />
+            <PortalLink
+              href={`${ORG_URL.replace(/\/$/, "")}/dashboard`}
+              icon={Store}
+              label="Org dashboard"
+            />
+          </aside>
+        </div>
+      </div>
+
+      {profileEditorOpen && (
+        <OrganizationProfileEditor
+          authFetch={authFetch}
+          initialForm={profileInitialForm}
+          organizationId={selectedOrg.id}
+          onClose={() => setProfileEditorOpen(false)}
+          onSaved={(updated) => {
+            setDetails((current) => ({
+              ...(current || {
+                id: selectedOrg.id,
+                name: selectedOrg.name,
+                slug: selectedOrg.slug || selectedOrg.id,
+              }),
+              ...updated,
+            }));
+            setProfileEditorOpen(false);
+          }}
+        />
+      )}
+
+      {editingTimelineItem && (
+        <TimelineEditModal
+          item={editingTimelineItem}
+          onClose={() => setEditingTimelineItem(null)}
+          onSave={updateTimelineItem}
+        />
+      )}
+
+      <button
+        type="button"
+        onClick={scrollToProfileTop}
+        className={`fixed bottom-24 right-4 z-[120] flex h-12 w-12 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/25 ring-1 ring-white/20 transition duration-200 sm:bottom-8 sm:right-6 ${
+          showScrollTop
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none translate-y-4 opacity-0"
+        }`}
+        aria-label="Дээш очих"
+      >
+        <ArrowUp size={22} />
+      </button>
+    </section>
+  );
+}
+
+function OrganizationContentFeed({
+  activeTab,
+  loading,
+  onDelete,
+  onEdit,
+  organization,
+  posts,
+  products,
+  statusMessage,
+  services,
+}: {
+  activeTab: ContentTab;
+  loading: boolean;
+  onDelete: (item: ManagedTimelineItem) => void;
+  onEdit: (item: ManagedTimelineItem) => void;
+  organization: {
+    address: string;
+    category: string;
+    email: string;
+    logo: string;
+    name: string;
+    phone: string;
+    shortDescription: string;
+    status: string;
+  };
+  posts: ManagedFeedPost[];
+  products: ManagedProduct[];
+  statusMessage: string;
+  services: ManagedServicePost[];
+}) {
+  const [datePreset, setDatePreset] = useState<"all" | "today" | "7d" | "30d" | "custom">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const timeline = useMemo(() => {
+    const items: ManagedTimelineItem[] = [
+      ...products.map((product) => ({
+        id: product.id,
+        kind: "product" as const,
+        title: product.name,
+        description: product.description || `${product.stock ?? 0} нөөцтэй`,
+        image: product.images?.[0]?.url || null,
+        images: compactImageUrls(product.images),
+        meta: formatPrice(product.price),
+        stats: `${product.stock ?? 0} нөөц`,
+        edit: {
+          description: product.description || "",
+          price: String(product.price ?? ""),
+          stock: String(product.stock ?? 0),
+          title: product.name,
+        },
+        href: `/products/${encodeURIComponent(product.id)}`,
+        createdAt: product.createdAt,
+      })),
+      ...services.map((service) => ({
+        id: service.id,
+        kind: "service" as const,
+        title: service.title,
+        description:
+          service.description ||
+          service.tags?.slice(0, 3).join(", ") ||
+          "Тайлбаргүй",
+        image: service.images?.[0]?.url || null,
+        images: compactImageUrls(service.images),
+        meta:
+          service.priceText ||
+          (service.isActive === false ? "Идэвхгүй" : "Идэвхтэй"),
+        stats: service.tags?.slice(0, 3).join(" · ") || undefined,
+        edit: {
+          description: service.description || "",
+          priceText: service.priceText || "",
+          title: service.title,
+        },
+        href: `/services/${encodeURIComponent(service.id)}`,
+        createdAt: service.createdAt,
+      })),
+      ...(SHOW_POST_SECTION
+        ? posts.map((post) => ({
+            id: post.id,
+            kind: "post" as const,
+            title: post.type || "Пост",
+            description: post.content,
+            image: post.imageUrls?.[0] || null,
+            images: post.imageUrls || [],
+            meta: post.type || "Пост",
+            stats: undefined,
+            edit: {
+              content: post.content,
+              type: post.type || "GENERAL",
+            },
+            createdAt: post.createdAt,
+          }))
+        : []),
+    ];
+
+    return items.sort(
+      (a, b) => getTimeValue(b.createdAt) - getTimeValue(a.createdAt),
+    );
+  }, [posts, products, services]);
+
+  const typeFilteredTimeline = timeline.filter((item) => {
+    if (activeTab === "products") return item.kind === "product";
+    if (activeTab === "posts") return SHOW_POST_SECTION && item.kind === "post";
+    if (activeTab === "ads") return item.kind === "service";
+    if (activeTab === "about") return false;
+    return true;
+  });
+
+  const dateRange = useMemo(() => {
+    if (datePreset === "all") return { from: null, to: null };
+    const now = new Date();
+    const end = endOfDay(dateTo ? new Date(dateTo) : now);
+
+    if (datePreset === "today") {
+      return { from: startOfDay(now), to: endOfDay(now) };
+    }
+    if (datePreset === "7d") {
+      const start = startOfDay(now);
+      start.setDate(start.getDate() - 6);
+      return { from: start, to: endOfDay(now) };
+    }
+    if (datePreset === "30d") {
+      const start = startOfDay(now);
+      start.setDate(start.getDate() - 29);
+      return { from: start, to: endOfDay(now) };
+    }
+
+    return {
+      from: dateFrom ? startOfDay(new Date(dateFrom)) : null,
+      to: dateTo ? end : null,
+    };
+  }, [dateFrom, datePreset, dateTo]);
+
+  const filteredTimeline = typeFilteredTimeline.filter((item) => {
+    const time = getTimeValue(item.createdAt);
+    if (!time) return datePreset === "all";
+    if (dateRange.from && time < dateRange.from.getTime()) return false;
+    if (dateRange.to && time > dateRange.to.getTime()) return false;
+    return true;
+  });
+
+  const tabLabel =
+    contentTabs.find((item) => item.id === activeTab)?.label || "Нүүр";
+
+  return (
+    <section className="space-y-3">
+      {activeTab === "about" ? (
+        <OrganizationAboutPanel organization={organization} />
+      ) : (
+        <>
+          <div className="rounded-[22px] border border-white bg-white px-4 py-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)] sm:px-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <h2 className="text-lg font-black text-slate-950">{tabLabel}</h2>
+                <p className="mt-0.5 text-xs font-bold text-slate-400">
+                  Шинэ оруулсан нь эхэндээ харагдана
+                </p>
+              </div>
+              <div className="grid gap-2 xl:flex xl:flex-wrap xl:items-center">
+                <div className="grid grid-cols-4 gap-2 xl:flex xl:flex-wrap">
+                  <DatePresetButton
+                    active={datePreset === "all"}
+                    onClick={() => {
+                      setDatePreset("all");
+                      setDateFrom("");
+                      setDateTo("");
+                    }}
+                  >
+                    Бүгд
+                  </DatePresetButton>
+                  <DatePresetButton
+                    active={datePreset === "today"}
+                    onClick={() => setDatePreset("today")}
+                  >
+                    Өнөөдөр
+                  </DatePresetButton>
+                  <DatePresetButton
+                    active={datePreset === "7d"}
+                    onClick={() => setDatePreset("7d")}
+                  >
+                    7 хоног
+                  </DatePresetButton>
+                  <DatePresetButton
+                    active={datePreset === "30d"}
+                    onClick={() => setDatePreset("30d")}
+                  >
+                    30 хоног
+                  </DatePresetButton>
+                </div>
+                <div className="grid grid-cols-2 gap-2 xl:flex xl:flex-wrap">
+                  <label className="flex h-10 min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 xl:h-9 xl:rounded-full">
+                    <span className="shrink-0">Эхлэх</span>
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(event) => {
+                        setDateFrom(event.target.value);
+                        setDatePreset("custom");
+                      }}
+                      className="min-w-0 flex-1 bg-transparent text-[12px] font-black normal-case tracking-normal text-slate-700 outline-none"
+                    />
+                  </label>
+                  <label className="flex h-10 min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 xl:h-9 xl:rounded-full">
+                    <span className="shrink-0">Дуусах</span>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(event) => {
+                        setDateTo(event.target.value);
+                        setDatePreset("custom");
+                      }}
+                      className="min-w-0 flex-1 bg-transparent text-[12px] font-black normal-case tracking-normal text-slate-700 outline-none"
+                    />
+                  </label>
+                </div>
+                <span className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-100 px-4 text-xs font-black text-slate-500 sm:h-auto sm:min-h-10 xl:h-9 xl:rounded-full">
+                  {loading ? "Шинэчилж байна..." : `${filteredTimeline.length} нийт`}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {statusMessage && (
+            <div className="rounded-[18px] border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700">
+              {statusMessage}
+            </div>
+          )}
+
+          {filteredTimeline.length === 0 && !loading ? (
+            <div className="rounded-[22px] border border-dashed border-slate-200 bg-white px-5 py-10 text-center shadow-[0_14px_40px_rgba(15,23,42,0.05)]">
+              <p className="text-sm font-black text-slate-700">
+                Энэ хэсэгт харагдах контент алга байна.
+              </p>
+              <p className="mt-1 text-xs font-bold text-slate-400">
+                Дээрээс бүтээгдэхүүн, пост эсвэл зар нэмэхэд огноогоор энд гарна.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredTimeline.map((item) => (
+                <TimelineContentCard
+                  key={`${item.kind}-${item.id}`}
+                  item={item}
+                  onDelete={onDelete}
+                  onEdit={onEdit}
+                  organizationName={organization.name}
+                  organizationLogo={organization.logo}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function OrganizationAboutPanel({
+  organization,
+}: {
+  organization: {
+    address: string;
+    category: string;
+    email: string;
+    name: string;
+    phone: string;
+    shortDescription: string;
+    status: string;
+  };
+}) {
+  return (
+    <section className="rounded-[24px] border border-white bg-white p-5 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
+      <h2 className="text-lg font-black text-slate-950">Тухай</h2>
+      <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+        {organization.shortDescription}
+      </p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <InfoPill label="Нэр" value={organization.name} />
+        <InfoPill label="Төрөл" value={organization.category} />
+        <InfoPill label="Төлөв" value={organization.status} />
+        <InfoPill label="Утас" value={organization.phone || "Оруулаагүй"} />
+        <InfoPill label="И-мэйл" value={organization.email || "Оруулаагүй"} />
+        <InfoPill label="Хаяг" value={organization.address || "Оруулаагүй"} />
+      </div>
+    </section>
+  );
+}
+
+function DatePresetButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-9 w-full rounded-full px-2 text-xs font-black transition xl:w-auto xl:px-3 ${
+        active
+          ? "bg-slate-950 text-white shadow-lg shadow-slate-900/10"
+          : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TimelineContentCard({
+  item,
+  onDelete,
+  onEdit,
+  organizationLogo,
+  organizationName,
+}: {
+  item: ManagedTimelineItem;
+  onDelete: (item: ManagedTimelineItem) => void;
+  onEdit: (item: ManagedTimelineItem) => void;
+  organizationLogo: string;
+  organizationName: string;
+}) {
+  const Icon =
+    item.kind === "product" ? Boxes : item.kind === "service" ? Megaphone : Send;
+  const label =
+    item.kind === "product"
+      ? "Бүтээгдэхүүн"
+      : item.kind === "service"
+        ? "Зар / үйлчилгээ"
+        : "Пост";
+  const actionText =
+    item.kind === "product"
+      ? "Бүтээгдэхүүн харах"
+      : item.kind === "service"
+        ? "Зарын дэлгэрэнгүй"
+        : "Харах";
+  const content = (
+    <article className="group rounded-[18px] border border-slate-100 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-0.5 hover:border-orange-100 hover:shadow-[0_18px_52px_rgba(15,23,42,0.11)]">
+      <TimelineCardHeader
+        date={formatDate(item.createdAt) || "Огноогүй"}
+        icon={Icon}
+        label={label}
+        logo={organizationLogo}
+        meta={item.meta}
+        name={organizationName}
+        onDelete={() => onDelete(item)}
+        onEdit={() => onEdit(item)}
+      />
+
+      <div className="px-3.5 pb-2.5 pt-0 sm:px-4 sm:pb-3">
+        <h3 className="text-[17px] font-black leading-6 tracking-tight text-slate-950 sm:text-[19px]">
+          {item.title}
+        </h3>
+        {item.description && (
+          <p className="mt-1.5 whitespace-pre-line text-[12px] font-semibold leading-5 text-slate-600 sm:text-[13px]">
+            {item.description}
+          </p>
+        )}
+      </div>
+
+      <TimelineCardMedia
+        images={item.images.length ? item.images : item.image ? [item.image] : []}
+      />
+
+      <TimelineCardFooter
+        actionText={"href" in item && item.href ? actionText : ""}
+        href={"href" in item ? item.href : ""}
+        label={label}
+        stats={item.stats}
+      />
+    </article>
+  );
+
+  return content;
+}
+
+function TimelineCardHeader({
+  date,
+  icon: Icon,
+  label,
+  logo,
+  meta,
+  name,
+  onDelete,
+  onEdit,
+}: {
+  date: string;
+  icon: LucideIcon;
+  label: string;
+  logo: string;
+  meta: string;
+  name: string;
+  onDelete: () => void;
+  onEdit: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const closeMenu = () => setMenuOpen(false);
+    window.addEventListener("click", closeMenu);
+    return () => window.removeEventListener("click", closeMenu);
+  }, [menuOpen]);
+
+  const editItem = () => {
+    setMenuOpen(false);
+    onEdit();
+  };
+
+  const deleteItem = () => {
+    setMenuOpen(false);
+    onDelete();
+  };
+
+  return (
+    <div className="flex items-start justify-between gap-2.5 px-3.5 pb-2.5 pt-3.5 sm:px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-100 ring-[3px] ring-slate-50">
+          <img
+            src={logo}
+            alt=""
+            className="h-full w-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-black text-slate-950">
+            {name}
+          </p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-400">
+            <span>{date}</span>
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+            <span className="inline-flex items-center gap-1">
+              <Icon size={13} />
+              {label}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-start justify-end gap-2">
+        <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500 sm:inline-flex">
+          {meta}
+        </span>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setMenuOpen((current) => !current);
+            }}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-950"
+            aria-expanded={menuOpen}
+            aria-label="Үйлдэл"
+          >
+            <MoreHorizontal size={19} />
+          </button>
+          {menuOpen && (
+            <div
+              className="absolute right-0 top-11 z-20 w-40 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1.5 shadow-[0_18px_48px_rgba(15,23,42,0.16)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={editItem}
+                className="flex h-10 w-full items-center rounded-xl px-3 text-left text-sm font-black text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
+              >
+                Засах
+              </button>
+              <button
+                type="button"
+                onClick={deleteItem}
+                className="flex h-10 w-full items-center rounded-xl px-3 text-left text-sm font-black text-red-600 transition hover:bg-red-50"
+              >
+                Устгах
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineCardMedia({ images }: { images: string[] }) {
+  const [orientation, setOrientation] = useState<"landscape" | "portrait">(
+    "landscape",
+  );
+  const [activeIndex, setActiveIndex] = useState(0);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const hasImages = images.length > 0;
+  const hasMultipleImages = images.length > 1;
+  const frameClass =
+    orientation === "portrait"
+      ? "aspect-[4/5] max-h-[400px]"
+      : hasImages
+        ? "aspect-[16/10] max-h-[336px]"
+        : "aspect-[16/9] max-h-[210px] sm:max-h-[272px]";
+
+  const scrollImage = (direction: -1 | 1) => {
+    if (!hasMultipleImages) return;
+    const next = Math.min(
+      Math.max(activeIndex + direction, 0),
+      images.length - 1,
+    );
+    setActiveIndex(next);
+    scrollerRef.current?.children[next]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  };
+
+  const updateActiveIndex = () => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const next = Math.round(scroller.scrollLeft / scroller.clientWidth);
+    setActiveIndex(Math.min(Math.max(next, 0), images.length - 1));
+  };
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [images.join("|")]);
+
+  return (
+    <div className="px-2.5 pb-2.5 sm:px-3">
+      <div className="overflow-hidden rounded-[16px] border border-slate-100 bg-slate-100">
+        <div
+          className={`relative mx-auto flex w-full items-center justify-center overflow-hidden bg-slate-100 ${frameClass}`}
+        >
+          {hasImages ? (
+            <>
+              <div
+                ref={scrollerRef}
+                onScroll={updateActiveIndex}
+                className="scrollbar-hide flex h-full w-full snap-x snap-mandatory overflow-x-auto scroll-smooth"
+              >
+                {images.map((image, index) => (
+                  <div
+                    key={`${image}-${index}`}
+                    className="relative h-full w-full shrink-0 snap-center overflow-hidden"
+                  >
+                    <img
+                      src={image}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 h-full w-full scale-105 object-cover opacity-20 blur-2xl"
+                      referrerPolicy="no-referrer"
+                    />
+                    <img
+                      src={image}
+                      alt=""
+                      className="relative z-10 h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onLoad={(event) => {
+                        if (index !== activeIndex) return;
+                        const img = event.currentTarget;
+                        setOrientation(
+                          img.naturalHeight > img.naturalWidth
+                            ? "portrait"
+                            : "landscape",
+                        );
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {hasMultipleImages && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => scrollImage(-1)}
+                    disabled={activeIndex === 0}
+                    className="absolute left-2.5 top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-lg shadow-slate-950/10 transition hover:bg-white disabled:pointer-events-none disabled:opacity-35"
+                    aria-label="Өмнөх зураг"
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scrollImage(1)}
+                    disabled={activeIndex === images.length - 1}
+                    className="absolute right-2.5 top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-lg shadow-slate-950/10 transition hover:bg-white disabled:pointer-events-none disabled:opacity-35"
+                    aria-label="Дараах зураг"
+                  >
+                    <ArrowRight size={20} />
+                  </button>
+                  <span className="absolute right-2.5 top-2.5 z-20 rounded-full bg-slate-950/75 px-2.5 py-1 text-[11px] font-black text-white">
+                    {activeIndex + 1} / {images.length}
+                  </span>
+                  <div className="absolute bottom-2.5 left-1/2 z-20 flex -translate-x-1/2 gap-1.5 rounded-full bg-slate-950/35 px-2 py-1 backdrop-blur-sm">
+                    {images.map((image, index) => (
+                      <button
+                        key={`${image}-dot-${index}`}
+                        type="button"
+                        onClick={() => setActiveIndex(index)}
+                        className={`h-1.5 rounded-full transition ${
+                          activeIndex === index
+                            ? "w-5 bg-white"
+                            : "w-1.5 bg-white/55"
+                        }`}
+                        aria-label={`${index + 1}-р зураг`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center text-slate-300">
+              <ImageIcon size={48} />
+              <p className="mt-3 text-xs font-black uppercase tracking-[0.14em] text-slate-300">
+                Зураггүй
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineCardFooter({
+  actionText,
+  href,
+  label,
+  stats,
+}: {
+  actionText: string;
+  href: string;
+  label: string;
+  stats?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2 border-t border-slate-100 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {stats && (
+          <span className="rounded-full bg-orange-50 px-3 py-1.5 text-[11px] font-black text-orange-600">
+            {stats}
+          </span>
+        )}
+        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-black text-slate-500">
+          {label}
+        </span>
+      </div>
+      {actionText && href && (
+        <a
+          href={href}
+          className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-[11px] font-black text-white shadow-lg shadow-slate-900/10 transition hover:bg-orange-600 sm:w-auto"
+        >
+          {actionText}
+          <ArrowUpRight size={14} />
+        </a>
+      )}
+    </div>
+  );
+}
+
+function TimelineEditModal({
+  item,
+  onClose,
+  onSave,
+}: {
+  item: ManagedTimelineItem;
+  onClose: () => void;
+  onSave: (item: ManagedTimelineItem, form: TimelineEditForm) => Promise<void>;
+}) {
+  const [form, setForm] = useState<TimelineEditForm>({
+    content: item.kind === "post" ? item.edit.content : "",
+    description: item.kind !== "post" ? item.edit.description : "",
+    images: item.kind !== "post" ? item.images : [],
+    price: item.kind === "product" ? item.edit.price : "",
+    priceText: item.kind === "service" ? item.edit.priceText : "",
+    stock: item.kind === "product" ? item.edit.stock : "",
+    title: item.kind !== "post" ? item.edit.title : item.title,
+    type: item.kind === "post" ? item.edit.type : "GENERAL",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  const updateField = (field: keyof TimelineEditForm, value: string) => {
+    setError("");
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const addImages = async (files: FileList | null) => {
+    if (!files?.length || item.kind === "post") return;
+
+    const selected = Array.from(files)
+      .filter((file) => file.type.startsWith("image/"))
+      .slice(0, Math.max(0, 5 - form.images.length));
+
+    const dataUrls = await Promise.all(
+      selected.map(
+        (file) =>
+          new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ""));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          }),
+      ),
+    );
+
+    setError("");
+    setForm((current) => ({
+      ...current,
+      images: [...current.images, ...dataUrls].slice(0, 5),
+    }));
+  };
+
+  const removeImage = (image: string) => {
+    setError("");
+    setForm((current) => ({
+      ...current,
+      images: current.images.filter((item) => item !== image),
+    }));
+  };
+
+  const save = async () => {
+    if (item.kind === "post" && !form.content.trim()) {
+      setError("Постын агуулга хоосон байж болохгүй.");
+      return;
+    }
+    if (item.kind !== "post" && !form.title.trim()) {
+      setError("Гарчиг хоосон байж болохгүй.");
+      return;
+    }
+    if (item.kind === "product") {
+      const price = Number(form.price || 0);
+      const stock = Number(form.stock || 0);
+      if (!Number.isFinite(price) || price < 0) {
+        setError("Үнэ зөв тоо байх ёстой.");
+        return;
+      }
+      if (!Number.isFinite(stock) || stock < 0) {
+        setError("Нөөц зөв тоо байх ёстой.");
+        return;
+      }
+    }
+
+    setSaving(true);
+    setError("");
+    try {
+      await onSave(item, form);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Хадгалахад алдаа гарлаа.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/55 px-3 py-6 backdrop-blur-sm">
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Засах цонх хаах"
+        onClick={onClose}
+      />
+      <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_34px_120px_rgba(15,23,42,0.38)]">
+        <div className="flex h-16 items-center justify-between border-b border-slate-100 px-5">
+          <h2 className="text-lg font-black text-slate-950">
+            {item.kind === "product"
+              ? "Бүтээгдэхүүн засах"
+              : item.kind === "service"
+                ? "Зар / үйлчилгээ засах"
+                : "Пост засах"}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900"
+            aria-label="Хаах"
+          >
+            <X size={22} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-5">
+          {item.kind === "post" ? (
+            <div className="grid gap-3">
+              <label>
+                <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                  Постын төрөл
+                </span>
+                <select
+                  value={form.type}
+                  onChange={(event) => updateField("type", event.target.value)}
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-900 outline-none transition focus:border-orange-300 focus:ring-4 focus:ring-orange-100"
+                >
+                  <option value="GENERAL">Ерөнхий</option>
+                  <option value="ANNOUNCEMENT">Мэдэгдэл</option>
+                  <option value="PROMOTION">Урамшуулал</option>
+                  <option value="UPDATE">Шинэчлэл</option>
+                </select>
+              </label>
+              <TimelineTextarea
+                label="Агуулга"
+                value={form.content}
+                onChange={(value) => updateField("content", value)}
+              />
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <TimelineImageEditor
+                  images={form.images}
+                  onAddImages={addImages}
+                  onRemoveImage={removeImage}
+                />
+              </div>
+              <TimelineInput
+                label="Гарчиг"
+                value={form.title}
+                onChange={(value) => updateField("title", value)}
+                wide
+              />
+              {item.kind === "product" ? (
+                <>
+                  <TimelineInput
+                    label="Үнэ"
+                    value={form.price}
+                    inputMode="decimal"
+                    onChange={(value) => updateField("price", value)}
+                  />
+                  <TimelineInput
+                    label="Нөөц"
+                    value={form.stock}
+                    inputMode="numeric"
+                    onChange={(value) => updateField("stock", value)}
+                  />
+                </>
+              ) : (
+                <TimelineInput
+                  label="Үнэ / санал"
+                  value={form.priceText}
+                  onChange={(value) => updateField("priceText", value)}
+                  wide
+                />
+              )}
+              <TimelineTextarea
+                label="Тайлбар"
+                value={form.description}
+                onChange={(value) => updateField("description", value)}
+              />
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 rounded-full border border-slate-200 bg-white px-6 text-sm font-black text-slate-600 transition hover:bg-slate-50"
+          >
+            Болих
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="h-11 rounded-full bg-orange-500 px-7 text-sm font-black text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+          >
+            {saving ? "Хадгалж байна..." : "Хадгалах"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineImageEditor({
+  images,
+  onAddImages,
+  onRemoveImage,
+}: {
+  images: string[];
+  onAddImages: (files: FileList | null) => void;
+  onRemoveImage: (image: string) => void;
+}) {
+  return (
+    <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-black text-emerald-700 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50">
+          <ImageIcon size={18} />
+          Зураг оруулах
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              onAddImages(event.target.files);
+              event.target.value = "";
+            }}
+          />
+        </label>
+        <p className="text-xs font-bold text-slate-500">
+          {images.length}/5 зураг
+        </p>
+      </div>
+
+      {images.length > 0 && (
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {images.map((image, index) => (
+            <div
+              key={`${image.slice(0, 48)}-${index}`}
+              className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-white bg-slate-100 shadow-sm"
+            >
+              <img
+                src={image}
+                alt=""
+                className="h-full w-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+              <button
+                type="button"
+                onClick={() => onRemoveImage(image)}
+                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-slate-950/75 text-xs font-black text-white opacity-100 transition hover:bg-red-600 sm:opacity-0 sm:group-hover:opacity-100"
+                aria-label="Зураг устгах"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TimelineInput({
+  inputMode,
+  label,
+  onChange,
+  value,
+  wide = false,
+}: {
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+  wide?: boolean;
+}) {
+  return (
+    <label className={wide ? "sm:col-span-2" : ""}>
+      <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+        {label}
+      </span>
+      <input
+        value={value}
+        inputMode={inputMode}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-orange-300 focus:bg-white focus:ring-4 focus:ring-orange-100"
+      />
+    </label>
+  );
+}
+
+function TimelineTextarea({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="sm:col-span-2">
+      <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+        {label}
+      </span>
+      <textarea
+        value={value}
+        rows={5}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold leading-6 text-slate-900 outline-none transition focus:border-orange-300 focus:bg-white focus:ring-4 focus:ring-orange-100"
+      />
+    </label>
+  );
+}
+
+function getTimeValue(value?: string | Date) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function startOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function endOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+}
+
+function formatPrice(value: ManagedProduct["price"]) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "Үнэ тохироогүй";
+  return `${amount.toLocaleString("mn-MN")}₮`;
+}
+
+function formatDate(value?: string | Date) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("mn-MN", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function WidgetCard({
+  action,
+  children,
+  className = "",
+  title,
+}: {
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  title: string;
+}) {
+  return (
+    <section
+      className={`rounded-[22px] border border-white bg-white p-4 shadow-[0_18px_55px_rgba(15,23,42,0.08)] sm:rounded-[24px] sm:p-5 ${className}`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-black text-slate-950 sm:text-base">
+          {title}
+        </h3>
+        {action}
+      </div>
+      <div className="mt-3 sm:mt-4">{children}</div>
+    </section>
+  );
+}
+
+function InfoPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[18px] border border-slate-100 bg-slate-50 px-3 py-2.5 sm:rounded-2xl sm:py-3">
+      <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 sm:tracking-[0.12em]">
+        {label}
+      </p>
+      <p className="mt-1 truncate text-[13px] font-black text-slate-900 sm:text-sm">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function WidgetLink({
+  href,
+  icon: Icon,
+  label,
+  text,
+}: {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  text: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="flex min-h-[86px] flex-col items-center justify-center gap-2 rounded-[18px] border border-slate-100 bg-slate-50 px-2 py-3 text-center transition hover:-translate-y-0.5 hover:border-orange-200 hover:bg-orange-50 sm:min-h-0 sm:flex-row sm:justify-between sm:gap-3 sm:px-3 sm:text-left"
+    >
+      <span className="flex min-w-0 flex-col items-center gap-2 sm:flex-row sm:gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white text-orange-500 shadow-sm sm:h-10 sm:w-10">
+          <Icon size={17} className="sm:h-[18px] sm:w-[18px]" />
+        </span>
+        <span className="min-w-0">
+          <span className="block max-w-[76px] truncate text-[11px] font-black leading-tight text-slate-900 sm:max-w-none sm:text-sm">
+            {label}
+          </span>
+          <span className="mt-0.5 hidden truncate text-xs font-bold text-slate-400 sm:block">
+            {text}
+          </span>
+        </span>
+      </span>
+      <ArrowUpRight size={13} className="hidden shrink-0 text-slate-400 sm:block" />
+    </a>
+  );
+}
+
+function MiniMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex min-h-[86px] flex-col items-center justify-center gap-2 rounded-[18px] border border-slate-100 bg-slate-50 px-2 py-3 text-center sm:min-h-0 sm:flex-row sm:gap-3 sm:px-3 sm:text-left">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white text-orange-500 shadow-sm sm:h-10 sm:w-10">
+        <Icon size={17} className="sm:h-[18px] sm:w-[18px]" />
+      </span>
+      <span className="min-w-0">
+        <span className="block max-w-[76px] truncate text-xs font-black text-slate-950 sm:max-w-none sm:text-sm">
+          {value}
+        </span>
+        <span className="block max-w-[76px] truncate text-[10px] font-bold text-slate-400 sm:max-w-none sm:text-xs">
+          {label}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function ImageActionMenu({
+  field,
+  isOpen,
+  label,
+  onPreview,
+  onToggle,
+  onUpload,
+  uploading,
+  variant,
+}: {
+  field: "logoUrl" | "bannerUrl";
+  isOpen: boolean;
+  label: string;
+  onPreview: () => void;
+  onToggle: () => void;
+  onUpload: (field: "logoUrl" | "bannerUrl", files: FileList | null) => void;
+  uploading: boolean;
+  variant: "avatar" | "cover";
+}) {
+  const position =
+    variant === "cover"
+      ? "absolute left-3 top-3 z-20 sm:bottom-4 sm:left-auto sm:right-4 sm:top-auto"
+      : "absolute left-1/2 top-[calc(100%+8px)] z-40 w-48 -translate-x-1/2 sm:w-52";
+
+  return (
+    <div className={position}>
+      {variant === "cover" && (
+        <button
+          type="button"
+          onClick={onToggle}
+          className="inline-flex h-9 items-center gap-2 rounded-full bg-white/92 px-3 text-xs font-black text-slate-800 shadow-lg backdrop-blur transition hover:bg-white sm:h-10 sm:px-4 sm:text-sm"
+        >
+          <ImageIcon size={16} />
+          <span className="hidden min-[380px]:inline">{label}</span>
+          <span className="min-[380px]:hidden">Cover</span>
+          <ChevronDown size={15} />
+        </button>
+      )}
+
+      {isOpen && (
+        <div
+          className={`mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-[0_18px_55px_rgba(15,23,42,0.20)] ${
+            variant === "cover" ? "w-48 sm:w-56" : "w-full"
+          }`}
+        >
+          <button
+            type="button"
+            onClick={onPreview}
+            className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-black text-slate-700 transition hover:bg-slate-50"
+          >
+            <Eye size={16} />
+            Зураг харах
+          </button>
+          <label className="flex h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50">
+            <ImageIcon size={16} />
+            {uploading ? "Сольж байна..." : "Зураг солих"}
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(event) => {
+                void onUpload(field, event.target.files);
+                event.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ImagePreviewModal({
+  onClose,
+  title,
+  url,
+}: {
+  onClose: () => void;
+  title: string;
+  url: string;
+}) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/80 px-3 py-6 backdrop-blur-sm">
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Зураг хаах"
+        onClick={onClose}
+      />
+      <div className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-slate-950 shadow-[0_34px_120px_rgba(0,0,0,0.55)]">
+        <div className="flex h-16 items-center justify-between border-b border-white/10 px-5">
+          <h2 className="truncate text-lg font-black text-white">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+            aria-label="Хаах"
+          >
+            <X size={22} />
+          </button>
+        </div>
+        <div className="flex min-h-[360px] items-center justify-center bg-slate-900 p-3 sm:min-h-[520px]">
+          <img
+            src={url}
+            alt=""
+            className="max-h-[72vh] max-w-full rounded-2xl object-contain"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrganizationProfileEditor({
+  authFetch,
+  initialForm,
+  organizationId,
+  onClose,
+  onSaved,
+}: {
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
+  initialForm: OrgProfileFormState;
+  organizationId: string;
+  onClose: () => void;
+  onSaved: (updated: Partial<ManagedOrgDetails>) => void;
+}) {
+  const [form, setForm] = useState(initialForm);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose]);
+
+  const updateField = (field: keyof OrgProfileFormState, value: string) => {
+    setMessage("");
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const saveProfile = async () => {
+    const cleanName = form.name.trim();
+    const operatingYears = Number(form.operatingYears || 0);
+    if (!cleanName) {
+      setMessage("Байгууллагын нэр хоосон байж болохгүй.");
+      return;
+    }
+    if (!Number.isFinite(operatingYears) || operatingYears < 0) {
+      setMessage("Ажилласан жил зөв тоо байх ёстой.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+    try {
+      const res = await authFetch(`${API}/partners/${organizationId}/profile`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: cleanName,
+          address: form.address.trim() || null,
+          shortDescription: form.shortDescription.trim() || null,
+          description: form.description.trim() || null,
+          openingHours: form.openingHours.trim() || null,
+          operatingYears,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(data?.message || "Байгууллагын мэдээлэл хадгалахад алдаа гарлаа.");
+        return;
+      }
+      onSaved(data);
+    } catch {
+      setMessage("Байгууллагын мэдээлэл хадгалахад сүлжээний алдаа гарлаа.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/55 px-3 py-6 backdrop-blur-sm">
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Засах modal хаах"
+        onClick={onClose}
+      />
+      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_34px_120px_rgba(15,23,42,0.38)]">
+        <div className="flex h-16 items-center justify-center border-b border-slate-100 px-5">
+          <h2 className="text-xl font-black text-slate-950">
+            Байгууллагын мэдээлэл засах
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-4 top-3.5 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900"
+            aria-label="Хаах"
+          >
+            <X size={22} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-4 sm:p-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+              <ProfileInput
+                label="Байгууллагын нэр"
+                value={form.name}
+                onChange={(value) => updateField("name", value)}
+              />
+              <ProfileInput
+                label="Ажилласан жил"
+                value={form.operatingYears}
+                inputMode="numeric"
+                onChange={(value) => updateField("operatingYears", value)}
+              />
+              <VerifiedContactRow
+                label="Утас"
+                onRequest={() =>
+                  setMessage("Утас солих хүсэлт баталгаажуулалтын тусдаа урсгалаар явах ёстой.")
+                }
+                value={form.phone || "Бүртгэлгүй"}
+              />
+              <VerifiedContactRow
+                label="И-мэйл"
+                onRequest={() =>
+                  setMessage("И-мэйл солих хүсэлт тухайн и-мэйлээр баталгаажсаны дараа хийгдэнэ.")
+                }
+                value={form.email || "Бүртгэлгүй"}
+              />
+              <ProfileInput
+                label="Хаяг"
+                value={form.address}
+                onChange={(value) => updateField("address", value)}
+                wide
+              />
+              <ProfileInput
+                label="Цагийн хуваарь"
+                value={form.openingHours}
+                placeholder="Жишээ: Даваа-Баасан 09:00-18:00"
+                onChange={(value) => updateField("openingHours", value)}
+                wide
+              />
+              <ProfileTextarea
+                label="Товч тайлбар"
+                value={form.shortDescription}
+                onChange={(value) => updateField("shortDescription", value)}
+              />
+              <ProfileTextarea
+                label="Дэлгэрэнгүй танилцуулга"
+                value={form.description}
+                onChange={(value) => updateField("description", value)}
+              />
+          </div>
+
+          {message && (
+            <p className="mt-4 rounded-2xl bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700">
+              {message}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 rounded-full border border-slate-200 bg-white px-6 text-sm font-black text-slate-600 transition hover:bg-slate-50"
+          >
+            Болих
+          </button>
+          <button
+            type="button"
+            onClick={saveProfile}
+            disabled={saving}
+            className="h-11 rounded-full bg-orange-500 px-7 text-sm font-black text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+          >
+            {saving ? "Хадгалж байна..." : "Хадгалах"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VerifiedContactRow({
+  label,
+  onRequest,
+  value,
+}: {
+  label: string;
+  onRequest: () => void;
+  value: string;
+}) {
+  return (
+    <div>
+      <p className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+        {label}
+      </p>
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-slate-900">
+              {value}
+            </p>
+            <p className="mt-1 text-[11px] font-bold leading-4 text-amber-700">
+              Солихын тулд баталгаажуулалтын хүсэлт илгээнэ.
+            </p>
+          </div>
+          <ShieldCheck size={18} className="shrink-0 text-amber-600" />
+        </div>
+        <button
+          type="button"
+          className="mt-3 h-9 w-full rounded-xl bg-white text-xs font-black text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-100"
+          onClick={onRequest}
+        >
+          Баталгаажуулж солих
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProfileInput({
+  inputMode,
+  label,
+  onChange,
+  placeholder,
+  value,
+  wide = false,
+}: {
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  label: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  value: string;
+  wide?: boolean;
+}) {
+  return (
+    <label className={wide ? "sm:col-span-2" : ""}>
+      <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+        {label}
+      </span>
+      <input
+        value={value}
+        inputMode={inputMode}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-4 focus:ring-orange-100"
+      />
+    </label>
+  );
+}
+
+function ProfileTextarea({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="sm:col-span-2">
+      <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+        {label}
+      </span>
+      <textarea
+        value={value}
+        rows={3}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-4 focus:ring-orange-100"
+      />
+    </label>
+  );
+}
+
+function OrganizationCreateHub({
+  authFetch,
+  createMode,
+  message,
+  name,
+  onContentChanged,
+  onModeChange,
+  onPostTextChange,
+  onPostTypeChange,
+  onPostContactChange,
+  onPostImagesChange,
+  onPostLocationChange,
+  onPostPromoChange,
+  onPublishPost,
+  postContact,
+  postImages,
+  postLocation,
+  postPromo,
+  postText,
+  postType,
+  posting,
+  selectedOrganizationId,
+}: {
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
+  createMode: "post" | "product" | "service" | "ad";
+  message: string;
+  name: string;
+  onContentChanged: () => Promise<void>;
+  onModeChange: (mode: "post" | "product" | "service" | "ad") => void;
+  onPostTextChange: (value: string) => void;
+  onPostTypeChange: (value: string) => void;
+  onPostContactChange: (value: string) => void;
+  onPostImagesChange: (images: string[]) => void;
+  onPostLocationChange: (value: string) => void;
+  onPostPromoChange: (value: string) => void;
+  onPublishPost: () => void;
+  postContact: string;
+  postImages: string[];
+  postLocation: string;
+  postPromo: string;
+  postText: string;
+  postType: string;
+  posting: boolean;
+  selectedOrganizationId: string;
+}) {
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [productForm, setProductForm] = useState<QuickProductFormState>({
+    name: "",
+    price: "",
+    stock: "0",
+    description: "",
+    images: [] as string[],
+  });
+  const [productSaving, setProductSaving] = useState(false);
+  const [productMessage, setProductMessage] = useState("");
+  const modes = [
+    ...(SHOW_POST_SECTION
+      ? [
+          {
+            id: "post" as const,
+            icon: Send,
+            label: "Пост",
+            tone: "text-rose-500 bg-rose-50",
+          },
+        ]
+      : []),
+    {
+      id: "product" as const,
+      icon: ImageIcon,
+      label: "Бүтээгдэхүүн",
+      tone: "text-emerald-600 bg-emerald-50",
+    },
+    {
+      id: "service" as const,
+      icon: Wrench,
+      label: "Үйлчилгээ",
+      tone: "text-blue-600 bg-blue-50",
+    },
+    {
+      id: "ad" as const,
+      icon: Megaphone,
+      label: "Зар",
+      tone: "text-orange-600 bg-orange-50",
+    },
+  ];
+
+  useEffect(() => {
+    if (!composerOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setComposerOpen(false);
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [composerOpen]);
+
+  const openComposer = (mode: "post" | "product" | "service" | "ad") => {
+    const nextMode = !SHOW_POST_SECTION && mode === "post" ? "product" : mode;
+    onModeChange(nextMode);
+    setComposerOpen(true);
+  };
+
+  const updateProductField = (
+    field: QuickProductTextField,
+    value: string,
+  ) => {
+    setProductMessage("");
+    setProductForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateProductImages = (images: string[]) => {
+    setProductMessage("");
+    setProductForm((current) => ({ ...current, images }));
+  };
+
+  const createProduct = async () => {
+    if (productSaving) return;
+    const productName = productForm.name.trim();
+    const price = Number(productForm.price);
+    const stock = Number(productForm.stock || 0);
+
+    if (!productName || !Number.isFinite(price) || price < 0) {
+      setProductMessage("Бүтээгдэхүүний нэр болон үнэ зөв оруулна уу.");
+      return;
+    }
+    if (!Number.isFinite(stock) || stock < 0) {
+      setProductMessage("Нөөцийн тоо 0-ээс их байх ёстой.");
+      return;
+    }
+
+    setProductSaving(true);
+    setProductMessage("");
+    try {
+      const res = await authFetch(`${API}/products`, {
+        method: "POST",
+        body: JSON.stringify({
+          organizationId: selectedOrganizationId,
+          name: productName,
+          price,
+          stock,
+          description: productForm.description.trim() || undefined,
+          images: productForm.images,
+          supplyType: "IN_STOCK",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setProductMessage(data?.message || "Бүтээгдэхүүн хадгалахад алдаа гарлаа.");
+        return;
+      }
+      setProductForm({
+        name: "",
+        price: "",
+        stock: "0",
+        description: "",
+        images: [],
+      });
+      setProductMessage("Бүтээгдэхүүн амжилттай нэмэгдлээ.");
+      await onContentChanged();
+    } catch {
+      setProductMessage("Сүлжээний алдаа гарлаа.");
+    } finally {
+      setProductSaving(false);
+    }
+  };
+
+  return (
+    <section className="rounded-[24px] border border-white bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.08)] sm:p-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-sm font-black text-white ring-4 ring-slate-100">
+          {getInitials(name)}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => openComposer("product")}
+          className="min-w-0 flex-1 rounded-full bg-slate-100 px-5 py-3.5 text-left text-sm font-black text-slate-500 transition hover:bg-slate-200 sm:text-base"
+        >
+          Бүтээгдэхүүн, үйлчилгээ эсвэл зар нэмэх
+        </button>
+
+        <div className="hidden items-center gap-2 sm:flex">
+          {modes.map((mode) => {
+            const Icon = mode.icon;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => openComposer(mode.id)}
+                className={`flex h-11 w-11 items-center justify-center rounded-2xl transition hover:-translate-y-0.5 ${
+                  createMode === mode.id
+                    ? mode.tone
+                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                }`}
+                title={mode.label}
+              >
+                <Icon size={22} />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div
+        className={`mt-3 grid gap-2 ${
+          SHOW_POST_SECTION ? "grid-cols-4" : "grid-cols-3"
+        }`}
+      >
+        {modes.map((mode) => {
+          const Icon = mode.icon;
+          const active = createMode === mode.id;
+          return (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => openComposer(mode.id)}
+              className={`inline-flex h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-black transition sm:h-10 sm:flex-row sm:gap-2 sm:rounded-full sm:text-sm ${
+                active
+                  ? "bg-slate-950 text-white shadow-lg shadow-slate-900/10"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+              }`}
+            >
+              <Icon size={16} />
+              <span className="w-full truncate text-center sm:w-auto">
+                {mode.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="mt-3 hidden px-1 text-xs font-bold text-slate-400 sm:block">
+        Бүтээгдэхүүн, үйлчилгээ эсвэл зар оруулахдаа дээрээс сонгоно.
+      </p>
+
+      {composerOpen && (
+        <CreateContentModal
+          createMode={createMode}
+          message={message}
+          modes={modes}
+          name={name}
+          onClose={() => setComposerOpen(false)}
+          onModeChange={onModeChange}
+          onPostTextChange={onPostTextChange}
+          onPostTypeChange={onPostTypeChange}
+          onPostContactChange={onPostContactChange}
+          onPostImagesChange={onPostImagesChange}
+          onPostLocationChange={onPostLocationChange}
+          onPostPromoChange={onPostPromoChange}
+          onPublishPost={onPublishPost}
+          postContact={postContact}
+          postImages={postImages}
+          postLocation={postLocation}
+          postPromo={postPromo}
+          postText={postText}
+          postType={postType}
+          posting={posting}
+          productForm={productForm}
+          productMessage={productMessage}
+          productSaving={productSaving}
+          onCreateProduct={createProduct}
+          onProductFieldChange={updateProductField}
+          onProductImagesChange={updateProductImages}
+        />
+      )}
+    </section>
+  );
+}
+
+function CreateContentModal({
+  createMode,
+  message,
+  modes,
+  name,
+  onClose,
+  onCreateProduct,
+  onPostContactChange,
+  onPostImagesChange,
+  onPostLocationChange,
+  onPostPromoChange,
+  onModeChange,
+  onPostTextChange,
+  onPostTypeChange,
+  onProductFieldChange,
+  onProductImagesChange,
+  onPublishPost,
+  postText,
+  postContact,
+  postImages,
+  postLocation,
+  postPromo,
+  postType,
+  posting,
+  productForm,
+  productMessage,
+  productSaving,
+}: {
+  createMode: "post" | "product" | "service" | "ad";
+  message: string;
+  modes: Array<{
+    id: "post" | "product" | "service" | "ad";
+    icon: typeof Send;
+    label: string;
+    tone: string;
+  }>;
+  name: string;
+  onClose: () => void;
+  onCreateProduct: () => void;
+  onModeChange: (mode: "post" | "product" | "service" | "ad") => void;
+  onPostContactChange: (value: string) => void;
+  onPostImagesChange: (images: string[]) => void;
+  onPostLocationChange: (value: string) => void;
+  onPostPromoChange: (value: string) => void;
+  onPostTextChange: (value: string) => void;
+  onPostTypeChange: (value: string) => void;
+  onProductFieldChange: (field: QuickProductTextField, value: string) => void;
+  onProductImagesChange: (images: string[]) => void;
+  onPublishPost: () => void;
+  postContact: string;
+  postImages: string[];
+  postLocation: string;
+  postPromo: string;
+  postText: string;
+  postType: string;
+  posting: boolean;
+  productForm: QuickProductFormState;
+  productMessage: string;
+  productSaving: boolean;
+}) {
+  const title =
+    createMode === "post"
+      ? "Пост үүсгэх"
+      : createMode === "product"
+        ? "Бүтээгдэхүүн оруулах"
+        : createMode === "service"
+          ? "Үйлчилгээ оруулах"
+          : "Зар үүсгэх";
+  const activeMode = modes.find((mode) => mode.id === createMode) || modes[0];
+  const ActiveIcon = activeMode.icon;
+  const isPostMode = createMode === "post";
+  const canPublishPost = Boolean(
+    postText.trim() ||
+      postImages.length ||
+      postContact.trim() ||
+      postLocation.trim() ||
+      postPromo.trim(),
+  );
+  const [activePostTool, setActivePostTool] = useState<
+    "images" | "contact" | "location" | "promo" | null
+  >(null);
+
+  const addPostImages = async (files: FileList | null) => {
+    if (!files?.length) return;
+
+    const selected = Array.from(files)
+      .filter((file) => file.type.startsWith("image/"))
+      .slice(0, Math.max(0, 10 - postImages.length));
+
+    const dataUrls = await Promise.all(
+      selected.map(
+        (file) =>
+          new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ""));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          }),
+      ),
+    );
+
+    onPostImagesChange([...postImages, ...dataUrls].slice(0, 10));
+    setActivePostTool("images");
+  };
+
+  const removePostImage = (image: string) => {
+    onPostImagesChange(postImages.filter((item) => item !== image));
+  };
+
+
+  return (
+    <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/55 px-0 py-0 backdrop-blur-sm sm:px-3 sm:py-6">
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Composer хаах"
+        onClick={onClose}
+      />
+      <div
+        className={`relative flex w-full flex-col overflow-hidden border border-white/80 bg-white shadow-[0_34px_120px_rgba(15,23,42,0.38)] ${
+          isPostMode
+            ? "h-full max-w-none rounded-none sm:h-auto sm:max-h-[90vh] sm:max-w-2xl sm:rounded-[24px]"
+            : "max-h-[90vh] max-w-3xl rounded-[28px]"
+        }`}
+      >
+        <div
+          className={`flex h-[60px] items-center border-b border-slate-100 px-4 ${
+            isPostMode ? "justify-between" : "justify-center px-5"
+          }`}
+        >
+          {isPostMode ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
+              aria-label="Буцах"
+            >
+              <ArrowLeft size={24} />
+            </button>
+          ) : null}
+          <h2
+            className={`font-black text-slate-950 ${
+              isPostMode ? "text-lg" : "text-xl"
+            }`}
+          >
+            {isPostMode ? "Пост нийтлэх" : title}
+          </h2>
+          {isPostMode ? (
+            <button
+              type="button"
+              onClick={onPublishPost}
+              disabled={!canPublishPost || posting}
+              className="rounded-full px-2 py-1 text-sm font-black text-orange-600 transition hover:bg-orange-50 disabled:text-slate-300 disabled:hover:bg-transparent"
+            >
+              {posting ? "НИЙТЭЛЖ..." : "НИЙТЛЭХ"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            className={`absolute right-4 top-3.5 h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900 ${
+              isPostMode ? "hidden" : "flex"
+            }`}
+            aria-label="Хаах"
+          >
+            <X size={22} />
+          </button>
+        </div>
+
+        <div
+          className={`overflow-y-auto ${
+            isPostMode ? "flex-1 p-0" : "p-4 sm:p-5"
+          }`}
+        >
+          <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-4">
+            <div
+              className={`flex shrink-0 items-center justify-center rounded-full bg-slate-950 font-black text-white ${
+                isPostMode
+                  ? "h-14 w-14 text-base"
+                  : "h-12 w-12 text-sm"
+              }`}
+            >
+              {getInitials(name)}
+            </div>
+            <div className="min-w-0">
+              <p
+                className={`truncate font-black text-slate-950 ${
+                  isPostMode ? "text-lg" : "text-base"
+                }`}
+              >
+                {name}
+              </p>
+              <button
+                type="button"
+                className={`mt-1 inline-flex items-center gap-1.5 bg-slate-100 font-black text-slate-600 ${
+                  isPostMode
+                    ? "h-9 rounded-2xl px-3 text-xs"
+                    : "h-8 rounded-xl px-3 text-xs"
+                }`}
+              >
+                <Globe2 size={14} />
+                Нийтэд
+                <ChevronDown size={14} />
+              </button>
+            </div>
+          </div>
+
+          {!isPostMode && (
+            <div
+              className={`mt-4 grid gap-2 ${
+                SHOW_POST_SECTION ? "sm:grid-cols-4" : "sm:grid-cols-3"
+              }`}
+            >
+              {modes.map((mode) => {
+                const Icon = mode.icon;
+                const active = createMode === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => onModeChange(mode.id)}
+                    className={`inline-flex h-11 items-center justify-center gap-2 rounded-2xl text-sm font-black transition ${
+                      active
+                        ? "bg-slate-950 text-white shadow-lg shadow-slate-900/15"
+                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                    }`}
+                  >
+                    <Icon size={17} />
+                    {mode.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {createMode === "post" && (
+            <div className="space-y-4 bg-slate-50 p-4">
+              <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-slate-950">
+                      Нийтлэлийн агуулга
+                    </p>
+                    <p className="mt-0.5 text-xs font-bold text-slate-400">
+                      Хэрэглэгчид харагдах үндсэн текст
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-500">
+                    {postText.length}/1200
+                  </span>
+                </div>
+                <textarea
+                  value={postText}
+                  onChange={(event) => onPostTextChange(event.target.value)}
+                  placeholder={`${name}-ийн шинэ мэдээлэл, санал эсвэл зарлалаа бичнэ үү...`}
+                  rows={7}
+                  maxLength={1200}
+                  className="min-h-[190px] w-full resize-none rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4 text-base font-bold leading-7 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:bg-white focus:ring-4 focus:ring-orange-100"
+                />
+              </section>
+
+              <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-slate-950">
+                      Нийтлэлийн тохиргоо
+                    </p>
+                    <p className="mt-0.5 text-xs font-bold text-slate-400">
+                      Page дээр гарах төрөл, нэмэлт мэдээлэл
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-orange-50 px-3 py-1.5 text-xs font-black text-orange-600">
+                    Нийтэд
+                  </span>
+                </div>
+
+                <label className="relative block">
+                  <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                    Ангилал
+                  </span>
+                  <select
+                    value={postType}
+                    onChange={(event) => onPostTypeChange(event.target.value)}
+                    className="h-11 w-full appearance-none rounded-2xl border border-slate-200 bg-slate-50 px-4 pr-10 text-sm font-black text-slate-600 outline-none transition focus:border-orange-300 focus:ring-4 focus:ring-orange-100"
+                  >
+                    <option value="GENERAL">Ерөнхий пост</option>
+                    <option value="ANNOUNCEMENT">Мэдэгдэл</option>
+                    <option value="PROMOTION">Урамшуулал</option>
+                    <option value="UPDATE">Шинэ мэдээлэл</option>
+                  </select>
+                  <ChevronDown
+                    size={16}
+                    className="pointer-events-none absolute right-4 top-[38px] text-slate-400"
+                  />
+                </label>
+              </section>
+
+              <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3">
+                  <p className="text-sm font-black text-slate-950">
+                    Бизнес мэдээлэл нэмэх
+                  </p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-400">
+                    Сонгосон мэдээлэл постын агуулгад нэгтгэгдэнэ
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <PostComposerAction
+                    active={activePostTool === "images"}
+                    icon={ImageIcon}
+                    label="Зураг"
+                    onClick={() =>
+                      setActivePostTool((current) =>
+                        current === "images" ? null : "images",
+                      )
+                    }
+                    tone="text-lime-600"
+                  />
+                  <PostComposerAction
+                    active={activePostTool === "contact"}
+                    icon={Phone}
+                    label="Холбоо барих"
+                    onClick={() =>
+                      setActivePostTool((current) =>
+                        current === "contact" ? null : "contact",
+                      )
+                    }
+                    tone="text-blue-500"
+                  />
+                  <PostComposerAction
+                    active={activePostTool === "location"}
+                    icon={MapPin}
+                    label="Байршил"
+                    onClick={() =>
+                      setActivePostTool((current) =>
+                        current === "location" ? null : "location",
+                      )
+                    }
+                    tone="text-red-500"
+                  />
+                  <PostComposerAction
+                    active={activePostTool === "promo"}
+                    icon={Megaphone}
+                    label="Урамшуулал"
+                    onClick={() =>
+                      setActivePostTool((current) =>
+                        current === "promo" ? null : "promo",
+                      )
+                    }
+                    tone="text-amber-500"
+                  />
+                </div>
+              </section>
+
+              {activePostTool && (
+                <PostToolPanel
+                  activeTool={activePostTool}
+                  contact={postContact}
+                  images={postImages}
+                  location={postLocation}
+                  onAddImages={addPostImages}
+                  onContactChange={onPostContactChange}
+                  onLocationChange={onPostLocationChange}
+                  onPromoChange={onPostPromoChange}
+                  onRemoveImage={removePostImage}
+                  onTypeChange={onPostTypeChange}
+                  promo={postPromo}
+                />
+              )}
+
+              {(postImages.length > 0 ||
+                postContact ||
+                postLocation ||
+                postPromo) && (
+                <section className="rounded-[24px] border border-orange-100 bg-orange-50 p-4">
+                  <p className="text-sm font-black text-orange-700">
+                    Нэмэгдсэн мэдээлэл
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {postImages.length > 0 && (
+                      <span className="rounded-full bg-white px-3 py-2 text-xs font-black text-slate-700">
+                        {postImages.length} зураг
+                      </span>
+                    )}
+                    {postContact && (
+                      <span className="rounded-full bg-white px-3 py-2 text-xs font-black text-slate-700">
+                        Холбоо барих
+                      </span>
+                    )}
+                    {postLocation && (
+                      <span className="rounded-full bg-white px-3 py-2 text-xs font-black text-slate-700">
+                        Байршил
+                      </span>
+                    )}
+                    {postPromo && (
+                      <span className="rounded-full bg-white px-3 py-2 text-xs font-black text-slate-700">
+                        Урамшуулал
+                      </span>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              <p
+                className={`text-xs font-bold ${
+                  message.includes("нийтлэгдлээ")
+                    ? "text-emerald-700"
+                    : "text-slate-400"
+                }`}
+              >
+                {message || "Байгууллагын page дээр нийтэд харагдана"}
+              </p>
+            </div>
+          )}
+
+          {createMode === "product" && (
+            <QuickProductForm
+              form={productForm}
+              message={productMessage}
+              onCreate={onCreateProduct}
+              onFieldChange={onProductFieldChange}
+              onImagesChange={onProductImagesChange}
+              saving={productSaving}
+            />
+          )}
+
+          {(createMode === "service" || createMode === "ad") && (
+            <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-orange-500 shadow-sm">
+                  <ActiveIcon size={22} />
+                </span>
+                <div>
+                  <p className="text-sm font-black text-slate-950">
+                    {createMode === "service"
+                      ? "Үйлчилгээний мэдээлэл оруулах"
+                      : "Зар, урамшуулал удирдах"}
+                  </p>
+                  <p className="mt-1 text-xs font-bold text-slate-500">
+                    Нэр, зураг, тайлбар, идэвхтэй хугацааг vendor удирдлага дээр бөглөнө.
+                  </p>
+                </div>
+                </div>
+                <a
+                  href={`${VENDOR_URL.replace(/\/$/, "")}/service-posts`}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-slate-800"
+                >
+                  Нээх
+                  <ArrowUpRight size={15} />
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PostComposerAction({
+  active,
+  icon: Icon,
+  label,
+  onClick,
+  tone,
+}: {
+  active: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  tone: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-[92px] w-full flex-col items-start justify-between rounded-2xl border px-3 py-3 text-left text-sm font-black transition ${
+        active
+          ? "border-orange-200 bg-orange-50 text-slate-950 shadow-sm"
+          : "border-slate-100 bg-slate-50 text-slate-700 hover:border-orange-100 hover:bg-orange-50 hover:text-slate-950"
+      }`}
+    >
+      <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-sm">
+        <Icon size={22} className={tone} />
+      </span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function PostToolPanel({
+  activeTool,
+  contact,
+  images,
+  location,
+  onAddImages,
+  onContactChange,
+  onLocationChange,
+  onPromoChange,
+  onRemoveImage,
+  onTypeChange,
+  promo,
+}: {
+  activeTool: "images" | "contact" | "location" | "promo";
+  contact: string;
+  images: string[];
+  location: string;
+  onAddImages: (files: FileList | null) => void;
+  onContactChange: (value: string) => void;
+  onLocationChange: (value: string) => void;
+  onPromoChange: (value: string) => void;
+  onRemoveImage: (image: string) => void;
+  onTypeChange: (value: string) => void;
+  promo: string;
+}) {
+  if (activeTool === "images") {
+    return (
+      <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-lime-200 bg-white px-4 text-sm font-black text-lime-700 shadow-sm transition hover:bg-lime-50">
+            <ImageIcon size={18} />
+            Зураг сонгох
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              onChange={(event) => {
+                void onAddImages(event.target.files);
+                event.target.value = "";
+              }}
+            />
+          </label>
+          <p className="text-xs font-bold text-slate-500">
+            {images.length}/10 зураг
+          </p>
+        </div>
+        {images.length > 0 && (
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {images.map((image, index) => (
+              <div
+                key={`${image.slice(0, 40)}-${index}`}
+                className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-white bg-slate-100 shadow-sm"
+              >
+                <img src={image} alt="" className="h-full w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => onRemoveImage(image)}
+                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-slate-950/75 text-xs font-black text-white hover:bg-red-600"
+                  aria-label="Зураг устгах"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTool === "contact") {
+    return (
+      <PostToolInput
+        label="Пост дээр харагдах холбоо барих мэдээлэл"
+        onChange={onContactChange}
+        placeholder="Жишээ: 89123581, info@mglstore.mn"
+        value={contact}
+      />
+    );
+  }
+
+  if (activeTool === "location") {
+    return (
+      <PostToolInput
+        label="Байршил / салбар"
+        onChange={onLocationChange}
+        placeholder="Жишээ: Улаанбаатар, Хан-Уул, 120 мянгат"
+        value={location}
+      />
+    );
+  }
+
+  if (activeTool === "promo") {
+    return (
+      <PostToolInput
+        label="Урамшуулал / онцлох мэдээлэл"
+        onChange={(value) => {
+          onPromoChange(value);
+          if (value.trim()) onTypeChange("PROMOTION");
+        }}
+        placeholder="Жишээ: Энэ 7 хоногт хүргэлт үнэгүй"
+        value={promo}
+      />
+    );
+  }
+
+  return null;
+}
+
+function PostToolInput({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <label className="block rounded-[20px] border border-slate-200 bg-slate-50 p-3">
+      <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+        {label}
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:ring-4 focus:ring-orange-100"
+      />
+    </label>
+  );
+}
+
+function QuickProductForm({
+  form,
+  message,
+  onCreate,
+  onFieldChange,
+  onImagesChange,
+  saving,
+}: {
+  form: QuickProductFormState;
+  message: string;
+  onCreate: () => void;
+  onFieldChange: (field: QuickProductTextField, value: string) => void;
+  onImagesChange: (images: string[]) => void;
+  saving: boolean;
+}) {
+  const success = message.includes("амжилттай");
+  const addImages = async (files: FileList | null) => {
+    if (!files?.length) return;
+
+    const selected = Array.from(files)
+      .filter((file) => file.type.startsWith("image/"))
+      .slice(0, Math.max(0, 5 - form.images.length));
+
+    const dataUrls = await Promise.all(
+      selected.map(
+        (file) =>
+          new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ""));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          }),
+      ),
+    );
+
+    onImagesChange([...form.images, ...dataUrls].slice(0, 5));
+  };
+
+  const removeImage = (image: string) => {
+    onImagesChange(form.images.filter((item) => item !== image));
+  };
+
+  return (
+    <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 p-3 sm:p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-black text-emerald-700 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50">
+          <ImageIcon size={18} />
+          Зураг оруулах
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              void addImages(event.target.files);
+              event.target.value = "";
+            }}
+          />
+        </label>
+        <p className="text-xs font-bold text-slate-500">
+          {form.images.length}/5 зураг
+        </p>
+      </div>
+
+      {form.images.length > 0 && (
+        <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+          {form.images.map((image, index) => (
+            <div
+              key={`${image.slice(0, 40)}-${index}`}
+              className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-white bg-slate-100 shadow-sm"
+            >
+              <img
+                src={image}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => removeImage(image)}
+                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-slate-950/75 text-xs font-black text-white opacity-0 transition group-hover:opacity-100"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_176px_144px]">
+        <label className="min-w-0 flex-1">
+          <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+            Бүтээгдэхүүний нэр
+          </span>
+          <input
+            value={form.name}
+            onChange={(event) => onFieldChange("name", event.target.value)}
+            placeholder="Жишээ: Дулаан барьдаг шүгээ"
+            className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+          />
+        </label>
+
+        <label>
+          <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+            Үнэ
+          </span>
+          <input
+            value={form.price}
+            onChange={(event) => onFieldChange("price", event.target.value)}
+            inputMode="decimal"
+            placeholder="0"
+            className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+          />
+        </label>
+
+        <label>
+          <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+            Нөөц
+          </span>
+          <input
+            value={form.stock}
+            onChange={(event) => onFieldChange("stock", event.target.value)}
+            inputMode="numeric"
+            placeholder="0"
+            className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+          />
+        </label>
+      </div>
+
+      <label className="mt-3 block">
+        <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+          Тайлбар
+        </span>
+        <textarea
+          value={form.description}
+          onChange={(event) => onFieldChange("description", event.target.value)}
+          placeholder="Бүтээгдэхүүний богино тайлбар..."
+          rows={2}
+          className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+        />
+      </label>
+
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={onCreate}
+          disabled={saving || !form.name.trim() || !form.price.trim()}
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-black text-white shadow-lg shadow-emerald-500/20 transition hover:-translate-y-0.5 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 sm:w-auto sm:min-w-40"
+        >
+          <PlusCircle size={17} />
+          {saving ? "Хадгалж..." : "Оруулах"}
+        </button>
+      </div>
+
+      <p
+        className={`mt-3 text-xs font-bold ${
+          success ? "text-emerald-700" : "text-slate-500"
+        }`}
+      >
+        {message || "Barcode шаардлагагүй. Нэр, үнэ, нөөцөөр шууд нэмнэ."}
+      </p>
+    </div>
+  );
+}
+
+function Badge({
+  children,
+  tone,
+}: {
+  children: React.ReactNode;
+  tone: "amber" | "blue" | "emerald" | "slate";
+}) {
+  const tones = {
+    amber: "bg-amber-50 text-amber-700 border-amber-100",
+    blue: "bg-blue-50 text-blue-700 border-blue-100",
+    emerald: "bg-emerald-500 text-white border-emerald-500",
+    slate: "bg-slate-100 text-slate-600 border-slate-100",
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tones[tone]}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function MobileOrganizationHero({
+  category,
+  cover,
+  imageActionMenu,
+  imageUploading,
+  isOpen,
+  isVerified,
+  logo,
+  name,
+  onEditProfile,
+  onPreviewImage,
+  onToggleImageMenu,
+  onUploadImage,
+  publicHref,
+  rating,
+  reviewCount,
+  role,
+  shortDescription,
+}: {
+  category: string;
+  cover: string;
+  imageActionMenu: "logoUrl" | "bannerUrl" | null;
+  imageUploading: "logoUrl" | "bannerUrl" | null;
+  isOpen: boolean;
+  isVerified: boolean;
+  logo: string;
+  name: string;
+  onEditProfile: () => void;
+  onPreviewImage: (title: string, url: string) => void;
+  onToggleImageMenu: React.Dispatch<React.SetStateAction<"logoUrl" | "bannerUrl" | null>>;
+  onUploadImage: (field: "logoUrl" | "bannerUrl", files: FileList | null) => void;
+  publicHref: string;
+  rating: number;
+  reviewCount: number;
+  role: string;
+  shortDescription: string;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.10)] sm:hidden">
+      <div className="relative h-40 bg-slate-200">
+        <button
+          type="button"
+          onClick={() =>
+            onToggleImageMenu((current) =>
+              current === "bannerUrl" ? null : "bannerUrl",
+            )
+          }
+          className="block h-full w-full"
+          aria-label="Cover зурагны сонголт"
+        >
+          <img
+            src={cover}
+            alt=""
+            className="h-full w-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+        </button>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-black/10" />
+        <ImageActionMenu
+          field="bannerUrl"
+          isOpen={imageActionMenu === "bannerUrl"}
+          label="Cover зураг"
+          onToggle={() =>
+            onToggleImageMenu((current) =>
+              current === "bannerUrl" ? null : "bannerUrl",
+            )
+          }
+          onPreview={() => onPreviewImage("Cover зураг", cover)}
+          onUpload={onUploadImage}
+          uploading={imageUploading === "bannerUrl"}
+          variant="cover"
+        />
+        <a
+          href={publicHref}
+          className="absolute right-3 top-3 inline-flex h-9 items-center gap-1.5 rounded-full bg-white/92 px-3 text-xs font-black text-slate-900 shadow-lg backdrop-blur"
+        >
+          Нийтийн хуудас
+          <ArrowUpRight size={14} />
+        </a>
+      </div>
+
+      <div className="px-4 pb-4">
+        <div className="relative -mt-12 flex items-end justify-between">
+          <div className="relative h-24 w-24 rounded-[28px] bg-slate-100 shadow-xl ring-4 ring-white">
+            <button
+              type="button"
+              onClick={() =>
+                onToggleImageMenu((current) =>
+                  current === "logoUrl" ? null : "logoUrl",
+                )
+              }
+              className="h-full w-full overflow-hidden rounded-[28px]"
+              aria-label="Profile зурагны сонголт"
+            >
+              <img
+                src={logo}
+                alt=""
+                className="h-full w-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                onToggleImageMenu((current) =>
+                  current === "logoUrl" ? null : "logoUrl",
+                )
+              }
+              className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-950 shadow ring-4 ring-white"
+              aria-label="Profile зураг солих"
+            >
+              <ImageIcon size={17} />
+            </button>
+            {isOpen && (
+              <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-2 border-white bg-emerald-500" />
+            )}
+            <ImageActionMenu
+              field="logoUrl"
+              isOpen={imageActionMenu === "logoUrl"}
+              label="Profile зураг"
+              onToggle={() =>
+                onToggleImageMenu((current) =>
+                  current === "logoUrl" ? null : "logoUrl",
+                )
+              }
+              onPreview={() => onPreviewImage("Profile зураг", logo)}
+              onUpload={onUploadImage}
+              uploading={imageUploading === "logoUrl"}
+              variant="avatar"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={onEditProfile}
+            className="mb-1 inline-flex h-10 items-center gap-2 rounded-full bg-slate-950 px-4 text-xs font-black text-white shadow-lg"
+          >
+            <Pencil size={15} />
+            Засах
+          </button>
+        </div>
+
+        <div className={imageActionMenu === "logoUrl" ? "pt-24" : "pt-3"}>
+          <h1 className="line-clamp-2 text-2xl font-black leading-tight tracking-tight text-slate-950">
+            {name}
+          </h1>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-bold text-slate-900">
+            <span className="inline-flex items-center gap-1">
+              <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+              {rating} ({reviewCount})
+            </span>
+            <span className="text-slate-300">·</span>
+            <span className={isOpen ? "text-emerald-600" : "text-slate-500"}>
+              {isOpen ? "Идэвхтэй" : "Идэвхгүй"}
+            </span>
+          </div>
+
+          <p className="mt-3 line-clamp-3 text-sm font-semibold leading-6 text-slate-500">
+            {shortDescription}
+          </p>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {isVerified && (
+              <Badge tone="blue">
+                <ShieldCheck size={13} />
+                Баталгаат
+              </Badge>
+            )}
+            <Badge tone="slate">{category}</Badge>
+            <Badge tone="amber">{role}</Badge>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function QuickStat({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof ShieldCheck;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white px-2 py-3 text-center shadow-sm sm:p-4">
+      <span className="mx-auto flex h-8 w-8 items-center justify-center rounded-xl bg-slate-50 text-orange-500 sm:h-10 sm:w-10 sm:rounded-2xl">
+        <Icon size={16} className="sm:h-[18px] sm:w-[18px]" />
+      </span>
+      <p className="mt-2 truncate text-xs font-black text-slate-950 sm:mt-3 sm:text-sm">
+        {value}
+      </p>
+      <p className="mt-0.5 truncate text-[10px] font-bold text-slate-400 sm:mt-1 sm:text-[11px]">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function PortalLink({
+  href,
+  icon: Icon,
+  label,
+}: {
+  href: string;
+  icon: typeof Store;
+  label: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="flex items-center justify-between gap-3 rounded-[22px] border border-white bg-white px-5 py-4 text-sm font-black text-slate-800 shadow-[0_14px_40px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:text-orange-600"
+    >
+      <span className="inline-flex items-center gap-3">
+        <Icon size={18} />
+        {label}
+      </span>
+      <ArrowUpRight size={16} />
+    </a>
+  );
+}

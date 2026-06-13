@@ -3,8 +3,13 @@ import { Router, type Router as ExpressRouter } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { prisma } from "@mgl/database";
+import { prisma, VendorContentReviewStatus } from "@mgl/database";
+import { Permission } from "@mgl/types";
 import { requireAuth } from "../../middleware/auth";
+import { assertOrgPermission } from "../../services/permission.service";
+import {
+  getReviewStatusForVendorMutation,
+} from "../../services/vendor-content-review.service";
 
 const uploadsDir = path.resolve(__dirname, "../../../uploads/posts");
 if (!fs.existsSync(uploadsDir)) {
@@ -41,9 +46,17 @@ router.use("/posts/uploads", (req, res) => {
 router.get("/posts", async (req, res) => {
   try {
     const type = req.query.type as string;
+    const organizationId =
+      typeof req.query.organizationId === "string"
+        ? req.query.organizationId.trim()
+        : "";
     const posts = await prisma.post.findMany({
       where: {
         ...(type ? { type: type as any } : {}),
+        ...(organizationId ? { organizationId } : {}),
+        ...(organizationId
+          ? { reviewStatus: "APPROVED" }
+          : { OR: [{ organizationId: null }, { reviewStatus: "APPROVED" }] }),
       },
       include: {
         author: {
@@ -58,6 +71,15 @@ router.get("/posts", async (req, res) => {
             },
           },
         },
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            logoUrl: true,
+            isVerified: true,
+          },
+        },
         likes: true,
       },
       orderBy: {
@@ -65,7 +87,7 @@ router.get("/posts", async (req, res) => {
       },
     });
 
-    const userId = (req as any).user?.id;
+    const userId = (req as any).user?.userId;
     const formatted = posts.map((post) => {
       const isLiked = userId ? post.likes.some((l) => l.userId === userId) : false;
       return {
@@ -77,6 +99,7 @@ router.get("/posts", async (req, res) => {
           role: post.author.role,
           isOfficial: post.isOfficial,
         },
+        organization: post.organization,
         type: post.type,
         content: post.content,
         imageUrls: post.imageUrls,
@@ -101,13 +124,27 @@ router.get("/posts", async (req, res) => {
 // ── POST /posts — create a feed post
 router.post("/posts", requireAuth, upload.array("images", 10), async (req, res) => {
   try {
-    const { content, type, tags } = req.body;
+    const { content, type, tags, organizationId } = req.body;
     if (!content || typeof content !== "string" || content.trim().length === 0) {
       res.status(400).json({ message: "Постын агуулга шаардлагатай" });
       return;
     }
 
-    const authorId = (req as any).user.id;
+    const authorId = (req as any).user.userId;
+    const targetOrganizationId =
+      typeof organizationId === "string" && organizationId.trim()
+        ? organizationId.trim()
+        : null;
+
+    if (targetOrganizationId) {
+      const permission = await assertOrgPermission(
+        req,
+        res,
+        targetOrganizationId,
+        Permission.MANAGE_SERVICES,
+      );
+      if (!permission) return;
+    }
 
     // Process files if uploaded
     let imageUrls: string[] = [];
@@ -138,13 +175,25 @@ router.post("/posts", requireAuth, upload.array("images", 10), async (req, res) 
     const validTypes = ["ANNOUNCEMENT", "UPDATE", "ALERT", "PROMOTION", "GENERAL"];
     const postType = validTypes.includes(type) ? type : "GENERAL";
 
+    const reviewData = targetOrganizationId
+      ? await getReviewStatusForVendorMutation()
+      : {
+          reviewStatus: VendorContentReviewStatus.APPROVED,
+          reviewedAt: new Date(),
+          reviewedById: null,
+        };
+
     const post = await prisma.post.create({
       data: {
         authorId,
+        submittedById: authorId,
+        organizationId: targetOrganizationId,
         content: content.trim(),
         type: postType as any,
         imageUrls,
         tags: parsedTags,
+        isOfficial: Boolean(targetOrganizationId),
+        ...reviewData,
       },
       include: {
         author: {
@@ -159,6 +208,15 @@ router.post("/posts", requireAuth, upload.array("images", 10), async (req, res) 
             },
           },
         },
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            logoUrl: true,
+            isVerified: true,
+          },
+        },
       },
     });
 
@@ -171,6 +229,7 @@ router.post("/posts", requireAuth, upload.array("images", 10), async (req, res) 
         role: post.author.role,
         isOfficial: post.isOfficial,
       },
+      organization: post.organization,
       type: post.type,
       content: post.content,
       imageUrls: post.imageUrls,
@@ -189,11 +248,102 @@ router.post("/posts", requireAuth, upload.array("images", 10), async (req, res) 
   }
 });
 
+// ── PATCH /posts/:id — update an organization feed post
+router.patch("/posts/:id", requireAuth, async (req, res) => {
+  try {
+    const { content, type } = req.body as {
+      content?: string;
+      type?: string;
+    };
+
+    const existing = await prisma.post.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, authorId: true, organizationId: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ message: "Пост олдсонгүй" });
+    }
+
+    const userId = (req as any).user?.userId;
+    if (existing.organizationId) {
+      const permission = await assertOrgPermission(
+        req,
+        res,
+        existing.organizationId,
+        Permission.MANAGE_SERVICES,
+      );
+      if (!permission) return;
+    } else if (existing.authorId !== userId) {
+      return res.status(403).json({ message: "Пост засах эрхгүй байна" });
+    }
+
+    const data: Parameters<typeof prisma.post.update>[0]["data"] = {};
+    if (content !== undefined) {
+      if (!content.trim()) {
+        return res.status(400).json({ message: "Постын агуулга шаардлагатай" });
+      }
+      data.content = content.trim();
+    }
+    if (type !== undefined) {
+      const validTypes = ["ANNOUNCEMENT", "UPDATE", "ALERT", "PROMOTION", "GENERAL"];
+      data.type = (validTypes.includes(type) ? type : "GENERAL") as any;
+    }
+    if (existing.organizationId) {
+      Object.assign(data, {
+        ...(await getReviewStatusForVendorMutation()),
+        submittedById: userId,
+      });
+    }
+
+    const post = await prisma.post.update({
+      where: { id: existing.id },
+      data,
+    });
+
+    return res.json(post);
+  } catch (error) {
+    console.error("PATCH /posts/:id error", error);
+    return res.status(500).json({ message: "Пост засахад алдаа гарлаа" });
+  }
+});
+
+// ── DELETE /posts/:id — remove an organization feed post
+router.delete("/posts/:id", requireAuth, async (req, res) => {
+  try {
+    const existing = await prisma.post.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, authorId: true, organizationId: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ message: "Пост олдсонгүй" });
+    }
+
+    const userId = (req as any).user?.userId;
+    if (existing.organizationId) {
+      const permission = await assertOrgPermission(
+        req,
+        res,
+        existing.organizationId,
+        Permission.MANAGE_SERVICES,
+      );
+      if (!permission) return;
+    } else if (existing.authorId !== userId) {
+      return res.status(403).json({ message: "Пост устгах эрхгүй байна" });
+    }
+
+    await prisma.post.delete({ where: { id: existing.id } });
+    return res.json({ message: "Пост устгагдлаа" });
+  } catch (error) {
+    console.error("DELETE /posts/:id error", error);
+    return res.status(500).json({ message: "Пост устгахад алдаа гарлаа" });
+  }
+});
+
 // ── POST /posts/:id/like — toggle like
 router.post("/posts/:id/like", requireAuth, async (req, res) => {
   try {
     const postId = req.params.id;
-    const userId = (req as any).user.id;
+    const userId = (req as any).user.userId;
 
     const post = await prisma.post.findUnique({ where: { id: postId } });
     if (!post) {

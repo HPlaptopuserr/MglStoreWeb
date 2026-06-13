@@ -464,11 +464,15 @@ model UpgradePlan {
 model ServicePost {
   id             String             @id @default(uuid())
   organizationId String
+  submittedById  String?
+  reviewedById   String?
   title          String
   description    String?
   priceText      String?
   tags           String[]           @default([])
   isActive       Boolean            @default(true)
+  reviewStatus   VendorContentReviewStatus @default(APPROVED)
+  reviewedAt     DateTime?
   viewCount      Int                @default(0)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
@@ -478,6 +482,8 @@ model ServicePost {
   requests       ServiceRequest[]
 
   @@index([organizationId, isActive])
+  @@index([reviewStatus])
+  @@index([submittedById])
   @@index([deletedAt])
   @@index([createdAt])
 }
@@ -662,6 +668,8 @@ model Category {
 model Product {
   id                   String                      @id @default(uuid())
   organizationId       String
+  submittedById        String?
+  reviewedById         String?
   name                 String
   description          String?
   sku                  String?
@@ -677,6 +685,8 @@ model Product {
   preorderLeadTimeDays Int?
   preorderNote         String?
   isActive             Boolean                     @default(true)
+  reviewStatus         VendorContentReviewStatus   @default(APPROVED)
+  reviewedAt           DateTime?
   categoryId           String?
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
@@ -697,6 +707,8 @@ model Product {
 
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
+  @@index([reviewStatus])
+  @@index([submittedById])
   @@index([categoryId])
   @@index([businessCategoryId])
   @@index([deletedAt])
@@ -1341,6 +1353,8 @@ model Post {
   id             String        @id @default(uuid())
   authorId       String
   organizationId String?
+  submittedById  String?
+  reviewedById   String?
   type           PostType      @default(GENERAL)
   content        String
   imageUrls      String[]      @default([])
@@ -1350,6 +1364,8 @@ model Post {
   commentCount   Int           @default(0)
   isPinned       Boolean       @default(false)
   isOfficial     Boolean       @default(false)
+  reviewStatus   VendorContentReviewStatus @default(APPROVED)
+  reviewedAt     DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   author         User          @relation("PostAuthor", fields: [authorId], references: [id])
@@ -1359,6 +1375,8 @@ model Post {
 
   @@index([authorId])
   @@index([organizationId])
+  @@index([reviewStatus])
+  @@index([submittedById])
   @@index([type])
   @@index([isPinned])
   @@index([createdAt])
@@ -1642,6 +1660,12 @@ enum ProductApprovalStatus {
   REJECTED
   CHANGES_REQUESTED
   CANCELLED
+}
+
+enum VendorContentReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum CardTerminalRequestStatus {

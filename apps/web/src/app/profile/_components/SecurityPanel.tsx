@@ -43,21 +43,21 @@ export function SecurityPanel({
   onSubmit,
 }: SecurityPanelProps) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-      <div className="mb-6">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">
+    <section className="rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-sm md:rounded-3xl md:p-6">
+      <div className="mb-4 md:mb-6">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500 md:text-xs md:tracking-[0.22em]">
           Security
         </p>
-        <h2 className="mt-2 text-2xl font-black text-slate-950">
+        <h2 className="mt-1.5 text-xl font-black text-slate-950 md:mt-2 md:text-2xl">
           Нууц үг солих
         </h2>
-        <p className="mt-2 text-sm font-semibold text-slate-500">
+        <p className="mt-1.5 text-xs font-semibold leading-5 text-slate-500 md:mt-2 md:text-sm">
           Account болон худалдан авсан файлуудаа хамгаалахын тулд хүчтэй нууц
           үг ашиглаарай.
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="max-w-2xl space-y-5">
+      <form onSubmit={onSubmit} className="max-w-2xl space-y-4 md:space-y-5">
         <div>
           <label className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
             Одоогийн нууц үг
@@ -68,7 +68,7 @@ export function SecurityPanel({
               type={showCurrent ? "text" : "password"}
               value={currentPassword}
               onChange={(event) => onCurrentPassword(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-11 pr-12 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-12 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100 md:py-4"
             />
             <button
               type="button"
@@ -91,7 +91,7 @@ export function SecurityPanel({
               value={newPassword}
               onChange={(event) => onNewPassword(event.target.value)}
               placeholder="Дор хаяж 6 тэмдэгт"
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-11 pr-12 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-12 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100 md:py-4"
             />
             <button
               type="button"
@@ -113,7 +113,7 @@ export function SecurityPanel({
               type="password"
               value={confirmPassword}
               onChange={(event) => onConfirmPassword(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100 md:py-4"
             />
           </div>
         </div>
@@ -134,7 +134,7 @@ export function SecurityPanel({
         <button
           type="submit"
           disabled={loading}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-6 py-4 text-sm font-black text-white transition hover:bg-orange-600 disabled:opacity-60"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-6 py-3.5 text-sm font-black text-white transition hover:bg-orange-600 disabled:opacity-60 sm:w-auto md:py-4"
         >
           {loading ? <Loader2 size={17} className="animate-spin" /> : <Shield size={17} />}
           {loading ? "Солиж байна..." : "Нууц үг солих"}

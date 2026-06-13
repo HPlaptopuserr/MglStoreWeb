@@ -19,6 +19,7 @@ import {
   FileText,
   BarChart3,
   GraduationCap,
+  ShieldCheck,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
 import { MobileDashboard } from "@/components/organisms/MobileDashboard";
@@ -74,6 +75,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     label: "Түншүүд",
     icon: Users,
     href: "/partners",
+    requires: ["MANAGE_ORGANIZATIONS"],
+  },
+  {
+    id: "vendor-content-review",
+    label: "Vendor бараа хяналт",
+    icon: ShieldCheck,
+    href: "/vendor-content-review",
     requires: ["MANAGE_ORGANIZATIONS"],
   },
   {

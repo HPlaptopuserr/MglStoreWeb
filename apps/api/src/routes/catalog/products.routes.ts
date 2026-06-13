@@ -26,6 +26,10 @@ import {
   isOrgWebProductsEnabled,
 } from "../../services/product-visibility.service";
 import {
+  getReviewStatusForVendorMutation,
+  isApprovedVendorContent,
+} from "../../services/vendor-content-review.service";
+import {
   extractExcelImages,
   uploadBufferToSupabase,
   PRODUCT_COL_MAP,
@@ -332,6 +336,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       organization: { deletedAt: null, status: "ACTIVE" },
     };
     if (!includeInactive) where.isActive = true;
+    if (!includeInactive) where.reviewStatus = "APPROVED";
     if (organizationId) where.organizationId = organizationId;
     if (businessCategoryId) where.businessCategoryId = businessCategoryId;
 
@@ -725,6 +730,8 @@ router.post(
         errorRows: [],
         products: [],
       };
+      const actorId = (req as any).user?.userId ?? null;
+      const reviewData = await getReviewStatusForVendorMutation();
 
       // Pre-scan: detect duplicate SKUs within the file
       const skusInFile = new Map<string, number>();
@@ -878,6 +885,8 @@ router.post(
                 : null,
             businessCategoryId: orgBusinessCategoryId,
             isActive: true,
+            submittedById: actorId,
+            ...reviewData,
           };
 
           let product;
@@ -1031,6 +1040,7 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
 
     const isPubliclyVisible =
       product.isActive &&
+      isApprovedVendorContent(product.reviewStatus) &&
       product.organization.deletedAt === null &&
       product.organization.status === "ACTIVE" &&
       (await isOrgWebProductsEnabled(product.organizationId));
@@ -1190,11 +1200,13 @@ router.post(
         ? images.slice(0, 5)
         : [];
       const actorId = (req as any).user?.userId ?? null;
+      const reviewData = await getReviewStatusForVendorMutation();
 
       const product = await prisma.$transaction(async (tx) => {
         const created = await tx.product.create({
           data: {
             organizationId,
+            submittedById: actorId,
             name: String(name).trim(),
             description: description ? String(description).trim() : null,
             sku: normalizedSku,
@@ -1213,6 +1225,7 @@ router.post(
                 : null,
             businessCategoryId: businessCategoryId || null,
             isActive: true,
+            ...reviewData,
             images: {
               create: imageUrls.map((url) => ({ url })),
             },
@@ -1387,6 +1400,11 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (isActive !== undefined) data.isActive = Boolean(isActive);
 
     const actorId = (req as any).user?.userId ?? null;
+    const reviewData = await getReviewStatusForVendorMutation();
+    Object.assign(data, {
+      ...reviewData,
+      submittedById: actorId,
+    });
     const product = await prisma.$transaction(async (tx) => {
       if (Array.isArray(images)) {
         const imageUrls = images.slice(0, 5);

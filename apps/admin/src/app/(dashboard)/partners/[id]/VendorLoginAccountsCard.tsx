@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Check,
@@ -51,6 +51,15 @@ type PartnerForLoginAccounts = {
   };
 };
 
+type PersonalAccountOption = {
+  id: string;
+  email: string;
+  fullName?: string | null;
+  phone?: string | null;
+  avatarUrl?: string | null;
+  isActive?: boolean;
+};
+
 type Props = {
   partner: PartnerForLoginAccounts;
   onMembersUpdated: (members: VendorLoginMember[]) => void;
@@ -62,6 +71,8 @@ const roleLabel: Record<string, string> = {
   STAFF: "Staff",
   VIEWER: "Viewer",
 };
+
+const assignableRoles = ["ADMIN", "STAFF", "VIEWER"] as const;
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
@@ -150,6 +161,11 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
   const [grantOpen, setGrantOpen] = useState(false);
   const [grantError, setGrantError] = useState("");
   const [grantNotice, setGrantNotice] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [userResults, setUserResults] = useState<PersonalAccountOption[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [selectedAccount, setSelectedAccount] =
+    useState<PersonalAccountOption | null>(null);
   const [editingPhoneUserId, setEditingPhoneUserId] = useState<string | null>(
     null,
   );
@@ -162,6 +178,44 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
     phone: "",
     role: members.length === 0 ? "OWNER" : "ADMIN",
   });
+
+  useEffect(() => {
+    if (!grantOpen) return;
+
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      setUsersLoading(true);
+      try {
+        const params = new URLSearchParams({ page: "1", limit: "20" });
+        const query = userSearch.trim();
+        if (query) params.set("search", query);
+        const res = await adminFetch(`${API}/admin/users?${params.toString()}`);
+        const data = await res.json().catch(() => null);
+        if (!res.ok || cancelled) return;
+
+        const memberUserIds = new Set(members.map((member) => member.userId));
+        const items = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.items)
+            ? data.items
+            : [];
+        setUserResults(
+          items
+            .filter((item: PersonalAccountOption) => !memberUserIds.has(item.id))
+            .slice(0, 8),
+        );
+      } catch {
+        if (!cancelled) setUserResults([]);
+      } finally {
+        if (!cancelled) setUsersLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [grantOpen, members, userSearch]);
 
   const copyText = async (text: string, key: string) => {
     await navigator.clipboard.writeText(text);
@@ -219,6 +273,29 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
       onMembersUpdated(data.members ?? []);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Owner солиход алдаа гарлаа");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const changeRole = async (member: VendorLoginMember, role: string) => {
+    if (role === member.role) return;
+    const key = `role:${member.userId}`;
+    setBusyAction(key);
+    try {
+      const res = await adminFetch(
+        `${API}/partners/${partner.id}/members/${member.userId}/role`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role }),
+        },
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message || "Role солиход алдаа гарлаа");
+      onMembersUpdated(data.members ?? []);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Role солиход алдаа гарлаа");
     } finally {
       setBusyAction(null);
     }
@@ -296,9 +373,35 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
     }
   };
 
+  const selectPersonalAccount = (account: PersonalAccountOption) => {
+    setSelectedAccount(account);
+    setUserSearch(account.fullName || account.email);
+    setGrantError("");
+    setGrantNotice("");
+    setGrantForm((prev) => ({
+      ...prev,
+      fullName: account.fullName || account.email,
+      email: account.email,
+      phone: account.phone || "",
+    }));
+  };
+
+  const clearSelectedAccount = () => {
+    setSelectedAccount(null);
+    setUserSearch("");
+    setGrantError("");
+    setGrantNotice("");
+    setGrantForm((prev) => ({
+      ...prev,
+      fullName: "",
+      email: "",
+      phone: "",
+    }));
+  };
+
   const grantLoginAccess = async () => {
-    if (!grantForm.fullName.trim() || !grantForm.email.trim()) {
-      setGrantError("Нэр болон login email шаардлагатай.");
+    if (!selectedAccount) {
+      setGrantError("Personal account-оос хэрэглэгч хайж сонгоно уу.");
       setGrantNotice("");
       return;
     }
@@ -386,6 +489,8 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
         } catch {}
 
         setGrantForm({ fullName: "", email: "", phone: "", role: "ADMIN" });
+        setSelectedAccount(null);
+        setUserSearch("");
         setGrantOpen(false);
         return;
       }
@@ -416,6 +521,8 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
         setVisibleSecrets((prev) => ({ ...prev, [`invite:${data.grantedUserId}`]: true }));
       }
       setGrantForm({ fullName: "", email: "", phone: "", role: "ADMIN" });
+      setSelectedAccount(null);
+      setUserSearch("");
       setGrantOpen(false);
     } catch (error) {
       setGrantError(
@@ -452,6 +559,8 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
                 setGrantOpen((value) => !value);
                 setGrantError("");
                 setGrantNotice("");
+                setSelectedAccount(null);
+                setUserSearch("");
                 setGrantForm((prev) => ({ ...prev, role: members.length === 0 ? "OWNER" : prev.role }));
               }}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white shadow-sm transition hover:bg-slate-800"
@@ -498,17 +607,101 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
               </div>
             )}
 
-            <div className="grid gap-3 md:grid-cols-4">
-              <div>
+            <div className="grid gap-3 md:grid-cols-5">
+              <div className="md:col-span-2">
                 <label className="mb-1 block text-xs font-black uppercase tracking-[0.14em] text-slate-500">
-                  Нэр
+                  Personal account хайх
                 </label>
-                <input
-                  value={grantForm.fullName}
-                  onChange={(event) => setGrantForm((prev) => ({ ...prev, fullName: event.target.value }))}
-                  placeholder="Owner нэр"
-                  className="w-full rounded-xl border border-indigo-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
-                />
+                {selectedAccount ? (
+                  <div className="flex items-center gap-3 rounded-xl border border-indigo-200 bg-white px-3 py-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-950 text-xs font-black text-white">
+                      {selectedAccount.avatarUrl ? (
+                        <img
+                          src={selectedAccount.avatarUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        (selectedAccount.fullName || selectedAccount.email || "?")
+                          .charAt(0)
+                          .toUpperCase()
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-black text-slate-950">
+                        {selectedAccount.fullName || "Нэргүй хэрэглэгч"}
+                      </p>
+                      <p className="truncate text-xs font-semibold text-slate-500">
+                        {selectedAccount.email}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={clearSelectedAccount}
+                      className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                      aria-label="Сонгосон хэрэглэгч цэвэрлэх"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      value={userSearch}
+                      onChange={(event) => {
+                        setUserSearch(event.target.value);
+                        if (grantError) setGrantError("");
+                        if (grantNotice) setGrantNotice("");
+                      }}
+                      placeholder="Нэр, email, утсаар хайх"
+                      className="w-full rounded-xl border border-indigo-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
+                    />
+                    <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 overflow-hidden rounded-2xl border border-indigo-100 bg-white shadow-xl">
+                      {usersLoading ? (
+                        <div className="flex items-center gap-2 px-3 py-3 text-xs font-bold text-slate-500">
+                          <Loader2 size={14} className="animate-spin" />
+                          Хайж байна...
+                        </div>
+                      ) : userResults.length === 0 ? (
+                        <div className="px-3 py-3 text-xs font-bold text-slate-400">
+                          Personal account олдсонгүй
+                        </div>
+                      ) : (
+                        userResults.map((account) => (
+                          <button
+                            key={account.id}
+                            type="button"
+                            onClick={() => selectPersonalAccount(account)}
+                            className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-indigo-50"
+                          >
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-xs font-black text-slate-600">
+                              {account.avatarUrl ? (
+                                <img
+                                  src={account.avatarUrl}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                (account.fullName || account.email || "?")
+                                  .charAt(0)
+                                  .toUpperCase()
+                              )}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-black text-slate-900">
+                                {account.fullName || "Нэргүй хэрэглэгч"}
+                              </span>
+                              <span className="block truncate text-xs font-semibold text-slate-500">
+                                {account.email}
+                                {account.phone ? ` · ${account.phone}` : ""}
+                              </span>
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-xs font-black uppercase tracking-[0.14em] text-slate-500">
@@ -517,23 +710,10 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
                 <input
                   type="email"
                   value={grantForm.email}
-                  onChange={(event) => {
-                    setGrantForm((prev) => ({ ...prev, email: event.target.value }));
-                    if (grantError && isValidEmail(event.target.value)) setGrantError("");
-                    if (grantNotice) setGrantNotice("");
-                  }}
-                  placeholder="owner@company.mn"
-                  className={`w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:ring-4 ${
-                    grantForm.email && !isValidEmail(grantForm.email)
-                      ? "border-red-300 focus:border-red-500 focus:ring-red-500/10"
-                      : "border-indigo-200 focus:border-indigo-500 focus:ring-indigo-500/10"
-                  }`}
+                  readOnly
+                  placeholder="Personal account сонгоно"
+                  className="w-full rounded-xl border border-indigo-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none"
                 />
-                {grantForm.email && !isValidEmail(grantForm.email) && (
-                  <p className="mt-1 text-xs font-semibold text-red-600">
-                    Email бүрэн бичнэ: name@example.mn
-                  </p>
-                )}
               </div>
               <div>
                 <label className="mb-1 block text-xs font-black uppercase tracking-[0.14em] text-slate-500">
@@ -541,9 +721,9 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
                 </label>
                 <input
                   value={grantForm.phone}
-                  onChange={(event) => setGrantForm((prev) => ({ ...prev, phone: event.target.value }))}
-                  placeholder="9911xxxx"
-                  className="w-full rounded-xl border border-indigo-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
+                  readOnly
+                  placeholder="Personal account дээр утас алга"
+                  className="w-full rounded-xl border border-indigo-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none"
                 />
               </div>
               <div>
@@ -565,13 +745,13 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
 
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs font-semibold leading-5 text-indigo-700">
-                Password тохируулаагүй шинэ user бол invite link автоматаар үүснэ.
+                Сонгосон personal account-д энэ байгууллагын page role онооно.
               </p>
               <button
                 onClick={grantLoginAccess}
                 disabled={
                   busyAction === "grant-login" ||
-                  !grantForm.fullName.trim() ||
+                  !selectedAccount ||
                   !isValidEmail(grantForm.email)
                 }
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
@@ -722,7 +902,29 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
                       </div>
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[420px]">
+                    <div className="grid gap-2 sm:grid-cols-4 lg:min-w-[560px]">
+                      <label className="grid gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                          Page role
+                        </span>
+                        <select
+                          value={member.role}
+                          disabled={
+                            member.role === "OWNER" ||
+                            Boolean(member.isPrimary) ||
+                            busyAction === `role:${member.userId}`
+                          }
+                          onChange={(event) => changeRole(member, event.target.value)}
+                          className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-black text-slate-900 outline-none transition focus:border-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                        >
+                          {member.role === "OWNER" && <option value="OWNER">Owner</option>}
+                          {assignableRoles.map((role) => (
+                            <option key={role} value={role}>
+                              {roleLabel[role]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <button
                         onClick={() => resetPassword(member)}
                         disabled={busyAction === `reset:${member.userId}`}

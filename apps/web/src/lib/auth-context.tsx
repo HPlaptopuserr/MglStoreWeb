@@ -17,6 +17,19 @@ export type AuthAddress = {
   isDefault?: boolean;
 };
 
+export type AuthOrganization = {
+  id: string;
+  name: string;
+  slug?: string | null;
+  logoUrl?: string | null;
+  role: string;
+  isPrimary?: boolean;
+  capabilities?: string[];
+  type?: string | null;
+  status?: string | null;
+  isVerified?: boolean;
+};
+
 export type AuthUser = {
   id: string;
   email: string | null;
@@ -41,6 +54,7 @@ export type AuthUser = {
   orgRole?: string | null;
   organizationId?: string | null;
   organizationName?: string | null;
+  organizations?: AuthOrganization[];
 };
 
 type AuthResponsePayload = {
@@ -135,7 +149,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!headers.has("Content-Type") && init?.body && !isFormData) {
       headers.set("Content-Type", "application/json");
     }
-    const res = await fetch(url, { ...init, headers });
+    let res: Response;
+    try {
+      res = await fetch(url, { ...init, headers });
+    } catch {
+      return new Response(
+        JSON.stringify({
+          message:
+            "API сервертэй холбогдож чадсангүй. Backend ажиллаж байгаа эсэхийг шалгана уу.",
+        }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
     if (res.status === 401) {
       // Token expired — auto logout
       localStorage.removeItem(AUTH_TOKEN_KEY);

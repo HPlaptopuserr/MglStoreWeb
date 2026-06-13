@@ -29,7 +29,7 @@ type ApprovePartnerRequestResult = {
     inviteToken: string | null;
     inviteTokenExpiresAt: Date | null;
   };
-  inviteLink: string;
+  inviteLink: string | null;
 };
 
 type RejectPartnerRequestResult = {
@@ -141,21 +141,8 @@ export async function approvePartnerRequest(
       })
     : null;
 
-  // If user exists and already has an active org membership, we can't approve
-  if (existingUser) {
-    const hasOrg = await prisma.organizationMember.findFirst({
-      where: { userId: existingUser.id, isActive: true },
-      select: { id: true },
-    });
-    if (hasOrg) {
-      throw new Error(
-        "Энэ email дээр user аль хэдийн өөр байгууллагад бүртгэлтэй байна",
-      );
-    }
-  }
-
-  // If existingUser exists but has no org and no password, we'll reuse it
-  // (likely from a previous failed/cancelled approval)
+  // Reuse existing users across organizations. OrganizationMember enforces
+  // uniqueness only for the same user + organization pair.
 
   const slug = await generateUniqueOrganizationSlug(
     existingRequest.organizationName,
@@ -164,9 +151,9 @@ export async function approvePartnerRequest(
   const taxId =
     existingRequest.taxId?.trim() || (await generateUniqueTaxId("TEMP"));
 
-  // Generate invite token for password setup
-  const inviteToken = generateInviteToken();
-  const inviteTokenExpiresAt = getInviteTokenExpiry();
+  // Generate invite token only when the reused/new user still needs a password.
+  const inviteToken = existingUser?.passwordHash ? null : generateInviteToken();
+  const inviteTokenExpiresAt = inviteToken ? getInviteTokenExpiry() : null;
 
   const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const now = new Date();
@@ -200,17 +187,14 @@ export async function approvePartnerRequest(
       },
     });
 
-    // Either use existing user (no org, no password) or create new user
+    // Either reuse an existing account or create a new user.
     let finalUser;
     if (existingUser) {
-      // Update existing user to link to new organization
       finalUser = await tx.user.update({
         where: { id: existingUser.id },
         data: {
-          role: PlatformRole.USER,
           isActive: true,
           emailVerified: true,
-          onboardingSource: OnboardingSource.ADMIN,
         },
         select: {
           id: true,
@@ -252,14 +236,15 @@ export async function approvePartnerRequest(
       },
     });
 
-    // Create setup token for vendor
-    await tx.vendorSetupToken.create({
-      data: {
-        userId: finalUser.id,
-        token: inviteToken,
-        expiresAt: inviteTokenExpiresAt,
-      },
-    });
+    if (inviteToken && inviteTokenExpiresAt) {
+      await tx.vendorSetupToken.create({
+        data: {
+          userId: finalUser.id,
+          token: inviteToken,
+          expiresAt: inviteTokenExpiresAt,
+        },
+      });
+    }
 
     await tx.organizationMember.create({
       data: {
@@ -298,7 +283,7 @@ export async function approvePartnerRequest(
     };
   });
 
-  const inviteLink = `${VENDOR_APP_URL}/set-password?token=${inviteToken}`;
+  const inviteLink = inviteToken ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null;
 
   return {
     ...result,

@@ -17,6 +17,9 @@ import {
   Package,
   FolderKanban,
   GraduationCap,
+  Building2,
+  RefreshCcw,
+  ShieldCheck,
 } from "lucide-react";
 import Image from "next/image";
 import { SearchBar } from "../../molecules/SearchBar";
@@ -30,7 +33,7 @@ import { CATEGORY_COLORS, NAV_LINKS } from "@/lib/constants";
 import { useRouter, usePathname } from "next/navigation";
 import { useCart } from "@/hooks/useCart";
 import { CartDrawer } from "@/components/organisms/CartDrawer";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, type AuthOrganization, type AuthUser } from "@/lib/auth-context";
 import { MobileBottomNav } from "@/components/organisms/layouts/MobileBottomNav";
 import { API, resolveApiAssetUrl } from "@/lib/api";
 import {
@@ -180,7 +183,7 @@ export const Header = () => {
     <>
       <header className="fixed left-0 right-0 top-0 z-50 flex flex-col bg-white/95 shadow-sm backdrop-blur-md">
         <div className="border-b border-slate-100">
-          <div className="container mx-auto flex h-14 items-center justify-between gap-3 px-4 md:h-16 md:gap-6">
+          <div className="container mx-auto flex h-14 min-w-0 items-center justify-between gap-2 px-3 md:h-16 md:gap-6 md:px-4">
             <button
               type="button"
               onClick={() => setMobileMenuOpen((v) => !v)}
@@ -194,15 +197,14 @@ export const Header = () => {
               )}
             </button>
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex min-w-0 shrink items-center gap-2 md:shrink-0">
               <Link href="/" onClick={closeMobile}>
                 <Image
                   src="/logo.png"
                   alt="MglStore Logo"
                   width={140}
                   height={52}
-                  className="object-contain"
-                  style={{ width: 160, height: "auto" }}
+                  className="h-auto w-[112px] object-contain sm:w-[140px] md:w-[160px]"
                   priority
                 />
               </Link>
@@ -223,14 +225,16 @@ export const Header = () => {
               <SearchBar />
             </div>
 
-            <div className="flex shrink-0 items-center gap-2 sm:gap-6">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-6">
               <button
                 type="button"
                 onClick={() => setCartOpen(true)}
-                className="relative flex items-center gap-1.5 rounded-full bg-amber-500 px-3.5 py-2 text-sm font-bold text-white shadow-md transition-colors hover:bg-amber-600 sm:gap-2 sm:px-5 sm:py-2.5 sm:text-base"
+                className="relative flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full bg-amber-500 px-2.5 text-sm font-bold text-white shadow-md transition-colors hover:bg-amber-600 sm:h-auto sm:gap-2 sm:px-5 sm:py-2.5 sm:text-base"
               >
                 <ShoppingCart size={16} className="sm:h-5 sm:w-5" />
-                <span>₮{total > 0 ? total.toLocaleString() : "0"}</span>
+                <span className="hidden sm:inline">
+                  ₮{total > 0 ? total.toLocaleString() : "0"}
+                </span>
                 {count > 0 && (
                   <span className="absolute -top-2 -right-2 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white px-1 shadow">
                     {count}
@@ -256,42 +260,11 @@ export const Header = () => {
                   </button>
 
                   {userDropdownOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-64 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl z-50">
-                      <div className="border-b border-gray-100 px-4 py-3">
-                        <p className="text-sm font-bold text-gray-900 truncate">
-                          {user.fullName?.trim() || "Хэрэглэгч"}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {user.email || user.phone || ""}
-                        </p>
-                      </div>
-                      <div className="py-1">
-                        <Link
-                          href="/profile?tab=orders"
-                          onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-                        >
-                          <Package size={16} className="text-gray-400" />
-                          Миний захиалгууд
-                        </Link>
-                        <Link
-                          href="/profile"
-                          onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-                        >
-                          <Settings size={16} className="text-gray-400" />
-                          Миний профайл
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={handleLogout}
-                          className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50"
-                        >
-                          <LogOut size={16} />
-                          Гарах
-                        </button>
-                      </div>
-                    </div>
+                    <HeaderAccountDropdown
+                      onClose={() => setUserDropdownOpen(false)}
+                      onLogout={handleLogout}
+                      user={user}
+                    />
                   )}
                 </div>
               ) : (
@@ -676,10 +649,212 @@ export const Header = () => {
       )}
 
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
-      <MobileBottomNav
-        onCartOpen={() => setCartOpen(true)}
-        onAuthOpen={openAuthModal}
-      />
+      <React.Suspense fallback={null}>
+        <MobileBottomNav
+          onCartOpen={() => setCartOpen(true)}
+          onAuthOpen={openAuthModal}
+        />
+      </React.Suspense>
     </>
   );
 };
+
+const headerRoleLabel: Record<string, string> = {
+  OWNER: "Эзэмшигч",
+  ADMIN: "Админ",
+  STAFF: "Ажилтан",
+  VIEWER: "Ажиглагч",
+};
+
+function getHeaderOrganizations(user: AuthUser): AuthOrganization[] {
+  if (Array.isArray(user.organizations) && user.organizations.length > 0) {
+    return user.organizations;
+  }
+
+  if (!user.organizationId || !user.orgRole) return [];
+
+  return [
+    {
+      id: user.organizationId,
+      name: user.organizationName || "Байгууллага",
+      role: user.orgRole,
+      isPrimary: true,
+    },
+  ];
+}
+
+function getAccountInitials(value?: string | null) {
+  return (value || "?").trim()[0]?.toUpperCase() || "?";
+}
+
+function HeaderAccountDropdown({
+  onClose,
+  onLogout,
+  user,
+}: {
+  onClose: () => void;
+  onLogout: () => void;
+  user: AuthUser;
+}) {
+  const displayName = user.fullName?.trim() || user.email || "Хэрэглэгч";
+  const organizations = getHeaderOrganizations(user);
+  const featuredOrganizations = organizations.slice(0, 2);
+
+  return (
+    <div className="absolute right-0 top-full z-50 mt-3 w-[340px] overflow-hidden rounded-[24px] border border-slate-200 bg-white p-3 text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/5">
+      <div className="rounded-[20px] bg-slate-50 p-2 ring-1 ring-slate-200/80">
+        <Link
+          href="/profile"
+          onClick={onClose}
+          className="flex items-center gap-3 rounded-[17px] bg-white px-3 py-3 shadow-sm shadow-slate-200/60 ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:ring-orange-200"
+        >
+          <HeaderAvatar
+            label={displayName}
+            src={user.avatarUrl}
+            className="h-12 w-12"
+          />
+          <div className="min-w-0">
+            <p className="truncate text-base font-black leading-tight text-slate-950">
+              {displayName}
+            </p>
+            <p className="mt-0.5 truncate text-xs font-bold text-slate-500">
+              {user.email || user.phone || "Personal profile"}
+            </p>
+          </div>
+        </Link>
+
+        {featuredOrganizations.length > 0 && (
+          <>
+            <div className="mx-3 my-2.5 h-px bg-slate-200" />
+            <div className="space-y-2">
+              {featuredOrganizations.map((org) => (
+                <Link
+                  key={org.id}
+                  href={`/profile/organizations/${encodeURIComponent(org.id)}`}
+                  onClick={onClose}
+                  className="flex items-center gap-3 rounded-[16px] bg-white px-3 py-2.5 ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:bg-orange-50 hover:ring-orange-200"
+                >
+                  <HeaderAvatar
+                    label={org.name}
+                    src={org.logoUrl}
+                    icon={<Building2 size={22} />}
+                    className="h-11 w-11 bg-orange-50 text-orange-600"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-black text-slate-950">
+                      {org.name}
+                    </p>
+                    <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-bold text-slate-500">
+                      <ShieldCheck size={12} />
+                      {headerRoleLabel[org.role] || org.role}
+                    </p>
+                  </div>
+                  <ChevronRight size={18} className="text-slate-400" />
+                </Link>
+              ))}
+            </div>
+          </>
+        )}
+
+        {organizations.length > featuredOrganizations.length && (
+          <>
+            <div className="mx-3 my-2.5 h-px bg-slate-200" />
+            <Link
+              href="/profile"
+              onClick={onClose}
+              className="flex h-11 items-center justify-center gap-2 rounded-[14px] bg-slate-900 text-sm font-black text-white transition hover:bg-orange-600"
+            >
+              <RefreshCcw size={17} />
+              Бүх profile харах ({organizations.length})
+            </Link>
+          </>
+        )}
+      </div>
+
+      <div className="mt-3 space-y-1">
+        <HeaderMenuLink
+          href="/profile?tab=orders"
+          icon={<Package size={19} />}
+          label="Миний захиалгууд"
+          onClick={onClose}
+        />
+        <HeaderMenuLink
+          href="/profile/settings"
+          icon={<Settings size={19} />}
+          label="Settings & privacy"
+          onClick={onClose}
+        />
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex w-full items-center gap-3 rounded-[16px] px-2 py-2.5 text-left text-sm font-bold text-red-600 transition hover:bg-red-50"
+        >
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-red-600">
+            <LogOut size={19} />
+          </span>
+          <span className="flex-1">Гарах</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HeaderAvatar({
+  className,
+  icon,
+  label,
+  src,
+}: {
+  className?: string;
+  icon?: React.ReactNode;
+  label: string;
+  src?: string | null;
+}) {
+  if (src) {
+    return (
+      <span
+        className={`shrink-0 overflow-hidden rounded-full bg-slate-100 ${className || ""}`}
+      >
+        <img
+          src={resolveApiAssetUrl(src)}
+          alt=""
+          className="h-full w-full object-cover"
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-sm font-black text-white ${className || ""}`}
+    >
+      {icon || getAccountInitials(label)}
+    </span>
+  );
+}
+
+function HeaderMenuLink({
+  href,
+  icon,
+  label,
+  onClick,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className="flex items-center gap-3 rounded-[16px] px-2 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+    >
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+        {icon}
+      </span>
+      <span className="flex-1">{label}</span>
+      <ChevronRight size={19} className="text-slate-400" />
+    </Link>
+  );
+}

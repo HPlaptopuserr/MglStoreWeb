@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Home, Search, ShoppingCart, Package, User } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/hooks/useCart";
@@ -56,6 +56,7 @@ export function MobileBottomNav({
   onAuthOpen: () => void;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const { count } = useCart();
 
@@ -65,6 +66,12 @@ export function MobileBottomNav({
 
   const isActive = (href: string) => {
     const path = href.split("?")[0];
+    if (href === "/profile?tab=orders") {
+      return pathname === "/profile" && searchParams.get("tab") === "orders";
+    }
+    if (href === "/profile") {
+      return pathname === "/profile" && searchParams.get("tab") !== "orders";
+    }
     return path === "/" ? pathname === "/" : pathname.startsWith(path);
   };
 

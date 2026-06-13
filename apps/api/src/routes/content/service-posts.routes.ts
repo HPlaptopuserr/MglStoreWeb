@@ -4,6 +4,10 @@ import { Permission } from "@mgl/types";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
 import { requireActivePlan } from "../../middleware/plan-guard";
+import {
+  getReviewStatusForVendorMutation,
+  isApprovedVendorContent,
+} from "../../services/vendor-content-review.service";
 
 const router: ExpressRouter = Router();
 
@@ -19,6 +23,7 @@ router.get("/service-posts", async (req, res) => {
         deletedAt: null,
         ...(organizationId ? { organizationId: String(organizationId) } : {}),
         ...(activeOnly === "true" ? { isActive: true } : {}),
+        reviewStatus: "APPROVED",
       },
       include: {
         images: true,
@@ -52,6 +57,9 @@ router.get("/service-posts/:id", async (req, res) => {
     if (!post) {
       return res.status(404).json({ message: "Пост олдсонгүй" });
     }
+    if (!isApprovedVendorContent(post.reviewStatus)) {
+      return res.status(404).json({ message: "Пост олдсонгүй" });
+    }
 
     // increment view count without blocking
     prisma.servicePost
@@ -76,7 +84,7 @@ router.post("/service-posts/:id/request", requireAuth, async (req, res) => {
     }
 
     const post = await prisma.servicePost.findFirst({
-      where: { id: req.params.id, deletedAt: null, isActive: true },
+      where: { id: req.params.id, deletedAt: null, isActive: true, reviewStatus: "APPROVED" },
       select: {
         id: true,
         title: true,
@@ -149,15 +157,19 @@ router.post("/service-posts", requireAuth, requireOrgPermission({ from: "body" }
     }
 
     const imageUrls: string[] = Array.isArray(images) ? images.slice(0, MAX_IMAGES) : [];
+    const actorId = (req as any).user?.userId ?? null;
+    const reviewData = await getReviewStatusForVendorMutation();
 
     const post = await prisma.servicePost.create({
       data: {
         organizationId,
+        submittedById: actorId,
         title: title.trim(),
         description: description?.trim() || null,
         priceText: priceText?.trim() || null,
         tags: Array.isArray(tags) ? tags.filter((t: unknown) => typeof t === "string") : [],
         isActive: isActive !== false,
+        ...reviewData,
         images: {
           create: imageUrls.map((url) => ({ url })),
         },
@@ -203,6 +215,10 @@ router.patch("/service-posts/:id", requireAuth, async (req, res) => {
     if (priceText !== undefined) updateData.priceText = priceText?.trim() || null;
     if (tags !== undefined) updateData.tags = Array.isArray(tags) ? tags.filter((t: unknown) => typeof t === "string") : [];
     if (isActive !== undefined) updateData.isActive = Boolean(isActive);
+    Object.assign(updateData, {
+      ...(await getReviewStatusForVendorMutation()),
+      submittedById: (req as any).user?.userId ?? null,
+    });
 
     if (Array.isArray(images)) {
       const imageUrls = images.slice(0, MAX_IMAGES);

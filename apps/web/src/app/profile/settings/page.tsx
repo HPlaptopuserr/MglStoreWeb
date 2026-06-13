@@ -42,24 +42,28 @@ type ConfirmAction = {
 const sections: Array<{
   id: SettingsSection;
   label: string;
+  shortLabel: string;
   description: string;
   icon: typeof UserRound;
 }> = [
   {
     id: "profile",
     label: "Хувийн мэдээлэл",
+    shortLabel: "Мэдээлэл",
     description: "Нэр, зураг, холбоо барих",
     icon: UserRound,
   },
   {
     id: "address",
     label: "Хаяг ба зөвшөөрөл",
+    shortLabel: "Хаяг",
     description: "Хүргэлтийн хаяг, нөхцөл",
     icon: MapPin,
   },
   {
     id: "security",
     label: "Нууцлал",
+    shortLabel: "Нууцлал",
     description: "Нууц үг, хамгаалалт",
     icon: Lock,
   },
@@ -311,33 +315,33 @@ function ProfileSettingsContent() {
   };
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_48%,#f8fafc_100%)] px-4 py-6 text-slate-950 md:py-10">
-      <div className="mx-auto max-w-6xl space-y-5">
+    <main className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_48%,#f8fafc_100%)] px-3 pb-28 pt-4 text-slate-950 md:px-4 md:pb-10 md:pt-10">
+      <div className="mx-auto max-w-6xl space-y-4 md:space-y-5">
         <div className="flex items-center justify-between gap-3">
           <Link
             href="/profile"
-            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm"
+            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 shadow-sm md:h-11 md:px-4"
           >
             <ChevronLeft size={17} />
             Profile
           </Link>
-          <span className="rounded-full bg-orange-50 px-3 py-1.5 text-xs font-black text-orange-700 ring-1 ring-orange-100">
+          <span className="hidden rounded-full bg-orange-50 px-3 py-1.5 text-xs font-black text-orange-700 ring-1 ring-orange-100 sm:inline-flex">
             Account settings
           </span>
         </div>
 
-        <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_12px_36px_rgba(15,23,42,0.06)] md:p-5">
-          <div className="mb-4">
-            <h1 className="text-2xl font-black text-slate-950 md:text-3xl">
+        <section className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm md:rounded-[24px] md:p-5 md:shadow-[0_12px_36px_rgba(15,23,42,0.06)]">
+          <div className="mb-2.5 md:mb-4">
+            <h1 className="text-lg font-black text-slate-950 md:text-3xl">
               Тохиргоо
             </h1>
-            <p className="mt-1 text-sm font-semibold text-slate-500">
+            <p className="mt-1 hidden text-sm font-semibold leading-5 text-slate-500 sm:block">
               Account-ийн үндсэн мэдээлэл, хүргэлт, нууцлал болон удахгүй нэмэгдэх
               төлбөрийн боломжууд.
             </p>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
             {sections.map((item) => {
               const Icon = item.icon;
               const active = section === item.id;
@@ -346,21 +350,24 @@ function ProfileSettingsContent() {
                   key={item.id}
                   type="button"
                   onClick={() => setSection(item.id)}
-                  className={`flex min-h-[68px] items-center gap-3 rounded-2xl border px-3 text-left transition ${
+                  className={`flex h-9 min-w-0 items-center justify-center rounded-lg px-2 text-center transition sm:h-[60px] sm:justify-start sm:gap-3 sm:rounded-xl sm:px-3 sm:text-left ${
                     active
-                      ? "border-orange-200 bg-orange-50 text-slate-950"
-                      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-white"
+                      ? "bg-white text-slate-950 shadow-sm ring-1 ring-orange-100"
+                      : "text-slate-500 hover:bg-white/60"
                   }`}
                 >
                   <span
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                      active ? "bg-orange-500 text-white" : "bg-white text-slate-500"
+                    className={`hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:flex sm:h-10 sm:w-10 sm:rounded-xl ${
+                      active ? "bg-orange-500 text-white" : "bg-transparent text-slate-500 sm:bg-white"
                     }`}
                   >
-                    <Icon size={19} />
+                    <Icon size={15} className="sm:h-[18px] sm:w-[18px]" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-black">
+                    <span className="block truncate text-[11px] font-black leading-none sm:hidden">
+                      {item.shortLabel}
+                    </span>
+                    <span className="hidden truncate text-sm font-black leading-none sm:block">
                       {item.label}
                     </span>
                     <span className="mt-0.5 hidden truncate text-xs font-semibold text-slate-400 sm:block">
@@ -419,37 +426,37 @@ function ProfileSettingsContent() {
           />
         )}
 
-        <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+        <section className="hidden rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-sm md:block md:rounded-[24px] md:p-5">
           <div className="mb-4 flex items-center gap-2">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-orange-200">
-              <ShieldCheck size={20} />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-orange-200 md:h-10 md:w-10">
+              <ShieldCheck size={18} />
             </span>
-            <div>
-              <h2 className="text-lg font-black text-slate-950">
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-black text-slate-950 md:text-lg">
                 Дараагийн боломжууд
               </h2>
-              <p className="text-sm font-semibold text-slate-500">
+              <p className="text-xs font-semibold text-slate-500 md:text-sm">
                 Том online дэлгүүрүүдийн түгээмэл account logic-ууд.
               </p>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {comingSoon.map((item) => {
               const Icon = item.icon;
               return (
                 <div
                   key={item.title}
-                  className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4"
+                  className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 md:p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-orange-600 shadow-sm">
-                      <Icon size={19} />
+                    <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-orange-600 shadow-sm md:h-10 md:w-10">
+                      <Icon size={18} />
                     </span>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-slate-500 ring-1 ring-slate-200">
+                    <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-slate-500 ring-1 ring-slate-200 md:text-[11px]">
                       Тун удахгүй
                     </span>
                   </div>
-                  <h3 className="mt-4 text-sm font-black text-slate-950">
+                  <h3 className="mt-3 text-sm font-black text-slate-950 md:mt-4">
                     {item.title}
                   </h3>
                   <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
@@ -490,9 +497,9 @@ function ConfirmActionDialog({
   const isDanger = action.tone === "danger";
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.24)]">
-        <div className="p-6">
+    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/45 px-3 pb-3 pt-12 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.24)] sm:rounded-3xl">
+        <div className="p-5 sm:p-6">
           <div
             className={`mb-5 flex h-12 w-12 items-center justify-center rounded-2xl ${
               isDanger

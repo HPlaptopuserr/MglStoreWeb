@@ -20,6 +20,7 @@ import {
   productsRoutes,
   servicePostsRoutes,
   postsRoutes,
+  vendorContentReviewRoutes,
   jobApplicationRoutes,
   jobPositionRoutes,
   posRoutes,
@@ -55,7 +56,11 @@ if (isProduction) {
 const isLocalRequest = (ip?: string) =>
   ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
 
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
 
 const defaultAllowedOrigins = [
   "http://mglstore.mn:3002",
@@ -133,6 +138,7 @@ app.use("/api", teamRoutes);
 app.use("/api", productsRoutes);
 app.use("/api", servicePostsRoutes);
 app.use("/api", postsRoutes);
+app.use("/api", vendorContentReviewRoutes);
 app.use("/api", formRoutes);
 app.use("/api", attendanceRoutes);
 app.use("/api", chatRoutes);

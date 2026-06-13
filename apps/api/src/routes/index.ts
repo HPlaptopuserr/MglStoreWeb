@@ -13,7 +13,7 @@ export {
 
 export { businessCategoriesRoutes, productsRoutes } from "./catalog";
 
-export { servicePostsRoutes, postsRoutes } from "./content";
+export { servicePostsRoutes, postsRoutes, vendorContentReviewRoutes } from "./content";
 
 export { jobApplicationRoutes, jobPositionRoutes } from "./jobs";
 

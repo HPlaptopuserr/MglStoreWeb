@@ -25,6 +25,7 @@ import {
   type ProfileFormState,
   type ProfileTab,
 } from "./_components/types";
+import type { AuthOrganization } from "@/lib/auth-context";
 
 function getMembershipTierLabel(user: AuthUser) {
   const rawTier =
@@ -38,6 +39,23 @@ function getMembershipTierLabel(user: AuthUser) {
   if (tier === "GOVERNING_COUNCIL" || tier === "PLATINUM") return "Platinum";
   if (tier === "ACTIVE" || tier === "SILVER") return "Silver";
   return user.membership?.active || user.isPrime ? "Member" : "Идэвхгүй";
+}
+
+function getManagedOrganizations(user: AuthUser): AuthOrganization[] {
+  if (Array.isArray(user.organizations) && user.organizations.length > 0) {
+    return user.organizations;
+  }
+
+  if (!user.organizationId || !user.orgRole) return [];
+
+  return [
+    {
+      id: user.organizationId,
+      name: user.organizationName || "Байгууллага",
+      role: user.orgRole,
+      isPrimary: true,
+    },
+  ];
 }
 
 export default function ProfilePage() {
@@ -90,6 +108,21 @@ export default function ProfilePage() {
   }, [user]);
 
   useEffect(() => {
+    if (!user || typeof window === "undefined") return;
+
+    const organizationId = new URLSearchParams(window.location.search).get("org");
+    if (!organizationId) return;
+
+    const canManageOrganization = getManagedOrganizations(user).some(
+      (organization) => organization.id === organizationId,
+    );
+
+    if (canManageOrganization) {
+      router.replace(`/profile/organizations/${encodeURIComponent(organizationId)}`);
+    }
+  }, [router, user]);
+
+  useEffect(() => {
     if (!user) return;
 
     const fetchAccountData = async () => {
@@ -120,7 +153,11 @@ export default function ProfilePage() {
           setContracts(Array.isArray(data.contracts) ? data.contracts : []);
         }
       } catch (error) {
-        console.error("Failed to fetch profile account data", error);
+        setOrdersError(
+          error instanceof Error
+            ? error.message
+            : "Профайлын мэдээлэл ачаалахад алдаа гарлаа",
+        );
       } finally {
         setAccountLoading(false);
       }
@@ -164,16 +201,30 @@ export default function ProfilePage() {
   if (!user) return null;
 
   const membershipTierLabel = getMembershipTierLabel(user);
-  const hasOrganizationContext = Boolean(user.organizationId && user.orgRole);
+  const managedOrganizations = getManagedOrganizations(user);
+  const hasOrganizationContext = Boolean(
+    managedOrganizations.length > 0,
+  );
 
   return (
     <ProfileDashboardShell>
       <ProfileHero
+        accountSwitcher={
+          hasOrganizationContext ? (
+            <OrganizationAffiliationCard
+              user={user}
+              onOpenOrganization={(organizationId) =>
+                router.push(
+                  `/profile/organizations/${encodeURIComponent(organizationId)}`,
+                )
+              }
+            />
+          ) : undefined
+        }
         membershipTierLabel={membershipTierLabel}
         onUpgradeClick={() => setMembershipOpen(true)}
         user={{ ...user, avatarUrl: form.avatarUrl }}
       />
-      {hasOrganizationContext && <OrganizationAffiliationCard user={user} />}
       <ProfileStatsGrid
         isMember={Boolean(user.membership?.active || user.isPrime)}
         libraryCount={purchases.length + contracts.length}

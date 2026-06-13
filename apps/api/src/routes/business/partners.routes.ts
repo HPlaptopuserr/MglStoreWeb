@@ -1,5 +1,6 @@
-import { Router, type Router as ExpressRouter } from "express";
+import express, { Router, type Router as ExpressRouter } from "express";
 import crypto from "crypto";
+import fs from "fs";
 import path from "path";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -27,6 +28,11 @@ import { shouldExposeOrgProductsOnWeb } from "../../services/product-visibility.
 import { syncOwnerPersonalMembershipFromActiveOrgPlan } from "../../services/owner-membership-sync.service";
 
 const router: ExpressRouter = Router();
+const orgImagesDir = path.resolve(__dirname, "../../../uploads/organizations");
+if (!fs.existsSync(orgImagesDir)) {
+  fs.mkdirSync(orgImagesDir, { recursive: true });
+}
+router.use("/partners/uploads", express.static(orgImagesDir));
 
 const getExpirySortValue = (value?: Date | string | null) => {
   if (!value) return Number.POSITIVE_INFINITY;
@@ -496,28 +502,8 @@ router.post(
         },
       });
 
-      if (existingUser) {
-        const hasOrg = await prisma.organizationMember.findFirst({
-          where: { userId: existingUser.id, isActive: true },
-          select: { id: true },
-        });
-        if (hasOrg) {
-          return res.status(409).json({
-            message:
-              "Энэ email дээр user аль хэдийн өөр байгууллагад бүртгэлтэй байна",
-          });
-        }
-      }
-
-      if (existingUser?.passwordHash) {
-        return res.status(409).json({
-          message:
-            "Энэ email дээр user аль хэдийн бүртгэлтэй байна. Өөр email ашиглана уу.",
-        });
-      }
-
-      const inviteToken = generateInviteToken();
-      const inviteTokenExpiresAt = getInviteTokenExpiry();
+      const inviteToken = existingUser?.passwordHash ? null : generateInviteToken();
+      const inviteTokenExpiresAt = inviteToken ? getInviteTokenExpiry() : null;
 
       const result = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
@@ -555,10 +541,8 @@ router.post(
             ? await tx.user.update({
                 where: { id: existingUser.id },
                 data: {
-                  role: PlatformRole.USER,
                   isActive: true,
                   emailVerified: true,
-                  onboardingSource: OnboardingSource.ADMIN,
                 },
                 select: {
                   id: true,
@@ -594,13 +578,15 @@ router.post(
             },
           });
 
-          await tx.vendorSetupToken.create({
-            data: {
-              userId: user.id,
-              token: inviteToken,
-              expiresAt: inviteTokenExpiresAt,
-            },
-          });
+          if (inviteToken && inviteTokenExpiresAt) {
+            await tx.vendorSetupToken.create({
+              data: {
+                userId: user.id,
+                token: inviteToken,
+                expiresAt: inviteTokenExpiresAt,
+              },
+            });
+          }
 
           await tx.organizationMember.create({
             data: {
@@ -621,7 +607,7 @@ router.post(
         user: result.user,
         inviteToken,
         inviteTokenExpiresAt,
-        inviteLink: `${VENDOR_APP_URL}/set-password?token=${inviteToken}`,
+        inviteLink: inviteToken ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null,
       });
     } catch (error) {
       console.error("create admin organization error", error);
@@ -1441,18 +1427,27 @@ router.post(
                 select: { id: true },
               });
 
-          await tx.profile.upsert({
-            where: { userId: user.id },
-            update: {
-              fullName: fullName.trim(),
-              phoneNumber: phone?.trim() || null,
-            },
-            create: {
-              userId: user.id,
-              fullName: fullName.trim(),
-              phoneNumber: phone?.trim() || null,
-            },
-          });
+          if (existingUser) {
+            await tx.profile.upsert({
+              where: { userId: user.id },
+              update: {
+                ...(phone !== undefined ? { phoneNumber: phone?.trim() || null } : {}),
+              },
+              create: {
+                userId: user.id,
+                fullName: fullName.trim(),
+                phoneNumber: phone?.trim() || null,
+              },
+            });
+          } else {
+            await tx.profile.create({
+              data: {
+                userId: user.id,
+                fullName: fullName.trim(),
+                phoneNumber: phone?.trim() || null,
+              },
+            });
+          }
 
           const member = await tx.organizationMember.create({
             data: {
@@ -2010,9 +2005,13 @@ router.post(
       let sameOrganizationMembershipId: string | null = null;
 
       if (existingUser) {
-        const existingMembership = await prisma.organizationMember.findFirst({
-          where: { userId: existingUser.id },
-          orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+        const existingMembership = await prisma.organizationMember.findUnique({
+          where: {
+            userId_organizationId: {
+              userId: existingUser.id,
+              organizationId,
+            },
+          },
           select: {
             id: true,
             organizationId: true,
@@ -2039,10 +2038,6 @@ router.post(
 
         if (existingMembership?.organizationId === organizationId) {
           sameOrganizationMembershipId = existingMembership.id;
-        } else if (existingMembership?.isActive && !existingMembership.deletedAt) {
-          return res
-            .status(409)
-            .json({ message: "Энэ хэрэглэгч өөр байгууллагад идэвхтэй бүртгэлтэй байна" });
         }
       }
 
@@ -2069,10 +2064,8 @@ router.post(
             ? await tx.user.update({
                 where: { id: existingUser.id },
                 data: {
-                  role: PlatformRole.USER,
                   isActive: true,
                   emailVerified: true,
-                  onboardingSource: OnboardingSource.ADMIN,
                 },
                 select: { id: true, email: true, passwordHash: true },
               })
@@ -2087,18 +2080,27 @@ router.post(
                 select: { id: true, email: true, passwordHash: true },
               });
 
-          await tx.profile.upsert({
-            where: { userId: user.id },
-            update: {
-              fullName: fullName.trim(),
-              phoneNumber: phone?.trim() || null,
-            },
-            create: {
-              userId: user.id,
-              fullName: fullName.trim(),
-              phoneNumber: phone?.trim() || null,
-            },
-          });
+          if (existingUser) {
+            await tx.profile.upsert({
+              where: { userId: user.id },
+              update: {
+                ...(phone !== undefined ? { phoneNumber: phone?.trim() || null } : {}),
+              },
+              create: {
+                userId: user.id,
+                fullName: fullName.trim(),
+                phoneNumber: phone?.trim() || null,
+              },
+            });
+          } else {
+            await tx.profile.create({
+              data: {
+                userId: user.id,
+                fullName: fullName.trim(),
+                phoneNumber: phone?.trim() || null,
+              },
+            });
+          }
 
           if (sameOrganizationMembershipId) {
             await tx.organizationMember.update({
@@ -2168,6 +2170,58 @@ router.post(
       return res
         .status(500)
         .json({ message: `Vendor login эрх олгоход алдаа гарлаа${detail}` });
+    }
+  },
+);
+
+router.patch(
+  "/partners/:id/members/:userId/role",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const { id: organizationId, userId } = req.params;
+      const { role } = req.body as { role?: string };
+
+      if (!role || !["ADMIN", "STAFF", "VIEWER"].includes(role)) {
+        return res.status(400).json({
+          message: "Role нь ADMIN, STAFF эсвэл VIEWER байх ёстой",
+        });
+      }
+
+      const target = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true, role: true, isPrimary: true },
+      });
+
+      if (!target) {
+        return res.status(404).json({ message: "Role солих хэрэглэгч олдсонгүй" });
+      }
+
+      if (target.role === "OWNER" || target.isPrimary) {
+        return res.status(409).json({
+          message: "Owner эрхийг dropdown-оор солихгүй. Эхлээд өөр user-г Owner болгоно уу.",
+        });
+      }
+
+      const members = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await tx.organizationMember.update({
+          where: { id: target.id },
+          data: { role: role as StaffRole },
+        });
+
+        return getOrganizationLoginMembers(organizationId, tx);
+      });
+
+      return res.json({ members });
+    } catch (error) {
+      console.error("change vendor login role error", error);
+      return res.status(500).json({ message: "Role солиход алдаа гарлаа" });
     }
   },
 );
@@ -2450,14 +2504,15 @@ router.post(
         return res.status(400).json({ message: "Зураг файл шаардлагатай" });
       }
 
-      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-        return res
-          .status(500)
-          .json({ message: "Supabase тохиргоо хийгдээгүй байна" });
-      }
-
       const ext = path.extname(req.file.originalname).toLowerCase() || ".jpg";
       const fileName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
+
+      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+        const localPath = path.join(orgImagesDir, fileName);
+        await fs.promises.writeFile(localPath, req.file.buffer);
+        return res.json({ url: `/api/partners/uploads/${fileName}` });
+      }
+
       const filePath = `organizations/${fileName}`;
 
       const { error } = await getSupabase()
@@ -2954,7 +3009,7 @@ router.post(
           id: string;
           name: string;
           email: string;
-          inviteLink: string;
+          inviteLink: string | null;
         }>;
       } = { created: 0, skipped: 0, errors: [], organizations: [] };
 
@@ -3045,32 +3100,6 @@ router.post(
           select: { id: true, passwordHash: true },
         });
 
-        if (existingUser?.passwordHash) {
-          results.errors.push({
-            row: rowNum,
-            name: orgName,
-            reason: `Email "${emailStr}" дээр нууц үгтэй хэрэглэгч бүртгэлтэй байна`,
-          });
-          results.skipped++;
-          continue;
-        }
-
-        if (existingUser) {
-          const hasOrg = await prisma.organizationMember.findFirst({
-            where: { userId: existingUser.id, isActive: true },
-            select: { id: true },
-          });
-          if (hasOrg) {
-            results.errors.push({
-              row: rowNum,
-              name: orgName,
-              reason: `Email "${emailStr}" дээр аль хэдийн өөр байгууллагад бүртгэлтэй`,
-            });
-            results.skipped++;
-            continue;
-          }
-        }
-
         // Check duplicate organization by name
         const existingOrg = await prisma.organization.findFirst({
           where: {
@@ -3114,8 +3143,8 @@ router.post(
           const slug = await generateUniqueOrganizationSlug(orgName);
           const finalTaxId =
             resolvedTaxId || (await generateUniqueTaxId("TEMP"));
-          const inviteToken = generateInviteToken();
-          const inviteTokenExpiresAt = getInviteTokenExpiry();
+          const inviteToken = existingUser?.passwordHash ? null : generateInviteToken();
+          const inviteTokenExpiresAt = inviteToken ? getInviteTokenExpiry() : null;
 
           const orgType =
             type &&
@@ -3165,10 +3194,8 @@ router.post(
                 ? await tx.user.update({
                     where: { id: existingUser.id },
                     data: {
-                      role: PlatformRole.USER,
                       isActive: true,
                       emailVerified: true,
-                      onboardingSource: OnboardingSource.ADMIN,
                     },
                     select: { id: true, email: true },
                   })
@@ -3196,13 +3223,15 @@ router.post(
                 },
               });
 
-              await tx.vendorSetupToken.create({
-                data: {
-                  userId: user.id,
-                  token: inviteToken,
-                  expiresAt: inviteTokenExpiresAt,
-                },
-              });
+              if (inviteToken && inviteTokenExpiresAt) {
+                await tx.vendorSetupToken.create({
+                  data: {
+                    userId: user.id,
+                    token: inviteToken,
+                    expiresAt: inviteTokenExpiresAt,
+                  },
+                });
+              }
 
               await tx.organizationMember.create({
                 data: {
@@ -3222,7 +3251,7 @@ router.post(
             id: result.organization.id,
             name: result.organization.name,
             email: result.user.email,
-            inviteLink: `${VENDOR_APP_URL}/set-password?token=${inviteToken}`,
+            inviteLink: inviteToken ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null,
           });
           results.created++;
         } catch (err) {

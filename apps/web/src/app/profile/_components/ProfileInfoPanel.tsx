@@ -44,16 +44,16 @@ export function ProfileInfoPanel({
     "?";
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className="rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-sm md:rounded-3xl md:p-6">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between md:mb-6">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-500">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500 md:text-xs md:tracking-[0.22em]">
             Profile
           </p>
-          <h2 className="mt-2 text-2xl font-black text-slate-950">
+          <h2 className="mt-1.5 text-xl font-black text-slate-950 md:mt-2 md:text-2xl">
             Хувийн мэдээлэл
           </h2>
-          <p className="mt-2 text-sm font-semibold text-slate-500">
+          <p className="mt-1.5 text-xs font-semibold leading-5 text-slate-500 md:mt-2 md:text-sm">
             Захиалга, төлбөртэй файл, үйлчилгээний хүсэлт дээр ашиглагдах үндсэн
             мэдээлэл.
           </p>
@@ -94,9 +94,9 @@ export function ProfileInfoPanel({
           </div>
         </div>
       ) : (
-      <form onSubmit={onSubmit} className="grid gap-6 lg:grid-cols-[260px_1fr]">
-        <div className="rounded-3xl bg-slate-50 p-5 text-center">
-          <div className="mx-auto h-32 w-32 overflow-hidden rounded-3xl bg-slate-950 text-white shadow-sm">
+      <form onSubmit={onSubmit} className="grid gap-4 lg:grid-cols-[240px_1fr] lg:gap-6">
+        <div className="rounded-[20px] bg-slate-50 p-4 text-center md:rounded-3xl md:p-5">
+          <div className="mx-auto h-24 w-24 overflow-hidden rounded-[20px] bg-slate-950 text-white shadow-sm md:h-32 md:w-32 md:rounded-3xl">
             {form.avatarUrl ? (
               <img
                 src={resolveApiAssetUrl(form.avatarUrl)}
@@ -104,12 +104,12 @@ export function ProfileInfoPanel({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-5xl font-black">
+                <div className="flex h-full w-full items-center justify-center text-4xl font-black md:text-5xl">
                 {initials}
               </div>
             )}
           </div>
-          <label className="mt-4 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-slate-900 shadow-sm ring-1 ring-slate-200 transition hover:bg-orange-50 sm:w-auto">
+          <label className="mt-3 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-black text-slate-900 shadow-sm ring-1 ring-slate-200 transition hover:bg-orange-50 sm:w-auto md:mt-4">
             {uploading ? (
               <Loader2 size={17} className="animate-spin" />
             ) : (
@@ -133,7 +133,7 @@ export function ProfileInfoPanel({
           </p>
         </div>
 
-        <div className="space-y-5">
+        <div className="space-y-4 md:space-y-5">
           <div>
             <label className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
               Овог нэр
@@ -144,12 +144,12 @@ export function ProfileInfoPanel({
                 value={form.fullName}
                 onChange={(event) => onChange({ fullName: event.target.value })}
                 placeholder="Таны овог нэр"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100 md:py-4"
               />
             </div>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 md:gap-5">
             <div>
               <label className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-500">
                 И-мэйл
@@ -161,7 +161,7 @@ export function ProfileInfoPanel({
                   value={form.email}
                   onChange={(event) => onChange({ email: event.target.value })}
                   placeholder="name@mail.com"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100 md:py-4"
                 />
               </div>
             </div>
@@ -175,7 +175,7 @@ export function ProfileInfoPanel({
                   value={form.phone}
                   onChange={(event) => onChange({ phone: event.target.value })}
                   placeholder="99112233"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-4 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-orange-400 focus:bg-white focus:ring-4 focus:ring-orange-100 md:py-4"
                 />
               </div>
             </div>

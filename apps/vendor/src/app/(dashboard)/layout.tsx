@@ -16,6 +16,12 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
   "http://localhost:4000";
 
+type VendorOrganization = {
+  id: string;
+  name: string;
+  role: string;
+};
+
 export default function VendorDashboardLayout({
   children,
 }: {
@@ -27,6 +33,9 @@ export default function VendorDashboardLayout({
   const [showSupplyProducts, setShowSupplyProducts] = useState(false);
   const [showPreorderProducts, setShowPreorderProducts] = useState(false);
   const [showServicePosts, setShowServicePosts] = useState(true);
+  const [organizations, setOrganizations] = useState<VendorOrganization[]>([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
+  const [isSwitchingOrganization, setIsSwitchingOrganization] = useState(false);
   const [userData, setUserData] = useState({
     name: "Vendor",
     email: "vendor@mglstore.mn",
@@ -74,6 +83,8 @@ export default function VendorDashboardLayout({
           organizationName: storedUser.organizationName || me.organizationName || "",
         };
         localStorage.setItem("vendor_user", JSON.stringify(nextUser));
+        setOrganizations(Array.isArray(me.organizations) ? me.organizations : []);
+        setSelectedOrganizationId(me.organizationId || "");
 
         setUserData({
           name: nextUser.name || nextUser.fullName || "Vendor",
@@ -106,6 +117,37 @@ export default function VendorDashboardLayout({
     hydrateSession();
   }, [router]);
 
+  const handleOrganizationChange = async (organizationId: string) => {
+    const currentToken = localStorage.getItem("vendor_token");
+    if (!currentToken || !organizationId || organizationId === selectedOrganizationId) {
+      return;
+    }
+
+    setIsSwitchingOrganization(true);
+    try {
+      const response = await fetch(`${API_URL}/auth/vendor/switch-organization`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${currentToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ organizationId }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || "Байгууллага солиход алдаа гарлаа");
+      }
+
+      localStorage.setItem("vendor_token", data.accessToken);
+      localStorage.setItem("vendor_user", JSON.stringify(data.user));
+      window.location.reload();
+    } catch (error) {
+      console.error("[vendor organization switch error]", error);
+      setIsSwitchingOrganization(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("vendor_token");
     localStorage.removeItem("vendor_user");
@@ -127,7 +169,26 @@ export default function VendorDashboardLayout({
       showSupplyProducts={showSupplyProducts}
       showPreorderProducts={showPreorderProducts}
       showServicePosts={showServicePosts}
-      notificationComponent={<NotificationDropdown />}
+      notificationComponent={
+        <>
+          {organizations.length > 1 && (
+            <select
+              value={selectedOrganizationId}
+              disabled={isSwitchingOrganization}
+              onChange={(event) => handleOrganizationChange(event.target.value)}
+              className="h-9 max-w-[190px] rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition hover:border-slate-300 disabled:cursor-wait disabled:opacity-60"
+              aria-label="Байгууллага солих"
+            >
+              {organizations.map((organization) => (
+                <option key={organization.id} value={organization.id}>
+                  {organization.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <NotificationDropdown />
+        </>
+      }
     >
       {children}
     </DashboardLayout>

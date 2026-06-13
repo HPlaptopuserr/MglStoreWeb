@@ -17,6 +17,7 @@ export {
   ApprovalStatus,
   OnboardingSource,
   ProductApprovalStatus,
+  VendorContentReviewStatus,
   ProductRequestType,
   AuditAction,
   ServiceRequestType,
