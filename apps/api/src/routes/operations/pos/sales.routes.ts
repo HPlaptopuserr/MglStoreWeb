@@ -1,5 +1,5 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus } from "@mgl/database";
+import { prisma, AuditAction, InventoryReason, MPointLedgerType, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
@@ -18,6 +18,49 @@ import {
 } from "./_shared";
 
 const router: ExpressRouter = Router();
+
+const POS_MPOINT_BASE_RATE = 0.02;
+const POS_MPOINT_MEMBER_RATE = Number(process.env.POS_MPOINT_MEMBER_RATE || 0.03);
+
+const normalizeLoyaltyPhone = (value: unknown) => String(value || "").replace(/\D/g, "");
+
+const isMembershipActive = (user: { isPrime: boolean; membershipExpiresAt?: Date | null }) =>
+  Boolean(user.isPrime && (!user.membershipExpiresAt || user.membershipExpiresAt.getTime() > Date.now()));
+
+const getPosMPointRate = (user: { isPrime: boolean; membershipExpiresAt?: Date | null } | null) =>
+  user && isMembershipActive(user) ? Math.max(POS_MPOINT_BASE_RATE, POS_MPOINT_MEMBER_RATE) : POS_MPOINT_BASE_RATE;
+
+const resolveLoyaltyUser = async (
+  tx: Prisma.TransactionClient,
+  phone: string,
+) =>
+  tx.user.findFirst({
+    where: {
+      isActive: true,
+      deletedAt: null,
+      OR: [
+        { membershipDiscountPhone: phone },
+        { profile: { phoneNumber: phone } },
+      ],
+    },
+    select: {
+      id: true,
+      isPrime: true,
+      membershipExpiresAt: true,
+      profile: { select: { fullName: true, phoneNumber: true } },
+    },
+  });
+
+const getPointBalance = async (
+  tx: Pick<Prisma.TransactionClient, "mPointLedger">,
+  userId: string,
+) => {
+  const balance = await tx.mPointLedger.aggregate({
+    where: { userId },
+    _sum: { amount: true },
+  });
+  return Number(balance._sum.amount || 0);
+};
 
 type PosSaleEbarimtFields = {
   ebarimtStatus: string | null;
@@ -55,6 +98,56 @@ const parseEbarimtDate = (value: unknown): Date | null => {
   const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
+
+router.get("/pos/loyalty/lookup", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const phone = normalizeLoyaltyPhone(req.query.phone);
+    if (phone.length < 6) {
+      return res.status(400).json({ message: "Утасны дугаар буруу байна" });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        isActive: true,
+        deletedAt: null,
+        OR: [
+          { membershipDiscountPhone: phone },
+          { profile: { phoneNumber: phone } },
+        ],
+      },
+      select: {
+        id: true,
+        isPrime: true,
+        membershipExpiresAt: true,
+        profile: { select: { fullName: true, phoneNumber: true } },
+      },
+    });
+    if (!user) {
+      return res.json({
+        found: false,
+        phone,
+        balance: 0,
+        earnRate: POS_MPOINT_BASE_RATE,
+        membershipBadge: "NONE",
+      });
+    }
+
+    return res.json({
+      found: true,
+      phone,
+      customerName: user.profile?.fullName || null,
+      balance: await getPointBalance(prisma, user.id),
+      earnRate: getPosMPointRate(user),
+      membershipBadge: isMembershipActive(user) ? "MEMBER" : "STANDARD",
+    });
+  } catch (error) {
+    console.error("GET /pos/loyalty/lookup error", error);
+    return res.status(500).json({ message: "M Point мэдээлэл авахад алдаа гарлаа" });
+  }
+});
 
 router.post("/pos/sales", async (req, res) => {
   try {
@@ -122,10 +215,6 @@ router.post("/pos/sales", async (req, res) => {
         }))
       : [];
 
-    if (normalizedPayments.length === 0) {
-      return res.status(400).json({ message: "paymentBreakdown шаардлагатай" });
-    }
-
     for (const item of normalizedPayments) {
       if (
         !item.method ||
@@ -164,10 +253,29 @@ router.post("/pos/sales", async (req, res) => {
     const preDiscountTotal = preLineTotals.reduce((sum, line) => sum + line.discountTotal, 0);
     const expectedGrandTotal = roundMoney(preSubTotal + preTaxTotal - preDiscountTotal);
     const paymentTotal = roundMoney(normalizedPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+    const loyaltyMode = String(body.loyalty?.mode || "NONE").toUpperCase();
+    const loyaltyPhone = normalizeLoyaltyPhone(body.loyalty?.phone);
+    const requestedRedeemPoints =
+      loyaltyMode === "REDEEM"
+        ? Math.max(0, Math.floor(Number(body.loyalty?.redeemPoints || 0)))
+        : 0;
+    const expectedPayableTotal = roundMoney(Math.max(0, expectedGrandTotal - requestedRedeemPoints));
 
-    if (!moneyMatches(paymentTotal, expectedGrandTotal)) {
+    if (!["NONE", "EARN", "REDEEM"].includes(loyaltyMode)) {
+      return res.status(400).json({ message: "M Point сонголт буруу байна" });
+    }
+
+    if (loyaltyMode !== "NONE" && loyaltyPhone.length < 6) {
+      return res.status(400).json({ message: "M Point-д хэрэглэгчийн утас шаардлагатай" });
+    }
+
+    if (loyaltyMode === "REDEEM" && requestedRedeemPoints <= 0) {
+      return res.status(400).json({ message: "Хасуулах M Point 0-оос их байх ёстой" });
+    }
+
+    if (!moneyMatches(paymentTotal, expectedPayableTotal)) {
       return res.status(400).json({
-        message: `Payment total (${paymentTotal}) нь grandTotal (${expectedGrandTotal})-тай таарахгүй байна`,
+        message: `Payment total (${paymentTotal}) нь төлөх дүн (${expectedPayableTotal})-тай таарахгүй байна`,
       });
     }
 
@@ -501,6 +609,104 @@ router.post("/pos/sales", async (req, res) => {
         },
       });
 
+      let loyaltyResponse: null | {
+        mode: string;
+        phone: string;
+        earnedPoints: number;
+        redeemedPoints: number;
+        balanceAfter: number | null;
+        earnRate: number;
+        membershipBadge: string;
+      } = null;
+
+      if (loyaltyMode !== "NONE") {
+        const loyaltyUser = await resolveLoyaltyUser(tx, loyaltyPhone);
+        if (!loyaltyUser) {
+          throw toApiError(404, "M Point хэрэглэгч олдсонгүй");
+        }
+
+        const currentBalance = await getPointBalance(tx, loyaltyUser.id);
+        const effectiveRate = getPosMPointRate(loyaltyUser);
+        const membershipBadge = isMembershipActive(loyaltyUser) ? "MEMBER" : "STANDARD";
+        const earnedPoints = Math.max(0, Math.floor(Number(fullSale.grandTotal) * effectiveRate));
+        const redeemedPoints = loyaltyMode === "REDEEM" ? requestedRedeemPoints : 0;
+
+        if (redeemedPoints > currentBalance) {
+          throw toApiError(409, `M Point үлдэгдэл хүрэлцэхгүй байна. Боломжит: ${currentBalance}`);
+        }
+        if (redeemedPoints > Number(fullSale.grandTotal)) {
+          throw toApiError(400, "Хасуулах оноо нийт дүнгээс их байж болохгүй");
+        }
+
+        let ledgerId: string | null = null;
+        let balanceAfter: number | null = null;
+
+        if (loyaltyMode === "REDEEM" && redeemedPoints > 0) {
+          balanceAfter = currentBalance - redeemedPoints;
+          const spendLedger = await tx.mPointLedger.create({
+            data: {
+              userId: loyaltyUser.id,
+              type: MPointLedgerType.SPEND,
+              amount: -redeemedPoints,
+              balanceAfter,
+              sourceType: "POS_SALE",
+              sourceId: fullSale.id,
+              invoiceId: `pos:${fullSale.id}:redeem`,
+              description: `POS худалдан авалтад M Point хасуулсан - ${fullSale.receiptNo}`,
+            },
+            select: { id: true },
+          });
+          ledgerId = spendLedger.id;
+        }
+
+        if (earnedPoints > 0) {
+          balanceAfter = (balanceAfter ?? currentBalance) + earnedPoints;
+          const earnLedger = await tx.mPointLedger.create({
+            data: {
+              userId: loyaltyUser.id,
+              type: MPointLedgerType.EARN,
+              amount: earnedPoints,
+              balanceAfter,
+              sourceType: "POS_SALE",
+              sourceId: fullSale.id,
+              invoiceId: `pos:${fullSale.id}:earn`,
+              description: `POS худалдан авалтын ${Math.round(effectiveRate * 100)}% буцаан олголт - ${fullSale.receiptNo}`,
+            },
+            select: { id: true },
+          });
+          if (!ledgerId) ledgerId = earnLedger.id;
+        }
+
+        await tx.posLoyaltyTransaction.create({
+          data: {
+            saleId: fullSale.id,
+            organizationId: effectiveOrganizationId,
+            branchId: body.branchId!,
+            userId: loyaltyUser.id,
+            customerPhone: loyaltyPhone,
+            action: loyaltyMode === "EARN" ? MPointLedgerType.EARN : MPointLedgerType.SPEND,
+            baseRate: POS_MPOINT_BASE_RATE,
+            effectiveRate,
+            saleTotal: Number(fullSale.grandTotal),
+            earnedPoints,
+            redeemedPoints,
+            membershipBadge,
+            ledgerId: ledgerId || undefined,
+            note: loyaltyMode === "EARN" ? "POS checkout reward" : "POS checkout redemption",
+          },
+        });
+
+        loyaltyResponse = {
+          mode: loyaltyMode === "EARN" ? "EARN" : "REDEEM",
+          phone: loyaltyPhone,
+          earnedPoints,
+          redeemedPoints,
+          balanceAfter,
+          earnRate: effectiveRate,
+          membershipBadge,
+        };
+      }
+
       const saleResponse = {
         id: fullSale.id,
         receiptNo: fullSale.receiptNo,
@@ -528,6 +734,7 @@ router.post("/pos/sales", async (req, res) => {
         taxTotal: Number(fullSale.taxTotal),
         discountTotal: Number(fullSale.discountTotal),
         grandTotal: Number(fullSale.grandTotal),
+        loyalty: loyaltyResponse,
       };
 
       await tx.posSaleIdempotency.update({
@@ -540,7 +747,7 @@ router.post("/pos/sales", async (req, res) => {
         data: { response: saleResponse as object },
       });
 
-      return { saleResponse, effectiveOrganizationId, grandTotal };
+      return { saleResponse, effectiveOrganizationId, grandTotal, loyalty: loyaltyResponse };
     });
 
     void prisma.auditLog.create({
@@ -556,6 +763,7 @@ router.post("/pos/sales", async (req, res) => {
           organizationId: result.effectiveOrganizationId,
           paymentBreakdown: normalizedPayments,
           grandTotal: result.grandTotal,
+          loyalty: result.loyalty,
         },
       },
     });

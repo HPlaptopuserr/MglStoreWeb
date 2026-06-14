@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AccountLibraryPanel } from "./_components/AccountLibraryPanel";
@@ -32,6 +32,7 @@ import { useProfileOrders } from "./_components/useProfileOrders";
 export default function ProfilePage() {
   const { user, loading, refreshUser, authFetch } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<ProfileTab>("orders");
   const [form, setForm] = useState<ProfileFormState | null>(null);
   const [membershipOpen, setMembershipOpen] = useState(false);
@@ -72,6 +73,20 @@ export default function ProfilePage() {
   const hasOrganizationContext = Boolean(
     managedOrganizations.length > 0,
   );
+  const isOrdersFocused = searchParams.get("tab") === "orders";
+
+  if (isOrdersFocused) {
+    return (
+      <ProfileDashboardShell>
+        <OrdersPanel
+          orders={ordersData.orders}
+          loading={ordersData.loading}
+          error={ordersData.error}
+          onRefresh={ordersData.refresh}
+        />
+      </ProfileDashboardShell>
+    );
+  }
 
   return (
     <ProfileDashboardShell>
@@ -90,6 +105,7 @@ export default function ProfilePage() {
         }
         membershipTierLabel={membershipTierLabel}
         onUpgradeClick={openMembership}
+        points={accountData.points}
         user={{ ...user, avatarUrl: form.avatarUrl }}
       />
       <ProfileStatsGrid

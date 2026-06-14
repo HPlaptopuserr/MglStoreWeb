@@ -5,6 +5,7 @@ import {
   FileSpreadsheet,
   FileText,
   Flame,
+  Gift,
   RefreshCw,
   Search,
   Sparkles,
@@ -161,6 +162,7 @@ export default function StatisticsPage() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"all" | "products" | "branches">("all");
   const [selectedMetricId, setSelectedMetricId] = useState<string | null>(null);
+  const [loyaltyDetail, setLoyaltyDetail] = useState<"all" | "earn" | "redeem">("all");
 
   const load = async (nextDays = days) => {
     setLoading(true);
@@ -242,6 +244,13 @@ export default function StatisticsPage() {
     const metrics = data?.marketingMetrics ?? [];
     return metrics.find((item) => item.id === selectedMetricId) ?? metrics[0] ?? null;
   }, [data, selectedMetricId]);
+
+  const loyaltyRows = useMemo(() => {
+    const items = data?.loyalty?.recent ?? [];
+    if (loyaltyDetail === "earn") return items.filter((item) => item.action === "EARN");
+    if (loyaltyDetail === "redeem") return items.filter((item) => item.action === "SPEND");
+    return items;
+  }, [data, loyaltyDetail]);
 
   const exportExcel = () => {
     if (!data) return;
@@ -358,6 +367,116 @@ export default function StatisticsPage() {
       </section>
 
       <StatisticsHeroCards data={data} loading={loading} />
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 text-lg font-black text-slate-950">
+              <Gift className="h-5 w-5 text-amber-500" />
+              POS M Point бүртгэл
+            </h3>
+            <p className="text-sm font-medium text-slate-500">
+              Оноо олголт, оноо хасалт болон тухайн receipt-ийн дэлгэрэнгүй хөдөлгөөн.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 rounded-xl bg-slate-100 p-1 text-xs font-black text-slate-600">
+            {[
+              { key: "all", label: "Бүгд" },
+              { key: "earn", label: "Олголт" },
+              { key: "redeem", label: "Хасалт" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setLoyaltyDetail(item.key as typeof loyaltyDetail)}
+                className={`rounded-lg px-4 py-2 transition ${
+                  loyaltyDetail === item.key ? "bg-white text-slate-950 shadow-sm" : "hover:text-slate-950"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {[
+            {
+              key: "all",
+              label: "Нийт хөдөлгөөн",
+              value: data?.loyalty?.transactions ?? 0,
+              sub: `${data?.loyalty?.earnTransactions ?? 0} олголт · ${data?.loyalty?.redeemTransactions ?? 0} хасалт`,
+            },
+            {
+              key: "earn",
+              label: "Олгосон M Point",
+              value: `${(data?.loyalty?.earnedPoints ?? 0).toLocaleString("mn-MN")} M`,
+              sub: "POS худалдан авалтын буцаан олголт",
+            },
+            {
+              key: "redeem",
+              label: "Хасуулсан M Point",
+              value: `${(data?.loyalty?.redeemedPoints ?? 0).toLocaleString("mn-MN")} M`,
+              sub: "Төлбөрөөс оноогоор хассан дүн",
+            },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setLoyaltyDetail(item.key as typeof loyaltyDetail)}
+              className={`rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
+                loyaltyDetail === item.key ? "border-amber-300 bg-amber-50 ring-2 ring-amber-100" : "border-slate-200 bg-slate-50"
+              }`}
+            >
+              <p className="text-xs font-black uppercase text-slate-500">{item.label}</p>
+              <p className="mt-2 text-2xl font-black text-slate-950">{item.value}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{item.sub}</p>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+          <div className="grid grid-cols-[1.1fr_0.9fr_0.8fr_0.8fr_0.8fr] bg-slate-50 px-4 py-3 text-xs font-black uppercase text-slate-500">
+            <span>Receipt / хэрэглэгч</span>
+            <span>Байгууллага</span>
+            <span>Төрөл</span>
+            <span className="text-right">Борлуулалт</span>
+            <span className="text-right">M Point</span>
+          </div>
+          <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+            {loyaltyRows.map((item) => (
+              <div key={item.id} className="grid grid-cols-[1.1fr_0.9fr_0.8fr_0.8fr_0.8fr] items-center gap-3 px-4 py-3 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate font-black text-slate-950">{item.receiptNo}</p>
+                  <p className="truncate text-xs font-semibold text-slate-500">
+                    {item.customerName || item.customerPhone} · {new Date(item.createdAt).toLocaleString("mn-MN")}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-slate-700">{item.organizationName}</p>
+                  <p className="truncate text-xs font-semibold text-slate-500">{item.branchName}</p>
+                </div>
+                <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${
+                  item.action === "EARN" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                }`}>
+                  {item.action === "EARN" ? "Олголт" : "Хасалт"}
+                </span>
+                <p className="text-right font-black text-slate-950">{money(item.saleTotal)}</p>
+                <p className="text-right font-black text-slate-950">
+                  {item.action === "EARN"
+                    ? `+${item.earnedPoints.toLocaleString("mn-MN")} M`
+                    : `-${item.redeemedPoints.toLocaleString("mn-MN")} M`}
+                </p>
+              </div>
+            ))}
+            {loyaltyRows.length === 0 && (
+              <p className="p-4 text-sm font-bold text-slate-500">
+                Сонгосон хугацаанд M Point хөдөлгөөн бүртгэгдээгүй байна.
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
 
       <StatisticsMetricPanel
         data={data}

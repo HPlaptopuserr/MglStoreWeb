@@ -499,6 +499,8 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
       orderStatus,
       paymentStatus,
       recentSales,
+      loyaltySummary,
+      recentLoyaltyTransactions,
     ] = await Promise.all([
       prisma.user.count({ where: { lastLoginAt: { gte: since }, deletedAt: null } }),
       prisma.user.count({ where: { lastLoginAt: { gte: previousSince, lt: since }, deletedAt: null } }),
@@ -577,6 +579,32 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
           createdAt: true,
           branch: { select: { name: true } },
           organization: { select: { name: true } },
+        },
+      }),
+      prisma.posLoyaltyTransaction.groupBy({
+        by: ["action"],
+        where: { createdAt: { gte: since } },
+        _sum: { earnedPoints: true, redeemedPoints: true, saleTotal: true },
+        _count: { id: true },
+      }),
+      prisma.posLoyaltyTransaction.findMany({
+        where: { createdAt: { gte: since } },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        select: {
+          id: true,
+          action: true,
+          customerPhone: true,
+          saleTotal: true,
+          earnedPoints: true,
+          redeemedPoints: true,
+          effectiveRate: true,
+          membershipBadge: true,
+          createdAt: true,
+          sale: { select: { receiptNo: true, paymentMethod: true } },
+          organization: { select: { name: true } },
+          branch: { select: { name: true } },
+          user: { select: { profile: { select: { fullName: true } } } },
         },
       }),
     ]);
@@ -747,6 +775,11 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
     const serviceConversionRate = rate(serviceRequests, servicePostViews._sum.viewCount ?? 0);
     const unitsSold = (onlineUnits._sum.quantity ?? 0) + (posUnits._sum.qty ?? 0);
     const avgTicket = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+    const loyaltyEarn = loyaltySummary.find((item) => item.action === "EARN");
+    const loyaltySpend = loyaltySummary.find((item) => item.action === "SPEND");
+    const loyaltyEarnedPoints = Number(loyaltyEarn?._sum.earnedPoints ?? 0);
+    const loyaltyRedeemedPoints = Number(loyaltySpend?._sum.redeemedPoints ?? 0);
+    const loyaltyTransactions = loyaltySummary.reduce((sum, item) => sum + item._count.id, 0);
     const previousMetricValues = new Map<string, number | null>([
       ["active-users", allTime ? null : previousActiveUsers],
       ["new-users", allTime ? null : previousNewUsers],
@@ -1025,6 +1058,24 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
         category: "Enablement",
         description: "Offline payment enablement-ийн сонирхол.",
       },
+      {
+        id: "pos-mpoint-earned",
+        label: "M Point олголт",
+        value: loyaltyEarnedPoints,
+        unit: "point",
+        trend: 0,
+        category: "Loyalty",
+        description: "POS худалдан авалтаас хэрэглэгчдэд олгосон M Point.",
+      },
+      {
+        id: "pos-mpoint-redeemed",
+        label: "M Point хасалт",
+        value: loyaltyRedeemedPoints,
+        unit: "point",
+        trend: 0,
+        category: "Loyalty",
+        description: "POS төлбөр дээр хэрэглэгчийн ашигласан M Point.",
+      },
     ];
     const marketingMetrics = rawMarketingMetrics.map((item) => ({
       ...item,
@@ -1074,6 +1125,29 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
         branchName: sale.branch.name,
         organizationName: sale.organization.name,
       })),
+      loyalty: {
+        earnedPoints: loyaltyEarnedPoints,
+        redeemedPoints: loyaltyRedeemedPoints,
+        transactions: loyaltyTransactions,
+        earnTransactions: loyaltyEarn?._count.id ?? 0,
+        redeemTransactions: loyaltySpend?._count.id ?? 0,
+        recent: recentLoyaltyTransactions.map((item) => ({
+          id: item.id,
+          action: item.action,
+          customerPhone: item.customerPhone,
+          customerName: item.user?.profile?.fullName ?? null,
+          receiptNo: item.sale.receiptNo,
+          paymentMethod: item.sale.paymentMethod,
+          saleTotal: Number(item.saleTotal),
+          earnedPoints: item.earnedPoints,
+          redeemedPoints: item.redeemedPoints,
+          effectiveRate: Number(item.effectiveRate),
+          membershipBadge: item.membershipBadge,
+          createdAt: item.createdAt,
+          organizationName: item.organization.name,
+          branchName: item.branch.name,
+        })),
+      },
     });
   } catch (error) {
     console.error("[admin statistics insights error]", error);
@@ -1303,12 +1377,21 @@ router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MAN
     if (search && typeof search === "string") {
       const q = search.trim();
       if (q) {
+        const searchTerms = Array.from(
+          new Set([
+            q,
+            ...q
+              .split(/[\s.,;:|/\\()[\]{}'"`]+/g)
+              .map((term) => term.trim())
+              .filter((term) => term.length >= 2),
+          ]),
+        );
         andFilters.push({
-          OR: [
-            { email: { contains: q, mode: "insensitive" } },
-            { profile: { fullName: { contains: q, mode: "insensitive" } } },
-            { profile: { phoneNumber: { contains: q, mode: "insensitive" } } },
-          ],
+          OR: searchTerms.flatMap((term) => [
+            { email: { contains: term, mode: "insensitive" } },
+            { profile: { fullName: { contains: term, mode: "insensitive" } } },
+            { profile: { phoneNumber: { contains: term, mode: "insensitive" } } },
+          ]),
         });
       }
     }

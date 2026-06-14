@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 
 type MembershipUpgradeModalProps = {
   open: boolean;
@@ -23,6 +24,7 @@ export function MembershipUpgradeModal({
   const [entered, setEntered] = useState(false);
 
   useEffect(() => setMounted(true), []);
+  useLockBodyScroll(open);
 
   useEffect(() => {
     if (!open) {
@@ -37,31 +39,12 @@ export function MembershipUpgradeModal({
   useEffect(() => {
     if (!open) return;
 
-    const scrollY = window.scrollY;
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousBodyPosition = document.body.style.position;
-    const previousBodyTop = document.body.style.top;
-    const previousBodyWidth = document.body.style.width;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = "100%";
-
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => {
-      document.documentElement.style.overflow = previousHtmlOverflow;
-      document.body.style.overflow = previousBodyOverflow;
-      document.body.style.position = previousBodyPosition;
-      document.body.style.top = previousBodyTop;
-      document.body.style.width = previousBodyWidth;
-      window.scrollTo(0, scrollY);
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [onClose, open]);

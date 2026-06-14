@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Crown, Phone, ShieldCheck, Upload } from "lucide-react";
+import {
+  Coins,
+  Crown,
+  Phone,
+  ShieldCheck,
+  TrendingUp,
+  Upload,
+} from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
 import { resolveApiAssetUrl } from "@/lib/api";
 
@@ -11,12 +18,14 @@ type ProfileHeroProps = {
   user: AuthUser;
   membershipTierLabel: string;
   onUpgradeClick: () => void;
+  points: number;
 };
 
 export function ProfileHero({
   accountSwitcher,
   membershipTierLabel,
   onUpgradeClick,
+  points,
   user,
 }: ProfileHeroProps) {
   const initials =
@@ -71,6 +80,27 @@ export function ProfileHero({
                 </span>
               )}
             </div>
+
+            <div className="mt-4 grid gap-2 sm:max-w-xl sm:grid-cols-[minmax(0,1fr)_auto] md:mt-5">
+              <div className="flex min-w-0 items-center gap-3 rounded-[18px] border border-amber-200/20 bg-amber-300/12 px-4 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.12)] ring-1 ring-white/5 backdrop-blur">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-300 text-slate-950 shadow-lg shadow-amber-500/20">
+                  <Coins size={20} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-100/70">
+                    M Point
+                  </p>
+                  <p className="mt-1 truncate text-2xl font-black leading-none text-white">
+                    {points.toLocaleString("mn-MN")} M
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-[18px] border border-white/10 bg-white/[0.07] px-4 py-3 text-xs font-bold leading-5 text-white/70 sm:max-w-[190px]">
+                <TrendingUp size={17} className="shrink-0 text-amber-200" />
+                Худалдан авалтаас point цуглуулна
+              </div>
+            </div>
+
             <div className="mt-4 md:mt-5">
               <button
                 type="button"

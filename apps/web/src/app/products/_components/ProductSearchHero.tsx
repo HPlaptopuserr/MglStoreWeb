@@ -19,6 +19,8 @@ type ProductSearchHeroProps = {
   sideBanner?: MarketplaceSideBanner | null;
   servicesPromo?: MarketplaceServicesPromo | null;
   projectBanners?: MarketplaceProjectBanner[];
+  onSearchSubmit?: (query: string) => void;
+  showSearch?: boolean;
 };
 
 export function ProductSearchHero(props: ProductSearchHeroProps) {

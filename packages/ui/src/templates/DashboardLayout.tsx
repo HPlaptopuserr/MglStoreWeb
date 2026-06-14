@@ -80,6 +80,7 @@ export function DashboardLayout({
           />
         )}
         <main
+          data-scroll-lock-root
           className={`min-w-0 overflow-x-hidden ${
             isAdmin
               ? "px-4 pt-6 pb-10 sm:px-10 sm:pt-8"

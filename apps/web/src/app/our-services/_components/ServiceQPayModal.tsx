@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { X, CheckCircle2, Loader2, QrCode, Smartphone } from "lucide-react";
 import { API } from "@/lib/api";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { MobileBankAppLinks } from "@/components/molecules/payments/MobileBankAppLinks";
 
 interface DeepLink {
@@ -86,13 +87,7 @@ export function ServiceQPayModal({
     return () => clearInterval(t);
   }, [confirmed]);
 
-  // Lock body scroll
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
+  useLockBodyScroll();
 
   // Manual check
   const handleManualCheck = async () => {
@@ -111,13 +106,13 @@ export function ServiceQPayModal({
   const seconds = countdown % 60;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden overscroll-none">
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={confirmed ? undefined : onClose}
       />
 
-      <div className="relative z-10 w-full max-w-md mx-4 rounded-2xl bg-white shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+      <div className="relative z-10 mx-4 max-h-[90vh] w-full max-w-md overflow-hidden overflow-y-auto overscroll-contain rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">

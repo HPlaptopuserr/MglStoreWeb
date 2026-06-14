@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { User, Loader2, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck } from "lucide-react";
 import { API_BASE } from "@/lib/api";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { VerifyMnPanel, type VerifyMnSession } from "@mgl/ui";
 
 type AuthTab = "login" | "register";
@@ -75,6 +76,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   error,
   marketingBanner,
 }) => {
+  useLockBodyScroll();
+
   const [tab, setTab] = useState<AuthTab>("login");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -462,7 +465,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const displayError = localError || error;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-hidden overscroll-none p-4">
       <button
         type="button"
         onClick={onClose}

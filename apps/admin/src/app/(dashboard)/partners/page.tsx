@@ -594,7 +594,7 @@ export default function PartnersPage() {
                     setCreateForm((prev) => ({
                       ...prev,
                       ownerUserId: account?.id || "",
-                      ownerName: account?.fullName || prev.ownerName,
+                      ownerName: account?.fullName || "",
                       ownerEmail: account?.email || "",
                       ownerPhone: account?.phone || "",
                     }));
@@ -606,41 +606,54 @@ export default function PartnersPage() {
                   description="Шинэ байгууллагад owner/admin зэрэг role-той login account шууд онооно."
                   badge="Optional"
                 />
-                <div className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4">
-                  <p className="mb-3 text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
-                    Гараар оруулах
-                  </p>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Owner нэр</label>
-                    <input
-                      value={createForm.ownerName}
-                      onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerName: e.target.value }))}
-                      placeholder="Хариуцсан хүний нэр"
-                      className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                    />
+                {createLoginAccount ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-white px-4 py-3">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                      Personal account-аас татсан login
+                    </p>
+                    <div className="mt-2 grid gap-2 text-sm font-semibold text-slate-700 md:grid-cols-3">
+                      <span>{createForm.ownerName || "Нэргүй хэрэглэгч"}</span>
+                      <span>{createForm.ownerEmail || "Email байхгүй"}</span>
+                      <span>{createForm.ownerPhone || "Утас байхгүй"}</span>
+                    </div>
                   </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Login email</label>
-                    <input
-                      type="email"
-                      value={createForm.ownerEmail}
-                      onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerEmail: e.target.value }))}
-                      placeholder="owner@company.mn"
-                      className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Login утас</label>
-                    <input
-                      value={createForm.ownerPhone}
-                      onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerPhone: e.target.value }))}
-                      placeholder="Login хийх утас"
-                      className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
-                </div>
+                ) : (
+                  <details className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4">
+                    <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                      Personal account байхгүй бол гараар оруулах
+                    </summary>
+                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">Owner нэр</label>
+                        <input
+                          value={createForm.ownerName}
+                          onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerName: e.target.value }))}
+                          placeholder="Хариуцсан хүний нэр"
+                          className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">Login email</label>
+                        <input
+                          type="email"
+                          value={createForm.ownerEmail}
+                          onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerEmail: e.target.value }))}
+                          placeholder="owner@company.mn"
+                          className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">Login утас</label>
+                        <input
+                          value={createForm.ownerPhone}
+                          onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerPhone: e.target.value }))}
+                          placeholder="Login хийх утас"
+                          className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+                  </details>
+                )}
                 <p className="mt-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold leading-5 text-emerald-800">
                   Анхаарах: байгууллагын контакт утас болон login утас хоёр өөр байж болно.
                   Personal account сонгосон бол email/утас заавал биш.

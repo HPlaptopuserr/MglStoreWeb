@@ -6,6 +6,7 @@ import { MessageCircle, X, Send, Bot, Package, Truck, Handshake, Phone, Search, 
 import { AnimatePresence, motion } from "framer-motion";
 import { API } from "@/lib/api";
 import { useAuth, getToken } from "@/lib/auth-context";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 
 interface Message {
   id: string;
@@ -168,15 +169,7 @@ export function ChatBot() {
   const [myOrders, setMyOrders] = useState<MyOrderSummary[]>([]);
   const [myOrdersLoading, setMyOrdersLoading] = useState(false);
 
-  // Prevent background scroll when chat is open
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => { document.body.style.overflow = ""; };
-  }, [open]);
+  useLockBodyScroll(open);
 
   // Auto-dismiss greeting after 8s
   useEffect(() => {

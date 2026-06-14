@@ -1,19 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, ShieldCheck, UserRound, X } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
-
-export type VendorLoginRole = "OWNER" | "ADMIN" | "STAFF" | "VIEWER";
-
-export type PersonalAccountOption = {
-  id: string;
-  email: string;
-  fullName?: string | null;
-  phone?: string | null;
-  avatarUrl?: string | null;
-  isActive?: boolean;
-};
+import { resolveMediaUrl } from "@/lib/media-url";
+import {
+  type PersonalAccountOption,
+  type VendorLoginRole,
+  vendorLoginRoleLabel,
+} from "./vendor-login-types";
+export type { PersonalAccountOption, VendorLoginRole } from "./vendor-login-types";
 
 type Props = {
   selectedAccount: PersonalAccountOption | null;
@@ -27,15 +23,16 @@ type Props = {
   badge?: string;
 };
 
-const roleLabel: Record<VendorLoginRole, string> = {
-  OWNER: "Owner",
-  ADMIN: "Admin",
-  STAFF: "Staff",
-  VIEWER: "Viewer",
-};
+const MIN_SEARCH_LENGTH = 3;
+const SEARCH_DEBOUNCE_MS = 450;
+const EMPTY_DISABLED_USER_IDS: string[] = [];
 
 function getAccountInitial(account: PersonalAccountOption) {
   return (account.fullName || account.email || "?").charAt(0).toUpperCase();
+}
+
+function getAccountAvatarUrl(account?: PersonalAccountOption | null) {
+  return resolveMediaUrl(account?.avatarUrl);
 }
 
 export function VendorLoginAccountSelector({
@@ -43,16 +40,20 @@ export function VendorLoginAccountSelector({
   onSelectedAccountChange,
   role,
   onRoleChange,
-  disabledUserIds = [],
+  disabledUserIds = EMPTY_DISABLED_USER_IDS,
   tone = "indigo",
   title = "Vendor login эрх шинээр олгох",
   description = "Personal account сонгож тухайн байгууллагын page role онооно.",
   badge = "Personal account",
 }: Props) {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [results, setResults] = useState<PersonalAccountOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const requestSeq = useRef(0);
   const disabledSet = useMemo(() => new Set(disabledUserIds), [disabledUserIds]);
+  const trimmedSearch = search.trim();
+  const canSearch = trimmedSearch.length >= MIN_SEARCH_LENGTH;
   const accent =
     tone === "emerald"
       ? {
@@ -73,17 +74,34 @@ export function VendorLoginAccountSelector({
         };
 
   useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(handle);
+  }, [search]);
+
+  useEffect(() => {
+    const query = debouncedSearch;
+    if (query.length < MIN_SEARCH_LENGTH) {
+      requestSeq.current += 1;
+      setLoading(false);
+      setResults([]);
+      return;
+    }
+
     let cancelled = false;
-    const handle = window.setTimeout(async () => {
+    const seq = ++requestSeq.current;
+
+    const fetchAccounts = async () => {
       setLoading(true);
       try {
         const params = new URLSearchParams({ page: "1", limit: "20" });
-        const query = search.trim();
-        if (query) params.set("search", query);
+        params.set("search", query);
 
         const res = await adminFetch(`${API}/admin/users?${params.toString()}`);
         const data = await res.json().catch(() => null);
-        if (!res.ok || cancelled) return;
+        if (!res.ok || cancelled || seq !== requestSeq.current) return;
 
         const items = Array.isArray(data)
           ? data
@@ -96,17 +114,20 @@ export function VendorLoginAccountSelector({
             .slice(0, 8),
         );
       } catch {
-        if (!cancelled) setResults([]);
+        if (!cancelled && seq === requestSeq.current) setResults([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && seq === requestSeq.current) setLoading(false);
       }
-    }, 250);
+    };
+
+    fetchAccounts();
 
     return () => {
       cancelled = true;
-      window.clearTimeout(handle);
     };
-  }, [disabledSet, search]);
+  }, [debouncedSearch, disabledSet]);
+
+  const showResults = !selectedAccount && canSearch;
 
   const selectAccount = (account: PersonalAccountOption) => {
     onSelectedAccountChange(account);
@@ -135,9 +156,9 @@ export function VendorLoginAccountSelector({
           {selectedAccount ? (
             <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-950 text-xs font-black text-white">
-                {selectedAccount.avatarUrl ? (
+                {getAccountAvatarUrl(selectedAccount) ? (
                   <img
-                    src={selectedAccount.avatarUrl}
+                    src={getAccountAvatarUrl(selectedAccount)}
                     alt=""
                     className="h-full w-full object-cover"
                   />
@@ -169,49 +190,60 @@ export function VendorLoginAccountSelector({
           ) : (
             <div className="relative">
               <input
+                type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Нэр, email, утсаар хайх"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 className={`w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:ring-4 ${accent.focus}`}
               />
-              <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
-                {loading ? (
-                  <div className="flex items-center gap-2 px-3 py-3 text-xs font-bold text-slate-500">
-                    <Loader2 size={14} className="animate-spin" />
-                    Хайж байна...
-                  </div>
-                ) : results.length === 0 ? (
-                  <div className="px-3 py-3 text-xs font-bold text-slate-400">
-                    Personal account олдсонгүй
-                  </div>
-                ) : (
-                  results.map((account) => (
-                    <button
-                      key={account.id}
-                      type="button"
-                      onClick={() => selectAccount(account)}
-                      className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition ${accent.hover}`}
-                    >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-xs font-black text-slate-600">
-                        {account.avatarUrl ? (
-                          <img src={account.avatarUrl} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          getAccountInitial(account)
-                        )}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-black text-slate-900">
-                          {account.fullName || "Нэргүй хэрэглэгч"}
+              {trimmedSearch.length > 0 && trimmedSearch.length < MIN_SEARCH_LENGTH ? (
+                <p className="mt-1 px-1 text-[10px] font-bold text-slate-400">
+                  3-аас дээш тэмдэгт бичээд хайна.
+                </p>
+              ) : null}
+              {showResults && (
+                <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
+                  {loading ? (
+                    <div className="flex items-center gap-2 px-3 py-3 text-xs font-bold text-slate-500">
+                      <Loader2 size={14} className="animate-spin" />
+                      Хайж байна...
+                    </div>
+                  ) : results.length === 0 ? (
+                    <div className="px-3 py-3 text-xs font-bold text-slate-400">
+                      Personal account олдсонгүй
+                    </div>
+                  ) : (
+                    results.map((account) => (
+                      <button
+                        key={account.id}
+                        type="button"
+                        onClick={() => selectAccount(account)}
+                        className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition ${accent.hover}`}
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-xs font-black text-slate-600">
+                          {getAccountAvatarUrl(account) ? (
+                            <img src={getAccountAvatarUrl(account)} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            getAccountInitial(account)
+                          )}
                         </span>
-                        <span className="block truncate text-xs font-semibold text-slate-500">
-                          {account.email}
-                          {account.phone ? ` · ${account.phone}` : ""}
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-black text-slate-900">
+                            {account.fullName || "Нэргүй хэрэглэгч"}
+                          </span>
+                          <span className="block truncate text-xs font-semibold text-slate-500">
+                            {account.email}
+                            {account.phone ? ` · ${account.phone}` : ""}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -247,9 +279,9 @@ export function VendorLoginAccountSelector({
             onChange={(event) => onRoleChange(event.target.value as VendorLoginRole)}
             className={`w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-black text-slate-900 outline-none transition focus:ring-4 ${accent.focus}`}
           >
-            {(Object.keys(roleLabel) as VendorLoginRole[]).map((value) => (
+            {(Object.keys(vendorLoginRoleLabel) as VendorLoginRole[]).map((value) => (
               <option key={value} value={value}>
-                {roleLabel[value]}
+                {vendorLoginRoleLabel[value]}
               </option>
             ))}
           </select>

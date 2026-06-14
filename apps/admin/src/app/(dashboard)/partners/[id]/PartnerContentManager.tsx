@@ -245,7 +245,7 @@ async function uploadImage(file: File, endpoint: string) {
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+    <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
       {children}
     </label>
   );
@@ -255,7 +255,7 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 ${props.className || ""}`}
+      className={`h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100 ${props.className || ""}`}
     />
   );
 }
@@ -264,7 +264,7 @@ function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 ${props.className || ""}`}
+      className={`w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-semibold leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100 ${props.className || ""}`}
     />
   );
 }
@@ -273,7 +273,7 @@ function SelectInput(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       {...props}
-      className={`h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 ${props.className || ""}`}
+      className={`h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-bold text-slate-800 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100 ${props.className || ""}`}
     />
   );
 }
@@ -898,111 +898,145 @@ export function PartnerContentManager({
       </div>
 
       {activeTab === "profile" && (
-        <form onSubmit={handleSaveProfile} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-[260px_1fr]">
-            <div className="space-y-3">
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                <div className="aspect-[16/9] bg-slate-100">
+        <form onSubmit={handleSaveProfile} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-5 py-4">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-600">Public profile</p>
+            <h3 className="mt-1 text-xl font-black text-slate-950">Вэб дээр харагдах үндсэн мэдээлэл</h3>
+          </div>
+
+          <div className="grid gap-5 p-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <section className="space-y-4">
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+                <div className="relative aspect-[16/10] bg-slate-100">
                   {profileForm.bannerUrl ? (
                     <img src={profileForm.bannerUrl} alt="Ковер зураг" className="h-full w-full object-cover" />
                   ) : (
-                    <div className="flex h-full items-center justify-center text-slate-300">
-                      <Camera size={28} />
+                    <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-300">
+                      <Camera size={30} />
+                      <span className="text-xs font-black uppercase tracking-[0.14em]">Cover image</span>
                     </div>
                   )}
+                  <div className="absolute bottom-3 left-3 flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-white shadow-lg">
+                    {profileForm.logoUrl ? (
+                      <img src={profileForm.logoUrl} alt="Profile зураг" className="h-full w-full object-cover" />
+                    ) : (
+                      <ImageIcon size={28} className="text-slate-300" />
+                    )}
+                  </div>
                 </div>
-                <label className="flex cursor-pointer items-center justify-center gap-2 border-t border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
-                  {uploadingOrgImage === "bannerUrl" ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                  Ковер солих
-                  <input type="file" accept="image/*" className="hidden" onChange={(event) => handleOrgImageChange(event, "bannerUrl")} />
-                </label>
+                <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-white p-3">
+                  <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50">
+                    {uploadingOrgImage === "bannerUrl" ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                    Ковер
+                    <input type="file" accept="image/*" className="hidden" onChange={(event) => handleOrgImageChange(event, "bannerUrl")} />
+                  </label>
+                  <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50">
+                    {uploadingOrgImage === "logoUrl" ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                    Лого
+                    <input type="file" accept="image/*" className="hidden" onChange={(event) => handleOrgImageChange(event, "logoUrl")} />
+                  </label>
+                </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="h-16 w-16 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                  {profileForm.logoUrl ? (
-                    <img src={profileForm.logoUrl} alt="Profile зураг" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-slate-300">
-                      <ImageIcon size={24} />
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+                <p className="text-sm font-black text-slate-950">{profileForm.name || "Байгууллагын нэр"}</p>
+                <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-600">
+                  {profileForm.shortDescription || "Богино танилцуулга оруулахад public page дээр илүү ойлгомжтой харагдана."}
+                </p>
+              </div>
+            </section>
+
+            <section className="space-y-5">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white">
+                    <AlignLeft size={17} />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-950">Үндсэн мэдээлэл</h4>
+                    <p className="text-xs font-semibold text-slate-500">Нэр, ангилал, холбоо барих мэдээлэл.</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div>
+                    <FieldLabel>Байгууллагын нэр</FieldLabel>
+                    <TextInput value={profileForm.name} onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))} />
+                  </div>
+                  <div>
+                    <FieldLabel>Бизнес ангилал</FieldLabel>
+                    <SelectInput value={profileForm.businessCategory} onChange={(event) => setProfileForm((current) => ({ ...current, businessCategory: event.target.value }))}>
+                      <option value="">Сонгохгүй</option>
+                      {categoryOptions.map((category) => (
+                        <option key={category.id} value={category.slug}>
+                          {"— ".repeat(category.depth)}{category.name}
+                        </option>
+                      ))}
+                    </SelectInput>
+                  </div>
+                  <div>
+                    <FieldLabel>Утас</FieldLabel>
+                    <TextInput value={profileForm.phone} onChange={(event) => setProfileForm((current) => ({ ...current, phone: event.target.value }))} />
+                  </div>
+                  <div>
+                    <FieldLabel>И-мэйл</FieldLabel>
+                    <TextInput type="email" value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <FieldLabel>Хаяг</FieldLabel>
+                    <TextInput value={profileForm.address} onChange={(event) => setProfileForm((current) => ({ ...current, address: event.target.value }))} />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <FieldLabel>Богино танилцуулга</FieldLabel>
+                    <TextInput value={profileForm.shortDescription} onChange={(event) => setProfileForm((current) => ({ ...current, shortDescription: event.target.value }))} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-white">
+                    <Package size={17} />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-950">Дэлгэрэнгүй тохиргоо</h4>
+                    <p className="text-xs font-semibold text-slate-500">Танилцуулга, ажиллах цаг, хүргэлтийн мэдээлэл.</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div>
+                    <FieldLabel>Байгууллагын тухай</FieldLabel>
+                    <TextArea rows={7} value={profileForm.description} onChange={(event) => setProfileForm((current) => ({ ...current, description: event.target.value }))} />
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <FieldLabel>Ажиллах цаг</FieldLabel>
+                      <TextArea rows={3} value={profileForm.openingHours} onChange={(event) => setProfileForm((current) => ({ ...current, openingHours: event.target.value }))} />
                     </div>
-                  )}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <FieldLabel>Хүргэлтийн текст</FieldLabel>
+                        <TextInput value={profileForm.deliveryText} onChange={(event) => setProfileForm((current) => ({ ...current, deliveryText: event.target.value }))} />
+                      </div>
+                      <div>
+                        <FieldLabel>Хүргэлтийн үнэ</FieldLabel>
+                        <TextInput value={profileForm.deliveryPrice} onChange={(event) => setProfileForm((current) => ({ ...current, deliveryPrice: event.target.value }))} />
+                      </div>
+                      <div>
+                        <FieldLabel>Ажилласан жил</FieldLabel>
+                        <TextInput type="number" min="0" value={profileForm.operatingYears} onChange={(event) => setProfileForm((current) => ({ ...current, operatingYears: event.target.value }))} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                  {uploadingOrgImage === "logoUrl" ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                  Profile зураг
-                  <input type="file" accept="image/*" className="hidden" onChange={(event) => handleOrgImageChange(event, "logoUrl")} />
-                </label>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <FieldLabel>Байгууллагын нэр</FieldLabel>
-                <TextInput value={profileForm.name} onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))} />
-              </div>
-              <div>
-                <FieldLabel>Бизнес ангилал</FieldLabel>
-                <SelectInput value={profileForm.businessCategory} onChange={(event) => setProfileForm((current) => ({ ...current, businessCategory: event.target.value }))}>
-                  <option value="">Сонгохгүй</option>
-                  {categoryOptions.map((category) => (
-                    <option key={category.id} value={category.slug}>
-                      {"— ".repeat(category.depth)}{category.name}
-                    </option>
-                  ))}
-                </SelectInput>
-              </div>
-              <div>
-                <FieldLabel>Утас</FieldLabel>
-                <TextInput value={profileForm.phone} onChange={(event) => setProfileForm((current) => ({ ...current, phone: event.target.value }))} />
-              </div>
-              <div>
-                <FieldLabel>И-мэйл</FieldLabel>
-                <TextInput type="email" value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} />
-              </div>
-              <div className="sm:col-span-2">
-                <FieldLabel>Хаяг</FieldLabel>
-                <TextInput value={profileForm.address} onChange={(event) => setProfileForm((current) => ({ ...current, address: event.target.value }))} />
-              </div>
-              <div className="sm:col-span-2">
-                <FieldLabel>Богино танилцуулга</FieldLabel>
-                <TextInput value={profileForm.shortDescription} onChange={(event) => setProfileForm((current) => ({ ...current, shortDescription: event.target.value }))} />
-              </div>
-            </div>
+            </section>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div>
-              <FieldLabel>Байгууллагын тухай</FieldLabel>
-              <TextArea rows={6} value={profileForm.description} onChange={(event) => setProfileForm((current) => ({ ...current, description: event.target.value }))} />
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-1">
-              <div>
-                <FieldLabel>Ажиллах цаг</FieldLabel>
-                <TextArea rows={3} value={profileForm.openingHours} onChange={(event) => setProfileForm((current) => ({ ...current, openingHours: event.target.value }))} />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <FieldLabel>Хүргэлтийн текст</FieldLabel>
-                  <TextInput value={profileForm.deliveryText} onChange={(event) => setProfileForm((current) => ({ ...current, deliveryText: event.target.value }))} />
-                </div>
-                <div>
-                  <FieldLabel>Хүргэлтийн үнэ</FieldLabel>
-                  <TextInput value={profileForm.deliveryPrice} onChange={(event) => setProfileForm((current) => ({ ...current, deliveryPrice: event.target.value }))} />
-                </div>
-                <div>
-                  <FieldLabel>Ажилласан жил</FieldLabel>
-                  <TextInput type="number" min="0" value={profileForm.operatingYears} onChange={(event) => setProfileForm((current) => ({ ...current, operatingYears: event.target.value }))} />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-5 flex justify-end">
+          <div className="flex justify-end border-t border-slate-100 bg-slate-50 px-5 py-4">
             <button
               type="submit"
               disabled={savingProfile}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
             >
               {savingProfile ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
               Хадгалах

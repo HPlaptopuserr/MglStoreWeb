@@ -65,6 +65,29 @@ export interface StatisticsInsights {
     branchName: string;
     organizationName: string;
   }[];
+  loyalty: {
+    earnedPoints: number;
+    redeemedPoints: number;
+    transactions: number;
+    earnTransactions: number;
+    redeemTransactions: number;
+    recent: {
+      id: string;
+      action: "EARN" | "SPEND" | "ADJUST" | string;
+      customerPhone: string;
+      customerName: string | null;
+      receiptNo: string;
+      paymentMethod: string;
+      saleTotal: number;
+      earnedPoints: number;
+      redeemedPoints: number;
+      effectiveRate: number;
+      membershipBadge: string | null;
+      createdAt: string;
+      organizationName: string;
+      branchName: string;
+    }[];
+  };
 }
 
 export async function fetchStatisticsInsights(days: number | "all"): Promise<StatisticsInsights> {

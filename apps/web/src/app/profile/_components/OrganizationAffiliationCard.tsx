@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { resolveApiAssetUrl } from "@/lib/api";
 import type { AuthOrganization, AuthUser } from "@/lib/auth-context";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 
 const roleLabel: Record<string, string> = {
   OWNER: "Эзэмшигч",
@@ -129,6 +130,8 @@ function OrganizationSwitcherModal({
   organizations: AuthOrganization[];
   user: AuthUser;
 }) {
+  useLockBodyScroll();
+
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
   const filteredOrganizations = useMemo(() => {
@@ -141,29 +144,25 @@ function OrganizationSwitcherModal({
   }, [normalizedQuery, organizations]);
 
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-end justify-center bg-slate-950/65 px-3 pb-3 pt-12 backdrop-blur-sm sm:items-center sm:p-6">
+    <div className="fixed inset-0 z-[130] flex items-end justify-center overflow-hidden overscroll-none bg-slate-950/65 px-3 pb-3 pt-12 backdrop-blur-sm sm:items-center sm:p-6">
       <button
         type="button"
         aria-label="Close account switcher"
         className="absolute inset-0 cursor-default"
         onClick={onClose}
       />
-      <div className="relative flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#202322] text-white shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+      <div className="relative flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden overscroll-contain rounded-[28px] border border-white/10 bg-[#202322] text-white shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
         <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4">
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/38">

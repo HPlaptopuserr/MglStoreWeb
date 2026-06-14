@@ -24,6 +24,7 @@ import {
 import { API } from "@/lib/api";
 import { addToCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth-context";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { resolveMemberPricing } from "@/lib/member-pricing";
 import { organizationPath } from "@/lib/organization-links";
 
@@ -122,12 +123,7 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
   const savings = pricing.savings;
   const countdown = useCountdown(discount?.validUntil);
 
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
+  useLockBodyScroll();
 
   useEffect(() => {
     fetch(`${API}/products/${productId}`)

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ArrowRight, FileText, X } from "lucide-react";
 import { motion } from "motion/react";
 import { API } from "@/lib/api";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { HrEmbeddedFormPanel } from "./HrEmbeddedFormPanel";
 import { HrServiceDetailList } from "./HrServiceDetailList";
 import type { HrMenuService } from "./HrServiceMenuCard";
@@ -25,17 +26,10 @@ export function HrServiceDetailModal({
   const [mounted, setMounted] = useState(false);
   const hasForm = Boolean(service.hasForm && service.formSlug);
 
+  useLockBodyScroll();
+
   useEffect(() => {
     setMounted(true);
-    const previousOverflow = document.body.style.overflow;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
-    };
   }, []);
 
   useEffect(() => {
@@ -72,7 +66,7 @@ export function HrServiceDetailModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[90] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-4 backdrop-blur-sm sm:px-4 sm:py-6"
+      className="fixed inset-0 z-[90] flex items-start justify-center overflow-hidden overscroll-none bg-slate-950/60 px-3 py-4 backdrop-blur-sm sm:px-4 sm:py-6"
       data-lenis-prevent="true"
       onWheel={(event) => event.stopPropagation()}
       onTouchMove={(event) => event.stopPropagation()}

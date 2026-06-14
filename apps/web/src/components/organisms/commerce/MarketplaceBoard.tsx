@@ -3,9 +3,11 @@
 import Link from "next/link";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   PackageSearch,
+  Search,
   Sparkles,
   Store,
   Wrench,
@@ -117,6 +119,8 @@ type MarketplaceBoardProps = {
   sideBanner?: MarketplaceSideBanner | null;
   servicesPromo?: MarketplaceServicesPromo | null;
   projectBanners?: MarketplaceProjectBanner[];
+  onSearchSubmit?: (query: string) => void;
+  showSearch?: boolean;
 };
 
 export function MarketplaceBoard({
@@ -131,15 +135,58 @@ export function MarketplaceBoard({
   sideBanner,
   servicesPromo,
   projectBanners = [],
+  onSearchSubmit,
+  showSearch = false,
 }: MarketplaceBoardProps) {
+  const router = useRouter();
+  const [localSearch, setLocalSearch] = useState(searchQuery);
   const visibleCategories = categories.slice(0, 6);
   const spotlightProducts = products.slice(0, 4);
   const discounted = products.find((product) => product.discounts?.[0]?.percent);
   const preorder = products.find((product) => product.supplyType === "CHINA_PREORDER");
 
+  useEffect(() => {
+    setLocalSearch(searchQuery);
+  }, [searchQuery]);
+
+  const submitSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = localSearch.trim();
+    if (!query) return;
+    if (onSearchSubmit) {
+      onSearchSubmit(query);
+      return;
+    }
+    router.push(`/products?search=${encodeURIComponent(query)}`);
+  };
+
   return (
     <section className="border-b border-slate-100 bg-white">
       <div className="container mx-auto px-4 py-4 lg:px-8">
+        {showSearch && (
+          <form
+            onSubmit={submitSearch}
+            className="mb-3 flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm lg:hidden"
+          >
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+              <input
+                value={localSearch}
+                onChange={(event) => setLocalSearch(event.target.value)}
+                placeholder="Бүтээгдэхүүн хайх..."
+                className="h-12 w-full rounded-xl bg-slate-50 pl-11 pr-3 text-sm font-bold text-slate-900 outline-none transition focus:bg-white"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!localSearch.trim()}
+              className="h-12 shrink-0 rounded-xl bg-orange-500 px-4 text-sm font-black text-white transition active:scale-[0.98] disabled:bg-slate-200 disabled:text-slate-400"
+            >
+              Хайх
+            </button>
+          </form>
+        )}
+
         <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
           <aside className="hidden rounded-2xl border border-slate-100 bg-slate-50/80 p-4 shadow-sm lg:block">
             <div className="mb-3 flex items-center justify-between">
@@ -199,8 +246,8 @@ export function MarketplaceBoard({
           </aside>
 
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="md:col-span-2 lg:hidden">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-2">
+              <div className="lg:hidden">
                 <MglServicesPromoPanel promo={servicesPromo} />
               </div>
               <ProjectHeroBanner projects={projectBanners} />
@@ -308,19 +355,19 @@ function ProjectHeroBanner({ projects }: { projects: MarketplaceProjectBanner[] 
     return (
       <Link
         href="/products"
-        className="relative h-[190px] overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_78%_28%,rgba(255,255,255,0.28),transparent_28%),linear-gradient(135deg,#fb5b2f_0%,#ef4444_54%,#8b3f2b_100%)] p-5 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-100/70 lg:h-[230px]"
+        className="relative h-[150px] overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_78%_28%,rgba(255,255,255,0.28),transparent_28%),linear-gradient(135deg,#fb5b2f_0%,#ef4444_54%,#8b3f2b_100%)] p-3.5 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-100/70 sm:h-[190px] sm:p-5 lg:h-[230px]"
       >
         <div className="relative z-10 flex h-full max-w-[340px] flex-col justify-between">
           <div>
             <span className="inline-flex items-center gap-2 rounded-lg bg-white/16 px-3 py-1 text-xs font-black backdrop-blur-sm">
-              <Sparkles className="h-3.5 w-3.5" />
+              <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               MGL Store
             </span>
-            <h1 className="mt-3 text-2xl font-black leading-tight tracking-tight">
+            <h1 className="mt-2 text-lg font-black leading-tight tracking-tight sm:mt-3 sm:text-2xl">
               Бараагаа хурдан олж, шууд захиал
             </h1>
           </div>
-          <span className="inline-flex items-center gap-2 text-sm font-black">
+          <span className="inline-flex items-center gap-1.5 text-xs font-black sm:gap-2 sm:text-sm">
             Худалдаа эхлэх <ArrowRight className="h-4 w-4" />
           </span>
         </div>
@@ -332,7 +379,7 @@ function ProjectHeroBanner({ projects }: { projects: MarketplaceProjectBanner[] 
   return (
     <Link
       href="/projects"
-      className="group relative h-[174px] overflow-hidden rounded-2xl bg-slate-950 p-4 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-100/70 sm:h-[190px] sm:p-5 lg:h-[230px]"
+      className="group relative h-[150px] overflow-hidden rounded-2xl bg-slate-950 p-3.5 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-100/70 sm:h-[190px] sm:p-5 lg:h-[230px]"
     >
       {slides.map((project, index) => (
         // eslint-disable-next-line @next/next/no-img-element
@@ -350,23 +397,23 @@ function ProjectHeroBanner({ projects }: { projects: MarketplaceProjectBanner[] 
       <div className="relative z-10 flex h-full max-w-[360px] flex-col justify-between">
         <div>
           <span className="inline-flex items-center gap-2 rounded-lg bg-white/16 px-3 py-1 text-xs font-black backdrop-blur-sm">
-            <Sparkles className="h-3.5 w-3.5" />
+            <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
             Төслийн онцлох
           </span>
-          <h1 className="mt-2 line-clamp-2 text-[26px] font-black leading-[1.03] tracking-tight sm:mt-3 sm:text-2xl">
+          <h1 className="mt-2 line-clamp-2 text-lg font-black leading-[1.03] tracking-tight sm:mt-3 sm:text-2xl">
             {active.title}
           </h1>
           {active.summary && (
-            <p className="mt-1 line-clamp-2 text-xs font-bold leading-4 text-white/78">
+            <p className="mt-1 line-clamp-1 text-[11px] font-bold leading-4 text-white/78 sm:line-clamp-2 sm:text-xs">
               {active.summary}
             </p>
           )}
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className="inline-flex items-center gap-2 text-sm font-black">
+          <span className="inline-flex items-center gap-1.5 text-xs font-black sm:gap-2 sm:text-sm">
             Төсөл үзэх <ArrowRight className="h-4 w-4" />
           </span>
-          <div className="flex gap-1.5">
+          <div className="hidden gap-1.5 min-[420px]:flex">
             {slides.map((project, index) => (
               <span
                 key={`${project.id}-dot`}
@@ -575,7 +622,7 @@ function MglServicesPromoPanel({ promo }: { promo?: MarketplaceServicesPromo | n
   return (
     <Link
       href="/our-services"
-      className="group relative flex h-[174px] overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_78%_78%,rgba(255,255,255,0.20),transparent_25%),linear-gradient(135deg,#111827_0%,#fb5b2f_58%,#f97316_100%)] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-100/70 sm:h-[190px] lg:h-[230px]"
+      className="group relative flex h-[150px] overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_78%_78%,rgba(255,255,255,0.20),transparent_25%),linear-gradient(135deg,#111827_0%,#fb5b2f_58%,#f97316_100%)] text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-100/70 sm:h-[190px] lg:h-[230px]"
     >
       {resolved.imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -592,7 +639,7 @@ function MglServicesPromoPanel({ promo }: { promo?: MarketplaceServicesPromo | n
             : "bg-gradient-to-br from-slate-950/76 via-slate-950/34 to-orange-500/56"
         }`}
       />
-      <div className="relative z-10 flex min-h-full w-full flex-col justify-between p-3.5 xl:p-4">
+      <div className="relative z-10 flex min-h-full w-full flex-col justify-between p-3 xl:p-4">
         <div className="flex items-start justify-between gap-2">
           <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg bg-white/16 px-2 py-1 text-[10px] font-black backdrop-blur-sm xl:text-[11px]">
             <Wrench className="h-3 w-3 shrink-0 xl:h-3.5 xl:w-3.5" />
@@ -604,10 +651,10 @@ function MglServicesPromoPanel({ promo }: { promo?: MarketplaceServicesPromo | n
         </div>
 
         <div>
-          <p className="line-clamp-2 max-w-[13rem] text-[25px] font-black leading-[1.02] tracking-tight sm:max-w-[15rem] sm:text-xl lg:max-w-[10rem] lg:text-lg xl:max-w-[13rem] xl:text-xl">
+          <p className="line-clamp-2 max-w-[11rem] text-lg font-black leading-[1.02] tracking-tight sm:max-w-[15rem] sm:text-xl lg:max-w-[10rem] lg:text-lg xl:max-w-[13rem] xl:text-xl">
             {resolved.title}
           </p>
-          <p className="mt-1.5 line-clamp-1 max-w-[15rem] text-[11px] font-bold leading-4 text-white/78 lg:max-w-[10rem] xl:max-w-[13rem] xl:text-xs">
+          <p className="mt-1 line-clamp-1 max-w-[11rem] text-[11px] font-bold leading-4 text-white/78 sm:mt-1.5 sm:max-w-[15rem] lg:max-w-[10rem] xl:max-w-[13rem] xl:text-xs">
             {resolved.subtitle}
           </p>
           <span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/16 px-2.5 py-1.5 text-[11px] font-black backdrop-blur-sm xl:text-xs">

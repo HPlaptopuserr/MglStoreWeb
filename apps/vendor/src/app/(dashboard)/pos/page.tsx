@@ -43,6 +43,7 @@ import {
   PosPaymentPanel,
   PosCheckoutView,
   type CheckoutPaymentEntry,
+  type CheckoutLoyaltyState,
   ReceiptPreview,
   usePosCart,
   useCreateSale,
@@ -83,6 +84,7 @@ import {
 } from "@/features/pos";
 import { API, authFetch } from "@/lib/api";
 import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 
 type PosView = "register" | "checkout" | "history";
 
@@ -118,6 +120,19 @@ type CardPaymentRun = {
   provider?: string | null;
   abortController: AbortController;
   cancelled: boolean;
+};
+
+const initialLoyaltyState: CheckoutLoyaltyState = {
+  mode: "NONE",
+  phone: "",
+  lookupLoading: false,
+  lookupError: "",
+  found: false,
+  customerName: null,
+  balance: 0,
+  earnRate: 0.02,
+  membershipBadge: "NONE",
+  redeemPoints: 0,
 };
 
 function mapEbarimtPayload(payload: AttachEbarimtPayload): NonNullable<PosReceipt["ebarimt"]> {
@@ -313,6 +328,7 @@ export default function PosDemoPage() {
   const [scanStatus, setScanStatus] = useState<"idle" | "success" | "not-found">("idle");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [paymentEntries, setPaymentEntries] = useState<CheckoutPaymentEntry[]>([]);
+  const [loyalty, setLoyalty] = useState<CheckoutLoyaltyState>(initialLoyaltyState);
   const [view, setView] = useState<PosView>("register");
   const [displayOpened, setDisplayOpened] = useState(false);
   const [customerDisplayTheme, setCustomerDisplayTheme] =
@@ -390,6 +406,15 @@ export default function PosDemoPage() {
   const [shiftHistoryReceipts, setShiftHistoryReceipts] = useState<PosReceipt[]>([]);
   const [shiftHistoryReceiptsLoading, setShiftHistoryReceiptsLoading] = useState(false);
   const [shiftHistoryReceiptsError, setShiftHistoryReceiptsError] = useState("");
+  const overlayOpen =
+    view === "checkout" ||
+    showShiftPanel ||
+    showShiftHistoryPanel ||
+    showCashDrawerPanel ||
+    successOverlay.visible ||
+    isCardProcessing;
+
+  useLockBodyScroll(overlayOpen);
 
   const selectedReceipt = useMemo(
     () => receiptHistory.find((receipt) => receipt.id === selectedReceiptId) || null,
@@ -1053,9 +1078,19 @@ export default function PosDemoPage() {
     [paymentEntries],
   );
 
+  const appliedLoyaltyRedeem = useMemo(() => {
+    if (loyalty.mode !== "REDEEM" || !loyalty.found) return 0;
+    return Math.max(0, Math.min(loyalty.balance, totals.grandTotal, Math.floor(loyalty.redeemPoints || 0)));
+  }, [loyalty.balance, loyalty.found, loyalty.mode, loyalty.redeemPoints, totals.grandTotal]);
+
+  const payableTotal = useMemo(
+    () => Math.max(0, roundMoney(totals.grandTotal - appliedLoyaltyRedeem)),
+    [totals.grandTotal, appliedLoyaltyRedeem],
+  );
+
   const remaining = useMemo(
-    () => Math.max(0, roundMoney(totals.grandTotal - confirmedPaid)),
-    [totals.grandTotal, confirmedPaid],
+    () => Math.max(0, roundMoney(payableTotal - confirmedPaid)),
+    [payableTotal, confirmedPaid],
   );
 
   const hasPendingPayment = useMemo(
@@ -1065,10 +1100,11 @@ export default function PosDemoPage() {
 
   const canFinalizeSale =
     state.cart.length > 0 &&
-    paymentEntries.length > 0 &&
+    (paymentEntries.length > 0 || payableTotal <= 0) &&
     remaining <= 0 &&
     !hasPendingPayment &&
-    !isCardProcessing;
+    !isCardProcessing &&
+    (loyalty.mode === "NONE" || (loyalty.found && loyalty.phone.replace(/\D/g, "").length >= 6));
 
   const selectedByCode = useMemo(() => {
     if (!lastScannedCode) return null;
@@ -1169,7 +1205,7 @@ export default function PosDemoPage() {
     const confirmedTotal = roundMoney(
       confirmedPayments.reduce((sum, item) => sum + item.amount, 0),
     );
-    const saleRemaining = Math.max(0, roundMoney(totals.grandTotal - confirmedTotal));
+    const saleRemaining = Math.max(0, roundMoney(payableTotal - confirmedTotal));
 
     if (saleRemaining > 0) {
       setScanStatus("not-found");
@@ -1210,6 +1246,14 @@ export default function PosDemoPage() {
         clientSaleId: clientSaleIdRef.current,
         paymentMethod: finalMethod,
         paymentBreakdown,
+        loyalty:
+          loyalty.mode === "NONE"
+            ? { mode: "NONE" }
+            : {
+                mode: loyalty.mode,
+                phone: loyalty.phone,
+                redeemPoints: loyalty.mode === "REDEEM" ? appliedLoyaltyRedeem : 0,
+              },
         totalPaid: confirmedTotal,
         remaining: saleRemaining,
         status: "PAID",
@@ -1259,6 +1303,7 @@ export default function PosDemoPage() {
 
       setQpayModal(null);
       setPaymentEntries([]);
+      setLoyalty(initialLoyaltyState);
       setAutoCheckoutActive(false);
       clientSaleIdRef.current = null;
       dispatch({ type: "clear-cart" });
@@ -1544,6 +1589,43 @@ export default function PosDemoPage() {
     clientSaleIdRef.current = null;
   };
 
+  const lookupLoyalty = async () => {
+    const phone = loyalty.phone.replace(/\D/g, "");
+    if (phone.length < 6) {
+      setLoyalty((prev) => ({ ...prev, lookupError: "Утасны дугаар оруулна уу." }));
+      return;
+    }
+
+    setLoyalty((prev) => ({ ...prev, lookupLoading: true, lookupError: "" }));
+    try {
+      const response = await authFetch(`${API}/pos/loyalty/lookup?phone=${encodeURIComponent(phone)}`, {
+        cache: "no-store",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || "M Point мэдээлэл авахад алдаа гарлаа");
+      }
+      setLoyalty((prev) => ({
+        ...prev,
+        found: Boolean(data.found),
+        customerName: data.customerName ?? null,
+        balance: Number(data.balance || 0),
+        earnRate: Number(data.earnRate || 0.02),
+        membershipBadge: data.membershipBadge || "NONE",
+        lookupError: data.found ? "" : "Энэ дугаартай M Point хэрэглэгч олдсонгүй.",
+        redeemPoints: Math.min(prev.redeemPoints, Number(data.balance || 0), totals.grandTotal),
+      }));
+    } catch (error: any) {
+      setLoyalty((prev) => ({
+        ...prev,
+        found: false,
+        lookupError: error?.message || "M Point мэдээлэл авахад алдаа гарлаа",
+      }));
+    } finally {
+      setLoyalty((prev) => ({ ...prev, lookupLoading: false }));
+    }
+  };
+
   const handlePaymentMethodChange = (method: PaymentMethod) => {
     setPaymentMethod(method);
     if (method !== "QR") {
@@ -1563,33 +1645,16 @@ export default function PosDemoPage() {
     setQpayModal(null);
     setCustomerDisplaySuccess(null);
     setPaymentEntries([]);
+    setLoyalty((prev) => ({
+      ...initialLoyaltyState,
+      phone: prev.phone,
+      mode: prev.mode === "REDEEM" ? "EARN" : prev.mode,
+    }));
     setView("checkout");
-
-    const total = totals.grandTotal;
-    if (total <= 0) {
-      setAutoCheckoutActive(false);
-      return;
-    }
-
-    if (paymentMethod === "QR") {
-      setAutoCheckoutActive(true);
-      setScanStatus("idle");
-      setScanMessage("QPay QR үүсгэж байна...");
-      await requestQPay(total);
-      return;
-    }
-
-    if (paymentMethod === "CARD") {
-      setAutoCheckoutActive(true);
-      setScanStatus("idle");
-      setScanMessage("Картын терминал руу хүсэлт илгээж байна...");
-      await addPaymentEntry("CARD", total);
-      return;
-    }
 
     setAutoCheckoutActive(false);
     setScanStatus("idle");
-    setScanMessage("Бэлэн төлбөрийн дүнгээ оруулаад Төлбөр нэмэх дарна уу.");
+    setScanMessage("M Point сонголтоо шалгаад төлбөрөө нэмнэ үү.");
   };
 
   useEffect(() => {
@@ -1883,7 +1948,7 @@ export default function PosDemoPage() {
             </div>
           </div>
 
-          <div className="max-h-[280px] overflow-y-auto rounded-lg bg-slate-50 p-2">
+          <div className="max-h-[280px] overflow-y-auto overscroll-contain rounded-lg bg-slate-50 p-2">
             {drawerSummary?.events.length ? (
               <div className="space-y-1.5">
                 {drawerSummary.events.map((event) => (
@@ -1965,7 +2030,7 @@ export default function PosDemoPage() {
       )}
 
       <div className="mt-3 grid min-h-0 grid-cols-[minmax(260px,0.85fr)_minmax(360px,1.15fr)] gap-3">
-        <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+        <div className="max-h-[420px] space-y-2 overflow-y-auto overscroll-contain pr-1">
           {shiftHistoryLoading && shiftHistory.length === 0 ? (
             <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2090,7 +2155,7 @@ export default function PosDemoPage() {
                 </div>
               )}
 
-              <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-white p-2">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg bg-white p-2">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-xs font-bold text-slate-800">Баримтууд</p>
                   {shiftHistoryReceiptsLoading && (
@@ -2392,7 +2457,7 @@ export default function PosDemoPage() {
 
       {/* ── Shift open/close panel ─────────────────────────────── */}
       {showShiftPanel && registerConfig?.isActive && (
-        <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-950/35 p-4 backdrop-blur-sm sm:p-6">
+        <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto overscroll-contain bg-slate-950/35 p-4 backdrop-blur-sm sm:p-6">
           <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-teal-200 bg-white shadow-2xl sm:max-h-[calc(100vh-3rem)]">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-3">
               <p className="text-sm font-bold text-slate-800">
@@ -2406,7 +2471,7 @@ export default function PosDemoPage() {
                 <X size={16} />
               </button>
             </div>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-4">
               {!shift ? (
                 <>
                   <p className="text-xs text-slate-500">Эхлэх мөнгийг оруулна уу.</p>
@@ -2545,6 +2610,9 @@ export default function PosDemoPage() {
           statusMessage={scanMessage}
           statusTone={scanStatus}
           remaining={remaining}
+          loyalty={loyalty}
+          onLoyaltyChange={setLoyalty}
+          onLookupLoyalty={lookupLoyalty}
           onAddPayment={addPaymentEntry}
           onRequestQPay={requestQPay}
           onMarkQPayPaid={markQPayPaid}
@@ -2562,7 +2630,7 @@ export default function PosDemoPage() {
       )}
 
       {successOverlay.visible && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 backdrop-blur-[1px] pointer-events-none">
+        <div className="fixed inset-0 z-[90] flex items-center justify-center overscroll-contain bg-black/45 backdrop-blur-[1px] pointer-events-none">
           <div className="rounded-3xl border border-emerald-300/60 bg-emerald-500/15 px-10 py-8 text-center shadow-2xl">
             <CheckCircle2 className="mx-auto h-24 w-24 text-emerald-400" strokeWidth={2.4} />
             <p className="mt-4 text-3xl font-black tracking-tight text-emerald-300">Амжилттай</p>
@@ -2572,7 +2640,7 @@ export default function PosDemoPage() {
       )}
 
       {isCardProcessing && terminalNeedsWaitingOverlay(getEffectiveCardProvider(registerConfig)) && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center overscroll-contain bg-black/50 backdrop-blur-[2px]">
           <div className="rounded-3xl border border-blue-300/40 bg-white px-10 py-8 text-center shadow-2xl w-80">
             <Loader2 className="mx-auto h-14 w-14 animate-spin text-blue-500" />
             <p className="mt-4 text-lg font-bold text-slate-900">Картаар төлж байна</p>

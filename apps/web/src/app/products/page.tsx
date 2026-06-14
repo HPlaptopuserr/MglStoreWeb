@@ -295,6 +295,13 @@ function ProductsContent() {
     router.replace(buildProductsUrl(activeCategory, searchQuery, supplyFilter), { scroll: false });
   };
 
+  const submitHeroSearch = (query: string) => {
+    setSearchQuery(query);
+    setDebouncedSearch(query);
+    setCurrentPage(1);
+    router.replace(buildProductsUrl(activeCategory, query, supplyFilter), { scroll: false });
+  };
+
   const clearFilters = () => {
     setDiscountOnly(false);
     setPriceMin("");
@@ -454,6 +461,7 @@ function ProductsContent() {
         sideBanner={sideBanner}
         servicesPromo={servicesPromo}
         projectBanners={projectBanners}
+        onSearchSubmit={submitHeroSearch}
       />
 
       <ProductCommandBar

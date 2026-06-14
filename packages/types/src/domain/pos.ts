@@ -125,6 +125,11 @@ export interface SalePayload {
   clientSaleId?: string;
   paymentMethod: string;
   paymentBreakdown?: SalePaymentLine[];
+  loyalty?: {
+    mode: "EARN" | "REDEEM" | "NONE";
+    phone?: string;
+    redeemPoints?: number;
+  };
   totalPaid?: number;
   remaining?: number;
   status?: "PARTIAL" | "PAID";
@@ -271,6 +276,15 @@ export interface PosReceipt {
     traceno?: string | null;
     terminalId?: string | null;
   }>;
+  loyalty?: {
+    mode: string;
+    phone: string;
+    earnedPoints: number;
+    redeemedPoints: number;
+    balanceAfter: number | null;
+    earnRate: number;
+    membershipBadge: string;
+  } | null;
   createdAt: string;
   lines: ReceiptLine[];
   subTotal: number;

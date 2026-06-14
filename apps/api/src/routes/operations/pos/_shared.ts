@@ -69,6 +69,11 @@ export type CreateSaleBody = {
   clientSaleId?: string;
   paymentMethod?: string;
   paymentBreakdown?: SalePaymentLineInput[];
+  loyalty?: {
+    mode?: "EARN" | "REDEEM" | "NONE";
+    phone?: string;
+    redeemPoints?: number;
+  };
   lines?: SaleLineInput[];
   note?: string;
 };

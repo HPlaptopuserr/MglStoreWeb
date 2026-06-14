@@ -70,6 +70,7 @@ model User {
   sentDirectMessages           DirectMessage[]           @relation("DirectMessageSender")
   posShifts                    PosShift[]                @relation("PosShiftCashier")
   posSales                     PosSale[]                 @relation("PosSaleCashier")
+  posLoyaltyTransactions       PosLoyaltyTransaction[]   @relation("PosLoyaltyCustomer")
   contracts                    Contract[]
 
   @@index([role])
@@ -373,6 +374,7 @@ model Organization {
   joinRequests                 OrgJoinRequest[]        @relation("OrgJoinRequests")
   posShifts                    PosShift[]
   posSales                     PosSale[]
+  posLoyaltyTransactions       PosLoyaltyTransaction[]
   contracts                    Contract[]
   upgradePlans                 OrgUpgradePlan[]
   cardTerminalRequests         CardTerminalRequest[]
@@ -580,6 +582,7 @@ model Branch {
   posRegisters          PosRegister[]
   posShifts             PosShift[]
   posSales              PosSale[]
+  posLoyaltyTransactions PosLoyaltyTransaction[]
   orderAssignments      Order[]                @relation("OrderAssignedBranch")
   orderDispatchAttempts OrderDispatchAttempt[]
 
@@ -1328,6 +1331,7 @@ model MPointLedger {
   description  String
   createdAt    DateTime            @default(now())
   user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  posLoyaltyTransaction PosLoyaltyTransaction?
 
   @@index([userId, createdAt])
   @@index([sourceType, sourceId])
@@ -1954,6 +1958,7 @@ model PosSale {
   shift            PosShift      @relation(fields: [shiftId], references: [id])
   cashier          User          @relation("PosSaleCashier", fields: [cashierId], references: [id])
   lines            PosSaleLine[]
+  loyalty          PosLoyaltyTransaction?
 
   @@index([organizationId])
   @@index([branchId])
@@ -1961,6 +1966,35 @@ model PosSale {
   @@index([cashierId])
   @@index([status])
   @@index([createdAt])
+}
+
+model PosLoyaltyTransaction {
+  id               String           @id @default(uuid())
+  saleId           String           @unique
+  organizationId   String
+  branchId         String
+  userId           String?
+  customerPhone    String
+  action           MPointLedgerType
+  baseRate         Decimal          @db.Decimal(5, 4)
+  effectiveRate    Decimal          @db.Decimal(5, 4)
+  saleTotal        Decimal          @db.Decimal(18, 2)
+  earnedPoints     Int              @default(0)
+  redeemedPoints   Int              @default(0)
+  membershipBadge  String?
+  note             String?
+  ledgerId         String?          @unique
+  createdAt        DateTime         @default(now())
+  sale             PosSale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  organization     Organization     @relation(fields: [organizationId], references: [id])
+  branch           Branch           @relation(fields: [branchId], references: [id])
+  user             User?            @relation("PosLoyaltyCustomer", fields: [userId], references: [id], onDelete: SetNull)
+  ledger           MPointLedger?    @relation(fields: [ledgerId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([branchId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
 }
 
 /// Individual line item within a POS sale.
@@ -2003,6 +2037,7 @@ enum PaidAccessSourceType {
   PROJECT
   FRANCHISE
   SERVICE
+  POS_SALE
 }
 
 enum MPointLedgerType {

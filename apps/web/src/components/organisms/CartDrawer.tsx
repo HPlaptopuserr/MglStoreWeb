@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { X, Trash2, ShoppingCart, Plus, Minus } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 
 interface CartDrawerProps {
   open: boolean;
@@ -14,6 +15,7 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
   const { items, total, removeFromCart, updateQuantity, clearCart } = useCart();
   const drawerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  useLockBodyScroll(open);
 
   // Close on Escape
   useEffect(() => {
@@ -22,18 +24,12 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
     return () => window.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
-  // Lock body scroll
-  useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [open]);
-
   return (
     <>
       {/* Backdrop */}
       <div
         onClick={onClose}
-        className={`fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${
+        className={`fixed inset-0 z-[60] overscroll-none bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${
           open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
       />
@@ -41,12 +37,16 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
       {/* Drawer */}
       <div
         ref={drawerRef}
-        className={`fixed top-0 right-0 z-[70] h-full w-full max-w-[420px] bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
-          open ? "translate-x-0" : "translate-x-full"
+        className={`fixed inset-x-0 bottom-0 z-[70] flex max-h-[86dvh] w-full flex-col overflow-hidden overscroll-none rounded-t-[28px] bg-white shadow-2xl transition-transform duration-300 ease-in-out md:inset-y-0 md:left-auto md:right-0 md:h-full md:max-h-none md:max-w-[420px] md:rounded-none ${
+          open ? "translate-y-0 md:translate-x-0" : "translate-y-full md:translate-x-full md:translate-y-0"
         }`}
       >
+        <div className="flex justify-center pt-2 md:hidden">
+          <span className="h-1.5 w-12 rounded-full bg-gray-200" />
+        </div>
+
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 pb-4 pt-3 md:py-4">
           <div className="flex items-center gap-2">
             <ShoppingCart size={20} className="text-amber-500" />
             <h2 className="text-base font-bold text-gray-900">Миний сагс</h2>
@@ -76,7 +76,7 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
         </div>
 
         {/* Items */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
               <div className="w-20 h-20 rounded-full bg-gray-50 flex items-center justify-center">
@@ -161,7 +161,7 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
 
         {/* Footer */}
         {items.length > 0 && (
-          <div className="border-t border-gray-100 px-5 py-5 space-y-3 bg-white">
+          <div className="space-y-3 border-t border-gray-100 bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 md:pb-5">
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-500">Нийт дүн</span>
               <span className="text-xl font-black text-gray-900 tabular-nums">

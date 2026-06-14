@@ -13,6 +13,8 @@ import {
   Banknote,
   CreditCard,
   QrCode,
+  Gift,
+  Search,
 } from "lucide-react";
 import type { CartLine, CartTotals } from "../types/pos.types";
 import type { PaymentMethod } from "../constants/payment-methods";
@@ -37,6 +39,9 @@ type Props = {
   onBack: () => void;
   disabled?: boolean;
   transactionId?: string;
+  loyalty: CheckoutLoyaltyState;
+  onLoyaltyChange: (next: CheckoutLoyaltyState) => void;
+  onLookupLoyalty: () => void;
 };
 
 export type CheckoutPaymentEntry = {
@@ -56,6 +61,19 @@ export type CheckoutQPayInvoice = {
   qrText: string;
   qrImage: string;
   expiresAt: string;
+};
+
+export type CheckoutLoyaltyState = {
+  mode: "NONE" | "EARN" | "REDEEM";
+  phone: string;
+  lookupLoading: boolean;
+  lookupError: string;
+  found: boolean;
+  customerName?: string | null;
+  balance: number;
+  earnRate: number;
+  membershipBadge: "NONE" | "STANDARD" | "MEMBER";
+  redeemPoints: number;
 };
 
 const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; icon: ReactNode }[] = [
@@ -93,6 +111,9 @@ export function PosCheckoutView({
   onBack,
   disabled,
   transactionId = "TXN-0001",
+  loyalty,
+  onLoyaltyChange,
+  onLookupLoyalty,
 }: Props) {
   const [enteredAmount, setEnteredAmount] = useState("");
 
@@ -102,6 +123,16 @@ export function PosCheckoutView({
     .reduce((sum, item) => sum + item.amount, 0);
   const enteredForPreview = parsedAmount > 0 ? parsedAmount : 0;
   const previewRemaining = Math.max(0, remaining - enteredForPreview);
+  const estimatedEarnPoints = Math.max(0, Math.floor(totals.grandTotal * loyalty.earnRate));
+  const maxRedeemPoints = Math.max(0, Math.min(loyalty.balance, totals.grandTotal));
+  const effectiveRedeemPoints =
+    loyalty.mode === "REDEEM"
+      ? Math.max(0, Math.min(maxRedeemPoints, Math.floor(Number(loyalty.redeemPoints) || 0)))
+      : 0;
+  const projectedBalance =
+    loyalty.mode === "EARN"
+      ? loyalty.balance + estimatedEarnPoints
+      : Math.max(0, loyalty.balance - effectiveRedeemPoints) + estimatedEarnPoints;
 
   const handleNumpad = (key: string) => {
     if (key === "⌫") {
@@ -135,44 +166,44 @@ export function PosCheckoutView({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-zinc-950 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden overscroll-contain bg-zinc-950">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-zinc-800 shrink-0">
+      <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-3 shrink-0 max-[1500px]:px-4 max-[1500px]:py-2.5 [@media(max-height:850px)]:py-2">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-amber-500 flex items-center justify-center">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-amber-500 max-[760px]:h-5 max-[760px]:w-5">
               <span className="text-[10px] font-black text-black">M</span>
             </div>
-            <span className="text-sm font-bold text-white">MGL POS</span>
+            <span className="text-sm font-bold text-white max-[760px]:text-xs">MGL POS</span>
           </div>
           <span className="text-zinc-700">•</span>
-          <span className="text-xs text-zinc-500">Checkout: {transactionId}</span>
+          <span className="text-xs text-zinc-500 max-[760px]:text-[10px]">Checkout: {transactionId}</span>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onBack}
-            className="px-3 py-1.5 rounded-md text-xs font-semibold text-zinc-300 border border-zinc-700 hover:border-zinc-500 transition-colors"
+            className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition-colors hover:border-zinc-500 max-[760px]:px-2.5 max-[760px]:py-1 max-[760px]:text-[10px]"
           >
             REGISTER
           </button>
           <button
             type="button"
-            className="px-3 py-1.5 rounded-md text-xs font-semibold text-zinc-400 border border-zinc-700 hover:border-zinc-600 transition-colors"
+            className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-400 transition-colors hover:border-zinc-600 max-[760px]:px-2.5 max-[760px]:py-1 max-[760px]:text-[10px]"
           >
             <Clock size={12} className="inline mr-1" />
             HISTORY
           </button>
           <button
             type="button"
-            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 border border-zinc-700 hover:border-zinc-500 transition-colors"
+            className="rounded-md border border-zinc-700 p-1.5 text-zinc-500 transition-colors hover:border-zinc-500 hover:text-zinc-300 max-[760px]:p-1"
           >
             <Settings size={14} />
           </button>
           <button
             type="button"
             onClick={onBack}
-            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 border border-zinc-700 hover:border-zinc-500 transition-colors"
+            className="rounded-md border border-zinc-700 p-1.5 text-zinc-500 transition-colors hover:border-zinc-500 hover:text-zinc-300 max-[760px]:p-1"
           >
             <X size={14} />
           </button>
@@ -182,7 +213,7 @@ export function PosCheckoutView({
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {/* ── Left: payment selector + numpad ── */}
-        <div className="w-[400px] shrink-0 flex flex-col gap-4 border-r border-zinc-800 p-6 overflow-y-auto">
+        <div className="flex w-[400px] shrink-0 flex-col gap-4 overflow-y-auto overscroll-contain border-r border-zinc-800 p-6 max-[1500px]:w-[340px] max-[1500px]:gap-3 max-[1500px]:p-4 max-[1180px]:w-[300px] max-[1180px]:gap-2.5 max-[1180px]:p-3 [@media(max-height:850px)]:w-[340px] [@media(max-height:850px)]:gap-2.5 [@media(max-height:850px)]:p-3">
           {/* Payment method tabs */}
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-3">
@@ -196,7 +227,7 @@ export function PosCheckoutView({
                     key={opt.value}
                     type="button"
                     onClick={() => onChangeMethod(opt.value)}
-                    className={`flex flex-col items-center gap-1.5 py-4 rounded-xl text-sm font-bold border transition-all ${
+                    className={`flex flex-col items-center gap-1.5 rounded-xl border py-4 text-sm font-bold transition-all max-[1500px]:py-3 max-[1500px]:text-xs max-[1180px]:py-2.5 [@media(max-height:850px)]:py-2.5 ${
                       isActive
                         ? "bg-zinc-100 text-zinc-900 border-zinc-100 shadow-lg shadow-zinc-900"
                         : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-600 hover:text-zinc-300"
@@ -215,15 +246,15 @@ export function PosCheckoutView({
             <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-2">
               Дүн оруулах
             </p>
-            <div className="rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 flex items-baseline gap-1 justify-end">
+            <div className="flex items-baseline justify-end gap-1 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 max-[1500px]:px-3 max-[1500px]:py-2 [@media(max-height:850px)]:py-2">
               <span className="text-zinc-500 text-base font-bold">₮</span>
-              <span className="text-3xl font-black text-white tabular-nums">
+              <span className="text-3xl font-black tabular-nums text-white max-[1500px]:text-2xl max-[1180px]:text-xl">
                 {enteredAmount === ""
                   ? "0.00"
                   : parseFloat(enteredAmount || "0").toLocaleString()}
               </span>
             </div>
-              <p className="mt-2 text-xs text-zinc-500">
+              <p className="mt-2 text-xs text-zinc-500 max-[1280px]:text-[11px]">
                 Үлдэгдэл: ₮{remaining.toLocaleString()} • Оруулах дараа: ₮{previewRemaining.toLocaleString()}
               </p>
           </div>
@@ -233,7 +264,7 @@ export function PosCheckoutView({
               type="button"
               onClick={handlePrimaryAction}
               disabled={disabled || remaining <= 0}
-              className="rounded-xl bg-amber-500 px-3 py-3 text-xs font-black text-black hover:bg-amber-400 disabled:opacity-40"
+              className="rounded-xl bg-amber-500 px-3 py-3 text-xs font-black text-black hover:bg-amber-400 disabled:opacity-40 max-[1500px]:py-2.5 max-[1180px]:text-[11px] [@media(max-height:850px)]:py-2"
             >
               {paymentMethod === "QR" ? "QPay QR илгээх" : "Төлбөр нэмэх"}
             </button>
@@ -241,7 +272,7 @@ export function PosCheckoutView({
               type="button"
               onClick={onResetPayments}
               disabled={disabled || paymentEntries.length === 0}
-              className="rounded-xl border border-zinc-700 px-3 py-3 text-xs font-bold text-zinc-300 hover:border-zinc-500 disabled:opacity-40"
+              className="rounded-xl border border-zinc-700 px-3 py-3 text-xs font-bold text-zinc-300 hover:border-zinc-500 disabled:opacity-40 max-[1500px]:py-2.5 max-[1180px]:text-[11px] [@media(max-height:850px)]:py-2"
             >
               Төлбөрүүд цэвэрлэх
             </button>
@@ -254,7 +285,7 @@ export function PosCheckoutView({
                 key={key}
                 type="button"
                 onClick={() => handleNumpad(key)}
-                className={`py-4 rounded-xl text-lg font-bold transition-all select-none ${
+                  className={`select-none rounded-xl py-4 text-lg font-bold transition-all max-[1500px]:py-3 max-[1500px]:text-base max-[1180px]:py-2.5 [@media(max-height:850px)]:py-2.5 ${
                   key === "⌫"
                     ? "bg-zinc-800 text-amber-400 hover:bg-amber-950 hover:border-amber-800 border border-zinc-700"
                     : "bg-zinc-900 text-white border border-zinc-800 hover:bg-zinc-800 hover:border-zinc-600 active:scale-95"
@@ -270,7 +301,7 @@ export function PosCheckoutView({
             <button
               type="button"
               onClick={() => setEnteredAmount("")}
-              className="py-2.5 rounded-lg text-xs font-bold bg-zinc-800 border border-zinc-700 text-rose-400 hover:bg-rose-950 hover:border-rose-800 transition-colors flex items-center justify-center"
+              className="flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 py-2.5 text-xs font-bold text-rose-400 transition-colors hover:border-rose-800 hover:bg-rose-950 max-[1280px]:py-2 max-[760px]:text-[10px]"
             >
               <RotateCcw size={13} />
             </button>
@@ -279,7 +310,7 @@ export function PosCheckoutView({
                 key={amt}
                 type="button"
                 onClick={() => setEnteredAmount(String(amt))}
-                className="py-2.5 rounded-lg text-xs font-bold bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-600 transition-colors"
+                className="rounded-lg border border-zinc-800 bg-zinc-900 py-2.5 text-xs font-bold text-zinc-300 transition-colors hover:border-zinc-600 hover:bg-zinc-800 max-[1500px]:py-2 max-[1180px]:text-[10px]"
               >
                 ₮{amt >= 1000 ? `${amt / 1000}К` : amt}
               </button>
@@ -287,13 +318,13 @@ export function PosCheckoutView({
           </div>
 
           <div
-            className={`rounded-xl px-5 py-4 border ${
+            className={`rounded-xl border px-5 py-4 max-[1500px]:px-3 max-[1500px]:py-3 [@media(max-height:850px)]:py-2.5 ${
               remaining <= 0 ? "bg-emerald-950 border-emerald-800" : "bg-amber-950 border-amber-800"
             }`}
           >
             <p className="text-[10px] uppercase tracking-widest text-zinc-500">Төлбөрийн төлөв</p>
             <p
-              className={`text-3xl font-black tabular-nums mt-1 ${
+              className={`mt-1 text-3xl font-black tabular-nums max-[1500px]:text-2xl max-[1180px]:text-xl ${
                 remaining <= 0 ? "text-emerald-400" : "text-amber-400"
               }`}
             >
@@ -306,17 +337,17 @@ export function PosCheckoutView({
         </div>
 
         {/* ── Right: order summary ── */}
-        <div className="flex-1 flex flex-col p-6 gap-4 overflow-hidden">
+        <div className="flex flex-1 flex-col gap-4 overflow-hidden p-6 max-[1500px]:gap-3 max-[1500px]:p-4 max-[1180px]:gap-2.5 max-[1180px]:p-3 [@media(max-height:850px)]:gap-2.5 [@media(max-height:850px)]:p-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 shrink-0">
             Захиалгын жагсаалт
           </p>
 
           {/* Scrollable item list */}
-          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 pr-1">
             {lines.map((line) => (
               <div
                 key={line.productId}
-                className="flex items-center justify-between rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-3"
+                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 max-[1280px]:px-3 max-[1280px]:py-2.5"
               >
                 <div className="flex-1 min-w-0 mr-4">
                   <p className="text-sm font-semibold text-white truncate">{line.name}</p>
@@ -381,7 +412,7 @@ export function PosCheckoutView({
             </div>
           )}
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-2 max-h-44 overflow-y-auto">
+          <div className="max-h-44 space-y-2 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 max-[1500px]:max-h-32 max-[1500px]:p-3">
             <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Төлбөрийн мөрүүд</p>
             {paymentEntries.length === 0 ? (
               <p className="text-xs text-zinc-500">Одоогоор төлбөр нэмээгүй байна.</p>
@@ -426,8 +457,143 @@ export function PosCheckoutView({
             )}
           </div>
 
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 max-[1500px]:p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-300 max-[1500px]:h-8 max-[1500px]:w-8">
+                  <Gift size={18} />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-white max-[1500px]:text-xs">M Point урамшуулал</p>
+                  <p className="line-clamp-1 text-xs font-semibold text-zinc-500 max-[1500px]:text-[11px]">
+                    2% буцаан олголт, гишүүнчлэлтэй бол өндөр rate-д бэлэн
+                  </p>
+                </div>
+              </div>
+              {loyalty.membershipBadge !== "NONE" && (
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
+                  loyalty.membershipBadge === "MEMBER"
+                    ? "bg-emerald-400/15 text-emerald-300"
+                    : "bg-zinc-800 text-zinc-300"
+                }`}>
+                  {loyalty.membershipBadge === "MEMBER" ? "Гишүүн" : "Стандарт"}
+                </span>
+              )}
+            </div>
+
+            <div className="mt-4 grid gap-3 min-[980px]:grid-cols-[minmax(0,1fr)_118px] min-[1501px]:grid-cols-[minmax(0,1fr)_132px] max-[1500px]:mt-3 max-[1500px]:gap-2">
+              <input
+                value={loyalty.phone}
+                onChange={(event) =>
+                  onLoyaltyChange({
+                    ...loyalty,
+                    phone: event.target.value.replace(/\D/g, "").slice(0, 12),
+                    lookupError: "",
+                    found: false,
+                    customerName: null,
+                    balance: 0,
+                    membershipBadge: "NONE",
+                    redeemPoints: 0,
+                  })
+                }
+                placeholder="Хэрэглэгчийн утас"
+                className="h-11 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm font-bold text-white outline-none transition focus:border-amber-400 max-[1500px]:h-10 max-[1500px]:text-xs"
+              />
+              <button
+                type="button"
+                onClick={onLookupLoyalty}
+                disabled={disabled || loyalty.lookupLoading || loyalty.phone.replace(/\D/g, "").length < 6}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-100 px-4 text-xs font-black text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40 max-[1500px]:h-10 max-[1500px]:px-3 max-[1500px]:text-[11px]"
+              >
+                <Search size={15} />
+                Шалгах
+              </button>
+            </div>
+
+            <div className="mt-3 grid grid-cols-3 rounded-xl bg-zinc-950 p-1 text-xs font-black text-zinc-500 max-[1500px]:text-[11px]">
+              {[
+                { key: "EARN", label: "Цуглуулах" },
+                { key: "REDEEM", label: "Хасуулах" },
+                { key: "NONE", label: "Алгасах" },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() =>
+                    onLoyaltyChange({
+                      ...loyalty,
+                      mode: item.key as CheckoutLoyaltyState["mode"],
+                      redeemPoints: item.key === "REDEEM" ? loyalty.redeemPoints : 0,
+                    })
+                  }
+                  className={`truncate rounded-lg px-2 py-2 transition max-[1500px]:py-1.5 ${
+                    loyalty.mode === item.key ? "bg-amber-500 text-black" : "hover:text-zinc-200"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {loyalty.lookupError && (
+              <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100 max-[1280px]:text-[11px]">
+                {loyalty.lookupError}
+              </p>
+            )}
+
+            <div className="mt-3 grid gap-2 text-xs font-semibold text-zinc-400 min-[900px]:grid-cols-4 max-[1500px]:text-[11px]">
+              <div className="min-w-0 rounded-xl bg-zinc-950 px-3 py-2 max-[1500px]:px-2.5 max-[1500px]:py-1.5">
+                <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600 max-[1500px]:text-[9px]">Хэрэглэгч</p>
+                <p className="mt-1 truncate text-zinc-200">
+                  {loyalty.found ? loyalty.customerName || loyalty.phone : "Шалгаагүй"}
+                </p>
+              </div>
+              <div className="min-w-0 rounded-xl bg-zinc-950 px-3 py-2 max-[1500px]:px-2.5 max-[1500px]:py-1.5">
+                <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600 max-[1500px]:text-[9px]">Одоогийн үлдэгдэл</p>
+                <p className="mt-1 text-zinc-200">{loyalty.balance.toLocaleString("mn-MN")} M</p>
+              </div>
+              <div className="min-w-0 rounded-xl bg-zinc-950 px-3 py-2 max-[1500px]:px-2.5 max-[1500px]:py-1.5">
+                <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600 max-[1500px]:text-[9px]">Энэ худалдан авалт</p>
+                <p className="mt-1 text-amber-300">+{estimatedEarnPoints.toLocaleString("mn-MN")} M</p>
+              </div>
+              <div className="min-w-0 rounded-xl bg-zinc-950 px-3 py-2 max-[1500px]:px-2.5 max-[1500px]:py-1.5">
+                <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600 max-[1500px]:text-[9px]">Дараах үлдэгдэл</p>
+                <p className="mt-1 text-emerald-300">
+                  {projectedBalance.toLocaleString("mn-MN")} M
+                  {loyalty.mode === "REDEEM" && effectiveRedeemPoints > 0 ? (
+                    <span className="ml-1 text-zinc-500">(-{effectiveRedeemPoints.toLocaleString("mn-MN")})</span>
+                  ) : null}
+                </p>
+              </div>
+            </div>
+
+            {loyalty.mode === "REDEEM" && (
+              <div className="mt-3 grid gap-2 min-[900px]:grid-cols-[1fr_auto]">
+                <input
+                  value={loyalty.redeemPoints || ""}
+                  onChange={(event) =>
+                    onLoyaltyChange({
+                      ...loyalty,
+                      redeemPoints: Math.max(0, Math.min(maxRedeemPoints, Math.floor(Number(event.target.value) || 0))),
+                    })
+                  }
+                  placeholder="Хасуулах M Point"
+                  className="h-11 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm font-bold text-white outline-none transition focus:border-amber-400 max-[1280px]:h-10 max-[1280px]:text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => onLoyaltyChange({ ...loyalty, redeemPoints: maxRedeemPoints })}
+                  disabled={maxRedeemPoints <= 0}
+                  className="h-11 rounded-xl border border-zinc-700 px-4 text-xs font-black text-zinc-300 hover:border-amber-400 disabled:opacity-40 max-[1280px]:h-10 max-[1280px]:px-3"
+                >
+                  Бүгд
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Totals card */}
-          <div className="rounded-2xl bg-zinc-900 border border-zinc-800 px-6 py-5 space-y-2.5 shrink-0">
+          <div className="shrink-0 space-y-2.5 rounded-2xl border border-zinc-800 bg-zinc-900 px-6 py-5 max-[1500px]:space-y-2 max-[1500px]:px-4 max-[1500px]:py-4 [@media(max-height:850px)]:py-3">
             <div className="flex justify-between text-sm text-zinc-500">
               <span>Дүн</span>
               <span className="tabular-nums">₮{totals.subTotal.toLocaleString()}</span>
@@ -446,10 +612,10 @@ export function PosCheckoutView({
             )}
             <div className="pt-4 border-t border-zinc-700">
               <p className="text-[10px] uppercase tracking-widest text-zinc-600">Нийт төлөх дүн</p>
-              <p className="mt-1 text-5xl font-black tabular-nums text-amber-400 leading-none">
+              <p className="mt-1 text-5xl font-black leading-none tabular-nums text-amber-400 max-[1500px]:text-4xl [@media(max-height:850px)]:text-3xl">
                 ₮{totals.grandTotal.toLocaleString()}
               </p>
-              <p className="mt-2 text-xs font-semibold text-zinc-400">
+              <p className="mt-2 text-xs font-semibold text-zinc-400 max-[1280px]:text-[11px]">
                 Төлсөн: ₮{(totals.grandTotal - remaining).toLocaleString()} • Үлдэгдэл: ₮{remaining.toLocaleString()}
               </p>
             </div>
@@ -461,7 +627,7 @@ export function PosCheckoutView({
               type="button"
               onClick={onFinalize}
               disabled={disabled || !canFinalize}
-              className="w-full rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed px-6 py-4 text-base font-black text-black flex items-center justify-center gap-2 transition-colors shadow-lg shadow-amber-900/30"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-6 py-4 text-base font-black text-black shadow-lg shadow-amber-900/30 transition-colors hover:bg-amber-400 active:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-40 max-[1500px]:py-3 max-[1500px]:text-sm [@media(max-height:850px)]:py-2.5"
             >
               Гүйлгээ батлах
               <ChevronRight size={18} />
@@ -469,7 +635,7 @@ export function PosCheckoutView({
             <button
               type="button"
               onClick={onBack}
-              className="w-full rounded-xl border border-zinc-700 text-zinc-500 hover:text-zinc-200 hover:border-zinc-500 px-6 py-3 text-sm font-semibold transition-colors"
+              className="w-full rounded-xl border border-zinc-700 px-6 py-3 text-sm font-semibold text-zinc-500 transition-colors hover:border-zinc-500 hover:text-zinc-200 max-[1500px]:py-2.5 max-[1500px]:text-xs [@media(max-height:850px)]:py-2"
             >
               ← Кассанд буцах
             </button>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Loader2, QrCode, Smartphone, X } from "lucide-react";
 import { QrGenerator } from "@mgl/ui";
 import { MobileBankAppLinks } from "@/components/molecules/payments/MobileBankAppLinks";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { API } from "@/lib/api";
 import type { ProjectItem, ProjectPaymentSession } from "./project-types";
 import { formatMnt } from "./project-utils";
@@ -33,6 +34,8 @@ export function ProjectPaymentModal({
       : `data:image/png;base64,${payment.qrImage}`
     : "";
 
+  useLockBodyScroll();
+
   const checkPayment = useCallback(async () => {
     const params = new URLSearchParams({
       invoiceId: payment.invoiceId,
@@ -55,9 +58,7 @@ export function ProjectPaymentModal({
   }, [onPaid, payment.invoiceId, project.id]);
 
   useEffect(() => {
-    document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = "";
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
@@ -114,14 +115,14 @@ export function ProjectPaymentModal({
   const seconds = countdown % 60;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center px-3 py-3 sm:px-4">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden overscroll-none px-3 py-3 sm:px-4">
       <button
         className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
         onClick={confirmed ? undefined : onClose}
         aria-label="Хаах"
       />
 
-      <article className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-lg overflow-y-auto overflow-x-hidden rounded-3xl bg-[#061836] text-white shadow-2xl sm:max-h-[calc(100vh-2rem)]">
+      <article className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain rounded-3xl bg-[#061836] text-white shadow-2xl sm:max-h-[calc(100vh-2rem)]">
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,#164b86_0%,#0a2a57_38%,#061836_100%)]" />
         <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-white/5" />
 

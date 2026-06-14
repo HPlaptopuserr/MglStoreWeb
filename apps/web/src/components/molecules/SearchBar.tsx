@@ -10,6 +10,7 @@ import {
   Tag,
   Loader2,
 } from "lucide-react";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 
 interface SearchOption {
   id: string;
@@ -98,6 +99,7 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
 
   const trimmedSearchQuery = searchQuery.trim();
   const isDark = variant === "dark";
+  useLockBodyScroll(isFocused);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -114,12 +116,10 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
     if (isFocused) {
       document.addEventListener("mousedown", handleClickOutside);
       document.addEventListener("keydown", handleEscKey);
-      document.body.style.overflow = "hidden";
     }
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleEscKey);
-      document.body.style.overflow = "unset";
     };
   }, [isFocused]);
 

@@ -13,15 +13,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isContractRoute = pathname?.startsWith("/contract");
   const isProfileRoute = pathname?.startsWith("/profile");
+  const isPaidAccessDetailRoute =
+    /^\/(projects|franchise)\/[^/]+/.test(pathname || "");
+  const hideGlobalShell = isContractRoute || isPaidAccessDetailRoute;
+  const hideGlobalFooter = hideGlobalShell || isProfileRoute;
 
   return (
     <AuthProvider>
       <SmoothScrollProvider>
-        {!isContractRoute && <Header />}
-        {!isContractRoute && <ActiveCheckoutDispatchAlert />}
+        {!hideGlobalShell && <Header />}
+        {!hideGlobalShell && <ActiveCheckoutDispatchAlert />}
         <main
           className={
-            isContractRoute
+            hideGlobalShell
               ? "grow"
               : isProfileRoute
               ? "grow pt-16 pb-20 md:pt-16 md:pb-0"
@@ -30,8 +34,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           {children}
         </main>
-        {!isContractRoute && <ChatBot />}
-        {!isContractRoute && <Footer />}
+        {!hideGlobalFooter && <ChatBot />}
+        {!hideGlobalFooter && <Footer />}
       </SmoothScrollProvider>
     </AuthProvider>
   );

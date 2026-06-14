@@ -29,6 +29,7 @@ import { HrServicesMenu } from "@/components/organisms/home/HrServicesMenu";
 import { CategoryIcon } from "@/components/atoms/CategoryIcon";
 import { LoginModal } from "@/components/organisms/auth/LoginModal";
 import { useBusinessCategories } from "@/hooks/useBusinessCategories";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { CATEGORY_COLORS, NAV_LINKS } from "@/lib/constants";
 import { useRouter, usePathname } from "next/navigation";
 import { useCart } from "@/hooks/useCart";
@@ -115,16 +116,7 @@ export const Header = () => {
       });
   }, []);
 
-  useEffect(() => {
-    if (mobileMenuOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [mobileMenuOpen]);
+  useLockBodyScroll(authOpen || mobileMenuOpen);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -139,18 +131,6 @@ export const Header = () => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  useEffect(() => {
-    if (authOpen || mobileMenuOpen) {
-      document.body.style.overflow = "hidden";
-    }
-    if (!authOpen && !mobileMenuOpen) {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [authOpen, mobileMenuOpen]);
 
   const handleMobileSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,6 +157,7 @@ export const Header = () => {
     logout();
     closeAuthModal();
     setUserDropdownOpen(false);
+    closeMobile();
   };
 
   return (
@@ -280,7 +261,10 @@ export const Header = () => {
 
               <button
                 type="button"
-                onClick={user ? () => router.push("/profile") : openAuthModal}
+                onClick={
+                  user ? () => setMobileMenuOpen((open) => !open) : openAuthModal
+                }
+                aria-label={user ? "Профайл цэс" : "Нэвтрэх"}
                 className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors active:bg-gray-100 sm:hidden ${
                   user
                     ? "bg-slate-950 text-white shadow-md shadow-slate-200"
@@ -322,8 +306,15 @@ export const Header = () => {
               value={mobileSearch}
               onChange={(e) => setMobileSearch(e.target.value)}
               placeholder="Бүтээгдэхүүн хайх..."
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-900 outline-none transition-all focus:border-amber-400 focus:bg-white focus:shadow-sm"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-16 text-sm text-gray-900 outline-none transition-all focus:border-amber-400 focus:bg-white focus:shadow-sm"
             />
+            <button
+              type="submit"
+              disabled={!mobileSearch.trim()}
+              className="absolute right-1.5 top-1/2 h-8 -translate-y-1/2 rounded-lg bg-orange-500 px-3 text-xs font-black text-white transition active:scale-95 disabled:bg-slate-200 disabled:text-slate-400"
+            >
+              Хайх
+            </button>
           </form>
         </div>
         )}
@@ -482,9 +473,16 @@ export const Header = () => {
                 value={mobileSearch}
                 onChange={(e) => setMobileSearch(e.target.value)}
                 placeholder="Хайх..."
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition-all focus:border-amber-400 focus:bg-white"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-16 text-sm text-gray-900 outline-none transition-all focus:border-amber-400 focus:bg-white"
                 autoFocus={mobileMenuOpen}
               />
+              <button
+                type="submit"
+                disabled={!mobileSearch.trim()}
+                className="absolute right-1.5 top-1/2 h-9 -translate-y-1/2 rounded-lg bg-orange-500 px-3 text-xs font-black text-white transition active:scale-95 disabled:bg-slate-200 disabled:text-slate-400"
+              >
+                Хайх
+              </button>
             </form>
           </div>
           )}
@@ -509,6 +507,61 @@ export const Header = () => {
                 </Link>
               ))}
             </div>
+          </div>
+
+          <div className="border-y border-gray-100 px-5 py-4">
+            {user ? (
+              <div className="grid gap-2">
+                <Link
+                  href="/profile"
+                  onClick={closeMobile}
+                  className="flex items-center gap-3 rounded-2xl bg-green-50 px-4 py-3"
+                >
+                  <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-sm font-bold text-white">
+                    {user.avatarUrl ? (
+                      <img
+                        src={resolveApiAssetUrl(user.avatarUrl)}
+                        alt={user.fullName || "Profile"}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      user.fullName?.trim()?.[0]?.toUpperCase() ||
+                      user.email?.[0]?.toUpperCase() ||
+                      "?"
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-gray-900">
+                      {user.fullName?.trim() || user.email || "Хэрэглэгч"}
+                    </p>
+                    <p className="text-xs font-medium text-green-600">
+                      ● Нэвтэрсэн
+                    </p>
+                  </div>
+                  <ChevronRight size={16} className="text-gray-400" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const confirmed = window.confirm("Гарах уу?");
+                    if (confirmed) handleLogout();
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600 transition-colors active:bg-red-100"
+                >
+                  <LogOut size={16} />
+                  Гарах
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={openAuthModal}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-colors active:bg-gray-800"
+              >
+                <User size={16} />
+                Нэвтрэх / Бүртгүүлэх
+              </button>
+            )}
           </div>
 
           <div className="mx-5 mb-3 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-red-500 to-orange-500 px-4 py-3">
@@ -556,52 +609,6 @@ export const Header = () => {
             </div>
           )}
 
-          <div className="border-t border-gray-100 px-5 py-4">
-            {user ? (
-              <div className="space-y-3">
-                <Link
-                  href="/profile"
-                  onClick={closeMobile}
-                  className="flex items-center gap-3 rounded-xl bg-green-50 px-4 py-3"
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white font-bold text-sm">
-                    {user.fullName?.trim()?.[0]?.toUpperCase() ||
-                      user.email?.[0]?.toUpperCase() ||
-                      "?"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {user.fullName?.trim() || user.email || "Хэрэглэгч"}
-                    </p>
-                    <p className="text-xs text-green-600 font-medium">
-                      ● Нэвтэрсэн
-                    </p>
-                  </div>
-                  <ChevronRight size={16} className="text-gray-400" />
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const confirmed = window.confirm("Гарах уу?");
-                    if (confirmed) handleLogout();
-                  }}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-600 transition-colors active:bg-slate-200"
-                >
-                  <LogOut size={16} />
-                  Гарах
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={openAuthModal}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-colors active:bg-gray-800"
-              >
-                <User size={16} />
-                Нэвтрэх / Бүртгүүлэх
-              </button>
-            )}
-          </div>
         </div>
       </header>
 

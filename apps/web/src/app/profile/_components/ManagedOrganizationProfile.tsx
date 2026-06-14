@@ -12,6 +12,7 @@ import {
   Eye,
   Globe2,
   ImageIcon,
+  Loader2,
   MapPin,
   Megaphone,
   MoreHorizontal,
@@ -22,6 +23,7 @@ import {
   ShieldCheck,
   Star,
   Store,
+  Upload,
   Users,
   Wrench,
   X,
@@ -29,6 +31,8 @@ import {
 } from "lucide-react";
 import { API } from "@/lib/api";
 import { useAuth, type AuthOrganization } from "@/lib/auth-context";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
+import { QuickProductExcelImport } from "./QuickProductExcelImport";
 
 const ORG_URL = process.env.NEXT_PUBLIC_ORG_URL || "http://localhost:3004";
 const VENDOR_URL =
@@ -1691,6 +1695,8 @@ function TimelineEditModal({
   onClose: () => void;
   onSave: (item: ManagedTimelineItem, form: TimelineEditForm) => Promise<void>;
 }) {
+  useLockBodyScroll();
+
   const [form, setForm] = useState<TimelineEditForm>({
     content: item.kind === "post" ? item.edit.content : "",
     description: item.kind !== "post" ? item.edit.description : "",
@@ -1703,14 +1709,6 @@ function TimelineEditModal({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
 
   const updateField = (field: keyof TimelineEditForm, value: string) => {
     setError("");
@@ -1785,7 +1783,7 @@ function TimelineEditModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/55 px-3 py-6 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-hidden overscroll-none bg-slate-950/55 px-3 py-6 backdrop-blur-sm">
       <button
         type="button"
         className="absolute inset-0 cursor-default"
@@ -1811,7 +1809,7 @@ function TimelineEditModal({
           </button>
         </div>
 
-        <div className="overflow-y-auto p-5">
+        <div className="overflow-y-auto overscroll-contain p-5">
           {item.kind === "post" ? (
             <div className="grid gap-3">
               <label>
@@ -2236,23 +2234,21 @@ function ImagePreviewModal({
   title: string;
   url: string;
 }) {
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+  useLockBodyScroll();
 
+  useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
 
     window.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/80 px-3 py-6 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[160] flex items-center justify-center overflow-hidden overscroll-none bg-slate-950/80 px-3 py-6 backdrop-blur-sm">
       <button
         type="button"
         className="absolute inset-0 cursor-default"
@@ -2297,21 +2293,19 @@ function OrganizationProfileEditor({
   onClose: () => void;
   onSaved: (updated: Partial<ManagedOrgDetails>) => void;
 }) {
+  useLockBodyScroll();
+
   const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
 
     window.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [onClose]);
@@ -2361,7 +2355,7 @@ function OrganizationProfileEditor({
   };
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/55 px-3 py-6 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center overflow-hidden overscroll-none bg-slate-950/55 px-3 py-6 backdrop-blur-sm">
       <button
         type="button"
         className="absolute inset-0 cursor-default"
@@ -2383,7 +2377,7 @@ function OrganizationProfileEditor({
           </button>
         </div>
 
-        <div className="overflow-y-auto p-4 sm:p-5">
+        <div className="overflow-y-auto overscroll-contain p-4 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-2">
               <ProfileInput
                 label="Байгууллагын нэр"
@@ -2643,11 +2637,10 @@ function OrganizationCreateHub({
     },
   ];
 
+  useLockBodyScroll(composerOpen);
+
   useEffect(() => {
     if (!composerOpen) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setComposerOpen(false);
@@ -2655,7 +2648,6 @@ function OrganizationCreateHub({
 
     window.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [composerOpen]);
@@ -2801,6 +2793,7 @@ function OrganizationCreateHub({
 
       {composerOpen && (
         <CreateContentModal
+          authFetch={authFetch}
           createMode={createMode}
           message={message}
           modes={modes}
@@ -2827,6 +2820,8 @@ function OrganizationCreateHub({
           onCreateProduct={createProduct}
           onProductFieldChange={updateProductField}
           onProductImagesChange={updateProductImages}
+          onContentChanged={onContentChanged}
+          selectedOrganizationId={selectedOrganizationId}
         />
       )}
     </section>
@@ -2834,6 +2829,7 @@ function OrganizationCreateHub({
 }
 
 function CreateContentModal({
+  authFetch,
   createMode,
   message,
   modes,
@@ -2849,6 +2845,7 @@ function CreateContentModal({
   onPostTypeChange,
   onProductFieldChange,
   onProductImagesChange,
+  onContentChanged,
   onPublishPost,
   postText,
   postContact,
@@ -2860,7 +2857,9 @@ function CreateContentModal({
   productForm,
   productMessage,
   productSaving,
+  selectedOrganizationId,
 }: {
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
   createMode: "post" | "product" | "service" | "ad";
   message: string;
   modes: Array<{
@@ -2881,6 +2880,7 @@ function CreateContentModal({
   onPostTypeChange: (value: string) => void;
   onProductFieldChange: (field: QuickProductTextField, value: string) => void;
   onProductImagesChange: (images: string[]) => void;
+  onContentChanged: () => Promise<void>;
   onPublishPost: () => void;
   postContact: string;
   postImages: string[];
@@ -2892,6 +2892,7 @@ function CreateContentModal({
   productForm: QuickProductFormState;
   productMessage: string;
   productSaving: boolean;
+  selectedOrganizationId: string;
 }) {
   const title =
     createMode === "post"
@@ -2944,7 +2945,7 @@ function CreateContentModal({
 
 
   return (
-    <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/55 px-0 py-0 backdrop-blur-sm sm:px-3 sm:py-6">
+    <div className="fixed inset-0 z-[140] flex items-center justify-center overflow-hidden overscroll-none bg-slate-950/55 px-0 py-0 backdrop-blur-sm sm:px-3 sm:py-6">
       <button
         type="button"
         className="absolute inset-0 cursor-default"
@@ -3003,7 +3004,7 @@ function CreateContentModal({
         </div>
 
         <div
-          className={`overflow-y-auto ${
+          className={`overflow-y-auto overscroll-contain ${
             isPostMode ? "flex-1 p-0" : "p-4 sm:p-5"
           }`}
         >
@@ -3250,11 +3251,14 @@ function CreateContentModal({
 
           {createMode === "product" && (
             <QuickProductForm
+              authFetch={authFetch}
               form={productForm}
               message={productMessage}
               onCreate={onCreateProduct}
               onFieldChange={onProductFieldChange}
               onImagesChange={onProductImagesChange}
+              onImported={onContentChanged}
+              organizationId={selectedOrganizationId}
               saving={productSaving}
             />
           )}
@@ -3461,18 +3465,24 @@ function PostToolInput({
 }
 
 function QuickProductForm({
+  authFetch,
   form,
   message,
   onCreate,
   onFieldChange,
   onImagesChange,
+  onImported,
+  organizationId,
   saving,
 }: {
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
   form: QuickProductFormState;
   message: string;
   onCreate: () => void;
   onFieldChange: (field: QuickProductTextField, value: string) => void;
   onImagesChange: (images: string[]) => void;
+  onImported: () => Promise<void>;
+  organizationId: string;
   saving: boolean;
 }) {
   const success = message.includes("амжилттай");
@@ -3504,6 +3514,12 @@ function QuickProductForm({
 
   return (
     <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 p-3 sm:p-4">
+      <QuickProductExcelImport
+        authFetch={authFetch}
+        onImported={onImported}
+        organizationId={organizationId}
+      />
+
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-black text-emerald-700 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50">
           <ImageIcon size={18} />

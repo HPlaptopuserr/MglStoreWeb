@@ -19,6 +19,7 @@ import {
 import { getServicePostCategories } from "@mgl/ui";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 
 interface ServiceImage {
   id: string;
@@ -59,12 +60,7 @@ export function ServiceDetailOverlay({ postId, onClose }: Props) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const { user, authFetch } = useAuth();
 
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
+  useLockBodyScroll();
 
   useEffect(() => {
     setLoading(true);
@@ -133,7 +129,7 @@ export function ServiceDetailOverlay({ postId, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/55 p-0 backdrop-blur-sm md:items-center md:p-6"
+      className="fixed inset-0 z-[300] flex items-end justify-center overflow-hidden overscroll-none bg-black/55 p-0 backdrop-blur-sm md:items-center md:p-6"
       onClick={onClose}
       onWheel={handleWheel}
     >
@@ -166,7 +162,7 @@ export function ServiceDetailOverlay({ postId, onClose }: Props) {
           </button>
         </div>
 
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overscroll-contain">
           {loading ? (
             <div className="flex h-72 items-center justify-center">
               <div className="h-10 w-10 animate-spin rounded-full border-4 border-amber-500 border-t-transparent" />
