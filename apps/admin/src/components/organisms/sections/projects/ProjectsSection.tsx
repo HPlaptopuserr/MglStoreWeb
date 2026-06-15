@@ -28,6 +28,7 @@ import { ProjectOrderList } from "./ProjectOrderList";
 
 const generateId = () => Math.random().toString(36).slice(2, 10);
 const MAX_PROJECT_IMAGES = 12;
+const PROJECT_PDF_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024;
 const STUDY_DELIVERY_TYPE_OPTIONS = [
   "Бүртгэл авч байна",
   "Танхимын сургалт",
@@ -389,6 +390,10 @@ function formatPaymentAccount(account?: ProjectPaymentAccount) {
 function parsePrice(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+}
+
+function formatUploadSize(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 function uploadErrorMessage(data: unknown, fallback: string) {
@@ -1034,6 +1039,12 @@ export function ProjectsSection({
       setPdfUploadError("Зөвхөн PDF файл оруулна уу.");
       return;
     }
+    if (file.size > PROJECT_PDF_UPLOAD_LIMIT_BYTES) {
+      setPdfUploadError(
+        `PDF файл 100MB-аас их байна (${formatUploadSize(file.size)}).`,
+      );
+      return;
+    }
 
     setUploadingPdfProjectId(id);
     setPdfUploadError("");
@@ -1055,6 +1066,8 @@ export function ProjectsSection({
       updateProject(id, "pdfUrl", data.url);
       if (typeof data.previewUrl === "string" && data.previewUrl) {
         updateProject(id, "pdfPreviewUrl", data.previewUrl);
+      } else {
+        updateProject(id, "pdfPreviewUrl", "");
       }
     } catch (error) {
       setPdfUploadError(

@@ -34,9 +34,12 @@ const bannerUpload = multer({
   },
 });
 
+const PROJECT_PDF_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024;
+const PROJECT_PDF_PREVIEW_PROCESSING_LIMIT_BYTES = 25 * 1024 * 1024;
+
 const projectPdfUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: PROJECT_PDF_UPLOAD_LIMIT_BYTES },
   fileFilter: (_req, file, cb) => {
     const isPdf =
       file.mimetype === "application/pdf" ||
@@ -1450,10 +1453,14 @@ router.post(
         "application/pdf",
       );
 
-      const previewBuffer = await createPdfPreviewBuffer(
-        req.file.buffer,
-        FREE_PDF_PREVIEW_PAGE_COUNT,
-      );
+      const shouldCreatePreview =
+        req.file.buffer.byteLength <= PROJECT_PDF_PREVIEW_PROCESSING_LIMIT_BYTES;
+      const previewBuffer = shouldCreatePreview
+        ? await createPdfPreviewBuffer(
+            req.file.buffer,
+            FREE_PDF_PREVIEW_PAGE_COUNT,
+          )
+        : null;
       const previewUrl = previewBuffer
         ? await uploadSiteFile(
             req,
@@ -1467,6 +1474,7 @@ router.post(
         url,
         previewUrl,
         previewPageCount: FREE_PDF_PREVIEW_PAGE_COUNT,
+        previewSkipped: !shouldCreatePreview,
       });
     } catch (err) {
       console.error("project-pdf-upload error", err);
@@ -1510,13 +1518,13 @@ async function sendProjectPdfPreview({
     }
 
     const contentLength = Number(pdfRes.headers.get("content-length") || 0);
-    if (contentLength > 25 * 1024 * 1024) {
+    if (contentLength > PROJECT_PDF_PREVIEW_PROCESSING_LIMIT_BYTES) {
       res.status(413).json({ message: "PDF файл хэт том байна" });
       return;
     }
 
     const sourceBuffer = Buffer.from(await pdfRes.arrayBuffer());
-    if (sourceBuffer.byteLength > 25 * 1024 * 1024) {
+    if (sourceBuffer.byteLength > PROJECT_PDF_PREVIEW_PROCESSING_LIMIT_BYTES) {
       res.status(413).json({ message: "PDF файл хэт том байна" });
       return;
     }
@@ -2562,7 +2570,7 @@ router.use(
       const isTooLarge = error.code === "LIMIT_FILE_SIZE";
       res.status(isTooLarge ? 413 : 400).json({
         message: isTooLarge
-          ? "Файлын хэмжээ хэтэрсэн байна"
+          ? "Файлын хэмжээ хэтэрсэн байна. PDF upload дээд хэмжээ 100MB."
           : "Файл upload хийхэд алдаа гарлаа",
         detail: error.message,
       });
