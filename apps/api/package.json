@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "categories:cleanup": "tsx src/scripts/cleanup-business-categories.ts",
+    "categories:seed-marketplace": "tsx src/scripts/seed-marketplace-categories.ts",
     "products:classify": "tsx src/scripts/classify-products.ts",
     "type-check": "tsc --noEmit"
   },
