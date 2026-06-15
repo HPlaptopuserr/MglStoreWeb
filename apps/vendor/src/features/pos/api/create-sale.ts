@@ -15,6 +15,7 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
     attemptId: line.attemptId,
     transactionId: line.transactionId,
     invoiceId: line.invoiceId,
+    credit: line.credit,
   }));
 
   const safePayload: SalePayload = {
@@ -88,6 +89,7 @@ function buildMockReceipt(payload: SalePayload): PosReceipt {
       amount: item.amount,
       transactionId: item.transactionId,
       invoiceId: item.invoiceId,
+      credit: item.credit,
     })),
     createdAt: now,
     lines,

@@ -1,6 +1,6 @@
 // ─── Payment method ───────────────────────────────────────────────────────────
 
-export type SalePaymentMethod = "CASH" | "CARD" | "QR";
+export type SalePaymentMethod = "CASH" | "CARD" | "QR" | "CREDIT";
 
 // ─── QPay ────────────────────────────────────────────────────────────────────
 
@@ -115,6 +115,22 @@ export interface SalePaymentLine {
   attemptId?: string;
   transactionId?: string;
   invoiceId?: string;
+  credit?: SaleCreditPaymentMeta;
+}
+
+export interface SaleCreditPaymentMeta {
+  targetType: "COMPANY" | "CUSTOMER";
+  borrowerId: string;
+  borrowerName: string;
+  employeeId?: string;
+  employeeName?: string;
+  termMonths: number;
+  monthlyInterestRate: number;
+  principal: number;
+  totalInterest: number;
+  totalDue: number;
+  dueDate: string;
+  note?: string;
 }
 
 export interface SalePayload {

@@ -59,6 +59,20 @@ export type SalePaymentLineInput = {
   attemptId?: string;
   transactionId?: string;
   invoiceId?: string;
+  credit?: {
+    targetType?: "COMPANY" | "CUSTOMER";
+    borrowerId?: string;
+    borrowerName?: string;
+    employeeId?: string;
+    employeeName?: string;
+    termMonths?: number;
+    monthlyInterestRate?: number;
+    principal?: number;
+    totalInterest?: number;
+    totalDue?: number;
+    dueDate?: string;
+    note?: string;
+  };
 };
 
 export type CreateSaleBody = {
@@ -137,6 +151,7 @@ export const normalizePaymentMethod = (value?: string): PaymentMethod | null => 
   if (upper === "QR" || upper === "QPAY") return PaymentMethod.QPAY;
   if (upper === "CASH") return PaymentMethod.CASH;
   if (upper === "CARD") return PaymentMethod.CARD;
+  if (upper === "CREDIT") return PaymentMethod.CREDIT;
   if (upper === "BANK_TRANSFER") return PaymentMethod.BANK_TRANSFER;
   return null;
 };

@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -12,12 +11,15 @@ import {
   X,
   Banknote,
   CreditCard,
+  HandCoins,
   QrCode,
   Gift,
   Search,
 } from "lucide-react";
 import type { CartLine, CartTotals } from "../types/pos.types";
+import type { SaleCreditPaymentMeta } from "../types/pos.types";
 import type { PaymentMethod } from "../constants/payment-methods";
+import { CreditPaymentDialog } from "./CreditPaymentDialog";
 
 type Props = {
   lines: CartLine[];
@@ -29,7 +31,7 @@ type Props = {
   statusMessage?: string;
   statusTone?: "idle" | "success" | "not-found";
   remaining: number;
-  onAddPayment: (method: PaymentMethod, amount: number) => void | Promise<void>;
+  onAddPayment: (method: PaymentMethod, amount: number, credit?: SaleCreditPaymentMeta) => void | Promise<void>;
   onRequestQPay: (amount: number) => void | Promise<void>;
   onMarkQPayPaid: (id: string) => void;
   onRemovePayment: (id: string) => void;
@@ -52,6 +54,7 @@ export type CheckoutPaymentEntry = {
   attemptId?: string;
   invoiceId?: string;
   transactionId?: string;
+  credit?: SaleCreditPaymentMeta;
 };
 
 export type CheckoutQPayInvoice = {
@@ -76,10 +79,11 @@ export type CheckoutLoyaltyState = {
   redeemPoints: number;
 };
 
-const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; icon: ReactNode }[] = [
-  { value: "CASH", label: "Бэлэн", icon: <Banknote size={16} /> },
-  { value: "CARD", label: "Карт", icon: <CreditCard size={16} /> },
-  { value: "QR", label: "QPay", icon: <QrCode size={16} /> },
+const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
+  { value: "CASH", label: "Бэлэн" },
+  { value: "CARD", label: "Карт" },
+  { value: "QR", label: "QPay" },
+  { value: "CREDIT", label: "Зээл" },
 ];
 
 const QUICK_AMOUNTS = [10_000, 20_000, 50_000, 100_000];
@@ -116,13 +120,21 @@ export function PosCheckoutView({
   onLookupLoyalty,
 }: Props) {
   const [enteredAmount, setEnteredAmount] = useState("");
+  const [loyaltyPanelOpen, setLoyaltyPanelOpen] = useState(false);
+  const [loyaltyPromptSeen, setLoyaltyPromptSeen] = useState(false);
+  const [loyaltyPromptStep, setLoyaltyPromptStep] = useState<"ASK" | "REGISTERED">("ASK");
+  const [pendingPaymentAmount, setPendingPaymentAmount] = useState(0);
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false);
 
   const parsedAmount = parseFloat(enteredAmount.replace(/,/g, "")) || 0;
   const pendingTotal = paymentEntries
     .filter((item) => item.status === "pending")
     .reduce((sum, item) => sum + item.amount, 0);
-  const enteredForPreview = parsedAmount > 0 ? parsedAmount : 0;
-  const previewRemaining = Math.max(0, remaining - enteredForPreview);
+  const hasCustomAmount = parsedAmount > 0;
+  const paymentAmount = hasCustomAmount
+    ? Math.min(parsedAmount, Math.max(0, remaining))
+    : Math.max(0, remaining);
+  const previewRemaining = Math.max(0, remaining - paymentAmount);
   const estimatedEarnPoints = Math.max(0, Math.floor(totals.grandTotal * loyalty.earnRate));
   const maxRedeemPoints = Math.max(0, Math.min(loyalty.balance, totals.grandTotal));
   const effectiveRedeemPoints =
@@ -152,9 +164,11 @@ export function PosCheckoutView({
     });
   };
 
-  const handlePrimaryAction = () => {
-    const amount = parsedAmount > 0 ? parsedAmount : Math.max(0, remaining);
-    if (amount <= 0) return;
+  const runPaymentAction = (amount: number) => {
+    if (paymentMethod === "CREDIT") {
+      setCreditDialogOpen(true);
+      return;
+    }
 
     if (paymentMethod === "QR") {
       void onRequestQPay(amount);
@@ -162,6 +176,48 @@ export function PosCheckoutView({
       void onAddPayment(paymentMethod, amount);
     }
 
+    setEnteredAmount("");
+  };
+
+  const handlePrimaryAction = () => {
+    const amount = paymentAmount;
+    if (amount <= 0) return;
+
+    if (!loyaltyPromptSeen) {
+      setLoyaltyPromptStep("ASK");
+      setPendingPaymentAmount(amount);
+      setLoyaltyPanelOpen(true);
+      return;
+    }
+
+    runPaymentAction(amount);
+  };
+
+  const continuePendingPayment = () => {
+    const amount = pendingPaymentAmount || paymentAmount;
+    setLoyaltyPromptSeen(true);
+    setLoyaltyPanelOpen(false);
+    setPendingPaymentAmount(0);
+    if (amount > 0) runPaymentAction(amount);
+  };
+
+  const continueWithRegisteredLoyalty = () => {
+    onLoyaltyChange({
+      ...loyalty,
+      mode: loyalty.mode === "NONE" ? "EARN" : loyalty.mode,
+      redeemPoints: loyalty.mode === "REDEEM" ? loyalty.redeemPoints : 0,
+    });
+    setLoyaltyPromptStep("REGISTERED");
+  };
+
+  const continueWithoutLoyalty = () => {
+    onLoyaltyChange({ ...loyalty, mode: "NONE", redeemPoints: 0 });
+    continuePendingPayment();
+  };
+
+  const confirmCreditPayment = (credit: SaleCreditPaymentMeta) => {
+    void onAddPayment("CREDIT", credit.principal, credit);
+    setCreditDialogOpen(false);
     setEnteredAmount("");
   };
 
@@ -219,9 +275,17 @@ export function PosCheckoutView({
             <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-3">
               Төлбөрийн хэлбэр
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {PAYMENT_OPTIONS.map((opt) => {
                 const isActive = paymentMethod === opt.value;
+                const Icon =
+                  opt.value === "CASH"
+                    ? Banknote
+                    : opt.value === "CARD"
+                      ? CreditCard
+                      : opt.value === "CREDIT"
+                        ? HandCoins
+                        : QrCode;
                 return (
                   <button
                     key={opt.value}
@@ -233,7 +297,7 @@ export function PosCheckoutView({
                         : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-600 hover:text-zinc-300"
                     }`}
                   >
-                    {opt.icon}
+                    <Icon size={16} />
                     {opt.label}
                   </button>
                 );
@@ -244,19 +308,29 @@ export function PosCheckoutView({
           {/* Amount entry display */}
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-2">
-              Дүн оруулах
+              Төлөх дүн
             </p>
-            <div className="flex items-baseline justify-end gap-1 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 max-[1500px]:px-3 max-[1500px]:py-2 [@media(max-height:850px)]:py-2">
-              <span className="text-zinc-500 text-base font-bold">₮</span>
-              <span className="text-3xl font-black tabular-nums text-white max-[1500px]:text-2xl max-[1180px]:text-xl">
-                {enteredAmount === ""
-                  ? "0.00"
-                  : parseFloat(enteredAmount || "0").toLocaleString()}
-              </span>
-            </div>
-              <p className="mt-2 text-xs text-zinc-500 max-[1280px]:text-[11px]">
-                Үлдэгдэл: ₮{remaining.toLocaleString()} • Оруулах дараа: ₮{previewRemaining.toLocaleString()}
+            <div className={`rounded-xl border px-4 py-3 transition max-[1500px]:px-3 max-[1500px]:py-2 [@media(max-height:850px)]:py-2 ${
+              hasCustomAmount
+                ? "border-amber-500/70 bg-amber-500/10"
+                : "border-zinc-700 bg-zinc-900"
+            }`}>
+              <div className="flex items-baseline justify-end gap-1">
+                <span className="text-base font-bold text-zinc-500">₮</span>
+                <span className="text-3xl font-black tabular-nums text-white max-[1500px]:text-2xl max-[1180px]:text-xl">
+                  {paymentAmount.toLocaleString()}
+                </span>
+              </div>
+              <p className="mt-1 text-right text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                {hasCustomAmount ? "Хэсэгчилсэн төлөлт" : "Үлдэгдэл бүтнээр"}
               </p>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500 max-[1280px]:text-[11px]">
+              Үлдэгдэл: ₮{remaining.toLocaleString()} • Төлсний дараа: ₮{previewRemaining.toLocaleString()}
+            </p>
+            <p className="mt-1 text-[11px] font-semibold text-zinc-600 max-[1280px]:text-[10px]">
+              Хэсэгчлэн төлөх үед доорх товчлуураар дүнгээ өөрчилнө.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -266,7 +340,9 @@ export function PosCheckoutView({
               disabled={disabled || remaining <= 0}
               className="rounded-xl bg-amber-500 px-3 py-3 text-xs font-black text-black hover:bg-amber-400 disabled:opacity-40 max-[1500px]:py-2.5 max-[1180px]:text-[11px] [@media(max-height:850px)]:py-2"
             >
-              {paymentMethod === "QR" ? "QPay QR илгээх" : "Төлбөр нэмэх"}
+              {paymentMethod === "QR"
+                ? `QPay ₮${paymentAmount.toLocaleString()}`
+                : `${PAYMENT_OPTIONS.find((item) => item.value === paymentMethod)?.label || "Төлбөр"} ₮${paymentAmount.toLocaleString()}`}
             </button>
             <button
               type="button"
@@ -420,8 +496,10 @@ export function PosCheckoutView({
               paymentEntries.map((entry) => (
                 <div key={entry.id} className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-zinc-300">
-                      {entry.method} • ₮{entry.amount.toLocaleString()}
+                      <p className="text-xs font-semibold text-zinc-300">
+                      {entry.method === "CREDIT" && entry.credit
+                        ? `Зээл • ${entry.credit.borrowerName}${entry.credit.employeeName ? ` • ${entry.credit.employeeName}` : ""} • ₮${entry.amount.toLocaleString()}`
+                        : `${entry.method} • ₮${entry.amount.toLocaleString()}`}
                     </p>
                     <div className="flex items-center gap-2">
                       {entry.status === "pending" && entry.method === "QR" ? (
@@ -452,143 +530,13 @@ export function PosCheckoutView({
                   {entry.transactionId && (
                     <p className="mt-1 text-[10px] text-zinc-500">Txn: {entry.transactionId}</p>
                   )}
+                  {entry.credit && (
+                    <p className="mt-1 text-[10px] text-zinc-500">
+                      Хүү: ₮{entry.credit.totalInterest.toLocaleString()} • Нийт: ₮{entry.credit.totalDue.toLocaleString()} • {entry.credit.termMonths} сар
+                    </p>
+                  )}
                 </div>
               ))
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 max-[1500px]:p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-300 max-[1500px]:h-8 max-[1500px]:w-8">
-                  <Gift size={18} />
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-white max-[1500px]:text-xs">M Point урамшуулал</p>
-                  <p className="line-clamp-1 text-xs font-semibold text-zinc-500 max-[1500px]:text-[11px]">
-                    2% буцаан олголт, гишүүнчлэлтэй бол өндөр rate-д бэлэн
-                  </p>
-                </div>
-              </div>
-              {loyalty.membershipBadge !== "NONE" && (
-                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
-                  loyalty.membershipBadge === "MEMBER"
-                    ? "bg-emerald-400/15 text-emerald-300"
-                    : "bg-zinc-800 text-zinc-300"
-                }`}>
-                  {loyalty.membershipBadge === "MEMBER" ? "Гишүүн" : "Стандарт"}
-                </span>
-              )}
-            </div>
-
-            <div className="mt-4 grid gap-3 min-[980px]:grid-cols-[minmax(0,1fr)_118px] min-[1501px]:grid-cols-[minmax(0,1fr)_132px] max-[1500px]:mt-3 max-[1500px]:gap-2">
-              <input
-                value={loyalty.phone}
-                onChange={(event) =>
-                  onLoyaltyChange({
-                    ...loyalty,
-                    phone: event.target.value.replace(/\D/g, "").slice(0, 12),
-                    lookupError: "",
-                    found: false,
-                    customerName: null,
-                    balance: 0,
-                    membershipBadge: "NONE",
-                    redeemPoints: 0,
-                  })
-                }
-                placeholder="Хэрэглэгчийн утас"
-                className="h-11 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm font-bold text-white outline-none transition focus:border-amber-400 max-[1500px]:h-10 max-[1500px]:text-xs"
-              />
-              <button
-                type="button"
-                onClick={onLookupLoyalty}
-                disabled={disabled || loyalty.lookupLoading || loyalty.phone.replace(/\D/g, "").length < 6}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-100 px-4 text-xs font-black text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40 max-[1500px]:h-10 max-[1500px]:px-3 max-[1500px]:text-[11px]"
-              >
-                <Search size={15} />
-                Шалгах
-              </button>
-            </div>
-
-            <div className="mt-3 grid grid-cols-3 rounded-xl bg-zinc-950 p-1 text-xs font-black text-zinc-500 max-[1500px]:text-[11px]">
-              {[
-                { key: "EARN", label: "Цуглуулах" },
-                { key: "REDEEM", label: "Хасуулах" },
-                { key: "NONE", label: "Алгасах" },
-              ].map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() =>
-                    onLoyaltyChange({
-                      ...loyalty,
-                      mode: item.key as CheckoutLoyaltyState["mode"],
-                      redeemPoints: item.key === "REDEEM" ? loyalty.redeemPoints : 0,
-                    })
-                  }
-                  className={`truncate rounded-lg px-2 py-2 transition max-[1500px]:py-1.5 ${
-                    loyalty.mode === item.key ? "bg-amber-500 text-black" : "hover:text-zinc-200"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            {loyalty.lookupError && (
-              <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100 max-[1280px]:text-[11px]">
-                {loyalty.lookupError}
-              </p>
-            )}
-
-            <div className="mt-3 grid gap-2 text-xs font-semibold text-zinc-400 min-[900px]:grid-cols-4 max-[1500px]:text-[11px]">
-              <div className="min-w-0 rounded-xl bg-zinc-950 px-3 py-2 max-[1500px]:px-2.5 max-[1500px]:py-1.5">
-                <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600 max-[1500px]:text-[9px]">Хэрэглэгч</p>
-                <p className="mt-1 truncate text-zinc-200">
-                  {loyalty.found ? loyalty.customerName || loyalty.phone : "Шалгаагүй"}
-                </p>
-              </div>
-              <div className="min-w-0 rounded-xl bg-zinc-950 px-3 py-2 max-[1500px]:px-2.5 max-[1500px]:py-1.5">
-                <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600 max-[1500px]:text-[9px]">Одоогийн үлдэгдэл</p>
-                <p className="mt-1 text-zinc-200">{loyalty.balance.toLocaleString("mn-MN")} M</p>
-              </div>
-              <div className="min-w-0 rounded-xl bg-zinc-950 px-3 py-2 max-[1500px]:px-2.5 max-[1500px]:py-1.5">
-                <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600 max-[1500px]:text-[9px]">Энэ худалдан авалт</p>
-                <p className="mt-1 text-amber-300">+{estimatedEarnPoints.toLocaleString("mn-MN")} M</p>
-              </div>
-              <div className="min-w-0 rounded-xl bg-zinc-950 px-3 py-2 max-[1500px]:px-2.5 max-[1500px]:py-1.5">
-                <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600 max-[1500px]:text-[9px]">Дараах үлдэгдэл</p>
-                <p className="mt-1 text-emerald-300">
-                  {projectedBalance.toLocaleString("mn-MN")} M
-                  {loyalty.mode === "REDEEM" && effectiveRedeemPoints > 0 ? (
-                    <span className="ml-1 text-zinc-500">(-{effectiveRedeemPoints.toLocaleString("mn-MN")})</span>
-                  ) : null}
-                </p>
-              </div>
-            </div>
-
-            {loyalty.mode === "REDEEM" && (
-              <div className="mt-3 grid gap-2 min-[900px]:grid-cols-[1fr_auto]">
-                <input
-                  value={loyalty.redeemPoints || ""}
-                  onChange={(event) =>
-                    onLoyaltyChange({
-                      ...loyalty,
-                      redeemPoints: Math.max(0, Math.min(maxRedeemPoints, Math.floor(Number(event.target.value) || 0))),
-                    })
-                  }
-                  placeholder="Хасуулах M Point"
-                  className="h-11 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm font-bold text-white outline-none transition focus:border-amber-400 max-[1280px]:h-10 max-[1280px]:text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={() => onLoyaltyChange({ ...loyalty, redeemPoints: maxRedeemPoints })}
-                  disabled={maxRedeemPoints <= 0}
-                  className="h-11 rounded-xl border border-zinc-700 px-4 text-xs font-black text-zinc-300 hover:border-amber-400 disabled:opacity-40 max-[1280px]:h-10 max-[1280px]:px-3"
-                >
-                  Бүгд
-                </button>
-              </div>
             )}
           </div>
 
@@ -641,6 +589,275 @@ export function PosCheckoutView({
             </button>
           </div>
         </div>
+      </div>
+
+      {loyaltyPanelOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <button
+            type="button"
+            aria-label="M Point popup хаах"
+            onClick={() => setLoyaltyPanelOpen(false)}
+            className="absolute inset-0 cursor-default"
+          />
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-5xl overflow-y-auto rounded-3xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl shadow-black/60 max-[760px]:max-h-[calc(100dvh-1rem)] max-[760px]:rounded-2xl max-[760px]:p-3">
+            <button
+              type="button"
+              onClick={() => setLoyaltyPanelOpen(false)}
+              className="absolute right-4 top-4 z-10 rounded-full border border-zinc-700 bg-zinc-900 p-2 text-zinc-400 transition hover:border-zinc-500 hover:text-white max-[760px]:right-3 max-[760px]:top-3"
+              aria-label="M Point popup хаах"
+            >
+              <X size={18} />
+            </button>
+            {loyaltyPromptStep === "ASK" ? (
+              <LoyaltyRegistrationPrompt
+                onRegistered={continueWithRegisteredLoyalty}
+                onUnregistered={continueWithoutLoyalty}
+              />
+            ) : (
+              <LoyaltyPanel
+                loyalty={loyalty}
+                onLoyaltyChange={onLoyaltyChange}
+                onLookupLoyalty={onLookupLoyalty}
+                onContinue={continuePendingPayment}
+                disabled={disabled}
+                estimatedEarnPoints={estimatedEarnPoints}
+                maxRedeemPoints={maxRedeemPoints}
+                effectiveRedeemPoints={effectiveRedeemPoints}
+                projectedBalance={projectedBalance}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {creditDialogOpen && (
+        <CreditPaymentDialog
+          amount={paymentAmount}
+          onClose={() => setCreditDialogOpen(false)}
+          onConfirm={confirmCreditPayment}
+        />
+      )}
+    </div>
+  );
+}
+
+function LoyaltyRegistrationPrompt({
+  onRegistered,
+  onUnregistered,
+}: {
+  onRegistered: () => void;
+  onUnregistered: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 max-[760px]:p-4">
+      <div className="flex items-start gap-3 pr-12">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-300 max-[760px]:h-10 max-[760px]:w-10">
+          <Gift size={22} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xl font-black text-white max-[760px]:text-lg">M Point бүртгэлтэй юу?</p>
+          <p className="mt-1 text-sm font-semibold leading-6 text-zinc-500 max-[760px]:text-xs max-[760px]:leading-5">
+            Бүртгэлтэй бол дугаараа шалгаад point цуглуулах эсвэл хасуулах сонголтоо батална.
+            Бүртгэлгүй бол M Point ашиглахгүйгээр төлбөр үргэлжилнэ.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-3 min-[640px]:grid-cols-2 max-[760px]:mt-4">
+        <button
+          type="button"
+          onClick={onRegistered}
+          className="rounded-2xl bg-amber-500 px-5 py-4 text-sm font-black text-black transition hover:bg-amber-400 max-[760px]:py-3"
+        >
+          Бүртгэлтэй
+        </button>
+        <button
+          type="button"
+          onClick={onUnregistered}
+          className="rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-4 text-sm font-black text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-900 max-[760px]:py-3"
+        >
+          Бүртгэлгүй, үргэлжлүүлэх
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LoyaltyPanel({
+  disabled,
+  effectiveRedeemPoints,
+  estimatedEarnPoints,
+  loyalty,
+  maxRedeemPoints,
+  onContinue,
+  onLookupLoyalty,
+  onLoyaltyChange,
+  projectedBalance,
+}: {
+  disabled?: boolean;
+  effectiveRedeemPoints: number;
+  estimatedEarnPoints: number;
+  loyalty: CheckoutLoyaltyState;
+  maxRedeemPoints: number;
+  onContinue: () => void;
+  onLookupLoyalty: () => void;
+  onLoyaltyChange: (next: CheckoutLoyaltyState) => void;
+  projectedBalance: number;
+}) {
+  const requiresPhone = loyalty.mode !== "NONE";
+  const phoneReady = loyalty.phone.replace(/\D/g, "").length >= 6;
+  const canContinue =
+    !disabled && !loyalty.lookupLoading && (!requiresPhone || (phoneReady && loyalty.found));
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 max-[760px]:p-3">
+      <div className="flex items-start justify-between gap-3 pr-12">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-300 max-[760px]:h-10 max-[760px]:w-10">
+            <Gift size={22} />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-lg font-black text-white max-[760px]:text-base">M Point урамшуулал</p>
+            <p className="line-clamp-1 text-sm font-semibold text-zinc-500 max-[760px]:text-xs">
+              2% буцаан олголт, гишүүнчлэлтэй бол өндөр rate-д бэлэн
+            </p>
+          </div>
+        </div>
+        {loyalty.membershipBadge !== "NONE" && (
+          <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black ${
+            loyalty.membershipBadge === "MEMBER"
+              ? "bg-emerald-400/15 text-emerald-300"
+              : "bg-zinc-800 text-zinc-300"
+          }`}>
+            {loyalty.membershipBadge === "MEMBER" ? "Гишүүн" : "Стандарт"}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-5 grid gap-3 min-[760px]:grid-cols-[minmax(0,1fr)_148px]">
+        <input
+          value={loyalty.phone}
+          onChange={(event) =>
+            onLoyaltyChange({
+              ...loyalty,
+              phone: event.target.value.replace(/\D/g, "").slice(0, 12),
+              lookupError: "",
+              found: false,
+              customerName: null,
+              balance: 0,
+              membershipBadge: "NONE",
+              redeemPoints: 0,
+            })
+          }
+          placeholder="Хэрэглэгчийн утас"
+          className="h-12 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-4 text-base font-bold text-white outline-none transition focus:border-amber-400 max-[760px]:h-11 max-[760px]:text-sm"
+        />
+        <button
+          type="button"
+          onClick={onLookupLoyalty}
+          disabled={disabled || loyalty.lookupLoading || loyalty.phone.replace(/\D/g, "").length < 6}
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-zinc-100 px-4 text-sm font-black text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40 max-[760px]:h-11 max-[760px]:text-xs"
+        >
+          <Search size={16} />
+          Шалгах
+        </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 rounded-xl bg-zinc-950 p-1 text-sm font-black text-zinc-500 max-[760px]:text-xs">
+        {[
+          { key: "EARN", label: "Цуглуулах" },
+          { key: "REDEEM", label: "Хасуулах" },
+          { key: "NONE", label: "Алгасах" },
+        ].map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() =>
+              onLoyaltyChange({
+                ...loyalty,
+                mode: item.key as CheckoutLoyaltyState["mode"],
+                redeemPoints: item.key === "REDEEM" ? loyalty.redeemPoints : 0,
+              })
+            }
+            className={`truncate rounded-lg px-3 py-3 transition max-[760px]:px-2 max-[760px]:py-2 ${
+              loyalty.mode === item.key ? "bg-amber-500 text-black" : "hover:text-zinc-200"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {loyalty.lookupError && (
+        <p className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-100 max-[760px]:text-xs">
+          {loyalty.lookupError}
+        </p>
+      )}
+      {requiresPhone && phoneReady && !loyalty.found && !loyalty.lookupLoading && !loyalty.lookupError && (
+        <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100 max-[760px]:text-xs">
+          Эхлээд Шалгах дарж M Point хэрэглэгчээ баталгаажуулна уу.
+        </p>
+      )}
+
+      <div className="mt-4 grid gap-2 text-sm font-semibold text-zinc-400 min-[760px]:grid-cols-4 max-[760px]:text-xs">
+        <div className="min-w-0 rounded-xl bg-zinc-950 px-4 py-3 max-[760px]:px-3 max-[760px]:py-2">
+          <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600">Хэрэглэгч</p>
+          <p className="mt-1 truncate text-zinc-200">
+            {loyalty.found ? loyalty.customerName || loyalty.phone : "Шалгаагүй"}
+          </p>
+        </div>
+        <div className="min-w-0 rounded-xl bg-zinc-950 px-4 py-3 max-[760px]:px-3 max-[760px]:py-2">
+          <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600">Одоогийн үлдэгдэл</p>
+          <p className="mt-1 text-zinc-200">{loyalty.balance.toLocaleString("mn-MN")} M</p>
+        </div>
+        <div className="min-w-0 rounded-xl bg-zinc-950 px-4 py-3 max-[760px]:px-3 max-[760px]:py-2">
+          <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600">Энэ худалдан авалт</p>
+          <p className="mt-1 text-amber-300">+{estimatedEarnPoints.toLocaleString("mn-MN")} M</p>
+        </div>
+        <div className="min-w-0 rounded-xl bg-zinc-950 px-4 py-3 max-[760px]:px-3 max-[760px]:py-2">
+          <p className="truncate text-[10px] uppercase tracking-widest text-zinc-600">Дараах үлдэгдэл</p>
+          <p className="mt-1 text-emerald-300">
+            {projectedBalance.toLocaleString("mn-MN")} M
+            {loyalty.mode === "REDEEM" && effectiveRedeemPoints > 0 ? (
+              <span className="ml-1 text-zinc-500">(-{effectiveRedeemPoints.toLocaleString("mn-MN")})</span>
+            ) : null}
+          </p>
+        </div>
+      </div>
+
+      {loyalty.mode === "REDEEM" && (
+        <div className="mt-4 grid gap-2 min-[760px]:grid-cols-[1fr_auto]">
+          <input
+            value={loyalty.redeemPoints || ""}
+            onChange={(event) =>
+              onLoyaltyChange({
+                ...loyalty,
+                redeemPoints: Math.max(0, Math.min(maxRedeemPoints, Math.floor(Number(event.target.value) || 0))),
+              })
+            }
+            placeholder="Хасуулах M Point"
+            className="h-12 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-4 text-base font-bold text-white outline-none transition focus:border-amber-400 max-[760px]:h-11 max-[760px]:text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => onLoyaltyChange({ ...loyalty, redeemPoints: maxRedeemPoints })}
+            disabled={maxRedeemPoints <= 0}
+            className="h-12 rounded-xl border border-zinc-700 px-5 text-sm font-black text-zinc-300 hover:border-amber-400 disabled:opacity-40 max-[760px]:h-11 max-[760px]:text-xs"
+          >
+            Бүгд
+          </button>
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end">
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={!canContinue}
+          className="rounded-2xl bg-amber-500 px-8 py-3.5 text-sm font-black text-black transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40 max-[760px]:w-full"
+        >
+          Үргэлжлүүлэх
+        </button>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { Banknote, CreditCard, MoreHorizontal, QrCode } from "lucide-react";
+import { Banknote, CreditCard, HandCoins, MoreHorizontal, QrCode } from "lucide-react";
 import type { CartTotals } from "../types/pos.types";
 import { PAYMENT_METHODS, type PaymentMethod } from "../constants/payment-methods";
 
@@ -21,17 +21,19 @@ export function PosPaymentPanel({
     CASH: Banknote,
     CARD: CreditCard,
     QR: QrCode,
+    CREDIT: HandCoins,
   } as const;
 
   const shortcuts = {
     CASH: "F9",
     CARD: "F10",
     QR: "F11",
+    CREDIT: "F8",
   } as const;
 
   return (
     <section className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
-      <div className="grid grid-cols-[repeat(4,minmax(0,1fr))_minmax(190px,0.9fr)] gap-2">
+      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_minmax(190px,0.9fr)] gap-2">
         {PAYMENT_METHODS.map((method) => {
           const isActive = paymentMethod === method.value;
           const Icon = paymentIcon[method.value];

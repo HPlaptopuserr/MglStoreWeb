@@ -33,23 +33,35 @@ const getPosMPointRate = (user: { isPrime: boolean; membershipExpiresAt?: Date |
 const resolveLoyaltyUser = async (
   tx: Prisma.TransactionClient,
   phone: string,
-) =>
-  tx.user.findFirst({
+) => {
+  const baseWhere = {
+    isActive: true,
+    deletedAt: null,
+  };
+  const select = {
+    id: true,
+    isPrime: true,
+    membershipExpiresAt: true,
+    profile: { select: { fullName: true, phoneNumber: true } },
+  };
+
+  const profileMatch = await tx.user.findFirst({
     where: {
-      isActive: true,
-      deletedAt: null,
-      OR: [
-        { membershipDiscountPhone: phone },
-        { profile: { phoneNumber: phone } },
-      ],
+      ...baseWhere,
+      profile: { phoneNumber: phone },
     },
-    select: {
-      id: true,
-      isPrime: true,
-      membershipExpiresAt: true,
-      profile: { select: { fullName: true, phoneNumber: true } },
-    },
+    select,
   });
+  if (profileMatch) return profileMatch;
+
+  return tx.user.findFirst({
+    where: {
+      ...baseWhere,
+      membershipDiscountPhone: phone,
+    },
+    select,
+  });
+};
 
 const getPointBalance = async (
   tx: Pick<Prisma.TransactionClient, "mPointLedger">,
@@ -109,22 +121,7 @@ router.get("/pos/loyalty/lookup", async (req, res) => {
       return res.status(400).json({ message: "Утасны дугаар буруу байна" });
     }
 
-    const user = await prisma.user.findFirst({
-      where: {
-        isActive: true,
-        deletedAt: null,
-        OR: [
-          { membershipDiscountPhone: phone },
-          { profile: { phoneNumber: phone } },
-        ],
-      },
-      select: {
-        id: true,
-        isPrime: true,
-        membershipExpiresAt: true,
-        profile: { select: { fullName: true, phoneNumber: true } },
-      },
-    });
+    const user = await resolveLoyaltyUser(prisma, phone);
     if (!user) {
       return res.json({
         found: false,
@@ -212,13 +209,14 @@ router.post("/pos/sales", async (req, res) => {
           attemptId: item.attemptId,
           transactionId: item.transactionId,
           invoiceId: item.invoiceId,
+          credit: item.credit,
         }))
       : [];
 
     for (const item of normalizedPayments) {
       if (
         !item.method ||
-        ![PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.QPAY].some(
+        ![PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.QPAY, PaymentMethod.CREDIT].some(
           (allowedMethod) => allowedMethod === item.method,
         )
       ) {
@@ -226,6 +224,14 @@ router.post("/pos/sales", async (req, res) => {
       }
       if (!Number.isFinite(item.amount) || item.amount <= 0) {
         return res.status(400).json({ message: "paymentBreakdown.amount 0-оос их тоо байх ёстой" });
+      }
+      if (item.method === PaymentMethod.CREDIT) {
+        if (!item.credit?.borrowerId || !item.credit?.borrowerName || !item.credit?.targetType) {
+          return res.status(400).json({ message: "Зээлийн төлбөр дээр байгууллага/хэрэглэгчийн мэдээлэл шаардлагатай" });
+        }
+        if (!Number.isFinite(Number(item.credit.monthlyInterestRate)) || Number(item.credit.monthlyInterestRate) !== 0.012) {
+          return res.status(400).json({ message: "Зээлийн сарын хүү 1.2% байх ёстой" });
+        }
       }
     }
 

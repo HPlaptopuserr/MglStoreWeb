@@ -9,6 +9,7 @@ export enum PaymentStatus {
 export enum PaymentMethod {
   CASH = "CASH",
   CARD = "CARD",
+  CREDIT = "CREDIT",
   QPAY = "QPAY",
   BANK_TRANSFER = "BANK_TRANSFER",
 }

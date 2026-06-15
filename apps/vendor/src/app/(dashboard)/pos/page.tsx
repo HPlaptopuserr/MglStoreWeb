@@ -54,6 +54,7 @@ import {
   type CartTotals,
   type PaymentMethod,
   type PosReceipt,
+  type SaleCreditPaymentMeta,
   type SalePaymentLine,
   formatReceipt,
   createCardAttempt,
@@ -1220,14 +1221,14 @@ export default function PosDemoPage() {
       attemptId: item.attemptId,
       transactionId: item.transactionId,
       invoiceId: item.invoiceId,
+      credit: item.credit,
     }));
     const finalMethod = paymentBreakdown.length === 1 ? paymentBreakdown[0].method : "MIXED";
-    const branchIdForSale =
-      registerConfig?.branchId || (finalMethod === "CASH" ? `local-cash-${organizationId || "branch"}` : "");
+    const branchIdForSale = registerConfig?.branchId || "";
 
     if (!branchIdForSale) {
       setScanStatus("not-found");
-      setScanMessage("POS кассын салбар сонгогдоогүй байна. POS кассаа сонгоод дахин оролдоно уу.");
+      setScanMessage("POS кассын салбар сонгогдоогүй байна. Бэлэн төлбөр дээр ч register/салбар шаардлагатай.");
       setShowSetupPanel(true);
       return;
     }
@@ -1269,6 +1270,12 @@ export default function PosDemoPage() {
 
       let finalReceipt = receipt;
       let finalMessage = "Төлбөр амжилттай";
+      const loyaltyMessage =
+        receipt.loyalty && (receipt.loyalty.earnedPoints > 0 || receipt.loyalty.redeemedPoints > 0)
+          ? receipt.loyalty.redeemedPoints > 0
+            ? ` M Point -${receipt.loyalty.redeemedPoints.toLocaleString("mn-MN")} хасагдаж, +${receipt.loyalty.earnedPoints.toLocaleString("mn-MN")} орлоо.`
+            : ` M Point +${receipt.loyalty.earnedPoints.toLocaleString("mn-MN")} орлоо.`
+          : "";
 
       if (EBARIMT_ENABLED) {
         try {
@@ -1282,7 +1289,7 @@ export default function PosDemoPage() {
           } catch (saveError) {
             console.warn("eBarimt receipt created locally but failed to attach to sale", saveError);
           }
-          finalMessage = "Төлбөр болон eBarimt баримт амжилттай";
+          finalMessage = `Төлбөр болон eBarimt баримт амжилттай.${loyaltyMessage}`;
         } catch (ebarimtError: any) {
           const errorMessage = ebarimtError?.message || "eBarimt баримт үүсгэхэд алдаа гарлаа";
           finalReceipt = {
@@ -1293,12 +1300,14 @@ export default function PosDemoPage() {
               syncedAt: new Date().toISOString(),
             },
           };
-          finalMessage = `Төлбөр амжилттай. eBarimt: ${errorMessage}`;
+          finalMessage = `Төлбөр амжилттай.${loyaltyMessage} eBarimt: ${errorMessage}`;
           await attachEbarimtReceipt(receipt.id, {
             status: "FAILED",
             error: errorMessage,
           }).catch(() => {});
         }
+      } else {
+        finalMessage = `Төлбөр амжилттай.${loyaltyMessage}`;
       }
 
       setQpayModal(null);
@@ -1328,7 +1337,7 @@ export default function PosDemoPage() {
     }
   };
 
-  const addPaymentEntry = async (method: PaymentMethod, amount: number) => {
+  const addPaymentEntry = async (method: PaymentMethod, amount: number, credit?: SaleCreditPaymentMeta) => {
     const safeAmount = roundMoney(Math.max(0, Math.min(amount, remaining)));
     if (safeAmount <= 0) return;
 
@@ -1493,6 +1502,7 @@ export default function PosDemoPage() {
         method,
         amount: safeAmount,
         status: "confirmed",
+        credit,
       },
     ]);
   };
@@ -1635,9 +1645,9 @@ export default function PosDemoPage() {
 
   const startAutoCheckoutFlow = async () => {
     if (state.cart.length === 0) return;
-    if (paymentMethod !== "CASH" && !registerConfig?.branchId) {
+    if (!registerConfig?.branchId) {
       setScanStatus("not-found");
-      setScanMessage("Карт болон QR төлбөр авахын тулд POS кассаа эхлээд бүртгэнэ үү. Бэлэн төлбөрийг кассгүй авч болно.");
+      setScanMessage("Төлбөр авахын тулд POS кассаа эхлээд register/салбартай холбоно уу.");
       setShowSetupPanel(true);
       return;
     }
@@ -3228,7 +3238,6 @@ export default function PosDemoPage() {
                 saleLoading ||
                 isCardProcessing ||
                 autoFinalizing ||
-                (paymentMethod !== "CASH" && !registerConfig?.branchId) ||
                 registerConfig?.isActive === false
               }
             />
