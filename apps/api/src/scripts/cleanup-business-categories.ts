@@ -15,7 +15,8 @@ type CategorySpec = {
   slug: string;
   name: string;
   icon?: string;
-  parentSlug: string;
+  parentSlug?: string | null;
+  parentSlugAlternatives?: string[];
   sortOrder: number;
 };
 
@@ -26,12 +27,52 @@ type ProductRule = {
   reason: string;
 };
 
+const CATEGORY_FOUNDATIONS: CategorySpec[] = [
+  {
+    slug: "home-living",
+    name: "Гэр ахуй, тавилга",
+    icon: "🏠",
+    parentSlug: null,
+    sortOrder: 400,
+  },
+  {
+    slug: "kitchenware",
+    name: "Гал тогооны хэрэгсэл",
+    icon: "🍳",
+    parentSlug: "home-living",
+    parentSlugAlternatives: ["food"],
+    sortOrder: 403,
+  },
+  {
+    slug: "electronics-technology",
+    name: "Цахилгаан бараа, технологи",
+    icon: "📱",
+    parentSlug: null,
+    sortOrder: 300,
+  },
+  {
+    slug: "packaging",
+    name: "Сав баглаа боодол",
+    icon: "📦",
+    parentSlug: "production",
+    sortOrder: 1605,
+  },
+  {
+    slug: "agro-equipment",
+    name: "ХАА тоног төхөөрөмж",
+    icon: "🚜",
+    parentSlug: "-agriculture",
+    sortOrder: 1603,
+  },
+];
+
 const CATEGORY_REFINEMENTS: CategorySpec[] = [
   {
     slug: "dairy-products",
     name: "Сүү, цагаан идээ",
     icon: "🥛",
     parentSlug: "food-beverage",
+    parentSlugAlternatives: ["food"],
     sortOrder: 107,
   },
   {
@@ -39,6 +80,7 @@ const CATEGORY_REFINEMENTS: CategorySpec[] = [
     name: "Өдөр тутмын хүнс",
     icon: "🧺",
     parentSlug: "food-beverage",
+    parentSlugAlternatives: ["food"],
     sortOrder: 108,
   },
   {
@@ -47,6 +89,13 @@ const CATEGORY_REFINEMENTS: CategorySpec[] = [
     icon: "🔌",
     parentSlug: "electronics-technology",
     sortOrder: 307,
+  },
+  {
+    slug: "pos-retail-equipment",
+    name: "POS, кассын төхөөрөмж",
+    icon: "🧾",
+    parentSlug: "electronics-technology",
+    sortOrder: 308,
   },
   {
     slug: "kitchen-cookware",
@@ -113,6 +162,8 @@ const CATEGORY_REFINEMENTS: CategorySpec[] = [
   },
 ];
 
+const ALL_CATEGORY_SPECS = [...CATEGORY_FOUNDATIONS, ...CATEGORY_REFINEMENTS];
+
 const PRODUCT_RULES: ProductRule[] = [
   {
     targetSlug: "kitchen-grills-fryers",
@@ -130,14 +181,15 @@ const PRODUCT_RULES: ProductRule[] = [
       "зуурагч",
       "зуурмаг",
       "элдэгч",
-      "гурил",
-      "гоймон",
       "дүүргэлт",
       "хуваах машин",
       "гурил зуурагч",
       "гурил элдэгч",
       "гоймонгийн машин",
+      "гоймон үйлдвэрлэх машин",
+      "гоймон татах машин",
     ],
+    avoid: ["450гр", "бэлэн", "жантай гоймон", "хэрчсэн гурил"],
     reason: "Гурил, зуурмаг, гоймон бэлтгэх төхөөрөмж.",
   },
   {
@@ -157,12 +209,13 @@ const PRODUCT_RULES: ProductRule[] = [
   },
   {
     targetSlug: "beverage-juice-equipment",
-    keywords: ["шүүс шахагч", "жүүс бэлтгэгч", "шахагч", "ундаа"],
+    keywords: ["шүүс шахагч", "жүүс бэлтгэгч", "juice extractor", "juicer"],
     reason: "Жүүс, ундаа бэлтгэх төхөөрөмж.",
   },
   {
     targetSlug: "kitchen-holding-storage",
-    keywords: ["дулаан барьдаг", "mini bar", "халаах", "хадгалах", "хөргөх"],
+    keywords: ["дулаан барьдаг", "mini bar", "халаах төхөөрөмж", "хөргөх шүүгээ"],
+    avoid: ["арьс", "батга", "уруул", "гарын тос", "balm", "care"],
     reason: "Бэлэн бүтээгдэхүүн халаах, хадгалах төхөөрөмж.",
   },
   {
@@ -202,8 +255,25 @@ const PRODUCT_RULES: ProductRule[] = [
     reason: "Сав баглаа, битүүмжлэх тоног төхөөрөмж.",
   },
   {
+    targetSlug: "pos-retail-equipment",
+    keywords: [
+      "barcode",
+      "receipt printer",
+      "label printer",
+      "thermal printer",
+      "touch screen",
+      "customer display",
+      "pos",
+      "касс",
+      "баркод",
+      "принтер",
+    ],
+    reason: "POS, кассын болон barcode хэвлэх төхөөрөмж.",
+  },
+  {
     targetSlug: "electronics-accessories",
     keywords: ["usb", "кабель", "цэнэглэгч", "charger", "adapter"],
+    avoid: ["printer", "barcode", "receipt", "thermal", "touch screen", "customer display"],
     reason: "Цахилгаан барааны дагалдах хэрэгсэл.",
   },
   {
@@ -234,12 +304,25 @@ const PRODUCT_RULES: ProductRule[] = [
   {
     targetSlug: "dairy-products",
     keywords: ["сүү", "тараг", "аарц", "бяслаг", "цагаан идээ"],
+    avoid: ["машин", "төхөөрөмж", "коффены машин", "кофены машин"],
     reason: "Сүү, цагаан идээний бүтээгдэхүүн.",
   },
   {
     targetSlug: "grocery-staples",
-    keywords: ["гурил", "будаа", "элсэн чихэр", "давс", "тос", "тахианы мах", "мах 1кг"],
-    avoid: ["машин", "төхөөрөмж", "зуурагч", "элдэгч", "тосонд шарах"],
+    keywords: ["гурил 1кг", "будаа", "элсэн чихэр", "давс", "ургамлын тос", "тахианы мах", "мах 1кг"],
+    avoid: [
+      "машин",
+      "төхөөрөмж",
+      "зуурагч",
+      "элдэгч",
+      "тосонд шарах",
+      "гарын тос",
+      "уруул",
+      "батга",
+      "balm",
+      "care",
+      "бидерм",
+    ],
     reason: "Өдөр тутмын хүнсний бүтээгдэхүүн.",
   },
 ];
@@ -277,7 +360,10 @@ function findProductRule(product: {
   const tokens = tokenizeDiscoveryText(text);
 
   return PRODUCT_RULES.find((rule) => {
-    const avoided = rule.avoid?.some((keyword) => keywordMatches(text, tokens, keyword));
+    const avoided = rule.avoid?.some((keyword) => {
+      const normalized = normalizeDiscoveryText(keyword);
+      return Boolean(normalized) && (text.includes(normalized) || keywordMatches(text, tokens, keyword));
+    });
     if (avoided) return false;
     return rule.keywords.some((keyword) => keywordMatches(text, tokens, keyword));
   });
@@ -300,39 +386,94 @@ async function main() {
       _count: { select: { products: true } },
     },
   });
-  const categoryBySlug = new Map(existingCategories.map((category) => [category.slug, category]));
+  const categoryBySlug = new Map<string, {
+    id: string;
+    slug: string;
+    name: string;
+    icon?: string | null;
+    parentId: string | null;
+    level: number;
+    sortOrder?: number;
+    isActive?: boolean;
+  }>(existingCategories.map((category) => [category.slug, category]));
 
-  const categoryActions = CATEGORY_REFINEMENTS.map((spec) => {
-    const parent = categoryBySlug.get(spec.parentSlug);
+  const resolveParent = (spec: CategorySpec) => {
+    if (!spec.parentSlug) return null;
+    for (const slug of [spec.parentSlug, ...(spec.parentSlugAlternatives || [])]) {
+      const parent = categoryBySlug.get(slug);
+      if (parent) return parent;
+    }
+    return undefined;
+  };
+
+  const categoryActions = ALL_CATEGORY_SPECS.map((spec) => {
+    const parent = resolveParent(spec);
     const existing = categoryBySlug.get(spec.slug);
-    if (!parent) {
+    if (parent === undefined) {
       return {
         type: "skip" as const,
         spec,
-        reason: `Parent category not found: ${spec.parentSlug}`,
+        reason: `Parent category not found: ${[spec.parentSlug, ...(spec.parentSlugAlternatives || [])].filter(Boolean).join(", ")}`,
       };
     }
-    const nextLevel = parent.level + 1;
-    return {
+    const nextLevel = parent ? parent.level + 1 : 0;
+    const action = {
       type: existing ? ("update" as const) : ("create" as const),
       spec,
       parent,
       existing,
       nextLevel,
     };
+    if (!existing) {
+      categoryBySlug.set(spec.slug, {
+        id: `new:${spec.slug}`,
+        slug: spec.slug,
+        name: spec.name,
+        icon: spec.icon || null,
+        parentId: parent?.id || null,
+        level: nextLevel,
+        sortOrder: spec.sortOrder,
+        isActive: true,
+      });
+    }
+    return action;
   });
 
   if (options.apply) {
+    const applyCategoryBySlug = new Map<string, {
+      id: string;
+      slug: string;
+      name: string;
+      icon: string | null;
+      parentId: string | null;
+      level: number;
+      sortOrder: number;
+      isActive: boolean;
+    }>(existingCategories.map((category) => [category.slug, category]));
+    const resolveApplyParent = (spec: CategorySpec) => {
+      if (!spec.parentSlug) return null;
+      for (const slug of [spec.parentSlug, ...(spec.parentSlugAlternatives || [])]) {
+        const parent = applyCategoryBySlug.get(slug);
+        if (parent) return parent;
+      }
+      return undefined;
+    };
+
     for (const action of categoryActions) {
       if (action.type === "skip") continue;
-      await prisma.businessCategory.upsert({
+      const parent = resolveApplyParent(action.spec);
+      if (parent === undefined) {
+        throw new Error(`Parent category not found during apply: ${action.spec.slug}`);
+      }
+      const nextLevel = parent ? parent.level + 1 : 0;
+      const saved = await prisma.businessCategory.upsert({
         where: { slug: action.spec.slug },
         update: {
           name: action.spec.name,
           icon: action.spec.icon || null,
           sortOrder: action.spec.sortOrder,
-          parentId: action.parent.id,
-          level: action.nextLevel,
+          parentId: parent?.id || null,
+          level: nextLevel,
           isActive: true,
         },
         create: {
@@ -340,11 +481,12 @@ async function main() {
           name: action.spec.name,
           icon: action.spec.icon || null,
           sortOrder: action.spec.sortOrder,
-          parentId: action.parent.id,
-          level: action.nextLevel,
+          parentId: parent?.id || null,
+          level: nextLevel,
           isActive: true,
         },
       });
+      applyCategoryBySlug.set(saved.slug, saved);
     }
   }
 
@@ -361,13 +503,13 @@ async function main() {
           level,
         })),
         ...categoryActions.flatMap((action) => {
-          if (action.type !== "create" || !("parent" in action)) return [];
+          if (action.type !== "create") return [];
           return [
             {
               id: `new:${action.spec.slug}`,
               slug: action.spec.slug,
               name: action.spec.name,
-              parentId: action.parent.id,
+              parentId: action.parent?.id || null,
               level: action.nextLevel,
             },
           ];
@@ -445,7 +587,7 @@ async function main() {
       continue;
     }
     console.log(
-      `${options.apply ? "APPLY" : "DRY"} ${action.type.toUpperCase()} ${action.spec.slug} ${action.spec.name} parent=${action.parent.slug} level=${action.nextLevel}`,
+      `${options.apply ? "APPLY" : "DRY"} ${action.type.toUpperCase()} ${action.spec.slug} ${action.spec.name} parent=${action.parent?.slug || "root"} level=${action.nextLevel}`,
     );
   }
 
