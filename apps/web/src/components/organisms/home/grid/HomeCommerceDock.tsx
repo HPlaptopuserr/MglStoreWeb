@@ -16,6 +16,8 @@ type ApiCategory = {
   slug?: string;
   name: string;
   icon?: string | null;
+  productCount?: number;
+  directProductCount?: number;
   _count?: { products?: number };
 };
 
@@ -46,7 +48,7 @@ export function HomeCommerceDock({
   useEffect(() => {
     let mounted = true;
 
-    fetch(`${API}/business-categories?level=0`)
+    fetch(`${API}/business-categories?level=0&hasProducts=1`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
         if (mounted && Array.isArray(data)) setApiCategories(data);
@@ -85,7 +87,13 @@ export function HomeCommerceDock({
           slug: category.slug,
           name: category.name,
           icon: category.icon || counted?.icon,
-          _count: { products: category._count?.products ?? counted?._count?.products ?? 0 },
+          _count: {
+            products:
+              category.productCount ??
+              category._count?.products ??
+              counted?._count?.products ??
+              0,
+          },
         };
       })
       .filter((category) => category.name)

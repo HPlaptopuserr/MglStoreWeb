@@ -11,7 +11,10 @@ import type {
   MarketplaceSideBanner,
 } from "@/components/organisms/commerce/MarketplaceBoard";
 import { ProductCommandBar } from "./_components/ProductCommandBar";
-import { ProductResultsGrid } from "./_components/ProductResultsGrid";
+import {
+  ProductResultsGrid,
+  type ProductSearchSuggestion,
+} from "./_components/ProductResultsGrid";
 import { ProductSearchHero } from "./_components/ProductSearchHero";
 
 const PRODUCTS_PER_PAGE = 16;
@@ -26,6 +29,11 @@ interface ApiCategory {
   id: string;
   name: string;
   slug?: string;
+  parentId?: string | null;
+  level?: number;
+  productCount?: number;
+  directProductCount?: number;
+  _count?: { products?: number };
 }
 
 interface ApiProduct {
@@ -43,8 +51,14 @@ interface ApiProduct {
   organization: { id: string; name: string; logoUrl?: string | null } | null;
   discounts: { percent: number }[];
   businessCategoryId: string | null;
-  businessCategory: { id: string; name: string; slug?: string } | null;
+  businessCategory: {
+    id: string;
+    name: string;
+    slug?: string;
+    parent?: { id: string; name: string; slug?: string } | null;
+  } | null;
   createdAt: string;
+  searchScore?: number;
 }
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
@@ -68,6 +82,29 @@ const SUPPLY_OPTIONS: { key: SupplyKey; label: string; description: string }[] =
   { key: "preorder", label: "Захиалгаар", description: "Урьдчилсан захиалгатай бараа" },
 ];
 
+const SEARCH_INTENT_SUGGESTIONS: Array<{ triggers: string[]; terms: string[] }> = [
+  {
+    triggers: ["хоол", "хүнс", "идэх", "уух", "гал тогоо", "cooking", "food"],
+    terms: ["Хоол хүнс", "хүнс", "супермаркет", "мини маркет"],
+  },
+  {
+    triggers: ["бэлэг", "төрсөн", "gift"],
+    terms: ["бэлэг", "гоо сайхан", "хямдрал"],
+  },
+  {
+    triggers: ["хувцас", "өмд", "цамц", "гутал", "shoe", "shirt"],
+    terms: ["хувцас", "гутал", "онлайн дэлгүүр"],
+  },
+  {
+    triggers: ["кофе", "coffee", "ундаа"],
+    terms: ["кофе", "ундаа", "супермаркет"],
+  },
+  {
+    triggers: ["гэр", "ахуй", "цэвэрлэгээ"],
+    terms: ["гэр ахуй", "цэвэрлэгээ", "мини маркет"],
+  },
+];
+
 function buildProductsUrl(categoryId: string | null, search: string, supplyType: SupplyKey = "all") {
   const params = new URLSearchParams();
   if (categoryId) params.set("category", categoryId);
@@ -76,6 +113,140 @@ function buildProductsUrl(categoryId: string | null, search: string, supplyType:
   if (supplyType !== "all") params.set("type", supplyType);
   const qs = params.toString();
   return qs ? `/products?${qs}` : "/products";
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeSearchText(value: string) {
+  return normalizeSearchText(value)
+    .split(" ")
+    .filter((token) => token.length > 1 && !["юм", "зүйл", "хийх", "авах"].includes(token));
+}
+
+function productMatchesSearch(product: ApiProduct, query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return true;
+  if ((product.searchScore ?? 0) > 0) return true;
+  const haystack = normalizeSearchText(
+    [
+      product.name,
+      product.description,
+      product.sku,
+      product.barcode,
+      product.organization?.name,
+      product.businessCategory?.name,
+      product.businessCategory?.slug,
+      product.businessCategory?.parent?.name,
+      product.businessCategory?.parent?.slug,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+  if (haystack.includes(normalizedQuery)) return true;
+  const tokens = tokenizeSearchText(query);
+  return tokens.length > 0 && tokens.some((token) => haystack.includes(token));
+}
+
+function buildSearchSuggestions({
+  query,
+  categories,
+  products,
+}: {
+  query: string;
+  categories: ApiCategory[];
+  products: ApiProduct[];
+}): ProductSearchSuggestion[] {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return [];
+
+  const suggestions = new Map<string, ProductSearchSuggestion>();
+  const add = (suggestion: ProductSearchSuggestion) => {
+    const key = `${suggestion.type}:${suggestion.value}`;
+    if (!suggestions.has(key)) suggestions.set(key, suggestion);
+  };
+
+  for (const category of categories) {
+    const categoryText = normalizeSearchText(`${category.name} ${category.slug || ""}`);
+    if (
+      categoryText.includes(normalizedQuery) ||
+      normalizedQuery.split(" ").some((token) => token.length > 1 && categoryText.includes(token))
+    ) {
+      add({
+        type: "category",
+        label: category.name,
+        value: category.id,
+        description: "Энэ ангиллаар шүүж харах",
+      });
+    }
+  }
+
+  for (const intent of SEARCH_INTENT_SUGGESTIONS) {
+    if (intent.triggers.some((trigger) => normalizedQuery.includes(normalizeSearchText(trigger)))) {
+      for (const term of intent.terms) {
+        const matchedCategory = categories.find((category) =>
+          normalizeSearchText(category.name).includes(normalizeSearchText(term)),
+        );
+        if (matchedCategory) {
+          add({
+            type: "category",
+            label: matchedCategory.name,
+            value: matchedCategory.id,
+            description: "Ойролцоо ангилал",
+          });
+        } else {
+          add({
+            type: "search",
+            label: term,
+            value: term,
+            description: "Ойролцоо хайлт",
+          });
+        }
+      }
+    }
+  }
+
+  const productTerms = products
+    .flatMap((product) => [
+      product.businessCategory?.name,
+      product.organization?.name,
+      product.name,
+    ])
+    .filter((value): value is string => Boolean(value))
+    .filter((value) => {
+      const normalized = normalizeSearchText(value);
+      return normalizedQuery
+        .split(" ")
+        .some((token) => token.length > 2 && normalized.includes(token));
+    })
+    .slice(0, 4);
+
+  for (const term of productTerms) {
+    add({
+      type: "search",
+      label: term,
+      value: term,
+      description: "Каталог дотор ойролцоо үг байна",
+    });
+  }
+
+  if (suggestions.size === 0) {
+    ["хүнс", "супермаркет", "хямдрал"].forEach((term) =>
+      add({
+        type: "search",
+        label: term,
+        value: term,
+        description: "Түгээмэл хайлт",
+      }),
+    );
+  }
+
+  return [...suggestions.values()].slice(0, 5);
 }
 
 function parseSideBanner(raw?: string): MarketplaceSideBanner | null {
@@ -223,7 +394,7 @@ function ProductsContent() {
     const loadChromeData = async () => {
       try {
         const [categoryRes, settingsRes, projectRes] = await Promise.all([
-          fetch(`${API}/business-categories`),
+          fetch(`${API}/business-categories?hasProducts=1`),
           fetch(`${API}/site-settings`),
           fetch(`${API}/site-settings/projects`),
         ]);
@@ -355,19 +526,7 @@ function ProductsContent() {
 
     // Search
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(
-        (p) =>
-          [
-            p.name,
-            p.description,
-            p.sku,
-            p.barcode,
-            p.organization?.name,
-            p.businessCategory?.name,
-            p.businessCategory?.slug,
-          ].some((value) => value?.toLowerCase().includes(q))
-      );
+      list = list.filter((product) => productMatchesSearch(product, searchQuery));
     }
 
     // Discount only
@@ -418,7 +577,11 @@ function ProductsContent() {
         break;
       case "newest":
       default:
-        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        if (searchQuery.trim() && list.some((product) => product.searchScore)) {
+          list.sort((a, b) => (b.searchScore ?? 0) - (a.searchScore ?? 0));
+        } else {
+          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        }
         break;
     }
 
@@ -443,6 +606,28 @@ function ProductsContent() {
 
   const activeOrganizationName = availableOrganizations.find((org) => org.id === selectedOrganization)?.name;
   const activeSupplyName = SUPPLY_OPTIONS.find((option) => option.key === supplyFilter)?.label;
+  const searchSuggestions = useMemo(
+    () =>
+      buildSearchSuggestions({
+        query: searchQuery,
+        categories: apiCategories,
+        products: apiProducts,
+      }),
+    [apiCategories, apiProducts, searchQuery],
+  );
+  const handleSearchSuggestionClick = (suggestion: ProductSearchSuggestion) => {
+    setCurrentPage(1);
+    if (suggestion.type === "category") {
+      setSearchQuery("");
+      setDebouncedSearch("");
+      setActiveCategory(suggestion.value);
+      router.replace(buildProductsUrl(suggestion.value, "", supplyFilter), { scroll: false });
+      return;
+    }
+    setSearchQuery(suggestion.value);
+    setDebouncedSearch(suggestion.value);
+    router.replace(buildProductsUrl(activeCategory, suggestion.value, supplyFilter), { scroll: false });
+  };
 
   // Price bounds for hints
   const prices = apiProducts.map((p) => p.price);
@@ -637,6 +822,27 @@ function ProductsContent() {
             </button>
           </div>
         )}
+
+        {!productsLoading && processedProducts.length === 0 && searchSuggestions.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 py-3">
+            <span className="text-[11px] font-black uppercase tracking-wider text-orange-500">
+              Санал:
+            </span>
+            {searchSuggestions.map((suggestion) => (
+              <button
+                key={`${suggestion.type}-${suggestion.value}`}
+                type="button"
+                onClick={() => handleSearchSuggestionClick(suggestion)}
+                className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full bg-white px-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition active:scale-95 hover:text-orange-600 hover:ring-orange-200"
+              >
+                <span className="truncate">{suggestion.label}</span>
+                <span className="text-[10px] text-slate-400">
+                  {suggestion.type === "category" ? "ангилал" : "хайлт"}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="container mx-auto px-4 pb-12 pt-4 lg:px-8">
@@ -649,7 +855,10 @@ function ProductsContent() {
           pageSize={PRODUCTS_PER_PAGE}
           hasActiveFilters={activeFilterCount > 0}
           isMember={isMember}
+          searchQuery={searchQuery}
+          suggestions={searchSuggestions}
           onClearFilters={clearFilters}
+          onSuggestionClick={handleSearchSuggestionClick}
           onPageChange={goToPage}
         />
       </div>

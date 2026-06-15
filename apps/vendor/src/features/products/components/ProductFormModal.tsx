@@ -4,6 +4,7 @@ import { X, Banknote, BarChart2, Loader2, PackageSearch, Type, AlignLeft, AlertT
 import { BusinessCategory, FormState, Product } from "../types";
 import { CategorySelector } from "./CategorySelector";
 import { ImageUploadGrid } from "./ImageUploadGrid";
+import { ProductDataAssistantPanel } from "./ProductDataAssistantPanel";
 import { VendorSkuGenerator } from "./VendorSkuGenerator";
 
 interface Props {
@@ -273,6 +274,19 @@ export function ProductFormModal({
 
               {/* Right Column: Media & Classification */}
               <div className="lg:col-span-5 space-y-6">
+                <ProductDataAssistantPanel
+                  form={form}
+                  categories={categories}
+                  products={products}
+                  editingId={editingId}
+                  onApplyCategory={(id) =>
+                    setForm((current) => ({ ...current, businessCategoryId: id }))
+                  }
+                  onApplyDescription={(description) =>
+                    setForm((current) => ({ ...current, description }))
+                  }
+                  onSwitchToEdit={onSwitchToEdit}
+                />
                 
                 <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-5">
                   <div className="space-y-2">

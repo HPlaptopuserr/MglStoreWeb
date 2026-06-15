@@ -103,7 +103,7 @@ export const MegaMenu = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch(`${API}/business-categories/tree`)
+    fetch(`${API}/business-categories/tree?hasProducts=1`)
       .then((r) => r.json())
       .then((data: ApiTreeNode[]) => {
         const mega = apiTreeToMega(data);

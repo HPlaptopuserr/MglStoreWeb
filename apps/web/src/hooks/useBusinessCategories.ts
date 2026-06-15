@@ -11,7 +11,7 @@ export function useBusinessCategories() {
 
     async function load() {
       try {
-        const res = await fetch(`${API}/business-categories`);
+        const res = await fetch(`${API}/business-categories?hasProducts=1`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!cancelled && Array.isArray(data)) {

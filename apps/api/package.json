@@ -7,6 +7,8 @@
     "start": "node --max-old-space-size=400 dist/index.js",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint \"src/**/*.ts\" --fix",
+    "categories:cleanup": "tsx src/scripts/cleanup-business-categories.ts",
+    "products:classify": "tsx src/scripts/classify-products.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

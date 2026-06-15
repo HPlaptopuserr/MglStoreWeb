@@ -69,22 +69,17 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     if (!product) return;
 
     const loadRecommendations = async () => {
-      const [relatedRes, vendorRes] = await Promise.all([
-        product.businessCategory?.id
-          ? fetch(`${API}/products?businessCategoryId=${encodeURIComponent(product.businessCategory.id)}`)
-          : Promise.resolve(null),
-        fetch(`${API}/products?organizationId=${encodeURIComponent(product.organization.id)}`),
-      ]);
-
-      const relatedData = product.businessCategory?.id && relatedRes?.ok ? await relatedRes.json() : [];
-      const vendorData = vendorRes?.ok ? await vendorRes.json() : [];
+      const response = await fetch(
+        `${API}/products/${encodeURIComponent(product.id)}/recommendations?limit=8`,
+      );
+      const data = response.ok ? await response.json() : {};
       const normalize = (items: unknown) =>
         (Array.isArray(items) ? (items as ProductDetailProduct[]) : [])
           .filter((item) => item.id !== product.id)
           .slice(0, 4);
 
-      setRelatedProducts(normalize(relatedData));
-      setVendorProducts(normalize(vendorData));
+      setRelatedProducts(normalize(data.relatedProducts));
+      setVendorProducts(normalize(data.vendorProducts));
     };
 
     loadRecommendations().catch(() => {

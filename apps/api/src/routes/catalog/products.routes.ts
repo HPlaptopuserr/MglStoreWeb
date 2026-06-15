@@ -30,6 +30,11 @@ import {
   isApprovedVendorContent,
 } from "../../services/vendor-content-review.service";
 import {
+  buildProductSearchWhere,
+  scoreProductSimilarity,
+  scoreProductForSearch,
+} from "../../services/product-discovery.service";
+import {
   extractExcelImages,
   uploadBufferToSupabase,
   PRODUCT_COL_MAP,
@@ -322,6 +327,38 @@ const imageUpload = multer({
   },
 });
 
+async function resolveBusinessCategoryFilter(categoryIdOrSlug: string) {
+  const category = await prisma.businessCategory.findFirst({
+    where: {
+      OR: [{ id: categoryIdOrSlug }, { slug: categoryIdOrSlug }],
+      isActive: true,
+    },
+    select: { id: true },
+  });
+  if (!category) return [categoryIdOrSlug];
+
+  const allCategories = await prisma.businessCategory.findMany({
+    where: { isActive: true },
+    select: { id: true, parentId: true },
+  });
+  const byParent = new Map<string, string[]>();
+  for (const item of allCategories) {
+    if (!item.parentId) continue;
+    byParent.set(item.parentId, [...(byParent.get(item.parentId) || []), item.id]);
+  }
+
+  const ids = new Set<string>([category.id]);
+  const visit = (parentId: string) => {
+    for (const childId of byParent.get(parentId) || []) {
+      if (ids.has(childId)) continue;
+      ids.add(childId);
+      visit(childId);
+    }
+  };
+  visit(category.id);
+  return [...ids];
+}
+
 /* ─── GET /products ─────────────────────────────────────────────────── */
 router.get("/products", optionalAuth, async (req, res) => {
   try {
@@ -350,24 +387,14 @@ router.get("/products", optionalAuth, async (req, res) => {
     if (!includeInactive) where.isActive = true;
     if (!includeInactive) where.reviewStatus = "APPROVED";
     if (organizationId) where.organizationId = organizationId;
-    if (businessCategoryId) where.businessCategoryId = businessCategoryId;
+    if (businessCategoryId) {
+      where.businessCategoryId = {
+        in: await resolveBusinessCategoryFilter(businessCategoryId),
+      };
+    }
 
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
-        { sku: { contains: search, mode: "insensitive" } },
-        { barcode: { contains: search, mode: "insensitive" } },
-        { organization: { name: { contains: search, mode: "insensitive" } } },
-        {
-          businessCategory: {
-            OR: [
-              { name: { contains: search, mode: "insensitive" } },
-              { slug: { contains: search, mode: "insensitive" } },
-            ],
-          },
-        },
-      ];
+      where.OR = buildProductSearchWhere(search);
     }
 
     const canBypassRequestedOrg = requestedOrganizationId
@@ -401,7 +428,14 @@ router.get("/products", optionalAuth, async (req, res) => {
       orderBy: { createdAt: "desc" },
       include: {
         images: { select: { id: true, url: true } },
-        businessCategory: { select: { id: true, name: true, slug: true } },
+        businessCategory: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            parent: { select: { id: true, name: true, slug: true } },
+          },
+        },
         organization: { select: { id: true, name: true, logoUrl: true } },
         discounts: {
           where: { isActive: true, validUntil: { gte: new Date() } },
@@ -442,9 +476,14 @@ router.get("/products", optionalAuth, async (req, res) => {
         return {
           ...product,
           expiryDate: expiryDate?.toISOString() ?? null,
+          searchScore: search ? scoreProductForSearch(product, search) : 0,
         };
       })
+      .filter((product) => !search || product.searchScore > 0)
       .sort((a, b) => {
+        if (search && b.searchScore !== a.searchScore) {
+          return b.searchScore - a.searchScore;
+        }
         const expiryDiff =
           getExpirySortValue(a.expiryDate) - getExpirySortValue(b.expiryDate);
         if (expiryDiff !== 0) return expiryDiff;
@@ -1055,6 +1094,143 @@ router.post(
 );
 
 /* ─── GET /products/:id ─────────────────────────────────────────────── */
+router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
+  try {
+    const rawLimit = parseInt(String(req.query.limit || ""), 10);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(20, rawLimit) : 8;
+
+    const source = await prisma.product.findUnique({
+      where: { id: req.params.id, deletedAt: null },
+      include: {
+        businessCategory: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            parent: { select: { id: true, name: true, slug: true } },
+          },
+        },
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            deletedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!source) return res.status(404).json({ message: "Бараа олдсонгүй" });
+
+    const canBypassVisibility = await canBypassWebProductsVisibility(
+      req,
+      source.organizationId,
+    );
+    if (!canBypassVisibility && !(await areWebProductsGloballyEnabled())) {
+      return res.status(404).json({ message: "Бараа олдсонгүй" });
+    }
+
+    const sourceIsPubliclyVisible =
+      source.isActive &&
+      isApprovedVendorContent(source.reviewStatus) &&
+      source.organization.deletedAt === null &&
+      source.organization.status === "ACTIVE" &&
+      (await isOrgWebProductsEnabled(source.organizationId));
+
+    if (!canBypassVisibility && !sourceIsPubliclyVisible) {
+      return res.status(404).json({ message: "Бараа олдсонгүй" });
+    }
+
+    const candidateWhere: any = {
+      id: { not: source.id },
+      deletedAt: null,
+      organization: { deletedAt: null, status: "ACTIVE" },
+      isActive: true,
+      reviewStatus: "APPROVED",
+    };
+
+    if (!canBypassAllWebProductsVisibility(req)) {
+      const visibleOrganizationIds = await getWebProductsEnabledOrganizationIds();
+      candidateWhere.organizationId = { in: visibleOrganizationIds };
+    }
+
+    const categoryIds = source.businessCategoryId
+      ? await resolveBusinessCategoryFilter(source.businessCategoryId)
+      : [];
+    const parentCategoryId = source.businessCategory?.parent?.id;
+    const categorySignals = [
+      ...(categoryIds.length > 0 ? [{ businessCategoryId: { in: categoryIds } }] : []),
+      ...(parentCategoryId
+        ? [{ businessCategory: { parentId: parentCategoryId } }]
+        : []),
+      { organizationId: source.organizationId },
+    ];
+
+    const candidates = await prisma.product.findMany({
+      where: {
+        ...candidateWhere,
+        OR: categorySignals,
+      },
+      take: 80,
+      orderBy: { createdAt: "desc" },
+      include: {
+        images: { select: { id: true, url: true } },
+        businessCategory: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            parent: { select: { id: true, name: true, slug: true } },
+          },
+        },
+        organization: { select: { id: true, name: true, logoUrl: true } },
+        discounts: {
+          where: { isActive: true, validUntil: { gte: new Date() } },
+          select: { percent: true, validUntil: true },
+          take: 1,
+        },
+      },
+    });
+
+    const ranked = candidates
+      .map((candidate) => ({
+        ...candidate,
+        similarityScore: scoreProductSimilarity(source, candidate),
+      }))
+      .filter((candidate) => candidate.similarityScore > 0)
+      .sort((a, b) => {
+        if (b.similarityScore !== a.similarityScore) {
+          return b.similarityScore - a.similarityScore;
+        }
+        return (
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+
+    const related = ranked.slice(0, limit);
+    const relatedIds = new Set(related.map((candidate) => candidate.id));
+    const vendor = ranked
+      .filter(
+        (candidate) =>
+          candidate.organizationId === source.organizationId &&
+          !relatedIds.has(candidate.id),
+      )
+      .slice(0, Math.min(6, limit));
+
+    return res.json({
+      relatedProducts: related,
+      vendorProducts: vendor,
+    });
+  } catch (error) {
+    console.error("get product recommendations error", error);
+    return res
+      .status(500)
+      .json({ message: "Санал болгох бараа авахад алдаа гарлаа", error: String(error) });
+  }
+});
+
 router.get("/products/:id", optionalAuth, async (req, res) => {
   try {
     const product = await prisma.product.findUnique({

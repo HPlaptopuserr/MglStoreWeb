@@ -5,6 +5,49 @@ import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
+type BusinessCategoryListItem = {
+  id: string;
+  slug: string;
+  name: string;
+  icon: string | null;
+  sortOrder: number;
+  parentId: string | null;
+  level: number;
+  _count: { products: number };
+};
+
+function withDescendantProductCounts(categories: BusinessCategoryListItem[]) {
+  const byParent = new Map<string, BusinessCategoryListItem[]>();
+  for (const category of categories) {
+    const key = category.parentId || "root";
+    byParent.set(key, [...(byParent.get(key) || []), category]);
+  }
+
+  const memo = new Map<string, number>();
+  const countDescendants = (category: BusinessCategoryListItem): number => {
+    const cached = memo.get(category.id);
+    if (cached !== undefined) return cached;
+    const childCount = (byParent.get(category.id) || []).reduce(
+      (sum, child) => sum + countDescendants(child),
+      0,
+    );
+    const total = category._count.products + childCount;
+    memo.set(category.id, total);
+    return total;
+  };
+
+  return categories.map((category) => {
+    const directProductCount = category._count.products;
+    const productCount = countDescendants(category);
+    return {
+      ...category,
+      directProductCount,
+      productCount,
+      _count: { products: productCount },
+    };
+  });
+}
+
 // Public: get active categories (supports ?level=0 to filter by level)
 router.get("/business-categories", async (req, res) => {
   try {
@@ -12,8 +55,8 @@ router.get("/business-categories", async (req, res) => {
     if (req.query.level !== undefined) {
       where.level = Number(req.query.level);
     }
-    const categories = await prisma.businessCategory.findMany({
-      where,
+    const allCategories = await prisma.businessCategory.findMany({
+      where: { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: {
         id: true,
@@ -26,6 +69,12 @@ router.get("/business-categories", async (req, res) => {
         _count: { select: { products: true } },
       },
     });
+    const enriched = withDescendantProductCounts(allCategories);
+    const categories = enriched.filter((category) => {
+      if (where.level !== undefined && category.level !== where.level) return false;
+      if (req.query.hasProducts !== undefined && category.productCount <= 0) return false;
+      return true;
+    });
     // Return flat list — frontend builds tree if needed
     res.json(categories);
   } catch (error) {
@@ -35,9 +84,9 @@ router.get("/business-categories", async (req, res) => {
 });
 
 // Public: get categories as nested tree
-router.get("/business-categories/tree", async (_req, res) => {
+router.get("/business-categories/tree", async (req, res) => {
   try {
-    const all = await prisma.businessCategory.findMany({
+    const allCategories = await prisma.businessCategory.findMany({
       where: { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: {
@@ -48,8 +97,12 @@ router.get("/business-categories/tree", async (_req, res) => {
         sortOrder: true,
         parentId: true,
         level: true,
+        _count: { select: { products: true } },
       },
     });
+    const all = withDescendantProductCounts(allCategories).filter(
+      (category) => req.query.hasProducts === undefined || category.productCount > 0,
+    );
 
     // Build tree: level 0 → level 1 → level 2
     const roots = all.filter((c: (typeof all)[number]) => !c.parentId);

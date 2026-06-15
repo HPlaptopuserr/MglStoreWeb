@@ -218,19 +218,19 @@ export function ProductDetailShell({
           </aside>
         </section>
 
-        {vendorProducts.length > 0 && (
-          <ProductShelf title="Энэ дэлгүүрийн бусад бараа" label="Vendor products" href={organizationPath(product.organization)}>
-            {recommendationGrid(vendorProducts, isMember)}
-          </ProductShelf>
-        )}
-
         {relatedProducts.length > 0 && (
           <ProductShelf
             title="Төстэй бараа"
-            label="Similar products"
+            label="Recommended for you"
             href={product.businessCategory ? `/products?category=${product.businessCategory.slug}` : "/products"}
           >
             {recommendationGrid(relatedProducts, isMember)}
+          </ProductShelf>
+        )}
+
+        {vendorProducts.length > 0 && (
+          <ProductShelf title="Энэ дэлгүүрийн бусад бараа" label="Vendor products" href={organizationPath(product.organization)}>
+            {recommendationGrid(vendorProducts, isMember)}
           </ProductShelf>
         )}
       </main>
