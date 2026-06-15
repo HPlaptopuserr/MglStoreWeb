@@ -41,6 +41,7 @@ interface ImportErrorRow {
   error: string;
   name: string;
   sku: string;
+  businessCategory: string;
   price: string;
   costPrice: string;
   stock: string;
@@ -52,6 +53,7 @@ interface ImportErrorRow {
 type EditableImportRowField =
   | "name"
   | "sku"
+  | "businessCategory"
   | "price"
   | "costPrice"
   | "stock"
@@ -120,6 +122,11 @@ const getColumnInfo = (mode: ImportMode) => [
   },
   { col: "Нэр (name)", req: true, desc: "Барааны нэр" },
   { col: "SKU (sku)", req: false, desc: "Барааны код / SKU" },
+  {
+    col: "Ангилал",
+    req: false,
+    desc: "Dropdown-оос сонгоно. Хоосон бол байгууллагын үндсэн ангилал орно",
+  },
   { col: "Үнэ (price)", req: true, desc: "Зарах үнэ (тоо)" },
   { col: "Өртөг (costPrice)", req: false, desc: "Өртөг үнэ (тоо)" },
   ...(mode === "stock"
@@ -240,6 +247,7 @@ export function ExcelImportModal({
     const payloadRows = rows.map((row) => ({
       name: row.name,
       sku: row.sku,
+      businessCategory: row.businessCategory,
       price: row.price,
       costPrice: row.costPrice,
       stock: row.stock,
@@ -737,12 +745,13 @@ function ImportResults({
             </div>
           )}
           <div className="max-h-80 overflow-auto">
-            <table className="w-full min-w-[760px] text-left">
+            <table className="w-full min-w-[900px] text-left">
               <thead className="sticky top-0 z-10 bg-white border-b border-slate-100">
                 <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                   <th className="px-3 py-2 w-16">Мөр</th>
                   <th className="px-3 py-2 min-w-44">Нэр</th>
                   <th className="px-3 py-2 min-w-32">SKU</th>
+                  <th className="px-3 py-2 min-w-44">Ангилал</th>
                   <th className="px-3 py-2 w-32">Үнэ</th>
                   <th className="px-3 py-2 w-32">Өртөг</th>
                   <th className="px-3 py-2 w-24">
@@ -774,6 +783,20 @@ function ImportResults({
                           updateEditableRow(index, "sku", e.target.value)
                         }
                         className="h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.businessCategory}
+                        onChange={(e) =>
+                          updateEditableRow(
+                            index,
+                            "businessCategory",
+                            e.target.value,
+                          )
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        placeholder="Жишээ: Хүнс / Ундаа"
                       />
                     </td>
                     <td className="px-3 py-2">

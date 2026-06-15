@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   ArrowLeft,
   Download,
@@ -32,6 +33,16 @@ type PaidAccessDetailContentProps = {
   contractLabel?: string;
   onBack?: () => void;
 };
+
+function getPdfFileName(title: string) {
+  const normalized = title
+    .trim()
+    .replace(/[^\p{L}\p{N}\s_-]+/gu, "")
+    .replace(/\s+/g, "-")
+    .slice(0, 80);
+
+  return `${normalized || "mgl-store-material"}.pdf`;
+}
 
 function ResponsiblePeopleSection({
   people = [],
@@ -117,6 +128,41 @@ export function PaidAccessDetailContent({
   contractLabel = "Гэрээ хийх",
   onBack,
 }: PaidAccessDetailContentProps) {
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
+
+  const handlePdfDownload = async () => {
+    if (!pdfUrl || downloading) return;
+
+    setDownloading(true);
+    setDownloadError("");
+
+    try {
+      const response = await fetch(pdfUrl, { mode: "cors" });
+      if (!response.ok) {
+        throw new Error("PDF файл татахад алдаа гарлаа");
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = getPdfFileName(title);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error(error);
+      window.open(pdfUrl, "_blank", "noopener,noreferrer");
+      setDownloadError(
+        "Шууд татаж чадсангүй. PDF-г шинэ цонхонд нээлээ, тэндээс хадгална уу.",
+      );
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#0d0d10] text-white">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
@@ -195,16 +241,15 @@ export function PaidAccessDetailContent({
                 </div>
               </div>
               <div className="grid gap-2 sm:flex">
-                <a
-                  href={pdfUrl}
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={handlePdfDownload}
+                  disabled={downloading}
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-300 px-4 text-sm font-black text-[#071014] transition hover:brightness-110"
                 >
                   <Download className="h-4 w-4" />
-                  PDF татах
-                </a>
+                  {downloading ? "Татаж байна..." : "PDF татах"}
+                </button>
                 <a
                   href={pdfUrl}
                   target="_blank"
@@ -216,6 +261,11 @@ export function PaidAccessDetailContent({
                 </a>
               </div>
             </div>
+            {downloadError && (
+              <p className="rounded-xl border border-amber-200/20 bg-amber-300/10 px-4 py-3 text-xs font-bold text-amber-50/80">
+                {downloadError}
+              </p>
+            )}
             <div className="hidden overflow-hidden rounded-xl border border-white/10 bg-black/40 sm:block">
               <iframe
                 src={pdfUrl}

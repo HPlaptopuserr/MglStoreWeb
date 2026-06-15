@@ -313,6 +313,16 @@ export async function uploadBufferToSupabase(
 export const PRODUCT_COL_MAP = {
   name: ["name", "Нэр", "нэр", "Нэр (name)", "Барааны нэр"],
   sku: ["sku", "SKU", "Код", "код", "SKU (sku)", "№"],
+  businessCategory: [
+    "businessCategory",
+    "businessCategoryId",
+    "category",
+    "categoryId",
+    "Ангилал",
+    "ангилал",
+    "Ангилал (businessCategory)",
+    "Барааны ангилал",
+  ],
   price: ["price", "Үнэ", "үнэ", "Үнэ (price)", "Ф50", "Ф100"],
   costPrice: ["costPrice", "Өртөг", "өртөг", "Өртөг (costPrice)", "Өртөг үнэ"],
   stock: ["stock", "Нөөц", "нөөц", "Нөөц (stock)", "Тоо ширхэг"],
@@ -375,4 +385,125 @@ export function normalizeExcelRow(
     normalized[normalizedKey] = value;
   }
   return normalized;
+}
+
+export type ImportBusinessCategoryOption = {
+  id: string;
+  name: string;
+  slug: string;
+  parentId: string | null;
+};
+
+type ImportBusinessCategoryNode = ImportBusinessCategoryOption & {
+  children: ImportBusinessCategoryNode[];
+};
+
+export type ImportBusinessCategoryChoice = {
+  id: string;
+  name: string;
+  slug: string;
+  label: string;
+};
+
+function normalizeImportCategoryValue(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+export function buildBusinessCategoryChoices(
+  categories: ImportBusinessCategoryOption[],
+): ImportBusinessCategoryChoice[] {
+  const nodeById = new Map<string, ImportBusinessCategoryNode>();
+  for (const category of categories) {
+    nodeById.set(category.id, { ...category, children: [] });
+  }
+
+  const roots: ImportBusinessCategoryNode[] = [];
+  for (const node of nodeById.values()) {
+    const parent = node.parentId ? nodeById.get(node.parentId) : null;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  }
+
+  const choices: ImportBusinessCategoryChoice[] = [];
+  const visit = (node: ImportBusinessCategoryNode, path: string[]) => {
+    const nextPath = [...path, node.name];
+    choices.push({
+      id: node.id,
+      name: node.name,
+      slug: node.slug,
+      label: nextPath.join(" / "),
+    });
+    for (const child of node.children.sort((a, b) =>
+      a.name.localeCompare(b.name, "mn"),
+    )) {
+      visit(child, nextPath);
+    }
+  };
+
+  for (const root of roots.sort((a, b) => a.name.localeCompare(b.name, "mn"))) {
+    visit(root, []);
+  }
+
+  return choices;
+}
+
+export function resolveBusinessCategoryIdFromChoices(
+  value: unknown,
+  choices: ImportBusinessCategoryChoice[],
+): string | null | undefined {
+  const normalized = normalizeImportCategoryValue(value);
+  if (!normalized) return null;
+
+  const matched = choices.find((choice) =>
+    [choice.id, choice.slug, choice.name, choice.label].some(
+      (candidate) => normalizeImportCategoryValue(candidate) === normalized,
+    ),
+  );
+
+  return matched?.id;
+}
+
+export async function addCategoryDropdownToWorkbook(
+  buffer: Buffer,
+  categoryCount: number,
+): Promise<Buffer> {
+  if (categoryCount === 0) return buffer;
+
+  const zip = await JSZip.loadAsync(buffer);
+  const sheetPath = "xl/worksheets/sheet1.xml";
+  const sheetFile = zip.file(sheetPath);
+  if (!sheetFile) return buffer;
+
+  let sheetXml = await sheetFile.async("text");
+  const validationXml =
+    `<dataValidations count="1">` +
+    `<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="D2:D1001">` +
+    `<formula1>&apos;Ангиллууд&apos;!$A$2:$A$${categoryCount + 1}</formula1>` +
+    `</dataValidation>` +
+    `</dataValidations>`;
+
+  sheetXml = sheetXml.replace(
+    /<dataValidations\b[^>]*>[\s\S]*?<\/dataValidations>/,
+    "",
+  );
+
+  if (sheetXml.includes("<ignoredErrors")) {
+    sheetXml = sheetXml.replace(
+      /(<ignoredErrors\b)/,
+      (_match, ignoredErrorsTag) => `${validationXml}${ignoredErrorsTag}`,
+    );
+  } else if (sheetXml.includes("<pageMargins")) {
+    sheetXml = sheetXml.replace(
+      /(<pageMargins\b[^>]*\/>)/,
+      (_match, pageMarginsTag) => `${validationXml}${pageMarginsTag}`,
+    );
+  } else {
+    sheetXml = sheetXml.replace("</worksheet>", `${validationXml}</worksheet>`);
+  }
+
+  zip.file(sheetPath, sheetXml);
+
+  return Buffer.from(await zip.generateAsync({ type: "nodebuffer" }));
 }

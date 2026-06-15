@@ -12,6 +12,8 @@ import {
   PRODUCT_IMPORT_FILE_SIZE_LIMIT_BYTES,
   normalizeExcelRow,
   resolveCol,
+  buildBusinessCategoryChoices,
+  resolveBusinessCategoryIdFromChoices,
 } from "../../lib/excel-import";
 import {
   adjustStock,
@@ -20,6 +22,15 @@ import {
 } from "../../services/inventory.service";
 
 const router: ExpressRouter = Router();
+
+async function getImportBusinessCategoryChoices() {
+  const categories = await prisma.businessCategory.findMany({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true, name: true, slug: true, parentId: true },
+  });
+  return buildBusinessCategoryChoices(categories);
+}
 
 // Get all warehouses (Admin - can see all)
 router.get("/warehouses", requireAuth, async (req, res) => {
@@ -1137,6 +1148,7 @@ router.post(
       }
 
       const colMap = PRODUCT_COL_MAP;
+      const categoryChoices = await getImportBusinessCategoryChoices();
 
       const results: {
         created: number;
@@ -1179,6 +1191,7 @@ router.post(
 
         const name = resolveCol(row, colMap.name);
         const sku = resolveCol(row, colMap.sku);
+        const businessCategoryRaw = resolveCol(row, colMap.businessCategory);
         const price = resolveCol(row, colMap.price);
         const costPrice = resolveCol(row, colMap.costPrice);
         const stock = resolveCol(row, colMap.stock);
@@ -1221,6 +1234,17 @@ router.post(
         }
 
         const normalizedSku = sku ? String(sku).trim() : null;
+        const rowBusinessCategoryId = resolveBusinessCategoryIdFromChoices(
+          businessCategoryRaw,
+          categoryChoices,
+        );
+        if (rowBusinessCategoryId === undefined) {
+          results.errors.push(
+            `Мөр ${rowNum}: Ангилал олдсонгүй — "${String(businessCategoryRaw).trim()}"`,
+          );
+          results.skipped++;
+          continue;
+        }
 
         try {
           // Parse image URLs from text column
@@ -1250,7 +1274,7 @@ router.post(
             price: priceNum,
             costPrice: costPriceNum,
             stock: stockNum,
-            businessCategoryId: orgBusinessCategoryId,
+            businessCategoryId: rowBusinessCategoryId || orgBusinessCategoryId,
             isActive: true,
           };
 
@@ -1411,12 +1435,10 @@ router.post(
       });
     } catch (error) {
       console.error("warehouse import products error", error);
-      return res
-        .status(500)
-        .json({
-          message: "Excel импорт хийхэд алдаа гарлаа",
-          error: String(error),
-        });
+      return res.status(500).json({
+        message: "Excel импорт хийхэд алдаа гарлаа",
+        error: String(error),
+      });
     }
   },
 );

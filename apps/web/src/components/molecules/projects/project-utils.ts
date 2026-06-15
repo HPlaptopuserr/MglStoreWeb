@@ -1,4 +1,5 @@
 import type { ProjectItem } from "./project-types";
+import { API, resolveApiAssetUrl } from "@/lib/api";
 
 export function formatMnt(value?: number) {
   const amount = Number(value || 0);
@@ -39,5 +40,8 @@ export function resolveProjectFileUrl(url?: string) {
   const trimmed = url.trim();
   if (!trimmed) return "";
   if (/^(https?:|data:|blob:)/i.test(trimmed)) return trimmed;
-  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  if (/^\/?site-settings\/uploads\//i.test(trimmed)) {
+    return `${API}/${trimmed.replace(/^\/+/, "")}`;
+  }
+  return resolveApiAssetUrl(trimmed);
 }

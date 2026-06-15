@@ -37,6 +37,9 @@ import {
   normalizeExcelRow,
   getExcelRowIndex,
   resolveCol,
+  addCategoryDropdownToWorkbook,
+  buildBusinessCategoryChoices,
+  resolveBusinessCategoryIdFromChoices,
 } from "../../lib/excel-import";
 
 const router: ExpressRouter = Router();
@@ -92,6 +95,15 @@ const parseOptionalExpiryDate = (value: unknown) => {
   const date = new Date(String(value));
   return Number.isFinite(date.getTime()) ? date : undefined;
 };
+
+async function getImportBusinessCategoryChoices() {
+  const categories = await prisma.businessCategory.findMany({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true, name: true, slug: true, parentId: true },
+  });
+  return buildBusinessCategoryChoices(categories);
+}
 
 async function resolveProductInventoryWarehouseId(
   tx: Tx,
@@ -455,12 +467,13 @@ router.get("/products", optionalAuth, async (req, res) => {
 });
 
 /* ─── GET /products/import-template ──────────────────────────────────── */
-router.get("/products/import-template", (req, res) => {
+router.get("/products/import-template", async (req, res) => {
   try {
     const mode = String(req.query.mode || req.query.type || "")
       .trim()
       .toLowerCase();
     const isPreorderTemplate = mode === "preorder";
+    const categoryChoices = await getImportBusinessCategoryChoices();
     const templateData = [
       {
         Зураг: "(зургаа энд оруулна)",
@@ -468,6 +481,7 @@ router.get("/products/import-template", (req, res) => {
           ? "Жишээ захиалгын бараа 1"
           : "Жишээ бараа 1",
         "SKU (sku)": isPreorderTemplate ? "PRE-001" : "SKU-001",
+        Ангилал: categoryChoices[0]?.label || "",
         "Үнэ (price)": 25000,
         "Өртөг (costPrice)": 15000,
         "Нөөц (stock)": isPreorderTemplate ? 0 : 100,
@@ -486,6 +500,7 @@ router.get("/products/import-template", (req, res) => {
           ? "Жишээ захиалгын бараа 2"
           : "Жишээ бараа 2",
         "SKU (sku)": isPreorderTemplate ? "PRE-002" : "SKU-002",
+        Ангилал: categoryChoices[1]?.label || categoryChoices[0]?.label || "",
         "Үнэ (price)": 50000,
         "Өртөг (costPrice)": 30000,
         "Нөөц (stock)": isPreorderTemplate ? 0 : 50,
@@ -504,6 +519,7 @@ router.get("/products/import-template", (req, res) => {
       { wch: 18 },
       { wch: 25 },
       { wch: 15 },
+      { wch: 28 },
       { wch: 12 },
       { wch: 12 },
       { wch: 10 },
@@ -514,8 +530,26 @@ router.get("/products/import-template", (req, res) => {
     ws["!rows"] = [{ hpt: 20 }, { hpt: 60 }, { hpt: 60 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Бараа");
+    const categorySheet = XLSX.utils.json_to_sheet(
+      categoryChoices.map((choice) => ({
+        Ангилал: choice.label,
+        Нэр: choice.name,
+        Slug: choice.slug,
+        ID: choice.id,
+      })),
+    );
+    categorySheet["!cols"] = [
+      { wch: 36 },
+      { wch: 24 },
+      { wch: 24 },
+      { wch: 38 },
+    ];
+    XLSX.utils.book_append_sheet(wb, categorySheet, "Ангиллууд");
 
-    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    const buf = await addCategoryDropdownToWorkbook(
+      Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" })),
+      categoryChoices.length,
+    );
 
     res.setHeader(
       "Content-Disposition",
@@ -525,7 +559,7 @@ router.get("/products/import-template", (req, res) => {
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
-    return res.send(Buffer.from(buf));
+    return res.send(buf);
   } catch (error) {
     console.error("template download error", error);
     return res.status(500).json({ message: "Template татахад алдаа гарлаа" });
@@ -538,6 +572,7 @@ type ProductImportErrorRow = {
   error: string;
   name: string;
   sku: string;
+  businessCategory: string;
   price: string;
   costPrice: string;
   stock: string;
@@ -562,6 +597,7 @@ function toProductImportErrorRow(
     error,
     name: importRowValue(row, colMap.name),
     sku: importRowValue(row, colMap.sku),
+    businessCategory: importRowValue(row, colMap.businessCategory),
     price: importRowValue(row, colMap.price),
     costPrice: importRowValue(row, colMap.costPrice),
     stock: importRowValue(row, colMap.stock),
@@ -707,6 +743,7 @@ router.post(
 
       // Column name mapping — supports both Mongolian & English headers
       const colMap = PRODUCT_COL_MAP;
+      const categoryChoices = await getImportBusinessCategoryChoices();
 
       const results: {
         created: number;
@@ -765,6 +802,7 @@ router.post(
 
         const name = resolveCol(row, colMap.name);
         const sku = resolveCol(row, colMap.sku);
+        const businessCategoryRaw = resolveCol(row, colMap.businessCategory);
         const price = resolveCol(row, colMap.price);
         const costPrice = resolveCol(row, colMap.costPrice);
         const stock = resolveCol(row, colMap.stock);
@@ -837,6 +875,19 @@ router.post(
         }
 
         const normalizedSku = sku ? String(sku).trim() : null;
+        const rowBusinessCategoryId = resolveBusinessCategoryIdFromChoices(
+          businessCategoryRaw,
+          categoryChoices,
+        );
+        if (rowBusinessCategoryId === undefined) {
+          const message = `Мөр ${rowNum}: Ангилал олдсонгүй — "${String(businessCategoryRaw).trim()}"`;
+          results.errors.push(message);
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
+          results.skipped++;
+          continue;
+        }
 
         try {
           // Parse image URLs (comma-separated) from text column
@@ -883,7 +934,7 @@ router.post(
               isPreorderImport && preorderNote
                 ? String(preorderNote).trim()
                 : null,
-            businessCategoryId: orgBusinessCategoryId,
+            businessCategoryId: rowBusinessCategoryId || orgBusinessCategoryId,
             isActive: true,
             submittedById: actorId,
             ...reviewData,
@@ -995,12 +1046,10 @@ router.post(
       });
     } catch (error) {
       console.error("import products error", error);
-      return res
-        .status(500)
-        .json({
-          message: "Excel импорт хийхэд алдаа гарлаа",
-          error: String(error),
-        });
+      return res.status(500).json({
+        message: "Excel импорт хийхэд алдаа гарлаа",
+        error: String(error),
+      });
     }
   },
 );
@@ -1175,11 +1224,9 @@ router.post(
           select: { id: true },
         });
         if (existingSku) {
-          return res
-            .status(409)
-            .json({
-              message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна",
-            });
+          return res.status(409).json({
+            message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна",
+          });
         }
       }
 
@@ -1267,11 +1314,9 @@ router.post(
           ? maybePrisma.meta?.target.join(",")
           : String(maybePrisma.meta?.target || "");
         if (target.includes("organizationId") && target.includes("sku")) {
-          return res
-            .status(409)
-            .json({
-              message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна",
-            });
+          return res.status(409).json({
+            message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна",
+          });
         }
         return res.status(409).json({
           message: target
@@ -1280,12 +1325,10 @@ router.post(
         });
       }
       if (maybePrisma?.code === "P2003") {
-        return res
-          .status(400)
-          .json({
-            message:
-              "Холбоотой өгөгдөл буруу байна (ангилал/байгууллага шалгана уу)",
-          });
+        return res.status(400).json({
+          message:
+            "Холбоотой өгөгдөл буруу байна (ангилал/байгууллага шалгана уу)",
+        });
       }
       console.error("create product error", error);
       return res
@@ -1542,12 +1585,10 @@ router.post(
 
       if (error) {
         console.error("supabase upload error", error);
-        return res
-          .status(500)
-          .json({
-            message: "Зураг upload хийхэд алдаа гарлаа",
-            error: error.message,
-          });
+        return res.status(500).json({
+          message: "Зураг upload хийхэд алдаа гарлаа",
+          error: error.message,
+        });
       }
 
       const { data: publicUrlData } = getSupabase()
@@ -1558,12 +1599,10 @@ router.post(
       return res.json({ url: publicUrlData.publicUrl });
     } catch (error) {
       console.error("upload image error", error);
-      return res
-        .status(500)
-        .json({
-          message: "Зураг upload хийхэд алдаа гарлаа",
-          error: String(error),
-        });
+      return res.status(500).json({
+        message: "Зураг upload хийхэд алдаа гарлаа",
+        error: String(error),
+      });
     }
   },
 );

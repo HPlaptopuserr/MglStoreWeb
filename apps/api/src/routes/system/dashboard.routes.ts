@@ -499,8 +499,6 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
       orderStatus,
       paymentStatus,
       recentSales,
-      loyaltySummary,
-      recentLoyaltyTransactions,
     ] = await Promise.all([
       prisma.user.count({ where: { lastLoginAt: { gte: since }, deletedAt: null } }),
       prisma.user.count({ where: { lastLoginAt: { gte: previousSince, lt: since }, deletedAt: null } }),
@@ -581,33 +579,61 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
           organization: { select: { name: true } },
         },
       }),
-      prisma.posLoyaltyTransaction.groupBy({
-        by: ["action"],
-        where: { createdAt: { gte: since } },
-        _sum: { earnedPoints: true, redeemedPoints: true, saleTotal: true },
-        _count: { id: true },
-      }),
-      prisma.posLoyaltyTransaction.findMany({
-        where: { createdAt: { gte: since } },
-        orderBy: { createdAt: "desc" },
-        take: 30,
-        select: {
-          id: true,
-          action: true,
-          customerPhone: true,
-          saleTotal: true,
-          earnedPoints: true,
-          redeemedPoints: true,
-          effectiveRate: true,
-          membershipBadge: true,
-          createdAt: true,
-          sale: { select: { receiptNo: true, paymentMethod: true } },
-          organization: { select: { name: true } },
-          branch: { select: { name: true } },
-          user: { select: { profile: { select: { fullName: true } } } },
-        },
-      }),
     ]);
+
+    let loyaltySummary: {
+      action: string;
+      _sum: { earnedPoints: number | null; redeemedPoints: number | null; saleTotal: unknown };
+      _count: { id: number };
+    }[] = [];
+    let recentLoyaltyTransactions: {
+      id: string;
+      action: string;
+      customerPhone: string;
+      saleTotal: unknown;
+      earnedPoints: number;
+      redeemedPoints: number;
+      effectiveRate: unknown;
+      membershipBadge: string | null;
+      createdAt: Date;
+      sale: { receiptNo: string; paymentMethod: string } | null;
+      organization: { name: string } | null;
+      branch: { name: string } | null;
+      user: { profile: { fullName: string | null } | null } | null;
+    }[] = [];
+
+    try {
+      [loyaltySummary, recentLoyaltyTransactions] = await Promise.all([
+        prisma.posLoyaltyTransaction.groupBy({
+          by: ["action"],
+          where: { createdAt: { gte: since } },
+          _sum: { earnedPoints: true, redeemedPoints: true, saleTotal: true },
+          _count: { id: true },
+        }),
+        prisma.posLoyaltyTransaction.findMany({
+          where: { createdAt: { gte: since } },
+          orderBy: { createdAt: "desc" },
+          take: 30,
+          select: {
+            id: true,
+            action: true,
+            customerPhone: true,
+            saleTotal: true,
+            earnedPoints: true,
+            redeemedPoints: true,
+            effectiveRate: true,
+            membershipBadge: true,
+            createdAt: true,
+            sale: { select: { receiptNo: true, paymentMethod: true } },
+            organization: { select: { name: true } },
+            branch: { select: { name: true } },
+            user: { select: { profile: { select: { fullName: true } } } },
+          },
+        }),
+      ]);
+    } catch (loyaltyError) {
+      console.warn("[admin statistics loyalty unavailable]", loyaltyError);
+    }
 
     const [
       newUsers,
@@ -1136,16 +1162,16 @@ router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (re
           action: item.action,
           customerPhone: item.customerPhone,
           customerName: item.user?.profile?.fullName ?? null,
-          receiptNo: item.sale.receiptNo,
-          paymentMethod: item.sale.paymentMethod,
+          receiptNo: item.sale?.receiptNo ?? "",
+          paymentMethod: item.sale?.paymentMethod ?? "",
           saleTotal: Number(item.saleTotal),
           earnedPoints: item.earnedPoints,
           redeemedPoints: item.redeemedPoints,
           effectiveRate: Number(item.effectiveRate),
           membershipBadge: item.membershipBadge,
           createdAt: item.createdAt,
-          organizationName: item.organization.name,
-          branchName: item.branch.name,
+          organizationName: item.organization?.name ?? "",
+          branchName: item.branch?.name ?? "",
         })),
       },
     });
