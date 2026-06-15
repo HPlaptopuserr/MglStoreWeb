@@ -6,6 +6,7 @@ export interface TeamMember {
   bio: string | null;
   avatarUrl: string | null;
   email: string | null;
+  phoneNumber?: string | null;
   linkedinUrl: string | null;
   experience: string | null;
   skills: string[];

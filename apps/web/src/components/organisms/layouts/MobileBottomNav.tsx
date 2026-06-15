@@ -7,13 +7,13 @@ import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/hooks/useCart";
 
 const LEFT_TABS = [
-  { href: "/", label: "Нүүр", icon: Home },
-  { href: "/products", label: "Хайх", icon: Search },
+  { href: "/", label: "Нүүр", icon: Home, action: "link" },
+  { href: "/products", label: "Хайх", icon: Search, action: "search" },
 ] as const;
 
 const RIGHT_TABS = [
-  { href: "/profile?tab=orders", label: "Захиалга", icon: Package },
-  { href: "/profile", label: "Профайл", icon: User },
+  { href: "/profile?tab=orders", label: "Захиалга", icon: Package, action: "link" },
+  { href: "/profile", label: "Профайл", icon: User, action: "link" },
 ] as const;
 
 const SHOPPING_ROUTE_PREFIXES = [
@@ -51,9 +51,11 @@ function shouldShowMobileBottomNav(pathname: string) {
 export function MobileBottomNav({
   onCartOpen,
   onAuthOpen,
+  onSearchOpen,
 }: {
   onCartOpen: () => void;
   onAuthOpen: () => void;
+  onSearchOpen: () => void;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -83,9 +85,32 @@ export function MobileBottomNav({
     }
   };
 
-  const renderTab = (tab: { href: string; label: string; icon: typeof Home }) => {
+  const renderTab = (tab: {
+    href: string;
+    label: string;
+    icon: typeof Home;
+    action: "link" | "search";
+  }) => {
     const Icon = tab.icon;
     const active = isActive(tab.href);
+    if (tab.action === "search") {
+      return (
+        <button
+          key={tab.href}
+          type="button"
+          onClick={onSearchOpen}
+          className={`relative flex h-full flex-1 flex-col items-center justify-center gap-[2px] transition-colors ${
+            active ? "text-amber-600" : "text-gray-400 active:text-gray-600"
+          }`}
+        >
+          <Icon size={20} strokeWidth={active ? 2.4 : 1.7} />
+          <span className={`text-[10px] leading-none ${active ? "font-bold" : "font-medium"}`}>
+            {tab.label}
+          </span>
+        </button>
+      );
+    }
+
     return (
       <Link
         key={tab.href}

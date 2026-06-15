@@ -179,7 +179,7 @@ export default function StudyPage() {
   return (
     <div className="min-h-screen bg-white text-slate-950">
       <main>
-        <div className="mx-auto max-w-7xl px-4 pb-10 pt-4 sm:px-6 lg:px-8 lg:pb-12 lg:pt-6">
+        <div className="mx-auto max-w-7xl px-4 pb-10 pt-3 sm:px-6 lg:px-8 lg:pb-12 lg:pt-6">
           <StudySections
             activeCategory={activeCategory}
             activeCategoryMaterials={activeCategoryMaterials}

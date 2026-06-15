@@ -134,6 +134,7 @@ export interface ProjectItem {
 
 export interface ProjectResponsiblePerson {
   id: string;
+  teamMemberId?: string;
   name: string;
   role?: string;
   responsibility?: string;

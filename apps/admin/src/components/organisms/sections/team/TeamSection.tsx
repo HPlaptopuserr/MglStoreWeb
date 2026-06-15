@@ -2,9 +2,24 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Plus, Pencil, Trash2, Loader2, X, CheckCircle2, GripVertical,
-  User, Mail, Linkedin, Briefcase, Award, Building2, Eye, EyeOff,
-  Upload, ImageIcon,
+  Plus,
+  Pencil,
+  Trash2,
+  Loader2,
+  X,
+  CheckCircle2,
+  GripVertical,
+  User,
+  Mail,
+  Linkedin,
+  Briefcase,
+  Award,
+  Building2,
+  Eye,
+  EyeOff,
+  Upload,
+  ImageIcon,
+  Phone,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 import {
@@ -21,6 +36,7 @@ interface TeamMember {
   bio: string | null;
   avatarUrl: string | null;
   email: string | null;
+  phoneNumber: string | null;
   linkedinUrl: string | null;
   experience: string | null;
   skills: string[];
@@ -117,6 +133,7 @@ const EMPTY_FORM: TeamMemberForm = {
   bio: "",
   avatarUrl: "",
   email: "",
+  phoneNumber: "",
   linkedinUrl: "",
   experience: "",
   skills: [],
@@ -124,7 +141,8 @@ const EMPTY_FORM: TeamMemberForm = {
 };
 
 function getTeamSectionHint(form: TeamMemberForm) {
-  const value = `${form.role} ${form.department ?? ""} ${form.skills.join(" ")}`.toLowerCase();
+  const value =
+    `${form.role} ${form.department ?? ""} ${form.skills.join(" ")}`.toLowerCase();
 
   if (value.includes("үүсгэн") || value.includes("founder")) {
     return "Үүсгэн байгуулагчид tab-д автоматаар гарна.";
@@ -156,7 +174,9 @@ function parseStoredDepartments(value?: string) {
   if (!value) return DEFAULT_DEPARTMENT_OPTIONS;
   try {
     const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? uniqueDepartmentNames(parsed) : DEFAULT_DEPARTMENT_OPTIONS;
+    return Array.isArray(parsed)
+      ? uniqueDepartmentNames(parsed)
+      : DEFAULT_DEPARTMENT_OPTIONS;
   } catch {
     return DEFAULT_DEPARTMENT_OPTIONS;
   }
@@ -190,8 +210,14 @@ function parseCompanyNodes(
         const nodes = parsed
           .map((node, index) => ({
             id: typeof node?.id === "string" ? node.id : `company-${index}`,
-            name: typeof node?.name === "string" && node.name.trim() ? node.name.trim() : fallbackName,
-            subtitle: typeof node?.subtitle === "string" && node.subtitle.trim() ? node.subtitle.trim() : fallbackSubtitle,
+            name:
+              typeof node?.name === "string" && node.name.trim()
+                ? node.name.trim()
+                : fallbackName,
+            subtitle:
+              typeof node?.subtitle === "string" && node.subtitle.trim()
+                ? node.subtitle.trim()
+                : fallbackSubtitle,
             order: typeof node?.order === "number" ? node.order : index,
           }))
           .filter((node) => node.id && node.name)
@@ -217,7 +243,8 @@ function parseDepartmentConnections(value: string | undefined) {
   if (!value) return {};
   try {
     const parsed = JSON.parse(value);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return {};
     return Object.fromEntries(
       Object.entries(parsed).filter(
         ([key, next]) => typeof key === "string" && typeof next === "string",
@@ -236,21 +263,53 @@ function parseTeamOrgLayout(value: string | undefined): TeamOrgLayoutSettings {
       return DEFAULT_TEAM_ORG_LAYOUT;
     }
     return {
-      rootCardWidth: clampNumber(parsed.rootCardWidth, 190, 340, DEFAULT_TEAM_ORG_LAYOUT.rootCardWidth),
-      departmentCardWidth: clampNumber(parsed.departmentCardWidth, 130, 260, DEFAULT_TEAM_ORG_LAYOUT.departmentCardWidth),
-      companyGap: clampNumber(parsed.companyGap, 8, 64, DEFAULT_TEAM_ORG_LAYOUT.companyGap),
-      departmentGap: clampNumber(parsed.departmentGap, 8, 72, DEFAULT_TEAM_ORG_LAYOUT.departmentGap),
-      verticalGap: clampNumber(parsed.verticalGap, 32, 110, DEFAULT_TEAM_ORG_LAYOUT.verticalGap),
-      lineColor: typeof parsed.lineColor === "string" && /^#[0-9a-fA-F]{6}$/.test(parsed.lineColor)
-        ? parsed.lineColor
-        : DEFAULT_TEAM_ORG_LAYOUT.lineColor,
+      rootCardWidth: clampNumber(
+        parsed.rootCardWidth,
+        190,
+        340,
+        DEFAULT_TEAM_ORG_LAYOUT.rootCardWidth,
+      ),
+      departmentCardWidth: clampNumber(
+        parsed.departmentCardWidth,
+        130,
+        260,
+        DEFAULT_TEAM_ORG_LAYOUT.departmentCardWidth,
+      ),
+      companyGap: clampNumber(
+        parsed.companyGap,
+        8,
+        64,
+        DEFAULT_TEAM_ORG_LAYOUT.companyGap,
+      ),
+      departmentGap: clampNumber(
+        parsed.departmentGap,
+        8,
+        72,
+        DEFAULT_TEAM_ORG_LAYOUT.departmentGap,
+      ),
+      verticalGap: clampNumber(
+        parsed.verticalGap,
+        32,
+        110,
+        DEFAULT_TEAM_ORG_LAYOUT.verticalGap,
+      ),
+      lineColor:
+        typeof parsed.lineColor === "string" &&
+        /^#[0-9a-fA-F]{6}$/.test(parsed.lineColor)
+          ? parsed.lineColor
+          : DEFAULT_TEAM_ORG_LAYOUT.lineColor,
     };
   } catch {
     return DEFAULT_TEAM_ORG_LAYOUT;
   }
 }
 
-function clampNumber(value: unknown, min: number, max: number, fallback: number) {
+function clampNumber(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.min(max, Math.max(min, Math.round(numeric)));
@@ -263,7 +322,10 @@ function reorderItems<T>(items: T[], fromIndex: number, toIndex: number) {
   return next;
 }
 
-function groupMembersByDepartment(members: TeamMember[], departments: TeamDepartment[]) {
+function groupMembersByDepartment(
+  members: TeamMember[],
+  departments: TeamDepartment[],
+) {
   const grouped = new Map<string, TeamMember[]>();
   for (const department of departments) {
     grouped.set(department.name, []);
@@ -279,7 +341,11 @@ function groupMembersByDepartment(members: TeamMember[], departments: TeamDepart
       department,
       members: [...items].sort((a, b) => a.order - b.order),
     }))
-    .filter((group) => group.members.length > 0 || departments.some((item) => item.name === group.department));
+    .filter(
+      (group) =>
+        group.members.length > 0 ||
+        departments.some((item) => item.name === group.department),
+    );
 }
 
 export function TeamSection() {
@@ -298,27 +364,43 @@ export function TeamSection() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [departmentInput, setDepartmentInput] = useState("");
-  const [editingDepartment, setEditingDepartment] = useState<string | null>(null);
+  const [editingDepartment, setEditingDepartment] = useState<string | null>(
+    null,
+  );
   const [departmentDraft, setDepartmentDraft] = useState("");
   const [departmentSaving, setDepartmentSaving] = useState(false);
   const [layoutSaving, setLayoutSaving] = useState(false);
   const [companyName, setCompanyName] = useState(DEFAULT_TEAM_COMPANY_NAME);
-  const [companySubtitle, setCompanySubtitle] = useState(DEFAULT_TEAM_COMPANY_SUBTITLE);
+  const [companySubtitle, setCompanySubtitle] = useState(
+    DEFAULT_TEAM_COMPANY_SUBTITLE,
+  );
   const [companyNodes, setCompanyNodes] = useState<TeamCompanyNode[]>([
-    { id: "root-company", name: DEFAULT_TEAM_COMPANY_NAME, subtitle: DEFAULT_TEAM_COMPANY_SUBTITLE, order: 0 },
+    {
+      id: "root-company",
+      name: DEFAULT_TEAM_COMPANY_NAME,
+      subtitle: DEFAULT_TEAM_COMPANY_SUBTITLE,
+      order: 0,
+    },
   ]);
-  const [departmentConnections, setDepartmentConnections] = useState<Record<string, string>>({});
-  const [orgLayout, setOrgLayout] = useState<TeamOrgLayoutSettings>(DEFAULT_TEAM_ORG_LAYOUT);
+  const [departmentConnections, setDepartmentConnections] = useState<
+    Record<string, string>
+  >({});
+  const [orgLayout, setOrgLayout] = useState<TeamOrgLayoutSettings>(
+    DEFAULT_TEAM_ORG_LAYOUT,
+  );
   const [orgLayoutSaving, setOrgLayoutSaving] = useState(false);
   const [companySaving, setCompanySaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const saveDepartmentSettings = async (departmentNames: string[]) => {
     const clean = uniqueDepartmentNames(departmentNames);
-    const res = await adminFetch(`${API}/site-settings/${TEAM_DEPARTMENTS_SETTING_KEY}`, {
-      method: "PUT",
-      body: JSON.stringify({ value: JSON.stringify(clean) }),
-    });
+    const res = await adminFetch(
+      `${API}/site-settings/${TEAM_DEPARTMENTS_SETTING_KEY}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ value: JSON.stringify(clean) }),
+      },
+    );
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       throw new Error(d.message || "Хэлтсийн жагсаалт хадгалахад алдаа гарлаа");
@@ -342,9 +424,14 @@ export function TeamSection() {
         : Array.isArray(partnerData?.partners)
           ? partnerData.partners
           : [];
-      const storedDepartments = parseStoredDepartments(settings[TEAM_DEPARTMENTS_SETTING_KEY]);
-      const nextCompanyName = settings[TEAM_COMPANY_NAME_SETTING_KEY] || DEFAULT_TEAM_COMPANY_NAME;
-      const nextCompanySubtitle = settings[TEAM_COMPANY_SUBTITLE_SETTING_KEY] || DEFAULT_TEAM_COMPANY_SUBTITLE;
+      const storedDepartments = parseStoredDepartments(
+        settings[TEAM_DEPARTMENTS_SETTING_KEY],
+      );
+      const nextCompanyName =
+        settings[TEAM_COMPANY_NAME_SETTING_KEY] || DEFAULT_TEAM_COMPANY_NAME;
+      const nextCompanySubtitle =
+        settings[TEAM_COMPANY_SUBTITLE_SETTING_KEY] ||
+        DEFAULT_TEAM_COMPANY_SUBTITLE;
       const nextCompanyNodes = parseCompanyNodes(
         settings[TEAM_COMPANY_NODES_SETTING_KEY],
         nextCompanyName,
@@ -356,14 +443,20 @@ export function TeamSection() {
       setCompanyName(nextCompanyName);
       setCompanySubtitle(nextCompanySubtitle);
       setCompanyNodes(nextCompanyNodes);
-      setDepartmentConnections(parseDepartmentConnections(settings[TEAM_DEPARTMENT_CONNECTIONS_SETTING_KEY]));
+      setDepartmentConnections(
+        parseDepartmentConnections(
+          settings[TEAM_DEPARTMENT_CONNECTIONS_SETTING_KEY],
+        ),
+      );
       setOrgLayout(parseTeamOrgLayout(settings[TEAM_ORG_LAYOUT_SETTING_KEY]));
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const showSuccess = (msg: string) => {
     setSuccess(msg);
@@ -385,6 +478,7 @@ export function TeamSection() {
       bio: m.bio ?? "",
       avatarUrl: m.avatarUrl ?? "",
       email: m.email ?? "",
+      phoneNumber: m.phoneNumber ?? "",
       linkedinUrl: m.linkedinUrl ?? "",
       experience: m.experience ?? "",
       skills: m.skills,
@@ -395,7 +489,11 @@ export function TeamSection() {
     setModal("edit");
   };
 
-  const closeModal = () => { setModal(null); setEditing(null); setError(""); };
+  const closeModal = () => {
+    setModal(null);
+    setEditing(null);
+    setError("");
+  };
 
   const handleAvatarFile = async (file: File) => {
     if (!file) return;
@@ -403,7 +501,10 @@ export function TeamSection() {
     try {
       const fd = new FormData();
       fd.append("avatar", file);
-      const res = await adminFetch(`${API}/admin/team/upload-avatar`, { method: "POST", body: fd });
+      const res = await adminFetch(`${API}/admin/team/upload-avatar`, {
+        method: "POST",
+        body: fd,
+      });
       if (res.ok) {
         const { url } = await res.json();
         setForm((p) => ({ ...p, avatarUrl: url }));
@@ -434,7 +535,9 @@ export function TeamSection() {
   };
 
   const addQuickSkill = (skill: string) => {
-    setForm((p) => (p.skills.includes(skill) ? p : { ...p, skills: [...p.skills, skill] }));
+    setForm((p) =>
+      p.skills.includes(skill) ? p : { ...p, skills: [...p.skills, skill] },
+    );
   };
 
   const createDepartment = async () => {
@@ -443,12 +546,17 @@ export function TeamSection() {
     setDepartmentSaving(true);
     setError("");
     try {
-      const stored = await saveDepartmentSettings([...departments.map((department) => department.name), name]);
+      const stored = await saveDepartmentSettings([
+        ...departments.map((department) => department.name),
+        name,
+      ]);
       setDepartments(buildDepartments(stored, members));
       setDepartmentInput("");
       showSuccess("Хэлтэс нэмэгдлээ");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Хэлтэс нэмэхэд алдаа гарлаа");
+      setError(
+        err instanceof Error ? err.message : "Хэлтэс нэмэхэд алдаа гарлаа",
+      );
     } finally {
       setDepartmentSaving(false);
     }
@@ -470,9 +578,13 @@ export function TeamSection() {
     setError("");
     try {
       const stored = await saveDepartmentSettings(
-        departments.map((department) => (department.name === from ? to : department.name)),
+        departments.map((department) =>
+          department.name === from ? to : department.name,
+        ),
       );
-      const affectedMembers = members.filter((member) => member.department === from);
+      const affectedMembers = members.filter(
+        (member) => member.department === from,
+      );
       await Promise.all(
         affectedMembers.map((member) =>
           adminFetch(`${API}/admin/team/${member.id}`, {
@@ -490,16 +602,21 @@ export function TeamSection() {
       setEditingDepartment(null);
       showSuccess("Хэлтсийн нэр солигдлоо");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Хэлтсийн нэр солиход алдаа гарлаа");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Хэлтсийн нэр солиход алдаа гарлаа",
+      );
     } finally {
       setDepartmentSaving(false);
     }
   };
 
   const deleteDepartment = async (department: TeamDepartment) => {
-    const warning = department.count > 0
-      ? `"${department.name}" хэлтсийг устгавал ${department.count} ажилчны хэлтэс хоосорно. Үргэлжлүүлэх үү?`
-      : `"${department.name}" хэлтсийг устгах уу?`;
+    const warning =
+      department.count > 0
+        ? `"${department.name}" хэлтсийг устгавал ${department.count} ажилчны хэлтэс хоосорно. Үргэлжлүүлэх үү?`
+        : `"${department.name}" хэлтсийг устгах уу?`;
     if (!confirm(warning)) return;
 
     setDepartmentSaving(true);
@@ -510,7 +627,9 @@ export function TeamSection() {
           .map((item) => item.name)
           .filter((name) => name !== department.name),
       );
-      const affectedMembers = members.filter((member) => member.department === department.name);
+      const affectedMembers = members.filter(
+        (member) => member.department === department.name,
+      );
       await Promise.all(
         affectedMembers.map((member) =>
           adminFetch(`${API}/admin/team/${member.id}`, {
@@ -520,14 +639,19 @@ export function TeamSection() {
         ),
       );
       const nextMembers = members.map((member) =>
-        member.department === department.name ? { ...member, department: null } : member,
+        member.department === department.name
+          ? { ...member, department: null }
+          : member,
       );
       setMembers(nextMembers);
       setDepartments(buildDepartments(stored, nextMembers));
-      if (form.department === department.name) setForm((p) => ({ ...p, department: "" }));
+      if (form.department === department.name)
+        setForm((p) => ({ ...p, department: "" }));
       showSuccess("Хэлтэс устгагдлаа");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Хэлтэс устгахад алдаа гарлаа");
+      setError(
+        err instanceof Error ? err.message : "Хэлтэс устгахад алдаа гарлаа",
+      );
     } finally {
       setDepartmentSaving(false);
     }
@@ -536,7 +660,11 @@ export function TeamSection() {
   const persistMemberLayout = async (nextMembers: TeamMember[]) => {
     const changedMembers = nextMembers.filter((nextMember) => {
       const current = members.find((member) => member.id === nextMember.id);
-      return current && (current.order !== nextMember.order || current.department !== nextMember.department);
+      return (
+        current &&
+        (current.order !== nextMember.order ||
+          current.department !== nextMember.department)
+      );
     });
 
     if (changedMembers.length === 0) return;
@@ -554,17 +682,30 @@ export function TeamSection() {
     );
   };
 
-  const saveLayout = async (nextDepartments: TeamDepartment[], nextMembers: TeamMember[], message: string) => {
+  const saveLayout = async (
+    nextDepartments: TeamDepartment[],
+    nextMembers: TeamMember[],
+    message: string,
+  ) => {
     setLayoutSaving(true);
     setError("");
     try {
-      await saveDepartmentSettings(nextDepartments.map((department) => department.name));
+      await saveDepartmentSettings(
+        nextDepartments.map((department) => department.name),
+      );
       await persistMemberLayout(nextMembers);
-      setDepartments(buildDepartments(nextDepartments.map((department) => department.name), nextMembers));
+      setDepartments(
+        buildDepartments(
+          nextDepartments.map((department) => department.name),
+          nextMembers,
+        ),
+      );
       setMembers(nextMembers);
       showSuccess(message);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Байрлал хадгалахад алдаа гарлаа");
+      setError(
+        err instanceof Error ? err.message : "Байрлал хадгалахад алдаа гарлаа",
+      );
     } finally {
       setLayoutSaving(false);
     }
@@ -576,7 +717,9 @@ export function TeamSection() {
     setCompanyName(next.name);
     setCompanySubtitle(next.subtitle);
     const nextNodes = companyNodes.map((node, index) =>
-      index === 0 ? { ...node, name: next.name, subtitle: next.subtitle } : node,
+      index === 0
+        ? { ...node, name: next.name, subtitle: next.subtitle }
+        : node,
     );
     setCompanyNodes(nextNodes);
     try {
@@ -594,23 +737,39 @@ export function TeamSection() {
       }
       showSuccess("Компанийн нэр шинэчлэгдлээ");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Компанийн нэр хадгалахад алдаа гарлаа");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Компанийн нэр хадгалахад алдаа гарлаа",
+      );
     } finally {
       setCompanySaving(false);
     }
   };
 
-  const saveCompanyNodes = async (nextNodes: TeamCompanyNode[], nextConnections = departmentConnections) => {
+  const saveCompanyNodes = async (
+    nextNodes: TeamCompanyNode[],
+    nextConnections = departmentConnections,
+  ) => {
     const normalizedNodes = nextNodes
       .map((node, index) => ({ ...node, order: index }))
       .filter((node) => node.name.trim());
-    const fallbackNodes = normalizedNodes.length > 0
-      ? normalizedNodes
-      : [{ id: "root-company", name: DEFAULT_TEAM_COMPANY_NAME, subtitle: DEFAULT_TEAM_COMPANY_SUBTITLE, order: 0 }];
+    const fallbackNodes =
+      normalizedNodes.length > 0
+        ? normalizedNodes
+        : [
+            {
+              id: "root-company",
+              name: DEFAULT_TEAM_COMPANY_NAME,
+              subtitle: DEFAULT_TEAM_COMPANY_SUBTITLE,
+              order: 0,
+            },
+          ];
     const validIds = new Set(fallbackNodes.map((node) => node.id));
     const normalizedConnections = Object.fromEntries(
       Object.entries(nextConnections).filter(
-        ([, companyId]) => companyId === DISCONNECTED_COMPANY_ID || validIds.has(companyId),
+        ([, companyId]) =>
+          companyId === DISCONNECTED_COMPANY_ID || validIds.has(companyId),
       ),
     );
 
@@ -627,7 +786,9 @@ export function TeamSection() {
           [TEAM_COMPANY_NAME_SETTING_KEY]: fallbackNodes[0].name,
           [TEAM_COMPANY_SUBTITLE_SETTING_KEY]: fallbackNodes[0].subtitle,
           [TEAM_COMPANY_NODES_SETTING_KEY]: JSON.stringify(fallbackNodes),
-          [TEAM_DEPARTMENT_CONNECTIONS_SETTING_KEY]: JSON.stringify(normalizedConnections),
+          [TEAM_DEPARTMENT_CONNECTIONS_SETTING_KEY]: JSON.stringify(
+            normalizedConnections,
+          ),
         }),
       });
       if (!res.ok) {
@@ -636,14 +797,24 @@ export function TeamSection() {
       }
       showSuccess("Company card шинэчлэгдлээ");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Company card хадгалахад алдаа гарлаа");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Company card хадгалахад алдаа гарлаа",
+      );
     } finally {
       setCompanySaving(false);
     }
   };
 
-  const saveDepartmentConnection = async (department: string, companyId: string) => {
-    const nextConnections = { ...departmentConnections, [department]: companyId };
+  const saveDepartmentConnection = async (
+    department: string,
+    companyId: string,
+  ) => {
+    const nextConnections = {
+      ...departmentConnections,
+      [department]: companyId,
+    };
     await saveCompanyNodes(companyNodes, nextConnections);
   };
 
@@ -653,16 +824,25 @@ export function TeamSection() {
     setOrgLayoutSaving(true);
     setError("");
     try {
-      const res = await adminFetch(`${API}/site-settings/${TEAM_ORG_LAYOUT_SETTING_KEY}`, {
-        method: "PUT",
-        body: JSON.stringify({ value: JSON.stringify(normalized) }),
-      });
+      const res = await adminFetch(
+        `${API}/site-settings/${TEAM_ORG_LAYOUT_SETTING_KEY}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ value: JSON.stringify(normalized) }),
+        },
+      );
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.message || "Org chart layout хадгалахад алдаа гарлаа");
+        throw new Error(
+          d.message || "Org chart layout хадгалахад алдаа гарлаа",
+        );
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Org chart layout хадгалахад алдаа гарлаа");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Org chart layout хадгалахад алдаа гарлаа",
+      );
     } finally {
       setOrgLayoutSaving(false);
     }
@@ -670,8 +850,12 @@ export function TeamSection() {
 
   const reorderDepartments = (from: string, to: string) => {
     if (from === to) return;
-    const fromIndex = departments.findIndex((department) => department.name === from);
-    const toIndex = departments.findIndex((department) => department.name === to);
+    const fromIndex = departments.findIndex(
+      (department) => department.name === from,
+    );
+    const toIndex = departments.findIndex(
+      (department) => department.name === to,
+    );
     if (fromIndex < 0 || toIndex < 0) return;
     const nextDepartments = reorderItems(departments, fromIndex, toIndex);
     const nextMembers = nextDepartments.flatMap((department, departmentIndex) =>
@@ -683,11 +867,25 @@ export function TeamSection() {
           order: departmentIndex * 100 + memberIndex,
         })),
     );
-    const ungrouped = members.filter((member) => !member.department || !nextDepartments.some((department) => department.name === member.department));
-    saveLayout(nextDepartments, [...nextMembers, ...ungrouped], "Хэлтсийн байрлал шинэчлэгдлээ");
+    const ungrouped = members.filter(
+      (member) =>
+        !member.department ||
+        !nextDepartments.some(
+          (department) => department.name === member.department,
+        ),
+    );
+    saveLayout(
+      nextDepartments,
+      [...nextMembers, ...ungrouped],
+      "Хэлтсийн байрлал шинэчлэгдлээ",
+    );
   };
 
-  const moveMember = (memberId: string, targetDepartment: string, targetMemberId?: string) => {
+  const moveMember = (
+    memberId: string,
+    targetDepartment: string,
+    targetMemberId?: string,
+  ) => {
     const movingMember = members.find((member) => member.id === memberId);
     if (!movingMember) return;
 
@@ -696,20 +894,30 @@ export function TeamSection() {
       ...group,
       members: group.members.filter((member) => member.id !== memberId),
     }));
-    const targetGroup = nextGroups.find((group) => group.department === targetDepartment);
+    const targetGroup = nextGroups.find(
+      (group) => group.department === targetDepartment,
+    );
     if (!targetGroup) return;
 
     const insertIndex = targetMemberId
-      ? Math.max(0, targetGroup.members.findIndex((member) => member.id === targetMemberId))
+      ? Math.max(
+          0,
+          targetGroup.members.findIndex(
+            (member) => member.id === targetMemberId,
+          ),
+        )
       : targetGroup.members.length;
     targetGroup.members.splice(insertIndex, 0, {
       ...movingMember,
       department: targetDepartment,
     });
 
-    const departmentOrder = new Map(departments.map((department, index) => [department.name, index]));
+    const departmentOrder = new Map(
+      departments.map((department, index) => [department.name, index]),
+    );
     const nextMembers = nextGroups.flatMap((group) => {
-      const departmentIndex = departmentOrder.get(group.department) ?? departments.length;
+      const departmentIndex =
+        departmentOrder.get(group.department) ?? departments.length;
       return group.members.map((member, memberIndex) => ({
         ...member,
         department: group.department,
@@ -734,18 +942,30 @@ export function TeamSection() {
         bio: form.bio || null,
         avatarUrl: form.avatarUrl || null,
         email: form.email || null,
+        phoneNumber: form.phoneNumber || null,
         linkedinUrl: form.linkedinUrl || null,
         experience: form.experience || null,
       };
 
-      const res = modal === "create"
-        ? await adminFetch(`${API}/admin/team`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-        : await adminFetch(`${API}/admin/team/${editing!.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res =
+        modal === "create"
+          ? await adminFetch(`${API}/admin/team`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            })
+          : await adminFetch(`${API}/admin/team/${editing!.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
 
       if (res.ok) {
         await load();
         closeModal();
-        showSuccess(modal === "create" ? "Гишүүн нэмэгдлээ" : "Мэдээлэл шинэчлэгдлээ");
+        showSuccess(
+          modal === "create" ? "Гишүүн нэмэгдлээ" : "Мэдээлэл шинэчлэгдлээ",
+        );
       } else {
         const d = await res.json().catch(() => ({}));
         setError(d.message || "Алдаа гарлаа");
@@ -761,8 +981,13 @@ export function TeamSection() {
     if (!confirm("Устгах уу?")) return;
     setDeletingId(id);
     try {
-      const res = await adminFetch(`${API}/admin/team/${id}`, { method: "DELETE" });
-      if (res.ok) { await load(); showSuccess("Устгагдлаа"); }
+      const res = await adminFetch(`${API}/admin/team/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        await load();
+        showSuccess("Устгагдлаа");
+      }
     } finally {
       setDeletingId(null);
     }
@@ -774,7 +999,10 @@ export function TeamSection() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: !m.isActive }),
     });
-    if (res.ok) { await load(); showSuccess(m.isActive ? "Нуугдлаа" : "Харагдаж байна"); }
+    if (res.ok) {
+      await load();
+      showSuccess(m.isActive ? "Нуугдлаа" : "Харагдаж байна");
+    }
   };
 
   return (
@@ -783,7 +1011,9 @@ export function TeamSection() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-slate-800">Баг хамт олон</h2>
-          <p className="text-sm text-slate-400">Компанийн ажилчдын жагсаалтыг удирдана</p>
+          <p className="text-sm text-slate-400">
+            Компанийн ажилчдын жагсаалтыг удирдана
+          </p>
         </div>
         <button
           onClick={openCreate}
@@ -859,8 +1089,13 @@ export function TeamSection() {
       ) : members.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <User size={36} className="text-slate-200" />
-          <p className="text-sm font-medium text-slate-400">Гишүүн байхгүй байна</p>
-          <button onClick={openCreate} className="text-xs font-semibold text-violet-600 hover:underline">
+          <p className="text-sm font-medium text-slate-400">
+            Гишүүн байхгүй байна
+          </p>
+          <button
+            onClick={openCreate}
+            className="text-xs font-semibold text-violet-600 hover:underline"
+          >
             Эхний гишүүнийг нэм
           </button>
         </div>
@@ -870,27 +1105,43 @@ export function TeamSection() {
             <div
               key={m.id}
               className={`flex items-center gap-4 rounded-2xl border bg-white px-4 py-3 transition-all ${
-                m.isActive ? "border-slate-200" : "border-dashed border-slate-200 opacity-60"
+                m.isActive
+                  ? "border-slate-200"
+                  : "border-dashed border-slate-200 opacity-60"
               }`}
             >
-              <GripVertical size={14} className="shrink-0 text-slate-300 cursor-grab" />
+              <GripVertical
+                size={14}
+                className="shrink-0 text-slate-300 cursor-grab"
+              />
 
               {/* Avatar */}
               <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-slate-100 border border-slate-200">
                 {m.avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.avatarUrl} alt={m.name} className="h-full w-full object-cover" />
+                  <img
+                    src={m.avatarUrl}
+                    alt={m.name}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
-                  <User size={18} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-slate-300" />
+                  <User
+                    size={18}
+                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-slate-300"
+                  />
                 )}
               </div>
 
               {/* Info */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-bold text-slate-800">{m.name}</span>
+                  <span className="truncate text-sm font-bold text-slate-800">
+                    {m.name}
+                  </span>
                   {!m.isActive && (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-400">Нуусан</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-400">
+                      Нуусан
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -898,7 +1149,9 @@ export function TeamSection() {
                   {m.department && (
                     <>
                       <span className="text-slate-200">·</span>
-                      <span className="text-xs text-slate-400">{m.department}</span>
+                      <span className="text-xs text-slate-400">
+                        {m.department}
+                      </span>
                     </>
                   )}
                 </div>
@@ -907,12 +1160,17 @@ export function TeamSection() {
               {/* Skills */}
               <div className="hidden items-center gap-1 md:flex">
                 {m.skills.slice(0, 3).map((s) => (
-                  <span key={s} className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-600">
+                  <span
+                    key={s}
+                    className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-600"
+                  >
                     {s}
                   </span>
                 ))}
                 {m.skills.length > 3 && (
-                  <span className="text-[10px] text-slate-400">+{m.skills.length - 3}</span>
+                  <span className="text-[10px] text-slate-400">
+                    +{m.skills.length - 3}
+                  </span>
                 )}
               </div>
 
@@ -936,7 +1194,11 @@ export function TeamSection() {
                   disabled={deletingId === m.id}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-50"
                 >
-                  {deletingId === m.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  {deletingId === m.id ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={14} />
+                  )}
                 </button>
               </div>
             </div>
@@ -953,7 +1215,10 @@ export function TeamSection() {
               <h3 className="text-base font-bold text-slate-800">
                 {modal === "create" ? "Шинэ гишүүн нэмэх" : "Мэдээлэл засах"}
               </h3>
-              <button onClick={closeModal} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+              <button
+                onClick={closeModal}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"
+              >
                 <X size={16} />
               </button>
             </div>
@@ -967,8 +1232,12 @@ export function TeamSection() {
               )}
 
               <div className="mb-4 rounded-2xl border border-violet-100 bg-violet-50/80 px-4 py-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-violet-700">Frontend ангилал</p>
-                <p className="mt-1 text-xs font-medium text-violet-600">{getTeamSectionHint(form)}</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-violet-700">
+                  Frontend ангилал
+                </p>
+                <p className="mt-1 text-xs font-medium text-violet-600">
+                  {getTeamSectionHint(form)}
+                </p>
               </div>
 
               <div className="flex flex-col gap-4">
@@ -977,7 +1246,9 @@ export function TeamSection() {
                   <Field icon={<User size={14} />} label="Нэр *">
                     <input
                       value={form.name}
-                      onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, name: e.target.value }))
+                      }
                       placeholder="Болд Батаар"
                       className={inputCls}
                     />
@@ -985,7 +1256,9 @@ export function TeamSection() {
                   <Field icon={<Briefcase size={14} />} label="Албан тушаал *">
                     <input
                       value={form.role}
-                      onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, role: e.target.value }))
+                      }
                       placeholder="Албан тушаал сонгох эсвэл бичих"
                       className={inputCls}
                     />
@@ -1002,20 +1275,30 @@ export function TeamSection() {
                   <Field icon={<Building2 size={14} />} label="Хэлтэс / бүлэг">
                     <input
                       value={form.department ?? ""}
-                      onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, department: e.target.value }))
+                      }
                       placeholder="Хэлтэс сонгох эсвэл бичих"
                       className={inputCls}
                     />
                     <SuggestionPills
-                      options={(departments.length > 0 ? departments.map((department) => department.name) : DEFAULT_DEPARTMENT_OPTIONS)}
+                      options={
+                        departments.length > 0
+                          ? departments.map((department) => department.name)
+                          : DEFAULT_DEPARTMENT_OPTIONS
+                      }
                       value={form.department ?? ""}
-                      onSelect={(department) => applySuggestion("department", department)}
+                      onSelect={(department) =>
+                        applySuggestion("department", department)
+                      }
                     />
                   </Field>
                   <Field icon={<Award size={14} />} label="Туршлага">
                     <input
                       value={form.experience ?? ""}
-                      onChange={(e) => setForm((p) => ({ ...p, experience: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, experience: e.target.value }))
+                      }
                       placeholder="5+ жил"
                       className={inputCls}
                     />
@@ -1032,13 +1315,23 @@ export function TeamSection() {
                     <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                       {form.avatarUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={form.avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                        <img
+                          src={form.avatarUrl}
+                          alt="avatar"
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
-                        <User size={20} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-slate-300" />
+                        <User
+                          size={20}
+                          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-slate-300"
+                        />
                       )}
                       {uploadingAvatar && (
                         <div className="absolute inset-0 flex items-center justify-center bg-white/70">
-                          <Loader2 size={16} className="animate-spin text-violet-600" />
+                          <Loader2
+                            size={16}
+                            className="animate-spin text-violet-600"
+                          />
                         </div>
                       )}
                     </div>
@@ -1049,7 +1342,10 @@ export function TeamSection() {
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
                         className="hidden"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAvatarFile(f); }}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleAvatarFile(f);
+                        }}
                       />
                       <button
                         type="button"
@@ -1058,15 +1354,21 @@ export function TeamSection() {
                         className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-60 transition-colors"
                       >
                         <Upload size={13} />
-                        {uploadingAvatar ? "Байршуулж байна..." : "Зураг сонгох"}
+                        {uploadingAvatar
+                          ? "Байршуулж байна..."
+                          : "Зураг сонгох"}
                       </button>
-                      <p className="text-[10px] text-slate-400">JPG, PNG, WebP · Дээд тал 3MB</p>
+                      <p className="text-[10px] text-slate-400">
+                        JPG, PNG, WebP · Дээд тал 3MB
+                      </p>
                     </div>
 
                     {form.avatarUrl && (
                       <button
                         type="button"
-                        onClick={() => setForm((p) => ({ ...p, avatarUrl: "" }))}
+                        onClick={() =>
+                          setForm((p) => ({ ...p, avatarUrl: "" }))
+                        }
                         className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-500"
                         title="Зураг устгах"
                       >
@@ -1076,20 +1378,37 @@ export function TeamSection() {
                   </div>
                 </div>
 
-                {/* Email + LinkedIn */}
+                {/* Contact */}
                 <div className="grid gap-3 md:grid-cols-2">
                   <Field icon={<Mail size={14} />} label="Email">
                     <input
                       value={form.email ?? ""}
-                      onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, email: e.target.value }))
+                      }
                       placeholder="bold@mglstore.mn"
                       className={inputCls}
                     />
                   </Field>
+                  <Field icon={<Phone size={14} />} label="Утас">
+                    <input
+                      value={form.phoneNumber ?? ""}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, phoneNumber: e.target.value }))
+                      }
+                      placeholder="99112233"
+                      className={inputCls}
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
                   <Field icon={<Linkedin size={14} />} label="LinkedIn URL">
                     <input
                       value={form.linkedinUrl ?? ""}
-                      onChange={(e) => setForm((p) => ({ ...p, linkedinUrl: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, linkedinUrl: e.target.value }))
+                      }
                       placeholder="https://linkedin.com/in/..."
                       className={inputCls}
                     />
@@ -1100,7 +1419,9 @@ export function TeamSection() {
                 <Field icon={<User size={14} />} label="Товч намтар">
                   <textarea
                     value={form.bio ?? ""}
-                    onChange={(e) => setForm((p) => ({ ...p, bio: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, bio: e.target.value }))
+                    }
                     placeholder="Хэдэн үгэнд өөрийн тухай..."
                     rows={3}
                     className={`${inputCls} resize-none`}
@@ -1116,7 +1437,12 @@ export function TeamSection() {
                     <input
                       value={skillInput}
                       onChange={(e) => setSkillInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addSkill();
+                        }
+                      }}
                       placeholder="React, TypeScript..."
                       className={`${inputCls} flex-1`}
                     />
@@ -1129,23 +1455,31 @@ export function TeamSection() {
                     </button>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {QUICK_SKILLS.filter((s) => !form.skills.includes(s)).map((skill) => (
-                      <button
-                        key={skill}
-                        type="button"
-                        onClick={() => addQuickSkill(skill)}
-                        className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                      >
-                        + {skill}
-                      </button>
-                    ))}
+                    {QUICK_SKILLS.filter((s) => !form.skills.includes(s)).map(
+                      (skill) => (
+                        <button
+                          key={skill}
+                          type="button"
+                          onClick={() => addQuickSkill(skill)}
+                          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                        >
+                          + {skill}
+                        </button>
+                      ),
+                    )}
                   </div>
                   {form.skills.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {form.skills.map((s) => (
-                        <span key={s} className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
+                        <span
+                          key={s}
+                          className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700"
+                        >
                           {s}
-                          <button onClick={() => removeSkill(s)} className="ml-0.5 text-violet-400 hover:text-violet-700">
+                          <button
+                            onClick={() => removeSkill(s)}
+                            className="ml-0.5 text-violet-400 hover:text-violet-700"
+                          >
                             <X size={10} />
                           </button>
                         </span>
@@ -1155,15 +1489,21 @@ export function TeamSection() {
                 </div>
 
                 {/* Order */}
-                <Field icon={<GripVertical size={14} />} label="Дараалал (жижиг = эхэнд)">
+                <Field
+                  icon={<GripVertical size={14} />}
+                  label="Дараалал (жижиг = эхэнд)"
+                >
                   <input
                     type="number"
                     value={form.order}
-                    onChange={(e) => setForm((p) => ({ ...p, order: Number(e.target.value) }))}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, order: Number(e.target.value) }))
+                    }
                     className={inputCls}
                   />
                   <p className="mt-1 text-[10px] font-medium text-slate-400">
-                    0 бол хамгийн түрүүнд гарна. Ижил дараалалтай үед шинээр нэмэгдсэн дарааллаар эрэмбэлнэ.
+                    0 бол хамгийн түрүүнд гарна. Ижил дараалалтай үед шинээр
+                    нэмэгдсэн дарааллаар эрэмбэлнэ.
                   </p>
                 </Field>
               </div>
@@ -1171,7 +1511,10 @@ export function TeamSection() {
 
             {/* Modal footer */}
             <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
-              <button onClick={closeModal} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+              <button
+                onClick={closeModal}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
                 Болих
               </button>
               <button
@@ -1190,9 +1533,18 @@ export function TeamSection() {
   );
 }
 
-const inputCls = "w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-100 transition-all";
+const inputCls =
+  "w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-100 transition-all";
 
-function Field({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+function Field({
+  icon,
+  label,
+  children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600">
@@ -1238,7 +1590,9 @@ function DepartmentManager({
             <Building2 size={17} />
           </div>
           <div>
-            <h3 className="text-sm font-black text-slate-900">Алба хэлтэс нэмэх</h3>
+            <h3 className="text-sm font-black text-slate-900">
+              Алба хэлтэс нэмэх
+            </h3>
             <p className="text-xs font-medium text-slate-500">
               Шинэ хэлтэс үүсгээд ажилчдын form дээр сонгодог болно.
             </p>
@@ -1264,7 +1618,11 @@ function DepartmentManager({
             disabled={saving || !input.trim()}
             className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
           >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            {saving ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Plus size={14} />
+            )}
             Нэмэх
           </button>
         </div>
@@ -1273,9 +1631,12 @@ function DepartmentManager({
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h3 className="text-sm font-black text-slate-900">Үүссэн алба хэлтэс засах</h3>
+            <h3 className="text-sm font-black text-slate-900">
+              Үүссэн алба хэлтэс засах
+            </h3>
             <p className="text-xs font-medium text-slate-400">
-              Нэр солих үед тухайн хэлтэстэй ажилчдын мэдээлэл хамт шинэчлэгдэнэ.
+              Нэр солих үед тухайн хэлтэстэй ажилчдын мэдээлэл хамт
+              шинэчлэгдэнэ.
             </p>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-500">
@@ -1325,7 +1686,11 @@ function DepartmentManager({
                           disabled={saving || !draft.trim()}
                           className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
                         >
-                          {saving ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                          {saving ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <CheckCircle2 size={14} />
+                          )}
                           Хадгалах
                         </button>
                         <button
@@ -1341,7 +1706,9 @@ function DepartmentManager({
                   ) : (
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-black text-slate-900">{department.name}</p>
+                        <p className="truncate text-sm font-black text-slate-900">
+                          {department.name}
+                        </p>
                         <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
                           {department.count} ажилчин холбоотой
                         </p>
@@ -1382,9 +1749,12 @@ function NetworkPartnersPreview({ partners }: { partners: NetworkPartner[] }) {
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h3 className="text-sm font-black text-slate-900">Сүлжээ компаниуд</h3>
+          <h3 className="text-sm font-black text-slate-900">
+            Сүлжээ компаниуд
+          </h3>
           <p className="text-xs font-medium text-slate-400">
-            Энэ хэсэг түнш байгууллагын бүртгэлээс шууд татагдаж public team page дээр харагдана.
+            Энэ хэсэг түнш байгууллагын бүртгэлээс шууд татагдаж public team
+            page дээр харагдана.
           </p>
         </div>
         <a
@@ -1410,14 +1780,20 @@ function NetworkPartnersPreview({ partners }: { partners: NetworkPartner[] }) {
               <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white text-slate-400 shadow-sm">
                 {partner.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={partner.logoUrl} alt={partner.name} className="h-full w-full object-cover" />
+                  <img
+                    src={partner.logoUrl}
+                    alt={partner.name}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <Building2 size={16} />
                 )}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-black text-slate-900">{partner.name}</p>
+                  <p className="truncate text-sm font-black text-slate-900">
+                    {partner.name}
+                  </p>
                   {partner.isInvestor && (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700">
                       investor
@@ -1425,7 +1801,9 @@ function NetworkPartnersPreview({ partners }: { partners: NetworkPartner[] }) {
                   )}
                 </div>
                 <p className="truncate text-[11px] font-semibold text-slate-400">
-                  {partner.businessCategory || partner.shortDescription || "Түнш байгууллага"}
+                  {partner.businessCategory ||
+                    partner.shortDescription ||
+                    "Түнш байгууллага"}
                 </p>
               </div>
               <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-400">

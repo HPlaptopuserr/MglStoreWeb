@@ -19,6 +19,7 @@ export type FranchiseProject = {
 
 export type ProjectResponsiblePerson = {
   id?: string;
+  teamMemberId?: string;
   name?: string;
   role?: string;
   responsibility?: string;

@@ -48,6 +48,7 @@ function normalizeResponsiblePeople(
       id:
         String(person?.id || "").trim() ||
         Math.random().toString(36).slice(2, 10),
+      teamMemberId: String(person?.teamMemberId || "").trim(),
       name: String(person?.name || "").trim(),
       role: String(person?.role || "").trim(),
       responsibility: String(person?.responsibility || "").trim(),

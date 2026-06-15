@@ -2,6 +2,8 @@ import {
   ArrowRight,
   ImagePlus,
   Loader2,
+  Mail,
+  Phone,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
@@ -29,7 +31,7 @@ export function ProjectGridCard({
   const primaryImage = images[0];
   const isFree = !project.price || project.price <= 0;
   const responsiblePeople = getResponsiblePeople(project);
-  const primaryResponsiblePerson = responsiblePeople[0];
+  const visibleResponsiblePeople = responsiblePeople.slice(0, 2);
 
   return (
     <article className="group relative flex min-h-[430px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_14px_42px_rgba(15,23,42,0.08)] transition duration-300 hover:-translate-y-1 hover:border-orange-200 hover:shadow-[0_24px_70px_rgba(251,146,60,0.18)]">
@@ -59,8 +61,8 @@ export function ProjectGridCard({
         </div>
         <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between gap-3">
           <div className="inline-flex items-center gap-2 rounded-full bg-slate-950/70 px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-white shadow-sm backdrop-blur-md">
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
-            #{String(index + 1).padStart(6, "0")}
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />#
+            {String(index + 1).padStart(6, "0")}
           </div>
           {images.length > 1 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1.5 text-[11px] font-black text-slate-700 shadow-sm backdrop-blur-md">
@@ -93,37 +95,61 @@ export function ProjectGridCard({
           </div>
         )}
 
-        {primaryResponsiblePerson && (
+        {visibleResponsiblePeople.length > 0 && (
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            <div className="flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-400">
-                {primaryResponsiblePerson.avatarUrl ? (
-                  <img
-                    src={primaryResponsiblePerson.avatarUrl}
-                    alt={primaryResponsiblePerson.name || "Хариуцагч"}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <UserRound className="h-5 w-5" />
-                )}
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-cyan-700">
-                  <UserRound className="h-3.5 w-3.5" />
-                  Хариуцагч
-                </div>
-                <p className="mt-1 truncate text-sm font-black text-slate-950">
-                  {primaryResponsiblePerson.name || "Нэр оруулаагүй"}
-                </p>
-              </div>
+            <div className="mb-2 flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-wide text-cyan-700">
+              <span className="inline-flex items-center gap-1.5">
+                <UserRound className="h-3.5 w-3.5" />
+                Хариуцагч
+              </span>
+              {responsiblePeople.length > visibleResponsiblePeople.length && (
+                <span className="rounded-full bg-white px-2 py-0.5 text-slate-500">
+                  +{responsiblePeople.length - visibleResponsiblePeople.length}
+                </span>
+              )}
             </div>
-            {(primaryResponsiblePerson.responsibility ||
-              primaryResponsiblePerson.role) && (
-              <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
-                {primaryResponsiblePerson.responsibility ||
-                  primaryResponsiblePerson.role}
-              </p>
-            )}
+            <div className="space-y-2">
+              {visibleResponsiblePeople.map((person, personIndex) => (
+                <div
+                  key={person.id || person.teamMemberId || personIndex}
+                  className="flex min-w-0 items-center gap-3"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-400">
+                    {person.avatarUrl ? (
+                      <img
+                        src={person.avatarUrl}
+                        alt={person.name || "Хариуцагч"}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <UserRound className="h-4 w-4" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-black text-slate-950">
+                      {person.name || "Нэр оруулаагүй"}
+                    </p>
+                    {(person.responsibility || person.role) && (
+                      <p className="truncate text-xs font-semibold text-slate-500">
+                        {person.responsibility || person.role}
+                      </p>
+                    )}
+                    <div className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-[11px] font-bold text-slate-500">
+                      <span className="inline-flex items-center gap-1">
+                        <Phone className="h-3 w-3 text-orange-500" />
+                        {person.phone || "Дугаар оруулаагүй"}
+                      </span>
+                      {person.email && (
+                        <span className="inline-flex min-w-0 items-center gap-1">
+                          <Mail className="h-3 w-3 text-orange-500" />
+                          <span className="truncate">{person.email}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

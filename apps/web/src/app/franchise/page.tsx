@@ -6,18 +6,14 @@ import {
   ArrowRight,
   FileText,
   ImagePlus,
-  Loader2,
+  Mail,
+  Phone,
   Plus,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import {
-  PaidAccessPaymentModal,
-  type PaidAccessPaymentSession,
-} from "@/components/molecules/payments/PaidAccessPaymentModal";
-import { LockedProjectPreviewModal } from "@/components/molecules/projects/ProjectPdfPreview";
 import {
   formatMnt,
   getContractHref,
@@ -29,17 +25,9 @@ import {
 
 export default function FranchisePage() {
   const router = useRouter();
-  const { user, authFetch } = useAuth();
+  const { user } = useAuth();
   const [projects, setProjects] = useState<FranchiseProject[]>([]);
   const [loading, setLoading] = useState(true);
-  const [openingId, setOpeningId] = useState<string | null>(null);
-  const [previewProject, setPreviewProject] =
-    useState<FranchiseProject | null>(null);
-  const [paymentProject, setPaymentProject] = useState<FranchiseProject | null>(
-    null,
-  );
-  const [paymentSession, setPaymentSession] =
-    useState<PaidAccessPaymentSession | null>(null);
   const hasMemberAccess = Boolean(user?.membership?.active || user?.isPrime);
 
   useEffect(() => {
@@ -74,16 +62,6 @@ export default function FranchisePage() {
     router.push(`/franchise/${projectId}${query}`);
   };
 
-  const openPaidProject = async (
-    project: FranchiseProject,
-    invoiceId: string,
-  ) => {
-    setPreviewProject(null);
-    setPaymentProject(null);
-    setPaymentSession(null);
-    openFranchiseDetailPage(project.id, invoiceId);
-  };
-
   const openProject = (project: FranchiseProject) => {
     if (project.price && project.price > 0 && hasMemberAccess) {
       openFranchiseDetailPage(project.id);
@@ -91,57 +69,11 @@ export default function FranchisePage() {
     }
 
     if (project.price && project.price > 0) {
-      setPreviewProject(project);
+      router.push(`/franchise/${project.id}/preview`);
       return;
     }
 
     openFranchiseDetailPage(project.id);
-  };
-
-  const unlockProject = async (project: FranchiseProject) => {
-    try {
-      setOpeningId(project.id);
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      const res = await authFetch(`${API}/site-settings/franchise/systemqr`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Төлбөрийн QR үүсгэхэд алдаа гарлаа");
-      }
-      if (data.free) {
-        setPreviewProject(null);
-        openFranchiseDetailPage(project.id);
-        return;
-      }
-
-      setPreviewProject(null);
-      setPaymentProject(project);
-      setPaymentSession({
-        invoiceId: data.invoiceId,
-        providerInvoiceId: data.providerInvoiceId,
-        amount: Number(data.amount || project.price || 0),
-        qrText: String(data.qrText || ""),
-        qrImage: String(data.qrImage || ""),
-        urls: Array.isArray(data.urls) ? data.urls : [],
-        expiresAt: data.expiresAt,
-      });
-    } catch (error) {
-      console.error(error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Төлбөрийн QR үүсгэхэд алдаа гарлаа",
-      );
-    } finally {
-      setOpeningId(null);
-    }
   };
 
   return (
@@ -164,15 +96,14 @@ export default function FranchisePage() {
                 боломжууд
               </span>
             </h1>
-            <p className="mt-5 max-w-2xl text-sm leading-7 text-orange-50/70">
-
-            </p>
+            <p className="mt-5 max-w-2xl text-sm leading-7 text-orange-50/70"></p>
           </div>
           <div className="w-fit rounded-xl border border-orange-200/20 bg-white/[0.04] px-5 py-4 text-sm font-black text-orange-100 shadow-[0_18px_45px_rgba(0,0,0,0.24)]">
-          Санал гомдол авах дугаар: <a href="tel:88008800" className="underline">
-            95606060
-          </a>
-</div>
+            Санал гомдол авах дугаар:{" "}
+            <a href="tel:88008800" className="underline">
+              95606060
+            </a>
+          </div>
           <div className="w-fit rounded-xl border border-orange-200/20 bg-white/[0.04] px-5 py-4 text-sm font-black text-orange-100 shadow-[0_18px_45px_rgba(0,0,0,0.24)]">
             {loading ? "Ачаалж байна" : `${projects.length} бэлэн байна`}
           </div>
@@ -201,8 +132,8 @@ export default function FranchisePage() {
                 const primaryImage = images[0];
                 const isFree = !project.price || project.price <= 0;
                 const contractHref = getContractHref(project);
-                const primaryResponsiblePerson =
-                  getResponsiblePeople(project)[0];
+                const responsiblePeople = getResponsiblePeople(project);
+                const visibleResponsiblePeople = responsiblePeople.slice(0, 2);
                 return (
                   <article
                     key={project.id}
@@ -249,60 +180,82 @@ export default function FranchisePage() {
                           "Франчайз танилцуулга, зураг болон PDF мэдээллийг нэг дороос үзэх боломжтой."}
                       </p>
 
-                      {primaryResponsiblePerson && (
+                      {visibleResponsiblePeople.length > 0 && (
                         <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.05] p-3">
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/10 text-white/60">
-                              {primaryResponsiblePerson.avatarUrl ? (
-                                <img
-                                  src={primaryResponsiblePerson.avatarUrl}
-                                  alt={
-                                    primaryResponsiblePerson.name ||
-                                    "Хариуцагч"
-                                  }
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <UserRound className="h-5 w-5" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-cyan-200">
-                                <UserRound className="h-3.5 w-3.5" />
-                                Хариуцагч
-                              </div>
-                              <p className="mt-1 truncate text-sm font-black text-white">
-                                {primaryResponsiblePerson.name ||
-                                  "Нэр оруулаагүй"}
-                              </p>
-                            </div>
+                          <div className="mb-2 flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-wide text-cyan-200">
+                            <span className="inline-flex items-center gap-1.5">
+                              <UserRound className="h-3.5 w-3.5" />
+                              Хариуцагч
+                            </span>
+                            {responsiblePeople.length >
+                              visibleResponsiblePeople.length && (
+                              <span className="rounded-full bg-white/10 px-2 py-0.5 text-orange-50/70">
+                                +
+                                {responsiblePeople.length -
+                                  visibleResponsiblePeople.length}
+                              </span>
+                            )}
                           </div>
-                          {(primaryResponsiblePerson.responsibility ||
-                            primaryResponsiblePerson.role) && (
-                            <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-orange-50/60">
-                              {primaryResponsiblePerson.responsibility ||
-                                primaryResponsiblePerson.role}
-                            </p>
-                          )}
+                          <div className="space-y-2">
+                            {visibleResponsiblePeople.map(
+                              (person, personIndex) => (
+                                <div
+                                  key={
+                                    person.id ||
+                                    person.teamMemberId ||
+                                    personIndex
+                                  }
+                                  className="flex min-w-0 items-center gap-3"
+                                >
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/10 text-white/60">
+                                    {person.avatarUrl ? (
+                                      <img
+                                        src={person.avatarUrl}
+                                        alt={person.name || "Хариуцагч"}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    ) : (
+                                      <UserRound className="h-4 w-4" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-black text-white">
+                                      {person.name || "Нэр оруулаагүй"}
+                                    </p>
+                                    {(person.responsibility || person.role) && (
+                                      <p className="truncate text-xs font-semibold text-orange-50/60">
+                                        {person.responsibility || person.role}
+                                      </p>
+                                    )}
+                                    <div className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-[11px] font-bold text-orange-50/60">
+                                      <span className="inline-flex items-center gap-1">
+                                        <Phone className="h-3 w-3 text-orange-300" />
+                                        {person.phone || "Дугаар оруулаагүй"}
+                                      </span>
+                                      {person.email && (
+                                        <span className="inline-flex min-w-0 items-center gap-1">
+                                          <Mail className="h-3 w-3 text-orange-300" />
+                                          <span className="truncate">
+                                            {person.email}
+                                          </span>
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ),
+                            )}
+                          </div>
                         </div>
                       )}
 
                       <button
                         type="button"
                         onClick={() => openProject(project)}
-                        disabled={openingId === project.id}
                         className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-300 px-5 text-sm font-black text-black transition hover:brightness-110 disabled:opacity-60"
                       >
-                        {openingId === project.id ? (
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : (
-                          <>
-                            {isFree
-                              ? "Дэлгэрэнгүй үзэх"
-                              : "3 хуудас preview үзэх"}
-                            <ArrowRight className="h-4 w-4" />
-                          </>
-                        )}
+                        {isFree ? "Дэлгэрэнгүй үзэх" : "3 хуудас preview үзэх"}
+                        <ArrowRight className="h-4 w-4" />
                       </button>
                       {contractHref && (
                         <a
@@ -333,33 +286,6 @@ export default function FranchisePage() {
           </section>
         )}
       </main>
-
-      {previewProject && (
-        <LockedProjectPreviewModal
-          kindLabel="Franchise"
-          project={previewProject}
-          opening={openingId === previewProject.id}
-          hasFullAccess={hasMemberAccess}
-          onClose={() => setPreviewProject(null)}
-          onUnlock={() => unlockProject(previewProject)}
-        />
-      )}
-
-      {paymentProject && paymentSession && (
-        <PaidAccessPaymentModal
-          itemId={paymentProject.id}
-          title={paymentProject.title}
-          payment={paymentSession}
-          checkUrl={`${API}/site-settings/franchise/systemqr/check`}
-          request={authFetch}
-          onPaid={(invoiceId) => openPaidProject(paymentProject, invoiceId)}
-          onClose={() => {
-            setPaymentProject(null);
-            setPaymentSession(null);
-          }}
-        />
-      )}
-
     </div>
   );
 }

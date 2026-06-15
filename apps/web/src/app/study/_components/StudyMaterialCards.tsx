@@ -93,7 +93,7 @@ export function FeaturedStudyMaterialCard({
       className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-orange-100"
     >
       <div className="grid h-full gap-0 md:grid-cols-[minmax(300px,0.9fr)_minmax(0,1fr)]">
-        <div className="bg-slate-50 p-3">
+        <div className="bg-slate-50 p-2.5 sm:p-3">
           <StudyMaterialImage
             material={material}
             className="aspect-[16/9] h-full rounded-xl md:aspect-auto"
@@ -101,18 +101,18 @@ export function FeaturedStudyMaterialCard({
             imageClassName="object-cover"
           />
         </div>
-        <div className="flex min-w-0 flex-col p-5 sm:p-6">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">
+        <div className="flex min-w-0 flex-col p-4 sm:p-6">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-emerald-700 sm:text-xs">
             Featured course
           </p>
-          <h3 className="mt-3 line-clamp-2 break-words text-2xl font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">
+          <h3 className="mt-2 line-clamp-2 break-words text-xl font-black leading-tight text-slate-950 [overflow-wrap:anywhere] sm:mt-3 sm:text-2xl">
             {material.title}
           </h3>
-          <p className="mt-3 line-clamp-3 text-sm font-semibold leading-7 text-slate-500">
+          <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-slate-500 sm:mt-3 sm:line-clamp-3 sm:leading-7">
             {material.summary ||
               "Сургалтын зорилго, багш, хөтөлбөр болон бүртгэлийн мэдээллийг нэг дороос харна."}
           </p>
-          <div className="mt-auto pt-5">
+          <div className="mt-auto pt-4 sm:pt-5">
             <StudyPricePills material={material} />
           </div>
         </div>
@@ -129,21 +129,21 @@ export function FeaturedStudyMaterialMiniCard({
     <button
       type="button"
       onClick={() => onOpen(material)}
-      className="group flex min-h-[142px] gap-4 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-orange-100"
+      className="group flex min-h-[116px] gap-3 rounded-2xl border border-slate-200 bg-white p-2.5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-orange-100 sm:min-h-[142px] sm:gap-4 sm:p-3"
     >
       <StudyMaterialImage
         material={material}
-        className="h-28 w-36 shrink-0 rounded-xl"
+        className="h-24 w-28 shrink-0 rounded-xl sm:h-28 sm:w-36"
         iconClassName="h-8 w-8"
       />
       <div className="min-w-0 py-1">
-        <h3 className="line-clamp-2 break-words text-base font-black leading-6 text-slate-950 [overflow-wrap:anywhere]">
+        <h3 className="line-clamp-2 break-words text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere] sm:text-base sm:leading-6">
           {material.title}
         </h3>
-        <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-slate-500">
+        <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500 sm:mt-2 sm:text-sm sm:leading-6">
           {material.summary || "Сургалтын дэлгэрэнгүй"}
         </p>
-        <p className="mt-3 text-sm font-black text-orange-600">
+        <p className="mt-2 text-xs font-black text-orange-600 sm:mt-3 sm:text-sm">
           Дэлгэрэнгүй үзэх
         </p>
       </div>
@@ -195,46 +195,46 @@ export function StudyMaterialCard({
         type="button"
         onClick={() => onOpen(material)}
         disabled={openingId === material.id}
-        className="flex h-full min-h-[392px] w-full flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition duration-200 hover:border-orange-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-orange-100 disabled:opacity-75"
+        className="grid h-full min-h-[128px] w-full grid-cols-[112px_minmax(0,1fr)] gap-3 rounded-2xl border border-slate-200 bg-white p-2.5 text-left shadow-sm transition duration-200 hover:border-orange-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-orange-100 disabled:opacity-75 sm:flex sm:min-h-[360px] sm:flex-col sm:p-4"
       >
         <StudyMaterialImage
           material={material}
-          className="aspect-[16/9] w-full rounded-xl"
+          className="h-full min-h-[112px] rounded-xl sm:aspect-[16/9] sm:min-h-0 sm:w-full"
           iconClassName="h-12 w-12"
         />
 
-        <div className="flex flex-1 flex-col pt-5">
-          <h3 className="line-clamp-2 break-words text-xl font-black leading-tight text-[#2d2f43] [overflow-wrap:anywhere]">
+        <div className="flex min-w-0 flex-1 flex-col py-1 sm:pt-5">
+          <h3 className="line-clamp-2 break-words text-base font-black leading-tight text-[#111827] [overflow-wrap:anywhere] sm:text-xl">
             {material.title}
           </h3>
-          <p className="mt-2 line-clamp-1 text-sm font-semibold text-slate-500">
+          <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500 sm:mt-2 sm:text-sm">
             {instructor}
           </p>
           {scheduleText && (
-            <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700">
-              <CalendarDays className="h-4 w-4" />
+            <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 sm:mt-2 sm:text-sm">
+              <CalendarDays className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               <span className="line-clamp-1">{scheduleText}</span>
             </p>
           )}
 
-          <div className="mt-6 flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-cyan-100 px-2.5 py-1 text-sm font-black text-cyan-900">
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-6 sm:gap-2">
+            <span className="rounded-md bg-cyan-100 px-2 py-0.5 text-[10px] font-black text-cyan-900 sm:px-2.5 sm:py-1 sm:text-sm">
               Bestseller
             </span>
-            <span className="rounded-md border border-slate-200 px-2.5 py-1 text-sm font-bold text-slate-600">
+            <span className="rounded-md border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600 sm:px-2.5 sm:py-1 sm:text-sm">
               ★ {rating.score}
             </span>
-            <span className="rounded-md border border-slate-200 px-2.5 py-1 text-sm font-semibold text-slate-500">
+            <span className="hidden rounded-md border border-slate-200 px-2.5 py-1 text-sm font-semibold text-slate-500 sm:inline">
               {rating.count} ratings
             </span>
           </div>
 
-          <div className="mt-auto flex items-end gap-3 pt-6">
-            <span className="text-xl font-black text-[#2d2f43]">
+          <div className="mt-auto flex items-end gap-2 pt-2 sm:gap-3 sm:pt-6">
+            <span className="text-base font-black text-[#111827] sm:text-xl">
               {priceText}
             </span>
             {oldPriceText && (
-              <span className="text-base font-semibold text-slate-500 line-through">
+              <span className="text-xs font-semibold text-slate-500 line-through sm:text-base">
                 {oldPriceText}
               </span>
             )}

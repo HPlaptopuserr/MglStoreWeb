@@ -12,7 +12,6 @@ import {
   ChevronLeft,
   Flame,
   LogOut,
-  Loader2,
   Settings,
   Package,
   FolderKanban,
@@ -20,6 +19,7 @@ import {
   Building2,
   RefreshCcw,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import Image from "next/image";
 import { SearchBar } from "../../molecules/SearchBar";
@@ -34,7 +34,11 @@ import { CATEGORY_COLORS, NAV_LINKS } from "@/lib/constants";
 import { useRouter, usePathname } from "next/navigation";
 import { useCart } from "@/hooks/useCart";
 import { CartDrawer } from "@/components/organisms/CartDrawer";
-import { useAuth, type AuthOrganization, type AuthUser } from "@/lib/auth-context";
+import {
+  useAuth,
+  type AuthOrganization,
+  type AuthUser,
+} from "@/lib/auth-context";
 import { MobileBottomNav } from "@/components/organisms/layouts/MobileBottomNav";
 import { API, resolveApiAssetUrl } from "@/lib/api";
 import {
@@ -46,6 +50,7 @@ import {
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearch, setMobileSearch] = useState("");
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
@@ -116,7 +121,7 @@ export const Header = () => {
       });
   }, []);
 
-  useLockBodyScroll(authOpen || mobileMenuOpen);
+  useLockBodyScroll(authOpen || mobileMenuOpen || mobileSearchOpen);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -132,16 +137,21 @@ export const Header = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleMobileSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const query = mobileSearch.trim();
+  const submitMobileSearch = (value = mobileSearch) => {
+    const query = value.trim();
     if (!query) return;
     setMobileMenuOpen(false);
+    setMobileSearchOpen(false);
     setMobileSearch("");
     router.push(`/products?search=${encodeURIComponent(query)}`);
   };
 
   const closeMobile = () => setMobileMenuOpen(false);
+  const openMobileSearch = () => {
+    setMobileMenuOpen(false);
+    setMobileSearchOpen(true);
+  };
+  const closeMobileSearch = () => setMobileSearchOpen(false);
 
   const openAuthModal = () => {
     setAuthError("");
@@ -202,7 +212,9 @@ export const Header = () => {
               </div>
             </div>
 
-            <div className={`hidden max-w-3xl flex-1 items-center justify-center md:flex ${hideSearch ? "md:hidden" : ""}`}>
+            <div
+              className={`hidden max-w-3xl flex-1 items-center justify-center md:flex ${hideSearch ? "md:hidden" : ""}`}
+            >
               <SearchBar />
             </div>
 
@@ -261,9 +273,7 @@ export const Header = () => {
 
               <button
                 type="button"
-                onClick={
-                  user ? () => router.push("/profile") : openAuthModal
-                }
+                onClick={user ? () => router.push("/profile") : openAuthModal}
                 aria-label={user ? "Профайл цэс" : "Нэвтрэх"}
                 className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors active:bg-gray-100 sm:hidden ${
                   user
@@ -295,28 +305,22 @@ export const Header = () => {
         </div>
 
         {!hideSearch && (
-        <div className="border-b border-slate-100 px-4 py-2 md:hidden">
-          <form onSubmit={handleMobileSearch} className="relative">
-            <Search
-              size={16}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-            />
-            <input
-              type="text"
-              value={mobileSearch}
-              onChange={(e) => setMobileSearch(e.target.value)}
-              placeholder="Бүтээгдэхүүн хайх..."
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-16 text-sm text-gray-900 outline-none transition-all focus:border-amber-400 focus:bg-white focus:shadow-sm"
-            />
+          <div className="border-b border-slate-100 px-4 py-2 md:hidden">
             <button
-              type="submit"
-              disabled={!mobileSearch.trim()}
-              className="absolute right-1.5 top-1/2 h-8 -translate-y-1/2 rounded-lg bg-orange-500 px-3 text-xs font-black text-white transition active:scale-95 disabled:bg-slate-200 disabled:text-slate-400"
+              type="button"
+              onClick={openMobileSearch}
+              className="relative flex h-12 w-full items-center rounded-2xl border border-gray-200 bg-gray-50 px-4 text-left text-sm font-semibold text-slate-400 shadow-sm transition active:scale-[0.99] active:bg-white"
             >
-              Хайх
+              <Search
+                size={16}
+                className="mr-3 shrink-0 text-gray-400"
+              />
+              <span className="min-w-0 flex-1 truncate">Бүтээгдэхүүн хайх...</span>
+              <span className="rounded-xl bg-slate-200 px-3 py-1.5 text-xs font-black text-slate-500">
+                Хайх
+              </span>
             </button>
-          </form>
-        </div>
+          </div>
         )}
 
         {!hideBrowseNav && categories.length > 0 && (
@@ -420,7 +424,7 @@ export const Header = () => {
         )}
 
         <div
-          className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
+          className={`fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
             mobileMenuOpen
               ? "opacity-100 pointer-events-auto"
               : "opacity-0 pointer-events-none"
@@ -429,12 +433,11 @@ export const Header = () => {
         />
 
         <div
-          className={`fixed inset-x-0 top-0 z-50 max-h-[85vh] overflow-y-auto bg-white shadow-2xl transition-transform duration-300 ease-out md:hidden ${
+          className={`fixed inset-0 z-[90] flex h-dvh flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out md:hidden ${
             mobileMenuOpen ? "translate-y-0" : "-translate-y-full"
           }`}
-          style={{ scrollbarWidth: "none" }}
         >
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white/95 px-5 py-3.5 backdrop-blur-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 bg-white/95 px-5 pb-4 pt-[calc(env(safe-area-inset-top)+14px)] backdrop-blur-sm">
             <Link
               href="/"
               onClick={closeMobile}
@@ -461,154 +464,175 @@ export const Header = () => {
             </button>
           </div>
 
-          {!hideSearch && (
-          <div className="px-5 pt-4 pb-2">
-            <form onSubmit={handleMobileSearch} className="relative">
-              <Search
-                size={16}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-              <input
-                type="text"
-                value={mobileSearch}
-                onChange={(e) => setMobileSearch(e.target.value)}
-                placeholder="Хайх..."
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-16 text-sm text-gray-900 outline-none transition-all focus:border-amber-400 focus:bg-white"
-                autoFocus={mobileMenuOpen}
-              />
-              <button
-                type="submit"
-                disabled={!mobileSearch.trim()}
-                className="absolute right-1.5 top-1/2 h-9 -translate-y-1/2 rounded-lg bg-orange-500 px-3 text-xs font-black text-white transition active:scale-95 disabled:bg-slate-200 disabled:text-slate-400"
-              >
-                Хайх
-              </button>
-            </form>
-          </div>
-          )}
-
-          <div className="px-5 py-3">
-            <div className="grid grid-cols-3 gap-2">
-              {mobileNavLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={closeMobile}
-                  className="flex flex-col items-center gap-2 rounded-2xl border border-gray-100 bg-gray-50 px-2 py-4 text-center transition-colors active:bg-amber-50"
-                >
-                  <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${link.color}`}
-                  >
-                    <link.icon size={20} />
-                  </div>
-                  <span className="text-xs font-semibold text-gray-700">
-                    {link.label}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div className="border-y border-gray-100 px-5 py-4">
-            {user ? (
-              <div className="grid gap-2">
-                <Link
-                  href="/profile"
-                  onClick={closeMobile}
-                  className="flex items-center gap-3 rounded-2xl bg-green-50 px-4 py-3"
-                >
-                  <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-sm font-bold text-white">
-                    {user.avatarUrl ? (
-                      <img
-                        src={resolveApiAssetUrl(user.avatarUrl)}
-                        alt={user.fullName || "Profile"}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      user.fullName?.trim()?.[0]?.toUpperCase() ||
-                      user.email?.[0]?.toUpperCase() ||
-                      "?"
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-gray-900">
-                      {user.fullName?.trim() || user.email || "Хэрэглэгч"}
-                    </p>
-                    <p className="text-xs font-medium text-green-600">
-                      ● Нэвтэрсэн
-                    </p>
-                  </div>
-                  <ChevronRight size={16} className="text-gray-400" />
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const confirmed = window.confirm("Гарах уу?");
-                    if (confirmed) handleLogout();
-                  }}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600 transition-colors active:bg-red-100"
-                >
-                  <LogOut size={16} />
-                  Гарах
-                </button>
-              </div>
-            ) : (
+          <div
+            className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-5 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-4"
+            style={{ scrollbarWidth: "none" }}
+          >
+            {!hideSearch && (
               <button
                 type="button"
-                onClick={openAuthModal}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-colors active:bg-gray-800"
+                onClick={openMobileSearch}
+                className="relative flex h-[52px] w-full items-center rounded-2xl border border-slate-200 bg-white px-4 text-left text-[15px] font-semibold text-slate-400 shadow-sm transition active:scale-[0.99] active:bg-slate-50"
               >
-                <User size={16} />
-                Нэвтрэх / Бүртгүүлэх
+                <Search
+                  size={17}
+                  className="mr-3 shrink-0 text-slate-400"
+                />
+                <span className="min-w-0 flex-1 truncate">Бараа, үйлчилгээ, төсөл хайх...</span>
+                <span className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white">
+                  Хайх
+                </span>
               </button>
             )}
-          </div>
 
-          <div className="mx-5 mb-3 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-red-500 to-orange-500 px-4 py-3">
-            <Flame size={20} className="shrink-0 text-white" />
-            <div className="flex-1">
-              <p className="text-sm font-bold text-white">Today&apos;s Deals</p>
-              <p className="text-xs text-white/80">Өнөөдрийн онцгой хямдрал</p>
-            </div>
-            <ChevronRight size={16} className="text-white/60" />
-          </div>
-
-          {categories.length > 0 && (
-            <div className="px-5 pb-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
-                  Ангилал
-                </h3>
-                <Link
-                  href="/products"
-                  onClick={closeMobile}
-                  className="text-xs font-semibold text-amber-600"
-                >
-                  Бүгд →
-                </Link>
+            <div className="mt-5">
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-orange-500">
+                    Explore
+                  </p>
+                  <h3 className="mt-1 text-lg font-black leading-tight text-slate-950">
+                    Үндсэн хэсгүүд
+                  </h3>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-400 shadow-sm ring-1 ring-slate-200">
+                  {mobileNavLinks.length}
+                </span>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                {categories.map((cat, i) => (
+              <div className="grid grid-cols-3 gap-2">
+                {mobileNavLinks.map((link) => (
                   <Link
-                    key={cat.id}
-                    href={`/products?category=${cat.id}`}
+                    key={link.href}
+                    href={link.href}
                     onClick={closeMobile}
-                    className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 py-3 transition-colors active:bg-gray-50"
+                    className="group relative flex min-h-[84px] flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-2 py-2.5 text-center shadow-sm transition active:scale-[0.98] active:border-orange-200 active:bg-orange-50"
                   >
                     <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${CATEGORY_COLORS[i % CATEGORY_COLORS.length]}`}
+                      className={`flex h-9 w-9 items-center justify-center rounded-xl ${link.color}`}
                     >
-                      <CategoryIcon category={cat} size={16} />
+                      <link.icon size={18} />
                     </div>
-                    <span className="text-sm font-medium text-gray-700 leading-tight">
-                      {cat.name}
-                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-[12px] font-black leading-tight text-slate-900">
+                        {link.label}
+                      </p>
+                      <p className="mt-0.5 hidden text-[10px] font-semibold leading-3 text-slate-500 min-[390px]:line-clamp-1 min-[390px]:block">
+                        {link.desc}
+                      </p>
+                    </div>
                   </Link>
                 ))}
               </div>
             </div>
-          )}
 
+            {categories.length > 0 && (
+              <div className="mt-6">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    Бүтээгдэхүүний ангилал
+                  </h3>
+                  <Link
+                    href="/products"
+                    onClick={closeMobile}
+                    className="text-xs font-black text-orange-600"
+                  >
+                    Бүгд →
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {categories.slice(0, 8).map((cat, i) => (
+                    <Link
+                      key={cat.id}
+                      href={`/products?category=${cat.id}`}
+                      onClick={closeMobile}
+                      className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm transition active:bg-slate-50"
+                    >
+                      <div
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${CATEGORY_COLORS[i % CATEGORY_COLORS.length]}`}
+                      >
+                        <CategoryIcon category={cat} size={16} />
+                      </div>
+                      <span className="truncate text-sm font-bold leading-tight text-slate-700">
+                        {cat.name}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Link
+              href="/products"
+              onClick={closeMobile}
+              className="mt-6 flex items-center gap-3 rounded-3xl bg-gradient-to-r from-orange-500 to-amber-400 px-4 py-4 shadow-lg shadow-orange-200"
+            >
+              <Flame size={22} className="shrink-0 text-white" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-white">
+                  Өнөөдрийн онцлох саналууд
+                </p>
+                <p className="mt-0.5 text-xs font-semibold text-white/80">
+                  Бүтээгдэхүүн, үйлчилгээ, боломжуудыг үзэх
+                </p>
+              </div>
+              <ChevronRight size={18} className="text-white/75" />
+            </Link>
+
+            <div className="mt-5 border-t border-slate-200 pt-4">
+              {user ? (
+                <div className="grid gap-2.5">
+                  <Link
+                    href="/profile"
+                    onClick={closeMobile}
+                    className="flex items-center gap-3 rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3.5 shadow-sm"
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-sm font-black text-white">
+                      {user.avatarUrl ? (
+                        <img
+                          src={resolveApiAssetUrl(user.avatarUrl)}
+                          alt={user.fullName || "Profile"}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        user.fullName?.trim()?.[0]?.toUpperCase() ||
+                        user.email?.[0]?.toUpperCase() ||
+                        "?"
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-black text-slate-950">
+                        {user.fullName?.trim() || user.email || "Хэрэглэгч"}
+                      </p>
+                      <p className="mt-0.5 text-xs font-bold text-emerald-600">
+                        ● Нэвтэрсэн
+                      </p>
+                    </div>
+                    <ChevronRight size={16} className="text-emerald-500" />
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const confirmed = window.confirm("Гарах уу?");
+                      if (confirmed) handleLogout();
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm font-black text-red-600 transition-colors active:bg-red-100"
+                  >
+                    <LogOut size={16} />
+                    Гарах
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openAuthModal}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-slate-200 transition-colors active:bg-slate-800"
+                >
+                  <User size={16} />
+                  Нэвтрэх / Бүртгүүлэх
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </header>
 
@@ -656,15 +680,198 @@ export const Header = () => {
       )}
 
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
-      <React.Suspense fallback={null}>
-        <MobileBottomNav
-          onCartOpen={() => setCartOpen(true)}
-          onAuthOpen={openAuthModal}
-        />
-      </React.Suspense>
+      <MobileSearchSheet
+        open={mobileSearchOpen}
+        query={mobileSearch}
+        categories={categories}
+        onQueryChange={setMobileSearch}
+        onClose={closeMobileSearch}
+        onSubmit={submitMobileSearch}
+        onNavigate={(href) => {
+          setMobileSearch("");
+          closeMobileSearch();
+          router.push(href);
+        }}
+      />
+      {!mobileMenuOpen && !authOpen && (
+        <React.Suspense fallback={null}>
+          <MobileBottomNav
+            onCartOpen={() => setCartOpen(true)}
+            onAuthOpen={openAuthModal}
+            onSearchOpen={openMobileSearch}
+          />
+        </React.Suspense>
+      )}
     </>
   );
 };
+
+const popularSearchTerms = [
+  "хүнс",
+  "кофе",
+  "супермаркет",
+  "бэлэг",
+  "гоо сайхан",
+  "хувцас",
+  "захиалга",
+  "хямдрал",
+];
+
+function MobileSearchSheet({
+  open,
+  query,
+  categories,
+  onQueryChange,
+  onClose,
+  onSubmit,
+  onNavigate,
+}: {
+  open: boolean;
+  query: string;
+  categories: ReturnType<typeof useBusinessCategories>["categories"];
+  onQueryChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (query: string) => void;
+  onNavigate: (href: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setTimeout(() => inputRef.current?.focus(), 80);
+    return () => window.clearTimeout(id);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  const runTermSearch = (term: string) => {
+    onQueryChange(term);
+    onNavigate(`/products?search=${encodeURIComponent(term)}`);
+  };
+
+  return (
+    <div
+      className={`fixed inset-0 z-[120] bg-slate-950/45 backdrop-blur-sm transition-opacity duration-200 md:hidden ${
+        open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+      }`}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        className={`mx-auto flex h-dvh w-full max-w-[430px] flex-col bg-white shadow-2xl transition-transform duration-300 ease-out ${
+          open ? "translate-y-0" : "-translate-y-5"
+        }`}
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit(query);
+          }}
+          className="flex items-center gap-2.5 px-4 pb-2 pt-[calc(env(safe-area-inset-top)+10px)]"
+        >
+          <label className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-500" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                onSubmit(event.currentTarget.value);
+              }}
+              placeholder="Search"
+              className="h-11 w-full rounded-full bg-slate-100 pl-10 pr-9 text-[15px] font-bold text-slate-950 outline-none transition placeholder:text-slate-500 focus:bg-slate-50 focus:ring-2 focus:ring-orange-200"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => onQueryChange("")}
+                className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition active:bg-slate-200"
+                aria-label="Хайлтыг цэвэрлэх"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </label>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 shrink-0 px-1 text-sm font-black text-slate-950"
+          >
+            Cancel
+          </button>
+        </form>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+76px)] pt-5">
+          <button
+            type="button"
+            onClick={() => onNavigate("/organizations")}
+            className="mb-6 flex w-full items-center gap-3 rounded-2xl bg-white text-left transition active:scale-[0.99]"
+          >
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-lime-200 bg-lime-100 text-slate-950 shadow-inner">
+              <Sparkles size={22} />
+            </span>
+            <span className="text-base font-black text-slate-950">
+              MGL Store AI
+            </span>
+          </button>
+
+          <section>
+            <h3 className="mb-3 text-sm font-bold text-slate-500">
+              Popular Search Terms
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {popularSearchTerms.map((term) => (
+                <button
+                  key={term}
+                  type="button"
+                  onClick={() => runTermSearch(term)}
+                  className="rounded-full bg-slate-100 px-4 py-2 text-sm font-black text-slate-950 transition active:scale-95 active:bg-slate-200"
+                >
+                  {term}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {categories.length > 0 && (
+            <section className="mt-6">
+              <h3 className="mb-3 text-sm font-bold text-slate-500">
+                Ангиллууд
+              </h3>
+              <div className="grid grid-cols-2 gap-2">
+                {categories.slice(0, 8).map((category) => (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => onNavigate(`/products?category=${category.id}`)}
+                    className="flex h-12 min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 text-left shadow-sm transition active:bg-slate-50"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
+                      <CategoryIcon category={category} size={14} />
+                    </span>
+                    <span className="truncate text-xs font-black text-slate-700">
+                      {category.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const headerRoleLabel: Record<string, string> = {
   OWNER: "Эзэмшигч",

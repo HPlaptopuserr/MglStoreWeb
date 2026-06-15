@@ -120,6 +120,7 @@ type PaidProject = {
 
 type ProjectResponsiblePerson = {
   id?: string;
+  teamMemberId?: string;
   name?: string;
   role?: string;
   responsibility?: string;
@@ -193,7 +194,9 @@ function isAllowedPdfPreviewSource(req: Request, fileUrl: string) {
     if (supabaseUrl && target.hostname === supabaseUrl.hostname) return true;
     if (target.hostname === "storage.mglstore.mn") return true;
 
-    return target.protocol === "https:" && target.hostname.endsWith(".supabase.co");
+    return (
+      target.protocol === "https:" && target.hostname.endsWith(".supabase.co")
+    );
   } catch {
     return false;
   }
@@ -261,10 +264,66 @@ async function getProjectItems(key: string): Promise<PaidProject[]> {
   if (!setting?.value) return [];
   try {
     const parsed = JSON.parse(setting.value);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? await hydrateProjectResponsiblePeople(parsed)
+      : [];
   } catch {
     return [];
   }
+}
+
+async function hydrateProjectResponsiblePeople(
+  projects: PaidProject[],
+): Promise<PaidProject[]> {
+  const teamMemberIds = Array.from(
+    new Set(
+      projects.flatMap((project) =>
+        Array.isArray(project.responsiblePeople)
+          ? project.responsiblePeople
+              .map((person) => String(person?.teamMemberId || "").trim())
+              .filter(Boolean)
+          : [],
+      ),
+    ),
+  );
+  if (teamMemberIds.length === 0) return projects;
+
+  const members = await (prisma as any).teamMember.findMany({
+    where: { id: { in: teamMemberIds } },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      department: true,
+      bio: true,
+      avatarUrl: true,
+      email: true,
+      phoneNumber: true,
+    },
+  });
+  const memberById = new Map<string, any>(
+    members.map((member: any) => [String(member.id), member]),
+  );
+
+  return projects.map((project) => ({
+    ...project,
+    responsiblePeople: Array.isArray(project.responsiblePeople)
+      ? project.responsiblePeople.map((person) => {
+          const member = memberById.get(String(person?.teamMemberId || ""));
+          if (!member) return person;
+          return {
+            ...person,
+            name: person.name || member.name || "",
+            role: person.role || member.role || "",
+            responsibility:
+              person.responsibility || member.department || member.bio || "",
+            phone: person.phone || member.phoneNumber || "",
+            email: person.email || member.email || "",
+            avatarUrl: person.avatarUrl || member.avatarUrl || "",
+          };
+        })
+      : project.responsiblePeople,
+  }));
 }
 
 async function getFranchiseProjects(): Promise<PaidProject[]> {
@@ -327,6 +386,7 @@ function normalizeResponsiblePeople(project: PaidProject) {
   return people
     .map((person) => ({
       id: String(person?.id || "").trim(),
+      teamMemberId: String(person?.teamMemberId || "").trim(),
       name: String(person?.name || "").trim(),
       role: String(person?.role || "").trim(),
       responsibility: String(person?.responsibility || "").trim(),
@@ -1454,7 +1514,8 @@ router.post(
       );
 
       const shouldCreatePreview =
-        req.file.buffer.byteLength <= PROJECT_PDF_PREVIEW_PROCESSING_LIMIT_BYTES;
+        req.file.buffer.byteLength <=
+        PROJECT_PDF_PREVIEW_PROCESSING_LIMIT_BYTES;
       const previewBuffer = shouldCreatePreview
         ? await createPdfPreviewBuffer(
             req.file.buffer,
@@ -1554,14 +1615,20 @@ async function sendProjectPdfPreview({
 }
 
 // GET /site-settings/projects/:projectId/preview-pdf — public first pages only.
-router.get("/site-settings/projects/:projectId/preview-pdf", async (req, res) => {
-  await sendProjectPdfPreview({ req, res, kind: "project" });
-});
+router.get(
+  "/site-settings/projects/:projectId/preview-pdf",
+  async (req, res) => {
+    await sendProjectPdfPreview({ req, res, kind: "project" });
+  },
+);
 
 // GET /site-settings/franchise/:projectId/preview-pdf — public first pages only.
-router.get("/site-settings/franchise/:projectId/preview-pdf", async (req, res) => {
-  await sendProjectPdfPreview({ req, res, kind: "franchise" });
-});
+router.get(
+  "/site-settings/franchise/:projectId/preview-pdf",
+  async (req, res) => {
+    await sendProjectPdfPreview({ req, res, kind: "franchise" });
+  },
+);
 
 // GET /site-settings/franchise — public Franchise summary list.
 router.get("/site-settings/franchise", async (req, res) => {

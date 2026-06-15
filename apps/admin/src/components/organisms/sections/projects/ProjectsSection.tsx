@@ -135,6 +135,18 @@ type ContractTemplateOption = {
   isPaid?: boolean;
 };
 
+type TeamMemberOption = {
+  id: string;
+  name: string;
+  role?: string;
+  department?: string | null;
+  bio?: string | null;
+  avatarUrl?: string | null;
+  email?: string | null;
+  phoneNumber?: string | null;
+  isActive?: boolean;
+};
+
 function StudyEditorPanel({
   title,
   description,
@@ -216,6 +228,7 @@ const emptyProject = (
 
 const emptyResponsiblePerson = (): ProjectResponsiblePerson => ({
   id: generateId(),
+  teamMemberId: "",
   name: "",
   role: "",
   responsibility: "",
@@ -228,6 +241,23 @@ function getResponsiblePeople(project?: ProjectItem) {
   return Array.isArray(project?.responsiblePeople)
     ? project.responsiblePeople
     : [];
+}
+
+function normalizeTeamMembers(data: unknown): TeamMemberOption[] {
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((member: any) => ({
+      id: String(member?.id || "").trim(),
+      name: String(member?.name || "").trim(),
+      role: String(member?.role || "").trim(),
+      department: member?.department ?? null,
+      bio: member?.bio ?? null,
+      avatarUrl: member?.avatarUrl ?? null,
+      email: member?.email ?? null,
+      phoneNumber: member?.phoneNumber ?? null,
+      isActive: member?.isActive !== false,
+    }))
+    .filter((member) => member.id && member.name);
 }
 
 function getProjectImages(project?: ProjectItem) {
@@ -484,6 +514,8 @@ export function ProjectsSection({
   >([]);
   const [contractTemplatesLoading, setContractTemplatesLoading] =
     useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMemberOption[]>([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
   const isFranchiseMode = mode === "franchise";
   const isStudyMode = mode === "study";
   const isProjectMode = mode === "project";
@@ -574,6 +606,30 @@ export function ProjectsSection({
       cancelled = true;
     };
   }, [isFranchiseMode]);
+
+  useEffect(() => {
+    if (isStudyMode) return;
+
+    let cancelled = false;
+    setTeamMembersLoading(true);
+
+    adminFetch(`${API}/admin/team`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (cancelled) return;
+        setTeamMembers(normalizeTeamMembers(data));
+      })
+      .catch(() => {
+        if (!cancelled) setTeamMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTeamMembersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isStudyMode]);
 
   const addProject = () => {
     const project = emptyProject(mode);
@@ -668,6 +724,42 @@ export function ProjectsSection({
             }
           : project,
       ),
+    );
+  };
+
+  const addResponsibleFromTeam = (projectId: string, teamMemberId: string) => {
+    const member = teamMembers.find((item) => item.id === teamMemberId);
+    if (!member) return;
+
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const currentPeople = getResponsiblePeople(project);
+        const nextPerson: ProjectResponsiblePerson = {
+          id: generateId(),
+          teamMemberId: member.id,
+          name: member.name,
+          role: member.role || "",
+          responsibility: member.department || member.bio || "",
+          phone: member.phoneNumber || "",
+          email: member.email || "",
+          avatarUrl: member.avatarUrl || "",
+        };
+        const existingIndex = currentPeople.findIndex(
+          (person) => person.teamMemberId === member.id,
+        );
+        return {
+          ...project,
+          responsiblePeople:
+            existingIndex >= 0
+              ? currentPeople.map((person, index) =>
+                  index === existingIndex
+                    ? { ...person, ...nextPerson, id: person.id }
+                    : person,
+                )
+              : [...currentPeople, nextPerson],
+        };
+      }),
     );
   };
 
@@ -1115,7 +1207,9 @@ export function ProjectsSection({
         }
         thumbnailUrl = data.url;
       } catch {
-        thumbnailUrl = await blobToDataUrl(await compressImage(file, 1280, 0.76));
+        thumbnailUrl = await blobToDataUrl(
+          await compressImage(file, 1280, 0.76),
+        );
       }
 
       updateProject(id, "pdfThumbnailUrl", thumbnailUrl);
@@ -1790,14 +1884,43 @@ export function ProjectsSection({
                               хариуцсан хүний нэр, үүрэг, холбоо барих мэдээлэл.
                             </p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => addResponsiblePerson(project.id)}
-                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Ажилтан нэмэх
-                          </button>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              value=""
+                              disabled={
+                                teamMembersLoading || teamMembers.length === 0
+                              }
+                              onChange={(event) => {
+                                addResponsibleFromTeam(
+                                  project.id,
+                                  event.target.value,
+                                );
+                                event.currentTarget.value = "";
+                              }}
+                              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                              aria-label="Баг хамт олноос хариуцагч сонгох"
+                            >
+                              <option value="">
+                                {teamMembersLoading
+                                  ? "Баг уншиж байна..."
+                                  : "Баг хамт олноос сонгох"}
+                              </option>
+                              {teamMembers.map((member) => (
+                                <option key={member.id} value={member.id}>
+                                  {member.name}
+                                  {member.role ? ` · ${member.role}` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => addResponsiblePerson(project.id)}
+                              className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Ажилтан нэмэх
+                            </button>
+                          </div>
                         </div>
 
                         {responsiblePeople.length === 0 ? (
@@ -1831,6 +1954,11 @@ export function ProjectsSection({
                                       <p className="truncate text-sm font-black text-slate-900">
                                         {person.name || "Нэр оруулаагүй"}
                                       </p>
+                                      {person.teamMemberId && (
+                                        <p className="mt-0.5 text-[11px] font-bold text-emerald-600">
+                                          Баг хамт олноос татсан
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                   <button
@@ -2625,8 +2753,7 @@ export function ProjectsSection({
                               />
                             </label>
                             <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-bold text-orange-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50">
-                              {uploadingPdfThumbnailProjectId ===
-                              project.id ? (
+                              {uploadingPdfThumbnailProjectId === project.id ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
                                 <ImagePlus className="h-4 w-4" />
@@ -2811,8 +2938,7 @@ export function ProjectsSection({
                             Хариуцагч
                           </div>
                           <p className="mt-2 truncate text-sm font-black text-slate-900">
-                            {primaryResponsiblePerson.name ||
-                              "Нэр оруулаагүй"}
+                            {primaryResponsiblePerson.name || "Нэр оруулаагүй"}
                           </p>
                           {(primaryResponsiblePerson.responsibility ||
                             primaryResponsiblePerson.role) && (

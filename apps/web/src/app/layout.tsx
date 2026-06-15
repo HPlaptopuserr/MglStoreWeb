@@ -14,6 +14,7 @@ export const metadata: Metadata = {
   description: "Монгол мөнгө Монголдоо",
   icons: {
     icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
       { url: "/favicon.ico" },
       { url: "/icon-48.png", sizes: "48x48", type: "image/png" },
       { url: SITE_ICON_IMAGE, sizes: "512x512", type: "image/png" },

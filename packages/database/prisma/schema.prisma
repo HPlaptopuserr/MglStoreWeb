@@ -464,22 +464,22 @@ model UpgradePlan {
 }
 
 model ServicePost {
-  id             String             @id @default(uuid())
+  id             String                    @id @default(uuid())
   organizationId String
   submittedById  String?
   reviewedById   String?
   title          String
   description    String?
   priceText      String?
-  tags           String[]           @default([])
-  isActive       Boolean            @default(true)
+  tags           String[]                  @default([])
+  isActive       Boolean                   @default(true)
   reviewStatus   VendorContentReviewStatus @default(APPROVED)
   reviewedAt     DateTime?
-  viewCount      Int                @default(0)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  viewCount      Int                       @default(0)
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
   deletedAt      DateTime?
-  organization   Organization       @relation(fields: [organizationId], references: [id])
+  organization   Organization              @relation(fields: [organizationId], references: [id])
   images         ServicePostImage[]
   requests       ServiceRequest[]
 
@@ -568,23 +568,23 @@ enum JoinRequestStatus {
 }
 
 model Branch {
-  id                    String                 @id @default(uuid())
-  organizationId        String
-  name                  String
-  address               String
-  lat                   Float?
-  lng                   Float?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  deletedAt             DateTime?
-  attendanceZones       AttendanceZone[]
-  organization          Organization           @relation(fields: [organizationId], references: [id])
-  posRegisters          PosRegister[]
-  posShifts             PosShift[]
-  posSales              PosSale[]
+  id                     String                  @id @default(uuid())
+  organizationId         String
+  name                   String
+  address                String
+  lat                    Float?
+  lng                    Float?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  deletedAt              DateTime?
+  attendanceZones        AttendanceZone[]
+  organization           Organization            @relation(fields: [organizationId], references: [id])
+  posRegisters           PosRegister[]
+  posShifts              PosShift[]
+  posSales               PosSale[]
   posLoyaltyTransactions PosLoyaltyTransaction[]
-  orderAssignments      Order[]                @relation("OrderAssignedBranch")
-  orderDispatchAttempts OrderDispatchAttempt[]
+  orderAssignments       Order[]                 @relation("OrderAssignedBranch")
+  orderDispatchAttempts  OrderDispatchAttempt[]
 
   @@index([organizationId])
   @@index([deletedAt])
@@ -1320,17 +1320,17 @@ model PaidAccessPurchase {
 }
 
 model MPointLedger {
-  id           String              @id @default(uuid())
-  userId       String
-  type         MPointLedgerType
-  amount       Int
-  balanceAfter Int?
-  sourceType   PaidAccessSourceType?
-  sourceId     String?
-  invoiceId    String?             @unique
-  description  String
-  createdAt    DateTime            @default(now())
-  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String                 @id @default(uuid())
+  userId                String
+  type                  MPointLedgerType
+  amount                Int
+  balanceAfter          Int?
+  sourceType            PaidAccessSourceType?
+  sourceId              String?
+  invoiceId             String?                @unique
+  description           String
+  createdAt             DateTime               @default(now())
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   posLoyaltyTransaction PosLoyaltyTransaction?
 
   @@index([userId, createdAt])
@@ -1354,26 +1354,26 @@ model PosSaleIdempotency {
 }
 
 model Post {
-  id             String        @id @default(uuid())
+  id             String                    @id @default(uuid())
   authorId       String
   organizationId String?
   submittedById  String?
   reviewedById   String?
-  type           PostType      @default(GENERAL)
+  type           PostType                  @default(GENERAL)
   content        String
-  imageUrls      String[]      @default([])
-  tags           String[]      @default([])
-  viewCount      Int           @default(0)
-  likeCount      Int           @default(0)
-  commentCount   Int           @default(0)
-  isPinned       Boolean       @default(false)
-  isOfficial     Boolean       @default(false)
+  imageUrls      String[]                  @default([])
+  tags           String[]                  @default([])
+  viewCount      Int                       @default(0)
+  likeCount      Int                       @default(0)
+  commentCount   Int                       @default(0)
+  isPinned       Boolean                   @default(false)
+  isOfficial     Boolean                   @default(false)
   reviewStatus   VendorContentReviewStatus @default(APPROVED)
   reviewedAt     DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  author         User          @relation("PostAuthor", fields: [authorId], references: [id])
-  organization   Organization? @relation("OrganizationPosts", fields: [organizationId], references: [id])
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  author         User                      @relation("PostAuthor", fields: [authorId], references: [id])
+  organization   Organization?             @relation("OrganizationPosts", fields: [organizationId], references: [id])
   comments       PostComment[]
   likes          PostLike[]
 
@@ -1882,8 +1882,8 @@ model PosShift {
   closingCash    Decimal?     @db.Decimal(18, 2)
   expectedCash   Decimal?     @db.Decimal(18, 2)
   cashDifference Decimal?     @db.Decimal(18, 2)
-  cashCount       Json?
-  cashCountedAt   DateTime?
+  cashCount      Json?
+  cashCountedAt  DateTime?
   note           String?
   openedAt       DateTime     @default(now())
   closedAt       DateTime?
@@ -1925,19 +1925,19 @@ model PosCashDrawerEvent {
 
 /// Structured POS sale record.
 model PosSale {
-  id               String        @id @default(uuid())
-  receiptNo        String        @unique
+  id               String                 @id @default(uuid())
+  receiptNo        String                 @unique
   organizationId   String
   branchId         String
   registerId       String?
   shiftId          String
   cashierId        String
-  status           PosSaleStatus @default(COMPLETED)
+  status           PosSaleStatus          @default(COMPLETED)
   paymentMethod    String
-  subtotal         Decimal       @db.Decimal(18, 2)
-  taxTotal         Decimal       @db.Decimal(18, 2)
-  discountTotal    Decimal       @db.Decimal(18, 2)
-  grandTotal       Decimal       @db.Decimal(18, 2)
+  subtotal         Decimal                @db.Decimal(18, 2)
+  taxTotal         Decimal                @db.Decimal(18, 2)
+  discountTotal    Decimal                @db.Decimal(18, 2)
+  grandTotal       Decimal                @db.Decimal(18, 2)
   note             String?
   ebarimtStatus    String?
   ebarimtBillId    String?
@@ -1951,13 +1951,13 @@ model PosSale {
   voidedAt         DateTime?
   voidReason       String?
   voidedById       String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  organization     Organization  @relation(fields: [organizationId], references: [id])
-  branch           Branch        @relation(fields: [branchId], references: [id])
-  register         PosRegister?  @relation(fields: [registerId], references: [id])
-  shift            PosShift      @relation(fields: [shiftId], references: [id])
-  cashier          User          @relation("PosSaleCashier", fields: [cashierId], references: [id])
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  organization     Organization           @relation(fields: [organizationId], references: [id])
+  branch           Branch                 @relation(fields: [branchId], references: [id])
+  register         PosRegister?           @relation(fields: [registerId], references: [id])
+  shift            PosShift               @relation(fields: [shiftId], references: [id])
+  cashier          User                   @relation("PosSaleCashier", fields: [cashierId], references: [id])
   lines            PosSaleLine[]
   loyalty          PosLoyaltyTransaction?
 
@@ -1970,27 +1970,27 @@ model PosSale {
 }
 
 model PosLoyaltyTransaction {
-  id               String           @id @default(uuid())
-  saleId           String           @unique
-  organizationId   String
-  branchId         String
-  userId           String?
-  customerPhone    String
-  action           MPointLedgerType
-  baseRate         Decimal          @db.Decimal(5, 4)
-  effectiveRate    Decimal          @db.Decimal(5, 4)
-  saleTotal        Decimal          @db.Decimal(18, 2)
-  earnedPoints     Int              @default(0)
-  redeemedPoints   Int              @default(0)
-  membershipBadge  String?
-  note             String?
-  ledgerId         String?          @unique
-  createdAt        DateTime         @default(now())
-  sale             PosSale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  organization     Organization     @relation(fields: [organizationId], references: [id])
-  branch           Branch           @relation(fields: [branchId], references: [id])
-  user             User?            @relation("PosLoyaltyCustomer", fields: [userId], references: [id], onDelete: SetNull)
-  ledger           MPointLedger?    @relation(fields: [ledgerId], references: [id], onDelete: SetNull)
+  id              String           @id @default(uuid())
+  saleId          String           @unique
+  organizationId  String
+  branchId        String
+  userId          String?
+  customerPhone   String
+  action          MPointLedgerType
+  baseRate        Decimal          @db.Decimal(5, 4)
+  effectiveRate   Decimal          @db.Decimal(5, 4)
+  saleTotal       Decimal          @db.Decimal(18, 2)
+  earnedPoints    Int              @default(0)
+  redeemedPoints  Int              @default(0)
+  membershipBadge String?
+  note            String?
+  ledgerId        String?          @unique
+  createdAt       DateTime         @default(now())
+  sale            PosSale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  branch          Branch           @relation(fields: [branchId], references: [id])
+  user            User?            @relation("PosLoyaltyCustomer", fields: [userId], references: [id], onDelete: SetNull)
+  ledger          MPointLedger?    @relation(fields: [ledgerId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
   @@index([branchId, createdAt])
@@ -2148,6 +2148,7 @@ model TeamMember {
   bio         String?
   avatarUrl   String?
   email       String?
+  phoneNumber String?
   linkedinUrl String?
   experience  String?
   skills      String[]

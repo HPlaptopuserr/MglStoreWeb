@@ -31,6 +31,7 @@ export type ProjectItem = {
 
 export type ProjectResponsiblePerson = {
   id?: string;
+  teamMemberId?: string;
   name?: string;
   role?: string;
   responsibility?: string;

@@ -90,6 +90,7 @@ import {
   QrCode,
   FolderKanban,
   GraduationCap,
+  UsersRound,
 } from "lucide-react";
 
 export interface NavLink {
@@ -121,6 +122,13 @@ export const NAV_LINKS: NavLink[] = [
     desc: "Байгууллагын үйлчилгээнүүд",
     icon: Wrench,
     color: "bg-purple-50 text-purple-600",
+  },
+  {
+    href: "/hr",
+    label: "Хүний нөөц",
+    desc: "HR үйлчилгээ, маягт",
+    icon: UsersRound,
+    color: "bg-teal-50 text-teal-600",
   },
   {
     href: "/study",
