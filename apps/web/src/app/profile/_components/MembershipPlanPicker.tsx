@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeCheck, ChevronRight, Gem, Loader2, Medal, ShieldCheck, Sparkles } from "lucide-react";
+import { BadgeCheck, Gem, Loader2, Medal, ShieldCheck, Sparkles } from "lucide-react";
 import type { MembershipType } from "../../association/MembershipSelection";
 import { parsePlanFeatures } from "./membershipPlanUtils";
 
@@ -73,15 +73,7 @@ export function MembershipPlanPicker({
         </p>
       </div>
 
-      <div className="mb-1.5 flex items-center justify-between rounded-full border border-orange-100 bg-orange-50 px-2.5 py-1.5 text-[10px] font-black text-orange-600 md:hidden">
-        <span>{copy?.swipeHint || "Дараагийн tier-үүдийг хажуу тийш гүйлгэж харна"}</span>
-        <span className="inline-flex items-center gap-1">
-          Swipe
-          <ChevronRight size={14} />
-        </span>
-      </div>
-
-      <div className="-mx-2 flex snap-x gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] md:mx-0 md:grid md:gap-3 md:overflow-visible md:px-0 md:pb-0 lg:grid-cols-3">
+      <div className="grid gap-2 md:grid-cols-2 md:gap-3 lg:grid-cols-3">
         {plans.map((plan) => (
           <MembershipTierCard
             key={plan.value}
@@ -138,7 +130,7 @@ function MembershipTierCard({
 
   return (
     <article
-      className={`relative flex min-w-[58vw] snap-start flex-col overflow-hidden rounded-2xl border p-2.5 transition sm:min-w-[360px] sm:p-4 md:min-w-0 ${
+      className={`relative flex min-w-0 flex-col overflow-hidden rounded-2xl border p-2.5 transition sm:p-4 ${
         selected
           ? "border-orange-500 bg-orange-50 shadow-[0_18px_45px_rgba(249,115,22,0.16)]"
           : "border-slate-200 bg-slate-50/70 hover:border-orange-300 hover:bg-white"

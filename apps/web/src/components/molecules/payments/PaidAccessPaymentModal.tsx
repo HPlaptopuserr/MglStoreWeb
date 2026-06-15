@@ -130,14 +130,14 @@ export function PaidAccessPaymentModal({
   const seconds = countdown % 60;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden overscroll-none px-3 py-3 sm:px-4">
+    <div className="fixed inset-0 z-[90] flex items-end justify-center overflow-hidden overscroll-none px-0 pb-0 pt-3 sm:items-center sm:px-4 sm:py-4">
       <button
         className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
         onClick={confirmed ? undefined : onClose}
         aria-label="Хаах"
       />
 
-      <article className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain rounded-3xl bg-[#061836] text-white shadow-2xl sm:max-h-[calc(100vh-2rem)]">
+      <article className="relative z-10 max-h-[calc(100dvh-0.75rem)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain rounded-t-3xl bg-[#061836] text-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl">
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,#164b86_0%,#0a2a57_38%,#061836_100%)]" />
         <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-white/5" />
 

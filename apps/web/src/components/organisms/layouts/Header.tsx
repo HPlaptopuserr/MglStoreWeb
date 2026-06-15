@@ -262,7 +262,7 @@ export const Header = () => {
               <button
                 type="button"
                 onClick={
-                  user ? () => setMobileMenuOpen((open) => !open) : openAuthModal
+                  user ? () => router.push("/profile") : openAuthModal
                 }
                 aria-label={user ? "Профайл цэс" : "Нэвтрэх"}
                 className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors active:bg-gray-100 sm:hidden ${
