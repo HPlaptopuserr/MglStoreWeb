@@ -35,6 +35,12 @@ import {
   scoreProductForSearch,
 } from "../../services/product-discovery.service";
 import {
+  getProductInterestProfile,
+  ProductInteractionType,
+  recordProductInteraction,
+  scoreProductForInterest,
+} from "../../services/product-personalization.service";
+import {
   extractExcelImages,
   uploadBufferToSupabase,
   PRODUCT_COL_MAP,
@@ -367,6 +373,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       string
     >;
     const search = String(req.query.search ?? req.query.q ?? "").trim();
+    const visitorId = String(req.query.visitorId || "").trim();
     const includeExpiredInventory = isTruthyQueryValue(
       req.query.includeExpiredInventory,
     );
@@ -470,6 +477,11 @@ router.get("/products", optionalAuth, async (req, res) => {
       }
     }
 
+    const interestProfile = await getProductInterestProfile({
+      userId: (req as any).user?.userId,
+      visitorId,
+    });
+
     let response = products
       .map((product) => {
         const expiryDate = expiryByProductId.get(product.id) ?? null;
@@ -477,10 +489,18 @@ router.get("/products", optionalAuth, async (req, res) => {
           ...product,
           expiryDate: expiryDate?.toISOString() ?? null,
           searchScore: search ? scoreProductForSearch(product, search) : 0,
+          interestScore: scoreProductForInterest(product, interestProfile),
         };
       })
       .filter((product) => !search || product.searchScore > 0)
       .sort((a, b) => {
+        if (search) {
+          const combinedA = a.searchScore + (a.interestScore || 0) * 0.18;
+          const combinedB = b.searchScore + (b.interestScore || 0) * 0.18;
+          if (combinedB !== combinedA) return combinedB - combinedA;
+        } else if (interestProfile.hasSignals && b.interestScore !== a.interestScore) {
+          return b.interestScore - a.interestScore;
+        }
         if (search && b.searchScore !== a.searchScore) {
           return b.searchScore - a.searchScore;
         }
@@ -502,6 +522,103 @@ router.get("/products", optionalAuth, async (req, res) => {
     return res
       .status(500)
       .json({ message: "Бараа авахад алдаа гарлаа", error: String(error) });
+  }
+});
+
+router.post("/products/events", optionalAuth, async (req, res) => {
+  try {
+    const rawType = String(req.body?.type || "").trim().toUpperCase();
+    if (!(rawType in ProductInteractionType)) {
+      return res.status(400).json({ message: "Дэмжигдэхгүй event төрөл байна" });
+    }
+
+    await recordProductInteraction({
+      userId: (req as any).user?.userId,
+      visitorId: req.body?.visitorId,
+      type: ProductInteractionType[rawType as keyof typeof ProductInteractionType],
+      productId: req.body?.productId,
+      businessCategoryId: req.body?.businessCategoryId,
+      organizationId: req.body?.organizationId,
+      searchQuery: req.body?.searchQuery,
+      source: req.body?.source,
+      metadata: req.body?.metadata,
+    });
+
+    return res.status(202).json({ ok: true });
+  } catch (error) {
+    console.error("record product event error", error);
+    return res.status(500).json({ message: "Event хадгалахад алдаа гарлаа" });
+  }
+});
+
+router.get("/products/recommendations/personalized", optionalAuth, async (req, res) => {
+  try {
+    const rawLimit = parseInt(String(req.query.limit || ""), 10);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(40, rawLimit) : 16;
+    const visitorId = String(req.query.visitorId || "").trim();
+    const interestProfile = await getProductInterestProfile({
+      userId: (req as any).user?.userId,
+      visitorId,
+    });
+
+    const candidateWhere: any = {
+      deletedAt: null,
+      organization: { deletedAt: null, status: "ACTIVE" },
+      isActive: true,
+      reviewStatus: "APPROVED",
+    };
+
+    if (!canBypassAllWebProductsVisibility(req)) {
+      const visibleOrganizationIds = await getWebProductsEnabledOrganizationIds();
+      candidateWhere.organizationId = { in: visibleOrganizationIds };
+    }
+
+    const candidates = await prisma.product.findMany({
+      where: candidateWhere,
+      take: 180,
+      orderBy: { createdAt: "desc" },
+      include: {
+        images: { select: { id: true, url: true } },
+        businessCategory: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            parent: { select: { id: true, name: true, slug: true } },
+          },
+        },
+        organization: { select: { id: true, name: true, logoUrl: true } },
+        discounts: {
+          where: { isActive: true, validUntil: { gte: new Date() } },
+          select: { percent: true, validUntil: true },
+          take: 1,
+        },
+      },
+    });
+
+    const ranked = candidates
+      .map((product) => ({
+        ...product,
+        interestScore: scoreProductForInterest(product, interestProfile),
+      }))
+      .sort((a, b) => {
+        if (interestProfile.hasSignals && b.interestScore !== a.interestScore) {
+          return b.interestScore - a.interestScore;
+        }
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      })
+      .slice(0, limit);
+
+    return res.json({
+      products: ranked,
+      personalized: interestProfile.hasSignals,
+    });
+  } catch (error) {
+    console.error("get personalized recommendations error", error);
+    return res
+      .status(500)
+      .json({ message: "Хувийн санал болгох бараа авахад алдаа гарлаа" });
   }
 });
 
@@ -1099,6 +1216,7 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
     const rawLimit = parseInt(String(req.query.limit || ""), 10);
     const limit =
       Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(20, rawLimit) : 8;
+    const visitorId = String(req.query.visitorId || "").trim();
 
     const source = await prisma.product.findUnique({
       where: { id: req.params.id, deletedAt: null },
@@ -1194,15 +1312,23 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
       },
     });
 
+    const interestProfile = await getProductInterestProfile({
+      userId: (req as any).user?.userId,
+      visitorId,
+    });
+
     const ranked = candidates
       .map((candidate) => ({
         ...candidate,
         similarityScore: scoreProductSimilarity(source, candidate),
+        interestScore: scoreProductForInterest(candidate, interestProfile),
       }))
-      .filter((candidate) => candidate.similarityScore > 0)
+      .filter((candidate) => candidate.similarityScore > 0 || candidate.interestScore > 0)
       .sort((a, b) => {
-        if (b.similarityScore !== a.similarityScore) {
-          return b.similarityScore - a.similarityScore;
+        const aScore = a.similarityScore + (a.interestScore || 0) * 0.28;
+        const bScore = b.similarityScore + (b.interestScore || 0) * 0.28;
+        if (bScore !== aScore) {
+          return bScore - aScore;
         }
         return (
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()

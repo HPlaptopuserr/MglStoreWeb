@@ -6,6 +6,10 @@ import { API } from "@/lib/api";
 import { addToCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth-context";
 import { resolveMemberPricing } from "@/lib/member-pricing";
+import {
+  appendProductVisitorId,
+  trackProductInteraction,
+} from "@/lib/product-interest";
 import { ProductDetailShell, type ProductDetailProduct } from "./_components/ProductDetailShell";
 
 function useCountdown(target?: string | null) {
@@ -37,7 +41,7 @@ function useCountdown(target?: string | null) {
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { user } = useAuth();
+  const { user, authFetch } = useAuth();
   const [product, setProduct] = useState<ProductDetailProduct | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImg, setActiveImg] = useState(0);
@@ -48,12 +52,12 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${API}/products/${id}`)
+    authFetch(`${API}/products/${id}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => setProduct(data))
       .catch(() => setProduct(null))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [authFetch, id]);
 
   useEffect(() => {
     try {
@@ -69,8 +73,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     if (!product) return;
 
     const loadRecommendations = async () => {
-      const response = await fetch(
-        `${API}/products/${encodeURIComponent(product.id)}/recommendations?limit=8`,
+      const params = appendProductVisitorId(new URLSearchParams({ limit: "8" }));
+      const response = await authFetch(
+        `${API}/products/${encodeURIComponent(product.id)}/recommendations?${params.toString()}`,
       );
       const data = response.ok ? await response.json() : {};
       const normalize = (items: unknown) =>
@@ -82,11 +87,19 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       setVendorProducts(normalize(data.vendorProducts));
     };
 
+    trackProductInteraction({
+      type: "VIEW",
+      productId: product.id,
+      businessCategoryId: product.businessCategory?.id,
+      organizationId: product.organization?.id,
+      source: "product-detail",
+    });
+
     loadRecommendations().catch(() => {
       setRelatedProducts([]);
       setVendorProducts([]);
     });
-  }, [product]);
+  }, [authFetch, product]);
 
   const discount = product?.discounts?.[0];
   const isMember = Boolean(user?.membership?.active || user?.isPrime);
@@ -115,6 +128,15 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       : [...ids, product.id];
     localStorage.setItem("mgl:wishlist", JSON.stringify(next));
     setWishlisted(next.includes(product.id));
+    if (next.includes(product.id)) {
+      trackProductInteraction({
+        type: "WISHLIST",
+        productId: product.id,
+        businessCategoryId: product.businessCategory?.id,
+        organizationId: product.organization?.id,
+        source: "product-detail",
+      });
+    }
   };
 
   const shareProduct = async () => {
@@ -128,6 +150,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         setShareCopied(true);
         window.setTimeout(() => setShareCopied(false), 1800);
       }
+      trackProductInteraction({
+        type: "SHARE",
+        productId: product.id,
+        businessCategoryId: product.businessCategory?.id,
+        organizationId: product.organization?.id,
+        source: "product-detail",
+      });
     } catch {
       // User cancelled the native share sheet.
     }

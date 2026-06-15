@@ -34,4 +34,5 @@ export {
   MPointLedgerType,
   CardTerminalRequestStatus,
   AssociationMembershipType,
+  ProductInteractionType,
 } from "@prisma/client";

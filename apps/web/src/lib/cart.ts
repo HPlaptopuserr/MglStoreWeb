@@ -1,5 +1,7 @@
 // Simple localStorage-backed cart store with custom events for cross-component sync
 
+import { trackProductInteraction } from "./product-interest";
+
 export interface CartItem {
   id: string;
   name: string;
@@ -40,6 +42,11 @@ export function addToCart(item: Omit<CartItem, "quantity"> & { quantity?: number
     items.push({ ...item, quantity: item.quantity ?? 1 });
   }
   writeCart(items);
+  trackProductInteraction({
+    type: "ADD_TO_CART",
+    productId: item.id,
+    source: "cart",
+  });
 }
 
 export function removeFromCart(id: string) {

@@ -5,6 +5,10 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import {
+  appendProductVisitorId,
+  trackProductInteraction,
+} from "@/lib/product-interest";
 import type {
   MarketplaceProjectBanner,
   MarketplaceServicesPromo,
@@ -335,7 +339,7 @@ export default function ProductsPage() {
 }
 
 function ProductsContent() {
-  const { user } = useAuth();
+  const { user, authFetch } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const categoryParam = searchParams.get("category");
@@ -420,9 +424,10 @@ function ProductsContent() {
         const params = new URLSearchParams();
         if (activeCategory) params.set("businessCategoryId", activeCategory);
         if (debouncedSearch) params.set("search", debouncedSearch);
+        appendProductVisitorId(params);
         const query = params.toString();
         const url = `${API}/products${query ? `?${query}` : ""}`;
-        const res = await fetch(url);
+        const res = await authFetch(url);
         if (res.ok) {
           const data = await res.json();
           setApiProducts(Array.isArray(data) ? data : []);
@@ -431,6 +436,25 @@ function ProductsContent() {
       finally { setProductsLoading(false); }
     };
     loadProducts();
+  }, [activeCategory, authFetch, debouncedSearch]);
+
+  useEffect(() => {
+    if (!activeCategory) return;
+    trackProductInteraction({
+      type: "CATEGORY_VIEW",
+      businessCategoryId: activeCategory,
+      source: "products-page",
+    });
+  }, [activeCategory]);
+
+  useEffect(() => {
+    if (debouncedSearch.length < 2) return;
+    trackProductInteraction({
+      type: "SEARCH",
+      businessCategoryId: activeCategory,
+      searchQuery: debouncedSearch,
+      source: "products-page",
+    });
   }, [activeCategory, debouncedSearch]);
 
   useEffect(() => {

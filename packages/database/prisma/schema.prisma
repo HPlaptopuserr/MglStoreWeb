@@ -72,6 +72,8 @@ model User {
   posSales                     PosSale[]                 @relation("PosSaleCashier")
   posLoyaltyTransactions       PosLoyaltyTransaction[]   @relation("PosLoyaltyCustomer")
   contracts                    Contract[]
+  productInteractions          ProductInteraction[]
+  productInterestScores        ProductInterestScore[]
 
   @@index([role])
   @@index([isPrime])
@@ -294,6 +296,8 @@ model BusinessCategory {
   parent    BusinessCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children  BusinessCategory[] @relation("CategoryHierarchy")
   products  Product[]
+  productInteractions ProductInteraction[]
+  productInterestScores ProductInterestScore[]
 
   @@index([isActive])
   @@index([sortOrder])
@@ -376,6 +380,8 @@ model Organization {
   posSales                     PosSale[]
   posLoyaltyTransactions       PosLoyaltyTransaction[]
   contracts                    Contract[]
+  productInteractions          ProductInteraction[]
+  productInterestScores        ProductInterestScore[]
   upgradePlans                 OrgUpgradePlan[]
   cardTerminalRequests         CardTerminalRequest[]
 
@@ -707,6 +713,8 @@ model Product {
   stockRequestItems    WarehouseStockRequestItem[] @relation("StockRequestProducts")
   posSaleLines         PosSaleLine[]
   returnItems          DispatchReturnItem[]        @relation("ReturnProducts")
+  productInteractions  ProductInteraction[]
+  productInterestScores ProductInterestScore[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
@@ -718,6 +726,73 @@ model Product {
   @@index([name])
   @@index([barcode])
   @@index([supplyType])
+}
+
+enum ProductInteractionType {
+  VIEW
+  SEARCH
+  CATEGORY_VIEW
+  ADD_TO_CART
+  WISHLIST
+  SHARE
+  RECOMMENDATION_CLICK
+  PURCHASE
+}
+
+model ProductInteraction {
+  id                 String                 @id @default(uuid())
+  userId             String?
+  visitorId          String?
+  productId          String?
+  businessCategoryId String?
+  organizationId     String?
+  type               ProductInteractionType
+  searchQuery        String?
+  weight             Float                  @default(1)
+  source             String?
+  metadata           Json?
+  createdAt          DateTime               @default(now())
+  user               User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  product            Product?               @relation(fields: [productId], references: [id], onDelete: SetNull)
+  businessCategory   BusinessCategory?      @relation(fields: [businessCategoryId], references: [id], onDelete: SetNull)
+  organization       Organization?          @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([visitorId, createdAt])
+  @@index([productId, createdAt])
+  @@index([businessCategoryId, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([type, createdAt])
+}
+
+model ProductInterestScore {
+  id                 String            @id @default(uuid())
+  userId             String?
+  visitorId          String?
+  productId          String?
+  businessCategoryId String?
+  organizationId     String?
+  keyword            String?
+  score              Float             @default(0)
+  lastEventAt        DateTime           @default(now())
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product            Product?           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  businessCategory   BusinessCategory?  @relation(fields: [businessCategoryId], references: [id], onDelete: Cascade)
+  organization       Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId], name: "user_product_interest")
+  @@unique([visitorId, productId], name: "visitor_product_interest")
+  @@unique([userId, businessCategoryId], name: "user_category_interest")
+  @@unique([visitorId, businessCategoryId], name: "visitor_category_interest")
+  @@unique([userId, organizationId], name: "user_organization_interest")
+  @@unique([visitorId, organizationId], name: "visitor_organization_interest")
+  @@unique([userId, keyword], name: "user_keyword_interest")
+  @@unique([visitorId, keyword], name: "visitor_keyword_interest")
+  @@index([userId, score])
+  @@index([visitorId, score])
+  @@index([lastEventAt])
 }
 
 model ProductRequest {
