@@ -3,6 +3,17 @@ services:
     name: mgl-web
     rootDir: .
     runtime: node
+    buildFilter:
+      paths:
+        - apps/web/**
+        - packages/ui/**
+        - packages/types/**
+        - packages/config/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - render.yaml
     buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/web
     startCommand: cd apps/web && pnpm exec next start -H 0.0.0.0 -p $PORT
     envVars:
@@ -15,6 +26,17 @@ services:
     name: mgl-admin
     rootDir: .
     runtime: node
+    buildFilter:
+      paths:
+        - apps/admin/**
+        - packages/ui/**
+        - packages/types/**
+        - packages/config/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - render.yaml
     buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/admin
     startCommand: HOST=0.0.0.0 PORT=$PORT node apps/admin/.next/standalone/apps/admin/server.js
     envVars:
@@ -27,6 +49,17 @@ services:
     name: mgl-vendor
     rootDir: .
     runtime: node
+    buildFilter:
+      paths:
+        - apps/vendor/**
+        - packages/ui/**
+        - packages/types/**
+        - packages/config/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - render.yaml
     buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/vendor
     startCommand: cd apps/vendor && pnpm exec next start -H 0.0.0.0 -p $PORT
     envVars:
@@ -39,6 +72,17 @@ services:
     name: mgl-warehouse
     rootDir: .
     runtime: node
+    buildFilter:
+      paths:
+        - apps/warehouse/**
+        - packages/ui/**
+        - packages/types/**
+        - packages/config/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - render.yaml
     buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/warehouse
     startCommand: cd apps/warehouse && pnpm exec next start -H 0.0.0.0 -p $PORT
     envVars:
@@ -51,6 +95,17 @@ services:
     name: mgl-org
     rootDir: .
     runtime: node
+    buildFilter:
+      paths:
+        - apps/org/**
+        - packages/ui/**
+        - packages/types/**
+        - packages/config/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - render.yaml
     buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/org
     startCommand: cd apps/org && pnpm exec next start -H 0.0.0.0 -p $PORT
     envVars:
@@ -63,6 +118,17 @@ services:
     name: mgl-api
     rootDir: .
     runtime: node
+    buildFilter:
+      paths:
+        - apps/api/**
+        - packages/database/**
+        - packages/types/**
+        - packages/config/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - render.yaml
     buildCommand: pnpm install --frozen-lockfile && pnpm exec prisma migrate deploy --schema=packages/database/prisma/schema.prisma && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/api
     startCommand: cd apps/api && pnpm start
     envVars:
