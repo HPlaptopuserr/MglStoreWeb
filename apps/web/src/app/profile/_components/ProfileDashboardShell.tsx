@@ -7,8 +7,10 @@ import {
   BadgeCheck,
   Bell,
   Coins,
+  Crown,
   FileArchive,
   FileText,
+  Sparkles,
   Settings,
   ShieldCheck,
   Truck,
@@ -116,11 +118,14 @@ export function ProfileStatsGrid({
         ? "Идэвхтэй эрх, хөнгөлөлт нээгдсэн"
         : "Upgrade хийж эрхээ нээнэ",
       details: isMember
-        ? ["Premium benefit идэвхтэй", "M point давхар цугларна"]
+        ? ["Member үнэ нээгдсэн", "Файл, сургалт, M Point давуу эрхтэй"]
         : ["Төлбөрөө баталгаажуулна", "Файл, сургалт, хөнгөлөлт нээгдэнэ"],
-      actionLabel: isMember ? "Дэлгэрэнгүй" : "Идэвхжүүлэх",
-      icon: BadgeCheck,
-      className: "bg-emerald-50 text-emerald-600",
+      actionLabel: isMember ? "Эрх ашиглах" : "Идэвхжүүлэх",
+      icon: isMember ? Crown : BadgeCheck,
+      className: isMember
+        ? "bg-amber-300 text-slate-950"
+        : "bg-emerald-50 text-emerald-600",
+      featured: isMember,
       onClick: isMember ? onLibraryClick : onMembershipClick,
     },
     {
@@ -175,49 +180,95 @@ export function ProfileStatsGrid({
             key={stat.label}
             type="button"
             onClick={stat.onClick}
-            className="group flex min-h-[76px] min-w-0 items-center gap-3 rounded-[18px] border border-white bg-white p-3 text-left shadow-[0_10px_28px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 hover:border-orange-100 hover:shadow-[0_18px_46px_rgba(15,23,42,0.11)] focus:outline-none focus:ring-2 focus:ring-orange-300 sm:block sm:min-h-0 sm:p-5 sm:shadow-[0_16px_45px_rgba(15,23,42,0.08)]"
+            className={`group relative flex min-h-[76px] min-w-0 items-center gap-3 overflow-hidden rounded-[18px] border p-3 text-left transition hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-orange-300 sm:block sm:min-h-0 sm:p-5 ${
+              stat.featured
+                ? "border-amber-200/60 bg-[linear-gradient(135deg,#15171b_0%,#2b2419_62%,#4a3416_100%)] text-white shadow-[0_18px_55px_rgba(120,72,20,0.24)] hover:border-amber-200 hover:shadow-[0_22px_70px_rgba(120,72,20,0.30)]"
+                : "border-white bg-white shadow-[0_10px_28px_rgba(15,23,42,0.07)] hover:border-orange-100 hover:shadow-[0_18px_46px_rgba(15,23,42,0.11)] sm:shadow-[0_16px_45px_rgba(15,23,42,0.08)]"
+            }`}
           >
+            {stat.featured && (
+              <>
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-200/80 to-transparent" />
+                <Sparkles className="absolute right-4 top-4 text-amber-200/55" size={18} />
+              </>
+            )}
             <div className="flex shrink-0 items-center justify-between gap-2 sm:items-start">
               <span
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12 ${stat.className}`}
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12 ${stat.className} ${
+                  stat.featured ? "shadow-lg shadow-amber-500/20" : ""
+                }`}
               >
                 <Icon size={18} />
               </span>
-              <span className="hidden min-w-0 truncate text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 sm:block sm:text-[10px]">
+              <span
+                className={`hidden min-w-0 truncate text-[9px] font-black uppercase tracking-[0.16em] sm:block sm:text-[10px] ${
+                  stat.featured ? "text-amber-100/60" : "text-slate-400"
+                }`}
+              >
                 {stat.label}
               </span>
             </div>
             <div className="min-w-0 flex-1 sm:mt-4">
               <div className="flex min-w-0 items-center justify-between gap-2 sm:block">
-                <span className="truncate text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 sm:hidden">
+                <span
+                  className={`truncate text-[10px] font-black uppercase tracking-[0.14em] sm:hidden ${
+                    stat.featured ? "text-amber-100/60" : "text-slate-400"
+                  }`}
+                >
                   {stat.label}
                 </span>
-                <span className="shrink-0 text-[11px] font-black text-orange-500 sm:hidden">
+                <span
+                  className={`shrink-0 text-[11px] font-black sm:hidden ${
+                    stat.featured ? "text-amber-200" : "text-orange-500"
+                  }`}
+                >
                   {stat.actionLabel}
                 </span>
               </div>
-              <p className="mt-0.5 truncate text-lg font-black leading-tight text-slate-950 sm:mt-0 sm:text-xl">
+              <p
+                className={`mt-0.5 truncate text-lg font-black leading-tight sm:mt-0 sm:text-xl ${
+                  stat.featured ? "text-white" : "text-slate-950"
+                }`}
+              >
                 {stat.value}
               </p>
-              <p className="mt-1 line-clamp-1 text-[11px] font-bold leading-4 text-slate-400 sm:mt-2 sm:text-xs">
+              <p
+                className={`mt-1 line-clamp-1 text-[11px] font-bold leading-4 sm:mt-2 sm:text-xs ${
+                  stat.featured ? "text-amber-100/65" : "text-slate-400"
+                }`}
+              >
                 {stat.helper}
               </p>
             </div>
-            <div className="hidden sm:mt-3 sm:block sm:space-y-1.5 sm:border-t sm:border-slate-100 sm:pt-3">
+            <div
+              className={`hidden sm:mt-3 sm:block sm:space-y-1.5 sm:border-t sm:pt-3 ${
+                stat.featured ? "border-amber-100/15" : "border-slate-100"
+              }`}
+            >
               {stat.details.map((detail) => (
                 <p
                   key={detail}
-                  className="line-clamp-1 text-[10px] font-bold leading-4 text-slate-500 sm:text-[11px]"
+                  className={`line-clamp-1 text-[10px] font-bold leading-4 sm:text-[11px] ${
+                    stat.featured ? "text-amber-50/78" : "text-slate-500"
+                  }`}
                 >
                   {detail}
                 </p>
               ))}
             </div>
-            <span className="hidden text-orange-500 transition group-hover:gap-2 sm:mt-3 sm:inline-flex sm:items-center sm:gap-1.5 sm:text-xs sm:font-black">
+            <span
+              className={`hidden transition group-hover:gap-2 sm:mt-3 sm:inline-flex sm:items-center sm:gap-1.5 sm:text-xs sm:font-black ${
+                stat.featured ? "text-amber-200" : "text-orange-500"
+              }`}
+            >
               {stat.actionLabel}
               <ArrowRight size={13} />
             </span>
-            <ArrowRight className="h-4 w-4 shrink-0 text-orange-400 sm:hidden" />
+            <ArrowRight
+              className={`h-4 w-4 shrink-0 sm:hidden ${
+                stat.featured ? "text-amber-200" : "text-orange-400"
+              }`}
+            />
           </button>
         );
       })}

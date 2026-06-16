@@ -3,8 +3,11 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import {
+  BadgeCheck,
   Coins,
   Crown,
+  Gem,
+  Sparkles,
   Phone,
   ShieldCheck,
   TrendingUp,
@@ -37,12 +40,36 @@ export function ProfileHero({
   const displayName = user.fullName?.trim() || "Хэрэглэгч";
   const contact = user.email || user.phone || "Мэдээллээ бүрэн бөглөнө үү";
   const membershipPhone = user.membership?.discountPhone || user.phone || "";
+  const expiryLabel = user.membership?.expiresAt
+    ? new Date(user.membership.expiresAt).toLocaleDateString("mn-MN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      })
+    : null;
 
   return (
-    <section className="relative overflow-hidden rounded-[22px] bg-slate-950 px-4 py-5 text-white shadow-[0_18px_55px_rgba(15,23,42,0.18)] sm:px-7 md:px-8 md:py-9 md:shadow-[0_26px_80px_rgba(15,23,42,0.22)]">
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(15,23,42,0.96)_0%,rgba(15,23,42,0.88)_46%,rgba(67,50,65,0.92)_100%)]" />
-      <div className="absolute -right-16 -top-20 h-72 w-72 rounded-full bg-orange-500/12 blur-3xl" />
-      <div className="absolute bottom-0 left-1/3 h-32 w-80 rounded-full bg-blue-500/10 blur-3xl" />
+    <section
+      className={`relative overflow-hidden rounded-[22px] px-4 py-5 text-white shadow-[0_18px_55px_rgba(15,23,42,0.18)] sm:px-7 md:px-8 md:py-9 md:shadow-[0_26px_80px_rgba(15,23,42,0.22)] ${
+        isPrime
+          ? "bg-[#121315] ring-1 ring-amber-200/35"
+          : "bg-slate-950"
+      }`}
+    >
+      <div
+        className={`absolute inset-0 ${
+          isPrime
+            ? "bg-[linear-gradient(135deg,#090d17_0%,#17191d_48%,#3b2c18_100%)]"
+            : "bg-[linear-gradient(135deg,rgba(15,23,42,0.96)_0%,rgba(15,23,42,0.88)_46%,rgba(67,50,65,0.92)_100%)]"
+        }`}
+      />
+      {isPrime && (
+        <>
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-200/70 to-transparent" />
+          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_70%_20%,rgba(251,191,36,0.22),transparent_34%),linear-gradient(120deg,transparent,rgba(251,191,36,0.08))]" />
+          <div className="absolute bottom-0 left-0 h-20 w-full bg-[linear-gradient(0deg,rgba(251,191,36,0.10),transparent)]" />
+        </>
+      )}
 
       <div className="relative grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-center lg:gap-6">
         <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
@@ -74,7 +101,7 @@ export function ProfileHero({
                 {user.role === "USER" ? "Хэрэглэгч" : user.role}
               </span>
               {isPrime && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300/18 px-3 py-1.5 text-[11px] font-black text-amber-100 ring-1 ring-amber-200/25 sm:text-xs">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300/20 px-3 py-1.5 text-[11px] font-black text-amber-50 ring-1 ring-amber-200/40 shadow-[0_0_26px_rgba(251,191,36,0.14)] sm:text-xs">
                   <Crown size={14} />
                   {membershipTierLabel}
                 </span>
@@ -82,7 +109,7 @@ export function ProfileHero({
             </div>
 
             <div className="mt-4 grid gap-2 sm:max-w-xl sm:grid-cols-[minmax(0,1fr)_auto] md:mt-5">
-              <div className="flex min-w-0 items-center gap-3 rounded-[18px] border border-amber-200/20 bg-amber-300/12 px-4 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.12)] ring-1 ring-white/5 backdrop-blur">
+              <div className="flex min-w-0 items-center gap-3 rounded-[18px] border border-amber-200/25 bg-amber-300/12 px-4 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.12)] ring-1 ring-white/5 backdrop-blur">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-300 text-slate-950 shadow-lg shadow-amber-500/20">
                   <Coins size={20} />
                 </span>
@@ -101,16 +128,24 @@ export function ProfileHero({
               </div>
             </div>
 
-            <div className="mt-4 md:mt-5">
-              <button
-                type="button"
-                onClick={onUpgradeClick}
-                className="inline-flex min-h-11 w-full items-center justify-center gap-3 rounded-full bg-white px-5 text-sm font-black text-slate-900 shadow-lg shadow-black/20 transition hover:bg-orange-500 hover:text-white sm:w-auto sm:px-7"
-              >
-                <Upload size={17} />
-                Гишүүнчлэл upgrade
-              </button>
-            </div>
+            {isPrime ? (
+              <div className="mt-4 grid gap-2 sm:max-w-2xl sm:grid-cols-3 md:mt-5">
+                <MemberBenefit icon={<Gem size={16} />} label="Member үнэ" value="Нээгдсэн" />
+                <MemberBenefit icon={<BadgeCheck size={16} />} label="Хөнгөлөлт" value={membershipPhone || "Идэвхтэй"} />
+                <MemberBenefit icon={<Sparkles size={16} />} label="Дуусах" value={expiryLabel || "Хугацаагүй"} />
+              </div>
+            ) : (
+              <div className="mt-4 md:mt-5">
+                <button
+                  type="button"
+                  onClick={onUpgradeClick}
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-3 rounded-full bg-white px-5 text-sm font-black text-slate-900 shadow-lg shadow-black/20 transition hover:bg-orange-500 hover:text-white sm:w-auto sm:px-7"
+                >
+                  <Upload size={17} />
+                  Гишүүнчлэл upgrade
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -121,13 +156,51 @@ export function ProfileHero({
         )}
       </div>
 
-      {isPrime && !accountSwitcher && (
-        <div className="relative mt-6 hidden rounded-2xl border border-amber-200/20 bg-amber-300/10 px-4 py-3 text-xs font-black leading-5 text-amber-50 sm:inline-flex sm:rounded-full sm:py-2">
-          Membership таних тэмдэг идэвхтэй. Утасны дугаараараа хөнгөлөлт эдлэх
-          боломжтой.
+      {isPrime && (
+        <div className="relative mt-6 grid gap-3 rounded-[18px] border border-amber-200/30 bg-black/18 p-3 text-amber-50 ring-1 ring-white/5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-4">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-300 text-slate-950 shadow-lg shadow-amber-500/20">
+            <Crown size={20} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-black">Таны Membership бүрэн идэвхтэй</p>
+            <p className="mt-0.5 text-xs font-bold text-amber-100/70">
+              Member үнэ, файл access, сургалт болон M Point давуу эрхүүд нээгдсэн.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onUpgradeClick}
+            className="inline-flex min-h-10 items-center justify-center rounded-full border border-amber-200/40 bg-amber-200/12 px-4 text-xs font-black text-amber-50 transition hover:bg-amber-300 hover:text-slate-950"
+          >
+            Эрхээ удирдах
+          </button>
         </div>
       )}
     </section>
+  );
+}
+
+function MemberBenefit({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-amber-200/25 bg-white/[0.08] px-3 py-2.5 shadow-[0_14px_30px_rgba(0,0,0,0.12)]">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-300/18 text-amber-100">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-[9px] font-black uppercase tracking-[0.16em] text-amber-100/55">
+          {label}
+        </p>
+        <p className="truncate text-xs font-black text-white">{value}</p>
+      </div>
+    </div>
   );
 }
 
@@ -140,12 +213,10 @@ function MembershipHint({
 }) {
   return (
     <div className="rounded-[18px] border border-white/10 bg-white/10 p-5 text-sm font-bold leading-6 text-white/68 shadow-2xl shadow-black/10 backdrop-blur sm:block">
-      <span className="text-5xl font-black leading-none text-orange-400/60">
-        ”
-      </span>
+      <Crown className="mb-3 text-amber-200" size={28} />
       <p className="-mt-2">
         {isPrime
-          ? "Membership таних тэмдэг идэвхтэй. Утасны дугаараараа хөнгөлөлт эдлэх боломжтой."
+          ? "Та MGL Store Member эрхтэй. Хөнгөлөлт, access, point давуу эрхүүд таны account дээр нээгдсэн."
           : "Membership идэвхжүүлснээр файл, сургалт болон хөнгөлөлтийн боломжууд нэг дор нээгдэнэ."}
       </p>
       {isPrime && membershipPhone && (
