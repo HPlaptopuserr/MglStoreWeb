@@ -70,9 +70,7 @@ export default function ProfilePage() {
 
   const membershipTierLabel = getMembershipTierLabel(user);
   const managedOrganizations = getManagedOrganizations(user);
-  const hasOrganizationContext = Boolean(
-    managedOrganizations.length > 0,
-  );
+  const hasOrganizationContext = Boolean(managedOrganizations.length > 0);
   const isOrdersFocused = searchParams.get("tab") === "orders";
 
   if (isOrdersFocused) {
@@ -110,7 +108,9 @@ export default function ProfilePage() {
       />
       <ProfileStatsGrid
         isMember={Boolean(user.membership?.active || user.isPrime)}
-        libraryCount={accountData.purchases.length + accountData.contracts.length}
+        libraryCount={
+          accountData.purchases.length + accountData.contracts.length
+        }
         membershipTierLabel={membershipTierLabel}
         ordersCount={ordersData.orders.length}
         points={accountData.points}
@@ -127,6 +127,7 @@ export default function ProfilePage() {
             contracts={accountData.contracts}
             points={accountData.points}
             history={accountData.pointHistory}
+            transactions={accountData.transactions}
             loading={accountData.loading}
           />
         ) : (

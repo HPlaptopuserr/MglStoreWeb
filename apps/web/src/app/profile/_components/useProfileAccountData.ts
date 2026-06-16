@@ -3,15 +3,24 @@
 import { useCallback, useEffect, useState } from "react";
 import { API } from "@/lib/api";
 import type { AuthUser } from "@/lib/auth-context";
-import type { AccountContract, AccountPurchase, MPointHistory } from "./types";
+import type {
+  AccountContract,
+  AccountPurchase,
+  AccountTransaction,
+  MPointHistory,
+} from "./types";
 
 type AuthFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
-export function useProfileAccountData(user: AuthUser | null, authFetch: AuthFetch) {
+export function useProfileAccountData(
+  user: AuthUser | null,
+  authFetch: AuthFetch,
+) {
   const [purchases, setPurchases] = useState<AccountPurchase[]>([]);
   const [contracts, setContracts] = useState<AccountContract[]>([]);
   const [points, setPoints] = useState(0);
   const [pointHistory, setPointHistory] = useState<MPointHistory[]>([]);
+  const [transactions, setTransactions] = useState<AccountTransaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -21,11 +30,12 @@ export function useProfileAccountData(user: AuthUser | null, authFetch: AuthFetc
     setLoading(true);
     setError("");
     try {
-      const [purchaseRes, pointRes, historyRes, contractRes] =
+      const [purchaseRes, pointRes, historyRes, transactionRes, contractRes] =
         await Promise.all([
           authFetch(`${API}/customer/purchases`),
           authFetch(`${API}/customer/loyalty/points`),
           authFetch(`${API}/customer/loyalty/history`),
+          authFetch(`${API}/customer/transactions`),
           authFetch(`${API}/contracts/my`),
         ]);
 
@@ -40,6 +50,12 @@ export function useProfileAccountData(user: AuthUser | null, authFetch: AuthFetc
       if (historyRes.ok) {
         const data = await historyRes.json().catch(() => []);
         setPointHistory(Array.isArray(data) ? data : []);
+      }
+      if (transactionRes.ok) {
+        const data = await transactionRes.json().catch(() => ({}));
+        setTransactions(
+          Array.isArray(data.transactions) ? data.transactions : [],
+        );
       }
       if (contractRes.ok) {
         const data = await contractRes.json().catch(() => ({}));
@@ -83,5 +99,6 @@ export function useProfileAccountData(user: AuthUser | null, authFetch: AuthFetc
     points,
     purchases,
     refresh,
+    transactions,
   };
 }

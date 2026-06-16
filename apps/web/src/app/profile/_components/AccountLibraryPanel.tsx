@@ -2,6 +2,7 @@ import {
   Coins,
   Download,
   FileText,
+  History,
   Loader2,
   ShoppingBag,
   Sparkles,
@@ -11,22 +12,59 @@ import {
   ExternalLink,
   ReceiptText,
 } from "lucide-react";
-import type { AccountContract, AccountPurchase, MPointHistory } from "./types";
+import type {
+  AccountContract,
+  AccountPurchase,
+  AccountTransaction,
+  MPointHistory,
+} from "./types";
 
 function sourceLabel(sourceType: AccountPurchase["sourceType"]) {
   if (sourceType === "FRANCHISE") return "Franchise";
   if (sourceType === "SERVICE") return "Үйлчилгээ";
+  if (sourceType === "POS_SALE") return "POS";
   return "Төсөл";
 }
 
 function sourcePaymentLabel(sourceType: AccountPurchase["sourceType"]) {
   if (sourceType === "FRANCHISE") return "Franchise access";
   if (sourceType === "SERVICE") return "Үйлчилгээний access";
+  if (sourceType === "POS_SALE") return "POS худалдан авалт";
   return "Төслийн материал";
 }
 
 function formatMnt(value: number) {
   return `₮${Number(value || 0).toLocaleString("mn-MN")}`;
+}
+
+const TRANSACTION_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Хүлээгдэж байна",
+  PAID: "Төлөгдсөн",
+  FAILED: "Амжилтгүй",
+  REFUNDED: "Буцаалт",
+  CANCELLED: "Цуцлагдсан",
+};
+
+const TRANSACTION_METHOD_LABEL: Record<string, string> = {
+  CASH: "Бэлэн",
+  CARD: "Карт",
+  BANK_TRANSFER: "Данс",
+  ONLINE: "Online",
+  POS: "POS",
+  QPAY: "QPay",
+};
+
+function transactionTypeLabel(type: AccountTransaction["type"]) {
+  if (type === "ACCESS_PURCHASE") return "Access";
+  if (type === "ORDER_PAYMENT") return "Захиалга";
+  return "Захиалга";
+}
+
+function transactionStatusClass(status: string) {
+  if (status === "PAID") return "bg-emerald-50 text-emerald-700";
+  if (status === "PENDING") return "bg-amber-50 text-amber-700";
+  if (status === "REFUNDED") return "bg-sky-50 text-sky-700";
+  return "bg-slate-100 text-slate-600";
 }
 
 function PurchasePaymentSummary({ purchase }: { purchase: AccountPurchase }) {
@@ -75,12 +113,14 @@ export function AccountLibraryPanel({
   points,
   history,
   loading,
+  transactions,
 }: {
   purchases: AccountPurchase[];
   contracts: AccountContract[];
   points: number;
   history: MPointHistory[];
   loading: boolean;
+  transactions: AccountTransaction[];
 }) {
   const hasLibraryItems = purchases.length > 0 || contracts.length > 0;
 
@@ -313,6 +353,80 @@ export function AccountLibraryPanel({
             </div>
           )}
         </div>
+      </div>
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <History size={18} className="text-orange-500" />
+              <h3 className="text-base font-black text-slate-950">
+                Гүйлгээний түүх
+              </h3>
+            </div>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              Захиалга, үйлчилгээ, файл/access худалдан авалтын төлбөрийн
+              хөдөлгөөн.
+            </p>
+          </div>
+          <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+            {transactions.length} гүйлгээ
+          </span>
+        </div>
+
+        {transactions.length === 0 ? (
+          <p className="rounded-2xl bg-slate-50 p-5 text-sm font-bold leading-6 text-slate-500">
+            Одоогоор төлбөрийн гүйлгээ бүртгэгдээгүй байна.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {transactions.slice(0, 12).map((transaction) => (
+              <div
+                key={transaction.id}
+                className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-black text-orange-600">
+                      {transactionTypeLabel(transaction.type)}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-black ${transactionStatusClass(transaction.status)}`}
+                    >
+                      {TRANSACTION_STATUS_LABEL[transaction.status] ||
+                        transaction.status}
+                    </span>
+                    {transaction.method && (
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-600">
+                        {TRANSACTION_METHOD_LABEL[transaction.method] ||
+                          transaction.method}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 line-clamp-1 text-sm font-black text-slate-950">
+                    {transaction.title}
+                  </p>
+                  <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500">
+                    {transaction.description}
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-400">
+                    <span>
+                      {new Date(transaction.occurredAt).toLocaleString("mn-MN")}
+                    </span>
+                    {transaction.reference && (
+                      <span className="max-w-[220px] truncate">
+                        Ref: {transaction.reference}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <span className="shrink-0 text-right text-base font-black text-slate-950">
+                  {formatMnt(transaction.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

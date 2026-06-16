@@ -9,7 +9,7 @@ export type ProfileTab =
 
 export type AccountPurchase = {
   id: string;
-  sourceType: "PROJECT" | "FRANCHISE" | "SERVICE";
+  sourceType: "PROJECT" | "FRANCHISE" | "SERVICE" | "POS_SALE";
   title: string;
   fileUrl?: string | null;
   fileName?: string | null;
@@ -42,6 +42,19 @@ export type MPointHistory = {
   rawAmount: number;
   balanceAfter?: number | null;
   date: string;
+};
+
+export type AccountTransaction = {
+  id: string;
+  type: "ACCESS_PURCHASE" | "ORDER" | "ORDER_PAYMENT";
+  title: string;
+  description: string;
+  amount: number;
+  status: string;
+  method?: string | null;
+  reference?: string | null;
+  sourceType?: string | null;
+  occurredAt: string;
 };
 
 export type ProfileOrderItem = {
