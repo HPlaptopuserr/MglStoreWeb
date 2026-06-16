@@ -73,7 +73,7 @@ export function ProjectPdfPreview({
           <div>
             <p>
               {hasFullAccess
-                ? "Member access идэвхтэй"
+                ? "Access идэвхтэй"
                 : `Үнэгүй preview: эхний ${previewPages} хуудас`}
             </p>
             <p className="mt-0.5 text-xs font-bold text-white/60">
@@ -90,7 +90,9 @@ export function ProjectPdfPreview({
               : "border-orange-200/20 bg-orange-200/10 text-orange-100"
           }`}
         >
-          {hasFullAccess ? "PDF нээгдсэн" : `Бүтэн PDF ${formatMnt(project.price)}`}
+          {hasFullAccess
+            ? "PDF нээгдсэн"
+            : `Бүтэн PDF ${formatMnt(project.price)}`}
         </span>
       </div>
       <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#19191c] shadow-[0_22px_70px_rgba(0,0,0,0.28)]">
@@ -114,7 +116,7 @@ export function ProjectPdfPreview({
           </p>
           <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-orange-100/85">
             {hasFullAccess
-              ? "Таны membership идэвхтэй тул энэ материалыг бүтнээр нь нээж татаж болно."
+              ? "Та энэ материалыг авсан тул бүтнээр нь нээж татаж болно."
               : `Эхний ${previewPages} хуудасны preview-г thumbnail байдлаар харуулж байна. Үргэлжлүүлж бүтэн PDF үзэх бол төлбөрөөр нээнэ.`}
           </p>
         </div>
@@ -164,7 +166,7 @@ export function LockedProjectPreviewModal({
             </h2>
             <p className="mt-2 text-sm font-bold text-orange-200">
               {hasFullAccess
-                ? "Member эрхээр PDF-г бүтнээр нь нээж татна."
+                ? "Энэ материал таны эрх дээр нээгдсэн байна."
                 : `Эхний ${previewPages} хуудсыг үнэгүй үзээд, бүтэн мэдээллийг төлбөрөөр нээнэ.`}
             </p>
           </div>

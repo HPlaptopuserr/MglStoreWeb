@@ -18,10 +18,18 @@ import type {
   ProjectShowcaseSection,
 } from "@/components/molecules/projects/project-types";
 
+type CustomerPurchase = {
+  sourceType?: string;
+  itemId?: string;
+};
+
 export default function ProjectsPage() {
   const router = useRouter();
   const { user, authFetch } = useAuth();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [ownedProjectIds, setOwnedProjectIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [projectShowcaseSections, setProjectShowcaseSections] = useState<
     ProjectShowcaseSection[]
   >([]);
@@ -36,9 +44,18 @@ export default function ProjectsPage() {
   const [paymentSession, setPaymentSession] =
     useState<PaidAccessPaymentSession | null>(null);
   const hasMemberAccess = Boolean(user?.membership?.active || user?.isPrime);
+  const projectsWithAccess = useMemo(
+    () =>
+      projects.map((project) =>
+        ownedProjectIds.has(project.id)
+          ? { ...project, hasPurchased: true }
+          : project,
+      ),
+    [ownedProjectIds, projects],
+  );
   const showcaseGroups = useMemo(() => {
     const projectById = new Map(
-      projects.map((project) => [project.id, project]),
+      projectsWithAccess.map((project) => [project.id, project]),
     );
     const configured = projectShowcaseSections
       .map((section) => ({
@@ -51,7 +68,9 @@ export default function ProjectsPage() {
 
     if (configured.length > 0) return configured;
 
-    const featuredProjects = projects.filter((project) => project.isFeatured);
+    const featuredProjects = projectsWithAccess.filter(
+      (project) => project.isFeatured,
+    );
     return featuredProjects.length > 0
       ? [
           {
@@ -63,7 +82,7 @@ export default function ProjectsPage() {
           },
         ]
       : [];
-  }, [projectShowcaseSections, projects]);
+  }, [projectShowcaseSections, projectsWithAccess]);
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -90,6 +109,38 @@ export default function ProjectsPage() {
     fetchProjects();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchOwnedProjects = async () => {
+      if (!user?.id) {
+        setOwnedProjectIds(new Set());
+        return;
+      }
+
+      const res = await authFetch(`${API}/customer/purchases`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || cancelled) return;
+
+      const purchases = Array.isArray(data.purchases)
+        ? (data.purchases as CustomerPurchase[])
+        : [];
+      setOwnedProjectIds(
+        new Set(
+          purchases
+            .filter((purchase) => purchase.sourceType === "PROJECT")
+            .map((purchase) => String(purchase.itemId || "").trim())
+            .filter(Boolean),
+        ),
+      );
+    };
+
+    void fetchOwnedProjects();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, user?.id]);
+
   const openProjectDetailPage = (projectId: string, invoiceId?: string) => {
     const query = invoiceId
       ? `?${new URLSearchParams({ invoiceId }).toString()}`
@@ -105,7 +156,8 @@ export default function ProjectsPage() {
   };
 
   const openProject = (project: ProjectItem) => {
-    if (project.price && project.price > 0 && hasMemberAccess) {
+    const hasUnlockedAccess = hasMemberAccess || Boolean(project.hasPurchased);
+    if (project.price && project.price > 0 && hasUnlockedAccess) {
       openProjectDetailPage(project.id);
       return;
     }
@@ -136,6 +188,9 @@ export default function ProjectsPage() {
         throw new Error(data.message || "Төлбөрийн QR үүсгэхэд алдаа гарлаа");
       }
       if (data.free) {
+        if (data.alreadyPurchased) {
+          setOwnedProjectIds((prev) => new Set(prev).add(project.id));
+        }
         setPreviewProject(null);
         openProjectDetailPage(project.id);
         return;
@@ -183,7 +238,7 @@ export default function ProjectsPage() {
               />
             ))}
           </div>
-        ) : projects.length === 0 ? (
+        ) : projectsWithAccess.length === 0 ? (
           <div className="relative z-10 rounded-xl border border-dashed border-slate-300 bg-white p-14 text-center shadow-sm">
             <p className="text-lg font-bold text-slate-500">
               Одоогоор нийтлэгдсэн төсөл алга байна.
@@ -212,12 +267,12 @@ export default function ProjectsPage() {
                 </h2>
               </div>
               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-600 shadow-sm">
-                {projects.length}
+                {projectsWithAccess.length}
               </span>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {projects.map((project, index) => (
+              {projectsWithAccess.map((project, index) => (
                 <ProjectGridCard
                   key={project.id}
                   project={project}
@@ -249,7 +304,9 @@ export default function ProjectsPage() {
           kindLabel="Төсөл"
           project={previewProject}
           opening={openingId === previewProject.id}
-          hasFullAccess={hasMemberAccess}
+          hasFullAccess={
+            hasMemberAccess || Boolean(previewProject.hasPurchased)
+          }
           onClose={() => setPreviewProject(null)}
           onUnlock={() => unlockProject(previewProject)}
         />
@@ -269,7 +326,6 @@ export default function ProjectsPage() {
           }}
         />
       )}
-
     </div>
   );
 }

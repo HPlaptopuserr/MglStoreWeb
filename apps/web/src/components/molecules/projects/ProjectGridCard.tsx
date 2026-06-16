@@ -30,6 +30,7 @@ export function ProjectGridCard({
   const images = getProjectImages(project);
   const primaryImage = images[0];
   const isFree = !project.price || project.price <= 0;
+  const hasPurchased = !isFree && Boolean(project.hasPurchased);
   const responsiblePeople = getResponsiblePeople(project);
   const visibleResponsiblePeople = responsiblePeople.slice(0, 2);
 
@@ -57,7 +58,11 @@ export function ProjectGridCard({
           {project.category || "Төсөл"}
         </div>
         <div className="absolute right-4 top-4 rounded-full bg-orange-500 px-3.5 py-1.5 text-[11px] font-black uppercase text-white shadow-lg shadow-orange-900/25 ring-1 ring-white/35">
-          {isFree ? "Үнэгүй" : formatMnt(project.price)}
+          {hasPurchased
+            ? "Авсан"
+            : isFree
+              ? "Үнэгүй"
+              : formatMnt(project.price)}
         </div>
         <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between gap-3">
           <div className="inline-flex items-center gap-2 rounded-full bg-slate-950/70 px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-white shadow-sm backdrop-blur-md">
@@ -163,7 +168,11 @@ export function ProjectGridCard({
             <Loader2 className="h-5 w-5 animate-spin" />
           ) : (
             <>
-              {isFree ? "Дэлгэрэнгүй үзэх" : "3 хуудас preview үзэх"}
+              {hasPurchased
+                ? "Бүтнээр нээх"
+                : isFree
+                  ? "Дэлгэрэнгүй үзэх"
+                  : "3 хуудас preview үзэх"}
               <ArrowRight className="h-4 w-4" />
             </>
           )}

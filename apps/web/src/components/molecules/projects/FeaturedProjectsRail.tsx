@@ -86,6 +86,7 @@ export function FeaturedProjectsRail({
           const images = getProjectImages(project);
           const primaryImage = images[0];
           const isFree = !project.price || project.price <= 0;
+          const hasPurchased = !isFree && Boolean(project.hasPurchased);
           const primaryResponsiblePerson = getResponsiblePeople(project)[0];
 
           return (
@@ -123,7 +124,11 @@ export function FeaturedProjectsRail({
                     {project.category || "Төсөл"}
                   </p>
                   <span className="shrink-0 rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-black text-orange-600">
-                    {isFree ? "Үнэгүй" : formatMnt(project.price)}
+                    {hasPurchased
+                      ? "Авсан"
+                      : isFree
+                        ? "Үнэгүй"
+                        : formatMnt(project.price)}
                   </span>
                 </div>
 
@@ -162,9 +167,11 @@ export function FeaturedProjectsRail({
                 >
                   {openingId === project.id
                     ? "Нээж байна..."
-                    : isFree
-                      ? "Дэлгэрэнгүй"
-                      : "3 хуудас preview"}
+                    : hasPurchased
+                      ? "Бүтнээр нээх"
+                      : isFree
+                        ? "Дэлгэрэнгүй"
+                        : "3 хуудас preview"}
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </div>

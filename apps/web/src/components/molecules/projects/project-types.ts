@@ -26,6 +26,7 @@ export type ProjectItem = {
   isActive?: boolean;
   isFeatured?: boolean;
   featuredOrder?: number;
+  hasPurchased?: boolean;
   responsiblePeople?: ProjectResponsiblePerson[];
 };
 
