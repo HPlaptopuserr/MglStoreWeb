@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
@@ -28,6 +28,7 @@ import {
   Banknote,
   CheckCircle2,
   Filter,
+  HandCoins,
   Loader2,
   Monitor,
   Info,
@@ -123,6 +124,63 @@ type CardPaymentRun = {
   cancelled: boolean;
 };
 
+type PosListMode = "products" | "credits";
+
+type PosCreditListLine = {
+  id: string;
+  productId: string;
+  productName: string;
+  productSku: string | null;
+  qty: number;
+  unitPrice: number;
+  taxAmount: number;
+  discount: number;
+  lineTotal: number;
+};
+
+type PosCreditListItem = {
+  id: string;
+  customerId: string | null;
+  saleId: string;
+  receiptNo: string;
+  status: string;
+  targetType: string;
+  borrowerId: string;
+  borrowerName: string;
+  borrowerPhone: string | null;
+  employeeId: string | null;
+  employeeName: string | null;
+  principalAmount: number;
+  monthlyInterestRate: number;
+  totalInterest: number;
+  totalDue: number;
+  termMonths: number;
+  dueDate: string | null;
+  paidAt: string | null;
+  paidAmount: number | null;
+  paymentMethod: string | null;
+  paymentNote: string | null;
+  createdAt: string;
+  lines: PosCreditListLine[];
+};
+
+type PosCreditListResponse = {
+  credits: PosCreditListItem[];
+};
+
+type PosCreditCustomerGroup = {
+  key: string;
+  borrowerName: string;
+  borrowerPhone: string | null;
+  employeeName: string | null;
+  creditCount: number;
+  principalAmount: number;
+  totalInterest: number;
+  totalDue: number;
+  rows: Array<{ credit: PosCreditListItem; line: PosCreditListLine }>;
+  creditIds: Set<string>;
+};
+
 const initialLoyaltyState: CheckoutLoyaltyState = {
   mode: "NONE",
   phone: "",
@@ -165,6 +223,31 @@ const formatDateTime = (value?: string | null) => {
   if (Number.isNaN(date.getTime())) return "-";
   return `${date.getFullYear()} оны ${date.getMonth() + 1}-р сарын ${date.getDate()} ${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`;
 };
+
+function buildCreditRepaymentCartLines(credit: PosCreditListItem): CartLine[] {
+  const principal = credit.principalAmount || credit.lines.reduce((sum, line) => sum + line.lineTotal, 0);
+  const multiplier = principal > 0 ? credit.totalDue / principal : 1;
+  let allocated = 0;
+
+  return credit.lines.map((line, index) => {
+    const isLast = index === credit.lines.length - 1;
+    const lineDue = roundMoney(
+      isLast ? Math.max(0, credit.totalDue - allocated) : Math.max(0, line.lineTotal * multiplier),
+    );
+    allocated = roundMoney(allocated + lineDue);
+
+    return {
+      productId: `credit:${credit.id}:${line.id}`,
+      name: `${line.productName} (${line.qty}ш) - ${credit.employeeName || credit.borrowerName}`,
+      imageUrl: null,
+      qty: 1,
+      stockQty: 1,
+      unitPrice: lineDue,
+      taxRate: 0,
+      discountAmount: 0,
+    };
+  });
+}
 
 const SHIFT_HISTORY_RANGE_OPTIONS = [
   { id: "7", label: "7 хоног", description: "Сүүлийн 7 хоногийн", days: 7 },
@@ -329,6 +412,13 @@ export default function PosDemoPage() {
   const [scanStatus, setScanStatus] = useState<"idle" | "success" | "not-found">("idle");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [paymentEntries, setPaymentEntries] = useState<CheckoutPaymentEntry[]>([]);
+  const [listMode, setListMode] = useState<PosListMode>("products");
+  const [creditSales, setCreditSales] = useState<PosCreditListItem[]>([]);
+  const [creditSalesLoading, setCreditSalesLoading] = useState(false);
+  const [creditSalesError, setCreditSalesError] = useState("");
+  const [selectedCreditRepayment, setSelectedCreditRepayment] = useState<PosCreditListItem | null>(null);
+  const [expandedCreditCustomerKey, setExpandedCreditCustomerKey] = useState<string | null>(null);
+  const [creditRepaymentSubmitting, setCreditRepaymentSubmitting] = useState(false);
   const [loyalty, setLoyalty] = useState<CheckoutLoyaltyState>(initialLoyaltyState);
   const [view, setView] = useState<PosView>("register");
   const [displayOpened, setDisplayOpened] = useState(false);
@@ -393,6 +483,32 @@ export default function PosDemoPage() {
   const { state, totals, addProduct, dispatch } = usePosCart();
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
   const { shift, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn } = useCurrentShift();
+  const reloadCreditSales = useCallback(async () => {
+    if (!organizationId) {
+      setCreditSales([]);
+      setExpandedCreditCustomerKey(null);
+      return;
+    }
+
+    setCreditSalesLoading(true);
+    setCreditSalesError("");
+    try {
+      const params = new URLSearchParams({ organizationId, limit: "100" });
+      if (registerBranchId) params.set("branchId", registerBranchId);
+
+      const res = await authFetch(`${API}/pos/credit-sales?${params.toString()}`);
+      const data = (await res.json().catch(() => ({}))) as Partial<PosCreditListResponse> & { message?: string };
+      if (!res.ok) {
+        throw new Error(data.message || "Зээлийн жагсаалт авахад алдаа гарлаа");
+      }
+      setCreditSales(Array.isArray(data.credits) ? data.credits : []);
+      setExpandedCreditCustomerKey(null);
+    } catch (error: any) {
+      setCreditSalesError(error?.message || "Зээлийн жагсаалт авахад алдаа гарлаа");
+    } finally {
+      setCreditSalesLoading(false);
+    }
+  }, [organizationId, registerBranchId]);
   const [receiptHistory, setReceiptHistory] = useState<PosReceipt[]>([]);
   const [selectedReceiptId, setSelectedReceiptId] = useState("");
   const [receiptHistoryLoading, setReceiptHistoryLoading] = useState(false);
@@ -450,6 +566,15 @@ export default function PosDemoPage() {
     },
     [reloadProducts, reloadReceiptHistory],
   );
+
+  useEffect(() => {
+    if (!posEnabled) {
+      setCreditSales([]);
+      setExpandedCreditCustomerKey(null);
+      return;
+    }
+    void reloadCreditSales();
+  }, [posEnabled, reloadCreditSales]);
 
   const clearProgressTicker = () => {
     if (progressTickerRef.current !== null) {
@@ -1069,6 +1194,77 @@ export default function PosDemoPage() {
     );
   }, [products, lowerSearch, selectedCategory]);
 
+  const filteredCreditGroups = useMemo(() => {
+    const groups = new Map<string, PosCreditCustomerGroup>();
+
+    creditSales.forEach((credit) => {
+      const creditText = [
+        credit.borrowerName,
+        credit.borrowerPhone,
+        credit.employeeName,
+        credit.receiptNo,
+        credit.borrowerId,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const matchingLines = credit.lines.filter((line) => {
+        if (!lowerSearch) return true;
+        const lineText = [
+          line.productName,
+          line.productSku,
+          line.productId,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return creditText.includes(lowerSearch) || lineText.includes(lowerSearch);
+      });
+
+      if (matchingLines.length === 0) return;
+
+      const groupKey =
+        credit.customerId ||
+        `${credit.targetType}:${credit.borrowerId}:${credit.employeeId || ""}:${credit.borrowerPhone || ""}`;
+      const existing =
+        groups.get(groupKey) ||
+        {
+          key: groupKey,
+          borrowerName: credit.borrowerName,
+          borrowerPhone: credit.borrowerPhone,
+          employeeName: credit.employeeName,
+          creditCount: 0,
+          principalAmount: 0,
+          totalInterest: 0,
+          totalDue: 0,
+          rows: [],
+          creditIds: new Set<string>(),
+        };
+
+      if (!existing.creditIds.has(credit.id)) {
+        existing.creditIds.add(credit.id);
+        existing.creditCount += 1;
+        existing.principalAmount = roundMoney(existing.principalAmount + credit.principalAmount);
+        existing.totalInterest = roundMoney(existing.totalInterest + credit.totalInterest);
+        existing.totalDue = roundMoney(existing.totalDue + credit.totalDue);
+      }
+
+      matchingLines.forEach((line) => {
+        existing.rows.push({ credit, line });
+      });
+      groups.set(groupKey, existing);
+    });
+
+    return Array.from(groups.values()).sort((left, right) =>
+      left.borrowerName.localeCompare(right.borrowerName, "mn"),
+    );
+  }, [creditSales, lowerSearch]);
+
+  const filteredCreditRowCount = useMemo(
+    () => filteredCreditGroups.reduce((sum, group) => sum + group.rows.length, 0),
+    [filteredCreditGroups],
+  );
+
   const confirmedPaid = useMemo(
     () =>
       roundMoney(
@@ -1105,6 +1301,7 @@ export default function PosDemoPage() {
     remaining <= 0 &&
     !hasPendingPayment &&
     !isCardProcessing &&
+    !creditRepaymentSubmitting &&
     (loyalty.mode === "NONE" || (loyalty.found && loyalty.phone.replace(/\D/g, "").length >= 6));
 
   const selectedByCode = useMemo(() => {
@@ -1114,6 +1311,125 @@ export default function PosDemoPage() {
       products.find((item) => productMatchesCode(item, normalized)) || null
     );
   }, [products, lastScannedCode]);
+
+  const resetCreditRepaymentMode = () => {
+    if (cardPaymentRunRef.current) {
+      cardPaymentRunRef.current.cancelled = true;
+      cardPaymentRunRef.current.abortController.abort();
+      cardPaymentRunRef.current = null;
+    }
+    clearProgressTicker();
+    setIsCardProcessing(false);
+    setAutoCheckoutActive(false);
+    setPaymentEntries([]);
+    setQpayModal(null);
+    setSelectedCreditRepayment(null);
+    setPaymentMethod("CASH");
+    setLoyalty(initialLoyaltyState);
+    clientSaleIdRef.current = null;
+  };
+
+  const addRegisterProduct = (product: (typeof products)[number]) => {
+    if (selectedCreditRepayment) {
+      dispatch({ type: "clear-cart" });
+      resetCreditRepaymentMode();
+    }
+    return addProduct(product);
+  };
+
+  const handleSelectCreditRepayment = (credit: PosCreditListItem) => {
+    const repaymentLines = buildCreditRepaymentCartLines(credit);
+    if (repaymentLines.length === 0) {
+      setScanStatus("not-found");
+      setScanMessage("Зээлийн барааны мэдээлэл хоосон байна.");
+      return;
+    }
+
+    resetCreditRepaymentMode();
+    dispatch({ type: "clear-cart" });
+    repaymentLines.forEach((line) => {
+      dispatch({ type: "add-line", payload: line });
+    });
+    setSelectedCreditRepayment(credit);
+    setPaymentMethod("CASH");
+    setView("register");
+    setScanStatus("success");
+    setScanMessage(`${credit.borrowerName} зээлийн төлөлт сонгогдлоо.`);
+    paymentSectionRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
+
+  const finalizeCreditRepayment = async () => {
+    const credit = selectedCreditRepayment;
+    if (!credit) return;
+
+    const confirmedPayments = paymentEntries.filter((item) => item.status === "confirmed");
+    if (confirmedPayments.length !== 1) {
+      setScanStatus("not-found");
+      setScanMessage("Зээлийн төлөлтийг нэг төлбөрөөр бүтэн баталгаажуулна уу.");
+      return;
+    }
+
+    const payment = confirmedPayments[0];
+    if (payment.method === "CREDIT") {
+      setScanStatus("not-found");
+      setScanMessage("Зээлийг дахин зээлээр төлөх боломжгүй.");
+      return;
+    }
+
+    if (payment.method === "CASH" && !shift?.id) {
+      setScanStatus("not-found");
+      setScanMessage("Бэлэн төлөлт бүртгэхийн өмнө ээлжээ нээнэ үү.");
+      setShowShiftPanel(true);
+      return;
+    }
+
+    const paidAmount = roundMoney(payment.amount);
+    const dueAmount = roundMoney(credit.totalDue);
+    if (Math.abs(paidAmount - dueAmount) > 0.01) {
+      setScanStatus("not-found");
+      setScanMessage(`Зээлийн төлөх дүн ${formatMoney(dueAmount)} байна.`);
+      return;
+    }
+
+    setCreditRepaymentSubmitting(true);
+    try {
+      const response = await authFetch(`${API}/pos/credit-sales/${encodeURIComponent(credit.id)}/pay`, {
+        method: "POST",
+        body: JSON.stringify({
+          amount: paidAmount,
+          paymentMethod: payment.method,
+          qpayInvoiceId: payment.invoiceId,
+          cardAttemptId: payment.attemptId,
+          shiftId: shift?.id,
+          note: `POS credit repayment ${credit.receiptNo}`,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || "Зээлийн төлөлт бүртгэхэд алдаа гарлаа");
+      }
+
+      dispatch({ type: "clear-cart" });
+      resetCreditRepaymentMode();
+      setListMode("credits");
+      setScanStatus("success");
+      setScanMessage(`${credit.borrowerName} зээлийн төлөлт амжилттай бүртгэгдлээ.`);
+      showSuccessOverlay("Зээлийн төлөлт амжилттай");
+      void reloadCreditSales();
+      void refreshCashDrawerSummary();
+    } catch (error: any) {
+      setScanStatus("not-found");
+      setScanMessage(error?.message || "Зээлийн төлөлт бүртгэхэд алдаа гарлаа");
+    } finally {
+      setCreditRepaymentSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedCreditRepayment) return;
+    if (!state.cart.some((line) => line.productId.startsWith("credit:"))) return;
+    dispatch({ type: "clear-cart" });
+  }, [selectedCreditRepayment, state.cart, dispatch]);
 
   const processScan = (code: string) => {
     const normalized = code.trim();
@@ -1130,7 +1446,7 @@ export default function PosDemoPage() {
       return;
     }
 
-    const result = addProduct(found);
+    const result = addRegisterProduct(found);
     if (!result.ok) {
       setScanMessage(`Нөөц хүрэлцэхгүй: ${found.name}`);
       setScanStatus("not-found");
@@ -1194,6 +1510,11 @@ export default function PosDemoPage() {
 
   const handleCreateDemoSale = async () => {
     if (state.cart.length === 0) return;
+
+    if (selectedCreditRepayment) {
+      await finalizeCreditRepayment();
+      return;
+    }
 
     const confirmedPayments = paymentEntries.filter((item) => item.status === "confirmed");
 
@@ -1325,6 +1646,7 @@ export default function PosDemoPage() {
       setSelectedReceiptId(finalReceipt.id);
       reloadProducts();
       reloadReceiptHistory();
+      void reloadCreditSales();
       void refreshCashDrawerSummary();
       printReceipt(finalReceipt);
     } catch (e: any) {
@@ -1338,6 +1660,12 @@ export default function PosDemoPage() {
   };
 
   const addPaymentEntry = async (method: PaymentMethod, amount: number, credit?: SaleCreditPaymentMeta) => {
+    if (selectedCreditRepayment && method === "CREDIT") {
+      setScanStatus("not-found");
+      setScanMessage("Зээлийн төлөлтийг дахин зээлээр хийх боломжгүй.");
+      return;
+    }
+
     const safeAmount = roundMoney(Math.max(0, Math.min(amount, remaining)));
     if (safeAmount <= 0) return;
 
@@ -1637,6 +1965,11 @@ export default function PosDemoPage() {
   };
 
   const handlePaymentMethodChange = (method: PaymentMethod) => {
+    if (selectedCreditRepayment && method === "CREDIT") {
+      setScanStatus("not-found");
+      setScanMessage("Зээлийн төлөлтийг дахин зээлээр хийх боломжгүй.");
+      return;
+    }
     setPaymentMethod(method);
     if (method !== "QR") {
       setQpayModal(null);
@@ -2635,7 +2968,7 @@ export default function PosDemoPage() {
             setAutoCheckoutActive(false);
             setView("register");
           }}
-          disabled={saleLoading || state.cart.length === 0 || isCardProcessing}
+          disabled={saleLoading || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing}
         />
       )}
 
@@ -2976,7 +3309,7 @@ export default function PosDemoPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const result = addProduct(selectedByCode);
+                    const result = addRegisterProduct(selectedByCode);
                     if (!result.ok) {
                       setScanMessage(`Нөөц хүрэлцэхгүй: ${selectedByCode.name}`);
                       setScanStatus("not-found");
@@ -3007,18 +3340,51 @@ export default function PosDemoPage() {
           <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
             <div className="mb-2 flex shrink-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className="text-sm font-black text-slate-950">Барааны жагсаалт</h2>
+                <h2 className="text-sm font-black text-slate-950">
+                  {listMode === "products" ? "Барааны жагсаалт" : "Зээлийн жагсаалт"}
+                </h2>
                 <p className="text-[11px] text-slate-500">
-                  {filtered.length} бараа харагдаж байна
+                  {listMode === "products"
+                    ? `${filtered.length} бараа харагдаж байна`
+                    : `${filteredCreditGroups.length} зээлдэгч, ${filteredCreditRowCount} бараа байна`}
                 </p>
               </div>
               <div className="flex flex-1 items-center justify-end gap-2">
+              <div className="inline-flex h-9 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setListMode("products")}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 text-xs font-black transition ${
+                    listMode === "products"
+                      ? "bg-white text-blue-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <Barcode size={14} />
+                  Бараа
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setListMode("credits");
+                    void reloadCreditSales();
+                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 text-xs font-black transition ${
+                    listMode === "credits"
+                      ? "bg-white text-amber-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <HandCoins size={14} />
+                  Зээл
+                </button>
+              </div>
               <div className="relative w-full max-w-xs">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Barcode, SKU, нэрээр хайх"
+                  placeholder={listMode === "products" ? "Barcode, SKU, нэрээр хайх" : "Зээлдэгч, утас, бараагаар хайх"}
                   className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
                 />
               </div>
@@ -3031,7 +3397,7 @@ export default function PosDemoPage() {
               </button>
               <button
                 type="button"
-                onClick={reloadProducts}
+                onClick={listMode === "products" ? reloadProducts : () => void reloadCreditSales()}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
               >
                 <RefreshCw size={15} />
@@ -3040,6 +3406,7 @@ export default function PosDemoPage() {
               </div>
             </div>
 
+            {listMode === "products" && (
             <div className="mb-2 flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1.5">
               {categories.map((category) => (
                 <button
@@ -3056,8 +3423,136 @@ export default function PosDemoPage() {
                 </button>
               ))}
             </div>
+            )}
 
-            {loading ? (
+            {listMode === "credits" ? (
+              creditSalesLoading ? (
+                <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+                  <Loader2 className="animate-spin text-slate-400" size={20} />
+                </div>
+              ) : creditSalesError ? (
+                <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+                  {creditSalesError}
+                </div>
+              ) : filteredCreditGroups.length === 0 ? (
+                <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center">
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">Зээл олдсонгүй</p>
+                    <p className="mt-1 text-xs text-slate-500">Зээлдэгчийн нэр, утас эсвэл бараагаар хайгаарай</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-amber-200">
+                  <table className="min-w-full text-left text-xs">
+                    <thead className="sticky top-0 z-10 bg-amber-50 text-[10px] font-black uppercase tracking-wide text-amber-700">
+                      <tr>
+                        <th className="w-12 px-2 py-2">№</th>
+                        <th className="px-2 py-2">Зээлдэгч</th>
+                        <th className="px-2 py-2">Зээлсэн бараа</th>
+                        <th className="px-2 py-2 text-right">Тоо</th>
+                        <th className="px-2 py-2 text-right">Төлөх дүн</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-amber-100">
+                      {filteredCreditGroups.map((group, groupIndex) => {
+                        const isExpanded =
+                          expandedCreditCustomerKey === group.key ||
+                          group.rows.some(({ credit }) => selectedCreditRepayment?.id === credit.id);
+                        const totalQty = group.rows.reduce((sum, row) => sum + row.line.qty, 0);
+
+                        return (
+                          <Fragment key={group.key}>
+                            <tr
+                              role="button"
+                              tabIndex={0}
+                              onClick={() =>
+                                setExpandedCreditCustomerKey(isExpanded ? null : group.key)
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  setExpandedCreditCustomerKey(isExpanded ? null : group.key);
+                                }
+                              }}
+                              className="cursor-pointer bg-amber-50/50 transition hover:bg-amber-100/70"
+                            >
+                              <td className="px-2 py-3 font-black text-amber-700">
+                                <span className="inline-flex items-center gap-1">
+                                  {isExpanded ? <MinusCircle size={14} /> : <PlusCircle size={14} />}
+                                  {groupIndex + 1}
+                                </span>
+                              </td>
+                              <td className="px-2 py-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-black text-slate-950">{group.borrowerName}</span>
+                                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-amber-700 ring-1 ring-amber-200">
+                                    {group.creditCount} зээл
+                                  </span>
+                                </div>
+                                <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                                  {group.borrowerPhone || group.employeeName || "-"}
+                                </p>
+                              </td>
+                              <td className="px-2 py-3 font-semibold text-slate-600">
+                                {group.rows.length} мөр
+                              </td>
+                              <td className="px-2 py-3 text-right font-black tabular-nums text-slate-900">
+                                {totalQty}
+                              </td>
+                              <td className="px-2 py-3 text-right">
+                                <p className="font-black tabular-nums text-amber-700">
+                                  {formatMoney(group.totalDue)}
+                                </p>
+                                <p className="text-[10px] font-semibold text-slate-400">
+                                  Хүү: {formatMoney(group.totalInterest)}
+                                </p>
+                              </td>
+                            </tr>
+                            {isExpanded &&
+                              group.rows.map(({ credit, line }, rowIndex) => (
+                                <tr
+                                  key={`${credit.id}:${line.id}`}
+                                  onClick={() => handleSelectCreditRepayment(credit)}
+                                  className={`cursor-pointer transition ${
+                                    selectedCreditRepayment?.id === credit.id
+                                      ? "bg-blue-50"
+                                      : "hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <td className="px-2 py-2.5 font-semibold text-slate-400">
+                                    {groupIndex + 1}.{rowIndex + 1}
+                                  </td>
+                                  <td className="px-2 py-2.5 font-mono text-[11px] text-slate-500">
+                                    <p>{credit.receiptNo}</p>
+                                    <p className="mt-0.5">{formatDateTime(credit.createdAt)}</p>
+                                  </td>
+                                  <td className="px-2 py-2.5">
+                                    <p className="font-black text-slate-900">{line.productName}</p>
+                                    <p className="mt-0.5 font-mono text-[11px] text-slate-500">
+                                      {line.productSku || line.productId}
+                                    </p>
+                                  </td>
+                                  <td className="px-2 py-2.5 text-right font-black tabular-nums text-slate-900">
+                                    {line.qty}
+                                  </td>
+                                  <td className="px-2 py-2.5 text-right">
+                                    <p className="font-black tabular-nums text-slate-950">
+                                      {formatMoney(credit.totalDue)}
+                                    </p>
+                                    <p className="text-[10px] font-semibold text-slate-400">
+                                      Дараад төлөх
+                                    </p>
+                                  </td>
+                                </tr>
+                              ))}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : loading ? (
               <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
                 <Loader2 className="animate-spin text-slate-400" size={20} />
               </div>
@@ -3093,7 +3588,7 @@ export default function PosDemoPage() {
                           key={product.id}
                           onClick={() => {
                             if (isOutOfStock) return;
-                            const result = addProduct(product);
+                            const result = addRegisterProduct(product);
                             if (!result.ok) {
                               setScanMessage(`Нөөц хүрэлцэхгүй: ${product.name}`);
                               setScanStatus("not-found");
@@ -3127,13 +3622,59 @@ export default function PosDemoPage() {
         )}
 
         <section ref={paymentSectionRef} className="flex min-h-0 flex-col gap-3 pr-1">
+            {selectedCreditRepayment && (
+              <div className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-amber-700">
+                      Зээлийн төлөлт
+                    </p>
+                    <h3 className="mt-0.5 truncate text-sm font-black text-slate-950">
+                      {selectedCreditRepayment.borrowerName}
+                    </h3>
+                    <p className="mt-0.5 text-xs font-semibold text-slate-600">
+                      {selectedCreditRepayment.borrowerPhone || selectedCreditRepayment.receiptNo}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-black tabular-nums text-amber-700">
+                      {formatMoney(selectedCreditRepayment.totalDue)}
+                    </p>
+                    <p className="text-[10px] font-semibold text-slate-500">
+                      Хүү: {formatMoney(selectedCreditRepayment.totalInterest)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    dispatch({ type: "clear-cart" });
+                    resetCreditRepaymentMode();
+                  }}
+                  className="mt-2 inline-flex h-8 items-center justify-center rounded-lg border border-amber-200 bg-white px-3 text-xs font-black text-amber-700 hover:bg-amber-100"
+                >
+                  Болих
+                </button>
+              </div>
+            )}
             <PosCartPanel
               className="min-h-[360px] flex-[1_1_360px]"
               lines={state.cart}
               totals={totals}
-              onClear={() => dispatch({ type: "clear-cart" })}
-              onRemove={(productId) => dispatch({ type: "remove-line", payload: productId })}
+              onClear={() => {
+                dispatch({ type: "clear-cart" });
+                resetCreditRepaymentMode();
+              }}
+              onRemove={(productId) => {
+                if (selectedCreditRepayment) {
+                  dispatch({ type: "clear-cart" });
+                  resetCreditRepaymentMode();
+                  return;
+                }
+                dispatch({ type: "remove-line", payload: productId });
+              }}
               onSetQty={(productId, qty) => {
+                if (selectedCreditRepayment) return;
                 if (qty <= 0) {
                   dispatch({ type: "remove-line", payload: productId });
                   return;
@@ -3236,6 +3777,7 @@ export default function PosDemoPage() {
               disabled={
                 state.cart.length === 0 ||
                 saleLoading ||
+                creditRepaymentSubmitting ||
                 isCardProcessing ||
                 autoFinalizing ||
                 registerConfig?.isActive === false

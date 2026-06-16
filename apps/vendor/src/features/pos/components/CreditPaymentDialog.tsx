@@ -95,10 +95,12 @@ export function CreditPaymentDialog({ amount, onClose, onConfirm }: Props) {
     if (!canConfirm) return;
     const borrowerName = targetType === "COMPANY" ? selectedCompany.name : selectedCustomer!.name;
     const borrowerId = targetType === "COMPANY" ? selectedCompany.id : selectedCustomer!.id;
+    const borrowerPhone = targetType === "COMPANY" ? selectedEmployee?.phone : selectedCustomer!.phone;
     onConfirm({
       targetType,
       borrowerId,
       borrowerName,
+      borrowerPhone,
       employeeId: targetType === "COMPANY" ? selectedEmployee?.id : undefined,
       employeeName: targetType === "COMPANY" ? selectedEmployee?.name : undefined,
       dueDate: dueDate.toISOString(),

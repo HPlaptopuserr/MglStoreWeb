@@ -122,6 +122,7 @@ export interface SaleCreditPaymentMeta {
   targetType: "COMPANY" | "CUSTOMER";
   borrowerId: string;
   borrowerName: string;
+  borrowerPhone?: string;
   employeeId?: string;
   employeeName?: string;
   termMonths: number;
@@ -300,6 +301,27 @@ export interface PosReceipt {
     balanceAfter: number | null;
     earnRate: number;
     membershipBadge: string;
+  } | null;
+  credit?: {
+    id: string;
+    customerId?: string | null;
+    status: string;
+    targetType: string;
+    borrowerId: string;
+    borrowerName: string;
+    borrowerPhone?: string | null;
+    employeeId?: string | null;
+    employeeName?: string | null;
+    principalAmount: number;
+    monthlyInterestRate: number;
+    totalInterest: number;
+    totalDue: number;
+    termMonths: number;
+    dueDate?: string | null;
+    paidAt?: string | null;
+    paidAmount?: number | null;
+    paymentMethod?: string | null;
+    paymentNote?: string | null;
   } | null;
   createdAt: string;
   lines: ReceiptLine[];

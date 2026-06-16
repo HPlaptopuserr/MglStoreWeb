@@ -29,6 +29,7 @@ export {
   ShiftStatus,
   CashDrawerEventType,
   PosSaleStatus,
+  PosCreditStatus,
   ContractStatus,
   PaidAccessSourceType,
   MPointLedgerType,

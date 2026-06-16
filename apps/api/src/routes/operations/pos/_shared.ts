@@ -63,6 +63,7 @@ export type SalePaymentLineInput = {
     targetType?: "COMPANY" | "CUSTOMER";
     borrowerId?: string;
     borrowerName?: string;
+    borrowerPhone?: string;
     employeeId?: string;
     employeeName?: string;
     termMonths?: number;

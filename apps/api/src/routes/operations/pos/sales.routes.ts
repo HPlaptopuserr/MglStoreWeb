@@ -23,6 +23,59 @@ const POS_MPOINT_BASE_RATE = 0.02;
 const POS_MPOINT_MEMBER_RATE = Number(process.env.POS_MPOINT_MEMBER_RATE || 0.03);
 
 const normalizeLoyaltyPhone = (value: unknown) => String(value || "").replace(/\D/g, "");
+const cleanOptionalText = (value: unknown) => {
+  const text = String(value ?? "").trim();
+  return text || null;
+};
+
+const buildCreditBorrowerKey = (credit: NonNullable<SalePaymentLineInput["credit"]>) =>
+  [
+    String(credit.targetType || "").trim().toUpperCase(),
+    String(credit.borrowerId || "").trim().toLowerCase(),
+    String(credit.employeeId || "").trim().toLowerCase(),
+  ].join(":");
+
+const mapCreditSaleResponse = (creditSale: {
+  id: string;
+  customerId: string | null;
+  status: string;
+  targetType: string;
+  borrowerId: string;
+  borrowerName: string;
+  borrowerPhone: string | null;
+  employeeId: string | null;
+  employeeName: string | null;
+  principalAmount: unknown;
+  monthlyInterestRate: unknown;
+  totalInterest: unknown;
+  totalDue: unknown;
+  termMonths: number;
+  dueDate: Date | null;
+  paidAt?: Date | null;
+  paidAmount?: unknown;
+  paymentMethod?: string | null;
+  paymentNote?: string | null;
+}) => ({
+  id: creditSale.id,
+  customerId: creditSale.customerId,
+  status: creditSale.status,
+  targetType: creditSale.targetType,
+  borrowerId: creditSale.borrowerId,
+  borrowerName: creditSale.borrowerName,
+  borrowerPhone: creditSale.borrowerPhone,
+  employeeId: creditSale.employeeId,
+  employeeName: creditSale.employeeName,
+  principalAmount: Number(creditSale.principalAmount),
+  monthlyInterestRate: Number(creditSale.monthlyInterestRate),
+  totalInterest: Number(creditSale.totalInterest),
+  totalDue: Number(creditSale.totalDue),
+  termMonths: creditSale.termMonths,
+  dueDate: creditSale.dueDate?.toISOString() ?? null,
+  paidAt: creditSale.paidAt?.toISOString() ?? null,
+  paidAmount: creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
+  paymentMethod: creditSale.paymentMethod ?? null,
+  paymentNote: creditSale.paymentNote ?? null,
+});
 
 const isMembershipActive = (user: { isPrime: boolean; membershipExpiresAt?: Date | null }) =>
   Boolean(user.isPrime && (!user.membershipExpiresAt || user.membershipExpiresAt.getTime() > Date.now()));
@@ -232,6 +285,9 @@ router.post("/pos/sales", async (req, res) => {
         if (!Number.isFinite(Number(item.credit.monthlyInterestRate)) || Number(item.credit.monthlyInterestRate) !== 0.012) {
           return res.status(400).json({ message: "Зээлийн сарын хүү 1.2% байх ёстой" });
         }
+        if (!Number.isFinite(Number(item.credit.totalDue)) || Number(item.credit.totalDue) <= 0) {
+          return res.status(400).json({ message: "Зээлийн нийт төлөх дүн буруу байна" });
+        }
       }
     }
 
@@ -266,6 +322,17 @@ router.post("/pos/sales", async (req, res) => {
         ? Math.max(0, Math.floor(Number(body.loyalty?.redeemPoints || 0)))
         : 0;
     const expectedPayableTotal = roundMoney(Math.max(0, expectedGrandTotal - requestedRedeemPoints));
+    const creditLines = normalizedPayments.filter((item) => item.method === PaymentMethod.CREDIT);
+    const creditPrincipal = roundMoney(
+      creditLines.reduce((sum, item) => sum + Number(item.amount || 0), 0),
+    );
+    const creditTotalInterest = roundMoney(
+      creditLines.reduce((sum, item) => sum + Number(item.credit?.totalInterest || 0), 0),
+    );
+    const creditTotalDue = roundMoney(
+      creditLines.reduce((sum, item) => sum + Number(item.credit?.totalDue || item.amount || 0), 0),
+    );
+    const primaryCredit = creditLines[0]?.credit || null;
 
     if (!["NONE", "EARN", "REDEEM"].includes(loyaltyMode)) {
       return res.status(400).json({ message: "M Point сонголт буруу байна" });
@@ -589,6 +656,85 @@ router.post("/pos/sales", async (req, res) => {
         select: { id: true },
       });
 
+      const creditSale = primaryCredit
+        ? await (async () => {
+            const borrowerKey = buildCreditBorrowerKey(primaryCredit);
+            const savedCustomer = await tx.posCreditCustomer.upsert({
+              where: {
+                organizationId_normalizedBorrowerKey: {
+                  organizationId: effectiveOrganizationId,
+                  normalizedBorrowerKey: borrowerKey,
+                },
+              },
+              update: {
+                targetType: primaryCredit.targetType || "CUSTOMER",
+                borrowerId: primaryCredit.borrowerId || borrowerKey,
+                borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
+                borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
+                employeeId: cleanOptionalText(primaryCredit.employeeId),
+                employeeName: cleanOptionalText(primaryCredit.employeeName),
+              },
+              create: {
+                organizationId: effectiveOrganizationId,
+                targetType: primaryCredit.targetType || "CUSTOMER",
+                borrowerId: primaryCredit.borrowerId || borrowerKey,
+                borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
+                borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
+                employeeId: cleanOptionalText(primaryCredit.employeeId),
+                employeeName: cleanOptionalText(primaryCredit.employeeName),
+                normalizedBorrowerKey: borrowerKey,
+              },
+              select: { id: true },
+            });
+
+            return tx.posCreditSale.create({
+              data: {
+                saleId: posSale.id,
+                customerId: savedCustomer.id,
+                organizationId: effectiveOrganizationId,
+                branchId: body.branchId!,
+                registerId: registerId || undefined,
+                shiftId: resolvedShiftId,
+                cashierId: actor.id,
+                targetType: primaryCredit.targetType || "CUSTOMER",
+                borrowerId: primaryCredit.borrowerId || borrowerKey,
+                borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
+                borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
+                employeeId: cleanOptionalText(primaryCredit.employeeId),
+                employeeName: cleanOptionalText(primaryCredit.employeeName),
+                principalAmount: creditPrincipal,
+                monthlyInterestRate: Number(primaryCredit.monthlyInterestRate || 0.012),
+                totalInterest: creditTotalInterest,
+                totalDue: creditTotalDue,
+                termMonths: Math.max(1, Math.floor(Number(primaryCredit.termMonths || 1))),
+                dueDate: primaryCredit.dueDate ? new Date(primaryCredit.dueDate) : null,
+                note: cleanOptionalText(primaryCredit.note) || body.note || null,
+              },
+              select: {
+                id: true,
+                customerId: true,
+                status: true,
+                targetType: true,
+                borrowerId: true,
+                borrowerName: true,
+                borrowerPhone: true,
+                employeeId: true,
+                employeeName: true,
+                principalAmount: true,
+                monthlyInterestRate: true,
+                totalInterest: true,
+                totalDue: true,
+                termMonths: true,
+                dueDate: true,
+                paidAt: true,
+                paidAmount: true,
+                paymentMethod: true,
+                paymentNote: true,
+              },
+            });
+          })()
+        : null;
+
       const fullSale = await tx.posSale.findUniqueOrThrow({
         where: { id: posSale.id },
         select: {
@@ -727,6 +873,7 @@ router.post("/pos/sales", async (req, res) => {
           }
           return item;
         }),
+        credit: creditSale ? mapCreditSaleResponse(creditSale) : null,
         createdAt: fullSale.createdAt.toISOString(),
         lines: fullSale.lines.map((l) => ({
           productId: l.productId,

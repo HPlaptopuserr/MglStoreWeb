@@ -70,6 +70,7 @@ model User {
   sentDirectMessages           DirectMessage[]           @relation("DirectMessageSender")
   posShifts                    PosShift[]                @relation("PosShiftCashier")
   posSales                     PosSale[]                 @relation("PosSaleCashier")
+  posCreditSales               PosCreditSale[]           @relation("PosCreditSaleCashier")
   posLoyaltyTransactions       PosLoyaltyTransaction[]   @relation("PosLoyaltyCustomer")
   contracts                    Contract[]
   productInteractions          ProductInteraction[]
@@ -378,6 +379,8 @@ model Organization {
   joinRequests                 OrgJoinRequest[]        @relation("OrgJoinRequests")
   posShifts                    PosShift[]
   posSales                     PosSale[]
+  posCreditCustomers           PosCreditCustomer[]
+  posCreditSales               PosCreditSale[]
   posLoyaltyTransactions       PosLoyaltyTransaction[]
   contracts                    Contract[]
   productInteractions          ProductInteraction[]
@@ -588,6 +591,7 @@ model Branch {
   posRegisters           PosRegister[]
   posShifts              PosShift[]
   posSales               PosSale[]
+  posCreditSales         PosCreditSale[]
   posLoyaltyTransactions PosLoyaltyTransaction[]
   orderAssignments       Order[]                 @relation("OrderAssignedBranch")
   orderDispatchAttempts  OrderDispatchAttempt[]
@@ -624,6 +628,7 @@ model PosRegister {
   qpayInvoices      QPayInvoice[]
   posShifts         PosShift[]
   posSales          PosSale[]
+  posCreditSales    PosCreditSale[]
 
   @@unique([organizationId, branchId, name])
   @@unique([cardProviderType, cardTerminalId])
@@ -1969,6 +1974,7 @@ model PosShift {
   register       PosRegister? @relation(fields: [registerId], references: [id])
   cashier        User         @relation("PosShiftCashier", fields: [cashierId], references: [id])
   sales          PosSale[]
+  creditSales    PosCreditSale[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -2035,6 +2041,7 @@ model PosSale {
   cashier          User                   @relation("PosSaleCashier", fields: [cashierId], references: [id])
   lines            PosSaleLine[]
   loyalty          PosLoyaltyTransaction?
+  creditSale       PosCreditSale?
 
   @@index([organizationId])
   @@index([branchId])
@@ -2073,6 +2080,76 @@ model PosLoyaltyTransaction {
   @@index([action, createdAt])
 }
 
+model PosCreditCustomer {
+  id                    String          @id @default(uuid())
+  organizationId        String
+  targetType            String
+  borrowerId            String
+  borrowerName          String
+  borrowerPhone         String?
+  employeeId            String?
+  employeeName          String?
+  normalizedBorrowerKey String
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  organization          Organization    @relation(fields: [organizationId], references: [id])
+  credits               PosCreditSale[]
+
+  @@unique([organizationId, normalizedBorrowerKey])
+  @@index([organizationId])
+  @@index([borrowerName])
+  @@index([borrowerId])
+}
+
+model PosCreditSale {
+  id                  String             @id @default(uuid())
+  saleId              String             @unique
+  customerId          String?
+  organizationId      String
+  branchId            String
+  registerId          String?
+  shiftId             String
+  cashierId           String
+  targetType          String
+  borrowerId          String
+  borrowerName        String
+  borrowerPhone       String?
+  employeeId          String?
+  employeeName        String?
+  principalAmount     Decimal            @db.Decimal(18, 2)
+  monthlyInterestRate Decimal            @default(0.012) @db.Decimal(7, 4)
+  totalInterest       Decimal            @db.Decimal(18, 2)
+  totalDue            Decimal            @db.Decimal(18, 2)
+  termMonths          Int                @default(1)
+  status              PosCreditStatus    @default(OPEN)
+  paidAmount          Decimal?           @db.Decimal(18, 2)
+  paymentMethod       PaymentMethod?
+  paymentNote         String?
+  dueDate             DateTime?
+  paidAt              DateTime?
+  note                String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  sale                PosSale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  creditCustomer      PosCreditCustomer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  organization        Organization       @relation(fields: [organizationId], references: [id])
+  branch              Branch             @relation(fields: [branchId], references: [id])
+  register            PosRegister?       @relation(fields: [registerId], references: [id])
+  shift               PosShift           @relation(fields: [shiftId], references: [id])
+  cashier             User               @relation("PosCreditSaleCashier", fields: [cashierId], references: [id])
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([branchId])
+  @@index([registerId])
+  @@index([shiftId])
+  @@index([cashierId])
+  @@index([borrowerId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([createdAt])
+}
+
 /// Individual line item within a POS sale.
 model PosSaleLine {
   id          String  @id @default(uuid())
@@ -2107,6 +2184,13 @@ enum PosSaleStatus {
   COMPLETED
   VOIDED
   REFUNDED
+}
+
+enum PosCreditStatus {
+  OPEN
+  PAID
+  OVERDUE
+  CANCELLED
 }
 
 enum PaidAccessSourceType {
