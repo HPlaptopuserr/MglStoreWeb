@@ -6,7 +6,9 @@ import {
   Bot,
   CheckCircle2,
   CopyCheck,
+  ListChecks,
   Layers,
+  LineChart,
   Sparkles,
   Tag,
   Wand2,
@@ -76,11 +78,11 @@ export function ProductDataAssistantPanel({
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-black text-slate-950">
-                AI data assistant
+                Product data assistant
               </p>
               <p className="mt-0.5 text-xs font-semibold leading-5 text-slate-500">
-                Төлбөргүй rule engine. Дараа нь LLM/chatbot provider залгахад
-                бэлэн.
+                Бодит catalog дата дээр тулгуурлаж ангилал, давхардал, үнэ,
+                тайлбарын чанарыг шалгана.
               </p>
             </div>
             <div className="text-right">
@@ -98,6 +100,28 @@ export function ProductDataAssistantPanel({
           </p>
         </div>
       </div>
+
+      {result.actionPlan.length > 0 && (
+        <div className="mt-4 rounded-xl border border-indigo-100 bg-white/85 p-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-indigo-500">
+            <ListChecks size={14} />
+            Дараагийн алхам
+          </div>
+          <ol className="space-y-1.5">
+            {result.actionPlan.map((item, index) => (
+              <li
+                key={`${item}-${index}`}
+                className="flex gap-2 text-xs font-semibold leading-5 text-slate-600"
+              >
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[10px] font-black text-indigo-600">
+                  {index + 1}
+                </span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {result.categorySuggestions.length > 0 && !form.businessCategoryId && (
         <div className="mt-4">
@@ -196,6 +220,28 @@ export function ProductDataAssistantPanel({
         </div>
       )}
 
+      {result.marketInsights.length > 0 && (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-400">
+            <LineChart size={14} />
+            Market insight
+          </div>
+          <div className="space-y-2">
+            {result.marketInsights.map((insight) => (
+              <div
+                key={insight.id}
+                className={`rounded-xl border px-3 py-2.5 ${severityStyle[insight.severity]}`}
+              >
+                <p className="text-xs font-black">{insight.title}</p>
+                <p className="mt-0.5 text-[11px] font-semibold leading-4 opacity-80">
+                  {insight.detail}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {result.descriptionSuggestion && (
         <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-400">
@@ -207,7 +253,9 @@ export function ProductDataAssistantPanel({
           </p>
           <button
             type="button"
-            onClick={() => onApplyDescription(result.descriptionSuggestion || "")}
+            onClick={() =>
+              onApplyDescription(result.descriptionSuggestion || "")
+            }
             className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-indigo-600"
           >
             <CheckCircle2 size={14} />
