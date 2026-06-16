@@ -59,7 +59,11 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
   const [open, setOpen] = useState(false);
   const [action, setAction] = useState<"APPROVED" | "REJECTED">("APPROVED");
   const [adminNote, setAdminNote] = useState(reg.adminNote ?? "");
-  const [paymentStatus, setPaymentStatus] = useState(reg.paymentStatus ?? "PENDING");
+  const [paymentStatus, setPaymentStatus] = useState(
+    reg.paymentStatus === "PENDING" && reg.status !== "REJECTED"
+      ? "PAID"
+      : reg.paymentStatus ?? "PENDING",
+  );
   const [paymentMethod, setPaymentMethod] = useState(reg.paymentMethod ?? "BANK_TRANSFER");
   const [paymentAmount, setPaymentAmount] = useState(String(reg.paymentAmount || ""));
   const [paymentReference, setPaymentReference] = useState(reg.paymentReference ?? "");
@@ -73,6 +77,10 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
   const duration = typeCfg?.durations.find((d) => d.months === reg.durationMonths);
   const durationLabel = duration?.label ?? (reg.durationMonths ? `${reg.durationMonths} сар` : "Үнэгүй");
   const price = reg.paymentAmount || duration?.price || 0;
+  const canReview = reg.status === "PENDING";
+  const canUpdatePayment =
+    reg.status === "APPROVED" && price > 0 && reg.paymentStatus !== "PAID";
+  const showActionFooter = canReview || canUpdatePayment;
   const paymentStatusLabel = {
     PENDING: "Төлбөр хүлээгдэж буй",
     PAID: "Төлсөн",
@@ -405,8 +413,8 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
               )}
             </div>
 
-            {/* ── Action footer (PENDING only) ─── */}
-            {reg.status === "PENDING" && (
+            {/* ── Action footer ─── */}
+            {showActionFooter && (
               <div className="border-t border-slate-100 bg-white px-6 py-5 space-y-3">
                 {saveError && (
                   <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
@@ -415,28 +423,30 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
                 )}
 
                 {/* Approve / Reject toggle */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setAction("APPROVED")}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${
-                      action === "APPROVED"
-                        ? "bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-100"
-                        : "bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-700"
-                    }`}
-                  >
-                    <Check size={15} />Зөвшөөрөх
-                  </button>
-                  <button
-                    onClick={() => setAction("REJECTED")}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${
-                      action === "REJECTED"
-                        ? "bg-red-600 border-red-600 text-white shadow-md shadow-red-100"
-                        : "bg-white border-slate-200 text-slate-500 hover:border-red-300 hover:text-red-600"
-                    }`}
-                  >
-                    <X size={15} />Татгалзах
-                  </button>
-                </div>
+                {canReview && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setAction("APPROVED")}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${
+                        action === "APPROVED"
+                          ? "bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-100"
+                          : "bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-700"
+                      }`}
+                    >
+                      <Check size={15} />Зөвшөөрөх
+                    </button>
+                    <button
+                      onClick={() => setAction("REJECTED")}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${
+                        action === "REJECTED"
+                          ? "bg-red-600 border-red-600 text-white shadow-md shadow-red-100"
+                          : "bg-white border-slate-200 text-slate-500 hover:border-red-300 hover:text-red-600"
+                      }`}
+                    >
+                      <X size={15} />Татгалзах
+                    </button>
+                  </div>
+                )}
 
                 {price > 0 && (
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3">
@@ -524,13 +534,19 @@ export function MemberRegistrationCard({ registration: reg, onRefresh }: Props) 
                   }`}
                 >
                   {saving ? <Loader2 size={15} className="animate-spin" /> : action === "APPROVED" ? <Check size={15} /> : <X size={15} />}
-                  {saving ? "Хадгалж байна..." : action === "APPROVED" ? "Зөвшөөрөх" : "Татгалзах"}
+                  {saving
+                    ? "Хадгалж байна..."
+                    : canUpdatePayment
+                      ? "Төлбөр баталгаажуулж идэвхжүүлэх"
+                      : action === "APPROVED"
+                        ? "Зөвшөөрөх"
+                        : "Татгалзах"}
                 </button>
               </div>
             )}
 
             {/* Reviewed footer (read-only status) */}
-            {reg.status !== "PENDING" && (
+            {reg.status !== "PENDING" && !showActionFooter && (
               <div className={`border-t px-6 py-4 text-sm font-semibold flex items-center gap-2 ${
                 reg.status === "APPROVED"
                   ? "bg-emerald-50 border-emerald-100 text-emerald-700"

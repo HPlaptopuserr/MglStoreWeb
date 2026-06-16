@@ -94,6 +94,97 @@ function laterDate(a: Date | null | undefined, b: Date) {
   return a.getTime() > b.getTime() ? a : b;
 }
 
+function normalizePhone(value?: string | null) {
+  const digits = String(value || "").replace(/[^\d]/g, "");
+  if (digits.startsWith("976") && digits.length === 11) return digits.slice(3);
+  return digits;
+}
+
+type PrismaLike = Prisma.TransactionClient | typeof prisma;
+
+async function findUserByAssociationPhone(tx: PrismaLike, phone: string) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+
+  const candidates = await tx.user.findMany({
+    where: {
+      deletedAt: null,
+      isActive: true,
+      OR: [
+        { membershipDiscountPhone: { contains: normalized } },
+        { profile: { phoneNumber: { contains: normalized } } },
+        { membershipDiscountPhone: { contains: phone.trim() } },
+        { profile: { phoneNumber: { contains: phone.trim() } } },
+      ],
+    },
+    select: {
+      id: true,
+      membershipExpiresAt: true,
+      membershipDiscountPhone: true,
+      profile: { select: { phoneNumber: true } },
+    },
+    take: 10,
+  });
+
+  return (
+    candidates.find(
+      (user) =>
+        normalizePhone(user.profile?.phoneNumber) === normalized ||
+        normalizePhone(user.membershipDiscountPhone) === normalized,
+    ) ||
+    candidates[0] ||
+    null
+  );
+}
+
+async function syncApprovedAssociationMembership(
+  tx: PrismaLike,
+  registration: {
+    id: string;
+    phone: string;
+    durationMonths: number | null;
+    paidAt: Date | null;
+    reviewedAt: Date | null;
+    status: ApprovalStatus;
+    paymentStatus: PaymentStatus;
+  },
+) {
+  if (
+    registration.status !== ApprovalStatus.APPROVED ||
+    registration.paymentStatus !== PaymentStatus.PAID
+  ) {
+    return null;
+  }
+
+  const user = await findUserByAssociationPhone(tx, registration.phone);
+  if (!user) return null;
+
+  const paidAt = registration.paidAt || registration.reviewedAt || new Date();
+  const expiresAt = addMonths(paidAt, registration.durationMonths);
+  const membershipExpiresAt = laterDate(user.membershipExpiresAt, expiresAt);
+  const membershipDiscountPhone =
+    registration.phone.trim() ||
+    user.membershipDiscountPhone ||
+    user.profile?.phoneNumber?.trim() ||
+    null;
+
+  return tx.user.update({
+    where: { id: user.id },
+    data: {
+      isPrime: true,
+      membershipPaidAt: paidAt,
+      membershipStartedAt: paidAt,
+      membershipExpiresAt,
+      membershipDiscountPhone,
+    },
+    select: {
+      id: true,
+      membershipExpiresAt: true,
+      membershipDiscountPhone: true,
+    },
+  });
+}
+
 function getAssociationPaymentAccount(config: any) {
   const account = config?.paymentAccount || {};
   return {
@@ -136,7 +227,12 @@ async function refreshAssociationInvoicePayment(invoiceId: string) {
   });
   if (!invoice) return null;
   if (invoice.status === PosQPayStatus.PAID) return invoice;
-  if (invoice.status !== PosQPayStatus.PENDING) return invoice;
+  if (
+    invoice.status !== PosQPayStatus.PENDING &&
+    invoice.status !== PosQPayStatus.EXPIRED
+  ) {
+    return invoice;
+  }
 
   const payload = (
     invoice.webhookPayload && typeof invoice.webhookPayload === "object"
@@ -253,47 +349,73 @@ async function finalizeAssociationMembershipPayment(
       expiresAt,
     );
 
-    const [updatedRegistration, updatedUser] = await Promise.all([
-      tx.associationMemberRegistration.update({
-        where: { id: registrationId },
-        data: {
-          status: ApprovalStatus.APPROVED,
-          paymentStatus: PaymentStatus.PAID,
-          paymentMethod: PaymentMethod.QPAY,
-          paidAt,
-          paymentReference: invoice.paymentId || invoice.id,
-          paymentNote: "QPay/SystemQR төлбөрөөр автоматаар идэвхжив.",
-          adminNote:
-            "QPay/SystemQR төлбөр баталгаажсан тул автоматаар зөвшөөрөв.",
-          reviewedAt: new Date(),
-        },
-      }),
-      tx.user.update({
-        where: { id: userId },
-        data: {
-          isPrime: true,
-          membershipPaidAt: paidAt,
-          membershipStartedAt: paidAt,
-          membershipExpiresAt,
-          membershipDiscountPhone: registration.phone.trim() || null,
-        },
-        select: {
-          id: true,
-          membershipExpiresAt: true,
-          membershipDiscountPhone: true,
-        },
-      }),
-    ]);
+    const updatedRegistration = await tx.associationMemberRegistration.update({
+      where: { id: registrationId },
+      data: {
+        status: ApprovalStatus.APPROVED,
+        paymentStatus: PaymentStatus.PAID,
+        paymentMethod: PaymentMethod.QPAY,
+        paidAt,
+        paymentReference: invoice.paymentId || invoice.id,
+        paymentNote: "QPay/SystemQR төлбөрөөр автоматаар идэвхжив.",
+        adminNote:
+          "QPay/SystemQR төлбөр баталгаажсан тул автоматаар зөвшөөрөв.",
+        reviewedAt: new Date(),
+      },
+    });
+
+    const updatedUser = await tx.user.update({
+      where: { id: userId },
+      data: {
+        isPrime: true,
+        membershipPaidAt: paidAt,
+        membershipStartedAt: paidAt,
+        membershipExpiresAt,
+        membershipDiscountPhone: registration.phone.trim() || null,
+      },
+      select: {
+        id: true,
+        membershipExpiresAt: true,
+        membershipDiscountPhone: true,
+      },
+    });
 
     return { registration: updatedRegistration, user: updatedUser };
   });
+}
+
+async function finalizeApprovedAssociationRegistrations(limit = 50) {
+  const registrations = await prisma.associationMemberRegistration.findMany({
+    where: {
+      status: ApprovalStatus.APPROVED,
+      paymentStatus: PaymentStatus.PAID,
+    },
+    orderBy: { reviewedAt: "desc" },
+    take: limit,
+  });
+
+  for (const registration of registrations) {
+    try {
+      await prisma.$transaction((tx) =>
+        syncApprovedAssociationMembership(tx, registration),
+      );
+    } catch (error) {
+      console.error("Association membership sync error:", error);
+    }
+  }
 }
 
 async function reconcilePendingAssociationMembershipPayments(limit = 50) {
   const invoices = await prisma.qPayInvoice.findMany({
     where: {
       saleReference: { startsWith: "ASSOCIATION-" },
-      status: { in: [PosQPayStatus.PENDING, PosQPayStatus.PAID] },
+      status: {
+        in: [
+          PosQPayStatus.PENDING,
+          PosQPayStatus.PAID,
+          PosQPayStatus.EXPIRED,
+        ],
+      },
     },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -310,6 +432,8 @@ async function reconcilePendingAssociationMembershipPayments(limit = 50) {
       console.error("Association payment reconcile error:", error);
     }
   }
+
+  await finalizeApprovedAssociationRegistrations(limit);
 }
 
 /* ── Public: submit registration ───────────────────────────── */
@@ -730,26 +854,32 @@ router.patch(
 
       const resolvedPaymentStatus = paymentStatus as PaymentStatus | undefined;
 
-      const reg = await prisma.associationMemberRegistration.update({
-        where: { id: req.params.id },
-        data: {
-          status: status as ApprovalStatus,
-          adminNote: adminNote?.trim() || null,
-          paymentStatus: resolvedPaymentStatus,
-          paymentAmount:
-            typeof paymentAmount === "number" && Number.isFinite(paymentAmount)
-              ? Math.max(0, Math.round(paymentAmount))
-              : undefined,
-          paymentMethod: paymentMethod || undefined,
-          paymentReference: paymentReference?.trim() || null,
-          paymentNote: paymentNote?.trim() || null,
-          paidAt: paidAt
-            ? new Date(paidAt)
-            : resolvedPaymentStatus === PaymentStatus.PAID
-              ? new Date()
-              : undefined,
-          reviewedAt: new Date(),
-        },
+      const reg = await prisma.$transaction(async (tx) => {
+        const updated = await tx.associationMemberRegistration.update({
+          where: { id: req.params.id },
+          data: {
+            status: status as ApprovalStatus,
+            adminNote: adminNote?.trim() || null,
+            paymentStatus: resolvedPaymentStatus,
+            paymentAmount:
+              typeof paymentAmount === "number" &&
+              Number.isFinite(paymentAmount)
+                ? Math.max(0, Math.round(paymentAmount))
+                : undefined,
+            paymentMethod: paymentMethod || undefined,
+            paymentReference: paymentReference?.trim() || null,
+            paymentNote: paymentNote?.trim() || null,
+            paidAt: paidAt
+              ? new Date(paidAt)
+              : resolvedPaymentStatus === PaymentStatus.PAID
+                ? new Date()
+                : undefined,
+            reviewedAt: new Date(),
+          },
+        });
+
+        await syncApprovedAssociationMembership(tx, updated);
+        return updated;
       });
 
       return res.json(reg);

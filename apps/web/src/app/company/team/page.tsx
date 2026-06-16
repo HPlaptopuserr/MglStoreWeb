@@ -132,7 +132,7 @@ export default function TeamPage() {
         />
       )}
 
-      <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+      <section className="px-4 py-10 sm:px-6 sm:py-14">
         {loading ? (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, index) => (
