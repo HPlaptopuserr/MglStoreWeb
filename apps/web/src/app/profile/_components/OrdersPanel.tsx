@@ -4,9 +4,11 @@ import {
   ChefHat,
   Clock,
   Copy,
+  CreditCard,
   KeyRound,
   Loader2,
   Package,
+  ReceiptText,
   RefreshCw,
   ShoppingCart,
   Truck,
@@ -75,6 +77,22 @@ const STATUS_CONFIG: Record<
     className: "bg-red-50 text-red-700 ring-red-200",
     icon: XCircle,
   },
+};
+
+const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Төлбөр хүлээгдэж байна",
+  PAID: "Төлбөр төлөгдсөн",
+  FAILED: "Төлбөр амжилтгүй",
+  REFUNDED: "Буцаалт хийгдсэн",
+  CANCELLED: "Цуцлагдсан",
+};
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  CASH: "Бэлэн",
+  CARD: "Карт",
+  BANK_TRANSFER: "Данс",
+  QPAY: "QPay",
+  POS: "POS",
 };
 
 function formatMnt(value: number) {
@@ -182,6 +200,103 @@ function DeliveryCode({ code }: { code: string }) {
           Хуулах
         </span>
       </button>
+    </div>
+  );
+}
+
+function PaymentBreakdown({ order }: { order: ProfileOrder }) {
+  const payment =
+    order.payments?.find((item) => item.status === "PAID") ||
+    order.payments?.[0] ||
+    null;
+  const method = payment?.method || order.paymentMethod || "";
+  const itemCount = order.items.reduce((sum, item) => sum + item.qty, 0);
+  const deliveryFee = Number(order.deliveryFee || 0);
+  const discountAmount = Number(order.discountAmount || 0);
+
+  return (
+    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-white">
+            <ReceiptText size={17} />
+          </span>
+          <div>
+            <p className="text-sm font-black text-slate-950">Юунд төлсөн бэ?</p>
+            <p className="text-[11px] font-bold text-slate-400">
+              Үйлчилгээ, бараа, хүргэлтийн задаргаа
+            </p>
+          </div>
+        </div>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black text-emerald-700">
+          {PAYMENT_STATUS_LABEL[order.paymentStatus] || order.paymentStatus}
+        </span>
+      </div>
+
+      <div className="grid gap-2 text-sm">
+        <PaymentLine
+          label={`Бараа үйлчилгээ (${itemCount}ш)`}
+          value={formatMnt(order.subtotal)}
+        />
+        {deliveryFee > 0 && (
+          <PaymentLine
+            label="Хүргэлтийн төлбөр"
+            value={formatMnt(deliveryFee)}
+          />
+        )}
+        {discountAmount > 0 && (
+          <PaymentLine
+            label="Хөнгөлөлт"
+            value={`-${formatMnt(discountAmount)}`}
+            muted
+          />
+        )}
+      </div>
+
+      <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-2 text-xs font-black text-slate-500">
+            <CreditCard size={14} />
+            Төлсөн хэсэг
+          </span>
+          <span className="text-sm font-black text-slate-950">
+            {method ? PAYMENT_METHOD_LABEL[method] || method : "Тодорхойгүй"}
+          </span>
+        </div>
+        {payment?.providerRef && (
+          <p className="mt-1 truncate text-[11px] font-semibold text-slate-400">
+            Ref: {payment.providerRef}
+          </p>
+        )}
+        {payment?.paidAt && (
+          <p className="mt-1 text-[11px] font-semibold text-emerald-600">
+            Төлсөн огноо: {formatDate(payment.paidAt)}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PaymentLine({
+  label,
+  muted,
+  value,
+}: {
+  label: string;
+  muted?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="font-bold text-slate-500">{label}</span>
+      <span
+        className={`shrink-0 font-black ${
+          muted ? "text-emerald-600" : "text-slate-950"
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -462,6 +577,8 @@ export function OrdersPanel({
                       </div>
                     ))}
                   </div>
+
+                  <PaymentBreakdown order={order} />
                 </div>
 
                 <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/80 px-4 py-4">

@@ -14,6 +14,7 @@ export type AccountPurchase = {
   fileUrl?: string | null;
   fileName?: string | null;
   amount: number;
+  invoiceId?: string | null;
   purchasedAt: string;
 };
 
@@ -50,18 +51,34 @@ export type ProfileOrderItem = {
   subtotal: number;
 };
 
+export type ProfileOrderPayment = {
+  id: string;
+  method: string;
+  status: string;
+  amount: number;
+  providerRef?: string | null;
+  paidAt?: string | null;
+  refundedAt?: string | null;
+  cancelledAt?: string | null;
+  createdAt: string;
+};
+
 export type ProfileOrder = {
   id: string;
   orderNumber: string;
   status: string;
   paymentStatus: string;
+  paymentMethod?: string | null;
   total: number;
   subtotal: number;
+  deliveryFee?: number;
+  discountAmount?: number;
   deliveryCode?: string | null;
   shippingAddress?: string | null;
   organizationName?: string | null;
   createdAt: string;
   items: ProfileOrderItem[];
+  payments?: ProfileOrderPayment[];
 };
 
 export type ProfileFormState = {
@@ -112,7 +129,9 @@ export function createEmptyAddressPatch(): Pick<
   };
 }
 
-export function createAddressPatch(address?: AuthAddress | null): ReturnType<typeof createEmptyAddressPatch> {
+export function createAddressPatch(
+  address?: AuthAddress | null,
+): ReturnType<typeof createEmptyAddressPatch> {
   if (!address) return createEmptyAddressPatch();
 
   return {

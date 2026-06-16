@@ -7,7 +7,9 @@ import {
   Sparkles,
   BadgeCheck,
   CalendarClock,
+  CreditCard,
   ExternalLink,
+  ReceiptText,
 } from "lucide-react";
 import type { AccountContract, AccountPurchase, MPointHistory } from "./types";
 
@@ -15,6 +17,56 @@ function sourceLabel(sourceType: AccountPurchase["sourceType"]) {
   if (sourceType === "FRANCHISE") return "Franchise";
   if (sourceType === "SERVICE") return "Үйлчилгээ";
   return "Төсөл";
+}
+
+function sourcePaymentLabel(sourceType: AccountPurchase["sourceType"]) {
+  if (sourceType === "FRANCHISE") return "Franchise access";
+  if (sourceType === "SERVICE") return "Үйлчилгээний access";
+  return "Төслийн материал";
+}
+
+function formatMnt(value: number) {
+  return `₮${Number(value || 0).toLocaleString("mn-MN")}`;
+}
+
+function PurchasePaymentSummary({ purchase }: { purchase: AccountPurchase }) {
+  return (
+    <div className="mt-3 rounded-2xl border border-orange-100 bg-white/75 p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="inline-flex items-center gap-2 text-xs font-black text-slate-600">
+          <ReceiptText size={14} className="text-orange-500" />
+          Юунд төлсөн
+        </span>
+        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-700">
+          Баталгаажсан
+        </span>
+      </div>
+      <div className="space-y-1.5 text-xs font-bold">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">
+            {sourcePaymentLabel(purchase.sourceType)}
+          </span>
+          <span className="text-slate-950">{formatMnt(purchase.amount)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-1.5 text-slate-500">
+            <CreditCard size={13} />
+            Төлбөрийн хэсэг
+          </span>
+          <span className="text-slate-950">QPay / Online</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">M point</span>
+          <span className="text-emerald-600">2% нэмэгдсэн</span>
+        </div>
+        {purchase.invoiceId && (
+          <p className="truncate pt-1 text-[11px] font-semibold text-slate-400">
+            Invoice: {purchase.invoiceId}
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function AccountLibraryPanel({
@@ -180,10 +232,10 @@ export function AccountLibraryPanel({
                           {purchase.title}
                         </h3>
                         <p className="mt-1 text-sm font-semibold text-slate-500">
-                          ₮
-                          {Number(purchase.amount || 0).toLocaleString("mn-MN")}{" "}
-                          · 2% M point нэмэгдсэн
+                          {formatMnt(purchase.amount)} ·{" "}
+                          {sourcePaymentLabel(purchase.sourceType)}
                         </p>
+                        <PurchasePaymentSummary purchase={purchase} />
                       </div>
                       {purchase.fileUrl ? (
                         <a

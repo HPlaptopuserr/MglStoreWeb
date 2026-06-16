@@ -1,4 +1,9 @@
-import { Router, type Request, type Response, type Router as ExpressRouter } from "express";
+import {
+  Router,
+  type Request,
+  type Response,
+  type Router as ExpressRouter,
+} from "express";
 import jwt from "jsonwebtoken";
 import { OrderDispatchAttemptStatus } from "@prisma/client";
 import {
@@ -9,15 +14,27 @@ import {
   InventoryReason,
 } from "@mgl/database";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
-import { adjustStock, resolveOrgWarehouse } from "../../services/inventory.service";
+import {
+  adjustStock,
+  resolveOrgWarehouse,
+} from "../../services/inventory.service";
 import {
   getVendorMerchantConfig,
   getVendorSystemQrConfig,
 } from "../../services/vendor-merchant.service";
-import { checkSystemQrPayment, createSystemQrInvoice } from "../../services/systemqr";
+import {
+  checkSystemQrPayment,
+  createSystemQrInvoice,
+} from "../../services/systemqr";
 
 const router: ExpressRouter = Router();
-const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("FATAL: JWT_SECRET not set"); })() : "dev-secret-change-me");
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  (process.env.NODE_ENV === "production"
+    ? (() => {
+        throw new Error("FATAL: JWT_SECRET not set");
+      })()
+    : "dev-secret-change-me");
 
 /* ── Auth helper ──────────────────────────────────────── */
 const getCustomer = async (req: Request) => {
@@ -46,10 +63,21 @@ const getCustomer = async (req: Request) => {
   }
 };
 
-const isActiveMember = (user: { isPrime: boolean; membershipExpiresAt?: Date | null }) =>
-  Boolean(user.isPrime && (!user.membershipExpiresAt || user.membershipExpiresAt.getTime() > Date.now()));
+const isActiveMember = (user: {
+  isPrime: boolean;
+  membershipExpiresAt?: Date | null;
+}) =>
+  Boolean(
+    user.isPrime &&
+    (!user.membershipExpiresAt ||
+      user.membershipExpiresAt.getTime() > Date.now()),
+  );
 
-const applyMemberDiscount = (price: number, percent?: number | null, eligible = false) => {
+const applyMemberDiscount = (
+  price: number,
+  percent?: number | null,
+  eligible = false,
+) => {
   if (!eligible || !percent || percent <= 0) return price;
   return Math.max(0, Math.round(price * (1 - percent / 100)));
 };
@@ -65,8 +93,14 @@ const generateOrderNumber = () => {
 };
 
 const getStoreQPayCallbackUrl = (orderId: string) => {
-  const publicUrl = (process.env.API_PUBLIC_URL || process.env.API_URL || "").replace(/\/+$/, "");
-  return publicUrl ? `${publicUrl}/api/store/qpay/callback?orderId=${encodeURIComponent(orderId)}` : undefined;
+  const publicUrl = (
+    process.env.API_PUBLIC_URL ||
+    process.env.API_URL ||
+    ""
+  ).replace(/\/+$/, "");
+  return publicUrl
+    ? `${publicUrl}/api/store/qpay/callback?orderId=${encodeURIComponent(orderId)}`
+    : undefined;
 };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -107,7 +141,10 @@ async function advanceExpiredDispatchAttempts(orderId: string) {
 
     await tx.orderDispatchAttempt.updateMany({
       where: { id: { in: expired.map((attempt) => attempt.id) } },
-      data: { status: OrderDispatchAttemptStatus.EXPIRED, respondedAt: new Date() },
+      data: {
+        status: OrderDispatchAttemptStatus.EXPIRED,
+        respondedAt: new Date(),
+      },
     });
 
     const hasActiveAttempt = await tx.orderDispatchAttempt.count({
@@ -123,7 +160,11 @@ async function advanceExpiredDispatchAttempts(orderId: string) {
     if (!next) return;
 
     await tx.orderDispatchAttempt.updateMany({
-      where: { orderId, status: OrderDispatchAttemptStatus.QUEUED, sequence: next.sequence },
+      where: {
+        orderId,
+        status: OrderDispatchAttemptStatus.QUEUED,
+        sequence: next.sequence,
+      },
       data: {
         status: OrderDispatchAttemptStatus.PENDING,
         requestedAt: new Date(),
@@ -133,7 +174,10 @@ async function advanceExpiredDispatchAttempts(orderId: string) {
   });
 }
 
-async function getCheckoutDispatchSnapshot(orderId: string, customerId: string) {
+async function getCheckoutDispatchSnapshot(
+  orderId: string,
+  customerId: string,
+) {
   await advanceExpiredDispatchAttempts(orderId);
 
   const order = await prisma.order.findUnique({
@@ -149,7 +193,9 @@ async function getCheckoutDispatchSnapshot(orderId: string, customerId: string) 
       customerLng: true,
       branchId: true,
       paymentStatus: true,
-      branch: { select: { id: true, name: true, address: true, lat: true, lng: true } },
+      branch: {
+        select: { id: true, name: true, address: true, lat: true, lng: true },
+      },
       dispatchAttempts: {
         orderBy: { sequence: "asc" },
         select: {
@@ -161,7 +207,15 @@ async function getCheckoutDispatchSnapshot(orderId: string, customerId: string) 
           requestedAt: true,
           expiresAt: true,
           respondedAt: true,
-          branch: { select: { id: true, name: true, address: true, lat: true, lng: true } },
+          branch: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              lat: true,
+              lng: true,
+            },
+          },
         },
       },
     },
@@ -169,8 +223,12 @@ async function getCheckoutDispatchSnapshot(orderId: string, customerId: string) 
 
   if (!order || order.customerId !== customerId) return null;
 
-  const activeAttempt = order.dispatchAttempts.find((attempt) => attempt.status === OrderDispatchAttemptStatus.PENDING);
-  const queuedCount = order.dispatchAttempts.filter((attempt) => attempt.status === OrderDispatchAttemptStatus.QUEUED).length;
+  const activeAttempt = order.dispatchAttempts.find(
+    (attempt) => attempt.status === OrderDispatchAttemptStatus.PENDING,
+  );
+  const queuedCount = order.dispatchAttempts.filter(
+    (attempt) => attempt.status === OrderDispatchAttemptStatus.QUEUED,
+  ).length;
   const hasAccepted = Boolean(order.branchId);
   const activeZone = activeAttempt?.sequence || null;
 
@@ -197,7 +255,9 @@ async function getCheckoutDispatchSnapshot(orderId: string, customerId: string) 
     },
     radiusZonesKm: DISPATCH_RADIUS_ZONES_KM,
     activeZone,
-    activeRadiusKm: activeZone ? DISPATCH_RADIUS_ZONES_KM[activeZone - 1] ?? null : null,
+    activeRadiusKm: activeZone
+      ? (DISPATCH_RADIUS_ZONES_KM[activeZone - 1] ?? null)
+      : null,
     activeAttemptId: activeAttempt?.id || null,
     activeExpiresAt: activeAttempt?.expiresAt?.toISOString() || null,
     attempts: order.dispatchAttempts.map((attempt) => ({
@@ -286,8 +346,14 @@ async function checkStorePayment(params: {
 
   if (provider === "SYSTEMQR") {
     const resolved = await getVendorSystemQrConfig(params.organizationId);
-    const merchantCode = String(rawPayload.merchantCode || resolved?.merchantCode || "").trim();
-    if (!merchantCode) return { paid: false, payload: { provider: "SYSTEMQR", missingMerchantCode: true } };
+    const merchantCode = String(
+      rawPayload.merchantCode || resolved?.merchantCode || "",
+    ).trim();
+    if (!merchantCode)
+      return {
+        paid: false,
+        payload: { provider: "SYSTEMQR", missingMerchantCode: true },
+      };
 
     const check = await checkSystemQrPayment(
       { merchantCode, invoiceNumber: params.providerRef },
@@ -302,7 +368,10 @@ async function checkStorePayment(params: {
   }
 
   const merchantRes = await getVendorMerchantConfig(params.organizationId);
-  const qpayCheck = await checkQPayPayment(params.providerRef, merchantRes.config ?? undefined);
+  const qpayCheck = await checkQPayPayment(
+    params.providerRef,
+    merchantRes.config ?? undefined,
+  );
 
   return {
     paid: qpayCheck.count > 0,
@@ -318,7 +387,12 @@ const toNumberOrNull = (value: unknown) => {
   return Number.isFinite(n) ? n : null;
 };
 
-const distanceKm = (fromLat: number, fromLng: number, toLat: number, toLng: number) => {
+const distanceKm = (
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number,
+) => {
   const toRad = (v: number) => (v * Math.PI) / 180;
   const earthKm = 6371;
   const dLat = toRad(toLat - fromLat);
@@ -331,9 +405,16 @@ const distanceKm = (fromLat: number, fromLng: number, toLat: number, toLng: numb
 
 async function seedOrderDispatchRadar(
   tx: any,
-  order: { id: string; organizationId: string; customerLat: number | null; customerLng: number | null },
+  order: {
+    id: string;
+    organizationId: string;
+    customerLat: number | null;
+    customerLng: number | null;
+  },
 ) {
-  const existing = await tx.orderDispatchAttempt.count({ where: { orderId: order.id } });
+  const existing = await tx.orderDispatchAttempt.count({
+    where: { orderId: order.id },
+  });
   if (existing > 0) return;
   if (order.customerLat === null || order.customerLng === null) return;
 
@@ -348,7 +429,13 @@ async function seedOrderDispatchRadar(
       organizationId: order.organizationId,
       deletedAt: null,
     },
-    select: { id: true, organizationId: true, lat: true, lng: true, createdAt: true },
+    select: {
+      id: true,
+      organizationId: true,
+      lat: true,
+      lng: true,
+      createdAt: true,
+    },
   });
 
   if (branches.length === 0) return;
@@ -362,13 +449,21 @@ async function seedOrderDispatchRadar(
   }[] = branches
     .filter((branch) => branch.lat !== null && branch.lng !== null)
     .map((branch) => {
-      const branchDistanceKm = distanceKm(order.customerLat!, order.customerLng!, branch.lat!, branch.lng!);
+      const branchDistanceKm = distanceKm(
+        order.customerLat!,
+        order.customerLng!,
+        branch.lat!,
+        branch.lng!,
+      );
       return {
         branchId: branch.id,
         organizationId: branch.organizationId,
         distanceKm: branchDistanceKm,
         createdAt: branch.createdAt,
-        zone: DISPATCH_RADIUS_ZONES_KM.findIndex((radiusKm) => branchDistanceKm <= radiusKm) + 1,
+        zone:
+          DISPATCH_RADIUS_ZONES_KM.findIndex(
+            (radiusKm) => branchDistanceKm <= radiusKm,
+          ) + 1,
       };
     })
     .filter((branch) => branch.zone > 0)
@@ -389,7 +484,10 @@ async function seedOrderDispatchRadar(
       organizationId: branch.organizationId,
       sequence: branch.zone,
       distanceKm: branch.distanceKm,
-      status: branch.zone === firstZone ? OrderDispatchAttemptStatus.PENDING : OrderDispatchAttemptStatus.QUEUED,
+      status:
+        branch.zone === firstZone
+          ? OrderDispatchAttemptStatus.PENDING
+          : OrderDispatchAttemptStatus.QUEUED,
       expiresAt: branch.zone === firstZone ? expiresAt : null,
     })),
     skipDuplicates: true,
@@ -432,17 +530,21 @@ async function markOrderPaidAndStartDispatch(
     await tx.orderHistory.create({
       data: {
         orderId: order.id,
-        fromStatus: (order.status as OrderStatus | undefined) ?? OrderStatus.PENDING,
+        fromStatus:
+          (order.status as OrderStatus | undefined) ?? OrderStatus.PENDING,
         toStatus: OrderStatus.CONFIRMED,
         changedById: order.customerId,
         note,
       },
     });
-
   });
 }
 
-async function decrementOrderStock(tx: any, orderId: string, customerId: string) {
+async function decrementOrderStock(
+  tx: any,
+  orderId: string,
+  customerId: string,
+) {
   const order = await tx.order.findUnique({
     where: { id: orderId },
     select: {
@@ -460,7 +562,11 @@ async function decrementOrderStock(tx: any, orderId: string, customerId: string)
 
   for (const item of order.items) {
     if (item.product?.supplyType === "CHINA_PREORDER") continue;
-    const warehouseId = await resolveOrgWarehouse(tx, order.organizationId, item.productId);
+    const warehouseId = await resolveOrgWarehouse(
+      tx,
+      order.organizationId,
+      item.productId,
+    );
     await adjustStock(tx, {
       productId: item.productId,
       warehouseId: warehouseId ?? undefined,
@@ -485,7 +591,15 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Нэвтэрнэ үү" });
     }
 
-    const { lines, phone, secondaryPhone, note, shippingAddress, customerLat, customerLng } = req.body as {
+    const {
+      lines,
+      phone,
+      secondaryPhone,
+      note,
+      shippingAddress,
+      customerLat,
+      customerLng,
+    } = req.body as {
       lines?: { productId: string; qty: number }[];
       phone?: string;
       secondaryPhone?: string;
@@ -501,16 +615,24 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
 
     const normalizedPhone = phone?.trim();
     if (!normalizedPhone) {
-      return res.status(400).json({ message: "Захиалга баталгаажуулах утасны дугаар шаардлагатай." });
+      return res
+        .status(400)
+        .json({
+          message: "Захиалга баталгаажуулах утасны дугаар шаардлагатай.",
+        });
     }
     const normalizedNote = note?.trim();
     if (!normalizedNote) {
-      return res.status(400).json({ message: "Захиалгын нэмэлт мэдээлэл шаардлагатай." });
+      return res
+        .status(400)
+        .json({ message: "Захиалгын нэмэлт мэдээлэл шаардлагатай." });
     }
     const normalizedSecondaryPhone = secondaryPhone?.trim();
     const orderNote = [
       normalizedNote,
-      normalizedSecondaryPhone ? `Нэмэлт дугаар: ${normalizedSecondaryPhone}` : null,
+      normalizedSecondaryPhone
+        ? `Нэмэлт дугаар: ${normalizedSecondaryPhone}`
+        : null,
     ]
       .filter(Boolean)
       .join("\n");
@@ -536,7 +658,9 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     });
 
     if (products.length !== productIds.length) {
-      return res.status(400).json({ message: "Зарим бараа олдсонгүй эсвэл идэвхгүй байна" });
+      return res
+        .status(400)
+        .json({ message: "Зарим бараа олдсонгүй эсвэл идэвхгүй байна" });
     }
 
     const productMap = new Map(products.map((p) => [p.id, p]));
@@ -555,17 +679,25 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     for (const line of lines) {
       const product = productMap.get(line.productId);
       if (!product) {
-        return res.status(400).json({ message: `Бараа олдсонгүй: ${line.productId}` });
+        return res
+          .status(400)
+          .json({ message: `Бараа олдсонгүй: ${line.productId}` });
       }
       const qty = Math.max(1, Math.floor(Number(line.qty) || 1));
       const isPreorder = product.supplyType === "CHINA_PREORDER";
       if (!isPreorder && product.stock < qty) {
         return res
           .status(400)
-          .json({ message: `${product.name} барааны нөөц хүрэлцэхгүй (${product.stock} ширхэг)` });
+          .json({
+            message: `${product.name} барааны нөөц хүрэлцэхгүй (${product.stock} ширхэг)`,
+          });
       }
       const basePrice = Number(product.price);
-      const price = applyMemberDiscount(basePrice, product.discounts[0]?.percent, isActiveMember(customer));
+      const price = applyMemberDiscount(
+        basePrice,
+        product.discounts[0]?.percent,
+        isActiveMember(customer),
+      );
       const lineTotal = price * qty;
       subtotal += lineTotal;
 
@@ -584,7 +716,9 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     if (orgIds.length !== 1) {
       return res
         .status(400)
-        .json({ message: "Нэг захиалгад зөвхөн нэг дэлгүүрийн бараа байх ёстой" });
+        .json({
+          message: "Нэг захиалгад зөвхөн нэг дэлгүүрийн бараа байх ёстой",
+        });
     }
 
     const normalizedCustomerLat = toNumberOrNull(customerLat);
@@ -595,7 +729,8 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     if (normalizedCustomerLat === null || normalizedCustomerLng === null) {
       return res.status(400).json({
         code: "CUSTOMER_LOCATION_REQUIRED",
-        message: "Хүргэлт хайхын тулд хэрэглэгчийн байршлын өргөрөг, уртраг тодорхой байх шаардлагатай.",
+        message:
+          "Хүргэлт хайхын тулд хэрэглэгчийн байршлын өргөрөг, уртраг тодорхой байх шаардлагатай.",
       });
     }
 
@@ -680,147 +815,244 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
    GET /store/checkout/:orderId/dispatch-status
    Customer-facing radar status before payment is enabled.
    ══════════════════════════════════════════════════════════ */
-router.get("/store/checkout/:orderId/dispatch-status", async (req: Request, res: Response) => {
-  try {
-    const customer = await getCustomer(req);
-    if (!customer || !customer.isActive || customer.deletedAt) {
-      return res.status(401).json({ message: "Нэвтэрнэ үү" });
-    }
+router.get(
+  "/store/checkout/:orderId/dispatch-status",
+  async (req: Request, res: Response) => {
+    try {
+      const customer = await getCustomer(req);
+      if (!customer || !customer.isActive || customer.deletedAt) {
+        return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      }
 
-    const snapshot = await getCheckoutDispatchSnapshot(req.params.orderId, customer.id);
-    if (!snapshot) {
-      return res.status(404).json({ message: "Захиалгын хүргэлтийн төлөв олдсонгүй" });
-    }
+      const snapshot = await getCheckoutDispatchSnapshot(
+        req.params.orderId,
+        customer.id,
+      );
+      if (!snapshot) {
+        return res
+          .status(404)
+          .json({ message: "Захиалгын хүргэлтийн төлөв олдсонгүй" });
+      }
 
-    return res.json(snapshot);
-  } catch (error) {
-    console.error("store dispatch status error", error);
-    return res.status(500).json({ message: "Хүргэлтийн төлөв шалгахад алдаа гарлаа" });
-  }
-});
+      return res.json(snapshot);
+    } catch (error) {
+      console.error("store dispatch status error", error);
+      return res
+        .status(500)
+        .json({ message: "Хүргэлтийн төлөв шалгахад алдаа гарлаа" });
+    }
+  },
+);
 
 /* ══════════════════════════════════════════════════════════
    POST /store/checkout/:orderId/cancel
    Cancel a customer order while branch dispatch is still searching.
    ══════════════════════════════════════════════════════════ */
-router.post("/store/checkout/:orderId/cancel", async (req: Request, res: Response) => {
-  try {
-    const customer = await getCustomer(req);
-    if (!customer || !customer.isActive || customer.deletedAt) {
-      return res.status(401).json({ message: "Нэвтэрнэ үү" });
-    }
+router.post(
+  "/store/checkout/:orderId/cancel",
+  async (req: Request, res: Response) => {
+    try {
+      const customer = await getCustomer(req);
+      if (!customer || !customer.isActive || customer.deletedAt) {
+        return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      }
 
-    const { orderId } = req.params;
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        customerId: true,
-        status: true,
-        paymentStatus: true,
-      },
-    });
-
-    if (!order) return res.status(404).json({ message: "Захиалга олдсонгүй" });
-    if (order.customerId !== customer.id) {
-      return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
-    }
-    if (order.paymentStatus === PaymentStatus.PAID) {
-      return res.status(409).json({ message: "Төлбөр төлөгдсөн захиалгыг эндээс цуцлах боломжгүй." });
-    }
-    if (order.status === OrderStatus.CANCELLED) {
-      return res.json({ message: "Захиалга аль хэдийн цуцлагдсан", status: OrderStatus.CANCELLED });
-    }
-
-    await prisma.$transaction([
-      prisma.orderDispatchAttempt.updateMany({
-        where: {
-          orderId,
-          status: {
-            in: [
-              OrderDispatchAttemptStatus.QUEUED,
-              OrderDispatchAttemptStatus.PENDING,
-            ],
-          },
-        },
-        data: {
-          status: OrderDispatchAttemptStatus.CANCELLED,
-          respondedAt: new Date(),
-          note: "Хэрэглэгч захиалгыг цуцалсан",
-        },
-      }),
-      prisma.order.update({
+      const { orderId } = req.params;
+      const order = await prisma.order.findUnique({
         where: { id: orderId },
-        data: {
-          status: OrderStatus.CANCELLED,
+        select: {
+          id: true,
+          customerId: true,
+          status: true,
+          paymentStatus: true,
         },
-      }),
-      prisma.orderHistory.create({
-        data: {
-          orderId,
-          fromStatus: order.status as OrderStatus,
-          toStatus: OrderStatus.CANCELLED,
-          changedById: customer.id,
-          note: "Хэрэглэгч хүргэлтийн хайлтын үед захиалгыг цуцалсан",
-        },
-      }),
-    ]);
+      });
 
-    return res.json({ message: "Захиалга цуцлагдлаа", status: OrderStatus.CANCELLED });
-  } catch (error) {
-    console.error("store checkout cancel error", error);
-    return res.status(500).json({ message: "Захиалга цуцлахад алдаа гарлаа" });
-  }
-});
+      if (!order)
+        return res.status(404).json({ message: "Захиалга олдсонгүй" });
+      if (order.customerId !== customer.id) {
+        return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
+      }
+      if (order.paymentStatus === PaymentStatus.PAID) {
+        return res
+          .status(409)
+          .json({
+            message: "Төлбөр төлөгдсөн захиалгыг эндээс цуцлах боломжгүй.",
+          });
+      }
+      if (order.status === OrderStatus.CANCELLED) {
+        return res.json({
+          message: "Захиалга аль хэдийн цуцлагдсан",
+          status: OrderStatus.CANCELLED,
+        });
+      }
+
+      await prisma.$transaction([
+        prisma.orderDispatchAttempt.updateMany({
+          where: {
+            orderId,
+            status: {
+              in: [
+                OrderDispatchAttemptStatus.QUEUED,
+                OrderDispatchAttemptStatus.PENDING,
+              ],
+            },
+          },
+          data: {
+            status: OrderDispatchAttemptStatus.CANCELLED,
+            respondedAt: new Date(),
+            note: "Хэрэглэгч захиалгыг цуцалсан",
+          },
+        }),
+        prisma.order.update({
+          where: { id: orderId },
+          data: {
+            status: OrderStatus.CANCELLED,
+          },
+        }),
+        prisma.orderHistory.create({
+          data: {
+            orderId,
+            fromStatus: order.status as OrderStatus,
+            toStatus: OrderStatus.CANCELLED,
+            changedById: customer.id,
+            note: "Хэрэглэгч хүргэлтийн хайлтын үед захиалгыг цуцалсан",
+          },
+        }),
+      ]);
+
+      return res.json({
+        message: "Захиалга цуцлагдлаа",
+        status: OrderStatus.CANCELLED,
+      });
+    } catch (error) {
+      console.error("store checkout cancel error", error);
+      return res
+        .status(500)
+        .json({ message: "Захиалга цуцлахад алдаа гарлаа" });
+    }
+  },
+);
 
 /* ══════════════════════════════════════════════════════════
    POST /store/checkout/:orderId/payment
    Create QPay invoice only after a branch accepts the radar request.
    ══════════════════════════════════════════════════════════ */
-router.post("/store/checkout/:orderId/payment", async (req: Request, res: Response) => {
-  try {
-    const customer = await getCustomer(req);
-    if (!customer || !customer.isActive || customer.deletedAt) {
-      return res.status(401).json({ message: "Нэвтэрнэ үү" });
-    }
+router.post(
+  "/store/checkout/:orderId/payment",
+  async (req: Request, res: Response) => {
+    try {
+      const customer = await getCustomer(req);
+      if (!customer || !customer.isActive || customer.deletedAt) {
+        return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      }
 
-    const { orderId } = req.params;
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        items: true,
-        payments: {
-          where: { method: PaymentMethod.QPAY },
-          orderBy: { createdAt: "desc" },
-          take: 1,
+      const { orderId } = req.params;
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: {
+          items: true,
+          payments: {
+            where: { method: PaymentMethod.QPAY },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
         },
-      },
-    });
+      });
 
-    if (!order) return res.status(404).json({ message: "Захиалга олдсонгүй" });
-    if (order.customerId !== customer.id) {
-      return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
-    }
-    if (!order.branchId) {
-      return res.status(409).json({ message: "Салбар захиалгыг баталгаажуулсны дараа төлбөр төлнө." });
-    }
-    if (order.paymentStatus === PaymentStatus.PAID) {
-      return res.status(400).json({ message: "Төлбөр аль хэдийн төлөгдсөн байна" });
-    }
+      if (!order)
+        return res.status(404).json({ message: "Захиалга олдсонгүй" });
+      if (order.customerId !== customer.id) {
+        return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
+      }
+      if (!order.branchId) {
+        return res
+          .status(409)
+          .json({
+            message: "Салбар захиалгыг баталгаажуулсны дараа төлбөр төлнө.",
+          });
+      }
+      if (order.paymentStatus === PaymentStatus.PAID) {
+        return res
+          .status(400)
+          .json({ message: "Төлбөр аль хэдийн төлөгдсөн байна" });
+      }
 
-    const existing = order.payments[0];
-    if (existing?.providerRef && existing.rawPayload) {
-      const raw = existing.rawPayload as any;
+      const existing = order.payments[0];
+      if (existing?.providerRef && existing.rawPayload) {
+        const raw = existing.rawPayload as any;
+        return res.json({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          total: Number(order.total),
+          subtotal: Number(order.subtotal),
+          paymentId: existing.id,
+          qrText: raw.qr_text || "",
+          qrImage: raw.qr_image || "",
+          qpayInvoiceId: raw.invoice_id || existing.providerRef,
+          deepLinks: raw.urls || [],
+          expiresIn: 300,
+          items: order.items.map((i) => ({
+            productId: i.productId,
+            name: i.productName,
+            qty: i.quantity,
+            price: Number(i.price),
+            subtotal: Number(i.subtotal),
+          })),
+        });
+      }
+
+      const payment =
+        existing ??
+        (await prisma.paymentAttempt.create({
+          data: {
+            orderId: order.id,
+            method: PaymentMethod.QPAY,
+            status: PaymentStatus.PENDING,
+            amount: Number(order.total),
+          },
+        }));
+
+      let invoice;
+      try {
+        invoice = await createStorePaymentInvoice({
+          organizationId: order.organizationId,
+          orderId,
+          orderNumber: order.orderNumber,
+          amount: Number(order.total),
+        });
+      } catch (err) {
+        console.error("QPay invoice creation failed:", err);
+        if (err instanceof Error && err.message === "QPAY_NOT_CONFIGURED") {
+          return res
+            .status(400)
+            .json({
+              message: "Дэлгүүр QPay төлбөрийн тохиргоо холбоогүй байна.",
+            });
+        }
+        return res
+          .status(502)
+          .json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
+      }
+
+      await prisma.paymentAttempt.update({
+        where: { id: payment.id },
+        data: {
+          providerRef: invoice.data.invoice_id,
+          rawPayload: JSON.parse(JSON.stringify(invoice.rawPayload)),
+        },
+      });
+
       return res.json({
         orderId: order.id,
         orderNumber: order.orderNumber,
         total: Number(order.total),
         subtotal: Number(order.subtotal),
-        paymentId: existing.id,
-        qrText: raw.qr_text || "",
-        qrImage: raw.qr_image || "",
-        qpayInvoiceId: raw.invoice_id || existing.providerRef,
-        deepLinks: raw.urls || [],
+        paymentId: payment.id,
+        qrText: invoice.data.qr_text,
+        qrImage: invoice.data.qr_image,
+        qpayInvoiceId: invoice.data.invoice_id,
+        deepLinks: invoice.data.urls,
         expiresIn: 300,
         items: order.items.map((i) => ({
           productId: i.productId,
@@ -830,210 +1062,191 @@ router.post("/store/checkout/:orderId/payment", async (req: Request, res: Respon
           subtotal: Number(i.subtotal),
         })),
       });
+    } catch (error) {
+      console.error("store payment create error", error);
+      return res.status(500).json({ message: "Төлбөр үүсгэхэд алдаа гарлаа" });
     }
-
-    const payment = existing ?? await prisma.paymentAttempt.create({
-      data: {
-        orderId: order.id,
-        method: PaymentMethod.QPAY,
-        status: PaymentStatus.PENDING,
-        amount: Number(order.total),
-      },
-    });
-
-    let invoice;
-    try {
-      invoice = await createStorePaymentInvoice({
-        organizationId: order.organizationId,
-        orderId,
-        orderNumber: order.orderNumber,
-        amount: Number(order.total),
-      });
-    } catch (err) {
-      console.error("QPay invoice creation failed:", err);
-      if (err instanceof Error && err.message === "QPAY_NOT_CONFIGURED") {
-        return res.status(400).json({ message: "Дэлгүүр QPay төлбөрийн тохиргоо холбоогүй байна." });
-      }
-      return res.status(502).json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
-    }
-
-    await prisma.paymentAttempt.update({
-      where: { id: payment.id },
-      data: {
-        providerRef: invoice.data.invoice_id,
-        rawPayload: JSON.parse(JSON.stringify(invoice.rawPayload)),
-      },
-    });
-
-    return res.json({
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      total: Number(order.total),
-      subtotal: Number(order.subtotal),
-      paymentId: payment.id,
-      qrText: invoice.data.qr_text,
-      qrImage: invoice.data.qr_image,
-      qpayInvoiceId: invoice.data.invoice_id,
-      deepLinks: invoice.data.urls,
-      expiresIn: 300,
-      items: order.items.map((i) => ({
-        productId: i.productId,
-        name: i.productName,
-        qty: i.quantity,
-        price: Number(i.price),
-        subtotal: Number(i.subtotal),
-      })),
-    });
-  } catch (error) {
-    console.error("store payment create error", error);
-    return res.status(500).json({ message: "Төлбөр үүсгэхэд алдаа гарлаа" });
-  }
-});
+  },
+);
 
 /* ══════════════════════════════════════════════════════════
    POST /store/checkout/:orderId/confirm
    Check QPay payment status and confirm if paid.
    ══════════════════════════════════════════════════════════ */
-router.post("/store/checkout/:orderId/confirm", async (req: Request, res: Response) => {
-  try {
-    const customer = await getCustomer(req);
-    if (!customer || !customer.isActive || customer.deletedAt) {
-      return res.status(401).json({ message: "Нэвтэрнэ үү" });
-    }
+router.post(
+  "/store/checkout/:orderId/confirm",
+  async (req: Request, res: Response) => {
+    try {
+      const customer = await getCustomer(req);
+      if (!customer || !customer.isActive || customer.deletedAt) {
+        return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      }
 
-    const { orderId } = req.params;
+      const { orderId } = req.params;
 
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        customerId: true,
-        organizationId: true,
-        status: true,
-        customerLat: true,
-        customerLng: true,
-        paymentStatus: true,
-        orderNumber: true,
-        total: true,
-        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, rawPayload: true, status: true } },
-      },
-    });
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          customerId: true,
+          organizationId: true,
+          status: true,
+          customerLat: true,
+          customerLng: true,
+          paymentStatus: true,
+          orderNumber: true,
+          total: true,
+          payments: {
+            where: { method: PaymentMethod.QPAY },
+            select: {
+              id: true,
+              providerRef: true,
+              rawPayload: true,
+              status: true,
+            },
+          },
+        },
+      });
 
-    if (!order) {
-      return res.status(404).json({ message: "Захиалга олдсонгүй" });
-    }
+      if (!order) {
+        return res.status(404).json({ message: "Захиалга олдсонгүй" });
+      }
 
-    if (order.customerId !== customer.id) {
-      return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
-    }
+      if (order.customerId !== customer.id) {
+        return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
+      }
 
-    if (order.paymentStatus === "PAID") {
+      if (order.paymentStatus === "PAID") {
+        return res.json({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          status: "PAID",
+          message: "Төлбөр аль хэдийн төлөгдсөн",
+        });
+      }
+
+      // Check QPay payment via invoiceId
+      const payment = order.payments[0];
+      if (!payment?.providerRef) {
+        return res.status(400).json({ message: "QPay нэхэмжлэх олдсонгүй" });
+      }
+
+      const paymentCheck = await checkStorePayment({
+        organizationId: order.organizationId,
+        providerRef: payment.providerRef,
+        rawPayload: payment.rawPayload,
+      });
+
+      if (!paymentCheck.paid) {
+        return res.json({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          status: "PENDING",
+          message: "Төлбөр хүлээгдэж байна",
+        });
+      }
+
+      await markOrderPaidAndStartDispatch(
+        order,
+        payment.id,
+        paymentCheck.payload,
+        "QPay төлбөр амжилттай",
+      );
+
       return res.json({
         orderId: order.id,
         orderNumber: order.orderNumber,
         status: "PAID",
-        message: "Төлбөр аль хэдийн төлөгдсөн",
+        message: "Төлбөр амжилттай",
       });
+    } catch (error) {
+      console.error("store confirm error", error);
+      return res
+        .status(500)
+        .json({ message: "Төлбөр баталгаажуулахад алдаа гарлаа" });
     }
-
-    // Check QPay payment via invoiceId
-    const payment = order.payments[0];
-    if (!payment?.providerRef) {
-      return res.status(400).json({ message: "QPay нэхэмжлэх олдсонгүй" });
-    }
-
-    const paymentCheck = await checkStorePayment({
-      organizationId: order.organizationId,
-      providerRef: payment.providerRef,
-      rawPayload: payment.rawPayload,
-    });
-
-    if (!paymentCheck.paid) {
-      return res.json({
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        status: "PENDING",
-        message: "Төлбөр хүлээгдэж байна",
-      });
-    }
-
-    await markOrderPaidAndStartDispatch(order, payment.id, paymentCheck.payload, "QPay төлбөр амжилттай");
-
-    return res.json({
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      status: "PAID",
-      message: "Төлбөр амжилттай",
-    });
-  } catch (error) {
-    console.error("store confirm error", error);
-    return res.status(500).json({ message: "Төлбөр баталгаажуулахад алдаа гарлаа" });
-  }
-});
+  },
+);
 
 /* ══════════════════════════════════════════════════════════
    GET /store/checkout/:orderId/payment-status
    Polling endpoint — check QPay payment status.
    ══════════════════════════════════════════════════════════ */
-router.get("/store/checkout/:orderId/payment-status", async (req: Request, res: Response) => {
-  try {
-    const customer = await getCustomer(req);
-    if (!customer || !customer.isActive || customer.deletedAt) {
-      return res.status(401).json({ message: "Нэвтэрнэ үү" });
-    }
+router.get(
+  "/store/checkout/:orderId/payment-status",
+  async (req: Request, res: Response) => {
+    try {
+      const customer = await getCustomer(req);
+      if (!customer || !customer.isActive || customer.deletedAt) {
+        return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      }
 
-    const { orderId } = req.params;
+      const { orderId } = req.params;
 
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        customerId: true,
-        organizationId: true,
-        status: true,
-        customerLat: true,
-        customerLng: true,
-        paymentStatus: true,
-        orderNumber: true,
-        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, rawPayload: true, status: true } },
-      },
-    });
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          customerId: true,
+          organizationId: true,
+          status: true,
+          customerLat: true,
+          customerLng: true,
+          paymentStatus: true,
+          orderNumber: true,
+          payments: {
+            where: { method: PaymentMethod.QPAY },
+            select: {
+              id: true,
+              providerRef: true,
+              rawPayload: true,
+              status: true,
+            },
+          },
+        },
+      });
 
-    if (!order) {
-      return res.status(404).json({ message: "Захиалга олдсонгүй" });
-    }
-    if (order.customerId !== customer.id) {
-      return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
-    }
+      if (!order) {
+        return res.status(404).json({ message: "Захиалга олдсонгүй" });
+      }
+      if (order.customerId !== customer.id) {
+        return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
+      }
 
-    // Already paid
-    if (order.paymentStatus === "PAID") {
+      // Already paid
+      if (order.paymentStatus === "PAID") {
+        return res.json({ status: "PAID" });
+      }
+
+      const payment = order.payments[0];
+      if (!payment?.providerRef) {
+        return res.json({ status: "PENDING" });
+      }
+
+      const paymentCheck = await checkStorePayment({
+        organizationId: order.organizationId,
+        providerRef: payment.providerRef,
+        rawPayload: payment.rawPayload,
+      });
+
+      if (!paymentCheck.paid) {
+        return res.json({ status: "PENDING" });
+      }
+
+      await markOrderPaidAndStartDispatch(
+        order,
+        payment.id,
+        paymentCheck.payload,
+        "QPay төлбөр амжилттай (auto-poll)",
+      );
+
       return res.json({ status: "PAID" });
+    } catch (error) {
+      console.error("payment-status error", error);
+      return res.status(500).json({ message: "Төлбөр шалгахад алдаа гарлаа" });
     }
-
-    const payment = order.payments[0];
-    if (!payment?.providerRef) {
-      return res.json({ status: "PENDING" });
-    }
-
-    const paymentCheck = await checkStorePayment({
-      organizationId: order.organizationId,
-      providerRef: payment.providerRef,
-      rawPayload: payment.rawPayload,
-    });
-
-    if (!paymentCheck.paid) {
-      return res.json({ status: "PENDING" });
-    }
-
-    await markOrderPaidAndStartDispatch(order, payment.id, paymentCheck.payload, "QPay төлбөр амжилттай (auto-poll)");
-
-    return res.json({ status: "PAID" });
-  } catch (error) {
-    console.error("payment-status error", error);
-    return res.status(500).json({ message: "Төлбөр шалгахад алдаа гарлаа" });
-  }
-});
+  },
+);
 
 /* ══════════════════════════════════════════════════════════
    POST /store/qpay/callback
@@ -1057,7 +1270,15 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
         customerLat: true,
         customerLng: true,
         paymentStatus: true,
-        payments: { where: { method: PaymentMethod.QPAY }, select: { id: true, providerRef: true, rawPayload: true, status: true } },
+        payments: {
+          where: { method: PaymentMethod.QPAY },
+          select: {
+            id: true,
+            providerRef: true,
+            rawPayload: true,
+            status: true,
+          },
+        },
       },
     });
 
@@ -1085,7 +1306,12 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
       return res.json({ message: "not yet paid" });
     }
 
-    await markOrderPaidAndStartDispatch(order, payment.id, paymentCheck.payload, "QPay callback — төлбөр амжилттай");
+    await markOrderPaidAndStartDispatch(
+      order,
+      payment.id,
+      paymentCheck.payload,
+      "QPay callback — төлбөр амжилттай",
+    );
 
     return res.json({ message: "success" });
   } catch (error) {
@@ -1118,8 +1344,24 @@ router.get("/store/orders", async (req: Request, res: Response) => {
             subtotal: true,
           },
         },
+        payments: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            method: true,
+            status: true,
+            amount: true,
+            providerRef: true,
+            paidAt: true,
+            refundedAt: true,
+            cancelledAt: true,
+            createdAt: true,
+          },
+        },
         organization: { select: { name: true } },
-        branch: { select: { id: true, name: true, address: true, lat: true, lng: true } },
+        branch: {
+          select: { id: true, name: true, address: true, lat: true, lng: true },
+        },
         dispatchAttempts: {
           orderBy: { sequence: "asc" },
           select: {
@@ -1141,8 +1383,11 @@ router.get("/store/orders", async (req: Request, res: Response) => {
         orderNumber: o.orderNumber,
         status: o.status,
         paymentStatus: o.paymentStatus,
+        paymentMethod: o.paymentMethod,
         total: Number(o.total),
         subtotal: Number(o.subtotal),
+        deliveryFee: Number(o.deliveryFee),
+        discountAmount: Number(o.discountAmount),
         deliveryCode: o.deliveryCode,
         phone: o.phone,
         shippingAddress: o.shippingAddress,
@@ -1177,6 +1422,17 @@ router.get("/store/orders", async (req: Request, res: Response) => {
           })),
         },
         createdAt: o.createdAt.toISOString(),
+        payments: o.payments.map((payment) => ({
+          id: payment.id,
+          method: payment.method,
+          status: payment.status,
+          amount: Number(payment.amount),
+          providerRef: payment.providerRef,
+          paidAt: payment.paidAt?.toISOString() || null,
+          refundedAt: payment.refundedAt?.toISOString() || null,
+          cancelledAt: payment.cancelledAt?.toISOString() || null,
+          createdAt: payment.createdAt.toISOString(),
+        })),
         items: o.items.map((i) => ({
           name: i.productName,
           qty: i.quantity,
@@ -1187,7 +1443,9 @@ router.get("/store/orders", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("store orders error", error);
-    return res.status(500).json({ message: "Захиалгын жагсаалт авахад алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "Захиалгын жагсаалт авахад алдаа гарлаа" });
   }
 });
 
@@ -1199,7 +1457,11 @@ router.get("/store/orders", async (req: Request, res: Response) => {
 router.get("/store/orders/track", async (req: Request, res: Response) => {
   try {
     const { orderNumber } = req.query;
-    if (!orderNumber || typeof orderNumber !== "string" || orderNumber.trim().length < 5) {
+    if (
+      !orderNumber ||
+      typeof orderNumber !== "string" ||
+      orderNumber.trim().length < 5
+    ) {
       return res.status(400).json({ message: "Захиалгын дугаар оруулна уу" });
     }
 
@@ -1241,12 +1503,19 @@ router.get("/store/orders/track", async (req: Request, res: Response) => {
       deliveryCode: order.deliveryCode,
       organizationName: order.organization.name,
       createdAt: order.createdAt.toISOString(),
-      items: order.items.map((i: { productName: string; quantity: number; price: any; subtotal: any }) => ({
-        name: i.productName,
-        qty: i.quantity,
-        price: Number(i.price),
-        subtotal: Number(i.subtotal),
-      })),
+      items: order.items.map(
+        (i: {
+          productName: string;
+          quantity: number;
+          price: any;
+          subtotal: any;
+        }) => ({
+          name: i.productName,
+          qty: i.quantity,
+          price: Number(i.price),
+          subtotal: Number(i.subtotal),
+        }),
+      ),
       delivery: order.delivery
         ? {
             status: order.delivery.status,
