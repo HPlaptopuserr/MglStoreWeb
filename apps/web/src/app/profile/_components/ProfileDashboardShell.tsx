@@ -167,7 +167,7 @@ export function ProfileStatsGrid({
   ];
 
   return (
-    <section className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4">
+    <section className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4 xl:gap-4">
       {stats.map((stat) => {
         const Icon = stat.icon;
         return (
@@ -175,25 +175,35 @@ export function ProfileStatsGrid({
             key={stat.label}
             type="button"
             onClick={stat.onClick}
-            className="group min-w-0 rounded-[18px] border border-white bg-white p-3.5 text-left shadow-[0_12px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 hover:border-orange-100 hover:shadow-[0_18px_46px_rgba(15,23,42,0.11)] focus:outline-none focus:ring-2 focus:ring-orange-300 sm:p-5 sm:shadow-[0_16px_45px_rgba(15,23,42,0.08)]"
+            className="group flex min-h-[76px] min-w-0 items-center gap-3 rounded-[18px] border border-white bg-white p-3 text-left shadow-[0_10px_28px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 hover:border-orange-100 hover:shadow-[0_18px_46px_rgba(15,23,42,0.11)] focus:outline-none focus:ring-2 focus:ring-orange-300 sm:block sm:min-h-0 sm:p-5 sm:shadow-[0_16px_45px_rgba(15,23,42,0.08)]"
           >
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex shrink-0 items-center justify-between gap-2 sm:items-start">
               <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12 ${stat.className}`}
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12 ${stat.className}`}
               >
                 <Icon size={18} />
               </span>
-              <span className="min-w-0 truncate text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 sm:text-[10px]">
+              <span className="hidden min-w-0 truncate text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 sm:block sm:text-[10px]">
                 {stat.label}
               </span>
             </div>
-            <p className="mt-4 truncate text-lg font-black text-slate-950 sm:mt-5 sm:text-xl">
-              {stat.value}
-            </p>
-            <p className="mt-1 truncate text-[11px] font-bold text-slate-400 sm:mt-2 sm:text-xs">
-              {stat.helper}
-            </p>
-            <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
+            <div className="min-w-0 flex-1 sm:mt-4">
+              <div className="flex min-w-0 items-center justify-between gap-2 sm:block">
+                <span className="truncate text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 sm:hidden">
+                  {stat.label}
+                </span>
+                <span className="shrink-0 text-[11px] font-black text-orange-500 sm:hidden">
+                  {stat.actionLabel}
+                </span>
+              </div>
+              <p className="mt-0.5 truncate text-lg font-black leading-tight text-slate-950 sm:mt-0 sm:text-xl">
+                {stat.value}
+              </p>
+              <p className="mt-1 line-clamp-1 text-[11px] font-bold leading-4 text-slate-400 sm:mt-2 sm:text-xs">
+                {stat.helper}
+              </p>
+            </div>
+            <div className="hidden sm:mt-3 sm:block sm:space-y-1.5 sm:border-t sm:border-slate-100 sm:pt-3">
               {stat.details.map((detail) => (
                 <p
                   key={detail}
@@ -203,10 +213,11 @@ export function ProfileStatsGrid({
                 </p>
               ))}
             </div>
-            <span className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-black text-orange-500 transition group-hover:gap-2 sm:text-xs">
+            <span className="hidden text-orange-500 transition group-hover:gap-2 sm:mt-3 sm:inline-flex sm:items-center sm:gap-1.5 sm:text-xs sm:font-black">
               {stat.actionLabel}
               <ArrowRight size={13} />
             </span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-orange-400 sm:hidden" />
           </button>
         );
       })}
