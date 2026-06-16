@@ -282,10 +282,10 @@ export const Header = () => {
                 }`}
               >
                 {user?.avatarUrl ? (
-                  <img
-                    src={resolveApiAssetUrl(user.avatarUrl)}
-                    alt={user.fullName || "Profile"}
-                    className="h-full w-full rounded-xl object-cover"
+                  <HeaderAvatar
+                    label={user.fullName || user.email || "Profile"}
+                    src={user.avatarUrl}
+                    className="h-full w-full rounded-xl"
                   />
                 ) : user ? (
                   <span className="text-xs font-black">
@@ -311,11 +311,10 @@ export const Header = () => {
               onClick={openMobileSearch}
               className="relative flex h-12 w-full items-center rounded-2xl border border-gray-200 bg-gray-50 px-4 text-left text-sm font-semibold text-slate-400 shadow-sm transition active:scale-[0.99] active:bg-white"
             >
-              <Search
-                size={16}
-                className="mr-3 shrink-0 text-gray-400"
-              />
-              <span className="min-w-0 flex-1 truncate">Бүтээгдэхүүн хайх...</span>
+              <Search size={16} className="mr-3 shrink-0 text-gray-400" />
+              <span className="min-w-0 flex-1 truncate">
+                Бүтээгдэхүүн хайх...
+              </span>
               <span className="rounded-xl bg-slate-200 px-3 py-1.5 text-xs font-black text-slate-500">
                 Хайх
               </span>
@@ -474,11 +473,10 @@ export const Header = () => {
                 onClick={openMobileSearch}
                 className="relative flex h-[52px] w-full items-center rounded-2xl border border-slate-200 bg-white px-4 text-left text-[15px] font-semibold text-slate-400 shadow-sm transition active:scale-[0.99] active:bg-slate-50"
               >
-                <Search
-                  size={17}
-                  className="mr-3 shrink-0 text-slate-400"
-                />
-                <span className="min-w-0 flex-1 truncate">Бараа, үйлчилгээ, төсөл хайх...</span>
+                <Search size={17} className="mr-3 shrink-0 text-slate-400" />
+                <span className="min-w-0 flex-1 truncate">
+                  Бараа, үйлчилгээ, төсөл хайх...
+                </span>
                 <span className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white">
                   Хайх
                 </span>
@@ -587,17 +585,11 @@ export const Header = () => {
                     className="flex items-center gap-3 rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3.5 shadow-sm"
                   >
                     <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-sm font-black text-white">
-                      {user.avatarUrl ? (
-                        <img
-                          src={resolveApiAssetUrl(user.avatarUrl)}
-                          alt={user.fullName || "Profile"}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        user.fullName?.trim()?.[0]?.toUpperCase() ||
-                        user.email?.[0]?.toUpperCase() ||
-                        "?"
-                      )}
+                      <HeaderAvatar
+                        label={user.fullName || user.email || "Хэрэглэгч"}
+                        src={user.avatarUrl}
+                        className="h-full w-full rounded-2xl"
+                      />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-black text-slate-950">
@@ -759,7 +751,9 @@ function MobileSearchSheet({
   return (
     <div
       className={`fixed inset-0 z-[120] bg-slate-950/45 backdrop-blur-sm transition-opacity duration-200 md:hidden ${
-        open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        open
+          ? "opacity-100 pointer-events-auto"
+          : "opacity-0 pointer-events-none"
       }`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -853,7 +847,9 @@ function MobileSearchSheet({
                   <button
                     key={category.id}
                     type="button"
-                    onClick={() => onNavigate(`/products?category=${category.id}`)}
+                    onClick={() =>
+                      onNavigate(`/products?category=${category.id}`)
+                    }
                     className="flex h-12 min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 text-left shadow-sm transition active:bg-slate-50"
                   >
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
@@ -1024,14 +1020,18 @@ function HeaderAvatar({
   label: string;
   src?: string | null;
 }) {
-  if (src) {
+  const [failed, setFailed] = useState(false);
+  const imageSrc = src && !failed ? resolveApiAssetUrl(src) : "";
+
+  if (imageSrc) {
     return (
       <span
-        className={`shrink-0 overflow-hidden rounded-full bg-slate-100 ${className || ""}`}
+        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-sm font-black text-white ${className || ""}`}
       >
         <img
-          src={resolveApiAssetUrl(src)}
+          src={imageSrc}
           alt=""
+          onError={() => setFailed(true)}
           className="h-full w-full object-cover"
         />
       </span>

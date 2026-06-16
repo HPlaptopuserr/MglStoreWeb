@@ -58,9 +58,11 @@ export function OrganizationAffiliationCard({
   const [allProfilesOpen, setAllProfilesOpen] = useState(false);
   if (!organizations.length) return null;
 
-  const displayName = user.fullName || user.email || user.phone || "Personal account";
+  const displayName =
+    user.fullName || user.email || user.phone || "Personal account";
   const featuredOrganizations = organizations.slice(0, 2);
-  const showAllProfilesButton = organizations.length > featuredOrganizations.length;
+  const showAllProfilesButton =
+    organizations.length > featuredOrganizations.length;
 
   const openOrganization = (organizationId: string) => {
     setAllProfilesOpen(false);
@@ -76,7 +78,9 @@ export function OrganizationAffiliationCard({
             <p className="truncate text-base font-black tracking-tight text-white">
               {displayName}
             </p>
-            <p className="text-[11px] font-bold text-white/45">Personal profile</p>
+            <p className="text-[11px] font-bold text-white/45">
+              Personal profile
+            </p>
           </div>
         </div>
 
@@ -138,7 +142,8 @@ function OrganizationSwitcherModal({
     if (!normalizedQuery) return organizations;
 
     return organizations.filter((org) => {
-      const haystack = `${org.name} ${org.slug || ""} ${org.role}`.toLowerCase();
+      const haystack =
+        `${org.name} ${org.slug || ""} ${org.role}`.toLowerCase();
       return haystack.includes(normalizedQuery);
     });
   }, [normalizedQuery, organizations]);
@@ -187,7 +192,9 @@ function OrganizationSwitcherModal({
             <Avatar label={displayName} src={user.avatarUrl} compact />
             <div className="min-w-0">
               <p className="truncate text-base font-black">{displayName}</p>
-              <p className="text-xs font-bold text-white/45">Personal profile</p>
+              <p className="text-xs font-bold text-white/45">
+                Personal profile
+              </p>
             </div>
           </div>
 
@@ -205,7 +212,9 @@ function OrganizationSwitcherModal({
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
           <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-white/35">
             <span>All organizations</span>
-            <span>{filteredOrganizations.length}/{organizations.length}</span>
+            <span>
+              {filteredOrganizations.length}/{organizations.length}
+            </span>
           </div>
           <div className="space-y-2">
             {filteredOrganizations.map((org) => (
@@ -283,13 +292,23 @@ function Avatar({
   label: string;
   src?: string | null;
 }) {
-  const size = compact ? "h-11 w-11 text-sm sm:h-12 sm:w-12" : "h-14 w-14 text-base";
+  const size = compact
+    ? "h-11 w-11 text-sm sm:h-12 sm:w-12"
+    : "h-14 w-14 text-base";
+  const [failed, setFailed] = useState(false);
+  const imageSrc = src && !failed ? resolveApiAssetUrl(src) : "";
 
-  if (src) {
-    const imageSrc = resolveApiAssetUrl(src);
+  if (imageSrc) {
     return (
-      <span className={`${size} shrink-0 overflow-hidden rounded-full bg-white/10`}>
-        <img src={imageSrc} alt="" className="h-full w-full object-cover" />
+      <span
+        className={`${size} shrink-0 overflow-hidden rounded-full bg-white/10`}
+      >
+        <img
+          src={imageSrc}
+          alt=""
+          onError={() => setFailed(true)}
+          className="h-full w-full object-cover"
+        />
       </span>
     );
   }
