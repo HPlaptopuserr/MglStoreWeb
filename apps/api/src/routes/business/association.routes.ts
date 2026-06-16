@@ -136,15 +136,6 @@ async function refreshAssociationInvoicePayment(invoiceId: string) {
   });
   if (!invoice) return null;
   if (invoice.status === PosQPayStatus.PAID) return invoice;
-  if (
-    invoice.status === PosQPayStatus.PENDING &&
-    invoice.expiresAt <= new Date()
-  ) {
-    return prisma.qPayInvoice.update({
-      where: { id: invoice.id },
-      data: { status: PosQPayStatus.EXPIRED },
-    });
-  }
   if (invoice.status !== PosQPayStatus.PENDING) return invoice;
 
   const payload = (
@@ -178,6 +169,19 @@ async function refreshAssociationInvoicePayment(invoiceId: string) {
     Boolean((status as any)?.paid) ||
     ["PAID", "SUCCESS", "SUCCESSFUL", "000"].includes(rawStatus);
   if (!isPaid) {
+    if (invoice.expiresAt <= new Date()) {
+      return prisma.qPayInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          status: PosQPayStatus.EXPIRED,
+          webhookPayload: {
+            ...payload,
+            lastPaymentCheck: status as unknown as Prisma.JsonObject,
+          } as unknown as Prisma.JsonObject,
+        },
+      });
+    }
+
     return prisma.qPayInvoice.update({
       where: { id: invoice.id },
       data: {
