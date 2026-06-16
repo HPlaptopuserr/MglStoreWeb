@@ -3777,41 +3777,6 @@ export default function PosDemoPage() {
         )}
 
         <section ref={paymentSectionRef} className="flex min-h-0 flex-col gap-3 pr-1">
-            {selectedCreditRepayment && (
-              <div className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-wide text-amber-700">
-                      Зээлийн төлөлт
-                    </p>
-                    <h3 className="mt-0.5 truncate text-sm font-black text-slate-950">
-                      {selectedCreditRepayment.borrowerName}
-                    </h3>
-                    <p className="mt-0.5 text-xs font-semibold text-slate-600">
-                      {selectedCreditRepayment.borrowerPhone || selectedCreditRepayment.receiptNo}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-black tabular-nums text-amber-700">
-                      {formatMoney(selectedCreditRepayment.totalDue)}
-                    </p>
-                    <p className="text-[10px] font-semibold text-slate-500">
-                      Хүү: {formatMoney(selectedCreditRepayment.totalInterest)}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    dispatch({ type: "clear-cart" });
-                    resetCreditRepaymentMode();
-                  }}
-                  className="mt-2 inline-flex h-8 items-center justify-center rounded-lg border border-amber-200 bg-white px-3 text-xs font-black text-amber-700 hover:bg-amber-100"
-                >
-                  Болих
-                </button>
-              </div>
-            )}
             <PosCartPanel
               className="min-h-[360px] flex-[1_1_360px]"
               lines={state.cart}
