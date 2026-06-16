@@ -82,6 +82,18 @@ function associationSaleReference(registrationId: string) {
   return `ASSOCIATION-${registrationId}`;
 }
 
+function addMonths(date: Date, months?: number | null) {
+  const safeMonths = Math.max(1, Number(months || 1));
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + safeMonths);
+  return next;
+}
+
+function laterDate(a: Date | null | undefined, b: Date) {
+  if (!a) return b;
+  return a.getTime() > b.getTime() ? a : b;
+}
+
 function getAssociationPaymentAccount(config: any) {
   const account = config?.paymentAccount || {};
   return {
@@ -94,7 +106,11 @@ function getAssociationPaymentAccount(config: any) {
   };
 }
 
-function getAssociationConfigMessage(config: any, key: string, fallback: string) {
+function getAssociationConfigMessage(
+  config: any,
+  key: string,
+  fallback: string,
+) {
   return String(config?.upgradeModal?.[key] || fallback).trim();
 }
 
@@ -192,6 +208,106 @@ async function refreshAssociationInvoicePayment(invoiceId: string) {
   });
 }
 
+async function finalizeAssociationMembershipPayment(
+  invoice: Awaited<ReturnType<typeof refreshAssociationInvoicePayment>>,
+) {
+  if (!invoice || invoice.status !== PosQPayStatus.PAID) return null;
+
+  const payload = (
+    invoice.webhookPayload && typeof invoice.webhookPayload === "object"
+      ? invoice.webhookPayload
+      : {}
+  ) as Record<string, any>;
+  if (String(payload.kind || "") !== "ASSOCIATION_MEMBERSHIP") return null;
+
+  const userId = String(payload.userId || "").trim();
+  const registrationId = String(payload.registrationId || "").trim();
+  if (!userId || !registrationId) return null;
+
+  const paidAt = invoice.paidAt || new Date();
+  const registration = await prisma.associationMemberRegistration.findUnique({
+    where: { id: registrationId },
+    select: {
+      id: true,
+      durationMonths: true,
+      phone: true,
+    },
+  });
+  if (!registration) return null;
+
+  const expiresAt = addMonths(paidAt, registration.durationMonths);
+
+  return prisma.$transaction(async (tx) => {
+    const currentUser = await tx.user.findUnique({
+      where: { id: userId },
+      select: { membershipExpiresAt: true },
+    });
+    if (!currentUser) return null;
+
+    const membershipExpiresAt = laterDate(
+      currentUser.membershipExpiresAt,
+      expiresAt,
+    );
+
+    const [updatedRegistration, updatedUser] = await Promise.all([
+      tx.associationMemberRegistration.update({
+        where: { id: registrationId },
+        data: {
+          status: ApprovalStatus.APPROVED,
+          paymentStatus: PaymentStatus.PAID,
+          paymentMethod: PaymentMethod.QPAY,
+          paidAt,
+          paymentReference: invoice.paymentId || invoice.id,
+          paymentNote: "QPay/SystemQR төлбөрөөр автоматаар идэвхжив.",
+          adminNote:
+            "QPay/SystemQR төлбөр баталгаажсан тул автоматаар зөвшөөрөв.",
+          reviewedAt: new Date(),
+        },
+      }),
+      tx.user.update({
+        where: { id: userId },
+        data: {
+          isPrime: true,
+          membershipPaidAt: paidAt,
+          membershipStartedAt: paidAt,
+          membershipExpiresAt,
+          membershipDiscountPhone: registration.phone.trim() || null,
+        },
+        select: {
+          id: true,
+          membershipExpiresAt: true,
+          membershipDiscountPhone: true,
+        },
+      }),
+    ]);
+
+    return { registration: updatedRegistration, user: updatedUser };
+  });
+}
+
+async function reconcilePendingAssociationMembershipPayments(limit = 50) {
+  const invoices = await prisma.qPayInvoice.findMany({
+    where: {
+      saleReference: { startsWith: "ASSOCIATION-" },
+      status: { in: [PosQPayStatus.PENDING, PosQPayStatus.PAID] },
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+
+  for (const invoice of invoices) {
+    try {
+      const refreshed =
+        invoice.status === PosQPayStatus.PAID
+          ? invoice
+          : await refreshAssociationInvoicePayment(invoice.id);
+      await finalizeAssociationMembershipPayment(refreshed);
+    } catch (error) {
+      console.error("Association payment reconcile error:", error);
+    }
+  }
+}
+
 /* ── Public: submit registration ───────────────────────────── */
 router.post("/association/register", async (req, res) => {
   try {
@@ -211,13 +327,7 @@ router.post("/association/register", async (req, res) => {
       paymentReference,
     } = req.body;
 
-    if (
-      !lastName ||
-      !firstName ||
-      !phone ||
-      !address ||
-      !membershipType
-    ) {
+    if (!lastName || !firstName || !phone || !address || !membershipType) {
       return res
         .status(400)
         .json({ message: "Заавал бөглөх талбарууд дутуу байна" });
@@ -290,19 +400,11 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
 
     if (!userId)
       return res.status(401).json({ success: false, message: "Нэвтэрнэ үү" });
-    if (
-      !lastName ||
-      !firstName ||
-      !phone ||
-      !address ||
-      !membershipType
-    ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Заавал бөглөх талбарууд дутуу байна",
-        });
+    if (!lastName || !firstName || !phone || !address || !membershipType) {
+      return res.status(400).json({
+        success: false,
+        message: "Заавал бөглөх талбарууд дутуу байна",
+      });
     }
     if (!isPaidMembershipType(membershipType)) {
       return res
@@ -312,12 +414,10 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
 
     const duration = durationMonths ? Number(durationMonths) : null;
     if (![1, 6].includes(Number(duration))) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Гишүүнчлэлийн хугацаа 1 эсвэл 6 сар байна",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Гишүүнчлэлийн хугацаа 1 эсвэл 6 сар байна",
+      });
     }
 
     const amount = await resolveMembershipPrice(membershipType, duration);
@@ -445,12 +545,10 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
     }
   } catch (e: any) {
     console.error("Association systemqr create error:", e);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: e?.message || "QuickQR төлбөр үүсгэхэд алдаа гарлаа",
-      });
+    return res.status(500).json({
+      success: false,
+      message: e?.message || "QuickQR төлбөр үүсгэхэд алдаа гарлаа",
+    });
   }
 });
 
@@ -487,24 +585,14 @@ router.get("/association/systemqr/check", requireAuth, async (req, res) => {
       (!registrationId ||
         String(payload.registrationId || "") === registrationId);
     if (!belongs)
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Энэ нэхэмжлэх таны account-д хамаарахгүй байна",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Энэ нэхэмжлэх таны account-д хамаарахгүй байна",
+      });
 
     const isPaid = invoice.status === PosQPayStatus.PAID;
     if (isPaid) {
-      await prisma.associationMemberRegistration.update({
-        where: { id: String(payload.registrationId) },
-        data: {
-          paymentStatus: PaymentStatus.PAID,
-          paymentMethod: PaymentMethod.QPAY,
-          paidAt: invoice.paidAt || new Date(),
-          paymentReference: invoice.paymentId || invoice.id,
-        },
-      });
+      await finalizeAssociationMembershipPayment(invoice);
     }
 
     return res.json({
@@ -525,7 +613,10 @@ router.all("/association/systemqr/callback", async (req, res) => {
   try {
     const invoiceId =
       typeof req.query.invoiceId === "string" ? req.query.invoiceId : "";
-    if (invoiceId) await refreshAssociationInvoicePayment(invoiceId);
+    if (invoiceId) {
+      const invoice = await refreshAssociationInvoicePayment(invoiceId);
+      await finalizeAssociationMembershipPayment(invoice);
+    }
   } catch (error) {
     console.error("Association systemqr callback error:", error);
   }
@@ -546,6 +637,8 @@ router.get(
         limit = "50",
         offset = "0",
       } = req.query;
+
+      await reconcilePendingAssociationMembershipPayments(80);
 
       const where: any = {};
       if (status && status !== "ALL") where.status = status as ApprovalStatus;
@@ -670,6 +763,8 @@ router.get(
   requirePlatformPermission(Permission.MANAGE_REGISTRATIONS),
   async (_req, res) => {
     try {
+      await reconcilePendingAssociationMembershipPayments(80);
+
       const [total, pending, approved, byType] = await Promise.all([
         prisma.associationMemberRegistration.count(),
         prisma.associationMemberRegistration.count({
