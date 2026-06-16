@@ -36,6 +36,20 @@ const severityStyle: Record<AssistantSeverity, string> = {
   critical: "border-red-100 bg-red-50 text-red-700",
 };
 
+const categorySignalLabel = {
+  name: "Нэр",
+  description: "Тайлбар",
+  catalog: "Catalog",
+  mixed: "Mixed",
+};
+
+const categorySignalStyle = {
+  name: "bg-slate-100 text-slate-600",
+  description: "bg-emerald-100 text-emerald-700",
+  catalog: "bg-sky-100 text-sky-700",
+  mixed: "bg-indigo-100 text-indigo-700",
+};
+
 export function ProductDataAssistantPanel({
   form,
   categories,
@@ -129,6 +143,10 @@ export function ProductDataAssistantPanel({
             <Layers size={14} />
             Ангилал санал
           </div>
+          <p className="mb-2 text-[11px] font-semibold leading-4 text-slate-500">
+            Нэр, тайлбар, өмнөх catalog-ийн төстэй бараанууд дээр үндэслэн
+            автоматаар санал болгоно.
+          </p>
           <div className="space-y-2">
             {result.categorySuggestions.map((category) => (
               <button
@@ -147,9 +165,28 @@ export function ProductDataAssistantPanel({
                   <span className="mt-0.5 block truncate text-[11px] font-semibold text-slate-400">
                     {category.reason}
                   </span>
+                  {category.matchedTerms.length > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {category.matchedTerms.slice(0, 3).map((term) => (
+                        <span
+                          key={term}
+                          className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-black text-slate-500"
+                        >
+                          {term}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </span>
-                <span className="rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-black text-indigo-700">
-                  {category.confidence}%
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <span
+                    className={`rounded-full px-2 py-1 text-[10px] font-black ${categorySignalStyle[category.signal]}`}
+                  >
+                    {categorySignalLabel[category.signal]}
+                  </span>
+                  <span className="rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-black text-indigo-700">
+                    {category.confidence}%
+                  </span>
                 </span>
               </button>
             ))}

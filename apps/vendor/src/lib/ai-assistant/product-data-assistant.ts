@@ -48,6 +48,8 @@ export type CategorySuggestion = {
   name: string;
   confidence: number;
   reason: string;
+  signal: "name" | "description" | "catalog" | "mixed";
+  matchedTerms: string[];
 };
 
 export type DuplicateSuggestion = {
@@ -343,6 +345,26 @@ const CATEGORY_INTENTS: Array<{ category: string; keywords: string[] }> = [
   },
 ];
 
+const PRODUCT_ATTRIBUTE_WORDS = [
+  "хэмжээ",
+  "материал",
+  "өнгө",
+  "багтаамж",
+  "хүчин чадал",
+  "ватт",
+  "литр",
+  "см",
+  "мм",
+  "кг",
+  "зориулалт",
+  "баталгаа",
+  "хүргэлт",
+  "захиалга",
+  "нөөц",
+  "үйлдвэр",
+  "тоног төхөөрөмж",
+];
+
 const GENERIC_WORDS = new Set([
   "the",
   "and",
@@ -386,6 +408,7 @@ export function analyzeProductDraft({
   });
   const categorySuggestions = suggestCategories({
     draft,
+    products,
     flatCategories,
     tokens,
     searchText,
@@ -678,51 +701,141 @@ function collectMarketInsights({
 
 function suggestCategories({
   draft,
+  products,
   flatCategories,
   tokens,
   searchText,
 }: {
   draft: AssistantProductDraft;
+  products: AssistantProduct[];
   flatCategories: FlatCategory[];
   tokens: string[];
   searchText: string;
 }): CategorySuggestion[] {
-  if (!draft.name.trim() || flatCategories.length === 0) return [];
+  const nameText = normalizeText(draft.name);
+  const descriptionText = normalizeText(draft.description || "");
+  const nameTokens = tokenize(nameText);
+  const descriptionTokens = tokenize(descriptionText);
+  if (!nameText && !descriptionText) return [];
+  if (flatCategories.length === 0) return [];
 
   const detectedTags = suggestTags(searchText, tokens);
   const intent = bestCategoryIntent(searchText, tokens);
+  const catalogSignals = buildCategoryCatalogSignals(products);
   const scored = flatCategories
     .map((category) => {
       const categoryText = normalizeText(
         `${category.path} ${category.slug || ""}`,
       );
       const categoryTokens = tokenize(categoryText);
+      const matchedTerms = new Set<string>();
+      const signalScores = {
+        name: 0,
+        description: 0,
+        catalog: 0,
+      };
       let score = 0;
 
-      for (const token of tokens) {
-        if (categoryTokens.includes(token)) score += 18;
-        if (token.length >= 4 && categoryText.includes(token)) score += 8;
+      for (const token of nameTokens) {
+        if (categoryTokens.includes(token)) {
+          score += 18;
+          signalScores.name += 18;
+          matchedTerms.add(token);
+        }
+        if (token.length >= 4 && categoryText.includes(token)) {
+          score += 8;
+          signalScores.name += 8;
+          matchedTerms.add(token);
+        }
+      }
+
+      for (const token of descriptionTokens) {
+        if (categoryTokens.includes(token)) {
+          score += 26;
+          signalScores.description += 26;
+          matchedTerms.add(token);
+        }
+        if (token.length >= 4 && categoryText.includes(token)) {
+          score += 12;
+          signalScores.description += 12;
+          matchedTerms.add(token);
+        }
       }
 
       for (const tag of detectedTags) {
-        if (categoryText.includes(normalizeText(tag))) score += 20;
+        const normalizedTag = normalizeText(tag);
+        if (categoryText.includes(normalizedTag)) {
+          score += 20;
+          if (descriptionText.includes(normalizedTag)) {
+            signalScores.description += 20;
+          } else {
+            signalScores.name += 20;
+          }
+          matchedTerms.add(tag);
+        }
       }
       if (intent && categoryText.includes(normalizeText(intent.category))) {
-        score += 72;
+        const intentBoost = descriptionText
+          ? 88 + Math.min(intent.score * 8, 32)
+          : 72;
+        score += intentBoost;
+        if (
+          descriptionText &&
+          intent.keywords.some((keyword) =>
+            descriptionText.includes(normalizeText(keyword)),
+          )
+        ) {
+          signalScores.description += intentBoost;
+        } else {
+          signalScores.name += intentBoost;
+        }
+        for (const keyword of intent.keywords) {
+          const normalizedKeyword = normalizeText(keyword);
+          if (searchText.includes(normalizedKeyword)) matchedTerms.add(keyword);
+        }
       }
       if (category.level > 0) score += Math.min(14, category.level * 5);
 
-      return { category, score };
+      const catalogSignal = catalogSignals.get(category.id);
+      if (catalogSignal && searchText) {
+        const catalogScore = Math.round(
+          Math.max(
+            similarity(searchText, catalogSignal.text),
+            descriptionText
+              ? similarity(descriptionText, catalogSignal.text)
+              : 0,
+          ) * 100,
+        );
+        if (catalogScore >= 18) {
+          const boost = Math.min(42, catalogScore);
+          score += boost;
+          signalScores.catalog += boost;
+          for (const term of catalogSignal.terms) {
+            if (searchText.includes(term)) matchedTerms.add(term);
+          }
+        }
+      }
+
+      const signal = dominantSignal(signalScores);
+
+      return {
+        category,
+        score,
+        signal,
+        matchedTerms: [...matchedTerms].slice(0, 5),
+      };
     })
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 
-  return scored.map(({ category, score }) => ({
+  return scored.map(({ category, score, signal, matchedTerms }) => ({
     id: category.id,
     name: category.path,
     confidence: Math.min(96, Math.max(42, Math.round(score))),
-    reason: "Нэр, тайлбар болон keyword-ээр тааруулсан санал.",
+    reason: categorySuggestionReason(signal, matchedTerms),
+    signal,
+    matchedTerms,
   }));
 }
 
@@ -898,6 +1011,55 @@ function createActionPlan({
   return actions.slice(0, 4);
 }
 
+function buildCategoryCatalogSignals(products: AssistantProduct[]) {
+  const map = new Map<string, { text: string; terms: string[] }>();
+  for (const product of products) {
+    if (!product.businessCategoryId) continue;
+    const text = normalizeText(`${product.name} ${product.description || ""}`);
+    if (!text) continue;
+    const existing = map.get(product.businessCategoryId);
+    const terms = tokenize(text).filter((token) => token.length >= 4);
+    if (existing) {
+      existing.text = `${existing.text} ${text}`.slice(0, 4000);
+      existing.terms = [...new Set([...existing.terms, ...terms])].slice(0, 24);
+    } else {
+      map.set(product.businessCategoryId, {
+        text,
+        terms: [...new Set(terms)].slice(0, 24),
+      });
+    }
+  }
+  return map;
+}
+
+function dominantSignal(scores: {
+  name: number;
+  description: number;
+  catalog: number;
+}): CategorySuggestion["signal"] {
+  const values = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  if (values[0][1] <= 0) return "mixed";
+  if (values[1] && values[1][1] >= values[0][1] * 0.72) return "mixed";
+  return values[0][0] as CategorySuggestion["signal"];
+}
+
+function categorySuggestionReason(
+  signal: CategorySuggestion["signal"],
+  matchedTerms: string[],
+) {
+  const terms = matchedTerms.length > 0 ? ` (${matchedTerms.join(", ")})` : "";
+  if (signal === "description") {
+    return `Тайлбар дээрх түлхүүр мэдээллээр санал болгов${terms}.`;
+  }
+  if (signal === "catalog") {
+    return `Өмнөх catalog-ийн төстэй бараануудтай харьцуулж санал болгов${terms}.`;
+  }
+  if (signal === "name") {
+    return `Барааны нэр дээрх keyword-ээр санал болгов${terms}.`;
+  }
+  return `Нэр, тайлбар, catalog-ийн нийлмэл сигналаар санал болгов${terms}.`;
+}
+
 function normalizeText(value: string) {
   return value
     .toLowerCase()
@@ -946,9 +1108,7 @@ function descriptionQuality(value: string) {
   const signals = [
     /\d/.test(normalized),
     /(см|мм|м2|мл|л|кг|гр|w|ватт|хоног|жил)/.test(normalized),
-    /(материал|хэмжээ|өнгө|баталгаа|хүргэлт|зориулалт|нөөц|ирнэ)/.test(
-      normalized,
-    ),
+    PRODUCT_ATTRIBUTE_WORDS.some((word) => normalized.includes(word)),
     normalized.split(" ").length >= 10,
   ];
   return signals.filter(Boolean).length;
