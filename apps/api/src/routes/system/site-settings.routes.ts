@@ -522,6 +522,108 @@ function paidAccessFileName(project: PaidProject) {
   return `${cleanTitle || "MGL файл"}.pdf`;
 }
 
+function normalizePaidAccessMatch(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function paidAccessPurchaseMatchesProject(
+  purchase: {
+    itemId: string;
+    title: string;
+    fileUrl: string | null;
+    metadata: Prisma.JsonValue | null;
+  },
+  project: PaidProject,
+) {
+  const projectId = String(project.id || "").trim();
+  if (purchase.itemId === projectId) return true;
+
+  const metadata = (purchase.metadata || {}) as Record<string, unknown>;
+  const metadataProjectId = String(metadata.projectId || "").trim();
+  if (metadataProjectId && metadataProjectId === projectId) return true;
+
+  const projectFileUrl = normalizePaidAccessMatch(project.pdfUrl);
+  const purchaseFileUrl = normalizePaidAccessMatch(purchase.fileUrl);
+  if (projectFileUrl && purchaseFileUrl && projectFileUrl === purchaseFileUrl) {
+    return true;
+  }
+
+  const projectTitle = normalizePaidAccessMatch(project.title);
+  const purchaseTitle = normalizePaidAccessMatch(purchase.title);
+  const metadataTitle = normalizePaidAccessMatch(
+    typeof metadata.projectTitle === "string" ? metadata.projectTitle : "",
+  );
+  return Boolean(
+    projectTitle &&
+    (projectTitle === purchaseTitle || projectTitle === metadataTitle),
+  );
+}
+
+async function findPaidAccessPurchaseForProject({
+  userId,
+  project,
+  kind,
+}: {
+  userId: string;
+  project: PaidProject;
+  kind: PaidContentKind;
+}) {
+  const sourceType = paidAccessSourceFromKind(kind);
+  const purchases = await prisma.paidAccessPurchase.findMany({
+    where: { userId, sourceType },
+    select: {
+      id: true,
+      itemId: true,
+      title: true,
+      fileUrl: true,
+      metadata: true,
+    },
+  });
+
+  return (
+    purchases.find((purchase) =>
+      paidAccessPurchaseMatchesProject(purchase, project),
+    ) || null
+  );
+}
+
+async function getPurchasedPaidAccessIds({
+  userId,
+  projects,
+  kind,
+}: {
+  userId: string;
+  projects: PaidProject[];
+  kind: PaidContentKind;
+}) {
+  const purchasedIds = new Set<string>();
+  const sourceType = paidAccessSourceFromKind(kind);
+  const purchases = await prisma.paidAccessPurchase.findMany({
+    where: { userId, sourceType },
+    select: {
+      itemId: true,
+      title: true,
+      fileUrl: true,
+      metadata: true,
+    },
+  });
+
+  for (const project of projects) {
+    if (
+      purchases.some((purchase) =>
+        paidAccessPurchaseMatchesProject(purchase, project),
+      )
+    ) {
+      purchasedIds.add(project.id);
+    }
+  }
+
+  return purchasedIds;
+}
+
 const normalizeSystemQrLookup = (value?: string | null) =>
   String(value || "")
     .trim()
@@ -896,7 +998,6 @@ async function ensurePaidProjectAccess({
 }) {
   if (price <= 0) return true;
 
-  const sourceType = paidAccessSourceFromKind(kind);
   if (userId) {
     const primeUser = await prisma.user.findFirst({
       where: activePrimeUserWhere(userId),
@@ -904,15 +1005,10 @@ async function ensurePaidProjectAccess({
     });
     if (primeUser) return true;
 
-    const purchase = await prisma.paidAccessPurchase.findUnique({
-      where: {
-        userId_sourceType_itemId: {
-          userId,
-          sourceType,
-          itemId: projectId,
-        },
-      },
-      select: { id: true },
+    const purchase = await findPaidAccessPurchaseForProject({
+      userId,
+      project,
+      kind,
     });
     if (purchase) return true;
   }
@@ -1715,15 +1811,36 @@ router.get(
   },
 );
 
-// GET /site-settings/projects — public summary list only
-router.get("/site-settings/projects", async (req, res) => {
+// GET /site-settings/projects — public summary list with owned access for signed-in users
+router.get("/site-settings/projects", optionalAuth, async (req, res) => {
   try {
     const projects = await getPaidProjects();
-    res.setHeader(
-      "Cache-Control",
-      "public, max-age=30, stale-while-revalidate=60",
+    const userId = String((req as any).user?.userId || "").trim();
+    const activeProjects = projects.filter(
+      (project) => project.isActive !== false,
     );
-    res.json({ success: true, projects: getPublicProjects(projects, req) });
+    const purchasedProjectIds = userId
+      ? await getPurchasedPaidAccessIds({
+          userId,
+          projects: activeProjects.map((project) => normalizeProject(project)),
+          kind: "PROJECT_ACCESS",
+        })
+      : new Set<string>();
+    if (userId) {
+      res.setHeader("Cache-Control", "private, no-store");
+    } else {
+      res.setHeader(
+        "Cache-Control",
+        "public, max-age=30, stale-while-revalidate=60",
+      );
+    }
+    res.json({
+      success: true,
+      projects: getPublicProjects(activeProjects, req).map((project) => ({
+        ...project,
+        hasPurchased: purchasedProjectIds.has(project.id),
+      })),
+    });
   } catch (error) {
     console.error("get public projects error", error);
     res.status(500).json({
@@ -1989,15 +2106,10 @@ const createProjectSystemQrPaymentSession = async (
       return;
     }
 
-    const existingPurchase = await prisma.paidAccessPurchase.findUnique({
-      where: {
-        userId_sourceType_itemId: {
-          userId,
-          sourceType: "PROJECT",
-          itemId: projectId,
-        },
-      },
-      select: { id: true },
+    const existingPurchase = await findPaidAccessPurchaseForProject({
+      userId,
+      project: normalized,
+      kind: "PROJECT_ACCESS",
     });
     if (existingPurchase) {
       res.json({

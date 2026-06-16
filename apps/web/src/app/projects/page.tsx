@@ -85,13 +85,16 @@ export default function ProjectsPage() {
   }, [projectShowcaseSections, projectsWithAccess]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchProjects = async () => {
       try {
-        const res = await fetch(`${API}/site-settings/projects`, {
+        const res = await authFetch(`${API}/site-settings/projects`, {
           cache: "no-store",
         });
         if (!res.ok) return;
         const data = await res.json();
+        if (cancelled) return;
         const parsed = Array.isArray(data.projects) ? data.projects : [];
         const showcases = Array.isArray(data.showcaseSections)
           ? data.showcaseSections
@@ -103,11 +106,14 @@ export default function ProjectsPage() {
       } catch (error) {
         console.error("Failed to fetch projects", error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    fetchProjects();
-  }, []);
+    void fetchProjects();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, user?.id]);
 
   useEffect(() => {
     let cancelled = false;
