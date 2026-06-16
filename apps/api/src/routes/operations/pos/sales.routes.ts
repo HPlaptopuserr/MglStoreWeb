@@ -43,6 +43,8 @@ const mapCreditSaleResponse = (creditSale: {
   borrowerId: string;
   borrowerName: string;
   borrowerPhone: string | null;
+  borrowerEmail?: string | null;
+  borrowerAddress?: string | null;
   employeeId: string | null;
   employeeName: string | null;
   principalAmount: unknown;
@@ -63,6 +65,8 @@ const mapCreditSaleResponse = (creditSale: {
   borrowerId: creditSale.borrowerId,
   borrowerName: creditSale.borrowerName,
   borrowerPhone: creditSale.borrowerPhone,
+  borrowerEmail: creditSale.borrowerEmail ?? null,
+  borrowerAddress: creditSale.borrowerAddress ?? null,
   employeeId: creditSale.employeeId,
   employeeName: creditSale.employeeName,
   principalAmount: Number(creditSale.principalAmount),
@@ -671,6 +675,8 @@ router.post("/pos/sales", async (req, res) => {
                 borrowerId: primaryCredit.borrowerId || borrowerKey,
                 borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
                 borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
+                borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
+                borrowerAddress: cleanOptionalText(primaryCredit.borrowerAddress),
                 employeeId: cleanOptionalText(primaryCredit.employeeId),
                 employeeName: cleanOptionalText(primaryCredit.employeeName),
               },
@@ -680,6 +686,8 @@ router.post("/pos/sales", async (req, res) => {
                 borrowerId: primaryCredit.borrowerId || borrowerKey,
                 borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
                 borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
+                borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
+                borrowerAddress: cleanOptionalText(primaryCredit.borrowerAddress),
                 employeeId: cleanOptionalText(primaryCredit.employeeId),
                 employeeName: cleanOptionalText(primaryCredit.employeeName),
                 normalizedBorrowerKey: borrowerKey,
@@ -700,6 +708,8 @@ router.post("/pos/sales", async (req, res) => {
                 borrowerId: primaryCredit.borrowerId || borrowerKey,
                 borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
                 borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
+                borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
+                borrowerAddress: cleanOptionalText(primaryCredit.borrowerAddress),
                 employeeId: cleanOptionalText(primaryCredit.employeeId),
                 employeeName: cleanOptionalText(primaryCredit.employeeName),
                 principalAmount: creditPrincipal,
@@ -718,6 +728,8 @@ router.post("/pos/sales", async (req, res) => {
                 borrowerId: true,
                 borrowerName: true,
                 borrowerPhone: true,
+                borrowerEmail: true,
+                borrowerAddress: true,
                 employeeId: true,
                 employeeName: true,
                 principalAmount: true,

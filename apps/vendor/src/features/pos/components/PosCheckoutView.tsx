@@ -16,8 +16,7 @@ import {
   Gift,
   Search,
 } from "lucide-react";
-import type { CartLine, CartTotals } from "../types/pos.types";
-import type { SaleCreditPaymentMeta } from "../types/pos.types";
+import type { CartLine, CartTotals, PosCreditBorrower, SaleCreditPaymentMeta } from "../types/pos.types";
 import type { PaymentMethod } from "../constants/payment-methods";
 import { CreditPaymentDialog } from "./CreditPaymentDialog";
 
@@ -44,6 +43,7 @@ type Props = {
   loyalty: CheckoutLoyaltyState;
   onLoyaltyChange: (next: CheckoutLoyaltyState) => void;
   onLookupLoyalty: () => void;
+  creditBorrowers?: PosCreditBorrower[];
 };
 
 export type CheckoutPaymentEntry = {
@@ -118,6 +118,7 @@ export function PosCheckoutView({
   loyalty,
   onLoyaltyChange,
   onLookupLoyalty,
+  creditBorrowers = [],
 }: Props) {
   const [enteredAmount, setEnteredAmount] = useState("");
   const [loyaltyPanelOpen, setLoyaltyPanelOpen] = useState(false);
@@ -633,6 +634,7 @@ export function PosCheckoutView({
       {creditDialogOpen && (
         <CreditPaymentDialog
           amount={paymentAmount}
+          borrowers={creditBorrowers}
           onClose={() => setCreditDialogOpen(false)}
           onConfirm={confirmCreditPayment}
         />

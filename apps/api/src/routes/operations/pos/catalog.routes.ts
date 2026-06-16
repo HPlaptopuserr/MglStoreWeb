@@ -68,6 +68,8 @@ const mapCreditSaleResponse = (creditSale: {
   borrowerId: string;
   borrowerName: string;
   borrowerPhone: string | null;
+  borrowerEmail?: string | null;
+  borrowerAddress?: string | null;
   employeeId: string | null;
   employeeName: string | null;
   principalAmount: unknown;
@@ -88,6 +90,8 @@ const mapCreditSaleResponse = (creditSale: {
   borrowerId: creditSale.borrowerId,
   borrowerName: creditSale.borrowerName,
   borrowerPhone: creditSale.borrowerPhone,
+  borrowerEmail: creditSale.borrowerEmail ?? null,
+  borrowerAddress: creditSale.borrowerAddress ?? null,
   employeeId: creditSale.employeeId,
   employeeName: creditSale.employeeName,
   principalAmount: Number(creditSale.principalAmount),
@@ -517,6 +521,8 @@ router.get("/pos/credit-sales", async (req, res) => {
         borrowerId: true,
         borrowerName: true,
         borrowerPhone: true,
+        borrowerEmail: true,
+        borrowerAddress: true,
         employeeId: true,
         employeeName: true,
         principalAmount: true,
@@ -575,6 +581,70 @@ router.get("/pos/credit-sales", async (req, res) => {
   } catch (error) {
     console.error("credit sales list error", error);
     return res.status(500).json({ message: "Зээлийн жагсаалт авахад алдаа гарлаа" });
+  }
+});
+
+router.get("/pos/credit-customers", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const queryOrgId = String(req.query.organizationId || "").trim() || null;
+    const targetType = String(req.query.targetType || "").trim().toUpperCase();
+    const search = String(req.query.search || "").trim();
+    const effectiveOrgId = actor.role === "ADMIN" ? queryOrgId : actor.organizationId || queryOrgId;
+
+    if (!effectiveOrgId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, effectiveOrgId))) {
+      return res.status(403).json({ message: "Энэ байгууллагын зээлдэгчийн жагсаалт харах эрхгүй" });
+    }
+
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
+    const customers = await prisma.posCreditCustomer.findMany({
+      where: {
+        organizationId: effectiveOrgId,
+        ...(targetType === "COMPANY" || targetType === "CUSTOMER" ? { targetType } : {}),
+        ...(search
+          ? {
+              OR: [
+                { borrowerName: { contains: search, mode: "insensitive" } },
+                { borrowerPhone: { contains: search, mode: "insensitive" } },
+                { borrowerEmail: { contains: search, mode: "insensitive" } },
+                { borrowerAddress: { contains: search, mode: "insensitive" } },
+                { employeeName: { contains: search, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        targetType: true,
+        borrowerId: true,
+        borrowerName: true,
+        borrowerPhone: true,
+        borrowerEmail: true,
+        borrowerAddress: true,
+        employeeId: true,
+        employeeName: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: "desc" },
+      take: limit,
+    });
+
+    return res.json({
+      customers: customers.map((customer) => ({
+        ...customer,
+        createdAt: customer.createdAt.toISOString(),
+        updatedAt: customer.updatedAt.toISOString(),
+      })),
+    });
+  } catch (error) {
+    console.error("credit customers list error", error);
+    return res.status(500).json({ message: "Зээлдэгчийн жагсаалт авахад алдаа гарлаа" });
   }
 });
 
@@ -702,6 +772,8 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
           borrowerId: true,
           borrowerName: true,
           borrowerPhone: true,
+          borrowerEmail: true,
+          borrowerAddress: true,
           employeeId: true,
           employeeName: true,
           principalAmount: true,

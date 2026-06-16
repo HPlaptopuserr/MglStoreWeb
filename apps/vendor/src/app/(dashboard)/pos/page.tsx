@@ -54,6 +54,7 @@ import {
   type CartLine,
   type CartTotals,
   type PaymentMethod,
+  type PosCreditBorrower,
   type PosReceipt,
   type SaleCreditPaymentMeta,
   type SalePaymentLine,
@@ -148,6 +149,8 @@ type PosCreditListItem = {
   borrowerId: string;
   borrowerName: string;
   borrowerPhone: string | null;
+  borrowerEmail: string | null;
+  borrowerAddress: string | null;
   employeeId: string | null;
   employeeName: string | null;
   principalAmount: number;
@@ -166,6 +169,17 @@ type PosCreditListItem = {
 
 type PosCreditListResponse = {
   credits: PosCreditListItem[];
+};
+
+type PosCreditBorrowerListResponse = {
+  customers: PosCreditBorrower[];
+};
+
+type CreditRepaymentEbarimtReceiptOptions = {
+  credit: PosCreditListItem;
+  payment: SalePaymentLine;
+  branchName: string;
+  cashierName: string;
 };
 
 type PosCreditCustomerGroup = {
@@ -247,6 +261,61 @@ function buildCreditRepaymentCartLines(credit: PosCreditListItem): CartLine[] {
       discountAmount: 0,
     };
   });
+}
+
+function buildCreditRepaymentEbarimtReceipt({
+  credit,
+  payment,
+  branchName,
+  cashierName,
+}: CreditRepaymentEbarimtReceiptOptions): PosReceipt {
+  const principal = credit.principalAmount || credit.lines.reduce((sum, line) => sum + line.lineTotal, 0);
+  const multiplier = principal > 0 ? credit.totalDue / principal : 1;
+  let allocatedTotal = 0;
+
+  const lines = credit.lines.map((line, index) => {
+    const isLast = index === credit.lines.length - 1;
+    const lineTotal = roundMoney(
+      isLast ? Math.max(0, credit.totalDue - allocatedTotal) : Math.max(0, line.lineTotal * multiplier),
+    );
+    allocatedTotal = roundMoney(allocatedTotal + lineTotal);
+
+    return {
+      productId: line.productId,
+      name: line.productName,
+      qty: line.qty,
+      unitPrice: roundMoney(lineTotal / Math.max(1, line.qty)),
+      taxAmount: 0,
+      lineTotal,
+    };
+  });
+
+  return {
+    id: credit.saleId,
+    receiptNo: credit.receiptNo,
+    branchName,
+    cashierName,
+    paymentMethod: payment.method,
+    status: "PAID",
+    ebarimt: null,
+    paymentBreakdown: [
+      {
+        method: payment.method,
+        amount: roundMoney(payment.amount),
+        attemptId: payment.attemptId,
+        transactionId: payment.transactionId,
+        invoiceId: payment.invoiceId,
+      },
+    ],
+    credit,
+    createdAt: new Date().toISOString(),
+    lines,
+    subTotal: roundMoney(credit.totalDue),
+    taxTotal: 0,
+    discountTotal: 0,
+    grandTotal: roundMoney(credit.totalDue),
+    loyalty: null,
+  };
 }
 
 const SHIFT_HISTORY_RANGE_OPTIONS = [
@@ -416,6 +485,7 @@ export default function PosDemoPage() {
   const [creditSales, setCreditSales] = useState<PosCreditListItem[]>([]);
   const [creditSalesLoading, setCreditSalesLoading] = useState(false);
   const [creditSalesError, setCreditSalesError] = useState("");
+  const [creditBorrowers, setCreditBorrowers] = useState<PosCreditBorrower[]>([]);
   const [selectedCreditRepayment, setSelectedCreditRepayment] = useState<PosCreditListItem | null>(null);
   const [expandedCreditCustomerKey, setExpandedCreditCustomerKey] = useState<string | null>(null);
   const [creditRepaymentSubmitting, setCreditRepaymentSubmitting] = useState(false);
@@ -509,6 +579,27 @@ export default function PosDemoPage() {
       setCreditSalesLoading(false);
     }
   }, [organizationId, registerBranchId]);
+  const reloadCreditBorrowers = useCallback(async () => {
+    if (!organizationId) {
+      setCreditBorrowers([]);
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({ organizationId, limit: "100" });
+      const res = await authFetch(`${API}/pos/credit-customers?${params.toString()}`);
+      const data = (await res.json().catch(() => ({}))) as Partial<PosCreditBorrowerListResponse> & {
+        message?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.message || "Зээлдэгчийн жагсаалт авахад алдаа гарлаа");
+      }
+      setCreditBorrowers(Array.isArray(data.customers) ? data.customers : []);
+    } catch (error) {
+      console.warn("Failed to load POS credit borrowers", error);
+      setCreditBorrowers([]);
+    }
+  }, [organizationId]);
   const [receiptHistory, setReceiptHistory] = useState<PosReceipt[]>([]);
   const [selectedReceiptId, setSelectedReceiptId] = useState("");
   const [receiptHistoryLoading, setReceiptHistoryLoading] = useState(false);
@@ -570,11 +661,13 @@ export default function PosDemoPage() {
   useEffect(() => {
     if (!posEnabled) {
       setCreditSales([]);
+      setCreditBorrowers([]);
       setExpandedCreditCustomerKey(null);
       return;
     }
     void reloadCreditSales();
-  }, [posEnabled, reloadCreditSales]);
+    void reloadCreditBorrowers();
+  }, [posEnabled, reloadCreditBorrowers, reloadCreditSales]);
 
   const clearProgressTicker = () => {
     if (progressTickerRef.current !== null) {
@@ -1405,6 +1498,57 @@ export default function PosDemoPage() {
         }),
       });
       const data = await response.json().catch(() => ({}));
+      const paymentBreakdown: SalePaymentLine[] = [
+        {
+          method: payment.method,
+          amount: paidAmount,
+          attemptId: payment.attemptId,
+          transactionId: payment.transactionId,
+          invoiceId: payment.invoiceId,
+        },
+      ];
+      let repaymentReceipt = buildCreditRepaymentEbarimtReceipt({
+        credit,
+        payment: paymentBreakdown[0]!,
+        branchName: registerConfig?.branch.name || credit.receiptNo,
+        cashierName: shift?.cashierName || "POS",
+      });
+      let repaymentMessage = `${credit.borrowerName} зээлийн төлөлт амжилттай бүртгэгдлээ.`;
+
+      if (response.ok && EBARIMT_ENABLED) {
+        try {
+          setScanStatus("idle");
+          setScanMessage("Зээлийн төлөлтийн eBarimt баримт үүсгэж байна...");
+          const ebarimtPayload = await issueLocalEbarimtReceipt(
+            repaymentReceipt,
+            paymentBreakdown,
+            registerConfig,
+          );
+          repaymentReceipt = { ...repaymentReceipt, ebarimt: mapEbarimtPayload(ebarimtPayload) };
+          try {
+            const saved = await attachEbarimtReceipt(credit.saleId, ebarimtPayload);
+            repaymentReceipt = { ...repaymentReceipt, ebarimt: saved.ebarimt || repaymentReceipt.ebarimt };
+          } catch (saveError) {
+            console.warn("Credit repayment eBarimt created locally but failed to attach to sale", saveError);
+          }
+          repaymentMessage = `${credit.borrowerName} зээлийн төлөлт болон eBarimt амжилттай.`;
+        } catch (ebarimtError: any) {
+          const errorMessage = ebarimtError?.message || "eBarimt баримт үүсгэхэд алдаа гарлаа";
+          repaymentReceipt = {
+            ...repaymentReceipt,
+            ebarimt: {
+              status: "FAILED",
+              error: errorMessage,
+              syncedAt: new Date().toISOString(),
+            },
+          };
+          repaymentMessage = `${credit.borrowerName} зээлийн төлөлт амжилттай. eBarimt: ${errorMessage}`;
+          await attachEbarimtReceipt(credit.saleId, {
+            status: "FAILED",
+            error: errorMessage,
+          }).catch(() => {});
+        }
+      }
       if (!response.ok) {
         throw new Error(data?.message || "Зээлийн төлөлт бүртгэхэд алдаа гарлаа");
       }
@@ -1415,8 +1559,12 @@ export default function PosDemoPage() {
       setScanStatus("success");
       setScanMessage(`${credit.borrowerName} зээлийн төлөлт амжилттай бүртгэгдлээ.`);
       showSuccessOverlay("Зээлийн төлөлт амжилттай");
+      setScanMessage(repaymentMessage);
+      setReceiptHistory((items) => [repaymentReceipt, ...items.filter((item) => item.id !== repaymentReceipt.id)]);
+      setSelectedReceiptId(repaymentReceipt.id);
       void reloadCreditSales();
       void refreshCashDrawerSummary();
+      printReceipt(repaymentReceipt);
     } catch (error: any) {
       setScanStatus("not-found");
       setScanMessage(error?.message || "Зээлийн төлөлт бүртгэхэд алдаа гарлаа");
@@ -1544,6 +1692,7 @@ export default function PosDemoPage() {
       invoiceId: item.invoiceId,
       credit: item.credit,
     }));
+    const isCreditSale = paymentBreakdown.some((item) => item.method === "CREDIT");
     const finalMethod = paymentBreakdown.length === 1 ? paymentBreakdown[0].method : "MIXED";
     const branchIdForSale = registerConfig?.branchId || "";
 
@@ -1598,7 +1747,7 @@ export default function PosDemoPage() {
             : ` M Point +${receipt.loyalty.earnedPoints.toLocaleString("mn-MN")} орлоо.`
           : "";
 
-      if (EBARIMT_ENABLED) {
+      if (EBARIMT_ENABLED && !isCreditSale) {
         try {
           setScanStatus("idle");
           setScanMessage("eBarimt баримт үүсгэж байна...");
@@ -1647,6 +1796,9 @@ export default function PosDemoPage() {
       reloadProducts();
       reloadReceiptHistory();
       void reloadCreditSales();
+      if (isCreditSale) {
+        void reloadCreditBorrowers();
+      }
       void refreshCashDrawerSummary();
       printReceipt(finalReceipt);
     } catch (e: any) {
@@ -2956,6 +3108,7 @@ export default function PosDemoPage() {
           loyalty={loyalty}
           onLoyaltyChange={setLoyalty}
           onLookupLoyalty={lookupLoyalty}
+          creditBorrowers={creditBorrowers}
           onAddPayment={addPaymentEntry}
           onRequestQPay={requestQPay}
           onMarkQPayPaid={markQPayPaid}
@@ -3338,7 +3491,7 @@ export default function PosDemoPage() {
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
-            <div className="mb-2 flex shrink-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="mb-2 flex shrink-0 flex-col gap-2">
               <div>
                 <h2 className="text-sm font-black text-slate-950">
                   {listMode === "products" ? "Барааны жагсаалт" : "Зээлийн жагсаалт"}
@@ -3349,19 +3502,19 @@ export default function PosDemoPage() {
                     : `${filteredCreditGroups.length} зээлдэгч, ${filteredCreditRowCount} бараа байна`}
                 </p>
               </div>
-              <div className="flex flex-1 items-center justify-end gap-2">
-              <div className="inline-flex h-9 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
                 <button
                   type="button"
                   onClick={() => setListMode("products")}
-                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 text-xs font-black transition ${
+                  className={`inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-black transition ${
                     listMode === "products"
                       ? "bg-white text-blue-700 shadow-sm"
                       : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
                   <Barcode size={14} />
-                  Бараа
+                  <span className="truncate">Барааны жагсаалт</span>
                 </button>
                 <button
                   type="button"
@@ -3369,16 +3522,18 @@ export default function PosDemoPage() {
                     setListMode("credits");
                     void reloadCreditSales();
                   }}
-                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 text-xs font-black transition ${
+                  className={`inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-black transition ${
                     listMode === "credits"
                       ? "bg-white text-amber-700 shadow-sm"
                       : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
                   <HandCoins size={14} />
-                  Зээл
+                  <span className="truncate">Зээлийн жагсаалт</span>
                 </button>
               </div>
+
+              <div className="flex items-center gap-2">
               <div className="relative w-full max-w-xs">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input

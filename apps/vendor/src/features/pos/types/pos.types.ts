@@ -1,6 +1,7 @@
 export type {
   SalePaymentMethod,
   SaleCreditPaymentMeta,
+  PosCreditBorrower,
   SalePaymentLine,
   SalePayload,
   RegisterConfig,

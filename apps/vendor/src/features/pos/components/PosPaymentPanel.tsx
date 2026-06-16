@@ -1,4 +1,4 @@
-import { Banknote, CreditCard, HandCoins, MoreHorizontal, QrCode } from "lucide-react";
+import { Banknote, CreditCard, HandCoins, QrCode } from "lucide-react";
 import type { CartTotals } from "../types/pos.types";
 import { PAYMENT_METHODS, type PaymentMethod } from "../constants/payment-methods";
 
@@ -33,7 +33,7 @@ export function PosPaymentPanel({
 
   return (
     <section className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
-      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_minmax(190px,0.9fr)] gap-2">
+      <div className="grid grid-cols-[repeat(4,minmax(0,1fr))_minmax(190px,0.9fr)] gap-2">
         {PAYMENT_METHODS.map((method) => {
           const isActive = paymentMethod === method.value;
           const Icon = paymentIcon[method.value];
@@ -56,14 +56,6 @@ export function PosPaymentPanel({
             </button>
           );
         })}
-        <button
-          type="button"
-          className="flex h-12 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-black text-slate-600 hover:bg-slate-50"
-        >
-          <MoreHorizontal size={18} />
-          <span className="mt-1">Бусад</span>
-        </button>
-
         <button
           type="button"
           disabled={disabled}

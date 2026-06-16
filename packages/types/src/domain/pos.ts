@@ -123,6 +123,8 @@ export interface SaleCreditPaymentMeta {
   borrowerId: string;
   borrowerName: string;
   borrowerPhone?: string;
+  borrowerEmail?: string;
+  borrowerAddress?: string;
   employeeId?: string;
   employeeName?: string;
   termMonths: number;
@@ -132,6 +134,20 @@ export interface SaleCreditPaymentMeta {
   totalDue: number;
   dueDate: string;
   note?: string;
+}
+
+export interface PosCreditBorrower {
+  id: string;
+  targetType: "COMPANY" | "CUSTOMER";
+  borrowerId: string;
+  borrowerName: string;
+  borrowerPhone?: string | null;
+  borrowerEmail?: string | null;
+  borrowerAddress?: string | null;
+  employeeId?: string | null;
+  employeeName?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SalePayload {
@@ -310,6 +326,8 @@ export interface PosReceipt {
     borrowerId: string;
     borrowerName: string;
     borrowerPhone?: string | null;
+    borrowerEmail?: string | null;
+    borrowerAddress?: string | null;
     employeeId?: string | null;
     employeeName?: string | null;
     principalAmount: number;

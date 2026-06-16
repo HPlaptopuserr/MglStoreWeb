@@ -2087,6 +2087,8 @@ model PosCreditCustomer {
   borrowerId            String
   borrowerName          String
   borrowerPhone         String?
+  borrowerEmail         String?
+  borrowerAddress       String?
   employeeId            String?
   employeeName          String?
   normalizedBorrowerKey String
@@ -2114,6 +2116,8 @@ model PosCreditSale {
   borrowerId          String
   borrowerName        String
   borrowerPhone       String?
+  borrowerEmail       String?
+  borrowerAddress     String?
   employeeId          String?
   employeeName        String?
   principalAmount     Decimal            @db.Decimal(18, 2)

@@ -64,6 +64,8 @@ export type SalePaymentLineInput = {
     borrowerId?: string;
     borrowerName?: string;
     borrowerPhone?: string;
+    borrowerEmail?: string;
+    borrowerAddress?: string;
     employeeId?: string;
     employeeName?: string;
     termMonths?: number;
