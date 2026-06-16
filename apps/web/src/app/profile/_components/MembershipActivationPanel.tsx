@@ -66,12 +66,14 @@ export function MembershipActivationPanel({
   user,
   form,
   request,
+  onActivated,
 }: {
   copy?: MembershipUpgradeCopy;
   membershipTypes?: MembershipType[];
   user: AuthUser;
   form: ProfileFormState;
   request: (url: string, init?: RequestInit) => Promise<Response>;
+  onActivated?: () => Promise<void> | void;
 }) {
   const membershipTypes =
     configuredMembershipTypes && configuredMembershipTypes.length > 0
@@ -92,7 +94,10 @@ export function MembershipActivationPanel({
     [form.fullName, user.fullName],
   );
 
-  const submit = async (nextType = membershipType, nextDuration = durationMonths) => {
+  const submit = async (
+    nextType = membershipType,
+    nextDuration = durationMonths,
+  ) => {
     setError("");
     const type = membershipTypes.find((item) => item.value === nextType);
     const duration = type?.durations.find(
@@ -108,11 +113,17 @@ export function MembershipActivationPanel({
       return;
     }
     if (!form.phone.trim()) {
-      setError(copy?.phoneRequiredMessage || "Profile дээр утасны дугаараа бөглөсний дараа идэвхжүүлнэ үү.");
+      setError(
+        copy?.phoneRequiredMessage ||
+          "Profile дээр утасны дугаараа бөглөсний дараа идэвхжүүлнэ үү.",
+      );
       return;
     }
     if (!form.fullAddress.trim()) {
-      setError(copy?.addressRequiredMessage || "Profile дээр хаягаа бөглөсний дараа идэвхжүүлнэ үү.");
+      setError(
+        copy?.addressRequiredMessage ||
+          "Profile дээр хаягаа бөглөсний дараа идэвхжүүлнэ үү.",
+      );
       return;
     }
 
@@ -135,7 +146,11 @@ export function MembershipActivationPanel({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.message || copy?.missingPaymentConfigMessage || "QuickQR төлбөр үүсгэхэд алдаа гарлаа.");
+        setError(
+          data?.message ||
+            copy?.missingPaymentConfigMessage ||
+            "QuickQR төлбөр үүсгэхэд алдаа гарлаа.",
+        );
         return;
       }
       setRegistrationId(String(data.registrationId || ""));
@@ -170,7 +185,8 @@ export function MembershipActivationPanel({
             {copy?.introTitle || "MGL Premium Membership"}
           </h2>
           <p className="mt-1 hidden text-sm font-semibold leading-6 text-slate-500 sm:block">
-            {copy?.introDescription || "Tier болон хугацаагаа сонгоод card дээрх төлөх button-оор QR үүсгэнэ."}
+            {copy?.introDescription ||
+              "Tier болон хугацаагаа сонгоод card дээрх төлөх button-оор QR үүсгэнэ."}
           </p>
         </div>
       </div>
@@ -182,8 +198,14 @@ export function MembershipActivationPanel({
             {copy?.successTitle || "Гишүүнчлэлийн хүсэлт илгээгдлээ"}
           </div>
           <p className="mt-1 text-xs font-semibold leading-relaxed text-emerald-700">
-            {copy?.successDescription || "QuickQR төлбөр амжилттай баталгаажлаа."}
+            {copy?.successDescription ||
+              "QuickQR төлбөр амжилттай баталгаажлаа."}
           </p>
+          {error && (
+            <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-relaxed text-amber-700">
+              {error}
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
@@ -217,6 +239,13 @@ export function MembershipActivationPanel({
           onPaid={async () => {
             setPaymentSession(null);
             setSuccess(true);
+            try {
+              await onActivated?.();
+            } catch {
+              setError(
+                "Төлбөр баталгаажсан ч профайл шинэчлэхэд алдаа гарлаа. Хуудсаа refresh хийнэ үү.",
+              );
+            }
           }}
           onClose={() => setPaymentSession(null)}
         />

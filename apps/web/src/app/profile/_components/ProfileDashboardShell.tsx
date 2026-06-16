@@ -3,6 +3,7 @@
 import { type ReactNode } from "react";
 import Link from "next/link";
 import {
+  ArrowRight,
   BadgeCheck,
   Bell,
   Coins,
@@ -79,46 +80,89 @@ export function ProfileContentGrid({
 }
 
 export function ProfileStatsGrid({
+  contractsCount,
+  filesCount,
   isMember,
   libraryCount,
   membershipTierLabel,
+  onLibraryClick,
+  onMembershipClick,
+  onOrdersClick,
+  onPointsClick,
+  openOrdersCount,
   ordersCount,
   points,
+  transactionsCount,
 }: {
+  contractsCount: number;
+  filesCount: number;
   isMember: boolean;
   libraryCount: number;
   membershipTierLabel: string;
+  onLibraryClick: () => void;
+  onMembershipClick: () => void;
+  onOrdersClick: () => void;
+  onPointsClick: () => void;
+  openOrdersCount: number;
   ordersCount: number;
   points: number;
+  transactionsCount: number;
 }) {
   const stats = [
     {
       label: "Гишүүнчлэл",
       value: isMember ? membershipTierLabel : "Идэвхгүй",
-      helper: isMember ? "Active account" : "Upgrade хийх боломжтой",
+      helper: isMember
+        ? "Идэвхтэй эрх, хөнгөлөлт нээгдсэн"
+        : "Upgrade хийж эрхээ нээнэ",
+      details: isMember
+        ? ["Premium benefit идэвхтэй", "M point давхар цугларна"]
+        : ["Төлбөрөө баталгаажуулна", "Файл, сургалт, хөнгөлөлт нээгдэнэ"],
+      actionLabel: isMember ? "Дэлгэрэнгүй" : "Идэвхжүүлэх",
       icon: BadgeCheck,
       className: "bg-emerald-50 text-emerald-600",
+      onClick: isMember ? onLibraryClick : onMembershipClick,
     },
     {
       label: "Файлууд",
       value: `${libraryCount} файл`,
-      helper: "Миний санд",
+      helper: "Миний сан руу орно",
+      details: [
+        `${filesCount} худалдан авсан файл`,
+        `${contractsCount} гэрээ, access`,
+      ],
+      actionLabel: "Сангаа харах",
       icon: FileText,
       className: "bg-orange-50 text-orange-600",
+      onClick: onLibraryClick,
     },
     {
       label: "M point",
       value: `${points.toLocaleString("mn-MN")} M`,
-      helper: "Point цуглуулах",
+      helper: "Оноо, гүйлгээний түүх",
+      details: [
+        `${transactionsCount} гүйлгээ бүртгэлтэй`,
+        "Худалдан авалтаас point цугларна",
+      ],
+      actionLabel: "Түүх харах",
       icon: Coins,
       className: "bg-amber-50 text-amber-600",
+      onClick: onPointsClick,
     },
     {
       label: "Захиалга",
       value: `${ordersCount} захиалга`,
-      helper: "Сүүлийн 30 хоногт",
+      helper: `${openOrdersCount} нээлттэй`,
+      details: [
+        `${ordersCount} нийт захиалга`,
+        openOrdersCount > 0
+          ? "Явцтай захиалга байна"
+          : "Идэвхтэй захиалга алга",
+      ],
+      actionLabel: "Захиалга харах",
       icon: Truck,
       className: "bg-indigo-50 text-indigo-600",
+      onClick: onOrdersClick,
     },
   ];
 
@@ -127,9 +171,11 @@ export function ProfileStatsGrid({
       {stats.map((stat) => {
         const Icon = stat.icon;
         return (
-          <article
+          <button
             key={stat.label}
-            className="min-w-0 rounded-[18px] border border-white bg-white p-3.5 shadow-[0_12px_34px_rgba(15,23,42,0.07)] sm:p-5 sm:shadow-[0_16px_45px_rgba(15,23,42,0.08)]"
+            type="button"
+            onClick={stat.onClick}
+            className="group min-w-0 rounded-[18px] border border-white bg-white p-3.5 text-left shadow-[0_12px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 hover:border-orange-100 hover:shadow-[0_18px_46px_rgba(15,23,42,0.11)] focus:outline-none focus:ring-2 focus:ring-orange-300 sm:p-5 sm:shadow-[0_16px_45px_rgba(15,23,42,0.08)]"
           >
             <div className="flex items-start justify-between gap-2">
               <span
@@ -147,7 +193,21 @@ export function ProfileStatsGrid({
             <p className="mt-1 truncate text-[11px] font-bold text-slate-400 sm:mt-2 sm:text-xs">
               {stat.helper}
             </p>
-          </article>
+            <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
+              {stat.details.map((detail) => (
+                <p
+                  key={detail}
+                  className="line-clamp-1 text-[10px] font-bold leading-4 text-slate-500 sm:text-[11px]"
+                >
+                  {detail}
+                </p>
+              ))}
+            </div>
+            <span className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-black text-orange-500 transition group-hover:gap-2 sm:text-xs">
+              {stat.actionLabel}
+              <ArrowRight size={13} />
+            </span>
+          </button>
         );
       })}
     </section>

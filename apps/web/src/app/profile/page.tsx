@@ -39,7 +39,23 @@ export default function ProfilePage() {
   const membershipConfig = useMembershipConfig();
   const accountData = useProfileAccountData(user, authFetch);
   const ordersData = useProfileOrders(user, authFetch);
+  const refreshAccountData = accountData.refresh;
+  const refreshOrders = ordersData.refresh;
   const openMembership = useCallback(() => setMembershipOpen(true), []);
+  const showLibrary = useCallback(() => {
+    setTab("library");
+    router.replace("/profile?tab=library");
+  }, [router]);
+  const showOrders = useCallback(() => {
+    setTab("orders");
+    router.replace("/profile?tab=orders");
+  }, [router]);
+  const handleMembershipActivated = useCallback(async () => {
+    await Promise.all([refreshUser(), refreshAccountData(), refreshOrders()]);
+    setMembershipOpen(false);
+    setTab("library");
+    router.replace("/profile?tab=library");
+  }, [refreshAccountData, refreshOrders, refreshUser, router]);
 
   useProfileNavigation({
     loading,
@@ -72,6 +88,9 @@ export default function ProfilePage() {
   const managedOrganizations = getManagedOrganizations(user);
   const hasOrganizationContext = Boolean(managedOrganizations.length > 0);
   const isOrdersFocused = searchParams.get("tab") === "orders";
+  const openOrdersCount = ordersData.orders.filter(
+    (order) => !["COMPLETED", "CANCELLED"].includes(order.status),
+  ).length;
 
   if (isOrdersFocused) {
     return (
@@ -107,13 +126,21 @@ export default function ProfilePage() {
         user={{ ...user, avatarUrl: form.avatarUrl }}
       />
       <ProfileStatsGrid
+        contractsCount={accountData.contracts.length}
+        filesCount={accountData.purchases.length}
         isMember={Boolean(user.membership?.active || user.isPrime)}
         libraryCount={
           accountData.purchases.length + accountData.contracts.length
         }
         membershipTierLabel={membershipTierLabel}
+        onLibraryClick={showLibrary}
+        onMembershipClick={openMembership}
+        onOrdersClick={showOrders}
+        onPointsClick={showLibrary}
+        openOrdersCount={openOrdersCount}
         ordersCount={ordersData.orders.length}
         points={accountData.points}
+        transactionsCount={accountData.transactions.length}
       />
       <ProfileContentGrid
         contracts={accountData.contracts}
@@ -152,6 +179,7 @@ export default function ProfilePage() {
           request={authFetch}
           copy={membershipConfig?.upgradeModal}
           membershipTypes={membershipConfig?.membershipTypes}
+          onActivated={handleMembershipActivated}
         />
       </MembershipUpgradeModal>
     </ProfileDashboardShell>
