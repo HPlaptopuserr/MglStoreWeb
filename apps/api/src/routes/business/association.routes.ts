@@ -163,7 +163,7 @@ async function syncApprovedAssociationMembership(
   const expiresAt = addMonths(paidAt, registration.durationMonths);
   const membershipExpiresAt = laterDate(user.membershipExpiresAt, expiresAt);
   const membershipDiscountPhone =
-    registration.phone.trim() ||
+    normalizePhone(registration.phone) ||
     user.membershipDiscountPhone ||
     user.profile?.phoneNumber?.trim() ||
     null;
@@ -329,59 +329,34 @@ async function finalizeAssociationMembershipPayment(
     where: { id: registrationId },
     select: {
       id: true,
-      durationMonths: true,
-      phone: true,
+      status: true,
+      paymentStatus: true,
     },
   });
   if (!registration) return null;
 
-  const expiresAt = addMonths(paidAt, registration.durationMonths);
-
-  return prisma.$transaction(async (tx) => {
-    const currentUser = await tx.user.findUnique({
-      where: { id: userId },
-      select: { membershipExpiresAt: true },
-    });
-    if (!currentUser) return null;
-
-    const membershipExpiresAt = laterDate(
-      currentUser.membershipExpiresAt,
-      expiresAt,
-    );
-
-    const updatedRegistration = await tx.associationMemberRegistration.update({
-      where: { id: registrationId },
-      data: {
-        status: ApprovalStatus.APPROVED,
-        paymentStatus: PaymentStatus.PAID,
-        paymentMethod: PaymentMethod.QPAY,
-        paidAt,
-        paymentReference: invoice.paymentId || invoice.id,
-        paymentNote: "QPay/SystemQR төлбөрөөр автоматаар идэвхжив.",
-        adminNote:
-          "QPay/SystemQR төлбөр баталгаажсан тул автоматаар зөвшөөрөв.",
-        reviewedAt: new Date(),
-      },
-    });
-
-    const updatedUser = await tx.user.update({
-      where: { id: userId },
-      data: {
-        isPrime: true,
-        membershipPaidAt: paidAt,
-        membershipStartedAt: paidAt,
-        membershipExpiresAt,
-        membershipDiscountPhone: registration.phone.trim() || null,
-      },
-      select: {
-        id: true,
-        membershipExpiresAt: true,
-        membershipDiscountPhone: true,
-      },
-    });
-
-    return { registration: updatedRegistration, user: updatedUser };
+  const updatedRegistration = await prisma.associationMemberRegistration.update({
+    where: { id: registrationId },
+    data: {
+      paymentStatus: PaymentStatus.PAID,
+      paymentMethod: PaymentMethod.QPAY,
+      paidAt,
+      paymentReference: invoice.paymentId || invoice.id,
+      paymentNote: "QPay/SystemQR төлбөр баталгаажсан. Admin баталгаажуулалт хүлээгдэж байна.",
+      status:
+        registration.status === ApprovalStatus.APPROVED
+          ? ApprovalStatus.APPROVED
+          : ApprovalStatus.PENDING,
+    },
   });
+
+  if (updatedRegistration.status === ApprovalStatus.APPROVED) {
+    await prisma.$transaction((tx) =>
+      syncApprovedAssociationMembership(tx, updatedRegistration),
+    );
+  }
+
+  return { registration: updatedRegistration };
 }
 
 async function finalizeApprovedAssociationRegistrations(limit = 50) {
@@ -497,6 +472,7 @@ router.post("/association/register", async (req, res) => {
         paymentMethod: PaymentMethod.BANK_TRANSFER,
         paymentReference: paymentReference?.trim() || null,
         paidAt: null,
+        status: ApprovalStatus.PENDING,
       },
     });
 
@@ -587,6 +563,7 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
           paymentMethod: PaymentMethod.QPAY,
           paymentReference: paymentReference?.trim() || null,
           paidAt: null,
+          status: ApprovalStatus.PENDING,
         },
       });
 
@@ -726,6 +703,7 @@ router.get("/association/systemqr/check", requireAuth, async (req, res) => {
     return res.json({
       success: true,
       isPaid,
+      requiresAdminApproval: isPaid,
       status: invoice.status,
       expiresAt: invoice.expiresAt.toISOString(),
     });
@@ -761,6 +739,10 @@ router.get(
       const {
         status,
         membershipType,
+        paymentStatus,
+        dateFrom,
+        dateTo,
+        sort = "newest",
         search,
         limit = "50",
         offset = "0",
@@ -769,23 +751,68 @@ router.get(
       await reconcilePendingAssociationMembershipPayments(80);
 
       const where: any = {};
-      if (status && status !== "ALL") where.status = status as ApprovalStatus;
-      if (membershipType && membershipType !== "ALL")
+      if (
+        status &&
+        status !== "ALL" &&
+        Object.values(ApprovalStatus).includes(status as ApprovalStatus)
+      ) {
+        where.status = status as ApprovalStatus;
+      }
+      if (
+        membershipType &&
+        membershipType !== "ALL" &&
+        Object.values(AssociationMembershipType).includes(
+          membershipType as AssociationMembershipType,
+        )
+      ) {
         where.membershipType = membershipType as AssociationMembershipType;
+      }
+      if (
+        paymentStatus &&
+        paymentStatus !== "ALL" &&
+        Object.values(PaymentStatus).includes(paymentStatus as PaymentStatus)
+      ) {
+        where.paymentStatus = paymentStatus as PaymentStatus;
+      }
+      if (dateFrom || dateTo) {
+        const createdAt: Prisma.DateTimeFilter = {};
+        if (dateFrom) {
+          const from = new Date(String(dateFrom));
+          if (!Number.isNaN(from.getTime())) createdAt.gte = from;
+        }
+        if (dateTo) {
+          const to = new Date(String(dateTo));
+          if (!Number.isNaN(to.getTime())) {
+            to.setHours(23, 59, 59, 999);
+            createdAt.lte = to;
+          }
+        }
+        if (Object.keys(createdAt).length > 0) where.createdAt = createdAt;
+      }
       if (search) {
         const s = String(search);
         where.OR = [
           { firstName: { contains: s, mode: "insensitive" } },
           { lastName: { contains: s, mode: "insensitive" } },
           { organizationName: { contains: s, mode: "insensitive" } },
+          { businessActivity: { contains: s, mode: "insensitive" } },
           { phone: { contains: s } },
         ];
       }
 
+      const orderBy: Prisma.AssociationMemberRegistrationOrderByWithRelationInput[] =
+        sort === "oldest"
+          ? [{ createdAt: "asc" }]
+          : sort === "amountDesc"
+            ? [{ paymentAmount: "desc" }, { createdAt: "desc" }]
+            : sort === "amountAsc"
+              ? [{ paymentAmount: "asc" }, { createdAt: "desc" }]
+              : [{ status: "asc" }, { createdAt: "desc" }];
+
       const [data, total] = await Promise.all([
         prisma.associationMemberRegistration.findMany({
           where,
-          orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+          orderBy,
           take: Number(limit),
           skip: Number(offset),
         }),

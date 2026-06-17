@@ -104,6 +104,18 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString("mn-MN", { year: "numeric", month: "short", day: "numeric" });
 }
 
+function displayEmail(email: string) {
+  return email.endsWith("@temp.local") ? "Имэйлгүй" : email;
+}
+
+function displayPhone(phone?: string | null) {
+  if (!phone) return "";
+  const digits = phone.replace(/[^\d]/g, "");
+  const normalized = digits.startsWith("976") && digits.length === 11 ? digits.slice(3) : digits;
+  if (normalized.length >= 8 && normalized.length <= 12) return normalized;
+  return "";
+}
+
 function timeAgo(dateStr: string | null) {
   if (!dateStr) return "Нэвтрээгүй";
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -682,6 +694,8 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
   const meta = SYSTEM_ROLE_META[user.role] ?? SYSTEM_ROLE_META.USER;
   const RoleIcon = meta.icon;
   const initial = user.fullName?.charAt(0)?.toUpperCase() || user.email.charAt(0).toUpperCase();
+  const emailLabel = displayEmail(user.email);
+  const phoneLabel = displayPhone(user.phone);
   const [changingRole, setChangingRole] = useState(false);
   const [changingPrime, setChangingPrime] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
@@ -790,12 +804,12 @@ function UserCard({ user, onRoleChanged }: { user: SystemUser; onRoleChanged: ()
           </p>
           <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
             <Mail className="h-3 w-3 shrink-0" />
-            <span className="truncate">{user.email}</span>
+            <span className="truncate">{emailLabel}</span>
           </div>
-          {user.phone && (
+          {phoneLabel && (
             <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
               <Phone className="h-3 w-3 shrink-0" />
-              <span>{user.phone}</span>
+              <span>{phoneLabel}</span>
             </div>
           )}
         </div>

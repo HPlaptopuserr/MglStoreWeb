@@ -82,11 +82,11 @@ export default function LoginPage() {
             setAuthLoading(false);
           }
         }}
-        onRegister={async (fullName, identifier, password) => {
+        onRegister={async (fullName, identifier, password, options) => {
           setAuthError("");
           setAuthLoading(true);
           try {
-            await register(fullName, identifier, password);
+            await register(fullName, identifier, password, options);
             router.replace("/profile");
           } catch (err: unknown) {
             setAuthError(err instanceof Error ? err.message : "Бүртгүүлэхэд алдаа гарлаа.");

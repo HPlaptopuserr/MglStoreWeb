@@ -105,11 +105,11 @@ export default function ContractCatalogPage() {
               setAuthBusy(false);
             }
           }}
-          onRegister={async (fullName, identifier, password) => {
+          onRegister={async (fullName, identifier, password, options) => {
             setAuthError("");
             setAuthBusy(true);
             try {
-              await register(fullName, identifier, password);
+              await register(fullName, identifier, password, options);
               setAuthOpen(false);
             } catch (err: unknown) {
               setAuthError(err instanceof Error ? err.message : "Бүртгүүлэхэд алдаа гарлаа.");

@@ -39,7 +39,12 @@ interface LoginModalProps {
     password: string,
     options?: { otpCode?: string; challengeToken?: string },
   ) => Promise<LoginResult | void>;
-  onRegister: (fullName: string, identifier: string, password: string) => Promise<void>;
+  onRegister: (
+    fullName: string,
+    identifier: string,
+    password: string,
+    options?: { verifyMnSessionId?: string },
+  ) => Promise<void>;
   isLoading: boolean;
   error: string;
   marketingBanner?: LoginMarketingBanner | null;
@@ -93,6 +98,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [loginOtpNow, setLoginOtpNow] = useState(() => Date.now());
   const [verifyMnSession, setVerifyMnSession] = useState<VerifyMnSession | null>(null);
   const [verifyMnNow, setVerifyMnNow] = useState(() => Date.now());
+  const [registerVerifySession, setRegisterVerifySession] = useState<VerifyMnSession | null>(null);
+  const [registerVerifyNow, setRegisterVerifyNow] = useState(() => Date.now());
+  const [registerVerifyLoading, setRegisterVerifyLoading] = useState(false);
 
   const [showForgot, setShowForgot] = useState(false);
   const [forgotStep, setForgotStep] = useState<ForgotStep>("identifier");
@@ -132,6 +140,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   }, [loginOtpChallenge]);
 
   useEffect(() => {
+    if (!registerVerifySession) return;
+
+    setRegisterVerifyNow(Date.now());
+    const timer = window.setInterval(() => {
+      setRegisterVerifyNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [registerVerifySession]);
+
+  useEffect(() => {
     if (!forgotEmailOtpChallenge) return;
 
     setForgotEmailOtpNow(Date.now());
@@ -152,6 +171,20 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     const seconds = verifyMnRemainingSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }, [verifyMnRemainingSeconds]);
+
+  const registerVerifyRemainingSeconds = useMemo(() => {
+    if (!registerVerifySession) return 0;
+    return Math.max(
+      0,
+      Math.ceil((new Date(registerVerifySession.expiresAt).getTime() - registerVerifyNow) / 1000),
+    );
+  }, [registerVerifyNow, registerVerifySession]);
+
+  const registerVerifyTimeText = useMemo(() => {
+    const minutes = Math.floor(registerVerifyRemainingSeconds / 60);
+    const seconds = registerVerifyRemainingSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }, [registerVerifyRemainingSeconds]);
 
   const loginOtpRemainingSeconds = useMemo(() => {
     if (!loginOtpChallenge || !loginOtpExpiresAt) return 0;
@@ -180,6 +213,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const handleTabChange = (newTab: AuthTab) => {
     setTab(newTab);
     setVerifyMnSession(null);
+    setRegisterVerifySession(null);
+    setRegisterVerifyLoading(false);
     setLoginOtpChallenge(null);
     setLoginOtpCode("");
     setLoginOtpExpiresAt(0);
@@ -199,6 +234,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setForgotError("");
     setForgotLoading(false);
     setVerifyMnSession(null);
+    setRegisterVerifySession(null);
+    setRegisterVerifyLoading(false);
     setShowForgotPassword(false);
     setShowForgotConfirm(false);
   };
@@ -436,9 +473,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError("");
+    setRegisterVerifySession(null);
 
     if (!identifier.trim() || !password.trim() || !fullName.trim() || !confirmPassword.trim()) {
       setLocalError("Бүх талбарыг бөглөнө үү.");
+      return;
+    }
+
+    const phone = identifier.trim();
+    const isPhone = /^[0-9+\-\s()]{7,16}$/.test(phone) && !phone.includes("@");
+    if (!isPhone) {
+      setLocalError("Бүртгэл үүсгэхдээ утасны дугаараа оруулж Verify.mn баталгаажуулна уу.");
       return;
     }
 
@@ -452,13 +497,52 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       return;
     }
 
+    setRegisterVerifyLoading(true);
     try {
-      await onRegister(fullName, identifier, password);
+      const res = await fetch(`${API_BASE}/auth/web/verify-mn/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          password,
+          fullName: fullName.trim(),
+          mode: "register",
+        }),
+      });
+      const data = await readApiPayload(res);
+      if (!res.ok) throw new Error(data.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
+      if (!data.session) throw new Error(data.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
+
+      setRegisterVerifySession(data.session);
+      setRegisterVerifyNow(Date.now());
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "Баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
+    } finally {
+      setRegisterVerifyLoading(false);
+    }
+  };
+
+  const handleRegisterVerifyComplete = async () => {
+    setLocalError("");
+    if (!registerVerifySession) {
+      setLocalError("Verify.mn баталгаажуулалт эхлээгүй байна.");
+      return;
+    }
+
+    setRegisterVerifyLoading(true);
+    try {
+      await onRegister(fullName, identifier, password, {
+        verifyMnSessionId: registerVerifySession.sessionId,
+      });
       setIdentifier("");
       setPassword("");
       setConfirmPassword("");
       setFullName("");
-    } catch {
+      setRegisterVerifySession(null);
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "Verify.mn баталгаажуулахад алдаа гарлаа.");
+    } finally {
+      setRegisterVerifyLoading(false);
     }
   };
 
@@ -842,7 +926,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
                     <button
                       type="submit"
-                      disabled={isLoading}
+                      disabled={registerVerifyLoading || isLoading}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-lg disabled:opacity-70"
                     >
                       {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
@@ -869,6 +953,20 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     </div>
                   </form>
                   )
+                ) : registerVerifySession ? (
+                  <VerifyMnPanel
+                    session={registerVerifySession}
+                    remainingSeconds={registerVerifyRemainingSeconds}
+                    timeText={registerVerifyTimeText}
+                    loading={registerVerifyLoading || isLoading}
+                    error={displayError}
+                    onRestart={() => {
+                      setRegisterVerifySession(null);
+                      setRegisterVerifyLoading(false);
+                      setLocalError("");
+                    }}
+                    onVerify={handleRegisterVerifyComplete}
+                  />
                 ) : (
                   <form onSubmit={handleRegisterSubmit} className="space-y-4">
                     <div>
@@ -886,13 +984,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
                     <div>
                       <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                        И-мэйл эсвэл утас
+                        Утасны дугаар
                       </label>
                       <input
                         type="text"
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value)}
-                        placeholder="name@mail.com эсвэл 99112233"
+                        placeholder="99112233"
                         className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
                       />
                     </div>
@@ -954,8 +1052,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                       disabled={isLoading}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-lg disabled:opacity-70"
                     >
-                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
-                      {isLoading ? "Бүртгүүлж байна..." : "Бүртгүүлэх"}
+                      {registerVerifyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                      {registerVerifyLoading ? "Эхлүүлж байна..." : "Утас баталгаажуулах"}
                     </button>
                   </form>
                 )}

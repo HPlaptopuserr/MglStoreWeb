@@ -22,6 +22,8 @@ type PaidAccessPaymentModalProps = {
   payment: PaidAccessPaymentSession;
   checkUrl: string;
   request?: (url: string, init?: RequestInit) => Promise<Response>;
+  successTitle?: string;
+  successDescription?: string;
   onPaid: (invoiceId: string) => Promise<void>;
   onClose: () => void;
 };
@@ -36,6 +38,8 @@ export function PaidAccessPaymentModal({
   payment,
   checkUrl,
   request,
+  successTitle,
+  successDescription,
   onPaid,
   onClose,
 }: PaidAccessPaymentModalProps) {
@@ -173,10 +177,10 @@ export function PaidAccessPaymentModal({
               </div>
               <div>
                 <p className="text-2xl font-black text-white">
-                  Төлбөр амжилттай!
+                  {successTitle || "Төлбөр амжилттай!"}
                 </p>
                 <p className="mt-2 text-sm text-white/70">
-                  Дэлгэрэнгүй мэдээллийг нээж байна...
+                  {successDescription || "Дэлгэрэнгүй мэдээллийг нээж байна..."}
                 </p>
               </div>
             </div>

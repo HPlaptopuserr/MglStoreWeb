@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   Search, Users, Loader2, QrCode, X,
   Copy, Check, RefreshCw, SlidersHorizontal,
-  ChevronDown, Settings2, Banknote,
+  ChevronDown, Settings2, Banknote, CalendarDays,
+  ArrowUpDown,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 import {
@@ -24,11 +25,63 @@ const STATUS_FILTERS = [
   { value: "REJECTED", label: "Татгалзсан" },
 ];
 
+const PAYMENT_STATUS_FILTERS = [
+  { value: "", label: "Бүх төлбөр" },
+  { value: "PENDING", label: "Төлбөр хүлээгдэж буй" },
+  { value: "PAID", label: "Төлсөн" },
+  { value: "FAILED", label: "Амжилтгүй" },
+  { value: "REFUNDED", label: "Буцаагдсан" },
+  { value: "CANCELLED", label: "Цуцлагдсан" },
+];
+
+const SORT_OPTIONS = [
+  { value: "newest", label: "Шинэ эхэнд" },
+  { value: "oldest", label: "Хуучин эхэнд" },
+  { value: "amountDesc", label: "Дүн ихээс" },
+  { value: "amountAsc", label: "Дүн багаас" },
+];
+
 interface Stats {
   total: number;
   pending: number;
   approved: number;
   rejected: number;
+}
+
+function FilterSelect({
+  value,
+  onChange,
+  options,
+  icon,
+  active,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  icon: ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <div
+      className={`relative flex min-w-0 items-center gap-2 rounded-xl border px-3 transition-colors ${
+        active ? "border-indigo-300 bg-indigo-50" : "border-slate-200 bg-white"
+      }`}
+    >
+      <span className={active ? "text-indigo-500" : "text-slate-400"}>{icon}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-w-0 flex-1 appearance-none bg-transparent py-2.5 pr-7 text-sm font-semibold text-slate-700 outline-none cursor-pointer"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown size={13} className="pointer-events-none absolute right-3 text-slate-400" />
+    </div>
+  );
 }
 
 export default function AssociationPage() {
@@ -40,6 +93,10 @@ export default function AssociationPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState<MembershipTypeKey | "">("");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sort, setSort] = useState("newest");
   const [showQr, setShowQr] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -61,6 +118,10 @@ export default function AssociationPage() {
       const params = new URLSearchParams();
       if (statusFilter) params.set("status", statusFilter);
       if (typeFilter) params.set("membershipType", typeFilter);
+      if (paymentStatusFilter) params.set("paymentStatus", paymentStatusFilter);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+      if (sort !== "newest") params.set("sort", sort);
       if (debouncedSearch) params.set("search", debouncedSearch);
       params.set("limit", "200");
 
@@ -88,7 +149,7 @@ export default function AssociationPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [statusFilter, typeFilter, debouncedSearch]);
+  }, [statusFilter, typeFilter, paymentStatusFilter, dateFrom, dateTo, sort, debouncedSearch]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -98,7 +159,37 @@ export default function AssociationPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const activeFilterCount = [statusFilter, typeFilter].filter(Boolean).length;
+  const resetFilters = useCallback(() => {
+    setSearch("");
+    setStatusFilter("");
+    setTypeFilter("");
+    setPaymentStatusFilter("");
+    setDateFrom("");
+    setDateTo("");
+    setSort("newest");
+  }, []);
+
+  const activeFilters = useMemo(() => {
+    const filters: string[] = [];
+    if (debouncedSearch) filters.push(`Хайлт: ${debouncedSearch}`);
+    if (statusFilter) {
+      filters.push(STATUS_FILTERS.find((item) => item.value === statusFilter)?.label ?? statusFilter);
+    }
+    if (typeFilter) filters.push(MEMBERSHIP_TYPES[typeFilter].label);
+    if (paymentStatusFilter) {
+      filters.push(
+        PAYMENT_STATUS_FILTERS.find((item) => item.value === paymentStatusFilter)?.label ??
+          paymentStatusFilter,
+      );
+    }
+    if (dateFrom || dateTo) filters.push(`${dateFrom || "эхлэл"} - ${dateTo || "өнөөдөр"}`);
+    if (sort !== "newest") filters.push(SORT_OPTIONS.find((item) => item.value === sort)?.label ?? sort);
+    return filters;
+  }, [debouncedSearch, statusFilter, typeFilter, paymentStatusFilter, dateFrom, dateTo, sort]);
+
+  const hasActiveFilters =
+    Boolean(search || statusFilter || typeFilter || paymentStatusFilter || dateFrom || dateTo || sort !== "newest");
+  const activeFilterCount = activeFilters.length;
   const pendingList = registrations.filter((r) => r.status === "PENDING");
   const otherList = registrations.filter((r) => r.status !== "PENDING");
 
@@ -216,55 +307,99 @@ export default function AssociationPage() {
       </div>
 
       {/* ── Search & filter bar ─────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Нэр, байгууллага, утас хайх..."
-            className="w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="grid gap-3 xl:grid-cols-[minmax(280px,1fr)_180px_210px_180px]">
+          <div className="relative min-w-0">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Нэр, байгууллага, үйл ажиллагаа, утас хайх..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm transition-all focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600"
+                aria-label="Хайлтыг цэвэрлэх"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
 
-        <div className={`relative flex items-center gap-2 bg-white border rounded-xl px-3 transition-colors ${
-          statusFilter ? "border-indigo-300 bg-indigo-50" : "border-slate-200"
-        }`}>
-          <SlidersHorizontal size={14} className={statusFilter ? "text-indigo-500" : "text-slate-400"} />
-          <select
+          <FilterSelect
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-transparent py-2.5 text-sm font-semibold text-slate-700 outline-none pr-6 appearance-none cursor-pointer"
-          >
-            {STATUS_FILTERS.map((f) => (
-              <option key={f.value} value={f.value}>{f.label}</option>
-            ))}
-          </select>
-          <ChevronDown size={13} className="text-slate-400 absolute right-3 pointer-events-none" />
-          {activeFilterCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-indigo-600 rounded-full text-[10px] font-black text-white flex items-center justify-center">
-              {activeFilterCount}
-            </span>
-          )}
+            onChange={setStatusFilter}
+            options={STATUS_FILTERS}
+            icon={<SlidersHorizontal size={14} />}
+            active={Boolean(statusFilter)}
+          />
+          <FilterSelect
+            value={paymentStatusFilter}
+            onChange={setPaymentStatusFilter}
+            options={PAYMENT_STATUS_FILTERS}
+            icon={<Banknote size={14} />}
+            active={Boolean(paymentStatusFilter)}
+          />
+          <FilterSelect
+            value={sort}
+            onChange={setSort}
+            options={SORT_OPTIONS}
+            icon={<ArrowUpDown size={14} />}
+            active={sort !== "newest"}
+          />
         </div>
 
-        {(search || statusFilter || typeFilter) && (
-          <button
-            onClick={() => { setSearch(""); setStatusFilter(""); setTypeFilter(""); }}
-            className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
-          >
-            <X size={14} />Цэвэрлэх
-          </button>
-        )}
+        <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto] xl:grid-cols-[180px_180px_auto]">
+          <label className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 transition-colors focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-500/10">
+            <CalendarDays size={14} className="text-slate-400" />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              max={dateTo || undefined}
+              className="min-w-0 flex-1 bg-transparent py-2.5 text-sm font-semibold text-slate-700 outline-none"
+              aria-label="Эхлэх огноо"
+            />
+          </label>
+          <label className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 transition-colors focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-500/10">
+            <CalendarDays size={14} className="text-slate-400" />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              min={dateFrom || undefined}
+              className="min-w-0 flex-1 bg-transparent py-2.5 text-sm font-semibold text-slate-700 outline-none"
+              aria-label="Дуусах огноо"
+            />
+          </label>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {activeFilters.map((filter) => (
+              <span
+                key={filter}
+                className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700"
+              >
+                {filter}
+              </span>
+            ))}
+            {hasActiveFilters && (
+              <button
+                onClick={resetFilters}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+              >
+                <X size={14} />Цэвэрлэх
+              </button>
+            )}
+            {activeFilterCount > 0 && (
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-indigo-600 px-2 text-[11px] font-black text-white">
+                {activeFilterCount}
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── List ────────────────────────────────────────────── */}
@@ -278,9 +413,9 @@ export default function AssociationPage() {
           <Users size={40} className="mx-auto text-slate-300 mb-4" />
           <p className="text-base font-black text-slate-500">Бүртгэл олдсонгүй</p>
           <p className="text-sm text-slate-400 mt-1">Шүүлтүүрийг өөрчилж дахин хайна уу</p>
-          {(search || statusFilter || typeFilter) && (
+          {hasActiveFilters && (
             <button
-              onClick={() => { setSearch(""); setStatusFilter(""); setTypeFilter(""); }}
+              onClick={resetFilters}
               className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-indigo-600 hover:text-indigo-800 border border-indigo-200 rounded-xl hover:bg-indigo-50 transition-colors"
             >
               <X size={14} />Бүх шүүлтүүр арилгах

@@ -82,7 +82,12 @@ interface AuthContextValue {
     password: string,
     options?: { otpCode?: string; challengeToken?: string },
   ) => Promise<LoginResult | void>;
-  register: (fullName: string, identifier: string, password: string) => Promise<void>;
+  register: (
+    fullName: string,
+    identifier: string,
+    password: string,
+    options?: { verifyMnSessionId?: string },
+  ) => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<AuthUser>) => void;
   refreshUser: () => Promise<void>;
@@ -209,16 +214,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user || null);
   }, []);
 
-  const register = useCallback(async (fullName: string, identifier: string, password: string) => {
-    const isEmail = identifier.includes("@");
-    const payload = isEmail
-      ? { email: identifier.trim(), password: password.trim(), fullName: fullName.trim() }
-      : { phone: identifier.trim(), password: password.trim(), fullName: fullName.trim() };
+  const register = useCallback(async (
+    fullName: string,
+    identifier: string,
+    password: string,
+    options?: { verifyMnSessionId?: string },
+  ) => {
+    if (!options?.verifyMnSessionId) {
+      throw new Error("Бүртгэл үүсгэхийн тулд утасны баталгаажуулалт шаардлагатай.");
+    }
 
-    const res = await fetch(`${API_BASE}/auth/web/register`, {
+    const res = await fetch(`${API_BASE}/auth/web/verify-mn/complete`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        phone: identifier.trim(),
+        password: password.trim(),
+        fullName: fullName.trim(),
+        mode: "register",
+        sessionId: options.verifyMnSessionId,
+      }),
     });
 
     const data = await readAuthPayload(res);

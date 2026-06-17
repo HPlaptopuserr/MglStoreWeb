@@ -648,11 +648,11 @@ export const Header = () => {
               setAuthLoading(false);
             }
           }}
-          onRegister={async (fullName, identifier, password) => {
+          onRegister={async (fullName, identifier, password, options) => {
             setAuthError("");
             setAuthLoading(true);
             try {
-              await register(fullName, identifier, password);
+              await register(fullName, identifier, password, options);
               closeAuthModal();
               closeMobile();
             } catch (err: unknown) {

@@ -199,7 +199,7 @@ export function MembershipActivationPanel({
           </div>
           <p className="mt-1 text-xs font-semibold leading-relaxed text-emerald-700">
             {copy?.successDescription ||
-              "QuickQR төлбөр амжилттай баталгаажлаа."}
+              "QuickQR төлбөр амжилттай баталгаажлаа. Гишүүнчлэл admin баталгаажуулсны дараа идэвхжинэ."}
           </p>
           {error && (
             <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-relaxed text-amber-700">
@@ -236,6 +236,8 @@ export function MembershipActivationPanel({
           payment={paymentSession}
           checkUrl={`${API}/association/systemqr/check`}
           request={request}
+          successTitle="Төлбөр баталгаажлаа"
+          successDescription="Гишүүнчлэлийн хүсэлт admin баталгаажуулалт хүлээж байна."
           onPaid={async () => {
             setPaymentSession(null);
             setSuccess(true);
