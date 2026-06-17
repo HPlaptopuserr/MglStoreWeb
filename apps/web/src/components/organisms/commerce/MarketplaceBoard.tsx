@@ -246,7 +246,7 @@ export function MarketplaceBoard({
           </aside>
 
           <div className="grid gap-3">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-2">
+            <div className="grid gap-3 min-[430px]:grid-cols-2 md:grid-cols-2">
               <div className="lg:hidden">
                 <MglServicesPromoPanel promo={servicesPromo} />
               </div>
@@ -290,7 +290,7 @@ export function MarketplaceBoard({
           </aside>
         </div>
 
-        <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide lg:hidden">
+        <div className="scrollbar-hide mt-3 flex w-full max-w-full items-center gap-2 overflow-x-auto overscroll-x-contain pb-1 lg:hidden">
           <CategoryLink
             href={allHref}
             onClick={onCategoryClick ? () => onCategoryClick(null) : undefined}

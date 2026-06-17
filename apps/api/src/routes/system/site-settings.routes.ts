@@ -62,6 +62,8 @@ const FRANCHISE_ITEMS_KEY = "paid-projects";
 const SITE_PROJECTS_KEY = "site-projects";
 const SITE_STUDY_KEY = "site-study";
 const SITE_STUDY_SETTINGS_KEY = "site-study-settings";
+const MGLBUSINESS_STATUS_KEY = "mglbusiness-status";
+const MGLBUSINESS_DEFAULT_STATUS = "maintenance";
 const FREE_PDF_PREVIEW_PAGE_COUNT = 3;
 const VENDOR_FEATURE_KEYS = new Set([
   "pos-enabled",
@@ -1294,6 +1296,26 @@ router.get(
     }
   },
 );
+
+// GET /site-settings/mglbusiness/status — lightweight public status flag.
+router.get("/site-settings/mglbusiness/status", async (_req, res) => {
+  try {
+    const setting = await prisma.siteSetting.findUnique({
+      where: { key: MGLBUSINESS_STATUS_KEY },
+      select: { value: true, updatedAt: true },
+    });
+    const status = setting?.value === "live" ? "live" : MGLBUSINESS_DEFAULT_STATUS;
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      key: MGLBUSINESS_STATUS_KEY,
+      status,
+      updatedAt: setting?.updatedAt ?? null,
+    });
+  } catch (error) {
+    console.error("get mglbusiness status error", error);
+    res.status(500).json({ message: "MGL Business төлөв авахад алдаа гарлаа" });
+  }
+});
 
 // GET /admin/study/registrations — unified training registrations list.
 router.get(

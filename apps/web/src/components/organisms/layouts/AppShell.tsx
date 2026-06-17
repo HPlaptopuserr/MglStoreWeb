@@ -13,6 +13,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isContractRoute = pathname?.startsWith("/contract");
   const isProfileRoute = pathname?.startsWith("/profile");
+  const isOrdersRoute = pathname?.startsWith("/orders");
   const isPaidAccessDetailRoute =
     /^\/(projects|franchise)\/[^/]+/.test(pathname || "");
   const hideGlobalShell = isContractRoute || isPaidAccessDetailRoute;
@@ -27,7 +28,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           className={
             hideGlobalShell
               ? "grow"
-              : isProfileRoute
+              : isProfileRoute || isOrdersRoute
               ? "grow pt-16 pb-20 md:pt-16 md:pb-0"
               : "grow pt-40 pb-20 md:pt-32 md:pb-0"
           }

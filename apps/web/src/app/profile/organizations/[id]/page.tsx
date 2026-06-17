@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { useAuth } from "@/lib/auth-context";
 import { ManagedOrganizationProfile } from "../../_components/ManagedOrganizationProfile";
 import { ProfileDashboardShell } from "../../_components/ProfileDashboardShell";
@@ -28,12 +29,12 @@ export default function ManagedOrganizationPage() {
   }, []);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace(ACCOUNT_ROUTES.login);
   }, [loading, router, user]);
 
   useEffect(() => {
     if (!loading && user && !canManageOrganization) {
-      router.replace("/profile");
+      router.replace(ACCOUNT_ROUTES.profile);
     }
   }, [canManageOrganization, loading, router, user]);
 
@@ -50,7 +51,7 @@ export default function ManagedOrganizationPage() {
       <ManagedOrganizationProfile
         activeOrganizationId={activeOrganizationId}
         organizations={organizations}
-        onBackToPersonal={() => router.push("/profile")}
+        onBackToPersonal={() => router.push(ACCOUNT_ROUTES.profile)}
         onSelectOrganization={(organizationId) =>
           router.push(`/profile/organizations/${encodeURIComponent(organizationId)}`)
         }

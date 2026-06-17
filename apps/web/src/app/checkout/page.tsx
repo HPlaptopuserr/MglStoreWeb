@@ -6,6 +6,7 @@ import { ShoppingCart, ArrowLeft, Loader2, AlertCircle, MapPin, Check } from "lu
 import { useCart } from "@/hooks/useCart";
 import { useAuth, type AuthAddress, type AuthUser } from "@/lib/auth-context";
 import { API } from "@/lib/api";
+import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import {
   getActiveCheckoutDispatch,
   setActiveCheckoutDispatch,
@@ -405,7 +406,7 @@ export default function CheckoutPage() {
   const handlePaymentSuccess = () => {
     setActiveCheckoutDispatch(null);
     if (!deliverySession) clearCart();
-    router.push("/profile?tab=orders");
+    router.push(ACCOUNT_ROUTES.orders);
   };
 
   if (items.length === 0 && !checkoutResult && !deliverySession) {
@@ -583,7 +584,7 @@ export default function CheckoutPage() {
                   setError("");
                 }}
                 onConfirm={startDeliveryRadar}
-                onEdit={() => router.push("/profile?tab=address")}
+                onEdit={() => router.push(ACCOUNT_ROUTES.profileAddress)}
               />
             )}
 

@@ -17,6 +17,7 @@ import {
   CreditCard,
   ReceiptText,
   RefreshCw,
+  Search,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { API } from "@/lib/api";
@@ -120,6 +121,17 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
   QPAY: "QPay",
   POS: "POS",
 };
+
+const ORDER_FILTERS = [
+  { label: "Бүгд", value: "ALL" },
+  { label: "Хүлээгдэж буй", value: "PENDING" },
+  { label: "Баталгаажсан", value: "CONFIRMED" },
+  { label: "Хүргэлтэнд", value: "SHIPPING" },
+  { label: "Дууссан", value: "COMPLETED" },
+  { label: "Цуцалсан", value: "CANCELLED" },
+] as const;
+
+type OrderFilter = (typeof ORDER_FILTERS)[number]["value"];
 
 function formatMnt(value: number) {
   return `₮${Number(value || 0).toLocaleString("mn-MN")}`;
@@ -433,6 +445,21 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<OrderFilter>("ALL");
+  const filteredOrders = orders.filter((order) => {
+    const matchesStatus =
+      statusFilter === "ALL" || order.status === statusFilter;
+    const normalizedQuery = query.trim().toLowerCase();
+    const matchesQuery =
+      !normalizedQuery ||
+      order.orderNumber.toLowerCase().includes(normalizedQuery) ||
+      order.items.some((item) =>
+        item.name.toLowerCase().includes(normalizedQuery),
+      );
+
+    return matchesStatus && matchesQuery;
+  });
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -525,7 +552,55 @@ export default function OrdersPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {orders.map((order) => {
+          <section className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+            <div className="flex min-h-12 items-center gap-3 rounded-xl bg-gray-50 px-3 ring-1 ring-gray-100">
+              <Search size={18} className="shrink-0 text-gray-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Захиалгын дугаар, барааны нэр хайх..."
+                className="h-12 min-w-0 flex-1 bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:text-gray-400"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  className="rounded-full bg-gray-200 px-2 py-1 text-[10px] font-black text-gray-600 transition hover:bg-gray-300"
+                >
+                  Арилгах
+                </button>
+              )}
+            </div>
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {ORDER_FILTERS.map((filter) => (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => setStatusFilter(filter.value)}
+                  className={`h-9 shrink-0 rounded-full px-3 text-xs font-black transition ${
+                    statusFilter === filter.value
+                      ? "bg-amber-500 text-white shadow-lg shadow-amber-500/20"
+                      : "bg-gray-100 text-gray-600 hover:bg-amber-50 hover:text-amber-700"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {filteredOrders.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center">
+              <p className="text-sm font-black text-gray-800">
+                Энэ шүүлтэд тохирох захиалга алга
+              </p>
+              <p className="mt-1 text-xs font-semibold text-gray-400">
+                Хайх үгээ эсвэл төлөв filter-ээ өөрчлөөд үзнэ үү.
+              </p>
+            </div>
+          ) : null}
+
+          {filteredOrders.map((order) => {
             const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.PENDING;
             const StatusIcon = cfg.icon;
 

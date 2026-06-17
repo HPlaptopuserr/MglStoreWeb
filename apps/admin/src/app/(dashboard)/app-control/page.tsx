@@ -8,8 +8,8 @@ import { MglBusinessTab } from "@/components/organisms/app-control/MglBusinessTa
 type Tab = "mgl-store" | "mgl-business";
 
 const TABS: { key: Tab; label: string; icon: React.ElementType; desc: string }[] = [
-  { key: "mgl-store", label: "MGL Store", icon: Store, desc: "Хэрэглэгчийн апп" },
-  { key: "mgl-business", label: "MGL Business", icon: Smartphone, desc: "Бизнесийн апп" },
+  { key: "mgl-store", label: "MGL Store", icon: Store, desc: "Store web/app тохиргоо" },
+  { key: "mgl-business", label: "MGL Business", icon: Smartphone, desc: "Business web status" },
 ];
 
 export default function AppControlPage() {

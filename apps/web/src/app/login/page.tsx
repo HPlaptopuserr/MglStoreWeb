@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, UserRound } from "lucide-react";
 import { LoginModal } from "@/components/organisms/auth/LoginModal";
+import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { useAuth } from "@/lib/auth-context";
 import { API } from "@/lib/api";
 import { AUTH_LOGIN_BANNER_KEY, createLoginMarketingBanner, parseLoginMarketingBanner } from "@/lib/site-banners";
@@ -18,7 +19,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace("/profile");
+      router.replace(ACCOUNT_ROUTES.profile);
     }
   }, [loading, router, user]);
 
@@ -75,7 +76,7 @@ export default function LoginPage() {
           try {
             const result = await login(identifier, password, options);
             if (result?.requiresEmailOtp) return result;
-            router.replace("/profile");
+            router.replace(ACCOUNT_ROUTES.profile);
           } catch (err: unknown) {
             setAuthError(err instanceof Error ? err.message : "Нэвтрэхэд алдаа гарлаа.");
           } finally {
@@ -87,7 +88,7 @@ export default function LoginPage() {
           setAuthLoading(true);
           try {
             await register(fullName, identifier, password, options);
-            router.replace("/profile");
+            router.replace(ACCOUNT_ROUTES.profile);
           } catch (err: unknown) {
             setAuthError(err instanceof Error ? err.message : "Бүртгүүлэхэд алдаа гарлаа.");
           } finally {

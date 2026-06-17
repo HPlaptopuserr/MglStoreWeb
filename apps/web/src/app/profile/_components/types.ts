@@ -1,12 +1,5 @@
 import type { AuthAddress, AuthUser } from "@/lib/auth-context";
 
-export type ProfileTab =
-  | "library"
-  | "orders"
-  | "profile"
-  | "address"
-  | "security";
-
 export type AccountPurchase = {
   id: string;
   sourceType: "PROJECT" | "FRANCHISE" | "SERVICE" | "POS_SALE";

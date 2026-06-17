@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Home, Search, ShoppingCart, Package, User } from "lucide-react";
+import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/hooks/useCart";
 
@@ -12,8 +13,8 @@ const LEFT_TABS = [
 ] as const;
 
 const RIGHT_TABS = [
-  { href: "/profile?tab=orders", label: "Захиалга", icon: Package, action: "link" },
-  { href: "/profile", label: "Профайл", icon: User, action: "link" },
+  { href: ACCOUNT_ROUTES.orders, label: "Захиалга", icon: Package, action: "link" },
+  { href: ACCOUNT_ROUTES.profile, label: "Профайл", icon: User, action: "link" },
 ] as const;
 
 const SHOPPING_ROUTE_PREFIXES = [
@@ -21,8 +22,8 @@ const SHOPPING_ROUTE_PREFIXES = [
   "/products",
   "/store",
   "/checkout",
-  "/orders",
-  "/profile",
+  ACCOUNT_ROUTES.orders,
+  ACCOUNT_ROUTES.profile,
   "/services",
   "/our-services",
 ];
@@ -58,7 +59,6 @@ export function MobileBottomNav({
   onSearchOpen: () => void;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { user } = useAuth();
   const { count } = useCart();
 
@@ -68,18 +68,15 @@ export function MobileBottomNav({
 
   const isActive = (href: string) => {
     const path = href.split("?")[0];
-    if (href === "/profile?tab=orders") {
-      return pathname === "/profile" && searchParams.get("tab") === "orders";
-    }
-    if (href === "/profile") {
-      return pathname === "/profile" && searchParams.get("tab") !== "orders";
+    if (href === ACCOUNT_ROUTES.profile) {
+      return pathname === ACCOUNT_ROUTES.profile;
     }
     return path === "/" ? pathname === "/" : pathname.startsWith(path);
   };
 
   const handleProtected = (e: React.MouseEvent, href: string) => {
     const path = href.split("?")[0];
-    if (!user && path === "/profile") {
+    if (!user && (path === ACCOUNT_ROUTES.profile || path === ACCOUNT_ROUTES.orders)) {
       e.preventDefault();
       onAuthOpen();
     }

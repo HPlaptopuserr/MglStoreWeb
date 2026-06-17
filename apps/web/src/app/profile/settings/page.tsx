@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { API_BASE } from "@/lib/api";
+import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { useAuth } from "@/lib/auth-context";
 import { AddressConsentPanel } from "../_components/AddressConsentPanel";
 import { ProfileInfoPanel } from "../_components/ProfileInfoPanel";
@@ -138,7 +139,7 @@ function ProfileSettingsContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace(ACCOUNT_ROUTES.login);
   }, [loading, router, user]);
 
   useEffect(() => {
@@ -162,9 +163,19 @@ function ProfileSettingsContent() {
     setProfileError("");
   };
 
-  const saveProfile = async () => {
-    if (!form.acceptTerms) {
+  const saveProfile = async (options?: {
+    requireAddress?: boolean;
+    requireTerms?: boolean;
+  }) => {
+    const requireTerms = options?.requireTerms ?? true;
+
+    if (requireTerms && !form.acceptTerms) {
       setProfileError("Үйлчилгээний нөхцөлийг зөвшөөрөх шаардлагатай.");
+      setSection("address");
+      return;
+    }
+    if (options?.requireAddress && !form.fullAddress.trim()) {
+      setProfileError("Хаягаа хадгалахын тулд дэлгэрэнгүй хаягаа бөглөнө үү.");
       setSection("address");
       return;
     }
@@ -203,6 +214,7 @@ function ProfileSettingsContent() {
       }
       updateUser(data);
       setForm(createProfileFormState(data));
+      await refreshUser();
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
@@ -214,6 +226,11 @@ function ProfileSettingsContent() {
 
   const requestSave = (event: FormEvent, target: SettingsSection) => {
     event.preventDefault();
+    if (target === "address") {
+      void saveProfile({ requireAddress: true, requireTerms: false });
+      return;
+    }
+
     setConfirmAction({
       title:
         target === "profile"
@@ -224,7 +241,7 @@ function ProfileSettingsContent() {
           ? "Нэр, зураг болон холбоо барих мэдээлэл шинэчлэгдэнэ."
           : "Хүргэлтийн хаяг, үйлчилгээний нөхцөл болон мэдэгдлийн тохиргоо хадгалагдана.",
       confirmLabel: "Хадгалах",
-      onConfirm: saveProfile,
+      onConfirm: () => saveProfile({ requireTerms: true }),
     });
   };
 
@@ -319,7 +336,7 @@ function ProfileSettingsContent() {
       <div className="mx-auto max-w-6xl space-y-4 md:space-y-5">
         <div className="flex items-center justify-between gap-3">
           <Link
-            href="/profile"
+            href={ACCOUNT_ROUTES.profile}
             className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 shadow-sm md:h-11 md:px-4"
           >
             <ChevronLeft size={17} />

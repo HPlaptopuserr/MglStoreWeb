@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
+import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { useAuth } from "@/lib/auth-context";
 
 export function AccountStatusPanel({ searchQuery }: { searchQuery?: string }) {
@@ -57,8 +58,8 @@ export function AccountStatusPanel({ searchQuery }: { searchQuery?: string }) {
         <QuickLinks
           links={[
             { label: "Сагс", icon: ShoppingBag, href: "/checkout" },
-            { label: "Захиалга", icon: Clock3, href: "/profile?tab=orders" },
-            { label: "Профайл", icon: Heart, href: "/profile?tab=profile" },
+            { label: "Захиалга", icon: Clock3, href: ACCOUNT_ROUTES.orders },
+            { label: "Профайл", icon: Heart, href: ACCOUNT_ROUTES.profileInfo },
           ]}
         />
 
@@ -79,22 +80,22 @@ export function AccountStatusPanel({ searchQuery }: { searchQuery?: string }) {
             icon={ShieldCheck}
             title="Нөхцөл"
             label={hasTerms ? "Зөвшөөрсөн" : "Бөглөх"}
-            href="/profile?tab=address"
+            href={ACCOUNT_ROUTES.profileAddress}
           />
           <StatusPill
             active={hasAddress}
             icon={Home}
             title="Хаяг"
             label={hasAddress ? "Бүртгэлтэй" : "Нэмэх"}
-            href="/profile?tab=address"
+            href={ACCOUNT_ROUTES.profileAddress}
           />
         </div>
 
         <QuickLinks
           links={[
-            { label: "Файлууд", icon: FileText, href: "/profile?tab=library" },
-            { label: "Захиалга", icon: Clock3, href: "/profile?tab=orders" },
-            { label: "Профайл", icon: Heart, href: "/profile?tab=profile" },
+            { label: "Файлууд", icon: FileText, href: ACCOUNT_ROUTES.profileLibrary },
+            { label: "Захиалга", icon: Clock3, href: ACCOUNT_ROUTES.orders },
+            { label: "Профайл", icon: Heart, href: ACCOUNT_ROUTES.profileInfo },
           ]}
         />
         <button

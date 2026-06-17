@@ -55,6 +55,13 @@ body {
   text-rendering: optimizeLegibility;
   -ms-overflow-style: none;
   scrollbar-width: none;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+html {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body::-webkit-scrollbar {

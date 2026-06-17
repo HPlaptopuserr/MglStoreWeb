@@ -57,7 +57,7 @@ export function ProductResultsGrid({
 }: ProductResultsGridProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {Array.from({ length: 15 }).map((_, index) => (
           <div key={index} className="h-[260px] animate-pulse rounded-xl border border-slate-100 bg-slate-50" />
         ))}
@@ -125,7 +125,7 @@ export function ProductResultsGrid({
   return (
     <>
       <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+        <div className="grid gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
         {products.map((product) => {
           const pricing = resolveMemberPricing(product.price, product.discounts, isMember);
           return (

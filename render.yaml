@@ -21,6 +21,8 @@ services:
         value: production
       - key: NEXT_PUBLIC_API_URL
         sync: false
+      - key: NEXT_PUBLIC_BUSINESS_URL
+        value: https://mglbusiness.mn
 
   - type: web
     name: mgl-admin
@@ -44,6 +46,8 @@ services:
         value: production
       - key: NEXT_PUBLIC_API_URL
         sync: false
+      - key: NEXT_PUBLIC_BUSINESS_URL
+        value: https://mglbusiness.mn
 
   - type: web
     name: mgl-vendor

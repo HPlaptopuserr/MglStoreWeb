@@ -1791,35 +1791,36 @@ router.put("/web/profile", requireAuth, async (req, res) => {
           });
         }
 
-        await tx.address.upsert({
-          where: { id: addressId || crypto.randomUUID() },
-          update: {
-            label: nextAddress.label?.trim() || "Үндсэн хаяг",
-            fullAddress,
-            city: nextAddress.city?.trim() || null,
-            district: nextAddress.district?.trim() || null,
-            khoroo: nextAddress.khoroo?.trim() || null,
-            entrance: nextAddress.entrance?.trim() || null,
-            apartment: nextAddress.apartment?.trim() || null,
-            lat: nextAddress.lat === undefined || nextAddress.lat === null || nextAddress.lat === "" ? null : Number(nextAddress.lat),
-            lng: nextAddress.lng === undefined || nextAddress.lng === null || nextAddress.lng === "" ? null : Number(nextAddress.lng),
-            ...(shouldSetDefault ? { isDefault: true } : {}),
-            deletedAt: null,
-          },
-          create: {
-            userId,
-            label: nextAddress.label?.trim() || "Үндсэн хаяг",
-            fullAddress,
-            city: nextAddress.city?.trim() || null,
-            district: nextAddress.district?.trim() || null,
-            khoroo: nextAddress.khoroo?.trim() || null,
-            entrance: nextAddress.entrance?.trim() || null,
-            apartment: nextAddress.apartment?.trim() || null,
-            lat: nextAddress.lat === undefined || nextAddress.lat === null || nextAddress.lat === "" ? null : Number(nextAddress.lat),
-            lng: nextAddress.lng === undefined || nextAddress.lng === null || nextAddress.lng === "" ? null : Number(nextAddress.lng),
-            isDefault: shouldSetDefault,
-          },
-        });
+        const addressData = {
+          label: nextAddress.label?.trim() || "Үндсэн хаяг",
+          fullAddress,
+          city: nextAddress.city?.trim() || null,
+          district: nextAddress.district?.trim() || null,
+          khoroo: nextAddress.khoroo?.trim() || null,
+          entrance: nextAddress.entrance?.trim() || null,
+          apartment: nextAddress.apartment?.trim() || null,
+          lat: nextAddress.lat === undefined || nextAddress.lat === null || nextAddress.lat === "" ? null : Number(nextAddress.lat),
+          lng: nextAddress.lng === undefined || nextAddress.lng === null || nextAddress.lng === "" ? null : Number(nextAddress.lng),
+          deletedAt: null,
+        };
+
+        if (addressId) {
+          await tx.address.update({
+            where: { id: addressId },
+            data: {
+              ...addressData,
+              ...(shouldSetDefault ? { isDefault: true } : {}),
+            },
+          });
+        } else {
+          await tx.address.create({
+            data: {
+              userId,
+              ...addressData,
+              isDefault: shouldSetDefault,
+            },
+          });
+        }
       }
 
       return tx.user.findUniqueOrThrow({

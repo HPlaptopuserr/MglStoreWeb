@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { AccountLibraryPanel } from "./_components/AccountLibraryPanel";
-import { OrdersPanel } from "./_components/OrdersPanel";
 import { MembershipActivationPanel } from "./_components/MembershipActivationPanel";
 import { MembershipUpgradeModal } from "./_components/MembershipUpgradeModal";
 import {
@@ -18,7 +18,6 @@ import { OrganizationAffiliationCard } from "./_components/OrganizationAffiliati
 import {
   createProfileFormState,
   type ProfileFormState,
-  type ProfileTab,
 } from "./_components/types";
 import {
   getManagedOrganizations,
@@ -32,8 +31,6 @@ import { useProfileOrders } from "./_components/useProfileOrders";
 export default function ProfilePage() {
   const { user, loading, refreshUser, authFetch } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [tab, setTab] = useState<ProfileTab>("orders");
   const [form, setForm] = useState<ProfileFormState | null>(null);
   const [membershipOpen, setMembershipOpen] = useState(false);
   const membershipConfig = useMembershipConfig();
@@ -43,25 +40,21 @@ export default function ProfilePage() {
   const refreshOrders = ordersData.refresh;
   const openMembership = useCallback(() => setMembershipOpen(true), []);
   const showLibrary = useCallback(() => {
-    setTab("library");
-    router.replace("/profile?tab=library");
+    router.replace(ACCOUNT_ROUTES.profileLibrary);
   }, [router]);
   const showOrders = useCallback(() => {
-    setTab("orders");
-    router.replace("/profile?tab=orders");
+    router.push(ACCOUNT_ROUTES.orders);
   }, [router]);
   const handleMembershipActivated = useCallback(async () => {
     await Promise.all([refreshUser(), refreshAccountData(), refreshOrders()]);
     setMembershipOpen(false);
-    setTab("library");
-    router.replace("/profile?tab=library");
+    router.replace(ACCOUNT_ROUTES.profileLibrary);
   }, [refreshAccountData, refreshOrders, refreshUser, router]);
 
   useProfileNavigation({
     loading,
     onMembershipOpen: openMembership,
     router,
-    setTab,
     user,
   });
 
@@ -87,23 +80,9 @@ export default function ProfilePage() {
   const membershipTierLabel = getMembershipTierLabel(user);
   const managedOrganizations = getManagedOrganizations(user);
   const hasOrganizationContext = Boolean(managedOrganizations.length > 0);
-  const isOrdersFocused = searchParams.get("tab") === "orders";
   const openOrdersCount = ordersData.orders.filter(
     (order) => !["COMPLETED", "CANCELLED"].includes(order.status),
   ).length;
-
-  if (isOrdersFocused) {
-    return (
-      <ProfileDashboardShell>
-        <OrdersPanel
-          orders={ordersData.orders}
-          loading={ordersData.loading}
-          error={ordersData.error}
-          onRefresh={ordersData.refresh}
-        />
-      </ProfileDashboardShell>
-    );
-  }
 
   return (
     <ProfileDashboardShell>
@@ -126,21 +105,15 @@ export default function ProfilePage() {
         user={{ ...user, avatarUrl: form.avatarUrl }}
       />
       <ProfileStatsGrid
-        contractsCount={accountData.contracts.length}
-        filesCount={accountData.purchases.length}
-        isMember={Boolean(user.membership?.active || user.isPrime)}
         libraryCount={
           accountData.purchases.length + accountData.contracts.length
         }
-        membershipTierLabel={membershipTierLabel}
         onLibraryClick={showLibrary}
-        onMembershipClick={openMembership}
         onOrdersClick={showOrders}
         onPointsClick={showLibrary}
         openOrdersCount={openOrdersCount}
         ordersCount={ordersData.orders.length}
         points={accountData.points}
-        transactionsCount={accountData.transactions.length}
       />
       <ProfileContentGrid
         contracts={accountData.contracts}
@@ -148,23 +121,13 @@ export default function ProfilePage() {
         points={accountData.points}
         purchases={accountData.purchases}
       >
-        {tab === "library" ? (
-          <AccountLibraryPanel
-            purchases={accountData.purchases}
-            contracts={accountData.contracts}
-            points={accountData.points}
-            history={accountData.pointHistory}
-            transactions={accountData.transactions}
-            loading={accountData.loading}
-          />
-        ) : (
-          <OrdersPanel
-            orders={ordersData.orders}
-            loading={ordersData.loading}
-            error={ordersData.error || accountData.error}
-            onRefresh={ordersData.refresh}
-          />
-        )}
+        <AccountLibraryPanel
+          purchases={accountData.purchases}
+          contracts={accountData.contracts}
+          history={accountData.pointHistory}
+          transactions={accountData.transactions}
+          loading={accountData.loading}
+        />
       </ProfileContentGrid>
 
       <MembershipUpgradeModal

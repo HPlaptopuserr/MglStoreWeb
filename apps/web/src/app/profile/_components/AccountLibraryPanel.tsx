@@ -1,5 +1,5 @@
+import { useMemo, useState } from "react";
 import {
-  Coins,
   Download,
   FileText,
   History,
@@ -59,6 +59,19 @@ const TRANSACTION_METHOD_LABEL: Record<string, string> = {
   QPAY: "QPay",
 };
 
+type TransactionFilter = "all" | "orders" | "access" | "paid" | "pending";
+
+const TRANSACTION_FILTERS: Array<{
+  label: string;
+  value: TransactionFilter;
+}> = [
+  { label: "Бүгд", value: "all" },
+  { label: "Захиалга", value: "orders" },
+  { label: "Access", value: "access" },
+  { label: "Төлөгдсөн", value: "paid" },
+  { label: "Хүлээгдэж буй", value: "pending" },
+];
+
 function transactionTypeLabel(type: AccountTransaction["type"]) {
   if (type === "ACCESS_PURCHASE") return "Access";
   if (type === "ORDER_PAYMENT") return "Захиалга";
@@ -115,19 +128,39 @@ function PurchasePaymentSummary({ purchase }: { purchase: AccountPurchase }) {
 export function AccountLibraryPanel({
   purchases,
   contracts,
-  points,
   history,
   loading,
   transactions,
 }: {
   purchases: AccountPurchase[];
   contracts: AccountContract[];
-  points: number;
   history: MPointHistory[];
   loading: boolean;
   transactions: AccountTransaction[];
 }) {
   const hasLibraryItems = purchases.length > 0 || contracts.length > 0;
+  const [transactionFilter, setTransactionFilter] =
+    useState<TransactionFilter>("all");
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
+  const filteredTransactions = useMemo(() => {
+    if (transactionFilter === "orders") {
+      return transactions.filter((item) => item.type !== "ACCESS_PURCHASE");
+    }
+    if (transactionFilter === "access") {
+      return transactions.filter((item) => item.type === "ACCESS_PURCHASE");
+    }
+    if (transactionFilter === "paid") {
+      return transactions.filter((item) => item.status === "PAID");
+    }
+    if (transactionFilter === "pending") {
+      return transactions.filter((item) => item.status === "PENDING");
+    }
+    return transactions;
+  }, [transactionFilter, transactions]);
+  const visibleTransactions = showAllTransactions
+    ? filteredTransactions
+    : filteredTransactions.slice(0, 3);
+  const hasHiddenTransactions = filteredTransactions.length > 3;
 
   return (
     <section className="space-y-5">
@@ -332,26 +365,7 @@ export function AccountLibraryPanel({
         )}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[0.85fr_1fr]">
-        <div className="overflow-hidden rounded-3xl bg-slate-950 p-6 text-white shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-200">
-                M point
-              </p>
-              <p className="mt-3 text-4xl font-black">
-                {points.toLocaleString("mn-MN")} M
-              </p>
-            </div>
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-orange-200">
-              <Coins size={34} />
-            </div>
-          </div>
-          <p className="mt-4 text-sm font-semibold leading-6 text-white/60">
-            Худалдан авалт бүрээс 2% автоматаар нэмэгдэж, log нь доор үлдэнэ.
-          </p>
-        </div>
-
+      <div>
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <Sparkles size={18} className="text-orange-500" />
@@ -387,7 +401,7 @@ export function AccountLibraryPanel({
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <History size={18} className="text-orange-500" />
@@ -396,22 +410,45 @@ export function AccountLibraryPanel({
               </h3>
             </div>
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              Захиалга, үйлчилгээ, файл/access худалдан авалтын төлбөрийн
-              хөдөлгөөн.
+              Төлбөрийн хөдөлгөөнөө төрөл, төлөвөөр шүүнэ.
             </p>
           </div>
           <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
             {transactions.length} гүйлгээ
           </span>
         </div>
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {TRANSACTION_FILTERS.map((filter) => (
+            <button
+              key={filter.value}
+              type="button"
+              onClick={() => {
+                setTransactionFilter(filter.value);
+                setShowAllTransactions(false);
+              }}
+              className={`h-9 shrink-0 rounded-full px-3 text-xs font-black transition ${
+                transactionFilter === filter.value
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20"
+                  : "bg-slate-100 text-slate-600 hover:bg-orange-50 hover:text-orange-600"
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
 
         {transactions.length === 0 ? (
           <p className="rounded-2xl bg-slate-50 p-5 text-sm font-bold leading-6 text-slate-500">
             Одоогоор төлбөрийн гүйлгээ бүртгэгдээгүй байна.
           </p>
+        ) : filteredTransactions.length === 0 ? (
+          <p className="rounded-2xl bg-slate-50 p-5 text-sm font-bold leading-6 text-slate-500">
+            Энэ шүүлтэд тохирох гүйлгээ алга.
+          </p>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {transactions.slice(0, 12).map((transaction) => (
+          <div>
+            <div className="divide-y divide-slate-100">
+            {visibleTransactions.map((transaction) => (
               <div
                 key={transaction.id}
                 className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
@@ -456,6 +493,18 @@ export function AccountLibraryPanel({
                 </span>
               </div>
             ))}
+            </div>
+            {hasHiddenTransactions && (
+              <button
+                type="button"
+                onClick={() => setShowAllTransactions((current) => !current)}
+                className="mt-3 flex h-11 w-full items-center justify-center rounded-2xl border border-orange-100 bg-orange-50 text-sm font-black text-orange-600 transition hover:bg-orange-500 hover:text-white"
+              >
+                {showAllTransactions
+                  ? "Хураах"
+                  : `Бүгдийг харах (${filteredTransactions.length})`}
+              </button>
+            )}
           </div>
         )}
       </div>

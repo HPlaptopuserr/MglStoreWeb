@@ -31,6 +31,7 @@ import { LoginModal } from "@/components/organisms/auth/LoginModal";
 import { useBusinessCategories } from "@/hooks/useBusinessCategories";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { CATEGORY_COLORS, NAV_LINKS } from "@/lib/constants";
+import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { useRouter, usePathname } from "next/navigation";
 import { useCart } from "@/hooks/useCart";
 import { CartDrawer } from "@/components/organisms/CartDrawer";
@@ -46,6 +47,21 @@ import {
   createLoginMarketingBanner,
   parseLoginMarketingBanner,
 } from "@/lib/site-banners";
+
+const getBusinessUrl = () => {
+  const isLocal =
+    typeof window !== "undefined" &&
+    ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+  if (isLocal) return "http://localhost:3005";
+
+  return (
+    process.env.NEXT_PUBLIC_BUSINESS_URL?.replace(/\/$/, "") ||
+    (process.env.NODE_ENV === "production"
+      ? "https://mglbusiness.mn"
+      : "http://localhost:3005")
+  );
+};
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -67,8 +83,11 @@ export const Header = () => {
   const pathname = usePathname();
   const mobileNavLinks = NAV_LINKS;
   const isProfileRoute = pathname.startsWith("/profile");
-  const hideBrowseNav = pathname.startsWith("/study") || isProfileRoute;
-  const hideSearch = isProfileRoute;
+  const isOrdersRoute = pathname.startsWith(ACCOUNT_ROUTES.orders);
+  const hideBrowseNav =
+    pathname.startsWith("/study") || isProfileRoute || isOrdersRoute;
+  const hideSearch = isProfileRoute || isOrdersRoute;
+  const businessUrl = getBusinessUrl();
 
   // Desktop category scroll
   const catScrollRef = useRef<HTMLDivElement>(null);
@@ -172,9 +191,9 @@ export const Header = () => {
 
   return (
     <>
-      <header className="fixed left-0 right-0 top-0 z-50 flex flex-col bg-white/95 shadow-sm backdrop-blur-md">
+      <header className="fixed left-0 right-0 top-0 z-50 flex max-w-full flex-col bg-white/95 shadow-sm backdrop-blur-md">
         <div className="border-b border-slate-100">
-          <div className="container mx-auto flex h-14 min-w-0 items-center justify-between gap-2 px-3 md:h-16 md:gap-6 md:px-4">
+          <div className="container mx-auto flex h-14 min-w-0 items-center justify-between gap-1.5 px-2.5 md:h-16 md:gap-6 md:px-4">
             <button
               type="button"
               onClick={() => setMobileMenuOpen((v) => !v)}
@@ -195,19 +214,33 @@ export const Header = () => {
                   alt="MglStore Logo"
                   width={140}
                   height={52}
-                  className="h-auto w-[112px] object-contain sm:w-[140px] md:w-[160px]"
+                  className="h-auto w-[96px] object-contain min-[360px]:w-[112px] sm:w-[140px] md:w-[160px]"
                   priority
                 />
               </Link>
               <div className="hidden items-center gap-8 sm:flex py-3">
                 <div className="h-8 w-px bg-gradient-to-b from-transparent via-amber-400 to-transparent" />
                 <a
-                  href="/MGL.pdf"
-                  target="_blank"
+                  href={businessUrl}
                   rel="noopener noreferrer"
-                  className="max-w-[300px] font-[family-name:var(--font-marck-script)] text-[15px] leading-[1.3] text-gray-900 transition-colors hover:text-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-4"
+                  className="group inline-flex h-11 max-w-[270px] items-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 text-sm font-black text-slate-900 shadow-sm shadow-emerald-100/40 transition hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-4 lg:max-w-[310px]"
+                  title="MGL Store нэгдсэн танилцуулга үзэх"
                 >
-                  MGL Store нэгдсэн танилцуулга үзэх
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-100">
+                    <Building2 size={15} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate leading-tight">
+                      MGL Business
+                    </span>
+                    <span className="block truncate text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-500">
+                      Нэгдсэн танилцуулга
+                    </span>
+                  </span>
+                  <ChevronRight
+                    size={16}
+                    className="shrink-0 text-amber-500 transition-transform group-hover:translate-x-0.5"
+                  />
                 </a>
               </div>
             </div>
@@ -218,7 +251,16 @@ export const Header = () => {
               <SearchBar />
             </div>
 
-            <div className="flex shrink-0 items-center gap-1.5 sm:gap-6">
+            <div className="flex shrink-0 items-center gap-1 sm:gap-6">
+              <a
+                href={businessUrl}
+                rel="noopener noreferrer"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-700 shadow-sm transition active:scale-95 active:bg-emerald-100 sm:hidden"
+                aria-label="MGL Business"
+              >
+                <Building2 size={17} />
+              </a>
+
               <button
                 type="button"
                 onClick={() => setCartOpen(true)}
@@ -273,9 +315,9 @@ export const Header = () => {
 
               <button
                 type="button"
-                onClick={user ? () => router.push("/profile") : openAuthModal}
+                onClick={user ? () => router.push(ACCOUNT_ROUTES.profile) : openAuthModal}
                 aria-label={user ? "Профайл цэс" : "Нэвтрэх"}
-                className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors active:bg-gray-100 sm:hidden ${
+                className={`relative hidden h-9 w-9 items-center justify-center rounded-xl transition-colors active:bg-gray-100 min-[360px]:flex sm:hidden ${
                   user
                     ? "bg-slate-950 text-white shadow-md shadow-slate-200"
                     : "bg-gray-50 text-gray-600"
@@ -305,17 +347,17 @@ export const Header = () => {
         </div>
 
         {!hideSearch && (
-          <div className="border-b border-slate-100 px-4 py-2 md:hidden">
+          <div className="w-full max-w-full overflow-hidden border-b border-slate-100 bg-white px-3 py-2 md:hidden">
             <button
               type="button"
               onClick={openMobileSearch}
-              className="relative flex h-12 w-full items-center rounded-2xl border border-gray-200 bg-gray-50 px-4 text-left text-sm font-semibold text-slate-400 shadow-sm transition active:scale-[0.99] active:bg-white"
+              className="relative flex h-10 w-full max-w-full min-w-0 items-center overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 px-3 text-left text-sm font-semibold text-slate-400 shadow-sm transition active:scale-[0.99] active:bg-white min-[360px]:h-11"
             >
-              <Search size={16} className="mr-3 shrink-0 text-gray-400" />
+              <Search size={16} className="mr-2 shrink-0 text-gray-400" />
               <span className="min-w-0 flex-1 truncate">
                 Бүтээгдэхүүн хайх...
               </span>
-              <span className="rounded-xl bg-slate-200 px-3 py-1.5 text-xs font-black text-slate-500">
+              <span className="ml-2 hidden shrink-0 rounded-xl bg-slate-200 px-2.5 py-1.5 text-xs font-black text-slate-500 min-[360px]:inline-flex">
                 Хайх
               </span>
             </button>
@@ -324,7 +366,7 @@ export const Header = () => {
 
         {!hideBrowseNav && categories.length > 0 && (
           <div
-            className="flex gap-2 overflow-x-auto border-b border-gray-100 px-4 py-2 md:hidden"
+            className="scrollbar-hide flex w-full max-w-full gap-2 overflow-x-auto overscroll-x-contain border-b border-gray-100 px-3 py-2 md:hidden"
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
             {categories.map((cat) => (
@@ -423,7 +465,7 @@ export const Header = () => {
         )}
 
         <div
-          className={`fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
+          className={`fixed inset-0 z-[180] bg-black/50 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
             mobileMenuOpen
               ? "opacity-100 pointer-events-auto"
               : "opacity-0 pointer-events-none"
@@ -432,7 +474,7 @@ export const Header = () => {
         />
 
         <div
-          className={`fixed inset-0 z-[90] flex h-dvh flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out md:hidden ${
+          className={`fixed inset-0 z-[190] flex h-dvh flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out md:hidden ${
             mobileMenuOpen ? "translate-y-0" : "-translate-y-full"
           }`}
         >
@@ -467,6 +509,26 @@ export const Header = () => {
             className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-5 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-4"
             style={{ scrollbarWidth: "none" }}
           >
+            <a
+              href={businessUrl}
+              rel="noopener noreferrer"
+              onClick={closeMobile}
+              className="mb-4 flex items-center gap-3 rounded-3xl border border-emerald-100 bg-white px-4 py-3.5 shadow-sm transition active:scale-[0.99] active:bg-emerald-50"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-700 text-white shadow-sm">
+                <Building2 size={20} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-black text-slate-950">
+                  MGL Business
+                </span>
+                <span className="mt-0.5 block truncate text-xs font-bold text-slate-500">
+                  Танилцуулга, ажил, сургалт
+                </span>
+              </span>
+              <ChevronRight size={18} className="shrink-0 text-amber-500" />
+            </a>
+
             {!hideSearch && (
               <button
                 type="button"
@@ -580,7 +642,7 @@ export const Header = () => {
               {user ? (
                 <div className="grid gap-2.5">
                   <Link
-                    href="/profile"
+                    href={ACCOUNT_ROUTES.profile}
                     onClick={closeMobile}
                     className="flex items-center gap-3 rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3.5 shadow-sm"
                   >
@@ -914,7 +976,7 @@ function HeaderAccountDropdown({
     <div className="absolute right-0 top-full z-50 mt-3 w-[340px] overflow-hidden rounded-[24px] border border-slate-200 bg-white p-3 text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/5">
       <div className="rounded-[20px] bg-slate-50 p-2 ring-1 ring-slate-200/80">
         <Link
-          href="/profile"
+          href={ACCOUNT_ROUTES.profile}
           onClick={onClose}
           className="flex items-center gap-3 rounded-[17px] bg-white px-3 py-3 shadow-sm shadow-slate-200/60 ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:ring-orange-200"
         >
@@ -970,7 +1032,7 @@ function HeaderAccountDropdown({
           <>
             <div className="mx-3 my-2.5 h-px bg-slate-200" />
             <Link
-              href="/profile"
+              href={ACCOUNT_ROUTES.profile}
               onClick={onClose}
               className="flex h-11 items-center justify-center gap-2 rounded-[14px] bg-slate-900 text-sm font-black text-white transition hover:bg-orange-600"
             >
@@ -983,13 +1045,13 @@ function HeaderAccountDropdown({
 
       <div className="mt-3 space-y-1">
         <HeaderMenuLink
-          href="/profile?tab=orders"
+          href={ACCOUNT_ROUTES.orders}
           icon={<Package size={19} />}
           label="Миний захиалгууд"
           onClick={onClose}
         />
         <HeaderMenuLink
-          href="/profile/settings"
+          href={ACCOUNT_ROUTES.profileSettings}
           icon={<Settings size={19} />}
           label="Settings & privacy"
           onClick={onClose}

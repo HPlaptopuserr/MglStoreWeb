@@ -2,14 +2,13 @@
 
 import { useEffect } from "react";
 import type { AuthUser } from "@/lib/auth-context";
-import type { ProfileTab } from "./types";
+import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { getManagedOrganizations } from "./profileUtils";
 
 type Options = {
   loading: boolean;
   onMembershipOpen: () => void;
   router: { replace: (href: string) => void };
-  setTab: (tab: ProfileTab) => void;
   user: AuthUser | null;
 };
 
@@ -17,7 +16,6 @@ export function useProfileNavigation({
   loading,
   onMembershipOpen,
   router,
-  setTab,
   user,
 }: Options) {
   useEffect(() => {
@@ -29,17 +27,25 @@ export function useProfileNavigation({
       onMembershipOpen();
       window.history.replaceState(null, "", window.location.pathname);
     }
-    if (requestedTab && ["profile", "address", "security"].includes(requestedTab)) {
-      router.replace(`/profile/settings?section=${requestedTab}`);
+    if (requestedTab === "orders") {
+      router.replace(ACCOUNT_ROUTES.orders);
       return;
     }
-    if (requestedTab === "library" || requestedTab === "orders") {
-      setTab(requestedTab);
+    if (requestedTab === "profile") {
+      router.replace(ACCOUNT_ROUTES.profileInfo);
+      return;
     }
-  }, [onMembershipOpen, router, setTab]);
+    if (requestedTab === "address") {
+      router.replace(ACCOUNT_ROUTES.profileAddress);
+      return;
+    }
+    if (requestedTab === "security") {
+      router.replace(ACCOUNT_ROUTES.profileSecurity);
+    }
+  }, [onMembershipOpen, router]);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
+    if (!loading && !user) router.replace(ACCOUNT_ROUTES.login);
   }, [loading, router, user]);
 
   useEffect(() => {
