@@ -180,7 +180,7 @@ export function ProfileStatsGrid({
             key={stat.label}
             type="button"
             onClick={stat.onClick}
-            className={`group relative flex min-h-[76px] min-w-0 items-center gap-3 overflow-hidden rounded-[18px] border p-3 text-left transition hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-orange-300 sm:block sm:min-h-0 sm:p-5 ${
+            className={`group relative flex min-h-[76px] min-w-0 items-center gap-3 overflow-hidden rounded-[18px] border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-orange-300 sm:block sm:min-h-0 sm:p-5 sm:hover:-translate-y-0.5 ${
               stat.featured
                 ? "border-amber-200/60 bg-[linear-gradient(135deg,#15171b_0%,#2b2419_62%,#4a3416_100%)] text-white shadow-[0_18px_55px_rgba(120,72,20,0.24)] hover:border-amber-200 hover:shadow-[0_22px_70px_rgba(120,72,20,0.30)]"
                 : "border-white bg-white shadow-[0_10px_28px_rgba(15,23,42,0.07)] hover:border-orange-100 hover:shadow-[0_18px_46px_rgba(15,23,42,0.11)] sm:shadow-[0_16px_45px_rgba(15,23,42,0.08)]"

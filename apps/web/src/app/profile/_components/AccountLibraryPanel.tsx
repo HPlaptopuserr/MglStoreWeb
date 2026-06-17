@@ -37,6 +37,11 @@ function formatMnt(value: number) {
   return `₮${Number(value || 0).toLocaleString("mn-MN")}`;
 }
 
+function fileDownloadName(title: string, fallback?: string | null) {
+  if (fallback?.trim()) return fallback.trim();
+  return `${title.trim().replace(/[\\/:*?"<>|]+/g, "-") || "mglstore-file"}.pdf`;
+}
+
 const TRANSACTION_STATUS_LABEL: Record<string, string> = {
   PENDING: "Хүлээгдэж байна",
   PAID: "Төлөгдсөн",
@@ -222,15 +227,31 @@ export function AccountLibraryPanel({
                             )}
                           </div>
                         </div>
-                        <a
-                          href={openUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-emerald-600"
-                        >
-                          <ExternalLink size={16} />
-                          Гэрээ нээх
-                        </a>
+                        {openUrl ? (
+                          <div className="grid grid-cols-2 gap-2 sm:w-52">
+                            <a
+                              href={openUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-3 text-sm font-black text-white transition hover:bg-emerald-600"
+                            >
+                              <ExternalLink size={16} />
+                              Харах
+                            </a>
+                            <a
+                              href={openUrl}
+                              download={fileDownloadName(contract.title)}
+                              className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-black text-emerald-700 transition hover:bg-emerald-50"
+                            >
+                              <Download size={16} />
+                              Татах
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="inline-flex h-11 items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-black text-slate-400">
+                            Файл бэлэн биш
+                          </span>
+                        )}
                       </article>
                     );
                   })}
@@ -278,17 +299,27 @@ export function AccountLibraryPanel({
                         <PurchasePaymentSummary purchase={purchase} />
                       </div>
                       {purchase.fileUrl ? (
-                        <a
-                          href={purchase.fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-orange-600"
-                        >
-                          <Download size={16} />
-                          Файл нээх
-                        </a>
+                        <div className="grid grid-cols-2 gap-2 sm:w-52">
+                          <a
+                            href={purchase.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-3 text-sm font-black text-white transition hover:bg-orange-600"
+                          >
+                            <ExternalLink size={16} />
+                            Харах
+                          </a>
+                          <a
+                            href={purchase.fileUrl}
+                            download={fileDownloadName(purchase.title, purchase.fileName)}
+                            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-orange-200 bg-white px-3 text-sm font-black text-orange-700 transition hover:bg-orange-50"
+                          >
+                            <Download size={16} />
+                            Татах
+                          </a>
+                        </div>
                       ) : (
-                        <span className="inline-flex h-12 items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-black text-slate-400">
+                        <span className="inline-flex h-11 items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-black text-slate-400">
                           Файл оруулаагүй
                         </span>
                       )}
