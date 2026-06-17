@@ -115,6 +115,29 @@ services:
         sync: false
 
   - type: web
+    name: mgl-business
+    rootDir: .
+    runtime: node
+    buildFilter:
+      paths:
+        - apps/business/**
+        - packages/ui/**
+        - packages/types/**
+        - packages/config/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - render.yaml
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/business
+    startCommand: cd apps/business && pnpm exec next start -H 0.0.0.0 -p $PORT
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+
+  - type: web
     name: mgl-api
     rootDir: .
     runtime: node

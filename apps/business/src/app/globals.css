@@ -1,0 +1,54 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700;800;900&display=swap");
+@import "tailwindcss";
+
+:root {
+  --background: #f7f8f4;
+  --foreground: #151711;
+  --muted: #66705d;
+  --surface: #ffffff;
+  --line: #dfe5d7;
+  --accent: #23633a;
+  --accent-strong: #184a2a;
+  --gold: #c99a2e;
+  --font-site: "Noto Sans", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-site);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-site);
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(35, 99, 58, 0.18);
+}
