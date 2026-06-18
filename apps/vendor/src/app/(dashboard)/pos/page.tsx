@@ -522,6 +522,7 @@ export default function PosDemoPage() {
   const [showCashDrawerPanel, setShowCashDrawerPanel] = useState(false);
   const [openingCashInput, setOpeningCashInput] = useState("");
   const [closingCashInput, setClosingCashInput] = useState("");
+  const [shiftCloseNote, setShiftCloseNote] = useState("");
   const [cashCounts, setCashCounts] = useState<Record<number, number>>({});
   const [drawerSummary, setDrawerSummary] = useState<CashDrawerSummary | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
@@ -530,7 +531,6 @@ export default function PosDemoPage() {
   const [drawerEventAmount, setDrawerEventAmount] = useState("");
   const [drawerEventNote, setDrawerEventNote] = useState("");
   const [drawerEventSubmitting, setDrawerEventSubmitting] = useState(false);
-  const [shiftFetched, setShiftFetched] = useState(false);
 
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const paymentSectionRef = useRef<HTMLElement>(null);
@@ -553,6 +553,11 @@ export default function PosDemoPage() {
   const { state, totals, addProduct, dispatch } = usePosCart();
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
   const { shift, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn } = useCurrentShift();
+  const shiftRegisterMismatch = Boolean(
+    shift?.registerId &&
+      registerConfig?.id &&
+      shift.registerId !== registerConfig.id,
+  );
   const reloadCreditSales = useCallback(async () => {
     if (!organizationId) {
       setCreditSales([]);
@@ -647,6 +652,12 @@ export default function PosDemoPage() {
   }, []);
   const countedCashItems = useMemo(() => buildCashCount(cashCounts), [cashCounts]);
   const countedCashTotal = useMemo(() => sumCashCount(countedCashItems), [countedCashItems]);
+  const closingCashPreview =
+    countedCashItems.some((item) => item.count > 0)
+      ? countedCashTotal
+      : Number(closingCashInput) || 0;
+  const expectedCashPreview = drawerSummary?.expectedCash ?? 0;
+  const closingDifferencePreview = roundMoney(closingCashPreview - expectedCashPreview);
 
   const handleReceiptVoided = useCallback(
     (message: string) => {
@@ -802,12 +813,11 @@ export default function PosDemoPage() {
   // Fetch current open shift on load
   useEffect(() => {
     if (!posEnabled) return;
-    if (shiftFetched) return;
+    if (!registerConfig?.id) return;
     const token = localStorage.getItem("vendor_token");
     if (!token) return;
-    setShiftFetched(true);
     void loadShift();
-  }, [posEnabled, shiftFetched, loadShift]);
+  }, [posEnabled, registerConfig?.id, loadShift]);
 
   useEffect(() => {
     if (!shift?.id) {
@@ -1663,6 +1673,19 @@ export default function PosDemoPage() {
       await finalizeCreditRepayment();
       return;
     }
+    if (!shift?.id) {
+      setScanStatus("not-found");
+      setScanMessage("Борлуулалт бүртгэхийн өмнө кассын ээлжээ нээнэ үү.");
+      setShowShiftPanel(true);
+      return;
+    }
+    if (shiftRegisterMismatch) {
+      setScanStatus("not-found");
+      setScanMessage(
+        `Нээлттэй ээлж ${shift.registerName || "өөр касс"} дээр байна. Тэр касс руу шилжинэ үү.`,
+      );
+      return;
+    }
 
     const confirmedPayments = paymentEntries.filter((item) => item.status === "confirmed");
 
@@ -2134,6 +2157,19 @@ export default function PosDemoPage() {
       setScanStatus("not-found");
       setScanMessage("Төлбөр авахын тулд POS кассаа эхлээд register/салбартай холбоно уу.");
       setShowSetupPanel(true);
+      return;
+    }
+    if (!shift?.id) {
+      setScanStatus("not-found");
+      setScanMessage("Төлбөр авахын өмнө кассын ээлжээ нээнэ үү.");
+      setShowShiftPanel(true);
+      return;
+    }
+    if (shiftRegisterMismatch) {
+      setScanStatus("not-found");
+      setScanMessage(
+        `Таны ээлж ${shift.registerName || "өөр POS касс"} дээр нээлттэй байна.`,
+      );
       return;
     }
 
@@ -2629,19 +2665,19 @@ export default function PosDemoPage() {
                 ))}
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-lg bg-white px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Карт</p>
-                  <p className="mt-1 text-sm font-black text-slate-900">{formatMoney(selectedShiftHistory.cardSales)}</p>
-                </div>
-                <div className="rounded-lg bg-white px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">QPay</p>
-                  <p className="mt-1 text-sm font-black text-slate-900">{formatMoney(selectedShiftHistory.qpaySales)}</p>
-                </div>
-                <div className="rounded-lg bg-white px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Холимог</p>
-                  <p className="mt-1 text-sm font-black text-slate-900">{formatMoney(selectedShiftHistory.mixedSales)}</p>
-                </div>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+                {[
+                  ["Бэлэн", selectedShiftHistory.cashSales],
+                  ["Карт", selectedShiftHistory.cardSales],
+                  ["QPay", selectedShiftHistory.qpaySales],
+                  ["Зээл", selectedShiftHistory.creditSales],
+                  ["Холимог баримт", selectedShiftHistory.mixedSales],
+                ].map(([label, amount]) => (
+                  <div key={String(label)} className="rounded-lg bg-white px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+                    <p className="mt-1 text-sm font-black text-slate-900">{formatMoney(Number(amount))}</p>
+                  </div>
+                ))}
               </div>
 
               {selectedShiftHistory.note && (
@@ -3010,6 +3046,12 @@ export default function PosDemoPage() {
               ) : (
                 <>
                   <p className="text-xs text-slate-500">Хаах үеийн бэлэн мөнгийг оруулна уу.</p>
+                  {shiftRegisterMismatch && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                      Энэ ээлж {shift.registerName || "өөр POS касс"} дээр нээгдсэн байна.
+                      Хаалт хийхийн өмнө тухайн касс руу шилжинэ үү.
+                    </div>
+                  )}
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div className="mb-2 flex items-center justify-between">
                       <p className="text-xs font-black text-slate-700">Задгай мөнгө тоолох</p>
@@ -3038,18 +3080,45 @@ export default function PosDemoPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="sticky bottom-0 -mx-5 flex gap-2 border-t border-slate-100 bg-white px-5 py-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      ["Тооцоолсон", expectedCashPreview],
+                      ["Тоолсон", closingCashPreview],
+                      ["Зөрүү", closingDifferencePreview],
+                    ].map(([label, value]) => (
+                      <div key={String(label)} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+                        <p
+                          className={`mt-1 text-sm font-black ${
+                            label === "Зөрүү" && Number(value) !== 0
+                              ? "text-rose-600"
+                              : "text-slate-900"
+                          }`}
+                        >
+                          {formatMoney(Number(value))}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <textarea
+                    value={shiftCloseNote}
+                    onChange={(event) => setShiftCloseNote(event.target.value.slice(0, 500))}
+                    placeholder="Хаалтын тайлбар (сонголттой)"
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                  />
+                  <div className="sticky bottom-0 -mx-5 flex flex-wrap gap-2 border-t border-slate-100 bg-white px-5 py-3">
                     <input
                       type="number"
                       min="0"
                       value={countedCashTotal > 0 ? String(countedCashTotal) : closingCashInput}
                       onChange={(e) => setClosingCashInput(e.target.value)}
                       placeholder="Хаах мөнгө ₮"
-                      className="flex-1 h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                      className="h-9 min-w-48 flex-1 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
                     />
                     <button
                       type="button"
-                      disabled={shiftLoading}
+                      disabled={shiftLoading || drawerLoading || shiftRegisterMismatch}
                       onClick={async () => {
                         try {
                           const activeCashCount = countedCashItems.some((item) => item.count > 0)
@@ -3058,12 +3127,33 @@ export default function PosDemoPage() {
                           const countedClosingCash = activeCashCount
                             ? countedCashTotal
                             : Number(closingCashInput) || 0;
+                          const latestSummary = await refreshCashDrawerSummary();
+                          if (!latestSummary) {
+                            throw new Error("Хаалтын тооцоог шинэчилж чадсангүй");
+                          }
+                          const latestDifference = roundMoney(
+                            countedClosingCash - latestSummary.expectedCash,
+                          );
+                          const confirmed = window.confirm(
+                            [
+                              "Ээлжийг хаах уу?",
+                              `Тооцоолсон бэлэн: ${formatMoney(latestSummary.expectedCash)}`,
+                              `Тоолсон бэлэн: ${formatMoney(countedClosingCash)}`,
+                              `Зөрүү: ${formatMoney(latestDifference)}`,
+                              getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
+                                ? "Картын терминалын өдрийн нэгтгэлийг эхэлж хийнэ."
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join("\n"),
+                          );
+                          if (!confirmed) return;
                           const termId = getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
                             ? registerConfig.cardTerminalId
                             : undefined;
                           await closeShiftFn(
                             countedClosingCash,
-                            undefined,
+                            shiftCloseNote || undefined,
                             termId ?? undefined,
                             activeCashCount,
                           );
@@ -3072,7 +3162,10 @@ export default function PosDemoPage() {
                           setShowCashDrawerPanel(false);
                           setShowShiftHistoryPanel(true);
                           setClosingCashInput("");
+                          setShiftCloseNote("");
                           setCashCounts({});
+                          setScanMessage("Өдрийн хаалт амжилттай хийгдлээ.");
+                          setScanStatus("success");
                         } catch (e: any) {
                           setScanMessage(e?.message || "Ээлж хаахад алдаа гарлаа");
                           setScanStatus("not-found");
@@ -3080,7 +3173,7 @@ export default function PosDemoPage() {
                       }}
                       className="h-9 px-4 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50"
                     >
-                      {shiftLoading ? <Loader2 size={14} className="animate-spin" /> : "Хаах"}
+                      {shiftLoading || drawerLoading ? <Loader2 size={14} className="animate-spin" /> : "Хаах"}
                     </button>
                   </div>
                 </>

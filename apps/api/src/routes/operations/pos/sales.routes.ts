@@ -375,6 +375,14 @@ router.post("/pos/sales", async (req, res) => {
         | null = null;
 
       if (registerId) {
+        // Serialize legacy shift-to-register assignment against opening a new
+        // shift on the same register.
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "PosRegister"
+          WHERE "id" = ${registerId}
+          FOR UPDATE
+        `;
         register = await tx.posRegister.findUnique({
           where: { id: registerId },
           select: {
@@ -452,8 +460,25 @@ router.post("/pos/sales", async (req, res) => {
       ) {
         throw toApiError(400, "Ээлжийн байгууллага эсвэл салбар борлуулалттай зөрүүтэй байна");
       }
-      if (registerId && activeShift.registerId !== registerId) {
+      if (registerId && activeShift.registerId && activeShift.registerId !== registerId) {
         throw toApiError(400, "Ээлж өөр POS касс дээр нээгдсэн байна");
+      }
+      if (registerId && !activeShift.registerId) {
+        const conflictingShift = await tx.posShift.findFirst({
+          where: {
+            id: { not: activeShift.id },
+            registerId,
+            status: ShiftStatus.OPEN,
+          },
+          select: { id: true },
+        });
+        if (conflictingShift) {
+          throw toApiError(409, "Энэ POS касс дээр өөр кассчны нээлттэй ээлж байна");
+        }
+        await tx.posShift.update({
+          where: { id: activeShift.id },
+          data: { registerId },
+        });
       }
 
       await tx.posSaleIdempotency.create({
