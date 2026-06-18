@@ -3,6 +3,7 @@ import {
   Boxes,
   Building2,
   ClipboardList,
+  UtensilsCrossed,
   LayoutDashboard,
   Megaphone,
   Package,
@@ -34,6 +35,11 @@ export function getOrgNavItems(features: OrgFeatureState): OrgNavItem[] {
       enabled: features.servicePosts,
     },
     { label: "Бүтээгдэхүүн", href: "/dashboard/products", icon: Package },
+    {
+      label: "Ресторан касс",
+      href: "/dashboard/restaurant-pos",
+      icon: UtensilsCrossed,
+    },
     {
       label: "Захиалгын бараа",
       href: "/dashboard/preorder",

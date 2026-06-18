@@ -4,6 +4,7 @@ import {
   ClipboardList,
   Megaphone,
   Package,
+  UtensilsCrossed,
   Users,
 } from "lucide-react";
 import { money } from "@/lib/org-format";
@@ -66,6 +67,13 @@ export function getDashboardModules(features: OrgFeatureState) {
       desc: "Бараа эсвэл худалдах боломжтой item-уудаа удирдана.",
       href: "/dashboard/products",
       icon: Package,
+      enabled: true,
+    },
+    {
+      title: "Ресторан касс",
+      desc: "Ширээ, ticket, menu item, төлбөр хаалттай restaurant-first кассын UI.",
+      href: "/dashboard/restaurant-pos",
+      icon: UtensilsCrossed,
       enabled: true,
     },
     {

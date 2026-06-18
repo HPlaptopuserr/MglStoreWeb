@@ -39,7 +39,9 @@ export default function OrgSidebar({
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {visibleNav.map((item) => {
           const active =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
+            item.href === "/dashboard"
+              ? pathname === item.href
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
 
           return (
