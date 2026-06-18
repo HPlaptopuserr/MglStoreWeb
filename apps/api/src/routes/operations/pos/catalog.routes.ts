@@ -52,6 +52,7 @@ import {
   parseAuthClaims,
   runtimeEnv,
 } from "./_shared";
+import { calculatePosCreditPayable } from "./credit-interest";
 
 const router: ExpressRouter = Router();
 
@@ -78,33 +79,38 @@ const mapCreditSaleResponse = (creditSale: {
   totalDue: unknown;
   termMonths: number;
   dueDate: Date | null;
+  createdAt?: Date | null;
   paidAt?: Date | null;
   paidAmount?: unknown;
   paymentMethod?: string | null;
   paymentNote?: string | null;
-}) => ({
-  id: creditSale.id,
-  customerId: creditSale.customerId,
-  status: creditSale.status,
-  targetType: creditSale.targetType,
-  borrowerId: creditSale.borrowerId,
-  borrowerName: creditSale.borrowerName,
-  borrowerPhone: creditSale.borrowerPhone,
-  borrowerEmail: creditSale.borrowerEmail ?? null,
-  borrowerAddress: creditSale.borrowerAddress ?? null,
-  employeeId: creditSale.employeeId,
-  employeeName: creditSale.employeeName,
-  principalAmount: Number(creditSale.principalAmount),
-  monthlyInterestRate: Number(creditSale.monthlyInterestRate),
-  totalInterest: Number(creditSale.totalInterest),
-  totalDue: Number(creditSale.totalDue),
-  termMonths: creditSale.termMonths,
-  dueDate: creditSale.dueDate?.toISOString() ?? null,
-  paidAt: creditSale.paidAt?.toISOString() ?? null,
-  paidAmount: creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
-  paymentMethod: creditSale.paymentMethod ?? null,
-  paymentNote: creditSale.paymentNote ?? null,
-});
+}) => {
+  const payable = calculatePosCreditPayable(creditSale);
+
+  return {
+    id: creditSale.id,
+    customerId: creditSale.customerId,
+    status: creditSale.status,
+    targetType: creditSale.targetType,
+    borrowerId: creditSale.borrowerId,
+    borrowerName: creditSale.borrowerName,
+    borrowerPhone: creditSale.borrowerPhone,
+    borrowerEmail: creditSale.borrowerEmail ?? null,
+    borrowerAddress: creditSale.borrowerAddress ?? null,
+    employeeId: creditSale.employeeId,
+    employeeName: creditSale.employeeName,
+    principalAmount: payable.principalAmount,
+    monthlyInterestRate: payable.monthlyInterestRate,
+    totalInterest: payable.totalInterest,
+    totalDue: payable.totalDue,
+    termMonths: creditSale.termMonths,
+    dueDate: payable.dueDate?.toISOString() ?? null,
+    paidAt: creditSale.paidAt?.toISOString() ?? null,
+    paidAmount: creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
+    paymentMethod: creditSale.paymentMethod ?? null,
+    paymentNote: creditSale.paymentNote ?? null,
+  };
+};
 
 const getExpirySortValue = (value?: Date | string | null) => {
   if (!value) return Number.POSITIVE_INFINITY;
@@ -561,7 +567,7 @@ router.get("/pos/credit-sales", async (req, res) => {
 
     return res.json({
       credits: credits.map((credit) => ({
-        ...mapCreditSaleResponse(credit),
+        ...mapCreditSaleResponse({ ...credit, createdAt: credit.sale.createdAt }),
         saleId: credit.saleId,
         receiptNo: credit.sale.receiptNo,
         createdAt: credit.sale.createdAt.toISOString(),
@@ -666,7 +672,13 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
         branchId: true,
         registerId: true,
         status: true,
+        principalAmount: true,
+        monthlyInterestRate: true,
         totalDue: true,
+        termMonths: true,
+        dueDate: true,
+        paidAt: true,
+        sale: { select: { createdAt: true } },
       },
     });
     if (!creditSale) {
@@ -687,8 +699,17 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
       return res.status(400).json({ message: "Зээлийн төлөлтийг CREDIT хэлбэрээр бүртгэх боломжгүй" });
     }
 
-    const paidAmount = roundMoney(Number(req.body.amount || creditSale.totalDue));
-    const dueAmount = roundMoney(Number(creditSale.totalDue));
+    const payable = calculatePosCreditPayable({
+      principalAmount: creditSale.principalAmount,
+      monthlyInterestRate: creditSale.monthlyInterestRate,
+      termMonths: creditSale.termMonths,
+      dueDate: creditSale.dueDate,
+      createdAt: creditSale.sale.createdAt,
+      paidAt: creditSale.paidAt,
+    });
+
+    const paidAmount = roundMoney(Number(req.body.amount || payable.totalDue));
+    const dueAmount = payable.totalDue;
     if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
       return res.status(400).json({ message: "Төлсөн дүн 0-оос их байх ёстой" });
     }
@@ -763,7 +784,15 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
 
       return tx.posCreditSale.update({
         where: { id: creditSale.id },
-        data: { status: PosCreditStatus.PAID, paidAt, paidAmount, paymentMethod, paymentNote },
+        data: {
+          status: PosCreditStatus.PAID,
+          paidAt,
+          paidAmount,
+          paymentMethod,
+          paymentNote,
+          totalInterest: payable.totalInterest,
+          totalDue: payable.totalDue,
+        },
         select: {
           id: true,
           customerId: true,
@@ -786,11 +815,12 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
           paidAmount: true,
           paymentMethod: true,
           paymentNote: true,
+          sale: { select: { createdAt: true } },
         },
       });
     });
 
-    return res.status(200).json({ credit: mapCreditSaleResponse(updated) });
+    return res.status(200).json({ credit: mapCreditSaleResponse({ ...updated, createdAt: updated.sale.createdAt }) });
   } catch (error) {
     const known = error as ApiError;
     if (known?.status && known?.message) {

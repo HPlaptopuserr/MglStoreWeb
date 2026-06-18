@@ -53,13 +53,12 @@ function buildBorrowerId(targetType: CreditTargetType, name: string, phone: stri
 export function calculateCreditTotals(principal: number, termMonths: number) {
   const safePrincipal = Math.max(0, Number(principal) || 0);
   const safeMonths = Math.max(1, Math.floor(Number(termMonths) || 1));
-  const totalInterest = Math.round(safePrincipal * MONTHLY_INTEREST_RATE * safeMonths);
   return {
     monthlyInterestRate: MONTHLY_INTEREST_RATE,
     principal: safePrincipal,
     termMonths: safeMonths,
-    totalDue: safePrincipal + totalInterest,
-    totalInterest,
+    totalDue: safePrincipal,
+    totalInterest: 0,
   };
 }
 

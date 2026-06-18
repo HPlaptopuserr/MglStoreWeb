@@ -16,6 +16,7 @@ import {
   type AuthUser, type ApiError, type SaleLineInput, type SalePaymentLineInput,
   type CreateSaleBody, type PushEcrPurchaseResponse, toApiError, parseAuthClaims, runtimeEnv,
 } from "./_shared";
+import { calculatePosCreditPayable, resolvePosCreditDueDate } from "./credit-interest";
 
 const router: ExpressRouter = Router();
 
@@ -53,33 +54,38 @@ const mapCreditSaleResponse = (creditSale: {
   totalDue: unknown;
   termMonths: number;
   dueDate: Date | null;
+  createdAt?: Date | null;
   paidAt?: Date | null;
   paidAmount?: unknown;
   paymentMethod?: string | null;
   paymentNote?: string | null;
-}) => ({
-  id: creditSale.id,
-  customerId: creditSale.customerId,
-  status: creditSale.status,
-  targetType: creditSale.targetType,
-  borrowerId: creditSale.borrowerId,
-  borrowerName: creditSale.borrowerName,
-  borrowerPhone: creditSale.borrowerPhone,
-  borrowerEmail: creditSale.borrowerEmail ?? null,
-  borrowerAddress: creditSale.borrowerAddress ?? null,
-  employeeId: creditSale.employeeId,
-  employeeName: creditSale.employeeName,
-  principalAmount: Number(creditSale.principalAmount),
-  monthlyInterestRate: Number(creditSale.monthlyInterestRate),
-  totalInterest: Number(creditSale.totalInterest),
-  totalDue: Number(creditSale.totalDue),
-  termMonths: creditSale.termMonths,
-  dueDate: creditSale.dueDate?.toISOString() ?? null,
-  paidAt: creditSale.paidAt?.toISOString() ?? null,
-  paidAmount: creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
-  paymentMethod: creditSale.paymentMethod ?? null,
-  paymentNote: creditSale.paymentNote ?? null,
-});
+}) => {
+  const payable = calculatePosCreditPayable(creditSale);
+
+  return {
+    id: creditSale.id,
+    customerId: creditSale.customerId,
+    status: creditSale.status,
+    targetType: creditSale.targetType,
+    borrowerId: creditSale.borrowerId,
+    borrowerName: creditSale.borrowerName,
+    borrowerPhone: creditSale.borrowerPhone,
+    borrowerEmail: creditSale.borrowerEmail ?? null,
+    borrowerAddress: creditSale.borrowerAddress ?? null,
+    employeeId: creditSale.employeeId,
+    employeeName: creditSale.employeeName,
+    principalAmount: payable.principalAmount,
+    monthlyInterestRate: payable.monthlyInterestRate,
+    totalInterest: payable.totalInterest,
+    totalDue: payable.totalDue,
+    termMonths: creditSale.termMonths,
+    dueDate: payable.dueDate?.toISOString() ?? null,
+    paidAt: creditSale.paidAt?.toISOString() ?? null,
+    paidAmount: creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
+    paymentMethod: creditSale.paymentMethod ?? null,
+    paymentNote: creditSale.paymentNote ?? null,
+  };
+};
 
 const isMembershipActive = (user: { isPrime: boolean; membershipExpiresAt?: Date | null }) =>
   Boolean(user.isPrime && (!user.membershipExpiresAt || user.membershipExpiresAt.getTime() > Date.now()));
@@ -337,13 +343,17 @@ router.post("/pos/sales", async (req, res) => {
     const creditPrincipal = roundMoney(
       creditLines.reduce((sum, item) => sum + Number(item.amount || 0), 0),
     );
-    const creditTotalInterest = roundMoney(
-      creditLines.reduce((sum, item) => sum + Number(item.credit?.totalInterest || 0), 0),
-    );
-    const creditTotalDue = roundMoney(
-      creditLines.reduce((sum, item) => sum + Number(item.credit?.totalDue || item.amount || 0), 0),
-    );
     const primaryCredit = creditLines[0]?.credit || null;
+    const creditTermMonths = Math.max(1, Math.floor(Number(primaryCredit?.termMonths || 1)));
+    const creditDueDate = primaryCredit
+      ? resolvePosCreditDueDate({
+          principalAmount: creditPrincipal,
+          monthlyInterestRate: primaryCredit.monthlyInterestRate,
+          termMonths: creditTermMonths,
+          dueDate: primaryCredit.dueDate,
+          createdAt: new Date(),
+        })
+      : null;
 
     if (!["NONE", "EARN", "REDEEM"].includes(loyaltyMode)) {
       return res.status(400).json({ message: "M Point сонголт буруу байна" });
@@ -742,10 +752,10 @@ router.post("/pos/sales", async (req, res) => {
                 employeeName: cleanOptionalText(primaryCredit.employeeName),
                 principalAmount: creditPrincipal,
                 monthlyInterestRate: Number(primaryCredit.monthlyInterestRate || 0.012),
-                totalInterest: creditTotalInterest,
-                totalDue: creditTotalDue,
-                termMonths: Math.max(1, Math.floor(Number(primaryCredit.termMonths || 1))),
-                dueDate: primaryCredit.dueDate ? new Date(primaryCredit.dueDate) : null,
+                totalInterest: 0,
+                totalDue: creditPrincipal,
+                termMonths: creditTermMonths,
+                dueDate: creditDueDate,
                 note: cleanOptionalText(primaryCredit.note) || body.note || null,
               },
               select: {
