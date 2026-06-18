@@ -695,6 +695,10 @@ model Product {
   /// Updated by POS sales and inventory operations. Do not treat as source of truth
   /// when warehouse management is active for this product.
   stock                Int                         @default(0)
+  isRestaurantMenuItem Boolean                     @default(false)
+  menuCategory         String?
+  kitchenStation       String?
+  preparationMinutes   Int?
   supplyType           ProductSupplyType           @default(IN_STOCK)
   preorderLeadTimeDays Int?
   preorderNote         String?
@@ -731,6 +735,7 @@ model Product {
   @@index([name])
   @@index([barcode])
   @@index([supplyType])
+  @@index([organizationId, isRestaurantMenuItem, isActive])
 }
 
 enum ProductInteractionType {

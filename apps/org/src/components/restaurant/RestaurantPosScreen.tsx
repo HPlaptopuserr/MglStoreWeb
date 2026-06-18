@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Banknote,
@@ -9,6 +9,7 @@ import {
   ChevronDown,
   CreditCard,
   LayoutGrid,
+  Loader2,
   Minus,
   Plus,
   QrCode,
@@ -18,9 +19,19 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
+import { useOrg } from "@/components/org/OrgContext";
+import { API, authFetch } from "@/lib/api";
 
 type OrderMode = "DINE_IN" | "TO_GO" | "DELIVERY";
-type MenuCategory = "hot" | "cold" | "soup" | "grill" | "appetizer" | "dessert";
+type MenuCategory =
+  | "hot"
+  | "cold"
+  | "soup"
+  | "grill"
+  | "appetizer"
+  | "dessert"
+  | "drink";
+type MenuCategoryFilter = "all" | MenuCategory;
 type DishTone = "coral" | "amber" | "mint" | "lime" | "orange" | "sky";
 type TableStatus = "FREE" | "OPEN" | "KITCHEN" | "RESERVED";
 type PaymentMethod = "CASH" | "CARD" | "QPAY";
@@ -32,6 +43,7 @@ type MenuItem = {
   price: number;
   available: number;
   tone: DishTone;
+  imageUrl?: string;
 };
 
 type TicketLine = {
@@ -41,6 +53,7 @@ type TicketLine = {
   qty: number;
   note: string;
   tone: DishTone;
+  imageUrl?: string;
 };
 
 type DiningTable = {
@@ -52,13 +65,33 @@ type DiningTable = {
   total: number;
 };
 
-const categories: { id: MenuCategory; label: string }[] = [
+type ApiRestaurantProduct = {
+  id: string;
+  name: string;
+  price: number;
+  stock: number;
+  isActive: boolean;
+  menuCategory:
+    | "HOT"
+    | "COLD"
+    | "SOUP"
+    | "GRILL"
+    | "APPETIZER"
+    | "DESSERT"
+    | "DRINK"
+    | null;
+  images?: Array<{ id: string; url: string }>;
+};
+
+const categories: { id: MenuCategoryFilter; label: string }[] = [
+  { id: "all", label: "Бүгд" },
   { id: "hot", label: "Халуун хоол" },
   { id: "cold", label: "Хүйтэн хоол" },
   { id: "soup", label: "Шөл" },
   { id: "grill", label: "Грилл" },
   { id: "appetizer", label: "Зууш" },
   { id: "dessert", label: "Амттан" },
+  { id: "drink", label: "Ундаа" },
 ];
 
 const diningTables: DiningTable[] = [
@@ -68,53 +101,6 @@ const diningTables: DiningTable[] = [
   { id: "A4", label: "A4", zone: "Цонхны тал", seats: 4, status: "RESERVED", total: 216000 },
   { id: "T1", label: "T1", zone: "Террас", seats: 4, status: "OPEN", total: 148000 },
   { id: "VIP", label: "VIP", zone: "VIP", seats: 8, status: "FREE", total: 0 },
-];
-
-const menuItems: MenuItem[] = [
-  { id: "seafood-noodle", name: "Spicy seasoned seafood noodles", category: "cold", price: 22900, available: 20, tone: "coral" },
-  { id: "salted-pasta", name: "Salted pasta with mushroom sauce", category: "cold", price: 26900, available: 11, tone: "amber" },
-  { id: "beef-soup", name: "Beef dumpling in hot and sour soup", category: "soup", price: 29900, available: 16, tone: "mint" },
-  { id: "spinach-noodle", name: "Healthy noodle with spinach leaf", category: "hot", price: 32900, available: 22, tone: "lime" },
-  { id: "fried-rice", name: "Hot spicy fried rice with omelet", category: "hot", price: 34900, available: 13, tone: "orange" },
-  { id: "instant-omelette", name: "Spicy instant noodle with special omelette", category: "hot", price: 35900, available: 17, tone: "amber" },
-  { id: "grilled-chicken", name: "Grilled chicken with herb butter", category: "grill", price: 38900, available: 9, tone: "coral" },
-  { id: "berry-dessert", name: "Berry cream dessert bowl", category: "dessert", price: 18900, available: 18, tone: "sky" },
-  { id: "crispy-rolls", name: "Crispy appetizer rolls", category: "appetizer", price: 16900, available: 25, tone: "mint" },
-];
-
-const initialTicketLines: TicketLine[] = [
-  {
-    id: "seafood-noodle",
-    name: "Spicy seasoned seafood noodles",
-    price: 22900,
-    qty: 2,
-    note: "Please, just a little bit spicy only.",
-    tone: "coral",
-  },
-  {
-    id: "salted-pasta",
-    name: "Salted pasta with mushroom sauce",
-    price: 26900,
-    qty: 1,
-    note: "",
-    tone: "amber",
-  },
-  {
-    id: "instant-omelette",
-    name: "Spicy instant noodle with special omelette",
-    price: 35900,
-    qty: 3,
-    note: "",
-    tone: "amber",
-  },
-  {
-    id: "spinach-noodle",
-    name: "Healthy noodle with spinach leaf",
-    price: 32900,
-    qty: 1,
-    note: "",
-    tone: "lime",
-  },
 ];
 
 const dishToneStyles: Record<DishTone, string> = {
@@ -160,29 +146,110 @@ const paymentOptions = [
 const moneyFormatter = new Intl.NumberFormat("mn-MN");
 const formatMoney = (value: number) => `${moneyFormatter.format(value)}₮`;
 
+const menuCategoryMap: Record<
+  NonNullable<ApiRestaurantProduct["menuCategory"]>,
+  MenuCategory
+> = {
+  HOT: "hot",
+  COLD: "cold",
+  SOUP: "soup",
+  GRILL: "grill",
+  APPETIZER: "appetizer",
+  DESSERT: "dessert",
+  DRINK: "drink",
+};
+
+const categoryTone: Record<MenuCategory, DishTone> = {
+  hot: "orange",
+  cold: "mint",
+  soup: "amber",
+  grill: "coral",
+  appetizer: "lime",
+  dessert: "sky",
+  drink: "sky",
+};
+
 export function RestaurantPosScreen() {
-  const [activeCategory, setActiveCategory] = useState<MenuCategory>("hot");
+  const { user } = useOrg();
+  const [activeCategory, setActiveCategory] =
+    useState<MenuCategoryFilter>("all");
   const [query, setQuery] = useState("");
   const [orderMode, setOrderMode] = useState<OrderMode>("DINE_IN");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [selectedTableId, setSelectedTableId] = useState("A1");
-  const [ticketLines, setTicketLines] = useState<TicketLine[]>(initialTicketLines);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuError, setMenuError] = useState("");
+  const [ticketLines, setTicketLines] = useState<TicketLine[]>([]);
 
   const selectedTable =
     diningTables.find((table) => table.id === selectedTableId) ?? diningTables[0];
   const activeTables = diningTables.filter((table) => table.status !== "FREE").length;
 
+  const loadMenu = useCallback(async () => {
+    if (!user.organizationId) {
+      setMenuLoading(false);
+      return;
+    }
+
+    setMenuLoading(true);
+    setMenuError("");
+    try {
+      const params = new URLSearchParams({
+        organizationId: user.organizationId,
+        restaurantMenu: "1",
+      });
+      const response = await authFetch(`${API}/products?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => []);
+      if (!response.ok) {
+        throw new Error(payload?.message || "Меню ачаалахад алдаа гарлаа");
+      }
+
+      const nextItems = (Array.isArray(payload) ? payload : [])
+        .filter(
+          (product: ApiRestaurantProduct) =>
+            product.isActive && product.menuCategory,
+        )
+        .map((product: ApiRestaurantProduct) => {
+          const category = menuCategoryMap[product.menuCategory!];
+          return {
+            id: product.id,
+            name: product.name,
+            category,
+            price: Number(product.price) || 0,
+            available: Number(product.stock) || 0,
+            tone: categoryTone[category],
+            imageUrl: product.images?.[0]?.url,
+          };
+        });
+      setMenuItems(nextItems);
+    } catch (error) {
+      setMenuError(
+        error instanceof Error ? error.message : "Меню ачаалахад алдаа гарлаа",
+      );
+    } finally {
+      setMenuLoading(false);
+    }
+  }, [user.organizationId]);
+
+  useEffect(() => {
+    void loadMenu();
+  }, [loadMenu]);
+
   const filteredMenu = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return menuItems.filter((item) => {
-      const matchesCategory = item.category === activeCategory;
+      const matchesCategory =
+        activeCategory === "all" || item.category === activeCategory;
       const matchesQuery =
         !normalizedQuery ||
         item.name.toLowerCase().includes(normalizedQuery) ||
         item.category.toLowerCase().includes(normalizedQuery);
       return matchesCategory && matchesQuery;
     });
-  }, [activeCategory, query]);
+  }, [activeCategory, menuItems, query]);
 
   const subtotal = ticketLines.reduce((sum, line) => sum + line.price * line.qty, 0);
   const discount = 0;
@@ -209,6 +276,7 @@ export function RestaurantPosScreen() {
           qty: 1,
           note: "",
           tone: item.tone,
+          imageUrl: item.imageUrl,
         },
       ];
     });
@@ -345,28 +413,73 @@ export function RestaurantPosScreen() {
               <p className="text-sm font-semibold text-slate-500">{filteredMenu.length} item</p>
             </div>
 
-            <div className="mt-3 grid min-h-0 flex-1 auto-rows-[184px] grid-cols-3 content-start gap-x-8 gap-y-5 overflow-y-auto pr-2 max-2xl:gap-x-5 max-lg:grid-cols-2 max-sm:grid-cols-1">
-              {filteredMenu.map((item) => (
+            {menuLoading ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                <Loader2 className="h-7 w-7 animate-spin text-slate-500" />
+              </div>
+            ) : menuError ? (
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
+                <p className="text-sm font-bold text-rose-300">{menuError}</p>
+                <button
+                  type="button"
+                  onClick={() => void loadMenu()}
+                  className="mt-3 h-9 rounded-lg border border-white/10 px-4 text-sm font-bold text-slate-200 hover:bg-white/5"
+                >
+                  Дахин ачаалах
+                </button>
+              </div>
+            ) : filteredMenu.length === 0 ? (
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center border border-dashed border-white/10 text-center">
+                <ChefHat className="h-9 w-9 text-slate-600" />
+                <p className="mt-3 text-sm font-bold text-slate-300">
+                  {query || activeCategory !== "all"
+                    ? "Тохирох хоол олдсонгүй"
+                    : "Менюд хоол бүртгэгдээгүй байна"}
+                </p>
+                {!query && activeCategory === "all" ? (
+                  <Link
+                    href="/dashboard/products"
+                    className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-sky-400 px-4 text-sm font-black text-white"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Хоол нэмэх
+                  </Link>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-3 grid min-h-0 flex-1 auto-rows-[184px] grid-cols-3 content-start gap-x-8 gap-y-5 overflow-y-auto pr-2 max-2xl:gap-x-5 max-lg:grid-cols-2 max-sm:grid-cols-1">
+                {filteredMenu.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => addItem(item)}
-                  className="group relative h-full rounded-lg bg-[#1d1b2b] px-5 pb-4 pt-16 text-center shadow-xl shadow-black/10 transition hover:-translate-y-1 hover:bg-[#242235]"
+                  disabled={item.available <= 0}
+                  className="group relative h-full rounded-lg bg-[#1d1b2b] px-5 pb-4 pt-16 text-center shadow-xl shadow-black/10 transition hover:-translate-y-1 hover:bg-[#242235] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
                 >
-                  <DishVisual tone={item.tone} size="lg" className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-8" />
+                  <DishVisual
+                    tone={item.tone}
+                    size="lg"
+                    imageUrl={item.imageUrl}
+                    className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-8"
+                  />
                   <div className="flex h-full flex-col items-center justify-end">
                     <p className="line-clamp-2 min-h-10 text-sm font-bold leading-5 text-slate-100">
                       {item.name}
                     </p>
                     <p className="mt-2 text-sm font-semibold tabular-nums text-slate-200">{formatMoney(item.price)}</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">{item.available} bowls available</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      {item.available > 0
+                        ? `${item.available} порц боломжтой`
+                        : "Дууссан"}
+                    </p>
                   </div>
                   <span className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-lg border border-white/5 text-sky-400 opacity-0 transition group-hover:opacity-100">
                     <Plus className="h-4 w-4" />
                   </span>
                 </button>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </main>
 
@@ -403,6 +516,7 @@ export function RestaurantPosScreen() {
 
             <button
               type="button"
+              disabled={ticketLines.length === 0}
               className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-emerald-300/40 bg-emerald-300/10 text-sm font-black text-emerald-200 transition hover:border-emerald-300 hover:bg-emerald-300 hover:text-slate-950"
             >
               <ChefHat className="h-4 w-4" />
@@ -418,11 +532,22 @@ export function RestaurantPosScreen() {
           </div>
 
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto py-4 pr-1">
-            {ticketLines.map((line) => (
+            {ticketLines.length === 0 ? (
+              <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
+                <UtensilsCrossed className="h-8 w-8 text-slate-700" />
+                <p className="mt-3 text-sm font-bold text-slate-500">
+                  Менюгээс хоол сонгоно уу
+                </p>
+              </div>
+            ) : ticketLines.map((line) => (
               <article key={line.id} className="space-y-3">
                 <div className="grid grid-cols-[1fr_54px_72px] items-center gap-3">
                   <div className="flex min-w-0 items-center gap-3">
-                    <DishVisual tone={line.tone} size="sm" />
+                    <DishVisual
+                      tone={line.tone}
+                      size="sm"
+                      imageUrl={line.imageUrl}
+                    />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-slate-100">{line.name}</p>
                       <p className="mt-0.5 text-xs font-semibold text-slate-500">{formatMoney(line.price)}</p>
@@ -527,10 +652,12 @@ export function RestaurantPosScreen() {
 function DishVisual({
   tone,
   size,
+  imageUrl,
   className = "",
 }: {
   tone: DishTone;
   size: "sm" | "lg";
+  imageUrl?: string;
   className?: string;
 }) {
   const sizeClass = size === "lg" ? "h-24 w-24" : "h-11 w-11";
@@ -541,10 +668,21 @@ function DishVisual({
       className={`relative block shrink-0 rounded-full bg-slate-200 p-1 shadow-xl shadow-black/20 ${sizeClass} ${className}`}
       aria-hidden="true"
     >
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt=""
+          className="absolute inset-1 h-[calc(100%-0.5rem)] w-[calc(100%-0.5rem)] rounded-full object-cover"
+        />
+      ) : (
+        <>
       <span className={`absolute ${innerClass} rounded-full bg-gradient-to-br ${dishToneStyles[tone]}`} />
       <span className="absolute inset-[24%] rounded-full bg-white/30 blur-[1px]" />
       <span className="absolute left-[22%] top-[30%] h-[12%] w-[24%] rounded-full bg-white/80" />
       <span className="absolute bottom-[22%] right-[24%] h-[16%] w-[28%] rounded-full bg-emerald-400/80" />
+        </>
+      )}
     </span>
   );
 }

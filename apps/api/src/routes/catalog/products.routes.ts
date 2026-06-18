@@ -76,6 +76,35 @@ const normalizePreorderLeadTimeDays = (value: unknown) => {
 
 const PREORDER_PRODUCTS_FEATURE_KEY = "preorder-products-enabled";
 const TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
+const RESTAURANT_MENU_CATEGORIES = new Set([
+  "HOT",
+  "COLD",
+  "SOUP",
+  "GRILL",
+  "APPETIZER",
+  "DESSERT",
+  "DRINK",
+]);
+const KITCHEN_STATIONS = new Set(["HOT_KITCHEN", "COLD_KITCHEN", "BAR"]);
+
+const normalizeRestaurantMenuCategory = (value: unknown) => {
+  const normalized = String(value || "").trim().toUpperCase();
+  return RESTAURANT_MENU_CATEGORIES.has(normalized) ? normalized : null;
+};
+
+const normalizeKitchenStation = (value: unknown) => {
+  const normalized = String(value || "").trim().toUpperCase();
+  return KITCHEN_STATIONS.has(normalized) ? normalized : null;
+};
+
+const normalizePreparationMinutes = (value: unknown) => {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 1440) {
+    return undefined;
+  }
+  return parsed;
+};
 
 const getExpirySortValue = (value?: Date | string | null) => {
   if (!value) return Number.POSITIVE_INFINITY;
@@ -372,6 +401,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       string,
       string
     >;
+    const restaurantMenuOnly = isTruthyQueryValue(req.query.restaurantMenu);
     const search = String(req.query.search ?? req.query.q ?? "").trim();
     const visitorId = String(req.query.visitorId || "").trim();
     const includeExpiredInventory = isTruthyQueryValue(
@@ -394,6 +424,7 @@ router.get("/products", optionalAuth, async (req, res) => {
     if (!includeInactive) where.isActive = true;
     if (!includeInactive) where.reviewStatus = "APPROVED";
     if (organizationId) where.organizationId = organizationId;
+    if (restaurantMenuOnly) where.isRestaurantMenuItem = true;
     if (businessCategoryId) {
       where.businessCategoryId = {
         in: await resolveBusinessCategoryFilter(businessCategoryId),
@@ -1431,8 +1462,13 @@ router.post(
         description,
         sku,
         barcode,
+        unit,
         price,
         costPrice,
+        isRestaurantMenuItem,
+        menuCategory,
+        kitchenStation,
+        preparationMinutes,
         stock,
         expiryDate,
         supplyType,
@@ -1494,6 +1530,28 @@ router.post(
           : parseOptionalExpiryDate(expiryDate);
       if (expiryDate !== undefined && parsedExpiryDate === undefined) {
         return res.status(400).json({ message: "Дуусах хугацаа буруу байна" });
+      }
+      const normalizedPreparationMinutes =
+        normalizePreparationMinutes(preparationMinutes);
+      if (normalizedPreparationMinutes === undefined) {
+        return res
+          .status(400)
+          .json({ message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой" });
+      }
+      const restaurantMenuEnabled = isTruthyQueryValue(isRestaurantMenuItem);
+      const normalizedMenuCategory = restaurantMenuEnabled
+        ? normalizeRestaurantMenuCategory(menuCategory)
+        : null;
+      const normalizedKitchenStation = restaurantMenuEnabled
+        ? normalizeKitchenStation(kitchenStation)
+        : null;
+      if (
+        restaurantMenuEnabled &&
+        (!normalizedMenuCategory || !normalizedKitchenStation)
+      ) {
+        return res.status(400).json({
+          message: "Хоолны ангилал болон гал тогооны хэсэг шаардлагатай",
+        });
       }
       if (
         normalizedSupplyType === "CHINA_PREORDER" &&
@@ -1560,8 +1618,15 @@ router.post(
             description: description ? String(description).trim() : null,
             sku: normalizedSku,
             barcode: normalizedBarcode,
+            unit: unit ? String(unit).trim() : null,
             price: priceNum,
             costPrice: costPriceNum,
+            isRestaurantMenuItem: restaurantMenuEnabled,
+            menuCategory: normalizedMenuCategory,
+            kitchenStation: normalizedKitchenStation,
+            preparationMinutes: restaurantMenuEnabled
+              ? normalizedPreparationMinutes
+              : null,
             stock: stockNum,
             supplyType: normalizedSupplyType,
             preorderLeadTimeDays:
@@ -1649,8 +1714,13 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       description,
       sku,
       barcode,
+      unit,
       price,
       costPrice,
+      isRestaurantMenuItem,
+      menuCategory,
+      kitchenStation,
+      preparationMinutes,
       stock,
       expiryDate,
       supplyType,
@@ -1694,6 +1764,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (sku !== undefined) data.sku = sku ? String(sku).trim() : null;
     if (barcode !== undefined)
       data.barcode = barcode ? String(barcode).trim() : null;
+    if (unit !== undefined) data.unit = unit ? String(unit).trim() : null;
     if (price !== undefined) {
       const p = parseFloat(String(price));
       if (isNaN(p) || p < 0)
@@ -1702,6 +1773,55 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     }
     if (costPrice !== undefined)
       data.costPrice = costPrice ? parseFloat(String(costPrice)) : null;
+    const nextRestaurantMenuEnabled =
+      isRestaurantMenuItem !== undefined
+        ? isTruthyQueryValue(isRestaurantMenuItem)
+        : existing.isRestaurantMenuItem;
+    if (isRestaurantMenuItem !== undefined) {
+      data.isRestaurantMenuItem = nextRestaurantMenuEnabled;
+    }
+    if (
+      menuCategory !== undefined ||
+      kitchenStation !== undefined ||
+      preparationMinutes !== undefined ||
+      isRestaurantMenuItem !== undefined
+    ) {
+      const nextMenuCategory = nextRestaurantMenuEnabled
+        ? normalizeRestaurantMenuCategory(
+            menuCategory !== undefined ? menuCategory : existing.menuCategory,
+          )
+        : null;
+      const nextKitchenStation = nextRestaurantMenuEnabled
+        ? normalizeKitchenStation(
+            kitchenStation !== undefined
+              ? kitchenStation
+              : existing.kitchenStation,
+          )
+        : null;
+      const nextPreparationMinutes = normalizePreparationMinutes(
+        preparationMinutes !== undefined
+          ? preparationMinutes
+          : existing.preparationMinutes,
+      );
+      if (nextPreparationMinutes === undefined) {
+        return res
+          .status(400)
+          .json({ message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой" });
+      }
+      if (
+        nextRestaurantMenuEnabled &&
+        (!nextMenuCategory || !nextKitchenStation)
+      ) {
+        return res.status(400).json({
+          message: "Хоолны ангилал болон гал тогооны хэсэг шаардлагатай",
+        });
+      }
+      data.menuCategory = nextMenuCategory;
+      data.kitchenStation = nextKitchenStation;
+      data.preparationMinutes = nextRestaurantMenuEnabled
+        ? nextPreparationMinutes
+        : null;
+    }
     if (stock !== undefined) {
       const s = parseInt(String(stock));
       if (isNaN(s) || s < 0 || s > 2_147_483_647)
@@ -1850,18 +1970,14 @@ router.post(
         return res.status(400).json({ message: "Зураг файл шаардлагатай" });
       }
 
-      // Check env vars before attempting upload
+      // Keep product entry usable in local/self-hosted environments without
+      // object storage. The returned data URL is persisted in ProductImage.
       if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-        console.error("upload-image: Missing SUPABASE env vars!", {
-          hasUrl: !!process.env.SUPABASE_URL,
-          hasKey: !!process.env.SUPABASE_SERVICE_KEY,
-        });
-        return res.status(500).json({
-          message: "Supabase тохиргоо хийгдээгүй байна",
-          debug: {
-            hasUrl: !!process.env.SUPABASE_URL,
-            hasKey: !!process.env.SUPABASE_SERVICE_KEY,
-          },
+        const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+        console.warn("upload-image: using database image fallback");
+        return res.json({
+          url: dataUrl,
+          storage: "database",
         });
       }
 
