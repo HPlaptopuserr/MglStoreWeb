@@ -269,6 +269,13 @@ router.post("/pos/sales", async (req, res) => {
           credit: item.credit,
         }))
       : [];
+    const persistedPaymentBreakdown = normalizedPayments.map((item) => ({
+      method: String(item.method || "").toUpperCase(),
+      amount: roundMoney(Number(item.amount || 0)),
+      ...(item.attemptId ? { attemptId: String(item.attemptId) } : {}),
+      ...(item.transactionId ? { transactionId: String(item.transactionId) } : {}),
+      ...(item.invoiceId ? { invoiceId: String(item.invoiceId) } : {}),
+    }));
 
     for (const item of normalizedPayments) {
       if (
@@ -404,6 +411,49 @@ router.post("/pos/sales", async (req, res) => {
         if (!saleMembership) {
           throw toApiError(403, "Өөр байгууллагын sale хийх боломжгүй");
         }
+      }
+
+      const resolvedShiftId = String(body.shiftId || "").trim();
+      if (!resolvedShiftId) {
+        throw toApiError(409, "Борлуулалт бүртгэхийн өмнө кассын ээлжээ нээнэ үү");
+      }
+
+      // Serialize sale creation against shift closure before mutating inventory
+      // or consuming external payment attempts.
+      await tx.$queryRaw`
+        SELECT "id"
+        FROM "PosShift"
+        WHERE "id" = ${resolvedShiftId}
+        FOR UPDATE
+      `;
+      const activeShift = await tx.posShift.findUnique({
+        where: { id: resolvedShiftId },
+        select: {
+          id: true,
+          status: true,
+          organizationId: true,
+          branchId: true,
+          registerId: true,
+          cashierId: true,
+        },
+      });
+      if (!activeShift) {
+        throw toApiError(404, "Кассын ээлж олдсонгүй");
+      }
+      if (activeShift.status !== ShiftStatus.OPEN) {
+        throw toApiError(409, "Энэ ээлж хаагдсан байна. Шинэ ээлж нээнэ үү");
+      }
+      if (activeShift.cashierId !== actor.id) {
+        throw toApiError(403, "Зөвхөн өөрийн нээлттэй ээлж дээр борлуулалт бүртгэнэ");
+      }
+      if (
+        activeShift.organizationId !== effectiveOrganizationId ||
+        activeShift.branchId !== body.branchId
+      ) {
+        throw toApiError(400, "Ээлжийн байгууллага эсвэл салбар борлуулалттай зөрүүтэй байна");
+      }
+      if (registerId && activeShift.registerId !== registerId) {
+        throw toApiError(400, "Ээлж өөр POS касс дээр нээгдсэн байна");
       }
 
       await tx.posSaleIdempotency.create({
@@ -581,54 +631,6 @@ router.post("/pos/sales", async (req, res) => {
         return methods.length === 1 ? methods[0] : "MIXED";
       })();
 
-      // Resolve shiftId: use provided if valid, otherwise find/create for this cashier
-      let resolvedShiftId: string = body.shiftId || "";
-
-      // Check if provided shiftId actually exists
-      if (resolvedShiftId) {
-        const shiftExists = await tx.posShift.findUnique({
-          where: { id: resolvedShiftId },
-          select: { id: true, status: true },
-        });
-        if (!shiftExists) {
-          resolvedShiftId = ""; // invalid, will auto-resolve below
-        }
-      }
-
-      // Auto-find or auto-create shift if not resolved yet
-      if (!resolvedShiftId) {
-        const branchId = body.branchId!;
-        const orgId = effectiveOrganizationId;
-
-        // Find existing open shift for this cashier
-        const existingShift = await tx.posShift.findFirst({
-          where: {
-            cashierId: actor.id,
-            organizationId: orgId,
-            status: "OPEN",
-          },
-          orderBy: { openedAt: "desc" },
-          select: { id: true },
-        });
-
-        if (existingShift) {
-          resolvedShiftId = existingShift.id;
-        } else {
-          // Auto-create a shift for this cashier
-          const autoShift = await tx.posShift.create({
-            data: {
-              organizationId: orgId,
-              branchId,
-              cashierId: actor.id,
-              openingCash: 0,
-              status: "OPEN",
-            },
-            select: { id: true },
-          });
-          resolvedShiftId = autoShift.id;
-        }
-      }
-
       // Create structured PosSale + PosSaleLine records
       const posSale = await tx.posSale.create({
         data: {
@@ -639,6 +641,7 @@ router.post("/pos/sales", async (req, res) => {
           shiftId: resolvedShiftId,
           cashierId: actor.id,
           paymentMethod: paymentMethodSummary || "CASH",
+          paymentBreakdown: persistedPaymentBreakdown,
           subtotal: subTotal,
           taxTotal,
           discountTotal,

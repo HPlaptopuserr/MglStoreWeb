@@ -10,6 +10,7 @@
     "categories:cleanup": "tsx src/scripts/cleanup-business-categories.ts",
     "categories:seed-marketplace": "tsx src/scripts/seed-marketplace-categories.ts",
     "products:classify": "tsx src/scripts/classify-products.ts",
+    "test:pos-shift": "tsx --test src/routes/operations/pos/shift-accounting.test.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

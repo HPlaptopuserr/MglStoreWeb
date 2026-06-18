@@ -2015,6 +2015,7 @@ model PosSale {
   cashierId        String
   status           PosSaleStatus          @default(COMPLETED)
   paymentMethod    String
+  paymentBreakdown Json?
   subtotal         Decimal                @db.Decimal(18, 2)
   taxTotal         Decimal                @db.Decimal(18, 2)
   discountTotal    Decimal                @db.Decimal(18, 2)

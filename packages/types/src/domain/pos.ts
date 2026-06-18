@@ -251,6 +251,7 @@ export interface PosShiftHistoryItem extends PosShift {
   paidOut: number;
   cardSales: number;
   qpaySales: number;
+  creditSales: number;
   mixedSales: number;
 }
 

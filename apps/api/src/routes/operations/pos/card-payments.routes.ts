@@ -714,7 +714,17 @@ router.post("/pos/payments/push-ecr/settlement", async (req, res) => {
       body: JSON.stringify({ terminalId, skipPrint }),
       signal: AbortSignal.timeout(60_000),
     });
-    const data = await ecrRes.json();
+    const data = await ecrRes.json().catch(() => ({
+      succeed: false,
+      message: `Push ECR settlement HTTP ${ecrRes.status}`,
+    }));
+    if (!ecrRes.ok || data?.succeed !== true) {
+      return res.status(502).json({
+        ...data,
+        succeed: false,
+        message: data?.message || "Push ECR settlement амжилтгүй боллоо",
+      });
+    }
     return res.json(data);
   } catch (err) {
     return res.status(500).json({

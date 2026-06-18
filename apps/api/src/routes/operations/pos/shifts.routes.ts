@@ -1,5 +1,6 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CashDrawerEventType } from "@mgl/database";
+import type { Prisma } from "@mgl/database";
 import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
@@ -12,9 +13,15 @@ import {
   makePushEcrReferral, pushEcrHeaders, pushEcrBaseUrl,
   allowPosSimulation, isProdLikeEnv, bridgeSharedSecret,
   pushEcrDefaultTerminalId, MONEY_EPSILON,
-  type AuthUser, type SaleLineInput, type SalePaymentLineInput,
+  type AuthUser, type ApiError, type SaleLineInput, type SalePaymentLineInput,
   type CreateSaleBody, type PushEcrPurchaseResponse,
+  toApiError,
 } from "./_shared";
+import {
+  calculateExpectedCash,
+  summarizeShiftSales,
+  type ShiftSaleAccountingInput,
+} from "./shift-accounting";
 
 const router: ExpressRouter = Router();
 
@@ -59,39 +66,6 @@ const toShiftResponse = (shift: any) => ({
   status: shift.status,
 });
 
-const summarizeShiftSales = (
-  sales: Array<{ grandTotal: unknown; paymentMethod: string | null }>,
-) => {
-  const summary = {
-    salesCount: sales.length,
-    totalSales: 0,
-    cashSales: 0,
-    cardSales: 0,
-    qpaySales: 0,
-    mixedSales: 0,
-  };
-
-  for (const sale of sales) {
-    const amount = Number(sale.grandTotal);
-    if (!Number.isFinite(amount)) continue;
-    summary.totalSales += amount;
-    const method = String(sale.paymentMethod || "").toUpperCase();
-    if (method === "CASH") summary.cashSales += amount;
-    else if (method === "CARD") summary.cardSales += amount;
-    else if (method === "QPAY" || method === "QR") summary.qpaySales += amount;
-    else summary.mixedSales += amount;
-  }
-
-  return {
-    salesCount: summary.salesCount,
-    totalSales: roundMoney(summary.totalSales),
-    cashSales: roundMoney(summary.cashSales),
-    cardSales: roundMoney(summary.cardSales),
-    qpaySales: roundMoney(summary.qpaySales),
-    mixedSales: roundMoney(summary.mixedSales),
-  };
-};
-
 const parseCashCountInput = (value: unknown) => {
   if (value === undefined || value === null) return null;
   if (!Array.isArray(value)) {
@@ -129,8 +103,81 @@ const mapCashDrawerEvent = (event: any) => ({
   createdAt: event.createdAt.toISOString(),
 });
 
-async function getCashDrawerEventTotals(shiftId: string) {
-  const events = await prisma.posCashDrawerEvent.findMany({
+type ShiftAccountingClient = Pick<
+  Prisma.TransactionClient,
+  "posSale" | "cardPaymentAttempt" | "qPayInvoice" | "posCashDrawerEvent"
+>;
+
+async function loadShiftAccountingSales(
+  client: ShiftAccountingClient,
+  shiftIds: string[],
+) {
+  const result = new Map<string, ShiftSaleAccountingInput[]>();
+  if (shiftIds.length === 0) return result;
+
+  const sales = await client.posSale.findMany({
+    where: {
+      shiftId: { in: shiftIds },
+      status: PosSaleStatus.COMPLETED,
+    },
+    select: {
+      id: true,
+      shiftId: true,
+      receiptNo: true,
+      grandTotal: true,
+      paymentMethod: true,
+      paymentBreakdown: true,
+      loyalty: { select: { redeemedPoints: true } },
+      creditSale: { select: { principalAmount: true } },
+    },
+  });
+
+  const receiptNumbers = sales.map((sale) => sale.receiptNo);
+  const [cardAttempts, qpayInvoices] = receiptNumbers.length
+    ? await Promise.all([
+        client.cardPaymentAttempt.findMany({
+          where: { saleReference: { in: receiptNumbers } },
+          select: { saleReference: true, amount: true },
+        }),
+        client.qPayInvoice.findMany({
+          where: { saleReference: { in: receiptNumbers } },
+          select: { saleReference: true, amount: true },
+        }),
+      ])
+    : [[], []];
+
+  const cardByReceipt = new Map<string, number[]>();
+  for (const attempt of cardAttempts) {
+    const key = attempt.saleReference || "";
+    cardByReceipt.set(key, [...(cardByReceipt.get(key) || []), Number(attempt.amount)]);
+  }
+  const qpayByReceipt = new Map<string, number[]>();
+  for (const invoice of qpayInvoices) {
+    const key = invoice.saleReference || "";
+    qpayByReceipt.set(key, [...(qpayByReceipt.get(key) || []), Number(invoice.amount)]);
+  }
+
+  for (const sale of sales) {
+    const accountingSale: ShiftSaleAccountingInput = {
+      grandTotal: Number(sale.grandTotal),
+      paymentMethod: sale.paymentMethod,
+      paymentBreakdown: sale.paymentBreakdown,
+      redeemedPoints: sale.loyalty?.redeemedPoints || 0,
+      cardPayments: cardByReceipt.get(sale.receiptNo) || [],
+      qpayPayments: qpayByReceipt.get(sale.receiptNo) || [],
+      creditAmount: Number(sale.creditSale?.principalAmount || 0),
+    };
+    result.set(sale.shiftId, [...(result.get(sale.shiftId) || []), accountingSale]);
+  }
+
+  return result;
+}
+
+async function getCashDrawerEventTotals(
+  client: Pick<Prisma.TransactionClient, "posCashDrawerEvent">,
+  shiftId: string,
+) {
+  const events = await client.posCashDrawerEvent.findMany({
     where: { shiftId },
     select: { type: true, amount: true },
   });
@@ -147,20 +194,15 @@ async function getCashDrawerEventTotals(shiftId: string) {
 }
 
 async function buildCashDrawerSummary(shift: any) {
-  const [cashSales, events] = await Promise.all([
-    prisma.posSale.findMany({
-      where: { shiftId: shift.id, status: PosSaleStatus.COMPLETED, paymentMethod: "CASH" },
-      select: { grandTotal: true },
-    }),
+  const [salesByShift, events] = await Promise.all([
+    loadShiftAccountingSales(prisma, [shift.id]),
     prisma.posCashDrawerEvent.findMany({
       where: { shiftId: shift.id },
       orderBy: { createdAt: "desc" },
     }),
   ]);
 
-  const cashSalesTotal = roundMoney(
-    cashSales.reduce((sum: number, sale: { grandTotal: unknown }) => sum + Number(sale.grandTotal), 0),
-  );
+  const cashSalesTotal = summarizeShiftSales(salesByShift.get(shift.id) || []).cashSales;
   const totals = events.reduce<{ paidIn: number; paidOut: number }>(
     (summary: { paidIn: number; paidOut: number }, event: { type: CashDrawerEventType; amount: unknown }) => {
       const amount = Number(event.amount);
@@ -171,9 +213,12 @@ async function buildCashDrawerSummary(shift: any) {
     },
     { paidIn: 0, paidOut: 0 },
   );
-  const expectedCash = roundMoney(
-    Number(shift.openingCash) + cashSalesTotal + totals.paidIn - totals.paidOut,
-  );
+  const expectedCash = calculateExpectedCash({
+    openingCash: Number(shift.openingCash),
+    cashSales: cashSalesTotal,
+    paidIn: totals.paidIn,
+    paidOut: totals.paidOut,
+  });
   const countedCash = shift.closingCash === null ? null : Number(shift.closingCash);
 
   return {
@@ -230,7 +275,7 @@ router.post("/pos/shifts/open", async (req, res) => {
       }
     }
 
-    if (actor.role !== "ADMIN") {
+    if (!isAdminActor(actor)) {
       const membership = await prisma.organizationMember.findFirst({
         where: { userId: actor.id, organizationId: branch.organizationId, isActive: true },
         select: { id: true },
@@ -240,31 +285,64 @@ router.post("/pos/shifts/open", async (req, res) => {
       }
     }
 
-    const existingOpen = await prisma.posShift.findFirst({
-      where: { cashierId: actor.id, status: ShiftStatus.OPEN },
-      select: { id: true },
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Serialize concurrent shift-open requests for this cashier and register.
+      await tx.$queryRaw`
+        SELECT "id"
+        FROM "User"
+        WHERE "id" = ${actor.id}
+        FOR UPDATE
+      `;
+      if (registerId) {
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "PosRegister"
+          WHERE "id" = ${registerId}
+          FOR UPDATE
+        `;
+      }
+
+      const existingOpen = await tx.posShift.findFirst({
+        where: {
+          status: ShiftStatus.OPEN,
+          OR: [
+            { cashierId: actor.id },
+            ...(registerId ? [{ registerId }] : []),
+          ],
+        },
+        select: { id: true, cashierId: true, registerId: true },
+      });
+      if (existingOpen) {
+        return { existingOpen, shift: null };
+      }
+
+      const shift = await tx.posShift.create({
+        data: {
+          organizationId: branch.organizationId,
+          branchId,
+          registerId,
+          cashierId: actor.id,
+          openingCash,
+          status: ShiftStatus.OPEN,
+        },
+        include: {
+          cashier: { select: { id: true, email: true } },
+          branch: { select: { id: true, name: true } },
+          register: { select: { id: true, name: true } },
+        },
+      });
+      return { existingOpen: null, shift };
     });
-    if (existingOpen) {
-      return res.status(409).json({ message: "Нээлттэй ээлж аль хэдийн байна. Эхлээд хаана уу." });
+
+    if (result.existingOpen) {
+      const message =
+        result.existingOpen.cashierId === actor.id
+          ? "Танд нээлттэй ээлж аль хэдийн байна. Эхлээд хаана уу."
+          : "Энэ POS касс дээр өөр кассчны нээлттэй ээлж байна.";
+      return res.status(409).json({ message });
     }
 
-    const shift = await prisma.posShift.create({
-      data: {
-        organizationId: branch.organizationId,
-        branchId,
-        registerId,
-        cashierId: actor.id,
-        openingCash,
-        status: ShiftStatus.OPEN,
-      },
-      include: {
-        cashier: { select: { id: true, email: true } },
-        branch: { select: { id: true, name: true } },
-        register: { select: { id: true, name: true } },
-      },
-    });
-
-    res.status(201).json(toShiftResponse(shift));
+    res.status(201).json(toShiftResponse(result.shift));
   } catch (error) {
     console.error("open shift error", error);
     res.status(500).json({ message: "Ээлж нээхэд алдаа гарлаа" });
@@ -293,61 +371,79 @@ router.post("/pos/shifts/close", async (req, res) => {
       return res.status(400).json({ message: "closingCash 0 буюу түүнээс дээш байх ёстой" });
     }
 
-    const shift = await prisma.posShift.findUnique({
+    const shiftForAccess = await prisma.posShift.findUnique({
       where: { id: shiftId },
-      include: {
-        cashier: { select: { id: true, email: true } },
-        branch: { select: { id: true, name: true } },
-        register: { select: { id: true, name: true } },
-      },
+      select: { id: true, cashierId: true },
     });
-    if (!shift) {
+    if (!shiftForAccess) {
       return res.status(404).json({ message: "Ээлж олдсонгүй" });
     }
-    if (shift.cashierId !== actor.id && actor.role !== "ADMIN") {
+    if (shiftForAccess.cashierId !== actor.id && !isAdminActor(actor)) {
       return res.status(403).json({ message: "Зөвхөн өөрийн ээлжийг хааж болно" });
     }
-    if (shift.status === ShiftStatus.CLOSED) {
-      return res.status(409).json({ message: "Ээлж аль хэдийн хаагдсан" });
-    }
 
-    // Calculate expected cash from CASH sales in this shift
-    const cashSales = await prisma.posSale.findMany({
-      where: { shiftId: shift.id, status: PosSaleStatus.COMPLETED },
-      select: { grandTotal: true, paymentMethod: true },
-    });
-    // Sum up all CASH payment totals. For mixed payments we'd need breakdown, 
-    // but for simplicity, when paymentMethod is CASH, add grandTotal.
-    const expectedCashFromSales = cashSales
-      .filter((s: { paymentMethod: string | null }) => s.paymentMethod === "CASH")
-      .reduce((sum: number, s: { grandTotal: unknown }) => sum + Number(s.grandTotal), 0);
-    const drawerTotals = await getCashDrawerEventTotals(shift.id);
-    const expectedCash = roundMoney(
-      Number(shift.openingCash) + expectedCashFromSales + drawerTotals.paidIn - drawerTotals.paidOut,
-    );
-    const cashDifference = roundMoney(closingCash - expectedCash);
+    const updatedShift = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // A sale transaction locks the same row before inserting. This guarantees
+      // the closing total either includes that sale or the sale sees CLOSED.
+      await tx.$queryRaw`
+        SELECT "id"
+        FROM "PosShift"
+        WHERE "id" = ${shiftId}
+        FOR UPDATE
+      `;
 
-    const updatedShift = await prisma.posShift.update({
-      where: { id: shiftId },
-      data: {
-        status: ShiftStatus.CLOSED,
-        closingCash,
-        expectedCash,
-        cashDifference,
-        cashCount: parsedCashCount?.counts ?? undefined,
-        cashCountedAt: parsedCashCount ? new Date() : undefined,
-        note,
-        closedAt: new Date(),
-      },
-      include: {
-        cashier: { select: { id: true, email: true } },
-        branch: { select: { id: true, name: true } },
-        register: { select: { id: true, name: true } },
-      },
+      const shift = await tx.posShift.findUnique({
+        where: { id: shiftId },
+        include: {
+          cashier: { select: { id: true, email: true } },
+          branch: { select: { id: true, name: true } },
+          register: { select: { id: true, name: true } },
+        },
+      });
+      if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
+      if (shift.status !== ShiftStatus.OPEN) {
+        throw toApiError(409, "Ээлж аль хэдийн хаагдсан");
+      }
+
+      const [salesByShift, drawerTotals] = await Promise.all([
+        loadShiftAccountingSales(tx, [shift.id]),
+        getCashDrawerEventTotals(tx, shift.id),
+      ]);
+      const salesSummary = summarizeShiftSales(salesByShift.get(shift.id) || []);
+      const expectedCash = calculateExpectedCash({
+        openingCash: Number(shift.openingCash),
+        cashSales: salesSummary.cashSales,
+        paidIn: drawerTotals.paidIn,
+        paidOut: drawerTotals.paidOut,
+      });
+      const cashDifference = roundMoney(closingCash - expectedCash);
+
+      return tx.posShift.update({
+        where: { id: shiftId },
+        data: {
+          status: ShiftStatus.CLOSED,
+          closingCash,
+          expectedCash,
+          cashDifference,
+          cashCount: parsedCashCount?.counts ?? undefined,
+          cashCountedAt: parsedCashCount ? new Date() : undefined,
+          note,
+          closedAt: new Date(),
+        },
+        include: {
+          cashier: { select: { id: true, email: true } },
+          branch: { select: { id: true, name: true } },
+          register: { select: { id: true, name: true } },
+        },
+      });
     });
 
     res.status(200).json(toShiftResponse(updatedShift));
   } catch (error) {
+    const known = error as ApiError;
+    if (known?.status && known?.message) {
+      return res.status(known.status).json({ message: known.message });
+    }
     console.error("close shift error", error);
     res.status(500).json({ message: "Ээлж хаахад алдаа гарлаа" });
   }
@@ -554,18 +650,18 @@ router.get("/pos/shifts/history", async (req, res) => {
         cashier: { select: { id: true, email: true } },
         branch: { select: { id: true, name: true } },
         register: { select: { id: true, name: true } },
-        sales: {
-          where: { status: PosSaleStatus.COMPLETED },
-          select: { grandTotal: true, paymentMethod: true },
-        },
       },
     });
-    const drawerEvents = shifts.length
-      ? await prisma.posCashDrawerEvent.findMany({
-          where: { shiftId: { in: shifts.map((shift: { id: string }) => shift.id) } },
-          select: { shiftId: true, type: true, amount: true },
-        })
-      : [];
+    const shiftIds = shifts.map((shift: { id: string }) => shift.id);
+    const [salesByShift, drawerEvents] = await Promise.all([
+      loadShiftAccountingSales(prisma, shiftIds),
+      shiftIds.length
+        ? prisma.posCashDrawerEvent.findMany({
+            where: { shiftId: { in: shiftIds } },
+            select: { shiftId: true, type: true, amount: true },
+          })
+        : [],
+    ]);
     const drawerTotalsByShift = new Map<string, { paidIn: number; paidOut: number }>();
     for (const event of drawerEvents) {
       const totals = drawerTotalsByShift.get(event.shiftId) || { paidIn: 0, paidOut: 0 };
@@ -580,7 +676,7 @@ router.get("/pos/shifts/history", async (req, res) => {
         const drawerTotals = drawerTotalsByShift.get(shift.id) || { paidIn: 0, paidOut: 0 };
         return {
           ...toShiftResponse(shift),
-          ...summarizeShiftSales(shift.sales),
+          ...summarizeShiftSales(salesByShift.get(shift.id) || []),
           paidIn: roundMoney(drawerTotals.paidIn),
           paidOut: roundMoney(drawerTotals.paidOut),
         };

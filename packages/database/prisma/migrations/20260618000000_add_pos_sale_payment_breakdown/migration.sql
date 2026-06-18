@@ -1,0 +1,2 @@
+ALTER TABLE "PosSale"
+  ADD COLUMN IF NOT EXISTS "paymentBreakdown" JSONB;

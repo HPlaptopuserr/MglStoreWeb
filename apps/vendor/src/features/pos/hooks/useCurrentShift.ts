@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { closeShift } from "../api/close-shift";
 import { openShift } from "../api/open-shift";
 import type { CashDenominationCount, PosShift } from "../types/shift.types";
@@ -10,7 +10,7 @@ export function useCurrentShift() {
   const [error, setError] = useState<string | null>(null);
 
   /** Fetch the current open shift from the server and hydrate state. */
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -25,9 +25,9 @@ export function useCurrentShift() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const open = async (branchId: string, openingCash: number, registerId?: string) => {
+  const open = useCallback(async (branchId: string, openingCash: number, registerId?: string) => {
     setLoading(true);
     setError(null);
     try {
@@ -40,9 +40,9 @@ export function useCurrentShift() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const close = async (
+  const close = useCallback(async (
     closingCash: number,
     note?: string,
     terminalId?: string,
@@ -54,13 +54,18 @@ export function useCurrentShift() {
     try {
       // Settlement хийх — PUSH_ECR terminal байвал өдрийн нэгтгэл хийнэ
       if (terminalId) {
-        try {
-          await posRequest("/pos/payments/push-ecr/settlement", {
+        const settlement = await posRequest<{ succeed: boolean; message?: string }>(
+          "/pos/payments/push-ecr/settlement",
+          {
             method: "POST",
             body: { terminalId, skipPrint: false },
-          });
-        } catch {
-          // settlement амжилтгүй болсон ч shift хаалтыг үргэлжлүүлнэ
+          },
+        );
+        if (!settlement.succeed) {
+          throw new Error(
+            settlement.message ||
+              "Картын терминалын өдрийн нэгтгэл амжилтгүй тул ээлж хаагдсангүй",
+          );
         }
       }
       const closed = await closeShift({ shiftId: shift.id, closingCash, cashCount, note });
@@ -72,7 +77,7 @@ export function useCurrentShift() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [shift]);
 
   return { shift, loading, error, load, open, close };
 }
