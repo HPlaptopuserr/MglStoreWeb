@@ -186,6 +186,7 @@ router.get("/customer/purchases", requireAuth, async (req, res) => {
       prisma.paidAccessPurchase.findMany({
         where: { userId },
         orderBy: { purchasedAt: "desc" },
+        take: 100,
       }),
       getCurrentPaidAccessFiles(),
     ]);
