@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import MglBusinessLanding from "@/components/MglBusinessLanding";
 
 export default function HomePage() {
-  redirect("/dashboard");
+  return <MglBusinessLanding />;
 }

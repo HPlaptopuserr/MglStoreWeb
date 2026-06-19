@@ -39,6 +39,11 @@ router.use("/profile/uploads", express.static(profileUploadsDir));
 
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("FATAL: JWT_SECRET not set"); })() : "dev-secret-change-me");
 const VERIFY_MN_API_BASE = "https://api.verify.mn";
+const VERIFY_MN_DEV_SESSION_PREFIX = "dev_verify_mn";
+
+function isDevVerifyMnFallbackEnabled() {
+  return process.env.NODE_ENV !== "production" && !process.env.VERIFY_MN_API_KEY;
+}
 
 function toIsoOrNull(value?: Date | string | null) {
   if (!value) return null;
@@ -403,8 +408,25 @@ async function createVerifyMnSession(phone: string): Promise<VerifyMnSessionResp
     (process.env.API_PUBLIC_URL
       ? `${process.env.API_PUBLIC_URL.replace(/\/$/, "")}/auth/web/verify-mn/callback`
       : "");
+  const nonce = crypto.randomInt(100000, 999999).toString();
 
   if (!apiKey) {
+    if (isDevVerifyMnFallbackEnabled()) {
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const sessionId = `${VERIFY_MN_DEV_SESSION_PREFIX}:${phone}:${crypto.randomUUID()}`;
+
+      console.warn("[verify.mn dev fallback] VERIFY_MN_API_KEY missing; using local auto-verified session.");
+      return {
+        sessionId,
+        phone,
+        shortcode: "LOCAL",
+        text: nonce,
+        smsUri: `sms:${phone}?body=${encodeURIComponent(nonce)}`,
+        displayInstruction: "Local development fallback. Баталгаажуулах товч дарж үргэлжлүүлнэ үү.",
+        expiresAt,
+      };
+    }
+
     throw new Error("VERIFY_MN_API_KEY is not configured");
   }
 
@@ -412,7 +434,6 @@ async function createVerifyMnSession(phone: string): Promise<VerifyMnSessionResp
     throw new Error("VERIFY_MN_CALLBACK_URL is not configured");
   }
 
-  const nonce = crypto.randomInt(100000, 999999).toString();
   const res = await fetch(`${VERIFY_MN_API_BASE}/sessions`, {
     method: "POST",
     headers: {
@@ -438,6 +459,19 @@ async function getVerifyMnSessionStatus(sessionId: string): Promise<VerifyMnStat
   const apiKey = process.env.VERIFY_MN_API_KEY;
 
   if (!apiKey) {
+    if (isDevVerifyMnFallbackEnabled() && sessionId.startsWith(`${VERIFY_MN_DEV_SESSION_PREFIX}:`)) {
+      const [, phone] = sessionId.split(":");
+
+      return {
+        sessionId,
+        phone: phone || "",
+        sessionStatus: "VERIFIED",
+        callbackStatus: "SENT",
+        verifiedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      };
+    }
+
     throw new Error("VERIFY_MN_API_KEY is not configured");
   }
 
@@ -1209,7 +1243,7 @@ router.post("/web/verify-mn/start", async (req, res) => {
     }
 
     const session = await createVerifyMnSession(identifier);
-    return res.json(session);
+    return res.json({ session });
   } catch (error) {
     console.error("[verify.mn start error]", error);
     return res.status(500).json({

@@ -1,4 +1,4 @@
-"use client";
+  "use client";
 
 import { ChevronLeft, ChevronRight, Search, Sparkles } from "lucide-react";
 import { ProductCard } from "@mgl/ui";

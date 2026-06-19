@@ -72,6 +72,12 @@ async function readApiPayload(res: Response): Promise<ApiPayload> {
   return { message: FRIENDLY_API_ERROR };
 }
 
+function isVerifyMnSession(value: unknown): value is VerifyMnSession {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<VerifyMnSession>;
+  return Boolean(candidate.sessionId && candidate.shortcode && candidate.text && candidate.smsUri);
+}
+
 export const LoginModal: React.FC<LoginModalProps> = ({
   open,
   onClose,
@@ -511,9 +517,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       });
       const data = await readApiPayload(res);
       if (!res.ok) throw new Error(data.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
-      if (!data.session) throw new Error(data.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
 
-      setRegisterVerifySession(data.session);
+      const session = data.session || (isVerifyMnSession(data) ? data : null);
+      if (!session) throw new Error(data.message || "Verify.mn баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
+
+      setRegisterVerifySession(session);
       setRegisterVerifyNow(Date.now());
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : "Баталгаажуулалт эхлүүлэхэд алдаа гарлаа.");
