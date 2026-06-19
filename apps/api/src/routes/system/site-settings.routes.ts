@@ -34,7 +34,7 @@ const bannerUpload = multer({
   },
 });
 
-const PROJECT_PDF_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024;
+const PROJECT_PDF_UPLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
 const PROJECT_PDF_PREVIEW_PROCESSING_LIMIT_BYTES = 25 * 1024 * 1024;
 
 const projectPdfUpload = multer({
@@ -2771,7 +2771,7 @@ router.use(
       const isTooLarge = error.code === "LIMIT_FILE_SIZE";
       res.status(isTooLarge ? 413 : 400).json({
         message: isTooLarge
-          ? "Файлын хэмжээ хэтэрсэн байна. PDF upload дээд хэмжээ 100MB."
+          ? "Файлын хэмжээ хэтэрсэн байна. PDF upload дээд хэмжээ 200MB."
           : "Файл upload хийхэд алдаа гарлаа",
         detail: error.message,
       });

@@ -18,7 +18,7 @@ import {
 } from "./hr-services-utils";
 import { useHrAdminForms } from "./useHrAdminForms";
 
-const PDF_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024;
+const PDF_UPLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
 
 function formatUploadSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
@@ -173,7 +173,7 @@ export function HrServicesSection({
       const isImage = uploadingTarget.kind !== "pdf";
       if (!isImage && file.size > PDF_UPLOAD_LIMIT_BYTES) {
         throw new Error(
-          `PDF файл 100MB-аас их байна (${formatUploadSize(file.size)}).`,
+          `PDF файл 200MB-аас их байна (${formatUploadSize(file.size)}).`,
         );
       }
       form.append(isImage ? "image" : "pdf", file);

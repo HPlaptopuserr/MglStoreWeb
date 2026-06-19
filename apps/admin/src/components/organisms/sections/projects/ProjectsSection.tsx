@@ -28,7 +28,7 @@ import { ProjectOrderList } from "./ProjectOrderList";
 
 const generateId = () => Math.random().toString(36).slice(2, 10);
 const MAX_PROJECT_IMAGES = 12;
-const PROJECT_PDF_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024;
+const PROJECT_PDF_UPLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
 const STUDY_DELIVERY_TYPE_OPTIONS = [
   "Бүртгэл авч байна",
   "Танхимын сургалт",
@@ -1133,7 +1133,7 @@ export function ProjectsSection({
     }
     if (file.size > PROJECT_PDF_UPLOAD_LIMIT_BYTES) {
       setPdfUploadError(
-        `PDF файл 100MB-аас их байна (${formatUploadSize(file.size)}).`,
+        `PDF файл 200MB-аас их байна (${formatUploadSize(file.size)}).`,
       );
       return;
     }
