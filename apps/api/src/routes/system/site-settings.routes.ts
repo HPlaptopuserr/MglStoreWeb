@@ -150,6 +150,12 @@ function isSupabaseConfigured() {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
 }
 
+function isSupabaseObjectSizeError(message: string) {
+  return /object.*exceed|exceed.*object|file.*exceed|payload.*too large|entity.*too large|maximum.*size|size.*limit/i.test(
+    message,
+  );
+}
+
 function getApiBaseUrl(req: Request) {
   const configured =
     process.env.API_PUBLIC_URL ||
@@ -249,6 +255,13 @@ async function uploadSiteFile(
     });
 
   if (error) {
+    if (isSupabaseObjectSizeError(error.message)) {
+      console.warn(
+        `[site-upload] Supabase object size limit hit for ${storagePath}; falling back to local upload storage.`,
+      );
+      return saveLocalSiteUpload(req, storagePath, buffer);
+    }
+
     throw new Error(error.message);
   }
 
