@@ -2,7 +2,10 @@ import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
-import { requireOrgPermission, assertOrgPermission } from "../../services/permission.service";
+import {
+  requireOrgPermission,
+  assertOrgPermission,
+} from "../../services/permission.service";
 import { requireActivePlan } from "../../middleware/plan-guard";
 import {
   getReviewStatusForVendorMutation,
@@ -17,6 +20,11 @@ const MAX_IMAGES = 5;
 router.get("/service-posts", async (req, res) => {
   try {
     const { organizationId, activeOnly } = req.query;
+    const rawLimit = parseInt(String(req.query.limit || ""), 10);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(50, rawLimit) : 0;
+    const rawOffset = parseInt(String(req.query.offset || ""), 10);
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
 
     const posts = await prisma.servicePost.findMany({
       where: {
@@ -32,12 +40,19 @@ router.get("/service-posts", async (req, res) => {
         },
       },
       orderBy: { createdAt: "desc" },
+      ...(limit > 0
+        ? { skip: offset, take: limit }
+        : offset > 0
+          ? { skip: offset }
+          : {}),
     });
 
     res.json(posts);
   } catch (error) {
     console.error("get service-posts error", error);
-    res.status(500).json({ message: "Үйлчилгээний постуудыг авахад алдаа гарлаа" });
+    res
+      .status(500)
+      .json({ message: "Үйлчилгээний постуудыг авахад алдаа гарлаа" });
   }
 });
 
@@ -84,7 +99,12 @@ router.post("/service-posts/:id/request", requireAuth, async (req, res) => {
     }
 
     const post = await prisma.servicePost.findFirst({
-      where: { id: req.params.id, deletedAt: null, isActive: true, reviewStatus: "APPROVED" },
+      where: {
+        id: req.params.id,
+        deletedAt: null,
+        isActive: true,
+        reviewStatus: "APPROVED",
+      },
       select: {
         id: true,
         title: true,
@@ -137,52 +157,74 @@ router.post("/service-posts/:id/request", requireAuth, async (req, res) => {
     res.status(201).json(request);
   } catch (error) {
     console.error("create service-post request error", error);
-    res.status(500).json({ message: "Үйлчилгээний хүсэлт илгээхэд алдаа гарлаа" });
+    res
+      .status(500)
+      .json({ message: "Үйлчилгээний хүсэлт илгээхэд алдаа гарлаа" });
   }
 });
 
 // ── POST /service-posts — create (vendor)
-router.post("/service-posts", requireAuth, requireOrgPermission({ from: "body" }, Permission.MANAGE_SERVICES), requireActivePlan("body"), async (req, res) => {
-  try {
-    const { organizationId, title, description, priceText, tags, images, isActive } = req.body;
-
-    if (!organizationId || typeof organizationId !== "string") {
-      return res.status(400).json({ message: "organizationId шаардлагатай" });
-    }
-    if (!title || typeof title !== "string" || title.trim().length === 0) {
-      return res.status(400).json({ message: "Гарчиг шаардлагатай" });
-    }
-    if (title.trim().length > 200) {
-      return res.status(400).json({ message: "Гарчиг 200 тэмдэгтээс хэтрэхгүй байх ёстой" });
-    }
-
-    const imageUrls: string[] = Array.isArray(images) ? images.slice(0, MAX_IMAGES) : [];
-    const actorId = (req as any).user?.userId ?? null;
-    const reviewData = await getReviewStatusForVendorMutation();
-
-    const post = await prisma.servicePost.create({
-      data: {
+router.post(
+  "/service-posts",
+  requireAuth,
+  requireOrgPermission({ from: "body" }, Permission.MANAGE_SERVICES),
+  requireActivePlan("body"),
+  async (req, res) => {
+    try {
+      const {
         organizationId,
-        submittedById: actorId,
-        title: title.trim(),
-        description: description?.trim() || null,
-        priceText: priceText?.trim() || null,
-        tags: Array.isArray(tags) ? tags.filter((t: unknown) => typeof t === "string") : [],
-        isActive: isActive !== false,
-        ...reviewData,
-        images: {
-          create: imageUrls.map((url) => ({ url })),
-        },
-      },
-      include: { images: true },
-    });
+        title,
+        description,
+        priceText,
+        tags,
+        images,
+        isActive,
+      } = req.body;
 
-    res.status(201).json(post);
-  } catch (error) {
-    console.error("create service-post error", error);
-    res.status(500).json({ message: "Пост үүсгэхэд алдаа гарлаа" });
-  }
-});
+      if (!organizationId || typeof organizationId !== "string") {
+        return res.status(400).json({ message: "organizationId шаардлагатай" });
+      }
+      if (!title || typeof title !== "string" || title.trim().length === 0) {
+        return res.status(400).json({ message: "Гарчиг шаардлагатай" });
+      }
+      if (title.trim().length > 200) {
+        return res
+          .status(400)
+          .json({ message: "Гарчиг 200 тэмдэгтээс хэтрэхгүй байх ёстой" });
+      }
+
+      const imageUrls: string[] = Array.isArray(images)
+        ? images.slice(0, MAX_IMAGES)
+        : [];
+      const actorId = (req as any).user?.userId ?? null;
+      const reviewData = await getReviewStatusForVendorMutation();
+
+      const post = await prisma.servicePost.create({
+        data: {
+          organizationId,
+          submittedById: actorId,
+          title: title.trim(),
+          description: description?.trim() || null,
+          priceText: priceText?.trim() || null,
+          tags: Array.isArray(tags)
+            ? tags.filter((t: unknown) => typeof t === "string")
+            : [],
+          isActive: isActive !== false,
+          ...reviewData,
+          images: {
+            create: imageUrls.map((url) => ({ url })),
+          },
+        },
+        include: { images: true },
+      });
+
+      res.status(201).json(post);
+    } catch (error) {
+      console.error("create service-post error", error);
+      res.status(500).json({ message: "Пост үүсгэхэд алдаа гарлаа" });
+    }
+  },
+);
 
 // ── PATCH /service-posts/:id — update (vendor)
 router.patch("/service-posts/:id", requireAuth, async (req, res) => {
@@ -196,7 +238,12 @@ router.patch("/service-posts/:id", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "Пост олдсонгүй" });
     }
 
-    const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_SERVICES);
+    const perm = await assertOrgPermission(
+      req,
+      res,
+      existing.organizationId,
+      Permission.MANAGE_SERVICES,
+    );
     if (!perm) return;
 
     if (title !== undefined) {
@@ -204,16 +251,24 @@ router.patch("/service-posts/:id", requireAuth, async (req, res) => {
         return res.status(400).json({ message: "Гарчиг хоосон байж болохгүй" });
       }
       if (title.trim().length > 200) {
-        return res.status(400).json({ message: "Гарчиг 200 тэмдэгтээс хэтрэхгүй байх ёстой" });
+        return res
+          .status(400)
+          .json({ message: "Гарчиг 200 тэмдэгтээс хэтрэхгүй байх ёстой" });
       }
     }
 
     // rebuild images if provided
-    const updateData: Parameters<typeof prisma.servicePost.update>[0]["data"] = {};
+    const updateData: Parameters<typeof prisma.servicePost.update>[0]["data"] =
+      {};
     if (title !== undefined) updateData.title = title.trim();
-    if (description !== undefined) updateData.description = description?.trim() || null;
-    if (priceText !== undefined) updateData.priceText = priceText?.trim() || null;
-    if (tags !== undefined) updateData.tags = Array.isArray(tags) ? tags.filter((t: unknown) => typeof t === "string") : [];
+    if (description !== undefined)
+      updateData.description = description?.trim() || null;
+    if (priceText !== undefined)
+      updateData.priceText = priceText?.trim() || null;
+    if (tags !== undefined)
+      updateData.tags = Array.isArray(tags)
+        ? tags.filter((t: unknown) => typeof t === "string")
+        : [];
     if (isActive !== undefined) updateData.isActive = Boolean(isActive);
     Object.assign(updateData, {
       ...(await getReviewStatusForVendorMutation()),
@@ -222,7 +277,9 @@ router.patch("/service-posts/:id", requireAuth, async (req, res) => {
 
     if (Array.isArray(images)) {
       const imageUrls = images.slice(0, MAX_IMAGES);
-      await prisma.servicePostImage.deleteMany({ where: { servicePostId: existing.id } });
+      await prisma.servicePostImage.deleteMany({
+        where: { servicePostId: existing.id },
+      });
       updateData.images = { create: imageUrls.map((url) => ({ url })) };
     }
 
@@ -249,7 +306,12 @@ router.delete("/service-posts/:id", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "Пост олдсонгүй" });
     }
 
-    const perm = await assertOrgPermission(req, res, existing.organizationId, Permission.MANAGE_SERVICES);
+    const perm = await assertOrgPermission(
+      req,
+      res,
+      existing.organizationId,
+      Permission.MANAGE_SERVICES,
+    );
     if (!perm) return;
 
     await prisma.servicePost.update({

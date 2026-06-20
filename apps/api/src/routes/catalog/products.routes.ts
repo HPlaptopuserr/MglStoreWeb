@@ -88,12 +88,16 @@ const RESTAURANT_MENU_CATEGORIES = new Set([
 const KITCHEN_STATIONS = new Set(["HOT_KITCHEN", "COLD_KITCHEN", "BAR"]);
 
 const normalizeRestaurantMenuCategory = (value: unknown) => {
-  const normalized = String(value || "").trim().toUpperCase();
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase();
   return RESTAURANT_MENU_CATEGORIES.has(normalized) ? normalized : null;
 };
 
 const normalizeKitchenStation = (value: unknown) => {
-  const normalized = String(value || "").trim().toUpperCase();
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase();
   return KITCHEN_STATIONS.has(normalized) ? normalized : null;
 };
 
@@ -379,7 +383,10 @@ async function resolveBusinessCategoryFilter(categoryIdOrSlug: string) {
   const byParent = new Map<string, string[]>();
   for (const item of allCategories) {
     if (!item.parentId) continue;
-    byParent.set(item.parentId, [...(byParent.get(item.parentId) || []), item.id]);
+    byParent.set(item.parentId, [
+      ...(byParent.get(item.parentId) || []),
+      item.id,
+    ]);
   }
 
   const ids = new Set<string>([category.id]);
@@ -416,6 +423,8 @@ router.get("/products", optionalAuth, async (req, res) => {
     const rawLimit = parseInt(String(req.query.limit || ""), 10);
     const limit =
       Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, rawLimit) : 0;
+    const rawOffset = parseInt(String(req.query.offset || ""), 10);
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
 
     const where: any = {
       deletedAt: null,
@@ -529,7 +538,10 @@ router.get("/products", optionalAuth, async (req, res) => {
           const combinedA = a.searchScore + (a.interestScore || 0) * 0.18;
           const combinedB = b.searchScore + (b.interestScore || 0) * 0.18;
           if (combinedB !== combinedA) return combinedB - combinedA;
-        } else if (interestProfile.hasSignals && b.interestScore !== a.interestScore) {
+        } else if (
+          interestProfile.hasSignals &&
+          b.interestScore !== a.interestScore
+        ) {
           return b.interestScore - a.interestScore;
         }
         if (search && b.searchScore !== a.searchScore) {
@@ -544,7 +556,9 @@ router.get("/products", optionalAuth, async (req, res) => {
       });
 
     if (limit > 0) {
-      response = response.slice(0, limit);
+      response = response.slice(offset, offset + limit);
+    } else if (offset > 0) {
+      response = response.slice(offset);
     }
 
     return res.json(response);
@@ -558,15 +572,21 @@ router.get("/products", optionalAuth, async (req, res) => {
 
 router.post("/products/events", optionalAuth, async (req, res) => {
   try {
-    const rawType = String(req.body?.type || "").trim().toUpperCase();
+    const rawType = String(req.body?.type || "")
+      .trim()
+      .toUpperCase();
     if (!(rawType in ProductInteractionType)) {
-      return res.status(400).json({ message: "Дэмжигдэхгүй event төрөл байна" });
+      return res
+        .status(400)
+        .json({ message: "Дэмжигдэхгүй event төрөл байна" });
     }
 
     await recordProductInteraction({
       userId: (req as any).user?.userId,
       visitorId: req.body?.visitorId,
-      type: ProductInteractionType[rawType as keyof typeof ProductInteractionType],
+      type: ProductInteractionType[
+        rawType as keyof typeof ProductInteractionType
+      ],
       productId: req.body?.productId,
       businessCategoryId: req.body?.businessCategoryId,
       organizationId: req.body?.organizationId,
@@ -582,76 +602,86 @@ router.post("/products/events", optionalAuth, async (req, res) => {
   }
 });
 
-router.get("/products/recommendations/personalized", optionalAuth, async (req, res) => {
-  try {
-    const rawLimit = parseInt(String(req.query.limit || ""), 10);
-    const limit =
-      Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(40, rawLimit) : 16;
-    const visitorId = String(req.query.visitorId || "").trim();
-    const interestProfile = await getProductInterestProfile({
-      userId: (req as any).user?.userId,
-      visitorId,
-    });
+router.get(
+  "/products/recommendations/personalized",
+  optionalAuth,
+  async (req, res) => {
+    try {
+      const rawLimit = parseInt(String(req.query.limit || ""), 10);
+      const limit =
+        Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(40, rawLimit) : 16;
+      const visitorId = String(req.query.visitorId || "").trim();
+      const interestProfile = await getProductInterestProfile({
+        userId: (req as any).user?.userId,
+        visitorId,
+      });
 
-    const candidateWhere: any = {
-      deletedAt: null,
-      organization: { deletedAt: null, status: "ACTIVE" },
-      isActive: true,
-      reviewStatus: "APPROVED",
-    };
+      const candidateWhere: any = {
+        deletedAt: null,
+        organization: { deletedAt: null, status: "ACTIVE" },
+        isActive: true,
+        reviewStatus: "APPROVED",
+      };
 
-    if (!canBypassAllWebProductsVisibility(req)) {
-      const visibleOrganizationIds = await getWebProductsEnabledOrganizationIds();
-      candidateWhere.organizationId = { in: visibleOrganizationIds };
-    }
+      if (!canBypassAllWebProductsVisibility(req)) {
+        const visibleOrganizationIds =
+          await getWebProductsEnabledOrganizationIds();
+        candidateWhere.organizationId = { in: visibleOrganizationIds };
+      }
 
-    const candidates = await prisma.product.findMany({
-      where: candidateWhere,
-      take: 180,
-      orderBy: { createdAt: "desc" },
-      include: {
-        images: { select: { id: true, url: true } },
-        businessCategory: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            parent: { select: { id: true, name: true, slug: true } },
+      const candidates = await prisma.product.findMany({
+        where: candidateWhere,
+        take: 180,
+        orderBy: { createdAt: "desc" },
+        include: {
+          images: { select: { id: true, url: true } },
+          businessCategory: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              parent: { select: { id: true, name: true, slug: true } },
+            },
+          },
+          organization: { select: { id: true, name: true, logoUrl: true } },
+          discounts: {
+            where: { isActive: true, validUntil: { gte: new Date() } },
+            select: { percent: true, validUntil: true },
+            take: 1,
           },
         },
-        organization: { select: { id: true, name: true, logoUrl: true } },
-        discounts: {
-          where: { isActive: true, validUntil: { gte: new Date() } },
-          select: { percent: true, validUntil: true },
-          take: 1,
-        },
-      },
-    });
+      });
 
-    const ranked = candidates
-      .map((product) => ({
-        ...product,
-        interestScore: scoreProductForInterest(product, interestProfile),
-      }))
-      .sort((a, b) => {
-        if (interestProfile.hasSignals && b.interestScore !== a.interestScore) {
-          return b.interestScore - a.interestScore;
-        }
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      })
-      .slice(0, limit);
+      const ranked = candidates
+        .map((product) => ({
+          ...product,
+          interestScore: scoreProductForInterest(product, interestProfile),
+        }))
+        .sort((a, b) => {
+          if (
+            interestProfile.hasSignals &&
+            b.interestScore !== a.interestScore
+          ) {
+            return b.interestScore - a.interestScore;
+          }
+          return (
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        })
+        .slice(0, limit);
 
-    return res.json({
-      products: ranked,
-      personalized: interestProfile.hasSignals,
-    });
-  } catch (error) {
-    console.error("get personalized recommendations error", error);
-    return res
-      .status(500)
-      .json({ message: "Хувийн санал болгох бараа авахад алдаа гарлаа" });
-  }
-});
+      return res.json({
+        products: ranked,
+        personalized: interestProfile.hasSignals,
+      });
+    } catch (error) {
+      console.error("get personalized recommendations error", error);
+      return res
+        .status(500)
+        .json({ message: "Хувийн санал болгох бараа авахад алдаа гарлаа" });
+    }
+  },
+);
 
 /* ─── GET /products/import-template ──────────────────────────────────── */
 router.get("/products/import-template", async (req, res) => {
@@ -1301,7 +1331,8 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
     };
 
     if (!canBypassAllWebProductsVisibility(req)) {
-      const visibleOrganizationIds = await getWebProductsEnabledOrganizationIds();
+      const visibleOrganizationIds =
+        await getWebProductsEnabledOrganizationIds();
       candidateWhere.organizationId = { in: visibleOrganizationIds };
     }
 
@@ -1310,7 +1341,9 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
       : [];
     const parentCategoryId = source.businessCategory?.parent?.id;
     const categorySignals = [
-      ...(categoryIds.length > 0 ? [{ businessCategoryId: { in: categoryIds } }] : []),
+      ...(categoryIds.length > 0
+        ? [{ businessCategoryId: { in: categoryIds } }]
+        : []),
       ...(parentCategoryId
         ? [{ businessCategory: { parentId: parentCategoryId } }]
         : []),
@@ -1354,7 +1387,10 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
         similarityScore: scoreProductSimilarity(source, candidate),
         interestScore: scoreProductForInterest(candidate, interestProfile),
       }))
-      .filter((candidate) => candidate.similarityScore > 0 || candidate.interestScore > 0)
+      .filter(
+        (candidate) =>
+          candidate.similarityScore > 0 || candidate.interestScore > 0,
+      )
       .sort((a, b) => {
         const aScore = a.similarityScore + (a.interestScore || 0) * 0.28;
         const bScore = b.similarityScore + (b.interestScore || 0) * 0.28;
@@ -1384,7 +1420,10 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
     console.error("get product recommendations error", error);
     return res
       .status(500)
-      .json({ message: "Санал болгох бараа авахад алдаа гарлаа", error: String(error) });
+      .json({
+        message: "Санал болгох бараа авахад алдаа гарлаа",
+        error: String(error),
+      });
   }
 });
 
@@ -1536,7 +1575,9 @@ router.post(
       if (normalizedPreparationMinutes === undefined) {
         return res
           .status(400)
-          .json({ message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой" });
+          .json({
+            message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой",
+          });
       }
       const restaurantMenuEnabled = isTruthyQueryValue(isRestaurantMenuItem);
       const normalizedMenuCategory = restaurantMenuEnabled
@@ -1806,7 +1847,9 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       if (nextPreparationMinutes === undefined) {
         return res
           .status(400)
-          .json({ message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой" });
+          .json({
+            message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой",
+          });
       }
       if (
         nextRestaurantMenuEnabled &&

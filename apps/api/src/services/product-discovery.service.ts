@@ -71,18 +71,52 @@ const SEARCH_INTENTS: Array<{ label: string; keywords: string[]; aliases: string
       "ус",
       "мах",
       "будаа",
+      "hool",
+      "huns",
+      "undaa",
     ],
-    aliases: ["хүнс", "супермаркет", "мини маркет", "сүү цагаан идээ", "өдөр тутмын хүнс"],
+    aliases: [
+      "хүнс",
+      "хоол хүнс",
+      "супермаркет",
+      "мини маркет",
+      "сүү цагаан идээ",
+      "өдөр тутмын хүнс",
+      "ундаа",
+    ],
   },
   {
     label: "Гоо сайхан",
-    keywords: ["гоо", "сайхан", "крем", "cream", "serum", "shampoo", "үнэртэн", "саван"],
-    aliases: ["гоо сайхан", "арьс арчилгаа"],
+    keywords: [
+      "гоо",
+      "сайхан",
+      "крем",
+      "cream",
+      "serum",
+      "shampoo",
+      "үнэртэн",
+      "саван",
+      "goi",
+      "goy",
+      "goyo",
+    ],
+    aliases: ["гоо сайхан", "арьс арчилгаа", "косметик"],
   },
   {
     label: "Хувцас",
-    keywords: ["хувцас", "цамц", "өмд", "гутал", "shoe", "shirt", "dress"],
-    aliases: ["хувцас", "гутал", "гутал цүнх", "онлайн дэлгүүр"],
+    keywords: [
+      "хувцас",
+      "цамц",
+      "өмд",
+      "гутал",
+      "shoe",
+      "shirt",
+      "dress",
+      "huvtsas",
+      "tsamts",
+      "gutal",
+    ],
+    aliases: ["хувцас", "цамц", "өмд", "гутал", "гутал цүнх", "онлайн дэлгүүр"],
   },
   {
     label: "Гэр ахуй",
@@ -129,7 +163,20 @@ const SEARCH_INTENTS: Array<{ label: string; keywords: string[]; aliases: string
   },
   {
     label: "Цахилгаан бараа",
-    keywords: ["утас", "iphone", "tv", "цэнэглэгч", "charger", "usb", "кабель", "computer", "laptop"],
+    keywords: [
+      "утас",
+      "iphone",
+      "tv",
+      "цэнэглэгч",
+      "charger",
+      "usb",
+      "кабель",
+      "computer",
+      "laptop",
+      "utas",
+      "tseneglegch",
+      "tsahilgaan",
+    ],
     aliases: [
       "цахилгаан",
       "гар утас таблет",
@@ -137,6 +184,9 @@ const SEARCH_INTENTS: Array<{ label: string; keywords: string[]; aliases: string
       "камер аудио",
       "дагалдах хэрэгсэл",
       "онлайн дэлгүүр",
+      "утас",
+      "гар утас",
+      "цэнэглэгч",
     ],
   },
   {
@@ -160,6 +210,110 @@ const SEARCH_INTENTS: Array<{ label: string; keywords: string[]; aliases: string
     aliases: ["кофе", "ундаа", "супермаркет"],
   },
 ];
+
+const LATIN_TO_CYRILLIC_EXCEPTIONS: Record<string, string[]> = {
+  hool: ["хоол"],
+  huns: ["хүнс"],
+  undaa: ["ундаа"],
+  utas: ["утас"],
+  garutas: ["гар утас"],
+  huvtsas: ["хувцас"],
+  tsamts: ["цамц"],
+  umd: ["өмд"],
+  omd: ["өмд"],
+  gutal: ["гутал"],
+  goy: ["гоо"],
+  goyo: ["гоё", "гоо"],
+  tseneglegch: ["цэнэглэгч"],
+  tsahilgaan: ["цахилгаан"],
+};
+
+const LATIN_DIGRAPHS: Array<[string, string]> = [
+  ["sh", "ш"],
+  ["ch", "ч"],
+  ["ts", "ц"],
+  ["kh", "х"],
+  ["ya", "я"],
+  ["yo", "ё"],
+  ["yu", "ю"],
+  ["ye", "е"],
+];
+
+const LATIN_CHARS: Record<string, string> = {
+  a: "а",
+  b: "б",
+  c: "к",
+  d: "д",
+  e: "э",
+  f: "ф",
+  g: "г",
+  h: "х",
+  i: "и",
+  j: "ж",
+  k: "к",
+  l: "л",
+  m: "м",
+  n: "н",
+  o: "о",
+  p: "п",
+  q: "к",
+  r: "р",
+  s: "с",
+  t: "т",
+  u: "у",
+  v: "в",
+  w: "в",
+  x: "кс",
+  y: "й",
+  z: "з",
+};
+
+function withMongolianVowelVariants(value: string) {
+  const variants = new Set([value]);
+  if (value.includes("у")) variants.add(value.replaceAll("у", "ү"));
+  if (value.includes("ү")) variants.add(value.replaceAll("ү", "у"));
+  if (value.includes("о")) variants.add(value.replaceAll("о", "ө"));
+  if (value.includes("ө")) variants.add(value.replaceAll("ө", "о"));
+  return [...variants];
+}
+
+function transliterateLatinTokenToCyrillic(token: string) {
+  const normalized = normalizeDiscoveryText(token).replace(/\s+/g, "");
+  if (!normalized || /[^\x00-\x7F]/.test(normalized)) return [];
+
+  const exception = LATIN_TO_CYRILLIC_EXCEPTIONS[normalized];
+  if (exception) return exception;
+
+  let output = "";
+  for (let index = 0; index < normalized.length; ) {
+    const pair = LATIN_DIGRAPHS.find(([latin]) =>
+      normalized.startsWith(latin, index),
+    );
+    if (pair) {
+      output += pair[1];
+      index += pair[0].length;
+      continue;
+    }
+    output += LATIN_CHARS[normalized[index]] || normalized[index];
+    index += 1;
+  }
+
+  return withMongolianVowelVariants(output);
+}
+
+function expandSearchPhraseVariants(phrase: string) {
+  const normalized = normalizeDiscoveryText(phrase);
+  if (!normalized) return [];
+
+  const variants = new Set<string>([phrase.trim(), normalized]);
+  for (const token of normalized.split(" ").filter(Boolean)) {
+    for (const variant of transliterateLatinTokenToCyrillic(token)) {
+      variants.add(variant);
+    }
+  }
+
+  return [...variants].filter(Boolean);
+}
 
 function matchesDiscoveryKeyword(text: string, tokens: string[], keyword: string) {
   const normalized = normalizeDiscoveryText(keyword);
@@ -208,7 +362,9 @@ export function buildProductSearchWhere(search: string) {
     intent.label,
     ...intent.aliases,
   ]);
-  const phrases = [search.trim(), ...tokens, ...intentPhrases].filter(Boolean);
+  const phrases = [search.trim(), ...tokens, ...intentPhrases]
+    .filter(Boolean)
+    .flatMap(expandSearchPhraseVariants);
   const seen = new Set<string>();
   const uniquePhrases = phrases.filter((phrase) => {
     const normalized = normalizeDiscoveryText(phrase);
@@ -241,6 +397,14 @@ export function scoreProductForSearch(product: SearchableProduct, search: string
   if (!normalizedSearch) return 0;
 
   const tokens = tokenizeDiscoveryText(search);
+  const searchVariants = [...new Set(
+    expandSearchPhraseVariants(search).map(normalizeDiscoveryText),
+  )];
+  const tokenVariants = [...new Set(
+    tokens
+      .flatMap((token) => [token, ...transliterateLatinTokenToCyrillic(token)])
+      .map(normalizeDiscoveryText),
+  )];
   const fields = {
     name: normalizeDiscoveryText(product.name || ""),
     description: normalizeDiscoveryText(product.description || ""),
@@ -253,14 +417,16 @@ export function scoreProductForSearch(product: SearchableProduct, search: string
   };
 
   let score = 0;
-  if (fields.name === normalizedSearch) score += 120;
-  if (fields.name.includes(normalizedSearch)) score += 80;
-  if (fields.category.includes(normalizedSearch)) score += 60;
-  if (fields.organization.includes(normalizedSearch)) score += 35;
-  if (fields.description.includes(normalizedSearch)) score += 25;
+  for (const variant of searchVariants) {
+    if (fields.name === variant) score += 120;
+    if (fields.name.includes(variant)) score += 80;
+    if (fields.category.includes(variant)) score += 60;
+    if (fields.organization.includes(variant)) score += 35;
+    if (fields.description.includes(variant)) score += 25;
+  }
   if (fields.sku === normalizedSearch || fields.barcode === normalizedSearch) score += 100;
 
-  for (const token of tokens) {
+  for (const token of tokenVariants) {
     if (fields.name.includes(token)) score += 32;
     if (fields.category.includes(token)) score += 28;
     if (fields.organization.includes(token)) score += 16;

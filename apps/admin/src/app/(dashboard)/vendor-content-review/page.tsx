@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock3,
   Filter,
+  Film,
   Loader2,
   Megaphone,
   Package,
@@ -18,7 +19,7 @@ import {
 import { API, adminFetch } from "@/lib/api";
 
 type ReviewStatus = "PENDING" | "APPROVED" | "REJECTED";
-type ContentType = "product" | "service" | "post";
+type ContentType = "product" | "service" | "post" | "reel";
 type StatusFilter = ReviewStatus | "ALL";
 type TypeFilter = ContentType | "all";
 
@@ -29,6 +30,7 @@ type ReviewItem = {
   description: string | null;
   priceText: string | null;
   imageUrl: string | null;
+  videoUrl?: string | null;
   reviewStatus: ReviewStatus;
   isActive: boolean;
   createdAt: string;
@@ -88,6 +90,11 @@ const TYPE_META: Record<
     label: "Пост",
     icon: Send,
     className: "bg-violet-50 text-violet-600",
+  },
+  reel: {
+    label: "Reel",
+    icon: Film,
+    className: "bg-fuchsia-50 text-fuchsia-600",
   },
 };
 
@@ -186,10 +193,13 @@ export default function VendorContentReviewPage() {
     setSavingToggle(true);
     setError("");
     try {
-      const res = await adminFetch(`${API}/site-settings/${REVIEW_SETTING_KEY}`, {
-        method: "PUT",
-        body: JSON.stringify({ value: next ? "true" : "false" }),
-      });
+      const res = await adminFetch(
+        `${API}/site-settings/${REVIEW_SETTING_KEY}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ value: next ? "true" : "false" }),
+        },
+      );
       if (!res.ok) throw new Error("toggle");
       setReviewEnabled(next);
     } catch {
@@ -239,7 +249,8 @@ export default function VendorContentReviewPage() {
               </h1>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
                 Vendor-оос web store дээр нийтлэх бүтээгдэхүүн, үйлчилгээ/зар,
-                постуудыг админ баталгаажуулсны дараа public хэсэгт гаргана.
+                пост болон reel-үүдийг админ баталгаажуулсны дараа public хэсэгт
+                гаргана.
               </p>
             </div>
           </div>
@@ -266,32 +277,36 @@ export default function VendorContentReviewPage() {
         </div>
 
         <div className="grid border-t border-slate-100 bg-slate-50/70 sm:grid-cols-3">
-          {(["PENDING", "APPROVED", "REJECTED"] as ReviewStatus[]).map((key) => {
-            const meta = STATUS_META[key];
-            const Icon = meta.icon;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setStatus(key)}
-                className={`flex items-center justify-between border-b border-slate-100 px-6 py-4 text-left transition sm:border-b-0 sm:border-r ${
-                  status === key ? "bg-white" : "hover:bg-white/70"
-                }`}
-              >
-                <span className="flex items-center gap-3">
-                  <span
-                    className={`flex h-10 w-10 items-center justify-center rounded-xl ring-1 ${meta.className}`}
-                  >
-                    <Icon size={18} />
+          {(["PENDING", "APPROVED", "REJECTED"] as ReviewStatus[]).map(
+            (key) => {
+              const meta = STATUS_META[key];
+              const Icon = meta.icon;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setStatus(key)}
+                  className={`flex items-center justify-between border-b border-slate-100 px-6 py-4 text-left transition sm:border-b-0 sm:border-r ${
+                    status === key ? "bg-white" : "hover:bg-white/70"
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <span
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl ring-1 ${meta.className}`}
+                    >
+                      <Icon size={18} />
+                    </span>
+                    <span className="font-black text-slate-900">
+                      {meta.label}
+                    </span>
                   </span>
-                  <span className="font-black text-slate-900">{meta.label}</span>
-                </span>
-                <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-black text-slate-600">
-                  {counts[key]}
-                </span>
-              </button>
-            );
-          })}
+                  <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-black text-slate-600">
+                    {counts[key]}
+                  </span>
+                </button>
+              );
+            },
+          )}
         </div>
       </section>
 
@@ -311,22 +326,22 @@ export default function VendorContentReviewPage() {
               <Filter size={14} />
               filter
             </span>
-            {(["all", "product", "service", "post"] as TypeFilter[]).map(
-              (filter) => (
-                <button
-                  key={filter}
-                  type="button"
-                  onClick={() => setType(filter)}
-                  className={`rounded-xl px-4 py-2 text-sm font-black transition ${
-                    type === filter
-                      ? "bg-slate-950 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                >
-                  {filter === "all" ? "Бүгд" : TYPE_META[filter].label}
-                </button>
-              ),
-            )}
+            {(
+              ["all", "product", "service", "post", "reel"] as TypeFilter[]
+            ).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setType(filter)}
+                className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+                  type === filter
+                    ? "bg-slate-950 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {filter === "all" ? "Бүгд" : TYPE_META[filter].label}
+              </button>
+            ))}
             <button
               type="button"
               onClick={() => setStatus("ALL")}
@@ -395,11 +410,20 @@ function ReviewCard({
   const TypeIcon = typeMeta.icon;
   const StatusIcon = statusMeta.icon;
   const imageUrl = getImageUrl(item.imageUrl);
+  const videoUrl = getImageUrl(item.videoUrl || null);
 
   return (
     <article className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md lg:grid-cols-[132px_minmax(0,1fr)_240px]">
       <div className="overflow-hidden rounded-2xl bg-slate-100">
-        {imageUrl ? (
+        {item.type === "reel" && videoUrl ? (
+          <video
+            src={videoUrl}
+            poster={imageUrl || undefined}
+            className="h-32 w-full bg-slate-950 object-contain lg:h-full"
+            controls
+            preload="metadata"
+          />
+        ) : imageUrl ? (
           <img
             src={imageUrl}
             alt=""
@@ -473,7 +497,11 @@ function ReviewCard({
             disabled={busy || item.reviewStatus === "APPROVED"}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+            {busy ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <CheckCircle2 size={16} />
+            )}
             Зөвшөөрөх
           </button>
           <button

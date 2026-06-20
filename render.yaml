@@ -183,6 +183,14 @@ services:
         sync: false
       - key: PUSH_ECR_TERMINAL_ID
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_REELS_BUCKET
+        value: reels
+      - key: REEL_VIDEO_LIMIT_BYTES
+        value: "262144000"
 
 databases:
   - name: mglstore

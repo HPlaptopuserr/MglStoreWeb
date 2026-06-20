@@ -6,12 +6,15 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  Clapperboard,
   PackageSearch,
+  Play,
   Search,
   Sparkles,
   Store,
   Wrench,
 } from "lucide-react";
+import { API } from "@/lib/api";
 import { AccountStatusPanel } from "./AccountStatusPanel";
 
 export type MarketplaceCategory = {
@@ -107,12 +110,22 @@ export type MarketplaceProjectBanner = {
   imageUrl: string;
 };
 
+export type MarketplaceReelPreview = {
+  id: string;
+  title?: string | null;
+  caption?: string | null;
+  videoUrl: string;
+  thumbnailUrl?: string | null;
+  organization?: { name?: string | null; logoUrl?: string | null } | null;
+};
+
 type MarketplaceBoardProps = {
   categories: MarketplaceCategory[];
   activeCategory?: string | null;
   searchQuery?: string;
   total: number;
   products: MarketplaceProduct[];
+  reels?: MarketplaceReelPreview[];
   onCategoryClick?: (categoryId: string | null) => void;
   categoryHref?: (category: MarketplaceCategory) => string;
   allHref?: string;
@@ -129,6 +142,7 @@ export function MarketplaceBoard({
   searchQuery = "",
   total,
   products,
+  reels = [],
   onCategoryClick,
   categoryHref,
   allHref = "/products",
@@ -142,8 +156,12 @@ export function MarketplaceBoard({
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const visibleCategories = categories.slice(0, 6);
   const spotlightProducts = products.slice(0, 4);
-  const discounted = products.find((product) => product.discounts?.[0]?.percent);
-  const preorder = products.find((product) => product.supplyType === "CHINA_PREORDER");
+  const discounted = products.find(
+    (product) => product.discounts?.[0]?.percent,
+  );
+  const preorder = products.find(
+    (product) => product.supplyType === "CHINA_PREORDER",
+  );
 
   useEffect(() => {
     setLocalSearch(searchQuery);
@@ -196,7 +214,9 @@ export function MarketplaceBoard({
               </span>
               <CategoryLink
                 href={allHref}
-                onClick={onCategoryClick ? () => onCategoryClick(null) : undefined}
+                onClick={
+                  onCategoryClick ? () => onCategoryClick(null) : undefined
+                }
                 className="inline-flex items-center gap-1 text-xs font-black text-orange-600"
               >
                 Бүгд <ArrowRight className="h-3.5 w-3.5" />
@@ -213,7 +233,11 @@ export function MarketplaceBoard({
                   <CategoryLink
                     key={category.id}
                     href={href}
-                    onClick={onCategoryClick ? () => onCategoryClick(category.id) : undefined}
+                    onClick={
+                      onCategoryClick
+                        ? () => onCategoryClick(category.id)
+                        : undefined
+                    }
                     className={`group flex h-10 w-full items-center justify-between gap-3 rounded-xl px-2.5 text-left text-sm font-black transition ${
                       activeCategory === category.id
                         ? "bg-orange-500 text-white shadow-md shadow-orange-100"
@@ -223,7 +247,9 @@ export function MarketplaceBoard({
                     <span className="flex min-w-0 items-center gap-2">
                       <span
                         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base ${
-                          activeCategory === category.id ? "bg-white/20" : "bg-white ring-1 ring-slate-100"
+                          activeCategory === category.id
+                            ? "bg-white/20"
+                            : "bg-white ring-1 ring-slate-100"
                         }`}
                       >
                         <SafeCategoryIcon
@@ -252,11 +278,19 @@ export function MarketplaceBoard({
               </div>
               <ProjectHeroBanner projects={projectBanners} />
               <div className="hidden lg:block">
-                <DealStrip products={spotlightProducts.slice(0, 3)} total={total} />
+                {reels.length > 0 ? (
+                  <ReelEntryCard reels={reels} />
+                ) : (
+                  <DealStrip
+                    products={spotlightProducts.slice(0, 3)}
+                    total={total}
+                  />
+                )}
               </div>
             </div>
 
             <div className="hidden grid-cols-4 gap-3 lg:grid">
+              {reels.length > 0 && <CompactReelTile reel={reels[0]} />}
               <ServiceSpotlightTile promo={servicesPromo} />
               <SpotlightTile
                 href={discounted ? `/products/${discounted.id}` : "/products"}
@@ -267,20 +301,30 @@ export function MarketplaceBoard({
                 tint="rose"
               />
               <SpotlightTile
-                href={preorder ? `/products/${preorder.id}` : "/products?type=preorder"}
+                href={
+                  preorder
+                    ? `/products/${preorder.id}`
+                    : "/products?type=preorder"
+                }
                 label="Захиалга"
                 title={preorder?.name || "Захиалгын бараа"}
-                value={preorder?.preorderLeadTimeDays ? `${preorder.preorderLeadTimeDays} хоног` : "Удахгүй"}
+                value={
+                  preorder?.preorderLeadTimeDays
+                    ? `${preorder.preorderLeadTimeDays} хоног`
+                    : "Удахгүй"
+                }
                 product={preorder}
                 tint="emerald"
               />
-              <SpotlightTile
-                href="/organizations"
-                label="Дэлгүүрүүд"
-                title="Баталгаатай vendor"
-                value="Store"
-                tint="sky"
-              />
+              {!reels.length && (
+                <SpotlightTile
+                  href="/organizations"
+                  label="Дэлгүүрүүд"
+                  title="Баталгаатай vendor"
+                  value="Store"
+                  tint="sky"
+                />
+              )}
             </div>
           </div>
 
@@ -312,7 +356,11 @@ export function MarketplaceBoard({
               <CategoryLink
                 key={category.id}
                 href={href}
-                onClick={onCategoryClick ? () => onCategoryClick(category.id) : undefined}
+                onClick={
+                  onCategoryClick
+                    ? () => onCategoryClick(category.id)
+                    : undefined
+                }
                 className={`flex h-9 shrink-0 items-center gap-2 rounded-xl border px-3 text-sm font-black transition sm:h-10 sm:px-4 ${
                   activeCategory === category.id
                     ? "border-orange-500 bg-orange-500 text-white shadow-md shadow-orange-100"
@@ -338,7 +386,100 @@ export function MarketplaceBoard({
   );
 }
 
-function ProjectHeroBanner({ projects }: { projects: MarketplaceProjectBanner[] }) {
+function getMarketplaceMediaUrl(url?: string | null) {
+  if (!url) return "";
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  return `${API.replace(/\/api$/, "")}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
+function ReelEntryCard({ reels }: { reels: MarketplaceReelPreview[] }) {
+  const first = reels[0];
+  const videoUrl = getMarketplaceMediaUrl(first?.videoUrl);
+  const poster = getMarketplaceMediaUrl(first?.thumbnailUrl);
+
+  return (
+    <Link
+      href="/reels"
+      className="group relative flex h-[172px] overflow-hidden rounded-2xl bg-slate-950 p-3 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-fuchsia-100/70 sm:h-[190px] sm:p-4 lg:h-[230px]"
+    >
+      {videoUrl ? (
+        <video
+          src={videoUrl}
+          poster={poster || undefined}
+          muted
+          playsInline
+          preload="metadata"
+          className="absolute inset-0 h-full w-full object-cover opacity-78 transition group-hover:scale-105 group-hover:opacity-90"
+        />
+      ) : null}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_24%,rgba(249,115,22,0.34),transparent_26%),linear-gradient(135deg,rgba(15,23,42,0.88),rgba(112,26,117,0.68))]" />
+      <div className="relative z-10 flex h-full w-full flex-col justify-between">
+        <div className="flex items-start justify-between gap-3">
+          <span className="inline-flex items-center gap-2 rounded-lg bg-white/16 px-3 py-1 text-xs font-black backdrop-blur-sm">
+            <Clapperboard className="h-3.5 w-3.5" />
+            Reels
+          </span>
+          <span className="rounded-full bg-orange-500 px-2.5 py-1 text-xs font-black">
+            {reels.length}
+          </span>
+        </div>
+        <div>
+          <p className="max-w-[13rem] text-2xl font-black leading-[1.02] tracking-tight lg:text-xl xl:text-2xl">
+            Store video үзэх
+          </p>
+          <p className="mt-1 line-clamp-2 max-w-[14rem] text-xs font-bold leading-5 text-white/78">
+            Бараа, байгууллагын богино video танилцуулга.
+          </p>
+          <span className="mt-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-950 transition group-hover:bg-orange-500 group-hover:text-white">
+            Reel үзэх <Play className="h-3.5 w-3.5 fill-current" />
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function CompactReelTile({ reel }: { reel: MarketplaceReelPreview }) {
+  const videoUrl = getMarketplaceMediaUrl(reel.videoUrl);
+  const poster = getMarketplaceMediaUrl(reel.thumbnailUrl);
+
+  return (
+    <Link
+      href="/reels"
+      className="group relative h-[126px] overflow-hidden rounded-2xl border border-fuchsia-100 bg-slate-950 p-3 text-white shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200"
+    >
+      {videoUrl ? (
+        <video
+          src={videoUrl}
+          poster={poster || undefined}
+          muted
+          playsInline
+          preload="metadata"
+          className="absolute inset-0 h-full w-full object-cover opacity-72 transition group-hover:scale-105"
+        />
+      ) : null}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-950/78 via-slate-950/34 to-fuchsia-700/52" />
+      <div className="relative z-10 flex h-full flex-col justify-between">
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white/16 px-2.5 py-1 text-[10px] font-black backdrop-blur">
+          <Clapperboard className="h-3 w-3" />
+          Reel
+        </span>
+        <div>
+          <p className="line-clamp-2 text-sm font-black leading-4">
+            {reel.title || reel.caption || "Video танилцуулга"}
+          </p>
+          <p className="mt-1 text-[11px] font-bold text-white/72">Үзэх</p>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function ProjectHeroBanner({
+  projects,
+}: {
+  projects: MarketplaceProjectBanner[];
+}) {
   const slides = projects.slice(0, 4).filter((project) => project.imageUrl);
   const [activeIndex, setActiveIndex] = useState(0);
   const active = slides[activeIndex % Math.max(slides.length, 1)];
@@ -418,7 +559,9 @@ function ProjectHeroBanner({ projects }: { projects: MarketplaceProjectBanner[] 
               <span
                 key={`${project.id}-dot`}
                 className={`h-2 rounded-full transition ${
-                  index === activeIndex % slides.length ? "w-5 bg-white" : "w-2 bg-white/45"
+                  index === activeIndex % slides.length
+                    ? "w-5 bg-white"
+                    : "w-2 bg-white/45"
                 }`}
               />
             ))}
@@ -430,16 +573,19 @@ function ProjectHeroBanner({ projects }: { projects: MarketplaceProjectBanner[] 
 }
 
 function SideBanner({ banner }: { banner?: MarketplaceSideBanner | null }) {
-  const resolved = banner?.isActive === false
-    ? null
-    : {
-        imageUrl: banner?.imageUrl || "",
-        eyebrow: banner?.eyebrow || "Онцлох санал",
-        title: banner?.title || "Өнөөдрийн hot deal",
-        subtitle: banner?.subtitle || "Admin-аас banner тохируулж энэ зайг campaign болгон ашиглана.",
-        cta: banner?.cta || "Дэлгэрэнгүй",
-        href: banner?.href || "/products?discount=1&sort=discount",
-      };
+  const resolved =
+    banner?.isActive === false
+      ? null
+      : {
+          imageUrl: banner?.imageUrl || "",
+          eyebrow: banner?.eyebrow || "Онцлох санал",
+          title: banner?.title || "Өнөөдрийн hot deal",
+          subtitle:
+            banner?.subtitle ||
+            "Admin-аас banner тохируулж энэ зайг campaign болгон ашиглана.",
+          cta: banner?.cta || "Дэлгэрэнгүй",
+          href: banner?.href || "/products?discount=1&sort=discount",
+        };
 
   if (!resolved) return null;
 
@@ -468,7 +614,9 @@ function SideBanner({ banner }: { banner?: MarketplaceSideBanner | null }) {
           <span className="inline-flex max-w-full rounded-full bg-white/16 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/90 backdrop-blur-sm">
             <span className="truncate">{resolved.eyebrow}</span>
           </span>
-          <p className="mt-2 line-clamp-2 text-lg font-black leading-tight">{resolved.title}</p>
+          <p className="mt-2 line-clamp-2 text-lg font-black leading-tight">
+            {resolved.title}
+          </p>
           <p className="mt-1 line-clamp-2 text-xs font-semibold leading-4 text-white/78">
             {resolved.subtitle}
           </p>
@@ -478,7 +626,9 @@ function SideBanner({ banner }: { banner?: MarketplaceSideBanner | null }) {
           <ArrowRight className="h-3.5 w-3.5 shrink-0" />
         </span>
       </div>
-      {!resolved.imageUrl && <div className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/18" />}
+      {!resolved.imageUrl && (
+        <div className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/18" />
+      )}
     </Link>
   );
 }
@@ -536,11 +686,15 @@ function SpotlightTile({
       href={href}
       className="group relative h-[96px] overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:shadow-lg hover:shadow-orange-100/40"
     >
-      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ${tintClass[tint]}`}>
+      <span
+        className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ${tintClass[tint]}`}
+      >
         {label}
       </span>
       <div className="mt-3 max-w-[68%]">
-        <p className="line-clamp-1 text-sm font-black text-slate-950">{title}</p>
+        <p className="line-clamp-1 text-sm font-black text-slate-950">
+          {title}
+        </p>
         <p className="mt-0.5 text-sm font-black text-orange-600">{value}</p>
       </div>
       <ProductThumb product={product} />
@@ -548,7 +702,11 @@ function SpotlightTile({
   );
 }
 
-function ServiceSpotlightTile({ promo }: { promo?: MarketplaceServicesPromo | null }) {
+function ServiceSpotlightTile({
+  promo,
+}: {
+  promo?: MarketplaceServicesPromo | null;
+}) {
   const resolved = {
     eyebrow: promo?.eyebrow || "MGL үйлчилгээ",
     title: promo?.title || "Үйлчилгээний багцууд",
@@ -610,12 +768,17 @@ function ProductThumb({ product }: { product?: MarketplaceProduct }) {
   );
 }
 
-function MglServicesPromoPanel({ promo }: { promo?: MarketplaceServicesPromo | null }) {
+function MglServicesPromoPanel({
+  promo,
+}: {
+  promo?: MarketplaceServicesPromo | null;
+}) {
   const resolved = {
     imageUrl: promo?.imageUrl || "",
     eyebrow: promo?.eyebrow || "MGL үйлчилгээ",
     title: promo?.title || "MGL үйлчилгээний багцууд",
-    subtitle: promo?.subtitle || "MGL-ээс гаргаж буй хууль, маркетинг, HR үйлчилгээ",
+    subtitle:
+      promo?.subtitle || "MGL-ээс гаргаж буй хууль, маркетинг, HR үйлчилгээ",
     cta: promo?.cta || "MGL үйлчилгээ",
   };
 
@@ -663,12 +826,20 @@ function MglServicesPromoPanel({ promo }: { promo?: MarketplaceServicesPromo | n
           </span>
         </div>
       </div>
-      {!resolved.imageUrl && <div className="absolute -bottom-12 -right-8 h-36 w-36 rounded-full bg-white/18" />}
+      {!resolved.imageUrl && (
+        <div className="absolute -bottom-12 -right-8 h-36 w-36 rounded-full bg-white/18" />
+      )}
     </Link>
   );
 }
 
-function DealStrip({ products, total }: { products: MarketplaceProduct[]; total: number }) {
+function DealStrip({
+  products,
+  total,
+}: {
+  products: MarketplaceProduct[];
+  total: number;
+}) {
   const items = products.slice(0, 3);
 
   return (
@@ -692,9 +863,14 @@ function DealStrip({ products, total }: { products: MarketplaceProduct[]; total:
         </div>
         <div className="grid grid-cols-3 gap-2 lg:mt-auto lg:gap-1.5 xl:gap-2">
           {items.length > 0
-            ? items.map((product) => <MiniDealProduct key={product.id} product={product} />)
+            ? items.map((product) => (
+                <MiniDealProduct key={product.id} product={product} />
+              ))
             : Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="min-h-[86px] rounded-xl bg-white/18" />
+                <div
+                  key={index}
+                  className="min-h-[86px] rounded-xl bg-white/18"
+                />
               ))}
         </div>
       </div>
@@ -712,7 +888,11 @@ function MiniDealProduct({ product }: { product: MarketplaceProduct }) {
       <div className="flex h-11 items-center justify-center overflow-hidden rounded-lg bg-slate-50 sm:h-16 lg:h-14 xl:h-16">
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt={product.name} className="h-full w-full object-contain p-1" />
+          <img
+            src={image}
+            alt={product.name}
+            className="h-full w-full object-contain p-1"
+          />
         ) : (
           <Store className="h-6 w-6 text-slate-300" />
         )}

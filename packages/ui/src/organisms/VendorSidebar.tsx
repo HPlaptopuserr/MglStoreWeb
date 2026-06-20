@@ -1,47 +1,170 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
+  BarChart2,
+  Boxes,
+  ClipboardList,
+  CreditCard,
+  Crown,
   LayoutDashboard,
+  Megaphone,
   Package,
   PackageSearch,
-  Boxes,
-  Truck,
-  LogOut,
-  Users,
-  ClipboardList,
-  Megaphone,
-  ScanLine,
-  ChevronLeft,
-  ChevronRight,
-  CreditCard,
-  ShoppingCart,
-  Crown,
-  X,
-  BarChart2,
   RotateCcw,
+  ScanLine,
+  ShoppingCart,
+  Users,
 } from "lucide-react";
+import {
+  AppSidebar,
+  type AppSidebarGroup,
+  type AppSidebarItem,
+} from "./AppSidebar";
 
-function cn(...classes: Array<string | false | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
+type VendorNavItem = Omit<AppSidebarItem, "children"> & {
+  children?: VendorNavItem[];
+  posOnly?: boolean;
+  preorderOnly?: boolean;
+  serviceOnly?: boolean;
+  supplyOnly?: boolean;
+};
 
-const navigation = [
-  { name: "Хяналтын самбар", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Захиалгууд", href: "/orders", icon: ShoppingCart },
-  { name: "POS касс", href: "/pos", icon: ScanLine, posOnly: true },
-  { name: "Өөрийн бүтээгдэхүүн", href: "/products", icon: Package },
-  { name: "Захиалгын бараа", href: "/products?type=preorder", icon: PackageSearch, preorderOnly: true },
-  { name: "Нэгдсэн бараа", href: "/supply-products", icon: Boxes, supplyOnly: true },
-  { name: "Үйлчилгээний постууд", href: "/service-posts", icon: Megaphone, serviceOnly: true },
-  { name: "Буцаалт", href: "/returns", icon: RotateCcw },
-  { name: "Борлуулалт", href: "/sales", icon: BarChart2 },
-  { name: "Түгээгчийн мэдээлэл", href: "/drivers", icon: Users },
-  { name: "Хүсэлтүүд", href: "/requests", icon: ClipboardList },
-  { name: "Төлбөр", href: "/payments", icon: CreditCard },
-  { name: "Pro Upgrade", href: "/upgrade", icon: Crown },
+const VENDOR_NAV_GROUPS: Array<
+  Omit<AppSidebarGroup, "items"> & { items: VendorNavItem[] }
+> = [
+  {
+    id: "vendor-menu",
+    title: "Цэс",
+    items: [
+      {
+        id: "overview-menu",
+        label: "Хяналт",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+        children: [
+          {
+            id: "dashboard",
+            label: "Хяналтын самбар",
+            href: "/dashboard",
+            icon: LayoutDashboard,
+          },
+          {
+            id: "pos",
+            label: "POS касс",
+            href: "/pos",
+            icon: ScanLine,
+            tone: "success",
+            posOnly: true,
+          },
+        ],
+      },
+      {
+        id: "commerce-menu",
+        label: "Захиалга ба борлуулалт",
+        href: "/orders",
+        icon: ShoppingCart,
+        children: [
+          {
+            id: "orders",
+            label: "Захиалгууд",
+            href: "/orders",
+            icon: ShoppingCart,
+          },
+          {
+            id: "returns",
+            label: "Буцаалт",
+            href: "/returns",
+            icon: RotateCcw,
+          },
+          {
+            id: "sales",
+            label: "Борлуулалт",
+            href: "/sales",
+            icon: BarChart2,
+          },
+          {
+            id: "payments",
+            label: "Төлбөр",
+            href: "/payments",
+            icon: CreditCard,
+          },
+        ],
+      },
+      {
+        id: "catalog-menu",
+        label: "Бүтээгдэхүүн ба контент",
+        href: "/products",
+        icon: Package,
+        children: [
+          {
+            id: "products",
+            label: "Өөрийн бүтээгдэхүүн",
+            href: "/products",
+            icon: Package,
+          },
+          {
+            id: "preorder-products",
+            label: "Захиалгын бараа",
+            href: "/products?type=preorder",
+            icon: PackageSearch,
+            preorderOnly: true,
+          },
+          {
+            id: "supply-products",
+            label: "Нэгдсэн бараа",
+            href: "/supply-products",
+            icon: Boxes,
+            supplyOnly: true,
+          },
+          {
+            id: "service-posts",
+            label: "Үйлчилгээний постууд",
+            href: "/service-posts",
+            icon: Megaphone,
+            serviceOnly: true,
+          },
+        ],
+      },
+      {
+        id: "operations-menu",
+        label: "Үйл ажиллагаа",
+        href: "/drivers",
+        icon: ClipboardList,
+        children: [
+          {
+            id: "drivers",
+            label: "Түгээгчийн мэдээлэл",
+            href: "/drivers",
+            icon: Users,
+          },
+          {
+            id: "requests",
+            label: "Хүсэлтүүд",
+            href: "/requests",
+            icon: ClipboardList,
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const VENDOR_BOTTOM_GROUPS: AppSidebarGroup[] = [
+  {
+    id: "upgrade",
+    title: "Upgrade",
+    items: [
+      {
+        id: "upgrade",
+        label: "Pro Upgrade",
+        href: "/upgrade",
+        icon: Crown,
+        tone: "warning",
+      },
+    ],
+  },
 ];
 
 const VENDOR_SIDEBAR_COLLAPSED_KEY = "vendor_sidebar_collapsed";
@@ -57,6 +180,79 @@ export interface VendorSidebarProps {
   showServicePosts?: boolean;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+}
+
+function shouldShowItem(
+  item: VendorNavItem,
+  flags: Pick<
+    VendorSidebarProps,
+    | "showPos"
+    | "showPreorderProducts"
+    | "showServicePosts"
+    | "showSupplyProducts"
+  >,
+) {
+  if (item.posOnly) return Boolean(flags.showPos);
+  if (item.preorderOnly) return Boolean(flags.showPreorderProducts);
+  if (item.serviceOnly) return Boolean(flags.showServicePosts);
+  if (item.supplyOnly) return Boolean(flags.showSupplyProducts);
+  return true;
+}
+
+function mapVendorItem(
+  item: VendorNavItem,
+  pathname: string | null,
+  productType: string | null,
+  onProductTypeChange: (type: string | null) => void,
+  flags: Pick<
+    VendorSidebarProps,
+    | "showPos"
+    | "showPreorderProducts"
+    | "showServicePosts"
+    | "showSupplyProducts"
+  >,
+): VendorNavItem | null {
+  const children = item.children
+    ?.map((child) =>
+      mapVendorItem(
+        child as VendorNavItem,
+        pathname,
+        productType,
+        onProductTypeChange,
+        flags,
+      ),
+    )
+    .filter((child): child is VendorNavItem => Boolean(child));
+
+  if (!children?.length && !shouldShowItem(item, flags)) return null;
+
+  const isPreorderItem = item.preorderOnly;
+  const isProductsItem = item.id === "products";
+  const nextProductType = item.href.startsWith("/products")
+    ? new URLSearchParams(item.href.split("?")[1] ?? "").get("type")
+    : null;
+
+  return {
+    ...item,
+    children,
+    isActive: isPreorderItem
+      ? pathname === "/products" && productType === "preorder"
+      : isProductsItem
+        ? pathname === "/products" && productType !== "preorder"
+        : item.isActive,
+    onClick: item.href.startsWith("/products")
+      ? () => {
+          onProductTypeChange(nextProductType);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("vendor-product-type-change", {
+                detail: { type: nextProductType },
+              }),
+            );
+          }
+        }
+      : item.onClick,
+  };
 }
 
 export function VendorSidebar({
@@ -80,7 +276,6 @@ export function VendorSidebar({
   const profileInitials =
     userInitials || userName.trim().slice(0, 2).toUpperCase() || "V";
 
-  // Close mobile drawer on route change
   useEffect(() => {
     onMobileClose?.();
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -95,262 +290,84 @@ export function VendorSidebar({
     return () => window.removeEventListener("popstate", syncProductType);
   }, [pathname]);
 
-  const filteredNavigation = navigation.filter((item) => {
-    if ((item as any).posOnly) return showPos;
-    if ((item as any).supplyOnly) return showSupplyProducts;
-    if ((item as any).preorderOnly) return showPreorderProducts;
-    if ((item as any).serviceOnly) return showServicePosts;
-    return true;
-  });
-
-  // Mobile hides POS
-  const mobileNavigation = filteredNavigation.filter(
-    (item) => item.href !== "/pos",
+  const groups = useMemo(
+    () =>
+      VENDOR_NAV_GROUPS.map((group) => ({
+        ...group,
+        items: group.items
+          .map((item) =>
+            mapVendorItem(item, pathname, productType, setProductType, {
+              showPos,
+              showPreorderProducts,
+              showServicePosts,
+              showSupplyProducts,
+            }),
+          )
+          .filter((item): item is VendorNavItem => Boolean(item)),
+      })).filter((group) => group.items.length > 0),
+    [
+      pathname,
+      productType,
+      showPos,
+      showPreorderProducts,
+      showServicePosts,
+      showSupplyProducts,
+    ],
   );
 
-  const regularNav = filteredNavigation.filter((i) => i.href !== "/upgrade");
-  const upgradeNav = filteredNavigation.filter((i) => i.href === "/upgrade");
-  const mobileRegular = mobileNavigation.filter((i) => i.href !== "/upgrade");
-  const mobileUpgrade = mobileNavigation.filter((i) => i.href === "/upgrade");
+  const mobileGroups = useMemo(
+    () =>
+      groups
+        .map((group) => ({
+          ...group,
+          items: group.items
+            .map((item) => ({
+              ...item,
+              children: item.children?.filter((child) => child.href !== "/pos"),
+            }))
+            .filter((item) => !item.children || item.children.length > 0),
+        }))
+        .filter((group) => group.items.length > 0),
+    [groups],
+  );
 
-  const toggleCollapsed = () => {
-    setIsCollapsed((previous) => {
-      const next = !previous;
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(VENDOR_SIDEBAR_COLLAPSED_KEY, String(next));
-      }
-      return next;
-    });
+  const handleCollapsedChange = (next: boolean) => {
+    setIsCollapsed(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(VENDOR_SIDEBAR_COLLAPSED_KEY, String(next));
+    }
   };
-
-  const SidebarContent = ({
-    nav,
-    up,
-    collapsed,
-  }: {
-    nav: typeof regularNav;
-    up: typeof upgradeNav;
-    collapsed: boolean;
-  }) => (
-    <>
-      {/* Logo */}
-      <div
-        className={`flex h-16 items-center border-b border-white/10 ${collapsed ? "justify-center px-2" : "px-4"
-          }`}
-      >
-        <div className={`flex items-center ${collapsed ? "" : "space-x-3"}`}>
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FFAD02] shadow-[0_0_15px_rgba(255,173,2,0.4)]">
-            <Truck className="h-5 w-5 text-black" />
-          </div>
-          {!collapsed && (
-            <div>
-              <h1 className="text-lg font-bold tracking-tight text-white">
-                MGL<span className="text-[#FFAD02]">Store</span>
-              </h1>
-              <p className="text-[11px] font-medium text-white/40">Marrow</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Nav items */}
-      <div
-        className={`flex-1 overflow-y-auto py-4 ${collapsed ? "px-2" : "px-3"}`}
-      >
-        <nav className="space-y-1.5">
-          {!collapsed && (
-            <p className="mb-3 px-2 text-[11px] font-semibold uppercase tracking-wide text-white/30">
-              Цэс
-            </p>
-          )}
-          {nav.map((item) => {
-            const isPreorderItem = (item as any).preorderOnly;
-            const isProductItem = item.href === "/products";
-            const isActive = isPreorderItem
-              ? pathname === "/products" && productType === "preorder"
-              : isProductItem
-                ? pathname === "/products" && productType !== "preorder"
-                : pathname === item.href || pathname.startsWith(item.href + "/");
-            const isPosActive = isActive && item.href === "/pos";
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={() => {
-                  if (item.href.startsWith("/products")) {
-                    const [, query = ""] = item.href.split("?");
-                    const nextType = new URLSearchParams(query).get("type");
-                    setProductType(nextType);
-                    if (typeof window !== "undefined") {
-                      window.dispatchEvent(
-                        new CustomEvent("vendor-product-type-change", {
-                          detail: { type: nextType },
-                        }),
-                      );
-                    }
-                  }
-                }}
-                title={collapsed ? item.name : undefined}
-                className={cn(
-                  "group flex items-center rounded-lg text-sm font-medium transition-all duration-200",
-                  collapsed ? "justify-center px-0 py-2.5" : "px-3 py-2.5",
-                  isPosActive
-                    ? "bg-emerald-500 text-white shadow-[0_0_22px_rgba(16,185,129,0.35)] ring-2 ring-emerald-300/40"
-                    : isActive
-                      ? "bg-[#FFAD02] text-black shadow-[0_0_20px_rgba(255,173,2,0.25)]"
-                      : "text-white/60 hover:bg-white/10 hover:text-white",
-                )}
-              >
-                <item.icon
-                  className={cn(
-                    "h-[18px] w-[18px] shrink-0",
-                    !collapsed && "mr-3",
-                    isPosActive
-                      ? "text-white"
-                      : isActive
-                        ? "text-black"
-                        : "text-white/60 group-hover:text-white",
-                  )}
-                />
-                {!collapsed && item.name}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* Bottom */}
-      <div
-        className={`border-t border-white/10 ${collapsed ? "p-3" : "p-4"} space-y-2`}
-      >
-        <Link
-          href="/profile"
-          title={collapsed ? "Профайл" : undefined}
-          className={cn(
-            "group flex items-center rounded-lg text-sm transition-all duration-200",
-            collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5",
-            pathname === "/profile"
-              ? "bg-white/15 text-white"
-              : "text-white/70 hover:bg-white/10 hover:text-white",
-          )}
-        >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-xs font-black text-black">
-            {profileInitials}
-          </span>
-          {!collapsed && (
-            <span className="min-w-0">
-              <span className="block truncate font-bold">{userName}</span>
-              <span className="block truncate text-[11px] text-white/45">
-                {userRole}
-              </span>
-            </span>
-          )}
-        </Link>
-
-        {up.map((item) => {
-          const isActive =
-            pathname === item.href || pathname.startsWith(item.href + "/");
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              title={collapsed ? item.name : undefined}
-              className={cn(
-                "group flex items-center rounded-lg text-sm font-bold transition-all duration-200",
-                collapsed ? "justify-center px-0 py-2.5" : "px-3 py-2.5",
-                isActive
-                  ? "bg-[#FFAD02] text-black shadow-[0_0_20px_rgba(255,173,2,0.25)]"
-                  : "bg-[#FFAD02]/15 text-[#FFAD02] hover:bg-[#FFAD02]/25",
-              )}
-            >
-              <item.icon
-                className={cn(
-                  "h-[18px] w-[18px] shrink-0",
-                  !collapsed && "mr-3",
-                  isActive ? "text-black" : "text-[#FFAD02]",
-                )}
-              />
-              {!collapsed && item.name}
-            </Link>
-          );
-        })}
-        <button
-          onClick={onSignOut}
-          title={collapsed ? "Гарах" : undefined}
-          className="group flex w-full items-center justify-center rounded-lg px-3 py-2.5 text-sm font-semibold text-white/60 transition-all duration-200 hover:bg-red-500/20 hover:text-red-400"
-        >
-          <LogOut
-            className={cn(
-              "h-[18px] w-[18px] transition-transform group-hover:scale-110",
-              !collapsed && "mr-3",
-            )}
-          />
-          {!collapsed && "Гарах"}
-        </button>
-      </div>
-    </>
-  );
 
   return (
     <>
-      {/* ── Desktop sidebar ── */}
-      <div
-        className={`${isCollapsed ? "w-[84px]" : "w-[252px]"
-          } hidden shrink-0 transition-all duration-300 md:block`}
+      <AppSidebar
+        userName={userName}
+        userRole={userRole}
+        userInitials={profileInitials}
+        groups={groups}
+        bottomGroups={VENDOR_BOTTOM_GROUPS}
+        collapsed={isCollapsed}
+        onCollapsedChange={handleCollapsedChange}
+        onSignOut={onSignOut}
+        profileHref="/profile"
+        mobileOpen={false}
       />
-      <aside
-        className={`${isCollapsed ? "w-[84px]" : "w-[252px]"
-          } fixed left-0 top-0 z-40 hidden h-screen shrink-0 flex-col border-r border-white/10 bg-black text-white transition-all duration-300 md:flex`}
-      >
-        {/* Collapse toggle */}
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          className="absolute -right-3 top-1/2 z-50 flex -translate-y-1/2 rounded-full border border-white/15 bg-black p-1 text-white/70 shadow-md transition-all hover:scale-105 hover:text-[#FFAD02]"
-        >
-          {isCollapsed ? (
-            <ChevronRight className="h-6 w-6" />
-          ) : (
-            <ChevronLeft className="h-6 w-6" />
-          )}
-        </button>
-        <SidebarContent
-          nav={regularNav}
-          up={upgradeNav}
-          collapsed={isCollapsed}
-        />
-      </aside>
 
-      {/* ── Mobile drawer overlay ── */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-50 md:hidden"
-          onClick={onMobileClose}
-        >
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-          {/* Drawer */}
-          <aside
-            className="absolute left-0 top-0 flex h-full w-72 flex-col bg-black text-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close button */}
-            <button
-              onClick={onMobileClose}
-              className="absolute right-3 top-3 rounded-lg p-2 text-white/50 hover:bg-white/10 hover:text-white"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <SidebarContent
-              nav={mobileRegular}
-              up={mobileUpgrade}
-              collapsed={false}
-            />
-          </aside>
-        </div>
-      )}
+      <AppSidebar
+        userName={userName}
+        userRole={userRole}
+        userInitials={profileInitials}
+        groups={mobileGroups}
+        bottomGroups={VENDOR_BOTTOM_GROUPS}
+        collapsed={false}
+        onCollapsedChange={() => undefined}
+        onSignOut={onSignOut}
+        profileHref="/profile"
+        mobileOpen={mobileOpen}
+        onMobileClose={onMobileClose}
+        showDesktopSidebar={false}
+        showDesktopSpacer={false}
+      />
     </>
   );
 }

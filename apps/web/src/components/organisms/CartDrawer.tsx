@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { X, Trash2, ShoppingCart, Plus, Minus } from "lucide-react";
+import { X, Trash2, ShoppingCart, Plus, Minus, Package } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 
@@ -19,7 +19,9 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
 
   // Close on Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     if (open) window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [open, onClose]);
@@ -30,7 +32,9 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
       <div
         onClick={onClose}
         className={`fixed inset-0 z-[60] overscroll-none bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${
-          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          open
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
         }`}
       />
 
@@ -38,7 +42,9 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
       <div
         ref={drawerRef}
         className={`fixed inset-x-0 bottom-0 z-[70] flex max-h-[86dvh] w-full flex-col overflow-hidden overscroll-none rounded-t-[28px] bg-white shadow-2xl transition-transform duration-300 ease-in-out md:inset-y-0 md:left-auto md:right-0 md:h-full md:max-h-none md:max-w-[420px] md:rounded-none ${
-          open ? "translate-y-0 md:translate-x-0" : "translate-y-full md:translate-x-full md:translate-y-0"
+          open
+            ? "translate-y-0 md:translate-x-0"
+            : "translate-y-full md:translate-x-full md:translate-y-0"
         }`}
       >
         <div className="flex justify-center pt-2 md:hidden">
@@ -57,6 +63,16 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                onClose();
+                router.push("/orders");
+              }}
+              className="hidden h-8 items-center gap-1.5 rounded-full border border-gray-200 px-3 text-xs font-bold text-gray-500 transition-colors hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700 min-[380px]:inline-flex"
+            >
+              <Package size={13} />
+              Захиалгууд
+            </button>
             {items.length > 0 && (
               <button
                 onClick={clearCart}
@@ -82,12 +98,24 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
               <div className="w-20 h-20 rounded-full bg-gray-50 flex items-center justify-center">
                 <ShoppingCart size={32} className="text-gray-300" />
               </div>
-              <p className="text-sm font-medium text-gray-500">Сагс хоосон байна</p>
+              <p className="text-sm font-medium text-gray-500">
+                Сагс хоосон байна
+              </p>
               <button
                 onClick={onClose}
                 className="text-sm font-semibold text-amber-600 hover:underline"
               >
                 Дэлгүүр рүү буцах →
+              </button>
+              <button
+                onClick={() => {
+                  onClose();
+                  router.push("/orders");
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600 transition-colors hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700"
+              >
+                <Package size={15} />
+                Захиалгуудаа харах
               </button>
             </div>
           ) : (
@@ -97,7 +125,11 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
                 <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 shrink-0 border border-gray-100">
                   {item.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gray-100">
                       <ShoppingCart size={20} className="text-gray-300" />
@@ -107,9 +139,13 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">{item.name}</p>
+                  <p className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">
+                    {item.name}
+                  </p>
                   <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-black text-amber-600">₮{item.price.toLocaleString()}</p>
+                    <p className="text-sm font-black text-amber-600">
+                      ₮{item.price.toLocaleString()}
+                    </p>
                     {item.originalPrice && item.originalPrice > item.price && (
                       <p className="text-xs font-semibold text-gray-400 line-through">
                         ₮{item.originalPrice.toLocaleString()}
@@ -169,7 +205,10 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
               </span>
             </div>
             <button
-              onClick={() => { onClose(); router.push("/checkout"); }}
+              onClick={() => {
+                onClose();
+                router.push("/checkout");
+              }}
               className="w-full h-12 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors active:scale-[0.99] text-sm"
             >
               Захиалга өгөх

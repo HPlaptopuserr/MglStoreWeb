@@ -10,7 +10,7 @@ import {
 
 const router: ExpressRouter = Router();
 
-const CONTENT_TYPES = ["product", "service", "post"] as const;
+const CONTENT_TYPES = ["product", "service", "post", "reel"] as const;
 type VendorContentType = (typeof CONTENT_TYPES)[number];
 
 function normalizeContentType(value: unknown): VendorContentType | null {
@@ -22,10 +22,12 @@ function normalizeContentType(value: unknown): VendorContentType | null {
     : null;
 }
 
-function getUserName(user?: {
-  email: string;
-  profile: { fullName: string | null; phoneNumber: string | null } | null;
-} | null) {
+function getUserName(
+  user?: {
+    email: string;
+    profile: { fullName: string | null; phoneNumber: string | null } | null;
+  } | null,
+) {
   return user?.profile?.fullName || user?.email || "Тодорхойгүй хэрэглэгч";
 }
 
@@ -57,17 +59,14 @@ router.get(
           ? null
           : normalizeVendorContentReviewStatus(statusParam);
       const type = normalizeContentType(req.query.type);
-      const limit = Math.min(
-        Math.max(Number(req.query.limit || 100), 1),
-        300,
-      );
+      const limit = Math.min(Math.max(Number(req.query.limit || 100), 1), 300);
 
       if (statusParam !== "ALL" && !status) {
         return res.status(400).json({ message: "Буруу review status" });
       }
 
       const whereStatus = status ? { reviewStatus: status } : {};
-      const [products, services, posts] = await Promise.all([
+      const [products, services, posts, reels] = await Promise.all([
         !type || type === "product"
           ? prisma.product.findMany({
               where: { deletedAt: null, ...whereStatus },
@@ -106,12 +105,25 @@ router.get(
               },
             })
           : [],
+        !type || type === "reel"
+          ? prisma.reel.findMany({
+              where: { deletedAt: null, ...whereStatus },
+              take: limit,
+              orderBy: { updatedAt: "desc" },
+              include: {
+                organization: {
+                  select: { id: true, name: true, slug: true, logoUrl: true },
+                },
+              },
+            })
+          : [],
       ]);
 
       const usersById = await getUsersById([
         ...products.map((item) => item.submittedById || ""),
         ...services.map((item) => item.submittedById || ""),
         ...posts.map((item) => item.submittedById || item.authorId),
+        ...reels.map((item) => item.authorId || ""),
       ]);
 
       const items = [
@@ -164,7 +176,9 @@ router.get(
           };
         }),
         ...posts.map((item) => {
-          const submittedBy = usersById.get(item.submittedById || item.authorId);
+          const submittedBy = usersById.get(
+            item.submittedById || item.authorId,
+          );
           return {
             id: item.id,
             type: "post" as const,
@@ -187,6 +201,33 @@ router.get(
               : null,
           };
         }),
+        ...reels.map((item) => {
+          const submittedBy = usersById.get(item.authorId || "");
+          return {
+            id: item.id,
+            type: "reel" as const,
+            title: item.title || "Reel",
+            description: item.caption || item.description,
+            priceText: item.durationSeconds
+              ? `${Math.round(item.durationSeconds)} сек`
+              : null,
+            imageUrl: item.thumbnailUrl || null,
+            videoUrl: item.videoUrl,
+            reviewStatus: item.reviewStatus,
+            isActive: item.status === "READY" && item.visibility === "PUBLIC",
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+            organization: item.organization,
+            submittedBy: submittedBy
+              ? {
+                  id: submittedBy.id,
+                  email: submittedBy.email,
+                  fullName: getUserName(submittedBy),
+                  phoneNumber: submittedBy.profile?.phoneNumber || null,
+                }
+              : null,
+          };
+        }),
       ]
         .sort(
           (a, b) =>
@@ -196,18 +237,25 @@ router.get(
 
       const counts = await Promise.all(
         VENDOR_CONTENT_REVIEW_STATUSES.map(async (reviewStatus) => {
-          const [productCount, serviceCount, postCount] = await Promise.all([
-            prisma.product.count({
-              where: { deletedAt: null, reviewStatus },
-            }),
-            prisma.servicePost.count({
-              where: { deletedAt: null, reviewStatus },
-            }),
-            prisma.post.count({
-              where: { organizationId: { not: null }, reviewStatus },
-            }),
-          ]);
-          return [reviewStatus, productCount + serviceCount + postCount] as const;
+          const [productCount, serviceCount, postCount, reelCount] =
+            await Promise.all([
+              prisma.product.count({
+                where: { deletedAt: null, reviewStatus },
+              }),
+              prisma.servicePost.count({
+                where: { deletedAt: null, reviewStatus },
+              }),
+              prisma.post.count({
+                where: { organizationId: { not: null }, reviewStatus },
+              }),
+              prisma.reel.count({
+                where: { deletedAt: null, reviewStatus },
+              }),
+            ]);
+          return [
+            reviewStatus,
+            productCount + serviceCount + postCount + reelCount,
+          ] as const;
         }),
       );
 
@@ -217,7 +265,9 @@ router.get(
       });
     } catch (error) {
       console.error("get vendor content review error", error);
-      res.status(500).json({ message: "Vendor content review авахад алдаа гарлаа" });
+      res
+        .status(500)
+        .json({ message: "Vendor content review авахад алдаа гарлаа" });
     }
   },
 );
@@ -234,7 +284,9 @@ router.patch(
 
       if (!type) return res.status(400).json({ message: "Буруу content type" });
       if (!status || status === "PENDING") {
-        return res.status(400).json({ message: "APPROVED эсвэл REJECTED status шаардлагатай" });
+        return res
+          .status(400)
+          .json({ message: "APPROVED эсвэл REJECTED status шаардлагатай" });
       }
 
       const data = {
@@ -267,6 +319,18 @@ router.patch(
         return res.json(item);
       }
 
+      if (type === "reel") {
+        const item = await prisma.reel.update({
+          where: { id: req.params.id },
+          data: {
+            ...data,
+            publishedAt: status === "APPROVED" ? new Date() : null,
+          },
+          select: { id: true, reviewStatus: true, status: true },
+        });
+        return res.json(item);
+      }
+
       const item = await prisma.post.update({
         where: { id: req.params.id },
         data,
@@ -275,7 +339,9 @@ router.patch(
       return res.json(item);
     } catch (error) {
       console.error("update vendor content review error", error);
-      res.status(500).json({ message: "Review status шинэчлэхэд алдаа гарлаа" });
+      res
+        .status(500)
+        .json({ message: "Review status шинэчлэхэд алдаа гарлаа" });
     }
   },
 );

@@ -75,6 +75,9 @@ model User {
   contracts                    Contract[]
   productInteractions          ProductInteraction[]
   productInterestScores        ProductInterestScore[]
+  authoredReels                Reel[]                    @relation("ReelAuthor")
+  reviewedReels                Reel[]                    @relation("ReelReviewedBy")
+  reelInteractions             ReelInteraction[]
 
   @@index([role])
   @@index([isPrime])
@@ -284,21 +287,22 @@ model JobApplication {
 }
 
 model BusinessCategory {
-  id        String             @id @default(uuid())
-  slug      String             @unique
-  name      String
-  icon      String?
-  sortOrder Int                @default(0)
-  isActive  Boolean            @default(true)
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-  level     Int                @default(0)
-  parentId  String?
-  parent    BusinessCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children  BusinessCategory[] @relation("CategoryHierarchy")
-  products  Product[]
-  productInteractions ProductInteraction[]
+  id                    String                 @id @default(uuid())
+  slug                  String                 @unique
+  name                  String
+  icon                  String?
+  sortOrder             Int                    @default(0)
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  level                 Int                    @default(0)
+  parentId              String?
+  parent                BusinessCategory?      @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children              BusinessCategory[]     @relation("CategoryHierarchy")
+  products              Product[]
+  productInteractions   ProductInteraction[]
   productInterestScores ProductInterestScore[]
+  reels                 Reel[]
 
   @@index([isActive])
   @@index([sortOrder])
@@ -385,6 +389,8 @@ model Organization {
   contracts                    Contract[]
   productInteractions          ProductInteraction[]
   productInterestScores        ProductInterestScore[]
+  reels                        Reel[]
+  reelInteractions             ReelInteraction[]
   upgradePlans                 OrgUpgradePlan[]
   cardTerminalRequests         CardTerminalRequest[]
 
@@ -680,50 +686,51 @@ model Category {
 }
 
 model Product {
-  id                   String                      @id @default(uuid())
-  organizationId       String
-  submittedById        String?
-  reviewedById         String?
-  name                 String
-  description          String?
-  sku                  String?
-  barcode              String?
-  unit                 String?
-  price                Decimal                     @db.Decimal(18, 2)
-  costPrice            Decimal?                    @db.Decimal(18, 2)
+  id                    String                      @id @default(uuid())
+  organizationId        String
+  submittedById         String?
+  reviewedById          String?
+  name                  String
+  description           String?
+  sku                   String?
+  barcode               String?
+  unit                  String?
+  price                 Decimal                     @db.Decimal(18, 2)
+  costPrice             Decimal?                    @db.Decimal(18, 2)
   /// Denormalized cache. Canonical stock lives in WarehouseInventory.quantity.
   /// Updated by POS sales and inventory operations. Do not treat as source of truth
   /// when warehouse management is active for this product.
-  stock                Int                         @default(0)
-  isRestaurantMenuItem Boolean                     @default(false)
-  menuCategory         String?
-  kitchenStation       String?
-  preparationMinutes   Int?
-  supplyType           ProductSupplyType           @default(IN_STOCK)
-  preorderLeadTimeDays Int?
-  preorderNote         String?
-  isActive             Boolean                     @default(true)
-  reviewStatus         VendorContentReviewStatus   @default(APPROVED)
-  reviewedAt           DateTime?
-  categoryId           String?
-  createdAt            DateTime                    @default(now())
-  updatedAt            DateTime                    @updatedAt
-  deletedAt            DateTime?
-  businessCategoryId   String?
-  discounts            Discount[]
-  inventoryLogs        InventoryLedger[]
-  orderItems           OrderItem[]
-  businessCategory     BusinessCategory?           @relation(fields: [businessCategoryId], references: [id])
-  category             Category?                   @relation(fields: [categoryId], references: [id])
-  organization         Organization                @relation(fields: [organizationId], references: [id])
-  images               ProductImage[]
-  productRequests      ProductRequest[]
-  warehouseInventories WarehouseInventory[]
-  stockRequestItems    WarehouseStockRequestItem[] @relation("StockRequestProducts")
-  posSaleLines         PosSaleLine[]
-  returnItems          DispatchReturnItem[]        @relation("ReturnProducts")
-  productInteractions  ProductInteraction[]
+  stock                 Int                         @default(0)
+  isRestaurantMenuItem  Boolean                     @default(false)
+  menuCategory          String?
+  kitchenStation        String?
+  preparationMinutes    Int?
+  supplyType            ProductSupplyType           @default(IN_STOCK)
+  preorderLeadTimeDays  Int?
+  preorderNote          String?
+  isActive              Boolean                     @default(true)
+  reviewStatus          VendorContentReviewStatus   @default(APPROVED)
+  reviewedAt            DateTime?
+  categoryId            String?
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  deletedAt             DateTime?
+  businessCategoryId    String?
+  discounts             Discount[]
+  inventoryLogs         InventoryLedger[]
+  orderItems            OrderItem[]
+  businessCategory      BusinessCategory?           @relation(fields: [businessCategoryId], references: [id])
+  category              Category?                   @relation(fields: [categoryId], references: [id])
+  organization          Organization                @relation(fields: [organizationId], references: [id])
+  images                ProductImage[]
+  productRequests       ProductRequest[]
+  warehouseInventories  WarehouseInventory[]
+  stockRequestItems     WarehouseStockRequestItem[] @relation("StockRequestProducts")
+  posSaleLines          PosSaleLine[]
+  returnItems           DispatchReturnItem[]        @relation("ReturnProducts")
+  productInteractions   ProductInteraction[]
   productInterestScores ProductInterestScore[]
+  reels                 Reel[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
@@ -747,6 +754,166 @@ enum ProductInteractionType {
   SHARE
   RECOMMENDATION_CLICK
   PURCHASE
+}
+
+enum ReelStatus {
+  DRAFT
+  PROCESSING
+  READY
+  FAILED
+  ARCHIVED
+}
+
+enum ReelVisibility {
+  PUBLIC
+  ORGANIZATION
+  UNLISTED
+  PRIVATE
+}
+
+enum ReelAssetKind {
+  ORIGINAL
+  MP4_720P
+  MP4_480P
+  THUMBNAIL
+  HLS_PLAYLIST
+  HLS_SEGMENT
+  CAPTION_TRACK
+}
+
+enum ReelProcessingStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum ReelInteractionType {
+  VIEW
+  LIKE
+  SAVE
+  SHARE
+  COMMENT
+  FOLLOW_CLICK
+  PRODUCT_CLICK
+}
+
+model Reel {
+  id                 String                    @id @default(uuid())
+  organizationId     String?
+  authorId           String?
+  reviewedById       String?
+  businessCategoryId String?
+  productId          String?
+  title              String?
+  caption            String?
+  description        String?
+  videoUrl           String
+  thumbnailUrl       String?
+  storageBucket      String?
+  storagePath        String?
+  hlsUrl             String?
+  durationSeconds    Int?
+  width              Int?
+  height             Int?
+  fileSizeBytes      BigInt?
+  mimeType           String?
+  status             ReelStatus                @default(DRAFT)
+  visibility         ReelVisibility            @default(PUBLIC)
+  reviewStatus       VendorContentReviewStatus @default(PENDING)
+  reviewedAt         DateTime?
+  publishedAt        DateTime?
+  failedReason       String?
+  viewCount          Int                       @default(0)
+  likeCount          Int                       @default(0)
+  saveCount          Int                       @default(0)
+  shareCount         Int                       @default(0)
+  commentCount       Int                       @default(0)
+  tags               String[]                  @default([])
+  metadata           Json?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  deletedAt          DateTime?
+  organization       Organization?             @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  author             User?                     @relation("ReelAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  reviewedBy         User?                     @relation("ReelReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  businessCategory   BusinessCategory?         @relation(fields: [businessCategoryId], references: [id], onDelete: SetNull)
+  product            Product?                  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  assets             ReelAsset[]
+  processingJobs     ReelProcessingJob[]
+  interactions       ReelInteraction[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status, publishedAt])
+  @@index([authorId, createdAt])
+  @@index([businessCategoryId, publishedAt])
+  @@index([productId])
+  @@index([status, visibility, publishedAt])
+  @@index([reviewStatus])
+  @@index([deletedAt])
+}
+
+model ReelAsset {
+  id              String        @id @default(uuid())
+  reelId          String
+  kind            ReelAssetKind
+  url             String
+  storageBucket   String?
+  storagePath     String?
+  mimeType        String?
+  width           Int?
+  height          Int?
+  durationSeconds Int?
+  fileSizeBytes   BigInt?
+  createdAt       DateTime      @default(now())
+  reel            Reel          @relation(fields: [reelId], references: [id], onDelete: Cascade)
+
+  @@index([reelId])
+  @@index([kind])
+  @@index([storageBucket, storagePath])
+}
+
+model ReelProcessingJob {
+  id           String               @id @default(uuid())
+  reelId       String
+  status       ReelProcessingStatus @default(QUEUED)
+  queueName    String?
+  provider     String?
+  attempt      Int                  @default(0)
+  errorMessage String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  reel         Reel                 @relation(fields: [reelId], references: [id], onDelete: Cascade)
+
+  @@index([reelId, createdAt])
+  @@index([status, createdAt])
+  @@index([provider])
+}
+
+model ReelInteraction {
+  id             String              @id @default(uuid())
+  reelId         String
+  userId         String?
+  visitorId      String?
+  organizationId String?
+  type           ReelInteractionType
+  watchSeconds   Int?
+  watchPercent   Float?
+  source         String?
+  metadata       Json?
+  createdAt      DateTime            @default(now())
+  reel           Reel                @relation(fields: [reelId], references: [id], onDelete: Cascade)
+  user           User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization   Organization?       @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([reelId, createdAt])
+  @@index([userId, createdAt])
+  @@index([visitorId, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([type, createdAt])
 }
 
 model ProductInteraction {
@@ -784,13 +951,13 @@ model ProductInterestScore {
   organizationId     String?
   keyword            String?
   score              Float             @default(0)
-  lastEventAt        DateTime           @default(now())
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  user               User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product            Product?           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  businessCategory   BusinessCategory?  @relation(fields: [businessCategoryId], references: [id], onDelete: Cascade)
-  organization       Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lastEventAt        DateTime          @default(now())
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product            Product?          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  businessCategory   BusinessCategory? @relation(fields: [businessCategoryId], references: [id], onDelete: Cascade)
+  organization       Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId], name: "user_product_interest")
   @@unique([visitorId, productId], name: "visitor_product_interest")
@@ -1957,27 +2124,27 @@ enum DmType {
 
 /// Cashier shift — tracks opening/closing cash and links sales.
 model PosShift {
-  id             String       @id @default(uuid())
+  id             String          @id @default(uuid())
   organizationId String
   branchId       String
   registerId     String?
   cashierId      String
-  status         ShiftStatus  @default(OPEN)
-  openingCash    Decimal      @db.Decimal(18, 2)
-  closingCash    Decimal?     @db.Decimal(18, 2)
-  expectedCash   Decimal?     @db.Decimal(18, 2)
-  cashDifference Decimal?     @db.Decimal(18, 2)
+  status         ShiftStatus     @default(OPEN)
+  openingCash    Decimal         @db.Decimal(18, 2)
+  closingCash    Decimal?        @db.Decimal(18, 2)
+  expectedCash   Decimal?        @db.Decimal(18, 2)
+  cashDifference Decimal?        @db.Decimal(18, 2)
   cashCount      Json?
   cashCountedAt  DateTime?
   note           String?
-  openedAt       DateTime     @default(now())
+  openedAt       DateTime        @default(now())
   closedAt       DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  branch         Branch       @relation(fields: [branchId], references: [id])
-  register       PosRegister? @relation(fields: [registerId], references: [id])
-  cashier        User         @relation("PosShiftCashier", fields: [cashierId], references: [id])
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  branch         Branch          @relation(fields: [branchId], references: [id])
+  register       PosRegister?    @relation(fields: [registerId], references: [id])
+  cashier        User            @relation("PosShiftCashier", fields: [cashierId], references: [id])
   sales          PosSale[]
   creditSales    PosCreditSale[]
 

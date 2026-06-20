@@ -3,6 +3,7 @@ import {
   Boxes,
   Building2,
   ClipboardList,
+  Clapperboard,
   UtensilsCrossed,
   LayoutDashboard,
   Megaphone,
@@ -35,6 +36,7 @@ export function getOrgNavItems(features: OrgFeatureState): OrgNavItem[] {
       enabled: features.servicePosts,
     },
     { label: "Бүтээгдэхүүн", href: "/dashboard/products", icon: Package },
+    { label: "Reels", href: "/dashboard/reels", icon: Clapperboard },
     {
       label: "Ресторан касс",
       href: "/dashboard/restaurant-pos",

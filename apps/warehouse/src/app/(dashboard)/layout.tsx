@@ -12,6 +12,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [userData, setUserData] = useState({
     name: "Operator",
     initials: "OP",
@@ -57,12 +58,14 @@ export default function DashboardLayout({
         userName={userData.name}
         userInitials={userData.initials}
         onSignOut={handleLogout}
+        onCollapsedChange={setSidebarCollapsed}
       />
-      <div className="ml-[260px] flex flex-1 flex-col transition-all duration-300">
-        <WmsHeader
-          userName={userData.name}
-          userInitials={userData.initials}
-        />
+      <div
+        className={`flex flex-1 flex-col transition-all duration-300 ${
+          sidebarCollapsed ? "ml-[68px]" : "ml-[248px]"
+        }`}
+      >
+        <WmsHeader userName={userData.name} userInitials={userData.initials} />
         <main className="flex-1 p-6">{children}</main>
       </div>
     </div>

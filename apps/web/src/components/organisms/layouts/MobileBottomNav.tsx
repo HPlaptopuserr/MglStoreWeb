@@ -2,19 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, ShoppingCart, Package, User } from "lucide-react";
+import { Clapperboard, Home, Search, ShoppingCart, User } from "lucide-react";
 import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/hooks/useCart";
 
 const LEFT_TABS = [
   { href: "/", label: "Нүүр", icon: Home, action: "link" },
-  { href: "/products", label: "Хайх", icon: Search, action: "search" },
+  { href: "/reels", label: "Reels", icon: Clapperboard, action: "link" },
 ] as const;
 
 const RIGHT_TABS = [
-  { href: ACCOUNT_ROUTES.orders, label: "Захиалга", icon: Package, action: "link" },
-  { href: ACCOUNT_ROUTES.profile, label: "Профайл", icon: User, action: "link" },
+  { href: "/products", label: "Хайх", icon: Search, action: "search" },
+  {
+    href: ACCOUNT_ROUTES.profile,
+    label: "Профайл",
+    icon: User,
+    action: "link",
+  },
 ] as const;
 
 const SHOPPING_ROUTE_PREFIXES = [
@@ -24,6 +29,7 @@ const SHOPPING_ROUTE_PREFIXES = [
   "/checkout",
   ACCOUNT_ROUTES.orders,
   ACCOUNT_ROUTES.profile,
+  "/reels",
   "/services",
   "/our-services",
 ];
@@ -40,7 +46,9 @@ const NON_SHOPPING_ROUTE_PREFIXES = [
 ];
 
 function shouldShowMobileBottomNav(pathname: string) {
-  if (NON_SHOPPING_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+  if (
+    NON_SHOPPING_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  ) {
     return false;
   }
 
@@ -76,7 +84,7 @@ export function MobileBottomNav({
 
   const handleProtected = (e: React.MouseEvent, href: string) => {
     const path = href.split("?")[0];
-    if (!user && (path === ACCOUNT_ROUTES.profile || path === ACCOUNT_ROUTES.orders)) {
+    if (!user && path === ACCOUNT_ROUTES.profile) {
       e.preventDefault();
       onAuthOpen();
     }
@@ -100,8 +108,10 @@ export function MobileBottomNav({
             active ? "text-amber-600" : "text-gray-400 active:text-gray-600"
           }`}
         >
-          <Icon size={20} strokeWidth={active ? 2.4 : 1.7} />
-          <span className={`text-[10px] leading-none ${active ? "font-bold" : "font-medium"}`}>
+          <Icon size={18} strokeWidth={active ? 2.4 : 1.7} />
+          <span
+            className={`text-[9px] leading-none ${active ? "font-bold" : "font-medium"}`}
+          >
             {tab.label}
           </span>
         </button>
@@ -117,8 +127,10 @@ export function MobileBottomNav({
           active ? "text-amber-600" : "text-gray-400 active:text-gray-600"
         }`}
       >
-        <Icon size={20} strokeWidth={active ? 2.4 : 1.7} />
-        <span className={`text-[10px] leading-none ${active ? "font-bold" : "font-medium"}`}>
+        <Icon size={18} strokeWidth={active ? 2.4 : 1.7} />
+        <span
+          className={`text-[9px] leading-none ${active ? "font-bold" : "font-medium"}`}
+        >
           {tab.label}
         </span>
       </Link>
@@ -129,7 +141,7 @@ export function MobileBottomNav({
     <nav className="fixed bottom-0 inset-x-0 z-50 md:hidden safe-bottom">
       <div className="absolute inset-0 border-t border-slate-200/80 bg-white/95 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl" />
 
-      <div className="relative flex items-center h-[60px]">
+      <div className="relative flex h-[50px] items-center">
         {LEFT_TABS.map(renderTab)}
 
         <div className="flex flex-col items-center justify-center flex-1">
@@ -137,16 +149,18 @@ export function MobileBottomNav({
             type="button"
             onClick={onCartOpen}
             aria-label="Сагс нээх"
-            className="relative -mt-5 flex h-[54px] w-[54px] items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-orange-600 text-white shadow-xl shadow-amber-500/30 ring-4 ring-white transition-transform active:scale-95"
+            className="relative -mt-2 flex h-[40px] w-[40px] items-center justify-center rounded-[14px] bg-gradient-to-br from-amber-400 via-orange-500 to-orange-600 text-white shadow-md shadow-amber-500/20 ring-[3px] ring-white transition-transform active:scale-95 sm:-mt-3 sm:h-[46px] sm:w-[46px] sm:rounded-[16px]"
           >
-            <ShoppingCart size={22} strokeWidth={2} />
+            <ShoppingCart size={18} strokeWidth={2} />
             {count > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white px-1 ring-2 ring-white">
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-black text-white ring-2 ring-white sm:h-5 sm:min-w-[20px] sm:text-[10px]">
                 {count}
               </span>
             )}
           </button>
-          <span className="text-[10px] font-medium text-gray-400 mt-[2px]">Сагс</span>
+          <span className="mt-[1px] text-[9px] font-medium text-gray-400">
+            Сагс
+          </span>
         </div>
 
         {RIGHT_TABS.map(renderTab)}

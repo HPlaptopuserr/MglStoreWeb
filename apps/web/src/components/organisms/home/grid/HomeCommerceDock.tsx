@@ -23,6 +23,14 @@ type ApiCategory = {
 
 interface HomeCommerceDockProps {
   products: ApiProduct[];
+  reels?: Array<{
+    id: string;
+    title?: string | null;
+    caption?: string | null;
+    videoUrl: string;
+    thumbnailUrl?: string | null;
+    organization?: { name?: string | null; logoUrl?: string | null } | null;
+  }>;
   sideBanner?: MarketplaceSideBannerConfig | null;
   servicesPromo?: MarketplaceServicesPromo | null;
   projectBanners?: MarketplaceProjectBanner[];
@@ -39,6 +47,7 @@ const FALLBACK_CATEGORIES: MarketplaceCategory[] = [
 
 export function HomeCommerceDock({
   products,
+  reels = [],
   sideBanner,
   servicesPromo,
   projectBanners = [],
@@ -108,12 +117,15 @@ export function HomeCommerceDock({
     <MarketplaceBoard
       categories={categories}
       products={products}
+      reels={reels}
       total={products.length}
       sideBanner={sideBanner}
       servicesPromo={servicesPromo}
       projectBanners={projectBanners}
       allHref="/products"
-      categoryHref={(category) => `/products?category=${encodeURIComponent(category.slug || category.id)}`}
+      categoryHref={(category) =>
+        `/products?category=${encodeURIComponent(category.slug || category.id)}`
+      }
     />
   );
 }

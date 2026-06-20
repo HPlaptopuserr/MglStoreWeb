@@ -18,6 +18,7 @@ import {
   warehouseSetupRoutes,
   businessCategoriesRoutes,
   productsRoutes,
+  reelsRoutes,
   servicePostsRoutes,
   postsRoutes,
   vendorContentReviewRoutes,
@@ -83,10 +84,14 @@ const defaultAllowedOrigins = [
 ];
 
 const envAllowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean)
+  ? process.env.CORS_ORIGIN.split(",")
+      .map((o) => o.trim())
+      .filter(Boolean)
   : [];
 
-const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envAllowedOrigins]));
+const allowedOrigins = Array.from(
+  new Set([...defaultAllowedOrigins, ...envAllowedOrigins]),
+);
 
 app.use(
   cors({
@@ -94,7 +99,8 @@ app.use(
       // Allow requests with no origin (mobile apps, Postman, etc.)
       if (!origin) return callback(null, true);
       // Allow localhost only in development
-      if (!isProduction && origin.startsWith("http://localhost:")) return callback(null, true);
+      if (!isProduction && origin.startsWith("http://localhost:"))
+        return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
       callback(new Error("Not allowed by CORS"));
     },
@@ -107,7 +113,8 @@ app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 200,
-    skip: (req) => req.method === "OPTIONS" || (!isProduction && isLocalRequest(req.ip)),
+    skip: (req) =>
+      req.method === "OPTIONS" || (!isProduction && isLocalRequest(req.ip)),
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: "Хэт олон хүсэлт илгээлээ. Түр хүлээнэ үү." },
@@ -136,6 +143,7 @@ app.use("/api", investorRoutes);
 app.use("/api", siteSettingsRoutes);
 app.use("/api", teamRoutes);
 app.use("/api", productsRoutes);
+app.use("/api", reelsRoutes);
 app.use("/api", servicePostsRoutes);
 app.use("/api", postsRoutes);
 app.use("/api", vendorContentReviewRoutes);
@@ -174,21 +182,29 @@ const port = process.env.PORT || 4000;
 app.listen(Number(port), "0.0.0.0", () => {
   console.log(`[api] Application is running on: http://0.0.0.0:${port}`);
   if (!isProduction) {
-    prisma.organization.findMany({
-      where: { deletedAt: null, status: "ACTIVE" },
-      select: { id: true, name: true },
-    }).then(async (orgs) => {
-      for (const org of orgs) {
-        const key = `web-products-enabled-${org.id}`;
-        await prisma.siteSetting.upsert({
-          where: { key },
-          update: {},
-          create: { key, value: "true" },
-        });
-      }
-      console.log(`[api] [dev-init] Ensured web-products-enabled setting for ${orgs.length} active organizations.`);
-    }).catch((err) => {
-      console.error("[api] [dev-init] Failed to auto-enable web products in dev:", err);
-    });
+    prisma.organization
+      .findMany({
+        where: { deletedAt: null, status: "ACTIVE" },
+        select: { id: true, name: true },
+      })
+      .then(async (orgs) => {
+        for (const org of orgs) {
+          const key = `web-products-enabled-${org.id}`;
+          await prisma.siteSetting.upsert({
+            where: { key },
+            update: {},
+            create: { key, value: "true" },
+          });
+        }
+        console.log(
+          `[api] [dev-init] Ensured web-products-enabled setting for ${orgs.length} active organizations.`,
+        );
+      })
+      .catch((err) => {
+        console.error(
+          "[api] [dev-init] Failed to auto-enable web products in dev:",
+          err,
+        );
+      });
   }
 });

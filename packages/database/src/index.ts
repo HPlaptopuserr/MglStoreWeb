@@ -36,4 +36,9 @@ export {
   CardTerminalRequestStatus,
   AssociationMembershipType,
   ProductInteractionType,
+  ReelStatus,
+  ReelVisibility,
+  ReelAssetKind,
+  ReelProcessingStatus,
+  ReelInteractionType,
 } from "@prisma/client";

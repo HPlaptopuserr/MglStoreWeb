@@ -23,29 +23,71 @@ import {
   type ResolvedShelf,
 } from "./productShowcase";
 
+type HomeReelPreview = {
+  id: string;
+  title?: string | null;
+  caption?: string | null;
+  videoUrl: string;
+  thumbnailUrl?: string | null;
+  organization?: { name?: string | null; logoUrl?: string | null } | null;
+};
+
 export const ProductGrid = () => {
   const [products, setProducts] = useState<ApiProduct[]>([]);
-  const [configuredShelves, setConfiguredShelves] = useState<ResolvedShelf[]>([]);
-  const [sideBanner, setSideBanner] = useState<MarketplaceSideBannerConfig | null>(null);
-  const [servicesPromo, setServicesPromo] = useState<MarketplaceServicesPromoConfig | null>(null);
-  const [projectBanners, setProjectBanners] = useState<MarketplaceProjectBannerConfig[]>([]);
+  const [reels, setReels] = useState<HomeReelPreview[]>([]);
+  const [configuredShelves, setConfiguredShelves] = useState<ResolvedShelf[]>(
+    [],
+  );
+  const [sideBanner, setSideBanner] =
+    useState<MarketplaceSideBannerConfig | null>(null);
+  const [servicesPromo, setServicesPromo] =
+    useState<MarketplaceServicesPromoConfig | null>(null);
+  const [projectBanners, setProjectBanners] = useState<
+    MarketplaceProjectBannerConfig[]
+  >([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/products?limit=100`).then((res) => (res.ok ? res.json() : [])),
-      fetch(`${API}/site-settings`).then((res) => (res.ok ? res.json() : {} as Record<string, string>)),
-      fetch(`${API}/site-settings/projects`).then((res) => (res.ok ? res.json() : { projects: [] })),
+      fetch(`${API}/products?limit=100`).then((res) =>
+        res.ok ? res.json() : [],
+      ),
+      fetch(`${API}/reels?limit=6`).then((res) =>
+        res.ok ? res.json() : { items: [] },
+      ),
+      fetch(`${API}/site-settings`).then((res) =>
+        res.ok ? res.json() : ({} as Record<string, string>),
+      ),
+      fetch(`${API}/site-settings/projects`).then((res) =>
+        res.ok ? res.json() : { projects: [] },
+      ),
     ])
-      .then(([productData, settings, projectData]) => {
-        const nextProducts = Array.isArray(productData) ? productData.slice(0, 100) : [];
+      .then(([productData, reelData, settings, projectData]) => {
+        const nextProducts = Array.isArray(productData)
+          ? productData.slice(0, 100)
+          : [];
+        setReels(
+          Array.isArray(reelData?.items) ? reelData.items.slice(0, 6) : [],
+        );
         const nextShelves = parseShowcaseShelves(settings?.[SHOWCASE_KEY]);
         setProducts(nextProducts);
-        setConfiguredShelves(resolveConfiguredShelves(nextShelves, nextProducts));
-        setSideBanner(parseMarketplaceSideBanner(settings?.[MARKETPLACE_SIDE_BANNER_KEY]));
-        setServicesPromo(parseMarketplaceServicesPromo(settings?.[MARKETPLACE_SERVICES_PROMO_KEY]));
-        setProjectBanners(resolveProjectBanners(Array.isArray(projectData?.projects) ? projectData.projects : []));
+        setConfiguredShelves(
+          resolveConfiguredShelves(nextShelves, nextProducts),
+        );
+        setSideBanner(
+          parseMarketplaceSideBanner(settings?.[MARKETPLACE_SIDE_BANNER_KEY]),
+        );
+        setServicesPromo(
+          parseMarketplaceServicesPromo(
+            settings?.[MARKETPLACE_SERVICES_PROMO_KEY],
+          ),
+        );
+        setProjectBanners(
+          resolveProjectBanners(
+            Array.isArray(projectData?.projects) ? projectData.projects : [],
+          ),
+        );
       })
       .catch(() => {})
       .finally(() => {
@@ -54,7 +96,10 @@ export const ProductGrid = () => {
   }, []);
 
   const shelves = useMemo(
-    () => (configuredShelves.length > 0 ? configuredShelves : buildFallbackShelves(products)),
+    () =>
+      configuredShelves.length > 0
+        ? configuredShelves
+        : buildFallbackShelves(products),
     [configuredShelves, products],
   );
 
@@ -65,6 +110,7 @@ export const ProductGrid = () => {
         sideBanner={sideBanner}
         servicesPromo={servicesPromo}
         projectBanners={projectBanners}
+        reels={reels}
       />
 
       <section className="bg-white py-5 sm:py-7">
@@ -108,11 +154,17 @@ export const ProductGrid = () => {
                       Бүх бүтээгдэхүүн
                     </h2>
                   </div>
-                  <a href="/products" className="text-sm font-black text-orange-600">
+                  <a
+                    href="/products"
+                    className="text-sm font-black text-orange-600"
+                  >
                     Бүгдийг харах
                   </a>
                 </div>
-                <ProductCarousel products={products.slice(0, 10)} onSelect={(id) => setSelectedId(id)} />
+                <ProductCarousel
+                  products={products.slice(0, 10)}
+                  onSelect={(id) => setSelectedId(id)}
+                />
               </section>
             )}
           </div>

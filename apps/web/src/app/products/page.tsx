@@ -109,12 +109,19 @@ const SEARCH_INTENT_SUGGESTIONS: Array<{ triggers: string[]; terms: string[] }> 
   },
 ];
 
-function buildProductsUrl(categoryId: string | null, search: string, supplyType: SupplyKey = "all") {
+function buildProductsUrl(
+  categoryId: string | null,
+  search: string,
+  supplyType: SupplyKey = "all",
+  options: { sort?: SortKey; discountOnly?: boolean } = {},
+) {
   const params = new URLSearchParams();
   if (categoryId) params.set("category", categoryId);
   const query = search.trim();
   if (query) params.set("search", query);
   if (supplyType !== "all") params.set("type", supplyType);
+  if (options.sort && options.sort !== "newest") params.set("sort", options.sort);
+  if (options.discountOnly) params.set("discount", "1");
   const qs = params.toString();
   return qs ? `/products?${qs}` : "/products";
 }
@@ -131,6 +138,31 @@ function tokenizeSearchText(value: string) {
   return normalizeSearchText(value)
     .split(" ")
     .filter((token) => token.length > 1 && !["юм", "зүйл", "хийх", "авах"].includes(token));
+}
+
+const LATIN_SEARCH_ALIASES: Record<string, string[]> = {
+  hool: ["хоол"],
+  huns: ["хүнс"],
+  undaa: ["ундаа"],
+  utas: ["утас"],
+  huvtsas: ["хувцас"],
+  tsamts: ["цамц"],
+  gutal: ["гутал"],
+  omd: ["өмд"],
+  umd: ["өмд"],
+  goy: ["гоо", "гоё"],
+  goyo: ["гоо", "гоё"],
+  tseneglegch: ["цэнэглэгч"],
+  tsahilgaan: ["цахилгаан"],
+};
+
+function expandLocalSearchTokens(query: string) {
+  const tokens = tokenizeSearchText(query);
+  return [
+    normalizeSearchText(query),
+    ...tokens,
+    ...tokens.flatMap((token) => LATIN_SEARCH_ALIASES[token] || []),
+  ].filter(Boolean);
 }
 
 function productMatchesSearch(product: ApiProduct, query: string) {
@@ -153,7 +185,7 @@ function productMatchesSearch(product: ApiProduct, query: string) {
       .join(" "),
   );
   if (haystack.includes(normalizedQuery)) return true;
-  const tokens = tokenizeSearchText(query);
+  const tokens = expandLocalSearchTokens(query);
   return tokens.length > 0 && tokens.some((token) => haystack.includes(token));
 }
 
@@ -477,24 +509,70 @@ function ProductsContent() {
   const handleCategoryClick = (catId: string | null) => {
     setActiveCategory(catId);
     setCurrentPage(1);
-    router.push(buildProductsUrl(catId, searchQuery, supplyFilter), { scroll: false });
+    router.push(
+      buildProductsUrl(catId, searchQuery, supplyFilter, { sort: sortKey, discountOnly }),
+      { scroll: false },
+    );
   };
 
   const handleSupplyClick = (nextSupply: SupplyKey) => {
     setSupplyFilter(nextSupply);
     setCurrentPage(1);
-    router.push(buildProductsUrl(activeCategory, searchQuery, nextSupply), { scroll: false });
+    router.push(
+      buildProductsUrl(activeCategory, searchQuery, nextSupply, {
+        sort: sortKey,
+        discountOnly,
+      }),
+      { scroll: false },
+    );
+  };
+
+  const handleSortChange = (nextSort: SortKey) => {
+    setSortKey(nextSort);
+    setCurrentPage(1);
+    router.replace(
+      buildProductsUrl(activeCategory, searchQuery, supplyFilter, {
+        sort: nextSort,
+        discountOnly,
+      }),
+      { scroll: false },
+    );
+  };
+
+  const handleDiscountToggle = () => {
+    const nextDiscountOnly = !discountOnly;
+    setDiscountOnly(nextDiscountOnly);
+    setCurrentPage(1);
+    router.replace(
+      buildProductsUrl(activeCategory, searchQuery, supplyFilter, {
+        sort: sortKey,
+        discountOnly: nextDiscountOnly,
+      }),
+      { scroll: false },
+    );
   };
 
   const submitSearch = () => {
-    router.replace(buildProductsUrl(activeCategory, searchQuery, supplyFilter), { scroll: false });
+    router.replace(
+      buildProductsUrl(activeCategory, searchQuery, supplyFilter, {
+        sort: sortKey,
+        discountOnly,
+      }),
+      { scroll: false },
+    );
   };
 
   const submitHeroSearch = (query: string) => {
     setSearchQuery(query);
     setDebouncedSearch(query);
     setCurrentPage(1);
-    router.replace(buildProductsUrl(activeCategory, query, supplyFilter), { scroll: false });
+    router.replace(
+      buildProductsUrl(activeCategory, query, supplyFilter, {
+        sort: sortKey,
+        discountOnly,
+      }),
+      { scroll: false },
+    );
   };
 
   const clearFilters = () => {
@@ -645,12 +723,24 @@ function ProductsContent() {
       setSearchQuery("");
       setDebouncedSearch("");
       setActiveCategory(suggestion.value);
-      router.replace(buildProductsUrl(suggestion.value, "", supplyFilter), { scroll: false });
+      router.replace(
+        buildProductsUrl(suggestion.value, "", supplyFilter, {
+          sort: sortKey,
+          discountOnly,
+        }),
+        { scroll: false },
+      );
       return;
     }
     setSearchQuery(suggestion.value);
     setDebouncedSearch(suggestion.value);
-    router.replace(buildProductsUrl(activeCategory, suggestion.value, supplyFilter), { scroll: false });
+    router.replace(
+      buildProductsUrl(activeCategory, suggestion.value, supplyFilter, {
+        sort: sortKey,
+        discountOnly,
+      }),
+      { scroll: false },
+    );
   };
 
   // Price bounds for hints
@@ -671,6 +761,7 @@ function ProductsContent() {
         servicesPromo={servicesPromo}
         projectBanners={projectBanners}
         onSearchSubmit={submitHeroSearch}
+        showSearch
       />
 
       <ProductCommandBar
@@ -683,15 +774,9 @@ function ProductsContent() {
         supplyCounts={supplyCounts}
         discountOnly={discountOnly}
         filterPanelOpen={filterPanelOpen}
-        onSortChange={(key) => {
-          setSortKey(key);
-          setCurrentPage(1);
-        }}
+        onSortChange={handleSortChange}
         onSupplyClick={handleSupplyClick}
-        onDiscountToggle={() => {
-          setDiscountOnly((value) => !value);
-          setCurrentPage(1);
-        }}
+        onDiscountToggle={handleDiscountToggle}
         onToggleFilters={() => setFilterPanelOpen((value) => !value)}
       />
 
@@ -813,10 +898,10 @@ function ProductsContent() {
           <div className="flex flex-wrap items-center gap-2 py-3">
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">Идэвхтэй:</span>
             {sortKey !== "newest" && (
-              <FilterChip label={SORT_OPTIONS.find((option) => option.key === sortKey)?.label} onClear={() => setSortKey("newest")} />
+              <FilterChip label={SORT_OPTIONS.find((option) => option.key === sortKey)?.label} onClear={() => handleSortChange("newest")} />
             )}
             {discountOnly && (
-              <FilterChip label="Хямдралтай" onClear={() => setDiscountOnly(false)} />
+              <FilterChip label="Хямдралтай" onClear={handleDiscountToggle} />
             )}
             {(priceMin !== "" || priceMax !== "") && (
               <FilterChip label={`₮${priceMin || "0"} - ₮${priceMax || "∞"}`} onClear={() => { setPriceMin(""); setPriceMax(""); }} />
@@ -837,7 +922,13 @@ function ProductsContent() {
                   setSearchQuery("");
                   setDebouncedSearch("");
                   setCurrentPage(1);
-                  router.replace(buildProductsUrl(activeCategory, "", supplyFilter), { scroll: false });
+                  router.replace(
+                    buildProductsUrl(activeCategory, "", supplyFilter, {
+                      sort: sortKey,
+                      discountOnly,
+                    }),
+                    { scroll: false },
+                  );
                 }}
               />
             )}

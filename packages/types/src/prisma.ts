@@ -11,6 +11,10 @@ import type {
   Address,
   Product,
   ProductImage,
+  Reel,
+  ReelAsset,
+  ReelProcessingJob,
+  ReelInteraction,
   Category,
   Discount,
   InventoryLedger,
@@ -38,6 +42,10 @@ export type BranchModel = Branch;
 export type AddressModel = Address;
 export type ProductModel = Product;
 export type ProductImageModel = ProductImage;
+export type ReelModel = Reel;
+export type ReelAssetModel = ReelAsset;
+export type ReelProcessingJobModel = ReelProcessingJob;
+export type ReelInteractionModel = ReelInteraction;
 export type CategoryModel = Category;
 export type DiscountModel = Discount;
 export type InventoryLedgerModel = InventoryLedger;
@@ -142,6 +150,59 @@ export type ProductFull = Prisma.ProductGetPayload<{
     discounts: true;
     inventoryLogs: true;
     organization: true;
+  };
+}>;
+
+//////////////////////////////////////////////////
+// REELS
+//////////////////////////////////////////////////
+
+export type ReelWithMedia = Prisma.ReelGetPayload<{
+  include: {
+    assets: true;
+    processingJobs: true;
+  };
+}>;
+
+export type ReelWithOwner = Prisma.ReelGetPayload<{
+  include: {
+    organization: true;
+    author: {
+      include: {
+        profile: true;
+      };
+    };
+    businessCategory: true;
+    product: {
+      include: {
+        images: true;
+      };
+    };
+  };
+}>;
+
+export type ReelFull = Prisma.ReelGetPayload<{
+  include: {
+    organization: true;
+    author: {
+      include: {
+        profile: true;
+      };
+    };
+    reviewedBy: {
+      include: {
+        profile: true;
+      };
+    };
+    businessCategory: true;
+    product: {
+      include: {
+        images: true;
+      };
+    };
+    assets: true;
+    processingJobs: true;
+    interactions: true;
   };
 }>;
 

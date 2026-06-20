@@ -4,8 +4,9 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --font-site: "Noto Sans", ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-site:
+    "Noto Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   --font-marck-script: var(--font-site);
 }
 
@@ -120,6 +121,274 @@ select {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+.reel-heart-burst {
+  position: relative;
+  display: grid;
+  height: 9.9rem;
+  width: 9.9rem;
+  place-items: center;
+  transform: rotate(-8deg);
+  animation: reel-heart-container 980ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.reel-heart-main {
+  position: relative;
+  z-index: 3;
+  opacity: 0.9;
+  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.45))
+    drop-shadow(0 0 22px rgba(244, 63, 94, 0.34));
+  animation: reel-heart-main-pop 980ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.reel-heart-glow,
+.reel-heart-ring,
+.reel-heart-particle,
+.reel-heart-spark {
+  position: absolute;
+  pointer-events: none;
+}
+
+.reel-heart-glow {
+  z-index: 1;
+  height: 7.65rem;
+  width: 7.65rem;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.5), transparent 54%),
+    radial-gradient(circle, rgba(244, 63, 94, 0.55), transparent 72%);
+  filter: blur(14px);
+  animation: reel-heart-glow 980ms ease-out forwards;
+}
+
+.reel-heart-ring {
+  z-index: 2;
+  height: 7.65rem;
+  width: 7.65rem;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  animation: reel-heart-ring 820ms ease-out forwards;
+}
+
+.reel-heart-particle {
+  z-index: 2;
+  opacity: 0;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.32));
+  animation: reel-heart-particle 900ms cubic-bezier(0.2, 0.9, 0.25, 1) forwards;
+}
+
+.reel-heart-particle-1 {
+  --tx: -79px;
+  --ty: -77px;
+  --r: -26deg;
+  animation-delay: 40ms;
+}
+
+.reel-heart-particle-2 {
+  --tx: 79px;
+  --ty: -70px;
+  --r: 22deg;
+  animation-delay: 70ms;
+}
+
+.reel-heart-particle-3 {
+  --tx: -99px;
+  --ty: 2px;
+  --r: 18deg;
+  animation-delay: 110ms;
+}
+
+.reel-heart-particle-4 {
+  --tx: 95px;
+  --ty: 9px;
+  --r: -18deg;
+  animation-delay: 120ms;
+}
+
+.reel-heart-particle-5 {
+  --tx: -50px;
+  --ty: 79px;
+  --r: -10deg;
+  animation-delay: 90ms;
+}
+
+.reel-heart-particle-6 {
+  --tx: 52px;
+  --ty: 76px;
+  --r: 12deg;
+  animation-delay: 130ms;
+}
+
+.reel-heart-spark {
+  z-index: 4;
+  height: 0.36rem;
+  width: 0.36rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  animation: reel-heart-spark 760ms ease-out forwards;
+}
+
+.reel-heart-spark-1 {
+  --tx: -65px;
+  --ty: -47px;
+  animation-delay: 80ms;
+}
+
+.reel-heart-spark-2 {
+  --tx: 63px;
+  --ty: -43px;
+  animation-delay: 110ms;
+}
+
+.reel-heart-spark-3 {
+  --tx: -83px;
+  --ty: 34px;
+  animation-delay: 130ms;
+}
+
+.reel-heart-spark-4 {
+  --tx: 83px;
+  --ty: 32px;
+  animation-delay: 150ms;
+}
+
+.reel-heart-spark-5 {
+  --tx: -25px;
+  --ty: -94px;
+  animation-delay: 70ms;
+}
+
+.reel-heart-spark-6 {
+  --tx: 22px;
+  --ty: -95px;
+  animation-delay: 100ms;
+}
+
+.reel-heart-spark-7 {
+  --tx: -27px;
+  --ty: 90px;
+  animation-delay: 140ms;
+}
+
+.reel-heart-spark-8 {
+  --tx: 31px;
+  --ty: 88px;
+  animation-delay: 170ms;
+}
+
+@keyframes reel-heart-container {
+  0% {
+    opacity: 0;
+    transform: scale(0.76) rotate(-12deg);
+  }
+  16% {
+    opacity: 0.9;
+    transform: scale(1.04) rotate(7deg);
+  }
+  42% {
+    transform: scale(0.96) rotate(-3deg);
+  }
+  70% {
+    opacity: 0.9;
+    transform: scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.12) rotate(0deg);
+  }
+}
+
+@keyframes reel-heart-main-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.22);
+  }
+  15% {
+    opacity: 0.9;
+    transform: scale(1.18);
+  }
+  34% {
+    transform: scale(0.92);
+  }
+  54% {
+    transform: scale(1);
+  }
+  78% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.32);
+  }
+}
+
+@keyframes reel-heart-glow {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  18% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+
+@keyframes reel-heart-ring {
+  0% {
+    opacity: 0;
+    transform: scale(0.42);
+  }
+  18% {
+    opacity: 0.75;
+    transform: scale(0.78);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.75);
+  }
+}
+
+@keyframes reel-heart-particle {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.2) rotate(0deg);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(calc(var(--tx) * 0.28), calc(var(--ty) * 0.28))
+      scale(1) rotate(var(--r));
+  }
+  70% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--tx), var(--ty)) scale(0.1) rotate(var(--r));
+  }
+}
+
+@keyframes reel-heart-spark {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.2);
+  }
+  22% {
+    opacity: 1;
+    transform: translate(calc(var(--tx) * 0.32), calc(var(--ty) * 0.32))
+      scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--tx), var(--ty)) scale(0);
+  }
+}
+
 /* Contract signing page: readable tables on small screens */
 .contract-sign-page,
 .contract-print-page {
@@ -224,7 +493,8 @@ select {
     margin: 14mm 13mm;
   }
 
-  html, body {
+  html,
+  body {
     background: white !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -291,8 +561,11 @@ select {
   }
 }
 
-
 @keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(200%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
 }

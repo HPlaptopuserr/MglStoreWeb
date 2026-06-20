@@ -1,6 +1,7 @@
 import {
   Boxes,
   Building2,
+  Clapperboard,
   ClipboardList,
   Megaphone,
   Package,
@@ -67,6 +68,13 @@ export function getDashboardModules(features: OrgFeatureState) {
       desc: "Бараа эсвэл худалдах боломжтой item-уудаа удирдана.",
       href: "/dashboard/products",
       icon: Package,
+      enabled: true,
+    },
+    {
+      title: "Reels",
+      desc: "Бүтээгдэхүүнтэй холбосон богино video танилцуулга оруулна.",
+      href: "/dashboard/reels",
+      icon: Clapperboard,
       enabled: true,
     },
     {

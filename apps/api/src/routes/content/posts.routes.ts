@@ -7,9 +7,7 @@ import { prisma, VendorContentReviewStatus } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import { requireAuth } from "../../middleware/auth";
 import { assertOrgPermission } from "../../services/permission.service";
-import {
-  getReviewStatusForVendorMutation,
-} from "../../services/vendor-content-review.service";
+import { getReviewStatusForVendorMutation } from "../../services/vendor-content-review.service";
 
 const uploadsDir = path.resolve(__dirname, "../../../uploads/posts");
 if (!fs.existsSync(uploadsDir)) {
@@ -46,6 +44,11 @@ router.use("/posts/uploads", (req, res) => {
 router.get("/posts", async (req, res) => {
   try {
     const type = req.query.type as string;
+    const rawLimit = parseInt(String(req.query.limit || ""), 10);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(50, rawLimit) : 0;
+    const rawOffset = parseInt(String(req.query.offset || ""), 10);
+    const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
     const organizationId =
       typeof req.query.organizationId === "string"
         ? req.query.organizationId.trim()
@@ -85,11 +88,18 @@ router.get("/posts", async (req, res) => {
       orderBy: {
         createdAt: "desc",
       },
+      ...(limit > 0
+        ? { skip: offset, take: limit }
+        : offset > 0
+          ? { skip: offset }
+          : {}),
     });
 
     const userId = (req as any).user?.userId;
     const formatted = posts.map((post) => {
-      const isLiked = userId ? post.likes.some((l) => l.userId === userId) : false;
+      const isLiked = userId
+        ? post.likes.some((l) => l.userId === userId)
+        : false;
       return {
         id: post.id,
         author: {
@@ -122,131 +132,149 @@ router.get("/posts", async (req, res) => {
 });
 
 // ── POST /posts — create a feed post
-router.post("/posts", requireAuth, upload.array("images", 10), async (req, res) => {
-  try {
-    const { content, type, tags, organizationId } = req.body;
-    if (!content || typeof content !== "string" || content.trim().length === 0) {
-      res.status(400).json({ message: "Постын агуулга шаардлагатай" });
-      return;
-    }
+router.post(
+  "/posts",
+  requireAuth,
+  upload.array("images", 10),
+  async (req, res) => {
+    try {
+      const { content, type, tags, organizationId } = req.body;
+      if (
+        !content ||
+        typeof content !== "string" ||
+        content.trim().length === 0
+      ) {
+        res.status(400).json({ message: "Постын агуулга шаардлагатай" });
+        return;
+      }
 
-    const authorId = (req as any).user.userId;
-    const targetOrganizationId =
-      typeof organizationId === "string" && organizationId.trim()
-        ? organizationId.trim()
-        : null;
+      const authorId = (req as any).user.userId;
+      const targetOrganizationId =
+        typeof organizationId === "string" && organizationId.trim()
+          ? organizationId.trim()
+          : null;
 
-    if (targetOrganizationId) {
-      const permission = await assertOrgPermission(
-        req,
-        res,
-        targetOrganizationId,
-        Permission.MANAGE_SERVICES,
-      );
-      if (!permission) return;
-    }
+      if (targetOrganizationId) {
+        const permission = await assertOrgPermission(
+          req,
+          res,
+          targetOrganizationId,
+          Permission.MANAGE_SERVICES,
+        );
+        if (!permission) return;
+      }
 
-    // Process files if uploaded
-    let imageUrls: string[] = [];
-    if (req.files && Array.isArray(req.files)) {
-      imageUrls = (req.files as Express.Multer.File[]).map(
-        (file) => `/api/posts/uploads/${file.filename}`
-      );
-    } else if (req.body.imageUrls) {
-      imageUrls = Array.isArray(req.body.imageUrls)
-        ? req.body.imageUrls
-        : [req.body.imageUrls];
-    }
+      // Process files if uploaded
+      let imageUrls: string[] = [];
+      if (req.files && Array.isArray(req.files)) {
+        imageUrls = (req.files as Express.Multer.File[]).map(
+          (file) => `/api/posts/uploads/${file.filename}`,
+        );
+      } else if (req.body.imageUrls) {
+        imageUrls = Array.isArray(req.body.imageUrls)
+          ? req.body.imageUrls
+          : [req.body.imageUrls];
+      }
 
-    // Process tags
-    let parsedTags: string[] = [];
-    if (tags) {
-      if (Array.isArray(tags)) {
-        parsedTags = tags;
-      } else if (typeof tags === "string") {
-        try {
-          parsedTags = JSON.parse(tags);
-        } catch {
-          parsedTags = tags.split(",").map((t) => t.trim()).filter(Boolean);
+      // Process tags
+      let parsedTags: string[] = [];
+      if (tags) {
+        if (Array.isArray(tags)) {
+          parsedTags = tags;
+        } else if (typeof tags === "string") {
+          try {
+            parsedTags = JSON.parse(tags);
+          } catch {
+            parsedTags = tags
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean);
+          }
         }
       }
-    }
 
-    const validTypes = ["ANNOUNCEMENT", "UPDATE", "ALERT", "PROMOTION", "GENERAL"];
-    const postType = validTypes.includes(type) ? type : "GENERAL";
+      const validTypes = [
+        "ANNOUNCEMENT",
+        "UPDATE",
+        "ALERT",
+        "PROMOTION",
+        "GENERAL",
+      ];
+      const postType = validTypes.includes(type) ? type : "GENERAL";
 
-    const reviewData = targetOrganizationId
-      ? await getReviewStatusForVendorMutation()
-      : {
-          reviewStatus: VendorContentReviewStatus.APPROVED,
-          reviewedAt: new Date(),
-          reviewedById: null,
-        };
+      const reviewData = targetOrganizationId
+        ? await getReviewStatusForVendorMutation()
+        : {
+            reviewStatus: VendorContentReviewStatus.APPROVED,
+            reviewedAt: new Date(),
+            reviewedById: null,
+          };
 
-    const post = await prisma.post.create({
-      data: {
-        authorId,
-        submittedById: authorId,
-        organizationId: targetOrganizationId,
-        content: content.trim(),
-        type: postType as any,
-        imageUrls,
-        tags: parsedTags,
-        isOfficial: Boolean(targetOrganizationId),
-        ...reviewData,
-      },
-      include: {
-        author: {
-          select: {
-            id: true,
-            role: true,
-            profile: {
-              select: {
-                fullName: true,
-                avatarUrl: true,
+      const post = await prisma.post.create({
+        data: {
+          authorId,
+          submittedById: authorId,
+          organizationId: targetOrganizationId,
+          content: content.trim(),
+          type: postType as any,
+          imageUrls,
+          tags: parsedTags,
+          isOfficial: Boolean(targetOrganizationId),
+          ...reviewData,
+        },
+        include: {
+          author: {
+            select: {
+              id: true,
+              role: true,
+              profile: {
+                select: {
+                  fullName: true,
+                  avatarUrl: true,
+                },
               },
             },
           },
-        },
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            logoUrl: true,
-            isVerified: true,
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              logoUrl: true,
+              isVerified: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    res.status(201).json({
-      id: post.id,
-      author: {
-        id: post.author.id,
-        fullName: post.author.profile?.fullName || "Ажилтан",
-        avatarUrl: post.author.profile?.avatarUrl || null,
-        role: post.author.role,
-        isOfficial: post.isOfficial,
-      },
-      organization: post.organization,
-      type: post.type,
-      content: post.content,
-      imageUrls: post.imageUrls,
-      tags: post.tags,
-      viewCount: post.viewCount,
-      likeCount: post.likeCount,
-      commentCount: post.commentCount,
-      isLiked: false,
-      isPinned: post.isPinned,
-      createdAt: post.createdAt,
-      updatedAt: post.updatedAt,
-    });
-  } catch (error) {
-    console.error("POST /posts error", error);
-    res.status(500).json({ message: "Пост үүсгэхэд алдаа гарлаа" });
-  }
-});
+      res.status(201).json({
+        id: post.id,
+        author: {
+          id: post.author.id,
+          fullName: post.author.profile?.fullName || "Ажилтан",
+          avatarUrl: post.author.profile?.avatarUrl || null,
+          role: post.author.role,
+          isOfficial: post.isOfficial,
+        },
+        organization: post.organization,
+        type: post.type,
+        content: post.content,
+        imageUrls: post.imageUrls,
+        tags: post.tags,
+        viewCount: post.viewCount,
+        likeCount: post.likeCount,
+        commentCount: post.commentCount,
+        isLiked: false,
+        isPinned: post.isPinned,
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+      });
+    } catch (error) {
+      console.error("POST /posts error", error);
+      res.status(500).json({ message: "Пост үүсгэхэд алдаа гарлаа" });
+    }
+  },
+);
 
 // ── PATCH /posts/:id — update an organization feed post
 router.patch("/posts/:id", requireAuth, async (req, res) => {
@@ -285,7 +313,13 @@ router.patch("/posts/:id", requireAuth, async (req, res) => {
       data.content = content.trim();
     }
     if (type !== undefined) {
-      const validTypes = ["ANNOUNCEMENT", "UPDATE", "ALERT", "PROMOTION", "GENERAL"];
+      const validTypes = [
+        "ANNOUNCEMENT",
+        "UPDATE",
+        "ALERT",
+        "PROMOTION",
+        "GENERAL",
+      ];
       data.type = (validTypes.includes(type) ? type : "GENERAL") as any;
     }
     if (existing.organizationId) {

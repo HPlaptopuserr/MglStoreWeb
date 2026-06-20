@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   ChefHat,
+  Clapperboard,
   Clock3,
   ImageIcon,
   Loader2,
@@ -198,8 +200,7 @@ export function RestaurantProductsScreen() {
       description: product.description || "",
       sku: product.sku || "",
       price: String(product.price),
-      costPrice:
-        product.costPrice === null ? "" : String(product.costPrice),
+      costPrice: product.costPrice === null ? "" : String(product.costPrice),
       stock: String(product.stock),
       menuCategory: product.menuCategory || "HOT",
       kitchenStation: product.kitchenStation || "HOT_KITCHEN",
@@ -236,10 +237,7 @@ export function RestaurantProductsScreen() {
       showMessage("error", "Зарах үнэ буруу байна");
       return;
     }
-    if (
-      costPrice !== null &&
-      (!Number.isFinite(costPrice) || costPrice < 0)
-    ) {
+    if (costPrice !== null && (!Number.isFinite(costPrice) || costPrice < 0)) {
       showMessage("error", "Өртөг үнэ буруу байна");
       return;
     }
@@ -316,9 +314,7 @@ export function RestaurantProductsScreen() {
       }
       setProducts((current) =>
         current.map((item) =>
-          item.id === product.id
-            ? { ...item, isActive: !item.isActive }
-            : item,
+          item.id === product.id ? { ...item, isActive: !item.isActive } : item,
         ),
       );
     } catch (error) {
@@ -383,14 +379,23 @@ export function RestaurantProductsScreen() {
             Энд нэмсэн идэвхтэй бүтээгдэхүүн ресторан кассын менюд харагдана.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white transition hover:bg-slate-800"
-        >
-          <Plus className="h-4 w-4" />
-          Хоол нэмэх
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Link
+            href="/dashboard/reels"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-5 text-sm font-black text-slate-800 transition hover:bg-slate-50"
+          >
+            <Clapperboard className="h-4 w-4" />
+            Reel оруулах
+          </Link>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white transition hover:bg-slate-800"
+          >
+            <Plus className="h-4 w-4" />
+            Бүтээгдэхүүн нэмэх
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-slate-200 pb-4">
@@ -618,23 +623,13 @@ function FilterButton({
   );
 }
 
-function ProductImage({
-  imageUrl,
-  name,
-}: {
-  imageUrl?: string;
-  name: string;
-}) {
+function ProductImage({ imageUrl, name }: { imageUrl?: string; name: string }) {
   return (
     <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
       {imageUrl ? (
         // Product images can be hosted on organization-specific domains.
         // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={imageUrl}
-          alt={name}
-          className="h-full w-full object-cover"
-        />
+        <img src={imageUrl} alt={name} className="h-full w-full object-cover" />
       ) : (
         <ImageIcon className="h-5 w-5 text-slate-300" />
       )}
@@ -660,10 +655,8 @@ function MenuItemForm({
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState("");
 
-  const update = <Key extends keyof MenuForm>(
-    key: Key,
-    value: MenuForm[Key],
-  ) => onChange({ ...form, [key]: value });
+  const update = <Key extends keyof MenuForm>(key: Key, value: MenuForm[Key]) =>
+    onChange({ ...form, [key]: value });
 
   const handleImageUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -672,7 +665,11 @@ function MenuItemForm({
     event.target.value = "";
     if (!file) return;
 
-    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
+    if (
+      !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(
+        file.type,
+      )
+    ) {
       setImageError("JPG, PNG, WebP эсвэл GIF зураг сонгоно уу");
       return;
     }
@@ -767,10 +764,7 @@ function MenuItemForm({
                   <select
                     value={form.menuCategory}
                     onChange={(event) =>
-                      update(
-                        "menuCategory",
-                        event.target.value as MenuCategory,
-                      )
+                      update("menuCategory", event.target.value as MenuCategory)
                     }
                     className={inputClass}
                   >

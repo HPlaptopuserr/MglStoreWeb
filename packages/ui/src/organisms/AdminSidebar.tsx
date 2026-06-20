@@ -1,36 +1,42 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useState, type ElementType, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import {
-  LayoutGrid,
-  Users,
-  Layers,
-  Settings,
-  LogOut,
-  ShieldCheck,
-  ChevronLeft,
-  ChevronRight,
-  Tag,
-  Package,
-  CreditCard,
+  BarChart3,
+  Briefcase,
   Building2,
+  CreditCard,
+  FileText,
+  GraduationCap,
+  Headphones,
+  Layers,
+  LayoutGrid,
+  MessageSquare,
+  Package,
+  PackageSearch,
+  Settings,
+  ShieldCheck,
+  Smartphone,
+  Tag,
+  TrendingUp,
+  UserCog,
+  Users,
+  Users2,
 } from "lucide-react";
+import {
+  AppSidebar,
+  type AppSidebarGroup,
+  type AppSidebarItem,
+} from "./AppSidebar";
 
 export interface NavItem {
   id: string;
   label: string;
-  icon: React.ElementType;
+  icon: ElementType;
   href: string;
   isActive?: boolean;
 }
-
-type NavGroup = {
-  id: string;
-  title: string;
-  items: NavItem[];
-};
 
 export interface SidebarProps {
   userName?: string;
@@ -38,8 +44,259 @@ export interface SidebarProps {
   userInitials?: string;
   onSignOut?: () => void;
   navItems?: NavItem[];
-  /** Optional slot rendered above the user card (e.g. account switcher) */
-  bottomSlot?: React.ReactNode;
+  /** Optional slot rendered above the footer actions (e.g. account switcher) */
+  bottomSlot?: ReactNode;
+}
+
+const ADMIN_MENU_SECTIONS: AppSidebarItem[] = [
+  {
+    id: "overview-menu",
+    label: "Хяналт",
+    icon: LayoutGrid,
+    href: "/dashboard",
+    children: [
+      {
+        id: "dashboard",
+        label: "Хяналтын самбар",
+        icon: LayoutGrid,
+        href: "/dashboard",
+      },
+      {
+        id: "statistics",
+        label: "Статистик",
+        icon: BarChart3,
+        href: "/statistics",
+      },
+    ],
+  },
+  {
+    id: "requests-menu",
+    label: "Хүсэлт ба бүртгэл",
+    icon: Users,
+    href: "/requests",
+    children: [
+      {
+        id: "requests",
+        label: "Хүсэлтүүд",
+        icon: Users,
+        href: "/requests",
+      },
+      {
+        id: "association",
+        label: "Холбооны гишүүнчлэл",
+        icon: Users2,
+        href: "/association",
+      },
+      {
+        id: "study-registrations",
+        label: "Сургалтын бүртгэл",
+        icon: GraduationCap,
+        href: "/study-registrations",
+      },
+      {
+        id: "contracts",
+        label: "Гэрээний мэдээлэл",
+        icon: FileText,
+        href: "/contracts",
+      },
+    ],
+  },
+  {
+    id: "partners-menu",
+    label: "Байгууллага ба агуулах",
+    icon: Building2,
+    href: "/partners",
+    children: [
+      {
+        id: "partners",
+        label: "Түншүүд",
+        icon: Users,
+        href: "/partners",
+      },
+      {
+        id: "card-terminal-requests",
+        label: "Card Terminal хүсэлт",
+        icon: CreditCard,
+        href: "/partners/card-terminal-requests",
+      },
+      {
+        id: "vendor-content-review",
+        label: "Vendor бараа хяналт",
+        icon: ShieldCheck,
+        href: "/vendor-content-review",
+      },
+      {
+        id: "warehouses",
+        label: "Агуулах",
+        icon: Package,
+        href: "/warehouses",
+      },
+    ],
+  },
+  {
+    id: "content-menu",
+    label: "Контент ба үйлчилгээ",
+    icon: Layers,
+    href: "/sections",
+    children: [
+      {
+        id: "sections",
+        label: "Нэмэлт хэсгүүд",
+        icon: Layers,
+        href: "/sections",
+      },
+      {
+        id: "product-development",
+        label: "Бүтээгдэхүүн хөгжүүлэлт",
+        icon: PackageSearch,
+        href: "/product-development",
+      },
+      {
+        id: "services",
+        label: "Үйлчилгээ",
+        icon: Headphones,
+        href: "/services",
+      },
+      {
+        id: "chat",
+        label: "Чат удирдлага",
+        icon: MessageSquare,
+        href: "/chat",
+      },
+    ],
+  },
+  {
+    id: "management-menu",
+    label: "Удирдлага",
+    icon: UserCog,
+    href: "/hr",
+    children: [
+      {
+        id: "hr",
+        label: "Хүний нөөц",
+        icon: UserCog,
+        href: "/hr",
+      },
+      {
+        id: "applications",
+        label: "Ажлын анкет",
+        icon: Briefcase,
+        href: "/applications",
+      },
+      {
+        id: "investors",
+        label: "Хөрөнгө оруулалт",
+        icon: TrendingUp,
+        href: "/investors",
+      },
+    ],
+  },
+  {
+    id: "system-menu",
+    label: "Систем",
+    icon: Settings,
+    href: "/settings",
+    children: [
+      {
+        id: "settings",
+        label: "Тохиргоо",
+        icon: Settings,
+        href: "/settings",
+      },
+      {
+        id: "categories",
+        label: "Бизнесийн ангилал",
+        icon: Tag,
+        href: "/categories",
+      },
+      {
+        id: "app-control",
+        label: "App Control",
+        icon: Smartphone,
+        href: "/app-control",
+      },
+    ],
+  },
+];
+
+const DEFAULT_ADMIN_GROUPS: AppSidebarGroup[] = [
+  {
+    id: "admin-menu",
+    title: "Цэс",
+    items: ADMIN_MENU_SECTIONS,
+  },
+];
+
+function withActiveState(items: NavItem[], pathname: string | null) {
+  return items.map((item) => {
+    const exactOrNested =
+      item.href === "/dashboard"
+        ? pathname === "/dashboard"
+        : pathname === item.href || pathname?.startsWith(`${item.href}/`);
+    const hasMoreSpecificMatch = items.some(
+      (other) =>
+        other.href !== item.href &&
+        other.href.startsWith(`${item.href}/`) &&
+        (pathname === other.href || pathname?.startsWith(`${other.href}/`)),
+    );
+
+    return {
+      ...item,
+      isActive:
+        item.isActive ?? Boolean(exactOrNested && !hasMoreSpecificMatch),
+    };
+  });
+}
+
+function applyPermittedItems(
+  templateItems: AppSidebarItem[],
+  permittedItems: Map<string, AppSidebarItem>,
+): AppSidebarItem[] {
+  return templateItems.flatMap((item) => {
+    const children = item.children
+      ? applyPermittedItems(item.children, permittedItems)
+      : undefined;
+    const permittedItem = permittedItems.get(item.id);
+
+    if (children?.length) {
+      return [
+        {
+          ...item,
+          ...permittedItem,
+          children,
+        },
+      ];
+    }
+
+    return permittedItem ? [permittedItem] : [];
+  });
+}
+
+function groupAdminItems(
+  items: NavItem[],
+  pathname: string | null,
+): AppSidebarGroup[] {
+  const permittedItems = new Map(
+    withActiveState(items, pathname).map((item) => [
+      item.id,
+      item as AppSidebarItem,
+    ]),
+  );
+  const menuItems = applyPermittedItems(ADMIN_MENU_SECTIONS, permittedItems);
+  const knownIds = new Set(
+    ADMIN_MENU_SECTIONS.flatMap((item) =>
+      item.children ? item.children.map((child) => child.id) : [item.id],
+    ),
+  );
+  const otherItems = items.filter((item) => !knownIds.has(item.id));
+
+  return [
+    {
+      id: "admin-menu",
+      title: "Цэс",
+      items: menuItems.concat(otherItems),
+    },
+  ].filter((group) => group.items.length > 0);
 }
 
 export function AdminSidebar({
@@ -52,246 +309,20 @@ export function AdminSidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
-
-  const defaultNavGroups: NavGroup[] = [
-    {
-      id: "core",
-      title: "Үндсэн",
-      items: [
-        {
-          id: "dashboard",
-          label: "Хяналтын самбар",
-          icon: LayoutGrid,
-          href: "/dashboard",
-        },
-      ],
-    },
-    {
-      id: "requests",
-      title: "Хүсэлтүүд",
-      items: [
-        {
-          id: "requests",
-          label: "Хүсэлтүүд",
-          icon: Users,
-          href: "/requests",
-        },
-        {
-          id: "association",
-          label: "Гишүүнчлэл",
-          icon: Building2,
-          href: "/association",
-        },
-      ],
-    },
-    {
-      id: "catalog",
-      title: "Каталог ба түнш",
-      items: [
-        {
-          id: "partners",
-          label: "Түншүүд",
-          icon: Users,
-          href: "/partners",
-        },
-        {
-          id: "card-terminal-requests",
-          label: "Card Terminal хүсэлт",
-          icon: CreditCard,
-          href: "/partners/card-terminal-requests",
-        },
-        {
-          id: "warehouses",
-          label: "Агуулах",
-          icon: Package,
-          href: "/warehouses",
-        },
-      ],
-    },
-    {
-      id: "content",
-      title: "Сайт",
-      items: [
-        {
-          id: "sections",
-          label: "Нэмэлт хэсгүүд",
-          icon: Layers,
-          href: "/sections",
-        },
-      ],
-    },
-    {
-      id: "system",
-      title: "Систем",
-      items: [
-        {
-          id: "settings",
-          label: "Тохиргоо",
-          icon: Settings,
-          href: "/settings",
-        },
-        {
-          id: "categories",
-          label: "Бизнесийн ангилал",
-          icon: Tag,
-          href: "/categories",
-        },
-      ],
-    },
-  ];
-
-  const navGroups: NavGroup[] = navItems
-    ? [{ id: "custom", title: "Цэс", items: navItems }]
-    : defaultNavGroups;
-  const ToggleIcon = isCollapsed ? ChevronRight : ChevronLeft;
+  const groups = navItems
+    ? groupAdminItems(navItems, pathname)
+    : DEFAULT_ADMIN_GROUPS;
 
   return (
-    <>
-      <div
-        className={`${
-          isCollapsed ? "w-[84px]" : "w-[252px]"
-        } shrink-0 transition-all duration-300 hidden md:block`}
-        style={{ width: isCollapsed ? 84 : 252 }}
-      />
-
-      <aside
-        className={`
-          ${isCollapsed ? "w-[84px]" : "w-[252px]"}
-          border-r border-slate-200 bg-white
-          flex flex-col
-          px-3 pt-5 pb-5
-          transition-all duration-300
-          h-screen
-          fixed top-0 left-0 z-40 overflow-x-visible
-          hidden md:flex
-          md:block
-        `}
-      >
-        <div
-          className={`mb-5 flex items-center ${
-            isCollapsed ? "flex-col justify-center gap-2" : "justify-between gap-3 px-1"
-          }`}
-        >
-          <div
-            className={`flex min-w-0 items-center ${
-              isCollapsed ? "justify-center" : "gap-3"
-            }`}
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#5B4CFF] text-white shadow-sm shadow-[#5B4CFF]/20">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-
-            {!isCollapsed && (
-              <span className="truncate text-lg font-bold text-slate-800">
-                Marrow
-              </span>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-[#5B4CFF]/30 hover:bg-[#5B4CFF]/10 hover:text-[#5B4CFF] ${
-              isCollapsed ? "mx-auto" : ""
-            }`}
-            aria-label={isCollapsed ? "Sidebar нээх" : "Sidebar хураах"}
-            title={isCollapsed ? "Sidebar нээх" : "Sidebar хураах"}
-          >
-            <ToggleIcon className="h-4.5 w-4.5" />
-          </button>
-        </div>
-
-        <nav className="flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
-          {navGroups.map((group) => (
-            <div key={group.id} className="space-y-2">
-              {!isCollapsed && (
-                <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  {group.title}
-                </p>
-              )}
-
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const isActive =
-                  item.isActive !== undefined
-                    ? item.isActive
-                    : item.href === "/dashboard"
-                      ? pathname === "/dashboard"
-                      : pathname?.startsWith(item.href);
-
-                return (
-                  <Link
-                    key={item.id}
-                    href={item.href}
-                    title={isCollapsed ? item.label : undefined}
-                    className={`
-                      flex items-center rounded-lg transition-all duration-200
-                      ${isCollapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"}
-                      ${
-                        isActive
-                          ? "bg-[#5B4CFF]/10 text-[#5B4CFF] font-semibold"
-                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium"
-                      }
-                    `}
-                  >
-                    <Icon className="h-4.5 w-4.5 shrink-0" />
-                    {!isCollapsed && (
-                      <span className="truncate whitespace-nowrap text-sm">
-                        {item.label}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-
-        <div className="shrink-0 border-t border-slate-200 pt-4 pb-3 mt-auto">
-          {bottomSlot && !isCollapsed && (
-            <div className="mb-3">{bottomSlot}</div>
-          )}
-          <div
-            className={`rounded-xl bg-slate-50 ${
-              isCollapsed ? "p-2" : "p-4"
-            } transition-all duration-300`}
-          >
-            <div
-              className={`flex items-center ${
-                isCollapsed ? "justify-center" : "gap-3"
-              }`}
-            >
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#5B4CFF]/10 text-sm font-bold text-[#5B4CFF] shrink-0">
-                {userInitials}
-              </div>
-
-              {!isCollapsed && (
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-slate-900">
-                    {userName}
-                  </div>
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                    {userRole}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={onSignOut}
-              title={isCollapsed ? "Гарах" : undefined}
-              className={`
-                mt-3 flex w-full items-center rounded-lg text-sm font-semibold text-red-500
-                transition-colors hover:bg-red-50 hover:text-red-600
-                ${isCollapsed ? "justify-center py-2" : "gap-2 px-2 py-2"}
-              `}
-            >
-              <LogOut className="h-4 w-4 shrink-0" />
-              {!isCollapsed && <span>Гарах</span>}
-            </button>
-          </div>
-        </div>
-      </aside>
-    </>
+    <AppSidebar
+      userName={userName}
+      userRole={userRole}
+      userInitials={userInitials}
+      groups={groups}
+      collapsed={isCollapsed}
+      onCollapsedChange={setIsCollapsed}
+      onSignOut={onSignOut}
+      bottomSlot={bottomSlot}
+    />
   );
 }

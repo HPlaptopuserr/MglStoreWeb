@@ -9,18 +9,24 @@ import {
   Boxes,
   CalendarDays,
   ChevronDown,
+  CheckCircle2,
+  Clapperboard,
   Eye,
+  Film,
   Globe2,
+  Heart,
   ImageIcon,
   Loader2,
   MapPin,
   Megaphone,
+  MessageCircle,
   MoreHorizontal,
   Pencil,
   Phone,
   PlusCircle,
   Send,
   ShieldCheck,
+  Share2,
   Star,
   Store,
   Upload,
@@ -88,13 +94,39 @@ type ManagedFeedPost = {
   createdAt?: string | Date;
 };
 
+type ManagedReel = {
+  id: string;
+  title?: string | null;
+  caption?: string | null;
+  description?: string | null;
+  videoUrl: string;
+  thumbnailUrl?: string | null;
+  durationSeconds?: number | null;
+  tags?: string[];
+  reviewStatus?: string;
+  status?: string;
+  viewCount?: number;
+  likeCount?: number;
+  commentCount?: number;
+  shareCount?: number;
+  createdAt?: string | Date;
+};
+
 type ManagedContentState = {
   products: ManagedProduct[];
   services: ManagedServicePost[];
   posts: ManagedFeedPost[];
+  reels: ManagedReel[];
 };
 
-type ContentTab = "home" | "about" | "products" | "posts" | "ads" | "more";
+type ContentTab =
+  | "home"
+  | "about"
+  | "products"
+  | "reels"
+  | "posts"
+  | "ads"
+  | "more";
 
 type ManagedTimelineItem =
   | {
@@ -146,6 +178,28 @@ type ManagedTimelineItem =
         type: string;
       };
       createdAt?: string | Date;
+    }
+  | {
+      id: string;
+      kind: "reel";
+      title: string;
+      description?: string | null;
+      image?: string | null;
+      images: string[];
+      videoUrl: string;
+      meta: string;
+      stats?: string;
+      metrics: {
+        comments: number;
+        likes: number;
+        shares: number;
+        views: number;
+      };
+      edit: {
+        description: string;
+        title: string;
+      };
+      createdAt?: string | Date;
     };
 
 type TimelineEditForm = {
@@ -169,6 +223,17 @@ type QuickProductFormState = {
 
 type QuickProductTextField = Exclude<keyof QuickProductFormState, "images">;
 
+type ReelFormState = {
+  linkMode: "store" | "product";
+  productId: string;
+  title: string;
+  caption: string;
+  tags: string;
+  video: File | null;
+};
+
+type CreateMode = "post" | "product" | "reel" | "service" | "ad";
+
 type OrgProfileFormState = {
   name: string;
   phone: string;
@@ -191,10 +256,12 @@ const contentTabs: Array<{ id: ContentTab; label: string }> = [
   { id: "home", label: "Нүүр" },
   { id: "about", label: "Тухай" },
   { id: "products", label: "Бүтээгдэхүүн" },
+  { id: "reels", label: "Reel" },
   { id: "ads", label: "Зар" },
   { id: "more", label: "Илүү" },
 ];
 const SHOW_POST_SECTION: boolean = false;
+const PROFILE_CONTENT_PAGE_SIZE = 10;
 
 function getInitials(name: string) {
   return name
@@ -226,6 +293,43 @@ function compactImageUrls(images?: Array<{ url?: string | null }> | null) {
     .filter((url): url is string => Boolean(url));
 }
 
+function getMediaUrl(url: string) {
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  return `${API.replace(/\/api$/, "")}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
+function compactCount(value: number) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(value || 0);
+}
+
+function mergeUniqueById<T extends { id: string }>(current: T[], next: T[]) {
+  const seen = new Set(current.map((item) => item.id));
+  const merged = [...current];
+  for (const item of next) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    merged.push(item);
+  }
+  return merged;
+}
+
+function productListForReels(products: ManagedProduct[]) {
+  return products.map((product) => ({
+    id: product.id,
+    label: product.name,
+    meta: [
+      typeof product.price === "number" || typeof product.price === "string"
+        ? formatPrice(product.price)
+        : "",
+      typeof product.stock === "number" ? `${product.stock} нөөц` : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  }));
+}
+
 export function ManagedOrganizationProfile({
   activeOrganizationId,
   onBackToPersonal,
@@ -249,6 +353,7 @@ export function ManagedOrganizationProfile({
     products: [],
     services: [],
     posts: [],
+    reels: [],
   });
   const [loading, setLoading] = useState(false);
   const [contentLoading, setContentLoading] = useState(false);
@@ -259,9 +364,8 @@ export function ManagedOrganizationProfile({
   const [postLocation, setPostLocation] = useState("");
   const [postPromo, setPostPromo] = useState("");
   const [activeContentTab, setActiveContentTab] = useState<ContentTab>("home");
-  const [createMode, setCreateMode] = useState<
-    "post" | "product" | "service" | "ad"
-  >("product");
+  const [focusedReelId, setFocusedReelId] = useState<string | null>(null);
+  const [createMode, setCreateMode] = useState<CreateMode>("product");
   const [posting, setPosting] = useState(false);
   const [message, setMessage] = useState("");
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
@@ -280,7 +384,10 @@ export function ManagedOrganizationProfile({
     useState<ManagedTimelineItem | null>(null);
   const [timelineActionMessage, setTimelineActionMessage] = useState("");
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [contentHasMore, setContentHasMore] = useState(true);
+  const [contentLoadingMore, setContentLoadingMore] = useState(false);
   const profileTopRef = useRef<HTMLElement | null>(null);
+  const contentLoadMoreRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!selectedOrg) return;
@@ -307,39 +414,160 @@ export function ManagedOrganizationProfile({
     };
   }, [selectedOrg]);
 
+  const loadOrgContentPage = useCallback(
+    async ({
+      append,
+      postOffset,
+      productOffset,
+      reelOffset,
+      serviceOffset,
+    }: {
+      append: boolean;
+      postOffset: number;
+      productOffset: number;
+      reelOffset: number;
+      serviceOffset: number;
+    }) => {
+      if (!selectedOrg) return;
+
+      if (append) {
+        setContentLoadingMore(true);
+      } else {
+        setContentLoading(true);
+        setContentHasMore(true);
+      }
+
+      try {
+        const orgId = encodeURIComponent(selectedOrg.id);
+        const pageSize = PROFILE_CONTENT_PAGE_SIZE;
+        const [productsRes, servicesRes, reelsRes, postsRes] =
+          await Promise.all([
+            authFetch(
+              `${API}/products?organizationId=${orgId}&includeInactive=true&limit=${pageSize}&offset=${productOffset}`,
+            ),
+            authFetch(
+              `${API}/service-posts?organizationId=${orgId}&limit=${pageSize}&offset=${serviceOffset}`,
+            ),
+            authFetch(
+              `${API}/reels?organizationId=${orgId}&limit=${pageSize}&offset=${reelOffset}`,
+            ),
+            SHOW_POST_SECTION
+              ? authFetch(
+                  `${API}/posts?organizationId=${orgId}&limit=${pageSize}&offset=${postOffset}`,
+                )
+              : Promise.resolve(null),
+          ]);
+
+        const [productsData, servicesData, reelsData, postsData] =
+          await Promise.all([
+            productsRes.ok ? productsRes.json().catch(() => []) : [],
+            servicesRes.ok ? servicesRes.json().catch(() => []) : [],
+            reelsRes.ok
+              ? reelsRes.json().catch(() => ({ items: [] }))
+              : { items: [] },
+            postsRes?.ok ? postsRes.json().catch(() => []) : [],
+          ]);
+
+        const nextProducts = Array.isArray(productsData) ? productsData : [];
+        const nextServices = Array.isArray(servicesData) ? servicesData : [];
+        const nextReels = Array.isArray(reelsData?.items)
+          ? reelsData.items
+          : [];
+        const nextPosts = Array.isArray(postsData) ? postsData : [];
+
+        setContent((current) => ({
+          products: append
+            ? mergeUniqueById(current.products, nextProducts)
+            : nextProducts,
+          services: append
+            ? mergeUniqueById(current.services, nextServices)
+            : nextServices,
+          reels: append ? mergeUniqueById(current.reels, nextReels) : nextReels,
+          posts: append ? mergeUniqueById(current.posts, nextPosts) : nextPosts,
+        }));
+        setContentHasMore(
+          nextProducts.length === pageSize ||
+            nextServices.length === pageSize ||
+            nextReels.length === pageSize ||
+            nextPosts.length === pageSize,
+        );
+      } catch {
+        if (!append) {
+          setContent({ products: [], services: [], posts: [], reels: [] });
+        }
+        setContentHasMore(false);
+      } finally {
+        if (append) {
+          setContentLoadingMore(false);
+        } else {
+          setContentLoading(false);
+        }
+      }
+    },
+    [authFetch, selectedOrg],
+  );
+
   const loadOrgContent = useCallback(async () => {
-    if (!selectedOrg) return;
+    await loadOrgContentPage({
+      append: false,
+      postOffset: 0,
+      productOffset: 0,
+      reelOffset: 0,
+      serviceOffset: 0,
+    });
+  }, [loadOrgContentPage]);
 
-    setContentLoading(true);
-    try {
-      const orgId = encodeURIComponent(selectedOrg.id);
-      const [productsRes, servicesRes, postsRes] = await Promise.all([
-        authFetch(`${API}/products?organizationId=${orgId}&includeInactive=true&limit=100`),
-        authFetch(`${API}/service-posts?organizationId=${orgId}`),
-        authFetch(`${API}/posts?organizationId=${orgId}`),
-      ]);
-
-      const [productsData, servicesData, postsData] = await Promise.all([
-        productsRes.ok ? productsRes.json().catch(() => []) : [],
-        servicesRes.ok ? servicesRes.json().catch(() => []) : [],
-        postsRes.ok ? postsRes.json().catch(() => []) : [],
-      ]);
-
-      setContent({
-        products: Array.isArray(productsData) ? productsData : [],
-        services: Array.isArray(servicesData) ? servicesData : [],
-        posts: Array.isArray(postsData) ? postsData : [],
-      });
-    } catch {
-      setContent({ products: [], services: [], posts: [] });
-    } finally {
-      setContentLoading(false);
+  const loadMoreOrgContent = useCallback(async () => {
+    if (
+      !selectedOrg ||
+      contentLoading ||
+      contentLoadingMore ||
+      !contentHasMore
+    ) {
+      return;
     }
-  }, [authFetch, selectedOrg]);
+
+    await loadOrgContentPage({
+      append: true,
+      postOffset: content.posts.length,
+      productOffset: content.products.length,
+      reelOffset: content.reels.length,
+      serviceOffset: content.services.length,
+    });
+  }, [
+    content.posts.length,
+    content.products.length,
+    content.reels.length,
+    content.services.length,
+    contentHasMore,
+    contentLoading,
+    contentLoadingMore,
+    loadOrgContentPage,
+    selectedOrg,
+  ]);
 
   useEffect(() => {
     void loadOrgContent();
   }, [loadOrgContent]);
+
+  useEffect(() => {
+    const target = contentLoadMoreRef.current;
+    if (!target || contentLoading || contentLoadingMore || !contentHasMore) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadMoreOrgContent();
+        }
+      },
+      { rootMargin: "640px 0px" },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [contentHasMore, contentLoading, contentLoadingMore, loadMoreOrgContent]);
 
   useEffect(() => {
     const updateScrollTopVisibility = () => {
@@ -367,7 +595,8 @@ export function ManagedOrganizationProfile({
 
   const org = details;
   const name = org?.name || selectedOrg.name;
-  const logo = org?.logoUrl || selectedOrg.logoUrl || fallbackLogo(selectedOrg.id);
+  const logo =
+    org?.logoUrl || selectedOrg.logoUrl || fallbackLogo(selectedOrg.id);
   const cover = org?.bannerUrl || fallbackCover(selectedOrg.id);
   const isOpen = (org?.status || selectedOrg.status) === "ACTIVE";
   const isVerified = Boolean(org?.isVerified ?? selectedOrg.isVerified);
@@ -409,14 +638,19 @@ export function ManagedOrganizationProfile({
       });
       const uploadData = await uploadRes.json().catch(() => ({}));
       if (!uploadRes.ok || !uploadData?.url) {
-        setImageMessage(uploadData?.message || "Зураг upload хийхэд алдаа гарлаа.");
+        setImageMessage(
+          uploadData?.message || "Зураг upload хийхэд алдаа гарлаа.",
+        );
         return;
       }
 
-      const saveRes = await authFetch(`${API}/partners/${selectedOrg.id}/profile`, {
-        method: "PATCH",
-        body: JSON.stringify({ [field]: uploadData.url }),
-      });
+      const saveRes = await authFetch(
+        `${API}/partners/${selectedOrg.id}/profile`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ [field]: uploadData.url }),
+        },
+      );
       const saveData = await saveRes.json().catch(() => ({}));
       if (!saveRes.ok) {
         setImageMessage(saveData?.message || "Зураг хадгалахад алдаа гарлаа.");
@@ -498,7 +732,9 @@ export function ManagedOrganizationProfile({
         ? `${API}/products/${item.id}`
         : item.kind === "service"
           ? `${API}/service-posts/${item.id}`
-          : `${API}/posts/${item.id}`;
+          : item.kind === "reel"
+            ? `${API}/reels/${item.id}`
+            : `${API}/posts/${item.id}`;
     const payload =
       item.kind === "product"
         ? {
@@ -515,10 +751,15 @@ export function ManagedOrganizationProfile({
               images: form.images,
               priceText: form.priceText.trim() || null,
             }
-          : {
-              content: form.content.trim(),
-              type: form.type,
-            };
+          : item.kind === "reel"
+            ? {
+                title: form.title.trim() || null,
+                caption: form.description.trim() || null,
+              }
+            : {
+                content: form.content.trim(),
+                type: form.type,
+              };
 
     const res = await authFetch(endpoint, {
       method: "PATCH",
@@ -542,7 +783,9 @@ export function ManagedOrganizationProfile({
         ? `${API}/products/${item.id}`
         : item.kind === "service"
           ? `${API}/service-posts/${item.id}`
-          : `${API}/posts/${item.id}`;
+          : item.kind === "reel"
+            ? `${API}/reels/${item.id}`
+            : `${API}/posts/${item.id}`;
 
     try {
       const res = await authFetch(endpoint, { method: "DELETE" });
@@ -554,7 +797,9 @@ export function ManagedOrganizationProfile({
       await loadOrgContent();
     } catch (error) {
       setTimelineActionMessage(
-        error instanceof Error ? error.message : "Мэдээлэл устгахад алдаа гарлаа",
+        error instanceof Error
+          ? error.message
+          : "Мэдээлэл устгахад алдаа гарлаа",
       );
     }
   };
@@ -761,7 +1006,9 @@ export function ManagedOrganizationProfile({
                   {isOpen && (
                     <span className="text-emerald-600">Яг одоо идэвхтэй</span>
                   )}
-                  {loading && <span className="text-slate-400">Ачааллаж байна...</span>}
+                  {loading && (
+                    <span className="text-slate-400">Ачааллаж байна...</span>
+                  )}
                 </div>
 
                 <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
@@ -849,8 +1096,12 @@ export function ManagedOrganizationProfile({
               {(org?.phone || org?.email || org?.address) && (
                 <div className="space-y-1 rounded-2xl bg-slate-50 px-3 py-3 text-xs font-bold leading-5 text-slate-500">
                   {org?.phone && <p>Утас: {org.phone}</p>}
-                  {org?.email && <p className="break-all">И-мэйл: {org.email}</p>}
-                  {org?.address && <p className="break-words">Хаяг: {org.address}</p>}
+                  {org?.email && (
+                    <p className="break-all">И-мэйл: {org.email}</p>
+                  )}
+                  {org?.address && (
+                    <p className="break-words">Хаяг: {org.address}</p>
+                  )}
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2">
@@ -863,10 +1114,7 @@ export function ManagedOrganizationProfile({
                   label="Эрх"
                   value={roleLabel[selectedOrg.role] || selectedOrg.role}
                 />
-                <InfoPill
-                  label="Үнэлгээ"
-                  value={`${org?.rating ?? 5} / 5`}
-                />
+                <InfoPill label="Үнэлгээ" value={`${org?.rating ?? 5} / 5`} />
               </div>
             </div>
           </WidgetCard>
@@ -937,12 +1185,17 @@ export function ManagedOrganizationProfile({
             postText={postText}
             postType={postType}
             posting={posting}
+            products={content.products}
             selectedOrganizationId={selectedOrg.id}
           />
 
           <OrganizationContentFeed
             activeTab={activeContentTab}
+            focusedReelId={focusedReelId}
+            hasMore={contentHasMore}
             loading={contentLoading}
+            loadingMore={contentLoadingMore}
+            loadMoreRef={contentLoadMoreRef}
             organization={{
               address: org?.address || "",
               category,
@@ -957,6 +1210,11 @@ export function ManagedOrganizationProfile({
             onEdit={setEditingTimelineItem}
             posts={content.posts}
             products={content.products}
+            reels={content.reels}
+            onOpenReel={(reelId) => {
+              setFocusedReelId(reelId);
+              setActiveContentTab("reels");
+            }}
             statusMessage={timelineActionMessage}
             services={content.services}
           />
@@ -1027,19 +1285,30 @@ export function ManagedOrganizationProfile({
 
 function OrganizationContentFeed({
   activeTab,
+  focusedReelId,
+  hasMore,
   loading,
+  loadingMore,
+  loadMoreRef,
   onDelete,
   onEdit,
+  onOpenReel,
   organization,
   posts,
   products,
+  reels,
   statusMessage,
   services,
 }: {
   activeTab: ContentTab;
+  focusedReelId: string | null;
+  hasMore: boolean;
   loading: boolean;
+  loadingMore: boolean;
+  loadMoreRef: React.RefObject<HTMLDivElement | null>;
   onDelete: (item: ManagedTimelineItem) => void;
   onEdit: (item: ManagedTimelineItem) => void;
+  onOpenReel: (reelId: string) => void;
   organization: {
     address: string;
     category: string;
@@ -1052,10 +1321,13 @@ function OrganizationContentFeed({
   };
   posts: ManagedFeedPost[];
   products: ManagedProduct[];
+  reels: ManagedReel[];
   statusMessage: string;
   services: ManagedServicePost[];
 }) {
-  const [datePreset, setDatePreset] = useState<"all" | "today" | "7d" | "30d" | "custom">("all");
+  const [datePreset, setDatePreset] = useState<
+    "all" | "today" | "7d" | "30d" | "custom"
+  >("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const timeline = useMemo(() => {
@@ -1100,6 +1372,34 @@ function OrganizationContentFeed({
         href: `/services/${encodeURIComponent(service.id)}`,
         createdAt: service.createdAt,
       })),
+      ...reels.map((reel) => ({
+        id: reel.id,
+        kind: "reel" as const,
+        title: reel.title || "Reel",
+        description:
+          reel.caption ||
+          reel.description ||
+          reel.tags?.slice(0, 4).join(", ") ||
+          null,
+        image: reel.thumbnailUrl || null,
+        images: reel.thumbnailUrl ? [reel.thumbnailUrl] : [],
+        videoUrl: reel.videoUrl,
+        meta: reel.reviewStatus === "APPROVED" ? "Reel" : "Хүлээгдэж буй",
+        stats: reel.durationSeconds
+          ? `${Math.round(reel.durationSeconds)} сек`
+          : "Reel",
+        metrics: {
+          comments: reel.commentCount || 0,
+          likes: reel.likeCount || 0,
+          shares: reel.shareCount || 0,
+          views: reel.viewCount || 0,
+        },
+        edit: {
+          description: reel.caption || reel.description || "",
+          title: reel.title || "",
+        },
+        createdAt: reel.createdAt,
+      })),
       ...(SHOW_POST_SECTION
         ? posts.map((post) => ({
             id: post.id,
@@ -1122,10 +1422,11 @@ function OrganizationContentFeed({
     return items.sort(
       (a, b) => getTimeValue(b.createdAt) - getTimeValue(a.createdAt),
     );
-  }, [posts, products, services]);
+  }, [posts, products, reels, services]);
 
   const typeFilteredTimeline = timeline.filter((item) => {
     if (activeTab === "products") return item.kind === "product";
+    if (activeTab === "reels") return item.kind === "reel";
     if (activeTab === "posts") return SHOW_POST_SECTION && item.kind === "post";
     if (activeTab === "ads") return item.kind === "service";
     if (activeTab === "about") return false;
@@ -1167,6 +1468,10 @@ function OrganizationContentFeed({
 
   const tabLabel =
     contentTabs.find((item) => item.id === activeTab)?.label || "Нүүр";
+  const reelItems = filteredTimeline.filter(
+    (item): item is Extract<ManagedTimelineItem, { kind: "reel" }> =>
+      item.kind === "reel",
+  );
 
   return (
     <section className="space-y-3">
@@ -1177,72 +1482,85 @@ function OrganizationContentFeed({
           <div className="rounded-[22px] border border-white bg-white px-4 py-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)] sm:px-5">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <h2 className="text-lg font-black text-slate-950">{tabLabel}</h2>
+                <h2 className="text-lg font-black text-slate-950">
+                  {tabLabel}
+                </h2>
                 <p className="mt-0.5 text-xs font-bold text-slate-400">
                   Шинэ оруулсан нь эхэндээ харагдана
                 </p>
               </div>
-              <div className="grid gap-2 xl:flex xl:flex-wrap xl:items-center">
-                <div className="grid grid-cols-4 gap-2 xl:flex xl:flex-wrap">
-                  <DatePresetButton
-                    active={datePreset === "all"}
-                    onClick={() => {
-                      setDatePreset("all");
-                      setDateFrom("");
-                      setDateTo("");
-                    }}
-                  >
-                    Бүгд
-                  </DatePresetButton>
-                  <DatePresetButton
-                    active={datePreset === "today"}
-                    onClick={() => setDatePreset("today")}
-                  >
-                    Өнөөдөр
-                  </DatePresetButton>
-                  <DatePresetButton
-                    active={datePreset === "7d"}
-                    onClick={() => setDatePreset("7d")}
-                  >
-                    7 хоног
-                  </DatePresetButton>
-                  <DatePresetButton
-                    active={datePreset === "30d"}
-                    onClick={() => setDatePreset("30d")}
-                  >
-                    30 хоног
-                  </DatePresetButton>
+              {activeTab === "reels" ? (
+                <div className="inline-flex h-10 items-center gap-2 rounded-2xl bg-fuchsia-50 px-4 text-xs font-black text-fuchsia-700 ring-1 ring-fuchsia-100 xl:h-9 xl:rounded-full">
+                  <Clapperboard size={15} />
+                  {reelItems.length} reel
                 </div>
-                <div className="grid grid-cols-2 gap-2 xl:flex xl:flex-wrap">
-                  <label className="flex h-10 min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 xl:h-9 xl:rounded-full">
-                    <span className="shrink-0">Эхлэх</span>
-                    <input
-                      type="date"
-                      value={dateFrom}
-                      onChange={(event) => {
-                        setDateFrom(event.target.value);
-                        setDatePreset("custom");
+              ) : (
+                <div className="grid gap-2 xl:flex xl:flex-wrap xl:items-center">
+                  <div className="grid grid-cols-4 gap-2 xl:flex xl:flex-wrap">
+                    <DatePresetButton
+                      active={datePreset === "all"}
+                      onClick={() => {
+                        setDatePreset("all");
+                        setDateFrom("");
+                        setDateTo("");
                       }}
-                      className="min-w-0 flex-1 bg-transparent text-[12px] font-black normal-case tracking-normal text-slate-700 outline-none"
-                    />
-                  </label>
-                  <label className="flex h-10 min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 xl:h-9 xl:rounded-full">
-                    <span className="shrink-0">Дуусах</span>
-                    <input
-                      type="date"
-                      value={dateTo}
-                      onChange={(event) => {
-                        setDateTo(event.target.value);
-                        setDatePreset("custom");
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-[12px] font-black normal-case tracking-normal text-slate-700 outline-none"
-                    />
-                  </label>
+                    >
+                      Бүгд
+                    </DatePresetButton>
+                    <DatePresetButton
+                      active={datePreset === "today"}
+                      onClick={() => setDatePreset("today")}
+                    >
+                      Өнөөдөр
+                    </DatePresetButton>
+                    <DatePresetButton
+                      active={datePreset === "7d"}
+                      onClick={() => setDatePreset("7d")}
+                    >
+                      7 хоног
+                    </DatePresetButton>
+                    <DatePresetButton
+                      active={datePreset === "30d"}
+                      onClick={() => setDatePreset("30d")}
+                    >
+                      30 хоног
+                    </DatePresetButton>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 xl:flex xl:flex-wrap">
+                    <label className="flex h-10 min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 xl:h-9 xl:rounded-full">
+                      <span className="shrink-0">Эхлэх</span>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(event) => {
+                          setDateFrom(event.target.value);
+                          setDatePreset("custom");
+                        }}
+                        className="min-w-0 flex-1 bg-transparent text-[12px] font-black normal-case tracking-normal text-slate-700 outline-none"
+                      />
+                    </label>
+                    <label className="flex h-10 min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 xl:h-9 xl:rounded-full">
+                      <span className="shrink-0">Дуусах</span>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(event) => {
+                          setDateTo(event.target.value);
+                          setDatePreset("custom");
+                        }}
+                        className="min-w-0 flex-1 bg-transparent text-[12px] font-black normal-case tracking-normal text-slate-700 outline-none"
+                      />
+                    </label>
+                  </div>
+                  <span className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-100 px-4 text-xs font-black text-slate-500 sm:h-auto sm:min-h-10 xl:h-9 xl:rounded-full">
+                    {loading
+                      ? "Шинэчилж байна..."
+                      : loadingMore
+                        ? "Нэмж ачааллаж байна..."
+                        : `${filteredTimeline.length} ачаалсан`}
+                  </span>
                 </div>
-                <span className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-100 px-4 text-xs font-black text-slate-500 sm:h-auto sm:min-h-10 xl:h-9 xl:rounded-full">
-                  {loading ? "Шинэчилж байна..." : `${filteredTimeline.length} нийт`}
-                </span>
-              </div>
+              )}
             </div>
           </div>
 
@@ -1252,13 +1570,31 @@ function OrganizationContentFeed({
             </div>
           )}
 
-          {filteredTimeline.length === 0 && !loading ? (
+          {activeTab === "home" && reelItems.length > 0 && (
+            <HomeReelsJumpStrip
+              items={reelItems.slice(0, 6)}
+              onOpenReel={onOpenReel}
+              organizationLogo={organization.logo}
+            />
+          )}
+
+          {activeTab === "reels" && reelItems.length > 0 ? (
+            <OrganizationReelsTheater
+              focusedReelId={focusedReelId}
+              items={reelItems}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              organizationLogo={organization.logo}
+              organizationName={organization.name}
+            />
+          ) : filteredTimeline.length === 0 && !loading ? (
             <div className="rounded-[22px] border border-dashed border-slate-200 bg-white px-5 py-10 text-center shadow-[0_14px_40px_rgba(15,23,42,0.05)]">
               <p className="text-sm font-black text-slate-700">
                 Энэ хэсэгт харагдах контент алга байна.
               </p>
               <p className="mt-1 text-xs font-bold text-slate-400">
-                Дээрээс бүтээгдэхүүн, пост эсвэл зар нэмэхэд огноогоор энд гарна.
+                Дээрээс бүтээгдэхүүн, пост эсвэл зар нэмэхэд огноогоор энд
+                гарна.
               </p>
             </div>
           ) : (
@@ -1273,11 +1609,311 @@ function OrganizationContentFeed({
                   organizationLogo={organization.logo}
                 />
               ))}
+              {(hasMore || loadingMore) && (
+                <div
+                  ref={loadMoreRef}
+                  className="flex min-h-16 items-center justify-center rounded-[18px] border border-dashed border-slate-200 bg-white/80 px-4 py-4 text-xs font-black text-slate-400"
+                >
+                  {loadingMore ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="animate-spin" size={16} />
+                      Дараагийн контент ачааллаж байна
+                    </span>
+                  ) : (
+                    "Доош гүйлгэхэд дараагийн контент ачаална"
+                  )}
+                </div>
+              )}
+              {!hasMore && filteredTimeline.length > 0 && !loadingMore && (
+                <div className="rounded-[18px] bg-slate-50 px-4 py-4 text-center text-xs font-black text-slate-400">
+                  Бүх контент ачааллаа.
+                </div>
+              )}
             </div>
           )}
         </>
       )}
     </section>
+  );
+}
+
+function HomeReelsJumpStrip({
+  items,
+  onOpenReel,
+  organizationLogo,
+}: {
+  items: Array<Extract<ManagedTimelineItem, { kind: "reel" }>>;
+  onOpenReel: (reelId: string) => void;
+  organizationLogo: string;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[24px] border border-fuchsia-100 bg-white shadow-[0_14px_42px_rgba(15,23,42,0.07)]">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-fuchsia-600">
+            Reels
+          </p>
+          <h3 className="truncate text-base font-black text-slate-950">
+            Богино video танилцуулга
+          </h3>
+        </div>
+        <button
+          type="button"
+          onClick={() => onOpenReel(items[0]?.id)}
+          className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full bg-slate-950 px-4 text-xs font-black text-white transition hover:bg-orange-500"
+        >
+          Бүгдийг үзэх
+          <ArrowRight size={14} />
+        </button>
+      </div>
+
+      <div className="flex gap-3 overflow-x-auto px-4 py-3 scrollbar-hide">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onOpenReel(item.id)}
+            className="group relative h-48 w-28 shrink-0 overflow-hidden rounded-[20px] bg-slate-950 text-left shadow-sm ring-1 ring-slate-900/5 transition hover:-translate-y-0.5 hover:ring-orange-200"
+          >
+            <video
+              src={getMediaUrl(item.videoUrl)}
+              poster={item.image ? getMediaUrl(item.image) : undefined}
+              muted
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover opacity-90 transition group-hover:scale-105 group-hover:opacity-100"
+            />
+            <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/55 to-transparent p-2">
+              <img
+                src={organizationLogo}
+                alt=""
+                className="h-6 w-6 rounded-full object-cover ring-1 ring-white/40"
+                referrerPolicy="no-referrer"
+              />
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-black text-white backdrop-blur">
+                Reel
+              </span>
+            </div>
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-2">
+              <p className="line-clamp-2 text-[11px] font-black leading-4 text-white">
+                {item.title === "Reel"
+                  ? item.description || "Reel video"
+                  : item.title}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function OrganizationReelsTheater({
+  focusedReelId,
+  items,
+  onDelete,
+  onEdit,
+  organizationLogo,
+  organizationName,
+}: {
+  focusedReelId: string | null;
+  items: Array<Extract<ManagedTimelineItem, { kind: "reel" }>>;
+  onDelete: (item: ManagedTimelineItem) => void;
+  onEdit: (item: ManagedTimelineItem) => void;
+  organizationLogo: string;
+  organizationName: string;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeItem =
+    items[Math.min(activeIndex, Math.max(0, items.length - 1))];
+
+  useEffect(() => {
+    if (!focusedReelId) return;
+    const nextIndex = items.findIndex((item) => item.id === focusedReelId);
+    if (nextIndex >= 0) setActiveIndex(nextIndex);
+  }, [focusedReelId, items]);
+
+  useEffect(() => {
+    if (activeIndex <= items.length - 1) return;
+    setActiveIndex(Math.max(0, items.length - 1));
+  }, [activeIndex, items.length]);
+
+  if (!activeItem) return null;
+
+  const goTo = (index: number) => {
+    setActiveIndex(Math.min(Math.max(index, 0), items.length - 1));
+  };
+
+  return (
+    <section className="overflow-hidden rounded-[28px] border border-white bg-white shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
+      <div className="grid gap-0 xl:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="border-b border-slate-100 bg-slate-50/70 p-3 xl:border-b-0 xl:border-r">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-orange-500">
+                Reels
+              </p>
+              <p className="text-sm font-black text-slate-900">
+                {items.length} video
+              </p>
+            </div>
+            <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-orange-500 shadow-sm">
+              <Clapperboard size={18} />
+            </span>
+          </div>
+
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 xl:block xl:space-y-2 xl:overflow-visible xl:pb-0">
+            {items.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => goTo(index)}
+                className={`flex min-w-[172px] items-center gap-2 rounded-[18px] border p-2 text-left transition xl:min-w-0 xl:w-full ${
+                  index === activeIndex
+                    ? "border-orange-200 bg-white shadow-[0_10px_26px_rgba(249,115,22,0.12)]"
+                    : "border-transparent bg-white/60 hover:border-slate-200 hover:bg-white"
+                }`}
+              >
+                <span className="flex h-14 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-950 text-white">
+                  <Film size={17} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-black text-slate-900">
+                    {item.title === "Reel" ? "Reel video" : item.title}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] font-bold text-slate-400">
+                    {formatDate(item.createdAt) || "Огноогүй"}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <div className="relative bg-gradient-to-b from-slate-50 to-white p-3 sm:p-5">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_76px] lg:items-center">
+            <div className="mx-auto w-full max-w-[430px]">
+              <div className="relative overflow-hidden rounded-[28px] bg-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.28)] ring-1 ring-slate-950/10">
+                <video
+                  key={activeItem.id}
+                  src={getMediaUrl(activeItem.videoUrl)}
+                  poster={
+                    activeItem.image ? getMediaUrl(activeItem.image) : undefined
+                  }
+                  controls
+                  preload="metadata"
+                  className="block h-auto w-full bg-slate-950 object-contain"
+                  style={{ maxHeight: "min(760px, 74dvh)" }}
+                />
+
+                <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/55 via-black/12 to-transparent p-4 text-white">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <img
+                        src={organizationLogo}
+                        alt=""
+                        className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-white/30"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black">
+                          {organizationName}
+                        </p>
+                        <p className="text-[11px] font-bold text-white/70">
+                          {formatDate(activeItem.createdAt) || "Огноогүй"}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-white/16 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] backdrop-blur">
+                      Reel
+                    </span>
+                  </div>
+                </div>
+
+                {(activeItem.title !== "Reel" || activeItem.description) && (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent p-4 text-white">
+                    {activeItem.title !== "Reel" && (
+                      <h3 className="line-clamp-2 text-lg font-black leading-6">
+                        {activeItem.title}
+                      </h3>
+                    )}
+                    {activeItem.description && (
+                      <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-white/85">
+                        {activeItem.description}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-center gap-2 lg:flex-col lg:items-center">
+              <ReelActionButton
+                icon={Heart}
+                label={compactCount(activeItem.metrics.likes)}
+              />
+              <ReelActionButton
+                icon={MessageCircle}
+                label={compactCount(activeItem.metrics.comments)}
+              />
+              <ReelActionButton
+                icon={Share2}
+                label={compactCount(activeItem.metrics.shares)}
+              />
+              <ReelActionButton
+                icon={Eye}
+                label={compactCount(activeItem.metrics.views)}
+              />
+              <TimelineCardMenu
+                onDelete={() => onDelete(activeItem)}
+                onEdit={() => onEdit(activeItem)}
+              />
+            </div>
+          </div>
+
+          {items.length > 1 && (
+            <div className="mt-4 flex justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => goTo(activeIndex - 1)}
+                disabled={activeIndex === 0}
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-xs font-black text-slate-600 shadow-sm transition hover:border-orange-200 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ArrowUp size={15} />
+                Өмнөх
+              </button>
+              <button
+                type="button"
+                onClick={() => goTo(activeIndex + 1)}
+                disabled={activeIndex === items.length - 1}
+                className="inline-flex h-10 items-center gap-2 rounded-full bg-slate-950 px-4 text-xs font-black text-white shadow-sm transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Дараах
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ReelActionButton({
+  icon: Icon,
+  label,
+}: {
+  icon: LucideIcon;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex min-w-14 flex-col items-center justify-center gap-1 rounded-2xl border border-slate-100 bg-white px-3 py-2 text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:text-orange-600"
+    >
+      <Icon size={20} />
+      <span className="text-[11px] font-black">{label}</span>
+    </button>
   );
 }
 
@@ -1349,8 +1985,24 @@ function TimelineContentCard({
   organizationLogo: string;
   organizationName: string;
 }) {
+  if (item.kind === "reel") {
+    return (
+      <TimelineReelCard
+        item={item}
+        onDelete={() => onDelete(item)}
+        onEdit={() => onEdit(item)}
+        organizationLogo={organizationLogo}
+        organizationName={organizationName}
+      />
+    );
+  }
+
   const Icon =
-    item.kind === "product" ? Boxes : item.kind === "service" ? Megaphone : Send;
+    item.kind === "product"
+      ? Boxes
+      : item.kind === "service"
+        ? Megaphone
+        : Send;
   const label =
     item.kind === "product"
       ? "Бүтээгдэхүүн"
@@ -1362,7 +2014,7 @@ function TimelineContentCard({
       ? "Бүтээгдэхүүн харах"
       : item.kind === "service"
         ? "Зарын дэлгэрэнгүй"
-        : "Харах";
+        : "";
   const content = (
     <article className="group rounded-[18px] border border-slate-100 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-0.5 hover:border-orange-100 hover:shadow-[0_18px_52px_rgba(15,23,42,0.11)]">
       <TimelineCardHeader
@@ -1388,7 +2040,9 @@ function TimelineContentCard({
       </div>
 
       <TimelineCardMedia
-        images={item.images.length ? item.images : item.image ? [item.image] : []}
+        images={
+          item.images.length ? item.images : item.image ? [item.image] : []
+        }
       />
 
       <TimelineCardFooter
@@ -1401,6 +2055,95 @@ function TimelineContentCard({
   );
 
   return content;
+}
+
+function TimelineReelCard({
+  item,
+  onDelete,
+  onEdit,
+  organizationLogo,
+  organizationName,
+}: {
+  item: Extract<ManagedTimelineItem, { kind: "reel" }>;
+  onDelete: () => void;
+  onEdit: () => void;
+  organizationLogo: string;
+  organizationName: string;
+}) {
+  return (
+    <article className="overflow-hidden rounded-[22px] border border-slate-100 bg-white shadow-[0_14px_42px_rgba(15,23,42,0.09)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(15,23,42,0.13)]">
+      <div className="flex items-center justify-between gap-3 px-3.5 py-3 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-100 ring-[3px] ring-slate-50">
+            <img
+              src={organizationLogo}
+              alt=""
+              className="h-full w-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-slate-950">
+              {organizationName}
+            </p>
+            <p className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-slate-400">
+              {formatDate(item.createdAt) || "Огноогүй"} ·{" "}
+              <Clapperboard size={12} /> Reel
+            </p>
+          </div>
+        </div>
+        <TimelineCardMenu onDelete={onDelete} onEdit={onEdit} />
+      </div>
+
+      <div className="px-3.5 pb-3 sm:px-4">
+        <div className="relative mx-auto max-w-[420px] overflow-hidden rounded-[24px] bg-slate-950 shadow-[0_18px_48px_rgba(15,23,42,0.22)]">
+          <video
+            src={getMediaUrl(item.videoUrl)}
+            poster={item.image ? getMediaUrl(item.image) : undefined}
+            controls
+            preload="metadata"
+            className="block h-auto w-full bg-slate-950 object-contain"
+            style={{ maxHeight: "min(720px, 72dvh)" }}
+          />
+          <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/55 via-black/10 to-transparent p-4 text-white">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/18 backdrop-blur">
+                <Clapperboard size={16} />
+              </span>
+              <span className="text-xs font-black uppercase tracking-[0.12em]">
+                Reel
+              </span>
+            </div>
+          </div>
+          {(item.title !== "Reel" || item.description) && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-4 text-white">
+              {item.title !== "Reel" && (
+                <h3 className="line-clamp-2 text-lg font-black leading-6">
+                  {item.title}
+                </h3>
+              )}
+              {item.description && (
+                <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-white/85">
+                  {item.description}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-3.5 py-2.5 sm:px-4">
+        <span className="rounded-full bg-fuchsia-50 px-3 py-1.5 text-[11px] font-black text-fuchsia-600">
+          Reel
+        </span>
+        {item.stats && (
+          <span className="rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-black text-slate-500">
+            {item.stats}
+          </span>
+        )}
+      </div>
+    </article>
+  );
 }
 
 function TimelineCardHeader({
@@ -1419,6 +2162,46 @@ function TimelineCardHeader({
   logo: string;
   meta: string;
   name: string;
+  onDelete: () => void;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-2.5 px-3.5 pb-2.5 pt-3.5 sm:px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-100 ring-[3px] ring-slate-50">
+          <img
+            src={logo}
+            alt=""
+            className="h-full w-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-black text-slate-950">{name}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-400">
+            <span>{date}</span>
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+            <span className="inline-flex items-center gap-1">
+              <Icon size={13} />
+              {label}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-start justify-end gap-2">
+        <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500 sm:inline-flex">
+          {meta}
+        </span>
+        <TimelineCardMenu onDelete={onDelete} onEdit={onEdit} />
+      </div>
+    </div>
+  );
+}
+
+function TimelineCardMenu({
+  onDelete,
+  onEdit,
+}: {
   onDelete: () => void;
   onEdit: () => void;
 }) {
@@ -1443,69 +2226,56 @@ function TimelineCardHeader({
   };
 
   return (
-    <div className="flex items-start justify-between gap-2.5 px-3.5 pb-2.5 pt-3.5 sm:px-4">
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-100 ring-[3px] ring-slate-50">
-          <img
-            src={logo}
-            alt=""
-            className="h-full w-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-black text-slate-950">
-            {name}
-          </p>
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-400">
-            <span>{date}</span>
-            <span className="h-1 w-1 rounded-full bg-slate-300" />
-            <span className="inline-flex items-center gap-1">
-              <Icon size={13} />
-              {label}
-            </span>
-          </div>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-start justify-end gap-2">
-        <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500 sm:inline-flex">
-          {meta}
-        </span>
-        <div className="relative">
+    <div className="relative">
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setMenuOpen((current) => !current);
+        }}
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-950"
+        aria-expanded={menuOpen}
+        aria-label="Үйлдэл"
+      >
+        <MoreHorizontal size={19} />
+      </button>
+      {menuOpen && (
+        <div
+          className="absolute right-0 top-11 z-20 w-40 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1.5 shadow-[0_18px_48px_rgba(15,23,42,0.16)]"
+          onClick={(event) => event.stopPropagation()}
+        >
           <button
             type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              setMenuOpen((current) => !current);
-            }}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-950"
-            aria-expanded={menuOpen}
-            aria-label="Үйлдэл"
+            onClick={editItem}
+            className="flex h-10 w-full items-center rounded-xl px-3 text-left text-sm font-black text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
           >
-            <MoreHorizontal size={19} />
+            Засах
           </button>
-          {menuOpen && (
-            <div
-              className="absolute right-0 top-11 z-20 w-40 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1.5 shadow-[0_18px_48px_rgba(15,23,42,0.16)]"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={editItem}
-                className="flex h-10 w-full items-center rounded-xl px-3 text-left text-sm font-black text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
-              >
-                Засах
-              </button>
-              <button
-                type="button"
-                onClick={deleteItem}
-                className="flex h-10 w-full items-center rounded-xl px-3 text-left text-sm font-black text-red-600 transition hover:bg-red-50"
-              >
-                Устгах
-              </button>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={deleteItem}
+            className="flex h-10 w-full items-center rounded-xl px-3 text-left text-sm font-black text-red-600 transition hover:bg-red-50"
+          >
+            Устгах
+          </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+function TimelineCardVideo({ poster, src }: { poster?: string; src: string }) {
+  return (
+    <div className="px-3.5 pb-3 sm:px-4">
+      <div className="flex justify-center overflow-hidden rounded-[18px] bg-slate-950/5 p-2">
+        <video
+          src={getMediaUrl(src)}
+          poster={poster ? getMediaUrl(poster) : undefined}
+          controls
+          preload="metadata"
+          className="h-auto w-auto max-w-full rounded-[14px] bg-slate-950 object-contain"
+          style={{ maxHeight: "min(620px, 68dvh)" }}
+        />
       </div>
     </div>
   );
@@ -1521,9 +2291,9 @@ function TimelineCardMedia({ images }: { images: string[] }) {
   const hasMultipleImages = images.length > 1;
   const frameClass =
     orientation === "portrait"
-      ? "aspect-[4/5] max-h-[400px]"
+      ? "min-h-[360px] max-h-[680px]"
       : hasImages
-        ? "aspect-[16/10] max-h-[336px]"
+        ? "max-h-[520px]"
         : "aspect-[16/9] max-h-[210px] sm:max-h-[272px]";
 
   const scrollImage = (direction: -1 | 1) => {
@@ -1562,12 +2332,12 @@ function TimelineCardMedia({ images }: { images: string[] }) {
               <div
                 ref={scrollerRef}
                 onScroll={updateActiveIndex}
-                className="scrollbar-hide flex h-full w-full snap-x snap-mandatory overflow-x-auto scroll-smooth"
+                className="scrollbar-hide flex w-full snap-x snap-mandatory overflow-x-auto scroll-smooth"
               >
                 {images.map((image, index) => (
                   <div
                     key={`${image}-${index}`}
-                    className="relative h-full w-full shrink-0 snap-center overflow-hidden"
+                    className="relative flex w-full shrink-0 snap-center items-center justify-center overflow-hidden bg-slate-950/5"
                   >
                     <img
                       src={image}
@@ -1579,7 +2349,11 @@ function TimelineCardMedia({ images }: { images: string[] }) {
                     <img
                       src={image}
                       alt=""
-                      className="relative z-10 h-full w-full object-cover"
+                      className={`relative z-10 w-full object-contain ${
+                        orientation === "portrait"
+                          ? "max-h-[680px]"
+                          : "max-h-[520px]"
+                      }`}
                       referrerPolicy="no-referrer"
                       onLoad={(event) => {
                         if (index !== activeIndex) return;
@@ -1797,7 +2571,9 @@ function TimelineEditModal({
               ? "Бүтээгдэхүүн засах"
               : item.kind === "service"
                 ? "Зар / үйлчилгээ засах"
-                : "Пост засах"}
+                : item.kind === "reel"
+                  ? "Reel засах"
+                  : "Пост засах"}
           </h2>
           <button
             type="button"
@@ -1831,6 +2607,20 @@ function TimelineEditModal({
                 label="Агуулга"
                 value={form.content}
                 onChange={(value) => updateField("content", value)}
+              />
+            </div>
+          ) : item.kind === "reel" ? (
+            <div className="grid gap-3">
+              <TimelineInput
+                label="Reel гарчиг"
+                value={form.title}
+                onChange={(value) => updateField("title", value)}
+                wide
+              />
+              <TimelineTextarea
+                label="Caption"
+                value={form.description}
+                onChange={(value) => updateField("description", value)}
               />
             </div>
           ) : (
@@ -2122,7 +2912,10 @@ function WidgetLink({
           </span>
         </span>
       </span>
-      <ArrowUpRight size={13} className="hidden shrink-0 text-slate-400 sm:block" />
+      <ArrowUpRight
+        size={13}
+        className="hidden shrink-0 text-slate-400 sm:block"
+      />
     </a>
   );
 }
@@ -2343,7 +3136,9 @@ function OrganizationProfileEditor({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessage(data?.message || "Байгууллагын мэдээлэл хадгалахад алдаа гарлаа.");
+        setMessage(
+          data?.message || "Байгууллагын мэдээлэл хадгалахад алдаа гарлаа.",
+        );
         return;
       }
       onSaved(data);
@@ -2379,54 +3174,58 @@ function OrganizationProfileEditor({
 
         <div className="overflow-y-auto overscroll-contain p-4 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-2">
-              <ProfileInput
-                label="Байгууллагын нэр"
-                value={form.name}
-                onChange={(value) => updateField("name", value)}
-              />
-              <ProfileInput
-                label="Ажилласан жил"
-                value={form.operatingYears}
-                inputMode="numeric"
-                onChange={(value) => updateField("operatingYears", value)}
-              />
-              <VerifiedContactRow
-                label="Утас"
-                onRequest={() =>
-                  setMessage("Утас солих хүсэлт баталгаажуулалтын тусдаа урсгалаар явах ёстой.")
-                }
-                value={form.phone || "Бүртгэлгүй"}
-              />
-              <VerifiedContactRow
-                label="И-мэйл"
-                onRequest={() =>
-                  setMessage("И-мэйл солих хүсэлт тухайн и-мэйлээр баталгаажсаны дараа хийгдэнэ.")
-                }
-                value={form.email || "Бүртгэлгүй"}
-              />
-              <ProfileInput
-                label="Хаяг"
-                value={form.address}
-                onChange={(value) => updateField("address", value)}
-                wide
-              />
-              <ProfileInput
-                label="Цагийн хуваарь"
-                value={form.openingHours}
-                placeholder="Жишээ: Даваа-Баасан 09:00-18:00"
-                onChange={(value) => updateField("openingHours", value)}
-                wide
-              />
-              <ProfileTextarea
-                label="Товч тайлбар"
-                value={form.shortDescription}
-                onChange={(value) => updateField("shortDescription", value)}
-              />
-              <ProfileTextarea
-                label="Дэлгэрэнгүй танилцуулга"
-                value={form.description}
-                onChange={(value) => updateField("description", value)}
-              />
+            <ProfileInput
+              label="Байгууллагын нэр"
+              value={form.name}
+              onChange={(value) => updateField("name", value)}
+            />
+            <ProfileInput
+              label="Ажилласан жил"
+              value={form.operatingYears}
+              inputMode="numeric"
+              onChange={(value) => updateField("operatingYears", value)}
+            />
+            <VerifiedContactRow
+              label="Утас"
+              onRequest={() =>
+                setMessage(
+                  "Утас солих хүсэлт баталгаажуулалтын тусдаа урсгалаар явах ёстой.",
+                )
+              }
+              value={form.phone || "Бүртгэлгүй"}
+            />
+            <VerifiedContactRow
+              label="И-мэйл"
+              onRequest={() =>
+                setMessage(
+                  "И-мэйл солих хүсэлт тухайн и-мэйлээр баталгаажсаны дараа хийгдэнэ.",
+                )
+              }
+              value={form.email || "Бүртгэлгүй"}
+            />
+            <ProfileInput
+              label="Хаяг"
+              value={form.address}
+              onChange={(value) => updateField("address", value)}
+              wide
+            />
+            <ProfileInput
+              label="Цагийн хуваарь"
+              value={form.openingHours}
+              placeholder="Жишээ: Даваа-Баасан 09:00-18:00"
+              onChange={(value) => updateField("openingHours", value)}
+              wide
+            />
+            <ProfileTextarea
+              label="Товч тайлбар"
+              value={form.shortDescription}
+              onChange={(value) => updateField("shortDescription", value)}
+            />
+            <ProfileTextarea
+              label="Дэлгэрэнгүй танилцуулга"
+              value={form.description}
+              onChange={(value) => updateField("description", value)}
+            />
           </div>
 
           {message && (
@@ -2572,14 +3371,15 @@ function OrganizationCreateHub({
   postText,
   postType,
   posting,
+  products,
   selectedOrganizationId,
 }: {
   authFetch: (url: string, init?: RequestInit) => Promise<Response>;
-  createMode: "post" | "product" | "service" | "ad";
+  createMode: CreateMode;
   message: string;
   name: string;
   onContentChanged: () => Promise<void>;
-  onModeChange: (mode: "post" | "product" | "service" | "ad") => void;
+  onModeChange: (mode: CreateMode) => void;
   onPostTextChange: (value: string) => void;
   onPostTypeChange: (value: string) => void;
   onPostContactChange: (value: string) => void;
@@ -2594,6 +3394,7 @@ function OrganizationCreateHub({
   postText: string;
   postType: string;
   posting: boolean;
+  products: ManagedProduct[];
   selectedOrganizationId: string;
 }) {
   const [composerOpen, setComposerOpen] = useState(false);
@@ -2606,6 +3407,17 @@ function OrganizationCreateHub({
   });
   const [productSaving, setProductSaving] = useState(false);
   const [productMessage, setProductMessage] = useState("");
+  const [reelForm, setReelForm] = useState<ReelFormState>({
+    linkMode: "store",
+    productId: "",
+    title: "",
+    caption: "",
+    tags: "",
+    video: null,
+  });
+  const [reelSaving, setReelSaving] = useState(false);
+  const [reelMessage, setReelMessage] = useState("");
+  const [successToast, setSuccessToast] = useState("");
   const modes = [
     ...(SHOW_POST_SECTION
       ? [
@@ -2622,6 +3434,12 @@ function OrganizationCreateHub({
       icon: ImageIcon,
       label: "Бүтээгдэхүүн",
       tone: "text-emerald-600 bg-emerald-50",
+    },
+    {
+      id: "reel" as const,
+      icon: Clapperboard,
+      label: "Reel",
+      tone: "text-fuchsia-600 bg-fuchsia-50",
     },
     {
       id: "service" as const,
@@ -2652,16 +3470,19 @@ function OrganizationCreateHub({
     };
   }, [composerOpen]);
 
-  const openComposer = (mode: "post" | "product" | "service" | "ad") => {
+  useEffect(() => {
+    if (!successToast) return;
+    const timer = window.setTimeout(() => setSuccessToast(""), 3200);
+    return () => window.clearTimeout(timer);
+  }, [successToast]);
+
+  const openComposer = (mode: CreateMode) => {
     const nextMode = !SHOW_POST_SECTION && mode === "post" ? "product" : mode;
     onModeChange(nextMode);
     setComposerOpen(true);
   };
 
-  const updateProductField = (
-    field: QuickProductTextField,
-    value: string,
-  ) => {
+  const updateProductField = (field: QuickProductTextField, value: string) => {
     setProductMessage("");
     setProductForm((current) => ({ ...current, [field]: value }));
   };
@@ -2703,7 +3524,9 @@ function OrganizationCreateHub({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setProductMessage(data?.message || "Бүтээгдэхүүн хадгалахад алдаа гарлаа.");
+        setProductMessage(
+          data?.message || "Бүтээгдэхүүн хадгалахад алдаа гарлаа.",
+        );
         return;
       }
       setProductForm({
@@ -2722,109 +3545,192 @@ function OrganizationCreateHub({
     }
   };
 
+  const updateReelField = <K extends keyof ReelFormState>(
+    field: K,
+    value: ReelFormState[K],
+  ) => {
+    setReelMessage("");
+    setReelForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const createReel = async () => {
+    if (reelSaving) return;
+    if (!reelForm.video) {
+      setReelMessage("Reel video файл сонгоно уу.");
+      return;
+    }
+    if (reelForm.linkMode === "product" && !reelForm.productId) {
+      setReelMessage(
+        "Бүтээгдэхүүнтэй reel бол холбох бүтээгдэхүүнээ сонгоно уу.",
+      );
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("organizationId", selectedOrganizationId);
+    formData.set("title", reelForm.title.trim());
+    formData.set("caption", reelForm.caption.trim());
+    formData.set("tags", reelForm.tags.trim());
+    if (reelForm.productId) formData.set("productId", reelForm.productId);
+    formData.set("video", reelForm.video);
+
+    setReelSaving(true);
+    setReelMessage("");
+    try {
+      const res = await authFetch(`${API}/reels`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setReelMessage(data?.message || "Reel upload хийхэд алдаа гарлаа.");
+        return;
+      }
+      setReelForm({
+        linkMode: "store",
+        productId: "",
+        title: "",
+        caption: "",
+        tags: "",
+        video: null,
+      });
+      setReelMessage("");
+      await onContentChanged();
+      setComposerOpen(false);
+      setSuccessToast(
+        "Reel орлоо. Store дээр харагдах жагсаалт руу нэмэгдлээ.",
+      );
+    } catch {
+      setReelMessage("Сүлжээний алдаа гарлаа.");
+    } finally {
+      setReelSaving(false);
+    }
+  };
+
   return (
-    <section className="rounded-[24px] border border-white bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.08)] sm:p-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-sm font-black text-white ring-4 ring-slate-100">
-          {getInitials(name)}
+    <>
+      {successToast && (
+        <div className="fixed bottom-24 left-1/2 z-[170] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-[22px] border border-emerald-100 bg-white px-4 py-3 shadow-[0_20px_70px_rgba(15,23,42,0.18)] sm:bottom-8">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+              <CheckCircle2 size={21} />
+            </span>
+            <p className="text-sm font-black leading-5 text-slate-900">
+              {successToast}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <section className="rounded-[24px] border border-white bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.08)] sm:p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-sm font-black text-white ring-4 ring-slate-100">
+            {getInitials(name)}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => openComposer("product")}
+            className="min-w-0 flex-1 rounded-full bg-slate-100 px-5 py-3.5 text-left text-sm font-black text-slate-500 transition hover:bg-slate-200 sm:text-base"
+          >
+            Бүтээгдэхүүн, үйлчилгээ эсвэл зар нэмэх
+          </button>
+
+          <div className="hidden items-center gap-2 sm:flex">
+            {modes.map((mode) => {
+              const Icon = mode.icon;
+              return (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => openComposer(mode.id)}
+                  className={`flex h-11 w-11 items-center justify-center rounded-2xl transition hover:-translate-y-0.5 ${
+                    createMode === mode.id
+                      ? mode.tone
+                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  }`}
+                  title={mode.label}
+                >
+                  <Icon size={22} />
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => openComposer("product")}
-          className="min-w-0 flex-1 rounded-full bg-slate-100 px-5 py-3.5 text-left text-sm font-black text-slate-500 transition hover:bg-slate-200 sm:text-base"
+        <div
+          className={`mt-3 grid gap-2 ${
+            SHOW_POST_SECTION ? "grid-cols-5" : "grid-cols-4"
+          }`}
         >
-          Бүтээгдэхүүн, үйлчилгээ эсвэл зар нэмэх
-        </button>
-
-        <div className="hidden items-center gap-2 sm:flex">
           {modes.map((mode) => {
             const Icon = mode.icon;
+            const active = createMode === mode.id;
             return (
               <button
                 key={mode.id}
                 type="button"
                 onClick={() => openComposer(mode.id)}
-                className={`flex h-11 w-11 items-center justify-center rounded-2xl transition hover:-translate-y-0.5 ${
-                  createMode === mode.id
-                    ? mode.tone
+                className={`inline-flex h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-black transition sm:h-10 sm:flex-row sm:gap-2 sm:rounded-full sm:text-sm ${
+                  active
+                    ? "bg-slate-950 text-white shadow-lg shadow-slate-900/10"
                     : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                 }`}
-                title={mode.label}
               >
-                <Icon size={22} />
+                <Icon size={16} />
+                <span className="w-full truncate text-center sm:w-auto">
+                  {mode.label}
+                </span>
               </button>
             );
           })}
         </div>
-      </div>
 
-      <div
-        className={`mt-3 grid gap-2 ${
-          SHOW_POST_SECTION ? "grid-cols-4" : "grid-cols-3"
-        }`}
-      >
-        {modes.map((mode) => {
-          const Icon = mode.icon;
-          const active = createMode === mode.id;
-          return (
-            <button
-              key={mode.id}
-              type="button"
-              onClick={() => openComposer(mode.id)}
-              className={`inline-flex h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-black transition sm:h-10 sm:flex-row sm:gap-2 sm:rounded-full sm:text-sm ${
-                active
-                  ? "bg-slate-950 text-white shadow-lg shadow-slate-900/10"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-              }`}
-            >
-              <Icon size={16} />
-              <span className="w-full truncate text-center sm:w-auto">
-                {mode.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+        <p className="mt-3 hidden px-1 text-xs font-bold text-slate-400 sm:block">
+          Бүтээгдэхүүн, үйлчилгээ эсвэл зар оруулахдаа дээрээс сонгоно.
+        </p>
 
-      <p className="mt-3 hidden px-1 text-xs font-bold text-slate-400 sm:block">
-        Бүтээгдэхүүн, үйлчилгээ эсвэл зар оруулахдаа дээрээс сонгоно.
-      </p>
-
-      {composerOpen && (
-        <CreateContentModal
-          authFetch={authFetch}
-          createMode={createMode}
-          message={message}
-          modes={modes}
-          name={name}
-          onClose={() => setComposerOpen(false)}
-          onModeChange={onModeChange}
-          onPostTextChange={onPostTextChange}
-          onPostTypeChange={onPostTypeChange}
-          onPostContactChange={onPostContactChange}
-          onPostImagesChange={onPostImagesChange}
-          onPostLocationChange={onPostLocationChange}
-          onPostPromoChange={onPostPromoChange}
-          onPublishPost={onPublishPost}
-          postContact={postContact}
-          postImages={postImages}
-          postLocation={postLocation}
-          postPromo={postPromo}
-          postText={postText}
-          postType={postType}
-          posting={posting}
-          productForm={productForm}
-          productMessage={productMessage}
-          productSaving={productSaving}
-          onCreateProduct={createProduct}
-          onProductFieldChange={updateProductField}
-          onProductImagesChange={updateProductImages}
-          onContentChanged={onContentChanged}
-          selectedOrganizationId={selectedOrganizationId}
-        />
-      )}
-    </section>
+        {composerOpen && (
+          <CreateContentModal
+            authFetch={authFetch}
+            createMode={createMode}
+            message={message}
+            modes={modes}
+            name={name}
+            onClose={() => setComposerOpen(false)}
+            onModeChange={onModeChange}
+            onPostTextChange={onPostTextChange}
+            onPostTypeChange={onPostTypeChange}
+            onPostContactChange={onPostContactChange}
+            onPostImagesChange={onPostImagesChange}
+            onPostLocationChange={onPostLocationChange}
+            onPostPromoChange={onPostPromoChange}
+            onPublishPost={onPublishPost}
+            postContact={postContact}
+            postImages={postImages}
+            postLocation={postLocation}
+            postPromo={postPromo}
+            postText={postText}
+            postType={postType}
+            posting={posting}
+            productForm={productForm}
+            productMessage={productMessage}
+            productSaving={productSaving}
+            reelForm={reelForm}
+            reelMessage={reelMessage}
+            reelSaving={reelSaving}
+            products={productListForReels(products)}
+            onCreateProduct={createProduct}
+            onCreateReel={createReel}
+            onProductFieldChange={updateProductField}
+            onProductImagesChange={updateProductImages}
+            onReelFieldChange={updateReelField}
+            onContentChanged={onContentChanged}
+            selectedOrganizationId={selectedOrganizationId}
+          />
+        )}
+      </section>
+    </>
   );
 }
 
@@ -2836,6 +3742,7 @@ function CreateContentModal({
   name,
   onClose,
   onCreateProduct,
+  onCreateReel,
   onPostContactChange,
   onPostImagesChange,
   onPostLocationChange,
@@ -2845,6 +3752,7 @@ function CreateContentModal({
   onPostTypeChange,
   onProductFieldChange,
   onProductImagesChange,
+  onReelFieldChange,
   onContentChanged,
   onPublishPost,
   postText,
@@ -2857,13 +3765,17 @@ function CreateContentModal({
   productForm,
   productMessage,
   productSaving,
+  products,
+  reelForm,
+  reelMessage,
+  reelSaving,
   selectedOrganizationId,
 }: {
   authFetch: (url: string, init?: RequestInit) => Promise<Response>;
-  createMode: "post" | "product" | "service" | "ad";
+  createMode: CreateMode;
   message: string;
   modes: Array<{
-    id: "post" | "product" | "service" | "ad";
+    id: CreateMode;
     icon: typeof Send;
     label: string;
     tone: string;
@@ -2871,7 +3783,8 @@ function CreateContentModal({
   name: string;
   onClose: () => void;
   onCreateProduct: () => void;
-  onModeChange: (mode: "post" | "product" | "service" | "ad") => void;
+  onCreateReel: () => void;
+  onModeChange: (mode: CreateMode) => void;
   onPostContactChange: (value: string) => void;
   onPostImagesChange: (images: string[]) => void;
   onPostLocationChange: (value: string) => void;
@@ -2880,6 +3793,10 @@ function CreateContentModal({
   onPostTypeChange: (value: string) => void;
   onProductFieldChange: (field: QuickProductTextField, value: string) => void;
   onProductImagesChange: (images: string[]) => void;
+  onReelFieldChange: <K extends keyof ReelFormState>(
+    field: K,
+    value: ReelFormState[K],
+  ) => void;
   onContentChanged: () => Promise<void>;
   onPublishPost: () => void;
   postContact: string;
@@ -2892,6 +3809,10 @@ function CreateContentModal({
   productForm: QuickProductFormState;
   productMessage: string;
   productSaving: boolean;
+  products: Array<{ id: string; label: string; meta: string }>;
+  reelForm: ReelFormState;
+  reelMessage: string;
+  reelSaving: boolean;
   selectedOrganizationId: string;
 }) {
   const title =
@@ -2899,18 +3820,20 @@ function CreateContentModal({
       ? "Пост үүсгэх"
       : createMode === "product"
         ? "Бүтээгдэхүүн оруулах"
-        : createMode === "service"
-          ? "Үйлчилгээ оруулах"
-          : "Зар үүсгэх";
+        : createMode === "reel"
+          ? "Reel оруулах"
+          : createMode === "service"
+            ? "Үйлчилгээ оруулах"
+            : "Зар үүсгэх";
   const activeMode = modes.find((mode) => mode.id === createMode) || modes[0];
   const ActiveIcon = activeMode.icon;
   const isPostMode = createMode === "post";
   const canPublishPost = Boolean(
     postText.trim() ||
-      postImages.length ||
-      postContact.trim() ||
-      postLocation.trim() ||
-      postPromo.trim(),
+    postImages.length ||
+    postContact.trim() ||
+    postLocation.trim() ||
+    postPromo.trim(),
   );
   const [activePostTool, setActivePostTool] = useState<
     "images" | "contact" | "location" | "promo" | null
@@ -2943,9 +3866,8 @@ function CreateContentModal({
     onPostImagesChange(postImages.filter((item) => item !== image));
   };
 
-
   return (
-    <div className="fixed inset-0 z-[140] flex items-center justify-center overflow-hidden overscroll-none bg-slate-950/55 px-0 py-0 backdrop-blur-sm sm:px-3 sm:py-6">
+    <div className="fixed inset-0 z-[140] flex items-start justify-center overflow-hidden overscroll-none bg-slate-950/55 px-0 py-0 backdrop-blur-sm sm:px-3 sm:py-6">
       <button
         type="button"
         className="absolute inset-0 cursor-default"
@@ -2953,14 +3875,15 @@ function CreateContentModal({
         onClick={onClose}
       />
       <div
+        onWheel={(event) => event.stopPropagation()}
         className={`relative flex w-full flex-col overflow-hidden border border-white/80 bg-white shadow-[0_34px_120px_rgba(15,23,42,0.38)] ${
           isPostMode
-            ? "h-full max-w-none rounded-none sm:h-auto sm:max-h-[90vh] sm:max-w-2xl sm:rounded-[24px]"
-            : "max-h-[90vh] max-w-3xl rounded-[28px]"
+            ? "h-[100dvh] max-w-none rounded-none sm:h-[calc(100dvh-3rem)] sm:max-w-2xl sm:rounded-[24px]"
+            : "h-[100dvh] max-w-3xl rounded-none sm:h-[calc(100dvh-3rem)] sm:rounded-[28px]"
         }`}
       >
         <div
-          className={`flex h-[60px] items-center border-b border-slate-100 px-4 ${
+          className={`flex h-[60px] shrink-0 items-center border-b border-slate-100 px-4 ${
             isPostMode ? "justify-between" : "justify-center px-5"
           }`}
         >
@@ -3004,16 +3927,14 @@ function CreateContentModal({
         </div>
 
         <div
-          className={`overflow-y-auto overscroll-contain ${
+          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${
             isPostMode ? "flex-1 p-0" : "p-4 sm:p-5"
           }`}
         >
           <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-4">
             <div
               className={`flex shrink-0 items-center justify-center rounded-full bg-slate-950 font-black text-white ${
-                isPostMode
-                  ? "h-14 w-14 text-base"
-                  : "h-12 w-12 text-sm"
+                isPostMode ? "h-14 w-14 text-base" : "h-12 w-12 text-sm"
               }`}
             >
               {getInitials(name)}
@@ -3044,7 +3965,7 @@ function CreateContentModal({
           {!isPostMode && (
             <div
               className={`mt-4 grid gap-2 ${
-                SHOW_POST_SECTION ? "sm:grid-cols-4" : "sm:grid-cols-3"
+                SHOW_POST_SECTION ? "sm:grid-cols-5" : "sm:grid-cols-4"
               }`}
             >
               {modes.map((mode) => {
@@ -3263,23 +4184,35 @@ function CreateContentModal({
             />
           )}
 
+          {createMode === "reel" && (
+            <QuickReelForm
+              form={reelForm}
+              message={reelMessage}
+              onCreate={onCreateReel}
+              onFieldChange={onReelFieldChange}
+              products={products}
+              saving={reelSaving}
+            />
+          )}
+
           {(createMode === "service" || createMode === "ad") && (
             <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-orange-500 shadow-sm">
-                  <ActiveIcon size={22} />
-                </span>
-                <div>
-                  <p className="text-sm font-black text-slate-950">
-                    {createMode === "service"
-                      ? "Үйлчилгээний мэдээлэл оруулах"
-                      : "Зар, урамшуулал удирдах"}
-                  </p>
-                  <p className="mt-1 text-xs font-bold text-slate-500">
-                    Нэр, зураг, тайлбар, идэвхтэй хугацааг vendor удирдлага дээр бөглөнө.
-                  </p>
-                </div>
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-orange-500 shadow-sm">
+                    <ActiveIcon size={22} />
+                  </span>
+                  <div>
+                    <p className="text-sm font-black text-slate-950">
+                      {createMode === "service"
+                        ? "Үйлчилгээний мэдээлэл оруулах"
+                        : "Зар, урамшуулал удирдах"}
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-slate-500">
+                      Нэр, зураг, тайлбар, идэвхтэй хугацааг vendor удирдлага
+                      дээр бөглөнө.
+                    </p>
+                  </div>
                 </div>
                 <a
                   href={`${VENDOR_URL.replace(/\/$/, "")}/service-posts`}
@@ -3382,7 +4315,11 @@ function PostToolPanel({
                 key={`${image.slice(0, 40)}-${index}`}
                 className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-white bg-slate-100 shadow-sm"
               >
-                <img src={image} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={image}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
                 <button
                   type="button"
                   onClick={() => onRemoveImage(image)}
@@ -3461,6 +4398,313 @@ function PostToolInput({
         className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:ring-4 focus:ring-orange-100"
       />
     </label>
+  );
+}
+
+function QuickReelForm({
+  form,
+  message,
+  onCreate,
+  onFieldChange,
+  products,
+  saving,
+}: {
+  form: ReelFormState;
+  message: string;
+  onCreate: () => void;
+  onFieldChange: <K extends keyof ReelFormState>(
+    field: K,
+    value: ReelFormState[K],
+  ) => void;
+  products: Array<{ id: string; label: string; meta: string }>;
+  saving: boolean;
+}) {
+  const success = message.includes("амжилттай");
+  const selectedProduct = products.find(
+    (product) => product.id === form.productId,
+  );
+  const requiresProduct = form.linkMode === "product";
+  const uploadDisabled =
+    saving || !form.video || (requiresProduct && !form.productId);
+  const previewUrl = useMemo(
+    () => (form.video ? URL.createObjectURL(form.video) : ""),
+    [form.video],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-[24px] border border-fuchsia-100 bg-white shadow-sm">
+      <div className="border-b border-fuchsia-100 bg-gradient-to-r from-fuchsia-50 via-white to-orange-50 p-4">
+        <div className="flex items-start gap-3">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-fuchsia-600 text-white shadow-lg shadow-fuchsia-500/20">
+            <Film size={22} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-base font-black text-slate-950">
+              Shop reel оруулах
+            </p>
+            <p className="mt-1 text-xs font-bold leading-5 text-slate-500">
+              Reel-ээ дэлгүүрийн ерөнхий танилцуулга эсвэл тодорхой
+              бүтээгдэхүүний худалдааны video болгож холбоно.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2 text-[11px] font-black text-slate-500">
+          <span className="rounded-2xl bg-white px-3 py-2 ring-1 ring-fuchsia-100">
+            1. Холбох төрөл
+          </span>
+          <span className="rounded-2xl bg-white px-3 py-2 ring-1 ring-fuchsia-100">
+            2. Мэдээлэл
+          </span>
+          <span className="rounded-2xl bg-white px-3 py-2 ring-1 ring-fuchsia-100">
+            3. Video
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="space-y-4 p-4">
+          <section>
+            <p className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+              Холбох төрөл
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onFieldChange("linkMode", "store");
+                  onFieldChange("productId", "");
+                }}
+                className={`rounded-[20px] border p-3 text-left transition ${
+                  form.linkMode === "store"
+                    ? "border-fuchsia-300 bg-fuchsia-50 shadow-sm ring-4 ring-fuchsia-100"
+                    : "border-slate-200 bg-white hover:border-fuchsia-200"
+                }`}
+              >
+                <span className="flex items-center justify-between gap-2 text-sm font-black text-slate-950">
+                  <span className="flex items-center gap-2">
+                    <Store size={17} className="text-fuchsia-600" />
+                    Ерөнхий shop reel
+                  </span>
+                  {form.linkMode === "store" && (
+                    <CheckCircle2 size={17} className="text-fuchsia-600" />
+                  )}
+                </span>
+                <span className="mt-1 block text-xs font-bold leading-5 text-slate-500">
+                  Байгууллагын дэлгүүр, үйлчилгээ рүү чиглүүлнэ.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onFieldChange("linkMode", "product")}
+                className={`rounded-[20px] border p-3 text-left transition ${
+                  form.linkMode === "product"
+                    ? "border-fuchsia-300 bg-fuchsia-50 shadow-sm ring-4 ring-fuchsia-100"
+                    : "border-slate-200 bg-white hover:border-fuchsia-200"
+                }`}
+              >
+                <span className="flex items-center justify-between gap-2 text-sm font-black text-slate-950">
+                  <span className="flex items-center gap-2">
+                    <Boxes size={17} className="text-fuchsia-600" />
+                    Бүтээгдэхүүнтэй reel
+                  </span>
+                  {form.linkMode === "product" && (
+                    <CheckCircle2 size={17} className="text-fuchsia-600" />
+                  )}
+                </span>
+                <span className="mt-1 block text-xs font-bold leading-5 text-slate-500">
+                  Барааны card гарч, дарахад detail хуудас нээгдэнэ.
+                </span>
+              </button>
+            </div>
+          </section>
+
+          {requiresProduct && (
+            <section className="rounded-[20px] border border-slate-200 bg-slate-50 p-3">
+              <label className="block">
+                <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                  Холбох бүтээгдэхүүн
+                </span>
+                <select
+                  value={form.productId}
+                  onChange={(event) =>
+                    onFieldChange("productId", event.target.value)
+                  }
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-fuchsia-300 focus:ring-4 focus:ring-fuchsia-100"
+                >
+                  <option value="">Бүтээгдэхүүн сонгох</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.label}
+                      {product.meta ? ` · ${product.meta}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="mt-2 text-xs font-bold leading-5 text-slate-500">
+                {products.length
+                  ? "Сонгосон бараа reel дээр card байдлаар харагдаж, хэрэглэгч дарахад бүтээгдэхүүний detail хуудас нээгдэнэ."
+                  : "Эхлээд бүтээгдэхүүн нэмсний дараа reel-тэй холбож болно."}
+              </p>
+              {selectedProduct && (
+                <div className="mt-3 rounded-2xl border border-fuchsia-100 bg-white p-3">
+                  <p className="text-sm font-black text-slate-950">
+                    {selectedProduct.label}
+                  </p>
+                  {selectedProduct.meta && (
+                    <p className="mt-1 text-xs font-bold text-slate-500">
+                      {selectedProduct.meta}
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          <section className="grid gap-3 sm:grid-cols-2">
+            <label>
+              <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                Reel гарчиг
+              </span>
+              <input
+                value={form.title}
+                onChange={(event) => onFieldChange("title", event.target.value)}
+                placeholder="Жишээ: Шинэ барааны танилцуулга"
+                className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-fuchsia-300 focus:ring-4 focus:ring-fuchsia-100"
+              />
+            </label>
+
+            <label>
+              <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                Tags
+              </span>
+              <input
+                value={form.tags}
+                onChange={(event) => onFieldChange("tags", event.target.value)}
+                placeholder="sale, food, new"
+                className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-fuchsia-300 focus:ring-4 focus:ring-fuchsia-100"
+              />
+            </label>
+          </section>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+              Caption
+            </span>
+            <textarea
+              value={form.caption}
+              onChange={(event) => onFieldChange("caption", event.target.value)}
+              placeholder="Reel дээр харагдах богино тайлбар..."
+              rows={3}
+              className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-fuchsia-300 focus:ring-4 focus:ring-fuchsia-100"
+            />
+          </label>
+
+          <section>
+            <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+              Video файл
+            </span>
+            <label className="flex min-h-[132px] cursor-pointer flex-col items-center justify-center rounded-[22px] border border-dashed border-fuchsia-300 bg-fuchsia-50/60 px-4 py-5 text-center transition hover:border-fuchsia-400 hover:bg-fuchsia-50">
+              <Upload size={24} className="text-fuchsia-600" />
+              <span className="mt-2 text-sm font-black text-slate-950">
+                {form.video
+                  ? form.video.name
+                  : "Video сонгох эсвэл дахин сонгох"}
+              </span>
+              <span className="mt-1 text-xs font-bold text-slate-500">
+                MP4, WebM, MOV файл
+              </span>
+              <input
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime,video/x-m4v"
+                className="sr-only"
+                onChange={(event) => {
+                  onFieldChange("video", event.target.files?.[0] || null);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          </section>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p
+              className={`text-xs font-bold ${
+                success
+                  ? "text-emerald-700"
+                  : message
+                    ? "text-rose-600"
+                    : "text-slate-500"
+              }`}
+            >
+              {message ||
+                "Reel upload хийсний дараа store-ийн reel жагсаалт руу нэмэгдэнэ."}
+            </p>
+            <button
+              type="button"
+              onClick={onCreate}
+              disabled={uploadDisabled}
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 px-5 text-sm font-black text-white shadow-lg shadow-fuchsia-500/20 transition hover:-translate-y-0.5 hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 sm:w-auto sm:min-w-44"
+            >
+              <PlusCircle size={17} />
+              {saving ? "Upload хийж байна..." : "Reel оруулах"}
+            </button>
+          </div>
+        </div>
+
+        <aside className="border-t border-slate-100 bg-slate-950 p-4 text-white lg:border-l lg:border-t-0">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-black">Preview</p>
+            <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-black text-white/70">
+              {requiresProduct ? "Product reel" : "Store reel"}
+            </span>
+          </div>
+          <div className="mx-auto aspect-[9/16] max-h-[440px] overflow-hidden rounded-[28px] bg-black ring-1 ring-white/10">
+            {previewUrl ? (
+              <video
+                src={previewUrl}
+                controls
+                className="h-full w-full bg-black object-contain"
+              />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                <Clapperboard size={34} className="text-white/35" />
+                <p className="mt-3 text-sm font-black text-white/80">
+                  Video preview
+                </p>
+                <p className="mt-1 text-xs font-bold leading-5 text-white/45">
+                  Сонгосон reel энд vertical байдлаар харагдана.
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="mt-3 rounded-2xl bg-white/10 p-3">
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-xs font-black text-slate-950">
+                {requiresProduct ? "P" : "S"}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black">
+                  {form.title.trim() ||
+                    (requiresProduct
+                      ? selectedProduct?.label || "Бүтээгдэхүүний reel"
+                      : "Дэлгүүрийн reel")}
+                </p>
+                <p className="truncate text-xs font-bold text-white/50">
+                  {requiresProduct
+                    ? selectedProduct?.meta || "Бүтээгдэхүүн сонгоно"
+                    : "Дэлгүүр рүү чиглүүлнэ"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
   );
 }
 
@@ -3547,11 +4791,7 @@ function QuickProductForm({
               key={`${image.slice(0, 40)}-${index}`}
               className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-white bg-slate-100 shadow-sm"
             >
-              <img
-                src={image}
-                alt=""
-                className="h-full w-full object-cover"
-              />
+              <img src={image} alt="" className="h-full w-full object-cover" />
               <button
                 type="button"
                 onClick={() => removeImage(image)}
@@ -3691,8 +4931,13 @@ function MobileOrganizationHero({
   name: string;
   onEditProfile: () => void;
   onPreviewImage: (title: string, url: string) => void;
-  onToggleImageMenu: React.Dispatch<React.SetStateAction<"logoUrl" | "bannerUrl" | null>>;
-  onUploadImage: (field: "logoUrl" | "bannerUrl", files: FileList | null) => void;
+  onToggleImageMenu: React.Dispatch<
+    React.SetStateAction<"logoUrl" | "bannerUrl" | null>
+  >;
+  onUploadImage: (
+    field: "logoUrl" | "bannerUrl",
+    files: FileList | null,
+  ) => void;
   publicHref: string;
   rating: number;
   reviewCount: number;
