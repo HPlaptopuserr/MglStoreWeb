@@ -3,8 +3,9 @@
 import React, { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import type { OrganizationDetailData, ServicePost } from "./page";
+import type { OrganizationDetailData, OrganizationReel, ServicePost } from "./page";
 import {
   Star,
   MapPin,
@@ -27,8 +28,12 @@ import {
   ArrowLeft,
   Zap,
   CheckCircle2,
+  Heart,
+  Play,
+  Video,
 } from "lucide-react";
 import { getServicePostCategories } from "@mgl/ui";
+import { resolveApiAssetUrl } from "@/lib/api";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 import { ProductDetailOverlay } from "@/components/organisms/ProductDetailOverlay";
 import { ServiceDetailOverlay } from "@/app/services/_components/ServiceDetailOverlay";
@@ -37,9 +42,112 @@ type ProductItem = OrganizationDetailData["products"][number] & {
   isAvailable?: boolean;
 };
 
+type ContentFilter = "all" | "products" | "services" | "reels";
+
 function formatPrice(price: number | undefined) {
   if (typeof price !== "number" || Number.isNaN(price)) return "—";
   return `${price.toLocaleString("en-US")}₮`;
+}
+
+function formatCompactCount(value?: number) {
+  const next = Number(value || 0);
+  if (next >= 1_000_000) return `${Math.round(next / 100_000) / 10}M`;
+  if (next >= 1_000) return `${Math.round(next / 100) / 10}K`;
+  return String(next);
+}
+
+function getItemTime(value?: string | null) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getReelTitle(reel: OrganizationReel, index?: number) {
+  return (
+    reel.title ||
+    reel.caption ||
+    reel.product?.name ||
+    (typeof index === "number" ? `Reel #${index + 1}` : "Reel")
+  );
+}
+
+function ReelCard({
+  reel,
+  index,
+  compact = false,
+}: {
+  reel: OrganizationReel;
+  index?: number;
+  compact?: boolean;
+}) {
+  const pathname = usePathname();
+  const title = getReelTitle(reel, index);
+  const productImage = reel.product?.images?.[0]?.url || null;
+  const preview = resolveApiAssetUrl(reel.thumbnailUrl || productImage);
+  const video = resolveApiAssetUrl(reel.videoUrl);
+  const reelHref = `/reels?reel=${encodeURIComponent(reel.id)}&returnTo=${encodeURIComponent(pathname || "/organizations")}`;
+
+  return (
+    <Link
+      href={reelHref}
+      className="group block overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
+    >
+      <div
+        className={`relative overflow-hidden bg-slate-950 ${
+          compact ? "aspect-[4/3]" : "aspect-[9/14]"
+        }`}
+      >
+        {preview ? (
+          <Image
+            src={preview}
+            alt={title}
+            fill
+            className="object-cover opacity-95 transition-transform duration-500 group-hover:scale-105"
+            referrerPolicy="no-referrer"
+          />
+        ) : video ? (
+          <video
+            src={video}
+            className="h-full w-full object-cover opacity-95 transition-transform duration-500 group-hover:scale-105"
+            muted
+            loop
+            playsInline
+            autoPlay
+            preload="metadata"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-800 to-rose-700" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
+        <span className="absolute left-3 top-3 rounded-full bg-rose-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
+          Reel
+        </span>
+        <div className="absolute bottom-3 left-3 right-3">
+          <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md ring-1 ring-white/25 transition-transform group-hover:scale-105">
+            <Play className="h-4 w-4 fill-current" />
+          </div>
+          {reel.product?.name && !compact && (
+            <span className="mb-2 inline-flex max-w-full rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-bold text-slate-900">
+              <span className="truncate">{reel.product.name}</span>
+            </span>
+          )}
+          <h3 className="line-clamp-2 text-sm font-extrabold leading-tight text-white">
+            {title}
+          </h3>
+          <div className="mt-2 flex items-center gap-3 text-[11px] font-semibold text-white/80">
+            <span className="inline-flex items-center gap-1">
+              <Eye className="h-3.5 w-3.5" />
+              {formatCompactCount(reel.viewCount)}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Heart className="h-3.5 w-3.5" />
+              {formatCompactCount(reel.likeCount)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
 }
 
 /* ─── Hero ─────────────────────────────────────────────────── */
@@ -304,6 +412,94 @@ function InfoCards({ info }: { info: OrganizationDetailData["info"] }) {
   );
 }
 
+/* ─── Content summary ───────────────────────────────────────── */
+function ContentSummary({
+  data,
+  active,
+  onChange,
+}: {
+  data: OrganizationDetailData;
+  active: ContentFilter;
+  onChange: (filter: ContentFilter) => void;
+}) {
+  const total = data.products.length + data.servicePosts.length + data.reels.length;
+  const items = [
+    {
+      key: "all" as const,
+      label: "Бүх",
+      value: total,
+      icon: <ShoppingBag className="w-4 h-4" />,
+      color: "bg-slate-100 text-slate-700",
+      activeColor: "bg-slate-900 text-white",
+    },
+    {
+      key: "products" as const,
+      label: "Бүтээгдэхүүн",
+      value: data.products.length,
+      icon: <ShoppingBag className="w-4 h-4" />,
+      color: "bg-orange-50 text-orange-600",
+      activeColor: "bg-orange-500 text-white",
+    },
+    {
+      key: "services" as const,
+      label: "Үйлчилгээ",
+      value: data.servicePosts.length,
+      icon: <Megaphone className="w-4 h-4" />,
+      color: "bg-purple-50 text-purple-600",
+      activeColor: "bg-purple-500 text-white",
+    },
+    {
+      key: "reels" as const,
+      label: "Reels",
+      value: data.reels.length,
+      icon: <Video className="w-4 h-4" />,
+      color: "bg-rose-50 text-rose-600",
+      activeColor: "bg-rose-500 text-white",
+    },
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.45 }}
+      className="grid grid-cols-2 gap-2 rounded-3xl border border-slate-100 bg-white p-2 shadow-sm sm:grid-cols-4 sm:gap-3 sm:p-3"
+    >
+      {items.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          onClick={() => onChange(item.key)}
+          aria-pressed={active === item.key}
+          className={`flex min-w-0 items-center gap-2 rounded-2xl px-3 py-3 text-left transition-all sm:px-4 ${
+            active === item.key
+              ? "bg-slate-900 shadow-lg shadow-slate-900/10"
+              : "bg-slate-50/80 hover:bg-white hover:shadow-md"
+          }`}
+        >
+          <div className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:flex ${
+            active === item.key ? item.activeColor : item.color
+          }`}>
+            {item.icon}
+          </div>
+          <div className="min-w-0">
+            <p className={`text-base font-extrabold leading-none ${
+              active === item.key ? "text-white" : "text-slate-900"
+            }`}>
+              {item.value}
+            </p>
+            <p className={`mt-1 truncate text-[11px] font-bold ${
+              active === item.key ? "text-white/70" : "text-slate-400"
+            }`}>
+              {item.label}
+            </p>
+          </div>
+        </button>
+      ))}
+    </motion.div>
+  );
+}
+
 /* ─── Services ──────────────────────────────────────────────── */
 function ServicesSection({ posts }: { posts: ServicePost[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -395,8 +591,221 @@ function ServicesSection({ posts }: { posts: ServicePost[] }) {
   );
 }
 
+/* ─── Reels ─────────────────────────────────────────────────── */
+function ReelsSection({ reels }: { reels: OrganizationReel[] }) {
+  if (!reels.length) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.52 }}
+    >
+      <div className="flex items-center gap-2.5 mb-5">
+        <div className="w-8 h-8 rounded-xl bg-rose-50 flex items-center justify-center text-rose-500">
+          <Video className="w-4 h-4" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900">Reels</h2>
+        <span className="ml-auto text-xs font-semibold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">
+          {reels.length}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+        {reels.map((reel, index) => (
+          <motion.div
+            key={reel.id}
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <ReelCard reel={reel} index={index} />
+          </motion.div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Unified feed ──────────────────────────────────────────── */
+function UnifiedContentSection({
+  data,
+  hasOtherContent,
+}: {
+  data: OrganizationDetailData;
+  hasOtherContent?: boolean;
+}) {
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+
+  const items = useMemo(() => {
+    const products = (data.products as ProductItem[]).map((product) => ({
+      type: "product" as const,
+      id: product.id,
+      createdAt: product.createdAt,
+      product,
+    }));
+    const services = data.servicePosts.map((post) => ({
+      type: "service" as const,
+      id: post.id,
+      createdAt: post.createdAt,
+      post,
+    }));
+    const reels = data.reels.map((reel) => ({
+      type: "reel" as const,
+      id: reel.id,
+      createdAt: reel.publishedAt || reel.createdAt,
+      reel,
+    }));
+
+    return [...products, ...services, ...reels].sort(
+      (a, b) => getItemTime(b.createdAt) - getItemTime(a.createdAt)
+    );
+  }, [data.products, data.servicePosts, data.reels]);
+
+  if (!items.length) {
+    return (
+      <ProductsSection
+        products={data.products as ProductItem[]}
+        hasOtherContent={hasOtherContent}
+      />
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.5 }}
+    >
+      <div className="mb-5 flex items-center gap-2.5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white">
+          <ShoppingBag className="h-4 w-4" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900">Бүх контент</h2>
+        <span className="ml-auto rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-400">
+          {items.length}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => {
+          if (item.type === "product") {
+            const product = item.product;
+            const image = resolveApiAssetUrl(product.image);
+            return (
+              <button
+                key={`product-${item.id}`}
+                type="button"
+                onClick={() => setSelectedProductId(product.id)}
+                className="group overflow-hidden rounded-2xl border border-slate-100 bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              >
+                <div className="relative aspect-[4/3] overflow-hidden bg-orange-50">
+                  <Image
+                    src={image}
+                    alt={product.title}
+                    fill
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    referrerPolicy="no-referrer"
+                  />
+                  <span className="absolute left-3 top-3 rounded-full bg-orange-500 px-2.5 py-1 text-[10px] font-bold text-white">
+                    Бүтээгдэхүүн
+                  </span>
+                </div>
+                <div className="p-4">
+                  <h3 className="line-clamp-2 text-sm font-bold leading-snug text-slate-900">
+                    {product.title}
+                  </h3>
+                  <p className="mt-2 text-base font-extrabold text-orange-500">
+                    {formatPrice(product.price)}
+                  </p>
+                </div>
+              </button>
+            );
+          }
+
+          if (item.type === "service") {
+            const post = item.post;
+            const thumb = resolveApiAssetUrl(post.images?.[0]?.url);
+            return (
+              <button
+                key={`service-${item.id}`}
+                type="button"
+                onClick={() => setSelectedServiceId(post.id)}
+                className="group overflow-hidden rounded-2xl border border-slate-100 bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              >
+                <div className="relative aspect-[4/3] overflow-hidden bg-purple-50">
+                  {thumb ? (
+                    <Image
+                      src={thumb}
+                      alt={post.title}
+                      fill
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Megaphone className="h-10 w-10 text-purple-200" />
+                    </div>
+                  )}
+                  <span className="absolute left-3 top-3 rounded-full bg-purple-500 px-2.5 py-1 text-[10px] font-bold text-white">
+                    Үйлчилгээ
+                  </span>
+                </div>
+                <div className="p-4">
+                  <h3 className="line-clamp-2 text-sm font-bold leading-snug text-slate-900">
+                    {post.title}
+                  </h3>
+                  {post.priceText && (
+                    <p className="mt-2 text-base font-extrabold text-orange-500">
+                      {post.priceText}
+                    </p>
+                  )}
+                  {post.description && (
+                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-500">
+                      {post.description}
+                    </p>
+                  )}
+                </div>
+              </button>
+            );
+          }
+
+          return (
+            <motion.div
+              key={`reel-${item.id}`}
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <ReelCard reel={item.reel} compact />
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {selectedProductId && (
+        <ProductDetailOverlay
+          productId={selectedProductId}
+          onClose={() => setSelectedProductId(null)}
+        />
+      )}
+      {selectedServiceId && (
+        <ServiceDetailOverlay
+          postId={selectedServiceId}
+          onClose={() => setSelectedServiceId(null)}
+        />
+      )}
+    </motion.div>
+  );
+}
+
 /* ─── Products ──────────────────────────────────────────────── */
-function ProductsSection({ products }: { products: ProductItem[] }) {
+function ProductsSection({
+  products,
+  hasOtherContent,
+}: {
+  products: ProductItem[];
+  hasOtherContent?: boolean;
+}) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -436,26 +845,34 @@ function ProductsSection({ products }: { products: ProductItem[] }) {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="text-center py-16 px-4 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center">
-          <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mb-5">
-            <ShoppingBag className="w-10 h-10 text-orange-300" />
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 sm:p-7">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center shrink-0">
+                <ShoppingBag className="w-7 h-7 text-orange-300" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 mb-1">
+                  {products.length === 0 ? "Бүтээгдэхүүн хараахан нэмэгдээгүй" : "Хайлтад тохирохгүй"}
+                </h3>
+                <p className="text-sm text-slate-400 max-w-md leading-relaxed">
+                  {products.length === 0
+                    ? hasOtherContent
+                      ? "Энэ байгууллагын үйлчилгээ болон reels контентуудыг үзээд шууд холбогдох боломжтой."
+                      : "Байгууллага product нэмэх үед энд шууд карт хэлбэрээр харагдана."
+                    : "Өөр үгээр хайж үзнэ үү."}
+                </p>
+              </div>
+            </div>
+            {products.length === 0 && (
+              <Link
+                href="/organizations"
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-slate-100 text-slate-700 font-semibold text-sm hover:bg-slate-200 transition-colors"
+              >
+                Бусад дэлгүүр үзэх
+              </Link>
+            )}
           </div>
-          <h3 className="text-base font-bold text-slate-900 mb-2">
-            {products.length === 0 ? "Бүтээгдэхүүн удахгүй нэмэгдэнэ" : "Хайлтад тохирохгүй"}
-          </h3>
-          <p className="text-sm text-slate-400 max-w-xs mb-6 leading-relaxed">
-            {products.length === 0
-              ? "Шууд холбогдож захиалга өгөх боломжтой."
-              : "Өөр үгээр хайж үзнэ үү."}
-          </p>
-          {products.length === 0 && (
-            <Link
-              href="/organizations"
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold text-sm hover:bg-slate-200 transition-colors"
-            >
-              Бусад дэлгүүр үзэх
-            </Link>
-          )}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -619,6 +1036,9 @@ export default function BusinessProfileClient({
 }: {
   data: OrganizationDetailData;
 }) {
+  const hasOtherContent = data.servicePosts.length > 0 || data.reels.length > 0;
+  const [activeContent, setActiveContent] = useState<ContentFilter>("all");
+
   return (
     <div className="min-h-screen bg-[#F8F8F6] pb-28 lg:pb-10">
       <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
@@ -653,8 +1073,37 @@ export default function BusinessProfileClient({
 
             <AboutSection text={data.description} />
             <InfoCards info={data.info} />
-            <ProductsSection products={data.products as ProductItem[]} />
-            <ServicesSection posts={data.servicePosts} />
+            <ContentSummary
+              data={data}
+              active={activeContent}
+              onChange={setActiveContent}
+            />
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeContent}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.18 }}
+              >
+                {activeContent === "all" && (
+                  <UnifiedContentSection
+                    data={data}
+                    hasOtherContent={hasOtherContent}
+                  />
+                )}
+                {activeContent === "services" && (
+                  <ServicesSection posts={data.servicePosts} />
+                )}
+                {activeContent === "reels" && <ReelsSection reels={data.reels} />}
+                {activeContent === "products" && (
+                  <ProductsSection
+                    products={data.products as ProductItem[]}
+                    hasOtherContent={hasOtherContent}
+                  />
+                )}
+              </motion.div>
+            </AnimatePresence>
           </div>
 
           {/* Sidebar – desktop only */}

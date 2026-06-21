@@ -30,6 +30,7 @@ interface BackendProduct {
   stock?: number;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
+  createdAt?: string;
 }
 
 interface BackendPartner {
@@ -71,6 +72,25 @@ export interface ServicePost {
   createdAt: string;
 }
 
+export interface OrganizationReel {
+  id: string;
+  title?: string | null;
+  caption?: string | null;
+  description?: string | null;
+  videoUrl: string;
+  thumbnailUrl?: string | null;
+  viewCount?: number;
+  likeCount?: number;
+  createdAt?: string;
+  publishedAt?: string | null;
+  product?: {
+    id: string;
+    name: string;
+    price?: number | string | null;
+    images?: { url?: string | null }[];
+  } | null;
+}
+
 export interface OrganizationDetailData {
   id: string;
   name: string;
@@ -110,6 +130,7 @@ export interface OrganizationDetailData {
     stock?: number;
     supplyType?: "IN_STOCK" | "CHINA_PREORDER";
     preorderLeadTimeDays?: number | null;
+    createdAt?: string;
   }[];
   investor?: {
     isInvestor: boolean;
@@ -118,6 +139,7 @@ export interface OrganizationDetailData {
     investmentAmount?: number | null;
   };
   servicePosts: ServicePost[];
+  reels: OrganizationReel[];
 }
 
 function normalizeHours(value?: string[] | string): string[] {
@@ -195,9 +217,11 @@ function mapPartnerToDetailData(
           stock: product.stock,
           supplyType: product.supplyType,
           preorderLeadTimeDays: product.preorderLeadTimeDays,
+          createdAt: product.createdAt,
         }))
       : [],
     servicePosts: [],
+    reels: [],
   };
 }
 
@@ -240,6 +264,22 @@ async function fetchServicePosts(organizationId: string): Promise<ServicePost[]>
     if (!res.ok) return [];
     const data = await res.json();
     return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchOrganizationReels(
+  organizationId: string
+): Promise<OrganizationReel[]> {
+  try {
+    const res = await fetch(
+      `${API}/reels?organizationId=${encodeURIComponent(organizationId)}&limit=8`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data?.items) ? data.items : [];
   } catch {
     return [];
   }
@@ -316,8 +356,12 @@ export async function renderOrganizationDetailPage({ params, searchParams }: Pag
     notFound();
   }
 
-  const servicePosts = await fetchServicePosts(organization.id);
+  const [servicePosts, reels] = await Promise.all([
+    fetchServicePosts(organization.id),
+    fetchOrganizationReels(organization.id),
+  ]);
   organization.servicePosts = servicePosts;
+  organization.reels = reels;
 
   return <BusinessProfileClient data={organization} />;
 }

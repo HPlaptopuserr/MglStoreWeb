@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import type { WheelEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { API } from "@/lib/api";
 import { CartDrawer } from "@/components/organisms/CartDrawer";
 import { MobileBottomNav } from "@/components/organisms/layouts/MobileBottomNav";
@@ -52,8 +53,10 @@ export function ReelsPageClient() {
   const feedRef = useRef<HTMLDivElement | null>(null);
   const initialScrollDoneRef = useRef(false);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wheelLockRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewedIdsRef = useRef<Set<string>>(new Set());
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     setLikedIds(getLikedReelIds());
@@ -63,6 +66,7 @@ export function ReelsPageClient() {
   useEffect(() => {
     return () => {
       if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+      if (wheelLockRef.current) clearTimeout(wheelLockRef.current);
     };
   }, []);
 
@@ -202,6 +206,23 @@ export function ReelsPageClient() {
     });
   };
 
+  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
+    if (filteredItems.length <= 1) return;
+
+    const intent = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+      ? event.deltaY
+      : event.deltaX;
+    if (Math.abs(intent) < 12) return;
+
+    event.preventDefault();
+    if (wheelLockRef.current) return;
+
+    scrollToIndex(activeIndex + (intent > 0 ? 1 : -1));
+    wheelLockRef.current = setTimeout(() => {
+      wheelLockRef.current = null;
+    }, 520);
+  };
+
   const handleModeChange = (mode: ReelsFeedMode) => {
     setFeedMode(mode);
     setActiveIndex(0);
@@ -314,6 +335,31 @@ export function ReelsPageClient() {
     showNotice("info", "Үзэлт автоматаар бүртгэгддэг");
   };
 
+  const handleBack = () => {
+    const returnTo = searchParams.get("returnTo");
+    if (returnTo?.startsWith("/") && !returnTo.startsWith("//")) {
+      router.push(returnTo);
+      return;
+    }
+
+    if (typeof document !== "undefined" && document.referrer) {
+      try {
+        const referrer = new URL(document.referrer);
+        if (
+          referrer.origin === window.location.origin &&
+          referrer.pathname !== window.location.pathname
+        ) {
+          router.back();
+          return;
+        }
+      } catch {
+        // Fall through to the safe in-app fallback.
+      }
+    }
+
+    router.push("/organizations");
+  };
+
   return (
     <div className="relative min-h-dvh overflow-hidden bg-black pb-[calc(50px+env(safe-area-inset-bottom,0px))] text-white md:pb-0">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_88%_100%,rgba(14,165,233,0.12),transparent_26%)]" />
@@ -321,6 +367,7 @@ export function ReelsPageClient() {
       <ReelsHeader
         activeMode={feedMode}
         counts={feedCounts}
+        onBack={handleBack}
         onModeChange={handleModeChange}
         reelCount={filteredItems.length}
       />
@@ -337,6 +384,7 @@ export function ReelsPageClient() {
           <div
             ref={feedRef}
             className="relative z-10 h-[calc(100dvh-50px-env(safe-area-inset-bottom,0px))] snap-y snap-mandatory overflow-y-auto scroll-smooth scrollbar-hide md:h-dvh"
+            onWheel={handleWheel}
             onScroll={(event) => {
               const height = event.currentTarget.clientHeight || 1;
               setActiveIndex(

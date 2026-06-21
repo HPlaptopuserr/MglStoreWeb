@@ -1319,6 +1319,7 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
         stock: p.stock,
         supplyType: p.supplyType,
         preorderLeadTimeDays: p.preorderLeadTimeDays,
+        createdAt: p.createdAt,
         expiryDate:
           p.warehouseInventories?.[0]?.expiryDate?.toISOString() ?? null,
       })),
@@ -2016,6 +2017,7 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
         category: p.category?.name,
         image: p.images?.[0]?.url,
         images: p.images?.map((img: any) => img.url),
+        createdAt: p.createdAt,
       })),
       branches: partner.branches.map((b: any) => ({
         id: b.id,
