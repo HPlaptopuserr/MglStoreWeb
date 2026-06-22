@@ -23,6 +23,7 @@ function money(value: number) {
 
 function PosCartLineRow({ line, index, onRemove, onSetQty }: CartLineRowProps) {
   const lineTotal = line.qty * line.unitPrice;
+  const taxLabel = `${line.taxType || "VAT_ABLE"}${line.taxRate ? ` / ${line.taxRate}%` : ""}`;
 
   return (
     <article className="grid grid-cols-[34px_minmax(0,1fr)_104px_126px_28px] items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/20">
@@ -36,6 +37,9 @@ function PosCartLineRow({ line, index, onRemove, onSetQty }: CartLineRowProps) {
         </p>
         <p className="mt-0.5 truncate text-[10px] font-bold text-slate-500">
           Нэгж: {money(line.unitPrice)} · Нөөц: {line.stockQty}
+        </p>
+        <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700 ring-1 ring-emerald-100">
+          {taxLabel}
         </p>
       </div>
 

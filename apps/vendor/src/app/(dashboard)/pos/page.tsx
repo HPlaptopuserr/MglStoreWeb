@@ -74,7 +74,10 @@ import {
   getShiftHistory,
   issueLocalEbarimtReceipt,
   attachEbarimtReceipt,
+  sendLocalEbarimtData,
+  lookupEbarimtTin,
   type AttachEbarimtPayload,
+  type EbarimtBuyer,
   type RegisterConfig,
   type CashDenominationCount,
   type CashDrawerEventType,
@@ -115,6 +118,13 @@ type CustomerDisplayPayload = {
   qpayModal: QPayModalPayload | null;
   customerSuccess: CustomerDisplaySuccess | null;
   ts: number;
+};
+
+type PendingEbarimtSale = {
+  receipt: PosReceipt;
+  paymentBreakdown: SalePaymentLine[];
+  loyaltyMessage: string;
+  isCreditSale: boolean;
 };
 
 type CardPaymentRun = {
@@ -531,6 +541,13 @@ export default function PosDemoPage() {
   const [drawerEventAmount, setDrawerEventAmount] = useState("");
   const [drawerEventNote, setDrawerEventNote] = useState("");
   const [drawerEventSubmitting, setDrawerEventSubmitting] = useState(false);
+  const [pendingEbarimtSale, setPendingEbarimtSale] = useState<PendingEbarimtSale | null>(null);
+  const [ebarimtBuyerMode, setEbarimtBuyerMode] = useState<"B2C" | "B2B">("B2C");
+  const [ebarimtCompanyRegNo, setEbarimtCompanyRegNo] = useState("");
+  const [ebarimtCompanyTin, setEbarimtCompanyTin] = useState("");
+  const [ebarimtCompanyLookupLoading, setEbarimtCompanyLookupLoading] = useState(false);
+  const [ebarimtBuyerSubmitting, setEbarimtBuyerSubmitting] = useState(false);
+  const [ebarimtBuyerError, setEbarimtBuyerError] = useState("");
 
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const paymentSectionRef = useRef<HTMLElement>(null);
@@ -543,6 +560,7 @@ export default function PosDemoPage() {
   const successOverlayTimerRef = useRef<number | null>(null);
   const customerDisplaySuccessTimerRef = useRef<number | null>(null);
   const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
+  const ebarimtSendDataInFlightRef = useRef(false);
 
   const posEnabled = posAccess === "enabled";
   const registerBranchId = posEnabled ? (registerConfig?.branchId ?? "") : "";
@@ -625,7 +643,8 @@ export default function PosDemoPage() {
     showShiftHistoryPanel ||
     showCashDrawerPanel ||
     successOverlay.visible ||
-    isCardProcessing;
+    isCardProcessing ||
+    Boolean(pendingEbarimtSale);
 
   useLockBodyScroll(overlayOpen);
 
@@ -757,6 +776,33 @@ export default function PosDemoPage() {
       setCustomerDisplaySuccess(null);
       customerDisplaySuccessTimerRef.current = null;
     }, 3500);
+  };
+
+  const startEbarimtSendDataSync = (source: string) => {
+    if (ebarimtSendDataInFlightRef.current) {
+      console.info(`[POS] eBarimt sendData already running; skipped ${source}`);
+      return;
+    }
+
+    ebarimtSendDataInFlightRef.current = true;
+    console.info(`[POS] eBarimt sendData started: ${source}`);
+
+    void sendLocalEbarimtData()
+      .then((info) => {
+        const lastSentDate = info.lastSentDate || "-";
+        console.info(`[POS] eBarimt sendData finished: ${source}; lastSentDate=${lastSentDate}`);
+        setScanStatus("success");
+        setScanMessage(`eBarimt SendData дууслаа. lastSentDate: ${lastSentDate}`);
+      })
+      .catch((error: any) => {
+        const message = error?.message || "eBarimt SendData failed";
+        console.warn(`[POS] eBarimt sendData failed: ${source}`, error);
+        setScanStatus("not-found");
+        setScanMessage(`eBarimt SendData алдаа: ${message}`);
+      })
+      .finally(() => {
+        ebarimtSendDataInFlightRef.current = false;
+      });
   };
 
   useEffect(() => {
@@ -1541,6 +1587,7 @@ export default function PosDemoPage() {
           } catch (saveError) {
             console.warn("Credit repayment eBarimt created locally but failed to attach to sale", saveError);
           }
+          startEbarimtSendDataSync(`credit repayment ${credit.receiptNo}`);
           repaymentMessage = `${credit.borrowerName} зээлийн төлөлт болон eBarimt амжилттай.`;
         } catch (ebarimtError: any) {
           const errorMessage = ebarimtError?.message || "eBarimt баримт үүсгэхэд алдаа гарлаа";
@@ -1666,6 +1713,124 @@ export default function PosDemoPage() {
     setScanBuffer("");
   };
 
+  const completePaidSale = (finalReceipt: PosReceipt, finalMessage: string, isCreditSale: boolean) => {
+    setPendingEbarimtSale(null);
+    setQpayModal(null);
+    setPaymentEntries([]);
+    setLoyalty(initialLoyaltyState);
+    setAutoCheckoutActive(false);
+    clientSaleIdRef.current = null;
+    dispatch({ type: "clear-cart" });
+    setView("register");
+    setScanStatus("success");
+    setScanMessage(finalMessage);
+    showSuccessOverlay("Төлбөр амжилттай");
+
+    setReceiptHistory((items) => [finalReceipt, ...items.filter((item) => item.id !== finalReceipt.id)]);
+    setSelectedReceiptId(finalReceipt.id);
+    reloadProducts();
+    reloadReceiptHistory();
+    void reloadCreditSales();
+    if (isCreditSale) {
+      void reloadCreditBorrowers();
+    }
+    void refreshCashDrawerSummary();
+    printReceipt(finalReceipt);
+  };
+
+  const resetEbarimtBuyerDialog = () => {
+    setEbarimtBuyerMode("B2C");
+    setEbarimtCompanyRegNo("");
+    setEbarimtCompanyTin("");
+    setEbarimtBuyerError("");
+    setEbarimtCompanyLookupLoading(false);
+    setEbarimtBuyerSubmitting(false);
+  };
+
+  const lookupCompanyTinForEbarimt = async () => {
+    const regNo = ebarimtCompanyRegNo.replace(/\D/g, "");
+    if (!/^\d{7}$/.test(regNo)) {
+      throw new Error("Байгууллагын регистр 7 оронтой байх ёстой");
+    }
+
+    setEbarimtCompanyLookupLoading(true);
+    setEbarimtBuyerError("");
+    try {
+      const result = await lookupEbarimtTin(regNo);
+      setEbarimtCompanyRegNo(result.regNo);
+      setEbarimtCompanyTin(result.tin);
+      return result;
+    } finally {
+      setEbarimtCompanyLookupLoading(false);
+    }
+  };
+
+  const submitPendingEbarimtSale = async (mode: "B2C" | "B2B" = ebarimtBuyerMode) => {
+    const pending = pendingEbarimtSale;
+    if (!pending) return;
+
+    setEbarimtBuyerSubmitting(true);
+    setEbarimtBuyerError("");
+
+    let finalReceipt = pending.receipt;
+    let ebarimtAttempted = false;
+    try {
+      let buyer: EbarimtBuyer = { type: "B2C" };
+      if (mode === "B2B") {
+        const normalizedRegNo = ebarimtCompanyRegNo.replace(/\D/g, "");
+        const tin = ebarimtCompanyTin || (await lookupCompanyTinForEbarimt()).tin;
+        buyer = { type: "B2B", tin, regNo: normalizedRegNo };
+      }
+
+      setScanStatus("idle");
+      setScanMessage(mode === "B2B" ? "Байгууллагын eBarimt баримт үүсгэж байна..." : "Хувь хүний eBarimt баримт үүсгэж байна...");
+      ebarimtAttempted = true;
+      const ebarimtPayload = await issueLocalEbarimtReceipt(
+        pending.receipt,
+        pending.paymentBreakdown,
+        registerConfig,
+        buyer,
+      );
+      finalReceipt = { ...pending.receipt, ebarimt: mapEbarimtPayload(ebarimtPayload) };
+      try {
+        const saved = await attachEbarimtReceipt(pending.receipt.id, ebarimtPayload);
+        finalReceipt = { ...pending.receipt, ebarimt: saved.ebarimt || finalReceipt.ebarimt };
+      } catch (saveError) {
+        console.warn("eBarimt receipt created locally but failed to attach to sale", saveError);
+      }
+      startEbarimtSendDataSync(`sale ${pending.receipt.receiptNo}`);
+      const label = mode === "B2B" ? "байгууллагын eBarimt" : "хувь хүний eBarimt";
+      completePaidSale(finalReceipt, `Төлбөр болон ${label} баримт амжилттай.${pending.loyaltyMessage}`, pending.isCreditSale);
+      resetEbarimtBuyerDialog();
+    } catch (ebarimtError: any) {
+      const errorMessage = ebarimtError?.message || "eBarimt баримт үүсгэхэд алдаа гарлаа";
+      setEbarimtBuyerError(errorMessage);
+      finalReceipt = {
+        ...pending.receipt,
+        ebarimt: {
+          status: "FAILED",
+          error: errorMessage,
+          syncedAt: new Date().toISOString(),
+        },
+      };
+      if (ebarimtAttempted) {
+        await attachEbarimtReceipt(pending.receipt.id, {
+          status: "FAILED",
+          error: errorMessage,
+        }).catch(() => {});
+      }
+    } finally {
+      setEbarimtBuyerSubmitting(false);
+    }
+  };
+
+  const skipPendingEbarimtSale = () => {
+    const pending = pendingEbarimtSale;
+    if (!pending) return;
+    completePaidSale(pending.receipt, `Төлбөр амжилттай.${pending.loyaltyMessage} eBarimt үүсгээгүй.`, pending.isCreditSale);
+    resetEbarimtBuyerDialog();
+  };
+
   const handleCreateDemoSale = async () => {
     if (state.cart.length === 0) return;
 
@@ -1756,7 +1921,12 @@ export default function PosDemoPage() {
           qty: line.qty,
           unitPrice: line.unitPrice,
           discountAmount: line.discountAmount,
+          taxType: line.taxType,
           taxRate: line.taxRate,
+          cityTaxRate: line.cityTaxRate,
+          classificationCode: line.classificationCode,
+          taxProductCode: line.taxProductCode,
+          measureUnit: line.measureUnit,
         })),
         note: "POS checkout",
       });
@@ -1771,6 +1941,25 @@ export default function PosDemoPage() {
           : "";
 
       if (EBARIMT_ENABLED && !isCreditSale) {
+        setAutoCheckoutActive(false);
+        setPendingEbarimtSale({
+          receipt,
+          paymentBreakdown,
+          loyaltyMessage,
+          isCreditSale,
+        });
+        setEbarimtBuyerMode("B2C");
+        setEbarimtCompanyRegNo("");
+        setEbarimtCompanyTin("");
+        setEbarimtBuyerError("");
+        setView("register");
+        setScanStatus("success");
+        setScanMessage(`Төлбөр амжилттай.${loyaltyMessage} eBarimt баримтын төрлөө сонгоно уу.`);
+        showSuccessOverlay("Төлбөр амжилттай");
+        return;
+      }
+
+      if (EBARIMT_ENABLED && !isCreditSale) {
         try {
           setScanStatus("idle");
           setScanMessage("eBarimt баримт үүсгэж байна...");
@@ -1782,6 +1971,7 @@ export default function PosDemoPage() {
           } catch (saveError) {
             console.warn("eBarimt receipt created locally but failed to attach to sale", saveError);
           }
+          startEbarimtSendDataSync(`sale ${receipt.receiptNo}`);
           finalMessage = `Төлбөр болон eBarimt баримт амжилттай.${loyaltyMessage}`;
         } catch (ebarimtError: any) {
           const errorMessage = ebarimtError?.message || "eBarimt баримт үүсгэхэд алдаа гарлаа";
@@ -2747,6 +2937,135 @@ export default function PosDemoPage() {
   return (
     <>
       <MobileBlock />
+      {pendingEbarimtSale && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">eBarimt</p>
+                <h3 className="mt-1 text-xl font-black text-slate-950">Баримтын төрөл сонгоно уу</h3>
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  Төлбөр амжилттай баталгаажсан. Одоо хувь хүн эсвэл байгууллагын баримт үүсгэнэ.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={skipPendingEbarimtSale}
+                disabled={ebarimtBuyerSubmitting}
+                className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                title="eBarimt алгасах"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-6 py-5">
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEbarimtBuyerMode("B2C");
+                    setEbarimtBuyerError("");
+                  }}
+                  className={`rounded-2xl border px-4 py-4 text-left transition ${
+                    ebarimtBuyerMode === "B2C"
+                      ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100"
+                      : "border-slate-200 bg-white hover:border-blue-200"
+                  }`}
+                >
+                  <p className="text-sm font-black text-slate-950">Хувь хүн</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">B2C_RECEIPT, QR шууд үүснэ.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEbarimtBuyerMode("B2B");
+                    setEbarimtBuyerError("");
+                  }}
+                  className={`rounded-2xl border px-4 py-4 text-left transition ${
+                    ebarimtBuyerMode === "B2B"
+                      ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-100"
+                      : "border-slate-200 bg-white hover:border-emerald-200"
+                  }`}
+                >
+                  <p className="text-sm font-black text-slate-950">Байгууллага</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Регистрээр TIN шалгаад B2B_RECEIPT үүснэ.</p>
+                </button>
+              </div>
+
+              {ebarimtBuyerMode === "B2B" && (
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+                  <label className="text-xs font-black uppercase tracking-wide text-emerald-700">
+                    Байгууллагын регистр
+                  </label>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={ebarimtCompanyRegNo}
+                      onChange={(event) => {
+                        setEbarimtCompanyRegNo(event.target.value.replace(/\D/g, "").slice(0, 7));
+                        setEbarimtCompanyTin("");
+                        setEbarimtBuyerError("");
+                      }}
+                      inputMode="numeric"
+                      maxLength={7}
+                      placeholder="7 оронтой РД"
+                      className="h-11 min-w-0 flex-1 rounded-xl border border-emerald-200 bg-white px-3 text-sm font-black tracking-wide text-slate-950 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void lookupCompanyTinForEbarimt().catch((error: any) => {
+                          setEbarimtBuyerError(error?.message || "TIN шалгахад алдаа гарлаа");
+                        });
+                      }}
+                      disabled={ebarimtCompanyLookupLoading || ebarimtCompanyRegNo.length !== 7}
+                      className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {ebarimtCompanyLookupLoading ? <Loader2 size={15} className="animate-spin" /> : null}
+                      TIN шалгах
+                    </button>
+                  </div>
+                  {ebarimtCompanyTin && (
+                    <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
+                      TIN баталгаажсан: {ebarimtCompanyTin}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {ebarimtBuyerError && (
+                <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+                  {ebarimtBuyerError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={skipPendingEbarimtSale}
+                disabled={ebarimtBuyerSubmitting}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:opacity-50"
+              >
+                eBarimt алгасах
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitPendingEbarimtSale(ebarimtBuyerMode)}
+                disabled={
+                  ebarimtBuyerSubmitting ||
+                  ebarimtCompanyLookupLoading ||
+                  (ebarimtBuyerMode === "B2B" && ebarimtCompanyRegNo.length !== 7)
+                }
+                className="inline-flex min-w-44 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {ebarimtBuyerSubmitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                {ebarimtBuyerMode === "B2B" ? "Байгууллагаар хэвлэх" : "Хувь хүнээр хэвлэх"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     <div className="hidden min-h-screen bg-slate-50 p-4 md:block">
       <div className="mx-auto flex h-[calc(100vh-2rem)] max-w-[1800px] flex-col gap-3 overflow-hidden">
       {/* ── Register setup banner ────────────────────────────────── */}

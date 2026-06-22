@@ -5,6 +5,7 @@ import { Loader2, Printer, RotateCcw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { PosReceipt } from "../types/receipt.types";
 import { voidPushEcr } from "../api/payments";
+import { sendAllLocalEbarimtInvalidReceipts, sendLocalEbarimtData } from "../api/ebarimt";
 import { voidSale } from "../api/void-sale";
 import { formatReceipt } from "../utils/format-receipt";
 
@@ -116,8 +117,23 @@ export function ReceiptPreview({ receipt, onVoided, className = "" }: Props) {
     try {
       const result = await voidSale(receipt.id, reason.trim());
       const message = result.message || "Буцаалт амжилттай хийгдлээ";
-      setSaleVoidResult({ succeed: true, message });
-      onVoided?.(message);
+      let syncedMessage = message;
+
+      try {
+        const invalidSummary = await sendAllLocalEbarimtInvalidReceipts();
+        const info = await sendLocalEbarimtData();
+        const lastSentDate = info.lastSentDate || "-";
+
+        syncedMessage =
+          invalidSummary.total > 0
+            ? `${message}. eBarimt invalid sent ${invalidSummary.sent}/${invalidSummary.total}, failed ${invalidSummary.failed.length}. lastSentDate: ${lastSentDate}`
+            : `${message}. eBarimt invalid list empty; sendData done. lastSentDate: ${lastSentDate}`;
+      } catch (syncError: any) {
+        syncedMessage = `${message}. eBarimt sync failed: ${syncError?.message || "unknown error"}`;
+      }
+
+      setSaleVoidResult({ succeed: true, message: syncedMessage });
+      onVoided?.(syncedMessage);
     } catch (error: any) {
       setSaleVoidResult({
         succeed: false,

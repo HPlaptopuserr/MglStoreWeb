@@ -1,39 +1,87 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, AuditAction, InventoryReason, MPointLedgerType, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus } from "@mgl/database";
+import {
+  prisma,
+  AuditAction,
+  InventoryReason,
+  MPointLedgerType,
+  PaymentMethod,
+  PosPaymentStatus,
+  PosQPayStatus,
+  PosActivationStatus,
+  ShiftStatus,
+} from "@mgl/database";
 import type { Prisma } from "@mgl/database";
-import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
+import {
+  adjustStock,
+  resolveOrgWarehouse,
+} from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
-  requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
-  roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
-  parseBridgeResultStatus, parseQPaySuccess, parseOptionalDate,
-  makePushEcrReferral, pushEcrHeaders, pushEcrBaseUrl,
-  allowPosSimulation, isProdLikeEnv, bridgeSharedSecret,
-  pushEcrDefaultTerminalId, MONEY_EPSILON,
-  type AuthUser, type ApiError, type SaleLineInput, type SalePaymentLineInput,
-  type CreateSaleBody, type PushEcrPurchaseResponse, toApiError, parseAuthClaims, runtimeEnv,
+  requirePosUser,
+  requireAdminUser,
+  normalizePaymentMethod,
+  normalizeRegisterName,
+  roundMoney,
+  moneyMatches,
+  signPayload,
+  timingSafeEqualHex,
+  getHeaderValue,
+  parseBridgeResultStatus,
+  parseQPaySuccess,
+  parseOptionalDate,
+  makePushEcrReferral,
+  pushEcrHeaders,
+  pushEcrBaseUrl,
+  allowPosSimulation,
+  isProdLikeEnv,
+  bridgeSharedSecret,
+  pushEcrDefaultTerminalId,
+  MONEY_EPSILON,
+  type AuthUser,
+  type ApiError,
+  type SaleLineInput,
+  type SalePaymentLineInput,
+  type CreateSaleBody,
+  type PushEcrPurchaseResponse,
+  toApiError,
+  parseAuthClaims,
+  runtimeEnv,
 } from "./_shared";
-import { calculatePosCreditPayable, resolvePosCreditDueDate } from "./credit-interest";
+import {
+  calculatePosCreditPayable,
+  resolvePosCreditDueDate,
+} from "./credit-interest";
 
 const router: ExpressRouter = Router();
 
 const POS_MPOINT_BASE_RATE = 0.02;
-const POS_MPOINT_MEMBER_RATE = Number(process.env.POS_MPOINT_MEMBER_RATE || 0.03);
+const POS_MPOINT_MEMBER_RATE = Number(
+  process.env.POS_MPOINT_MEMBER_RATE || 0.03,
+);
 
-const normalizeLoyaltyPhone = (value: unknown) => String(value || "").replace(/\D/g, "");
+const normalizeLoyaltyPhone = (value: unknown) =>
+  String(value || "").replace(/\D/g, "");
 const cleanOptionalText = (value: unknown) => {
   const text = String(value ?? "").trim();
   return text || null;
 };
 
-const buildCreditBorrowerKey = (credit: NonNullable<SalePaymentLineInput["credit"]>) =>
+const buildCreditBorrowerKey = (
+  credit: NonNullable<SalePaymentLineInput["credit"]>,
+) =>
   [
-    String(credit.targetType || "").trim().toUpperCase(),
-    String(credit.borrowerId || "").trim().toLowerCase(),
-    String(credit.employeeId || "").trim().toLowerCase(),
+    String(credit.targetType || "")
+      .trim()
+      .toUpperCase(),
+    String(credit.borrowerId || "")
+      .trim()
+      .toLowerCase(),
+    String(credit.employeeId || "")
+      .trim()
+      .toLowerCase(),
   ].join(":");
 
 const mapCreditSaleResponse = (creditSale: {
@@ -81,17 +129,29 @@ const mapCreditSaleResponse = (creditSale: {
     termMonths: creditSale.termMonths,
     dueDate: payable.dueDate?.toISOString() ?? null,
     paidAt: creditSale.paidAt?.toISOString() ?? null,
-    paidAmount: creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
+    paidAmount:
+      creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
     paymentMethod: creditSale.paymentMethod ?? null,
     paymentNote: creditSale.paymentNote ?? null,
   };
 };
 
-const isMembershipActive = (user: { isPrime: boolean; membershipExpiresAt?: Date | null }) =>
-  Boolean(user.isPrime && (!user.membershipExpiresAt || user.membershipExpiresAt.getTime() > Date.now()));
+const isMembershipActive = (user: {
+  isPrime: boolean;
+  membershipExpiresAt?: Date | null;
+}) =>
+  Boolean(
+    user.isPrime &&
+    (!user.membershipExpiresAt ||
+      user.membershipExpiresAt.getTime() > Date.now()),
+  );
 
-const getPosMPointRate = (user: { isPrime: boolean; membershipExpiresAt?: Date | null } | null) =>
-  user && isMembershipActive(user) ? Math.max(POS_MPOINT_BASE_RATE, POS_MPOINT_MEMBER_RATE) : POS_MPOINT_BASE_RATE;
+const getPosMPointRate = (
+  user: { isPrime: boolean; membershipExpiresAt?: Date | null } | null,
+) =>
+  user && isMembershipActive(user)
+    ? Math.max(POS_MPOINT_BASE_RATE, POS_MPOINT_MEMBER_RATE)
+    : POS_MPOINT_BASE_RATE;
 
 const resolveLoyaltyUser = async (
   tx: Prisma.TransactionClient,
@@ -205,7 +265,9 @@ router.get("/pos/loyalty/lookup", async (req, res) => {
     });
   } catch (error) {
     console.error("GET /pos/loyalty/lookup error", error);
-    return res.status(500).json({ message: "M Point мэдээлэл авахад алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "M Point мэдээлэл авахад алдаа гарлаа" });
   }
 });
 
@@ -218,6 +280,8 @@ router.post("/pos/sales", async (req, res) => {
     const lines = Array.isArray(body.lines) ? body.lines : [];
     const registerId = String(body.registerId || "").trim() || null;
     const organizationId = String(body.organizationId || "").trim() || null;
+    const restaurantTicketId =
+      String(body.restaurantTicketId || "").trim() || null;
     const clientSaleId = String(body.clientSaleId || "").trim();
 
     let idempotencyOrganizationId: string | null = null;
@@ -231,11 +295,14 @@ router.post("/pos/sales", async (req, res) => {
       }
       idempotencyOrganizationId = registerForScope.organizationId;
     } else {
-      idempotencyOrganizationId = actor.role === "ADMIN" ? organizationId : actor.organizationId;
+      idempotencyOrganizationId =
+        actor.role === "ADMIN" ? organizationId : actor.organizationId;
     }
 
     if (!idempotencyOrganizationId) {
-      return res.status(400).json({ message: "idempotency organization тодорхойгүй байна" });
+      return res
+        .status(400)
+        .json({ message: "idempotency organization тодорхойгүй байна" });
     }
 
     if (!clientSaleId) {
@@ -252,7 +319,9 @@ router.post("/pos/sales", async (req, res) => {
     if (existingSale?.response) {
       const existingResponse = existingSale.response as Record<string, unknown>;
       if (existingResponse.pending === true) {
-        return res.status(409).json({ message: "Sale request одоо боловсруулагдаж байна" });
+        return res
+          .status(409)
+          .json({ message: "Sale request одоо боловсруулагдаж байна" });
       }
       return res.status(200).json(existingSale.response as object);
     }
@@ -262,7 +331,9 @@ router.post("/pos/sales", async (req, res) => {
     }
 
     if (lines.length === 0) {
-      return res.status(400).json({ message: "Зарах барааны мөрүүд хоосон байна" });
+      return res
+        .status(400)
+        .json({ message: "Зарах барааны мөрүүд хоосон байна" });
     }
 
     const normalizedPayments = Array.isArray(body.paymentBreakdown)
@@ -279,31 +350,59 @@ router.post("/pos/sales", async (req, res) => {
       method: String(item.method || "").toUpperCase(),
       amount: roundMoney(Number(item.amount || 0)),
       ...(item.attemptId ? { attemptId: String(item.attemptId) } : {}),
-      ...(item.transactionId ? { transactionId: String(item.transactionId) } : {}),
+      ...(item.transactionId
+        ? { transactionId: String(item.transactionId) }
+        : {}),
       ...(item.invoiceId ? { invoiceId: String(item.invoiceId) } : {}),
     }));
 
     for (const item of normalizedPayments) {
       if (
         !item.method ||
-        ![PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.QPAY, PaymentMethod.CREDIT].some(
-          (allowedMethod) => allowedMethod === item.method,
-        )
+        ![
+          PaymentMethod.CASH,
+          PaymentMethod.CARD,
+          PaymentMethod.QPAY,
+          PaymentMethod.CREDIT,
+        ].some((allowedMethod) => allowedMethod === item.method)
       ) {
-        return res.status(400).json({ message: "paymentBreakdown.method буруу байна" });
+        return res
+          .status(400)
+          .json({ message: "paymentBreakdown.method буруу байна" });
       }
       if (!Number.isFinite(item.amount) || item.amount <= 0) {
-        return res.status(400).json({ message: "paymentBreakdown.amount 0-оос их тоо байх ёстой" });
+        return res
+          .status(400)
+          .json({ message: "paymentBreakdown.amount 0-оос их тоо байх ёстой" });
       }
       if (item.method === PaymentMethod.CREDIT) {
-        if (!item.credit?.borrowerId || !item.credit?.borrowerName || !item.credit?.targetType) {
-          return res.status(400).json({ message: "Зээлийн төлбөр дээр байгууллага/хэрэглэгчийн мэдээлэл шаардлагатай" });
+        if (
+          !item.credit?.borrowerId ||
+          !item.credit?.borrowerName ||
+          !item.credit?.targetType
+        ) {
+          return res
+            .status(400)
+            .json({
+              message:
+                "Зээлийн төлбөр дээр байгууллага/хэрэглэгчийн мэдээлэл шаардлагатай",
+            });
         }
-        if (!Number.isFinite(Number(item.credit.monthlyInterestRate)) || Number(item.credit.monthlyInterestRate) !== 0.012) {
-          return res.status(400).json({ message: "Зээлийн сарын хүү 1.2% байх ёстой" });
+        if (
+          !Number.isFinite(Number(item.credit.monthlyInterestRate)) ||
+          Number(item.credit.monthlyInterestRate) !== 0.012
+        ) {
+          return res
+            .status(400)
+            .json({ message: "Зээлийн сарын хүү 1.2% байх ёстой" });
         }
-        if (!Number.isFinite(Number(item.credit.totalDue)) || Number(item.credit.totalDue) <= 0) {
-          return res.status(400).json({ message: "Зээлийн нийт төлөх дүн буруу байна" });
+        if (
+          !Number.isFinite(Number(item.credit.totalDue)) ||
+          Number(item.credit.totalDue) <= 0
+        ) {
+          return res
+            .status(400)
+            .json({ message: "Зээлийн нийт төлөх дүн буруу байна" });
         }
       }
     }
@@ -313,7 +412,10 @@ router.post("/pos/sales", async (req, res) => {
       if (!line.productId || !Number.isFinite(line.qty) || line.qty <= 0) {
         return res.status(400).json({ message: "Мөрийн өгөгдөл буруу байна" });
       }
-      qtyByProduct.set(line.productId, (qtyByProduct.get(line.productId) || 0) + line.qty);
+      qtyByProduct.set(
+        line.productId,
+        (qtyByProduct.get(line.productId) || 0) + line.qty,
+      );
     }
 
     const productIds = Array.from(qtyByProduct.keys());
@@ -323,28 +425,43 @@ router.post("/pos/sales", async (req, res) => {
       const qty = Number(line.qty || 0);
       const unitPrice = Number(line.unitPrice || 0);
       const discount = Number(line.discountAmount || 0) * qty;
-      const taxable = Math.max(0, unitPrice * qty - discount);
-      const taxAmount = taxable * (Number(line.taxRate || 0) / 100);
-      return { subTotal: unitPrice * qty, taxAmount, discountTotal: discount };
+      return { subTotal: unitPrice * qty, discountTotal: discount };
     });
-    const preSubTotal = preLineTotals.reduce((sum, line) => sum + line.subTotal, 0);
-    const preTaxTotal = preLineTotals.reduce((sum, line) => sum + line.taxAmount, 0);
-    const preDiscountTotal = preLineTotals.reduce((sum, line) => sum + line.discountTotal, 0);
-    const expectedGrandTotal = roundMoney(preSubTotal + preTaxTotal - preDiscountTotal);
-    const paymentTotal = roundMoney(normalizedPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+    const preSubTotal = preLineTotals.reduce(
+      (sum, line) => sum + line.subTotal,
+      0,
+    );
+    const preDiscountTotal = preLineTotals.reduce(
+      (sum, line) => sum + line.discountTotal,
+      0,
+    );
+    const expectedGrandTotal = roundMoney(preSubTotal - preDiscountTotal);
+    const paymentTotal = roundMoney(
+      normalizedPayments.reduce(
+        (sum, item) => sum + Number(item.amount || 0),
+        0,
+      ),
+    );
     const loyaltyMode = String(body.loyalty?.mode || "NONE").toUpperCase();
     const loyaltyPhone = normalizeLoyaltyPhone(body.loyalty?.phone);
     const requestedRedeemPoints =
       loyaltyMode === "REDEEM"
         ? Math.max(0, Math.floor(Number(body.loyalty?.redeemPoints || 0)))
         : 0;
-    const expectedPayableTotal = roundMoney(Math.max(0, expectedGrandTotal - requestedRedeemPoints));
-    const creditLines = normalizedPayments.filter((item) => item.method === PaymentMethod.CREDIT);
+    const expectedPayableTotal = roundMoney(
+      Math.max(0, expectedGrandTotal - requestedRedeemPoints),
+    );
+    const creditLines = normalizedPayments.filter(
+      (item) => item.method === PaymentMethod.CREDIT,
+    );
     const creditPrincipal = roundMoney(
       creditLines.reduce((sum, item) => sum + Number(item.amount || 0), 0),
     );
     const primaryCredit = creditLines[0]?.credit || null;
-    const creditTermMonths = Math.max(1, Math.floor(Number(primaryCredit?.termMonths || 1)));
+    const creditTermMonths = Math.max(
+      1,
+      Math.floor(Number(primaryCredit?.termMonths || 1)),
+    );
     const creditDueDate = primaryCredit
       ? resolvePosCreditDueDate({
           principalAmount: creditPrincipal,
@@ -360,11 +477,15 @@ router.post("/pos/sales", async (req, res) => {
     }
 
     if (loyaltyMode !== "NONE" && loyaltyPhone.length < 6) {
-      return res.status(400).json({ message: "M Point-д хэрэглэгчийн утас шаардлагатай" });
+      return res
+        .status(400)
+        .json({ message: "M Point-д хэрэглэгчийн утас шаардлагатай" });
     }
 
     if (loyaltyMode === "REDEEM" && requestedRedeemPoints <= 0) {
-      return res.status(400).json({ message: "Хасуулах M Point 0-оос их байх ёстой" });
+      return res
+        .status(400)
+        .json({ message: "Хасуулах M Point 0-оос их байх ёстой" });
     }
 
     if (!moneyMatches(paymentTotal, expectedPayableTotal)) {
@@ -373,585 +494,843 @@ router.post("/pos/sales", async (req, res) => {
       });
     }
 
-    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      let register:
-        | {
-            id: string;
-            branchId: string;
-            organizationId: string;
-            activationStatus: PosActivationStatus;
-            isActive: boolean;
-          }
-        | null = null;
+    const result = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        let register: {
+          id: string;
+          branchId: string;
+          organizationId: string;
+          activationStatus: PosActivationStatus;
+          isActive: boolean;
+        } | null = null;
 
-      if (registerId) {
-        // Serialize legacy shift-to-register assignment against opening a new
-        // shift on the same register.
-        await tx.$queryRaw`
+        if (registerId) {
+          // Serialize legacy shift-to-register assignment against opening a new
+          // shift on the same register.
+          await tx.$queryRaw`
           SELECT "id"
           FROM "PosRegister"
           WHERE "id" = ${registerId}
           FOR UPDATE
         `;
-        register = await tx.posRegister.findUnique({
-          where: { id: registerId },
-          select: {
-            id: true,
-            branchId: true,
-            organizationId: true,
-            activationStatus: true,
-            isActive: true,
-          },
-        });
-        if (!register) throw toApiError(404, "POS register олдсонгүй");
-        if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
-          throw toApiError(403, "POS register идэвхгүй эсвэл батлагдаагүй байна");
+          register = await tx.posRegister.findUnique({
+            where: { id: registerId },
+            select: {
+              id: true,
+              branchId: true,
+              organizationId: true,
+              activationStatus: true,
+              isActive: true,
+            },
+          });
+          if (!register) throw toApiError(404, "POS register олдсонгүй");
+          if (
+            !register.isActive ||
+            register.activationStatus !== PosActivationStatus.APPROVED
+          ) {
+            throw toApiError(
+              403,
+              "POS register идэвхгүй эсвэл батлагдаагүй байна",
+            );
+          }
+          if (register.branchId !== body.branchId) {
+            throw toApiError(
+              400,
+              "Sale branchId нь register branch-тай зөрүүтэй байна",
+            );
+          }
+          if (organizationId && register.organizationId !== organizationId) {
+            throw toApiError(
+              400,
+              "Sale organizationId нь register organization-тай зөрүүтэй байна",
+            );
+          }
         }
-        if (register.branchId !== body.branchId) {
-          throw toApiError(400, "Sale branchId нь register branch-тай зөрүүтэй байна");
+
+        const effectiveOrganizationId =
+          register?.organizationId ||
+          organizationId ||
+          actor.organizationId ||
+          null;
+
+        if (!effectiveOrganizationId) {
+          throw toApiError(400, "Sale organizationId тодорхойгүй байна");
         }
-        if (organizationId && register.organizationId !== organizationId) {
-          throw toApiError(400, "Sale organizationId нь register organization-тай зөрүүтэй байна");
+
+        if (actor.role !== "ADMIN") {
+          const saleMembership = await tx.organizationMember.findFirst({
+            where: {
+              userId: actor.id,
+              organizationId: effectiveOrganizationId,
+              isActive: true,
+            },
+            select: { id: true },
+          });
+          if (!saleMembership) {
+            throw toApiError(403, "Өөр байгууллагын sale хийх боломжгүй");
+          }
         }
-      }
 
-      const effectiveOrganizationId = register?.organizationId || organizationId || actor.organizationId || null;
-
-      if (!effectiveOrganizationId) {
-        throw toApiError(400, "Sale organizationId тодорхойгүй байна");
-      }
-
-      if (actor.role !== "ADMIN") {
-        const saleMembership = await tx.organizationMember.findFirst({
-          where: { userId: actor.id, organizationId: effectiveOrganizationId, isActive: true },
-          select: { id: true },
-        });
-        if (!saleMembership) {
-          throw toApiError(403, "Өөр байгууллагын sale хийх боломжгүй");
+        const resolvedShiftId = String(body.shiftId || "").trim();
+        if (!resolvedShiftId) {
+          throw toApiError(
+            409,
+            "Борлуулалт бүртгэхийн өмнө кассын ээлжээ нээнэ үү",
+          );
         }
-      }
 
-      const resolvedShiftId = String(body.shiftId || "").trim();
-      if (!resolvedShiftId) {
-        throw toApiError(409, "Борлуулалт бүртгэхийн өмнө кассын ээлжээ нээнэ үү");
-      }
-
-      // Serialize sale creation against shift closure before mutating inventory
-      // or consuming external payment attempts.
-      await tx.$queryRaw`
+        // Serialize sale creation against shift closure before mutating inventory
+        // or consuming external payment attempts.
+        await tx.$queryRaw`
         SELECT "id"
         FROM "PosShift"
         WHERE "id" = ${resolvedShiftId}
         FOR UPDATE
       `;
-      const activeShift = await tx.posShift.findUnique({
-        where: { id: resolvedShiftId },
-        select: {
-          id: true,
-          status: true,
-          organizationId: true,
-          branchId: true,
-          registerId: true,
-          cashierId: true,
-        },
-      });
-      if (!activeShift) {
-        throw toApiError(404, "Кассын ээлж олдсонгүй");
-      }
-      if (activeShift.status !== ShiftStatus.OPEN) {
-        throw toApiError(409, "Энэ ээлж хаагдсан байна. Шинэ ээлж нээнэ үү");
-      }
-      if (activeShift.cashierId !== actor.id) {
-        throw toApiError(403, "Зөвхөн өөрийн нээлттэй ээлж дээр борлуулалт бүртгэнэ");
-      }
-      if (
-        activeShift.organizationId !== effectiveOrganizationId ||
-        activeShift.branchId !== body.branchId
-      ) {
-        throw toApiError(400, "Ээлжийн байгууллага эсвэл салбар борлуулалттай зөрүүтэй байна");
-      }
-      if (registerId && activeShift.registerId && activeShift.registerId !== registerId) {
-        throw toApiError(400, "Ээлж өөр POS касс дээр нээгдсэн байна");
-      }
-      if (registerId && !activeShift.registerId) {
-        const conflictingShift = await tx.posShift.findFirst({
-          where: {
-            id: { not: activeShift.id },
+        const activeShift = await tx.posShift.findUnique({
+          where: { id: resolvedShiftId },
+          select: {
+            id: true,
+            status: true,
+            organizationId: true,
+            branchId: true,
+            registerId: true,
+            cashierId: true,
+          },
+        });
+        if (!activeShift) {
+          throw toApiError(404, "Кассын ээлж олдсонгүй");
+        }
+        if (activeShift.status !== ShiftStatus.OPEN) {
+          throw toApiError(409, "Энэ ээлж хаагдсан байна. Шинэ ээлж нээнэ үү");
+        }
+        if (activeShift.cashierId !== actor.id) {
+          throw toApiError(
+            403,
+            "Зөвхөн өөрийн нээлттэй ээлж дээр борлуулалт бүртгэнэ",
+          );
+        }
+        if (
+          activeShift.organizationId !== effectiveOrganizationId ||
+          activeShift.branchId !== body.branchId
+        ) {
+          throw toApiError(
+            400,
+            "Ээлжийн байгууллага эсвэл салбар борлуулалттай зөрүүтэй байна",
+          );
+        }
+        if (
+          registerId &&
+          activeShift.registerId &&
+          activeShift.registerId !== registerId
+        ) {
+          throw toApiError(400, "Ээлж өөр POS касс дээр нээгдсэн байна");
+        }
+        if (registerId && !activeShift.registerId) {
+          const conflictingShift = await tx.posShift.findFirst({
+            where: {
+              id: { not: activeShift.id },
+              registerId,
+              status: ShiftStatus.OPEN,
+            },
+            select: { id: true },
+          });
+          if (conflictingShift) {
+            throw toApiError(
+              409,
+              "Энэ POS касс дээр өөр кассчны нээлттэй ээлж байна",
+            );
+          }
+          await tx.posShift.update({
+            where: { id: activeShift.id },
+            data: { registerId },
+          });
+        }
+
+        if (restaurantTicketId) {
+          const restaurantTicket = await tx.restaurantTicket.findUnique({
+            where: { id: restaurantTicketId },
+            include: { items: true },
+          });
+          if (!restaurantTicket) {
+            throw toApiError(404, "Рестораны ticket олдсонгүй");
+          }
+          if (
+            restaurantTicket.organizationId !== effectiveOrganizationId ||
+            restaurantTicket.branchId !== body.branchId ||
+            restaurantTicket.shiftId !== activeShift.id
+          ) {
+            throw toApiError(
+              400,
+              "Рестораны ticket байгууллага, салбар эсвэл ээлжтэй зөрүүтэй байна",
+            );
+          }
+          if (
+            !["OPEN", "KITCHEN", "READY", "SERVED"].includes(
+              restaurantTicket.status,
+            )
+          ) {
+            throw toApiError(409, "Рестораны ticket аль хэдийн хаагдсан байна");
+          }
+          if (restaurantTicket.posSaleId) {
+            throw toApiError(
+              409,
+              "Рестораны ticket аль хэдийн төлөгдсөн байна",
+            );
+          }
+
+          const ticketQtyByProduct = new Map(
+            restaurantTicket.items.map((item) => [item.productId, item.qty]),
+          );
+          if (
+            ticketQtyByProduct.size !== qtyByProduct.size ||
+            Array.from(qtyByProduct).some(
+              ([productId, qty]) => ticketQtyByProduct.get(productId) !== qty,
+            )
+          ) {
+            throw toApiError(
+              409,
+              "Төлбөрийн бараанууд рестораны ticket-тэй таарахгүй байна",
+            );
+          }
+        }
+
+        await tx.posSaleIdempotency.create({
+          data: {
+            clientSaleId,
+            receiptNo,
+            organizationId: effectiveOrganizationId,
             registerId,
-            status: ShiftStatus.OPEN,
+            response: { pending: true },
+          },
+        });
+
+        const products = await tx.product.findMany({
+          where: {
+            id: { in: productIds },
+            deletedAt: null,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            barcode: true,
+            stock: true,
+            organizationId: true,
+            taxType: true,
+            cityTaxRate: true,
+            classificationCode: true,
+            taxProductCode: true,
+          },
+        });
+
+        if (products.length !== productIds.length) {
+          throw toApiError(404, "Зарим бараа олдсонгүй");
+        }
+
+        if (register?.organizationId) {
+          for (const product of products) {
+            if (product.organizationId !== register.organizationId) {
+              throw toApiError(
+                400,
+                `"${product.name}" бараа энэ POS register-ийн байгууллагад хамаарахгүй байна`,
+              );
+            }
+          }
+        }
+
+        const cardLines = normalizedPayments.filter(
+          (item) => item.method === PaymentMethod.CARD,
+        );
+        const qpayLines = normalizedPayments.filter(
+          (item) => item.method === PaymentMethod.QPAY,
+        );
+
+        const cardAttemptMap = new Map<
+          string,
+          { traceno: string | null; terminalId: string }
+        >();
+        for (const cardLine of cardLines) {
+          const attemptId = String(
+            cardLine.attemptId || cardLine.transactionId || "",
+          ).trim();
+          if (!attemptId) {
+            throw toApiError(
+              400,
+              "CARD payment line дээр attemptId шаардлагатай",
+            );
+          }
+
+          const attempt = await tx.cardPaymentAttempt.findUnique({
+            where: { id: attemptId },
+          });
+          if (!attempt)
+            throw toApiError(404, `Card attempt олдсонгүй: ${attemptId}`);
+          cardAttemptMap.set(attemptId, {
+            traceno: attempt.traceno,
+            terminalId: attempt.terminalId,
+          });
+          if (attempt.status !== PosPaymentStatus.APPROVED) {
+            throw toApiError(
+              409,
+              `Card attempt ${attemptId} approved биш байна`,
+            );
+          }
+          if (attempt.saleReference || attempt.consumedAt) {
+            throw toApiError(
+              409,
+              `Card attempt ${attemptId} аль хэдийн ашиглагдсан байна`,
+            );
+          }
+          if (!moneyMatches(Number(attempt.amount), cardLine.amount)) {
+            throw toApiError(
+              400,
+              `Card attempt ${attemptId} amount зөрүүтэй байна`,
+            );
+          }
+          if (
+            registerId &&
+            attempt.registerId &&
+            attempt.registerId !== registerId
+          ) {
+            throw toApiError(
+              400,
+              `Card attempt ${attemptId} register зөрүүтэй байна`,
+            );
+          }
+          if (
+            !attempt.organizationId ||
+            attempt.organizationId !== effectiveOrganizationId
+          ) {
+            throw toApiError(
+              400,
+              `Card attempt ${attemptId} organization зөрүүтэй байна`,
+            );
+          }
+        }
+
+        for (const qpayLine of qpayLines) {
+          const invoiceId = String(qpayLine.invoiceId || "").trim();
+          if (!invoiceId) {
+            throw toApiError(
+              400,
+              "QPAY payment line дээр invoiceId шаардлагатай",
+            );
+          }
+
+          const invoice = await tx.qPayInvoice.findUnique({
+            where: { id: invoiceId },
+          });
+          if (!invoice)
+            throw toApiError(404, `QPay invoice олдсонгүй: ${invoiceId}`);
+          if (invoice.status !== PosQPayStatus.PAID) {
+            throw toApiError(409, `QPay invoice ${invoiceId} paid биш байна`);
+          }
+          if (invoice.saleReference || invoice.consumedAt) {
+            throw toApiError(
+              409,
+              `QPay invoice ${invoiceId} аль хэдийн ашиглагдсан байна`,
+            );
+          }
+          if (!moneyMatches(Number(invoice.amount), qpayLine.amount)) {
+            throw toApiError(
+              400,
+              `QPay invoice ${invoiceId} amount зөрүүтэй байна`,
+            );
+          }
+          if (
+            registerId &&
+            invoice.registerId &&
+            invoice.registerId !== registerId
+          ) {
+            throw toApiError(
+              400,
+              `QPay invoice ${invoiceId} register зөрүүтэй байна`,
+            );
+          }
+          if (
+            !invoice.organizationId ||
+            invoice.organizationId !== effectiveOrganizationId
+          ) {
+            throw toApiError(
+              400,
+              `QPay invoice ${invoiceId} organization зөрүүтэй байна`,
+            );
+          }
+        }
+
+        for (const product of products) {
+          const requestedQty = qtyByProduct.get(product.id) || 0;
+          if (product.stock < requestedQty) {
+            throw toApiError(
+              409,
+              `"${product.name}" барааны нөөц хүрэлцэхгүй (үлдэгдэл: ${product.stock})`,
+            );
+          }
+        }
+
+        for (const [productId, qty] of qtyByProduct) {
+          const warehouseId = await resolveOrgWarehouse(
+            tx,
+            effectiveOrganizationId,
+            productId,
+          );
+
+          await adjustStock(tx, {
+            productId,
+            warehouseId: warehouseId ?? undefined,
+            change: -qty,
+            reason: InventoryReason.ORDER,
+            note: body.note || "POS sale",
+            createdById: actor?.id || null,
+            referenceId: receiptNo,
+            referenceType: "POS_SALE",
+          });
+        }
+
+        for (const cardLine of cardLines) {
+          const attemptId = String(
+            cardLine.attemptId || cardLine.transactionId || "",
+          ).trim();
+          await tx.cardPaymentAttempt.update({
+            where: { id: attemptId },
+            data: {
+              saleReference: receiptNo,
+              consumedAt: new Date(),
+            },
+          });
+        }
+
+        for (const qpayLine of qpayLines) {
+          const invoiceId = String(qpayLine.invoiceId || "").trim();
+          await tx.qPayInvoice.update({
+            where: { id: invoiceId },
+            data: {
+              saleReference: receiptNo,
+              consumedAt: new Date(),
+            },
+          });
+        }
+
+        const lineDetails = lines.map((line) => {
+          const product = products.find(
+            (item: (typeof products)[number]) => item.id === line.productId,
+          );
+          const discount = Number(line.discountAmount || 0);
+          const unitPrice = Number(line.unitPrice || 0);
+          const qty = Number(line.qty || 0);
+          const taxType = product?.taxType || "VAT_ABLE";
+          const taxRate = taxType === "VAT_ABLE" ? 10 : 0;
+          const cityTaxRate = Number(product?.cityTaxRate || 0);
+          const subTotal = unitPrice * qty;
+          const discountTotal = discount * qty;
+          const taxable = Math.max(0, subTotal - discountTotal);
+          const taxAmount =
+            taxRate > 0 ? taxable * (taxRate / (100 + taxRate)) : 0;
+          const cityTaxAmount =
+            cityTaxRate > 0 ? taxable * (cityTaxRate / (100 + cityTaxRate)) : 0;
+          const lineTotal = taxable;
+
+          return {
+            productId: line.productId,
+            productName: product?.name || line.productId,
+            productSku: product?.sku || null,
+            productBarcode: product?.barcode || null,
+            qty,
+            unitPrice,
+            taxAmount,
+            taxType,
+            taxRate,
+            cityTaxRate,
+            cityTaxAmount,
+            classificationCode: product?.classificationCode || "4711000",
+            taxProductCode: product?.taxProductCode || null,
+            measureUnit: "pcs",
+            discount: discountTotal,
+            lineTotal,
+          };
+        });
+
+        const subTotal = lineDetails.reduce(
+          (sum, line) => sum + line.unitPrice * line.qty,
+          0,
+        );
+        const taxTotal = lineDetails.reduce(
+          (sum, line) => sum + line.taxAmount,
+          0,
+        );
+        const discountTotal = lines.reduce(
+          (sum, line) =>
+            sum + Number(line.discountAmount || 0) * Number(line.qty || 0),
+          0,
+        );
+        const grandTotal = subTotal - discountTotal;
+
+        const paymentMethodSummary = (() => {
+          const methods = Array.from(
+            new Set(normalizedPayments.map((item) => item.method)),
+          );
+          return methods.length === 1 ? methods[0] : "MIXED";
+        })();
+
+        // Create structured PosSale + PosSaleLine records
+        const posSale = await tx.posSale.create({
+          data: {
+            receiptNo,
+            organizationId: effectiveOrganizationId,
+            branchId: body.branchId!,
+            registerId: registerId || undefined,
+            shiftId: resolvedShiftId,
+            cashierId: actor.id,
+            paymentMethod: paymentMethodSummary || "CASH",
+            paymentBreakdown: persistedPaymentBreakdown,
+            subtotal: subTotal,
+            taxTotal,
+            discountTotal,
+            grandTotal,
+            note: body.note || null,
+            lines: {
+              create: lineDetails.map((ld) => ({
+                productId: ld.productId,
+                productName: ld.productName,
+                productSku: ld.productSku,
+                productBarcode: ld.productBarcode,
+                qty: ld.qty,
+                unitPrice: ld.unitPrice,
+                taxAmount: ld.taxAmount,
+                taxType: ld.taxType,
+                taxRate: ld.taxRate,
+                cityTaxRate: ld.cityTaxRate,
+                cityTaxAmount: ld.cityTaxAmount,
+                classificationCode: ld.classificationCode,
+                taxProductCode: ld.taxProductCode,
+                measureUnit: ld.measureUnit,
+                discount: ld.discount,
+                lineTotal: ld.lineTotal,
+              })),
+            },
           },
           select: { id: true },
         });
-        if (conflictingShift) {
-          throw toApiError(409, "Энэ POS касс дээр өөр кассчны нээлттэй ээлж байна");
-        }
-        await tx.posShift.update({
-          where: { id: activeShift.id },
-          data: { registerId },
-        });
-      }
 
-      await tx.posSaleIdempotency.create({
-        data: {
-          clientSaleId,
-          receiptNo,
-          organizationId: effectiveOrganizationId,
-          registerId,
-          response: { pending: true },
-        },
-      });
-
-      const products = await tx.product.findMany({
-        where: {
-          id: { in: productIds },
-          deletedAt: null,
-          isActive: true,
-        },
-        select: {
-          id: true,
-          name: true,
-          stock: true,
-          organizationId: true,
-        },
-      });
-
-      if (products.length !== productIds.length) {
-        throw toApiError(404, "Зарим бараа олдсонгүй");
-      }
-
-      if (register?.organizationId) {
-        for (const product of products) {
-          if (product.organizationId !== register.organizationId) {
-            throw toApiError(400, `"${product.name}" бараа энэ POS register-ийн байгууллагад хамаарахгүй байна`);
-          }
-        }
-      }
-
-      const cardLines = normalizedPayments.filter((item) => item.method === PaymentMethod.CARD);
-      const qpayLines = normalizedPayments.filter((item) => item.method === PaymentMethod.QPAY);
-
-      const cardAttemptMap = new Map<string, { traceno: string | null; terminalId: string }>();
-      for (const cardLine of cardLines) {
-        const attemptId = String(cardLine.attemptId || cardLine.transactionId || "").trim();
-        if (!attemptId) {
-          throw toApiError(400, "CARD payment line дээр attemptId шаардлагатай");
+        if (restaurantTicketId) {
+          await tx.restaurantTicket.update({
+            where: { id: restaurantTicketId },
+            data: {
+              posSaleId: posSale.id,
+              status: "PAID",
+              closedAt: new Date(),
+            },
+          });
         }
 
-        const attempt = await tx.cardPaymentAttempt.findUnique({ where: { id: attemptId } });
-        if (!attempt) throw toApiError(404, `Card attempt олдсонгүй: ${attemptId}`);
-        cardAttemptMap.set(attemptId, { traceno: attempt.traceno, terminalId: attempt.terminalId });
-        if (attempt.status !== PosPaymentStatus.APPROVED) {
-          throw toApiError(409, `Card attempt ${attemptId} approved биш байна`);
-        }
-        if (attempt.saleReference || attempt.consumedAt) {
-          throw toApiError(409, `Card attempt ${attemptId} аль хэдийн ашиглагдсан байна`);
-        }
-        if (!moneyMatches(Number(attempt.amount), cardLine.amount)) {
-          throw toApiError(400, `Card attempt ${attemptId} amount зөрүүтэй байна`);
-        }
-        if (registerId && attempt.registerId && attempt.registerId !== registerId) {
-          throw toApiError(400, `Card attempt ${attemptId} register зөрүүтэй байна`);
-        }
-        if (!attempt.organizationId || attempt.organizationId !== effectiveOrganizationId) {
-          throw toApiError(400, `Card attempt ${attemptId} organization зөрүүтэй байна`);
-        }
-      }
-
-      for (const qpayLine of qpayLines) {
-        const invoiceId = String(qpayLine.invoiceId || "").trim();
-        if (!invoiceId) {
-          throw toApiError(400, "QPAY payment line дээр invoiceId шаардлагатай");
-        }
-
-        const invoice = await tx.qPayInvoice.findUnique({ where: { id: invoiceId } });
-        if (!invoice) throw toApiError(404, `QPay invoice олдсонгүй: ${invoiceId}`);
-        if (invoice.status !== PosQPayStatus.PAID) {
-          throw toApiError(409, `QPay invoice ${invoiceId} paid биш байна`);
-        }
-        if (invoice.saleReference || invoice.consumedAt) {
-          throw toApiError(409, `QPay invoice ${invoiceId} аль хэдийн ашиглагдсан байна`);
-        }
-        if (!moneyMatches(Number(invoice.amount), qpayLine.amount)) {
-          throw toApiError(400, `QPay invoice ${invoiceId} amount зөрүүтэй байна`);
-        }
-        if (registerId && invoice.registerId && invoice.registerId !== registerId) {
-          throw toApiError(400, `QPay invoice ${invoiceId} register зөрүүтэй байна`);
-        }
-        if (!invoice.organizationId || invoice.organizationId !== effectiveOrganizationId) {
-          throw toApiError(400, `QPay invoice ${invoiceId} organization зөрүүтэй байна`);
-        }
-      }
-
-      for (const product of products) {
-        const requestedQty = qtyByProduct.get(product.id) || 0;
-        if (product.stock < requestedQty) {
-          throw toApiError(
-            409,
-            `"${product.name}" барааны нөөц хүрэлцэхгүй (үлдэгдэл: ${product.stock})`,
-          );
-        }
-      }
-
-      for (const [productId, qty] of qtyByProduct) {
-        const warehouseId = await resolveOrgWarehouse(tx, effectiveOrganizationId, productId);
-
-        await adjustStock(tx, {
-          productId,
-          warehouseId: warehouseId ?? undefined,
-          change: -qty,
-          reason: InventoryReason.ORDER,
-          note: body.note || "POS sale",
-          createdById: actor?.id || null,
-          referenceId: receiptNo,
-          referenceType: "POS_SALE",
-        });
-      }
-
-      for (const cardLine of cardLines) {
-        const attemptId = String(cardLine.attemptId || cardLine.transactionId || "").trim();
-        await tx.cardPaymentAttempt.update({
-          where: { id: attemptId },
-          data: {
-            saleReference: receiptNo,
-            consumedAt: new Date(),
-          },
-        });
-      }
-
-      for (const qpayLine of qpayLines) {
-        const invoiceId = String(qpayLine.invoiceId || "").trim();
-        await tx.qPayInvoice.update({
-          where: { id: invoiceId },
-          data: {
-            saleReference: receiptNo,
-            consumedAt: new Date(),
-          },
-        });
-      }
-
-      const lineDetails = lines.map((line) => {
-        const product = products.find((item: (typeof products)[number]) => item.id === line.productId);
-        const discount = Number(line.discountAmount || 0);
-        const unitPrice = Number(line.unitPrice || 0);
-        const qty = Number(line.qty || 0);
-        const taxRate = Number(line.taxRate || 0);
-        const subTotal = unitPrice * qty;
-        const discountTotal = discount * qty;
-        const taxable = Math.max(0, subTotal - discountTotal);
-        const taxAmount = taxable * (taxRate / 100);
-        const lineTotal = taxable + taxAmount;
-
-        return {
-          productId: line.productId,
-          productName: product?.name || line.productId,
-          productSku: null as string | null,
-          qty,
-          unitPrice,
-          taxAmount,
-          discount: discountTotal,
-          lineTotal,
-        };
-      });
-
-      const subTotal = lineDetails.reduce((sum, line) => sum + line.unitPrice * line.qty, 0);
-      const taxTotal = lineDetails.reduce((sum, line) => sum + line.taxAmount, 0);
-      const discountTotal = lines.reduce(
-        (sum, line) => sum + Number(line.discountAmount || 0) * Number(line.qty || 0),
-        0,
-      );
-      const grandTotal = subTotal + taxTotal - discountTotal;
-
-      const paymentMethodSummary = (() => {
-        const methods = Array.from(new Set(normalizedPayments.map((item) => item.method)));
-        return methods.length === 1 ? methods[0] : "MIXED";
-      })();
-
-      // Create structured PosSale + PosSaleLine records
-      const posSale = await tx.posSale.create({
-        data: {
-          receiptNo,
-          organizationId: effectiveOrganizationId,
-          branchId: body.branchId!,
-          registerId: registerId || undefined,
-          shiftId: resolvedShiftId,
-          cashierId: actor.id,
-          paymentMethod: paymentMethodSummary || "CASH",
-          paymentBreakdown: persistedPaymentBreakdown,
-          subtotal: subTotal,
-          taxTotal,
-          discountTotal,
-          grandTotal,
-          note: body.note || null,
-          lines: {
-            create: lineDetails.map((ld) => ({
-              productId: ld.productId,
-              productName: ld.productName,
-              productSku: ld.productSku,
-              qty: ld.qty,
-              unitPrice: ld.unitPrice,
-              taxAmount: ld.taxAmount,
-              discount: ld.discount,
-              lineTotal: ld.lineTotal,
-            })),
-          },
-        },
-        select: { id: true },
-      });
-
-      const creditSale = primaryCredit
-        ? await (async () => {
-            const borrowerKey = buildCreditBorrowerKey(primaryCredit);
-            const savedCustomer = await tx.posCreditCustomer.upsert({
-              where: {
-                organizationId_normalizedBorrowerKey: {
+        const creditSale = primaryCredit
+          ? await (async () => {
+              const borrowerKey = buildCreditBorrowerKey(primaryCredit);
+              const savedCustomer = await tx.posCreditCustomer.upsert({
+                where: {
+                  organizationId_normalizedBorrowerKey: {
+                    organizationId: effectiveOrganizationId,
+                    normalizedBorrowerKey: borrowerKey,
+                  },
+                },
+                update: {
+                  targetType: primaryCredit.targetType || "CUSTOMER",
+                  borrowerId: primaryCredit.borrowerId || borrowerKey,
+                  borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
+                  borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
+                  borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
+                  borrowerAddress: cleanOptionalText(
+                    primaryCredit.borrowerAddress,
+                  ),
+                  employeeId: cleanOptionalText(primaryCredit.employeeId),
+                  employeeName: cleanOptionalText(primaryCredit.employeeName),
+                },
+                create: {
                   organizationId: effectiveOrganizationId,
+                  targetType: primaryCredit.targetType || "CUSTOMER",
+                  borrowerId: primaryCredit.borrowerId || borrowerKey,
+                  borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
+                  borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
+                  borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
+                  borrowerAddress: cleanOptionalText(
+                    primaryCredit.borrowerAddress,
+                  ),
+                  employeeId: cleanOptionalText(primaryCredit.employeeId),
+                  employeeName: cleanOptionalText(primaryCredit.employeeName),
                   normalizedBorrowerKey: borrowerKey,
                 },
+                select: { id: true },
+              });
+
+              return tx.posCreditSale.create({
+                data: {
+                  saleId: posSale.id,
+                  customerId: savedCustomer.id,
+                  organizationId: effectiveOrganizationId,
+                  branchId: body.branchId!,
+                  registerId: registerId || undefined,
+                  shiftId: resolvedShiftId,
+                  cashierId: actor.id,
+                  targetType: primaryCredit.targetType || "CUSTOMER",
+                  borrowerId: primaryCredit.borrowerId || borrowerKey,
+                  borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
+                  borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
+                  borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
+                  borrowerAddress: cleanOptionalText(
+                    primaryCredit.borrowerAddress,
+                  ),
+                  employeeId: cleanOptionalText(primaryCredit.employeeId),
+                  employeeName: cleanOptionalText(primaryCredit.employeeName),
+                  principalAmount: creditPrincipal,
+                  monthlyInterestRate: Number(
+                    primaryCredit.monthlyInterestRate || 0.012,
+                  ),
+                  totalInterest: 0,
+                  totalDue: creditPrincipal,
+                  termMonths: creditTermMonths,
+                  dueDate: creditDueDate,
+                  note:
+                    cleanOptionalText(primaryCredit.note) || body.note || null,
+                },
+                select: {
+                  id: true,
+                  customerId: true,
+                  status: true,
+                  targetType: true,
+                  borrowerId: true,
+                  borrowerName: true,
+                  borrowerPhone: true,
+                  borrowerEmail: true,
+                  borrowerAddress: true,
+                  employeeId: true,
+                  employeeName: true,
+                  principalAmount: true,
+                  monthlyInterestRate: true,
+                  totalInterest: true,
+                  totalDue: true,
+                  termMonths: true,
+                  dueDate: true,
+                  paidAt: true,
+                  paidAmount: true,
+                  paymentMethod: true,
+                  paymentNote: true,
+                },
+              });
+            })()
+          : null;
+
+        const fullSale = await tx.posSale.findUniqueOrThrow({
+          where: { id: posSale.id },
+          select: {
+            id: true,
+            receiptNo: true,
+            paymentMethod: true,
+            createdAt: true,
+            subtotal: true,
+            taxTotal: true,
+            discountTotal: true,
+            grandTotal: true,
+            lines: {
+              select: {
+                productId: true,
+                productName: true,
+                productBarcode: true,
+                qty: true,
+                unitPrice: true,
+                taxAmount: true,
+                taxType: true,
+                taxRate: true,
+                cityTaxRate: true,
+                cityTaxAmount: true,
+                classificationCode: true,
+                taxProductCode: true,
+                measureUnit: true,
+                lineTotal: true,
               },
-              update: {
-                targetType: primaryCredit.targetType || "CUSTOMER",
-                borrowerId: primaryCredit.borrowerId || borrowerKey,
-                borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
-                borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
-                borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
-                borrowerAddress: cleanOptionalText(primaryCredit.borrowerAddress),
-                employeeId: cleanOptionalText(primaryCredit.employeeId),
-                employeeName: cleanOptionalText(primaryCredit.employeeName),
-              },
-              create: {
-                organizationId: effectiveOrganizationId,
-                targetType: primaryCredit.targetType || "CUSTOMER",
-                borrowerId: primaryCredit.borrowerId || borrowerKey,
-                borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
-                borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
-                borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
-                borrowerAddress: cleanOptionalText(primaryCredit.borrowerAddress),
-                employeeId: cleanOptionalText(primaryCredit.employeeId),
-                employeeName: cleanOptionalText(primaryCredit.employeeName),
-                normalizedBorrowerKey: borrowerKey,
+            },
+            cashier: { select: { email: true } },
+            branch: { select: { name: true } },
+          },
+        });
+
+        let loyaltyResponse: null | {
+          mode: string;
+          phone: string;
+          earnedPoints: number;
+          redeemedPoints: number;
+          balanceAfter: number | null;
+          earnRate: number;
+          membershipBadge: string;
+        } = null;
+
+        if (loyaltyMode !== "NONE") {
+          const loyaltyUser = await resolveLoyaltyUser(tx, loyaltyPhone);
+          if (!loyaltyUser) {
+            throw toApiError(404, "M Point хэрэглэгч олдсонгүй");
+          }
+
+          const currentBalance = await getPointBalance(tx, loyaltyUser.id);
+          const effectiveRate = getPosMPointRate(loyaltyUser);
+          const membershipBadge = isMembershipActive(loyaltyUser)
+            ? "MEMBER"
+            : "STANDARD";
+          const earnedPoints = Math.max(
+            0,
+            Math.floor(Number(fullSale.grandTotal) * effectiveRate),
+          );
+          const redeemedPoints =
+            loyaltyMode === "REDEEM" ? requestedRedeemPoints : 0;
+
+          if (redeemedPoints > currentBalance) {
+            throw toApiError(
+              409,
+              `M Point үлдэгдэл хүрэлцэхгүй байна. Боломжит: ${currentBalance}`,
+            );
+          }
+          if (redeemedPoints > Number(fullSale.grandTotal)) {
+            throw toApiError(
+              400,
+              "Хасуулах оноо нийт дүнгээс их байж болохгүй",
+            );
+          }
+
+          let ledgerId: string | null = null;
+          let balanceAfter: number | null = null;
+
+          if (loyaltyMode === "REDEEM" && redeemedPoints > 0) {
+            balanceAfter = currentBalance - redeemedPoints;
+            const spendLedger = await tx.mPointLedger.create({
+              data: {
+                userId: loyaltyUser.id,
+                type: MPointLedgerType.SPEND,
+                amount: -redeemedPoints,
+                balanceAfter,
+                sourceType: "POS_SALE",
+                sourceId: fullSale.id,
+                invoiceId: `pos:${fullSale.id}:redeem`,
+                description: `POS худалдан авалтад M Point хасуулсан - ${fullSale.receiptNo}`,
               },
               select: { id: true },
             });
+            ledgerId = spendLedger.id;
+          }
 
-            return tx.posCreditSale.create({
+          if (earnedPoints > 0) {
+            balanceAfter = (balanceAfter ?? currentBalance) + earnedPoints;
+            const earnLedger = await tx.mPointLedger.create({
               data: {
-                saleId: posSale.id,
-                customerId: savedCustomer.id,
-                organizationId: effectiveOrganizationId,
-                branchId: body.branchId!,
-                registerId: registerId || undefined,
-                shiftId: resolvedShiftId,
-                cashierId: actor.id,
-                targetType: primaryCredit.targetType || "CUSTOMER",
-                borrowerId: primaryCredit.borrowerId || borrowerKey,
-                borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
-                borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
-                borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
-                borrowerAddress: cleanOptionalText(primaryCredit.borrowerAddress),
-                employeeId: cleanOptionalText(primaryCredit.employeeId),
-                employeeName: cleanOptionalText(primaryCredit.employeeName),
-                principalAmount: creditPrincipal,
-                monthlyInterestRate: Number(primaryCredit.monthlyInterestRate || 0.012),
-                totalInterest: 0,
-                totalDue: creditPrincipal,
-                termMonths: creditTermMonths,
-                dueDate: creditDueDate,
-                note: cleanOptionalText(primaryCredit.note) || body.note || null,
+                userId: loyaltyUser.id,
+                type: MPointLedgerType.EARN,
+                amount: earnedPoints,
+                balanceAfter,
+                sourceType: "POS_SALE",
+                sourceId: fullSale.id,
+                invoiceId: `pos:${fullSale.id}:earn`,
+                description: `POS худалдан авалтын ${Math.round(effectiveRate * 100)}% буцаан олголт - ${fullSale.receiptNo}`,
               },
-              select: {
-                id: true,
-                customerId: true,
-                status: true,
-                targetType: true,
-                borrowerId: true,
-                borrowerName: true,
-                borrowerPhone: true,
-                borrowerEmail: true,
-                borrowerAddress: true,
-                employeeId: true,
-                employeeName: true,
-                principalAmount: true,
-                monthlyInterestRate: true,
-                totalInterest: true,
-                totalDue: true,
-                termMonths: true,
-                dueDate: true,
-                paidAt: true,
-                paidAmount: true,
-                paymentMethod: true,
-                paymentNote: true,
-              },
+              select: { id: true },
             });
-          })()
-        : null;
+            if (!ledgerId) ledgerId = earnLedger.id;
+          }
 
-      const fullSale = await tx.posSale.findUniqueOrThrow({
-        where: { id: posSale.id },
-        select: {
-          id: true,
-          receiptNo: true,
-          paymentMethod: true,
-          createdAt: true,
-          subtotal: true,
-          taxTotal: true,
-          discountTotal: true,
-          grandTotal: true,
-          lines: {
-            select: {
-              productId: true,
-              productName: true,
-              qty: true,
-              unitPrice: true,
-              taxAmount: true,
-              lineTotal: true,
-            },
-          },
-          cashier: { select: { email: true } },
-          branch: { select: { name: true } },
-        },
-      });
-
-      let loyaltyResponse: null | {
-        mode: string;
-        phone: string;
-        earnedPoints: number;
-        redeemedPoints: number;
-        balanceAfter: number | null;
-        earnRate: number;
-        membershipBadge: string;
-      } = null;
-
-      if (loyaltyMode !== "NONE") {
-        const loyaltyUser = await resolveLoyaltyUser(tx, loyaltyPhone);
-        if (!loyaltyUser) {
-          throw toApiError(404, "M Point хэрэглэгч олдсонгүй");
-        }
-
-        const currentBalance = await getPointBalance(tx, loyaltyUser.id);
-        const effectiveRate = getPosMPointRate(loyaltyUser);
-        const membershipBadge = isMembershipActive(loyaltyUser) ? "MEMBER" : "STANDARD";
-        const earnedPoints = Math.max(0, Math.floor(Number(fullSale.grandTotal) * effectiveRate));
-        const redeemedPoints = loyaltyMode === "REDEEM" ? requestedRedeemPoints : 0;
-
-        if (redeemedPoints > currentBalance) {
-          throw toApiError(409, `M Point үлдэгдэл хүрэлцэхгүй байна. Боломжит: ${currentBalance}`);
-        }
-        if (redeemedPoints > Number(fullSale.grandTotal)) {
-          throw toApiError(400, "Хасуулах оноо нийт дүнгээс их байж болохгүй");
-        }
-
-        let ledgerId: string | null = null;
-        let balanceAfter: number | null = null;
-
-        if (loyaltyMode === "REDEEM" && redeemedPoints > 0) {
-          balanceAfter = currentBalance - redeemedPoints;
-          const spendLedger = await tx.mPointLedger.create({
+          await tx.posLoyaltyTransaction.create({
             data: {
+              saleId: fullSale.id,
+              organizationId: effectiveOrganizationId,
+              branchId: body.branchId!,
               userId: loyaltyUser.id,
-              type: MPointLedgerType.SPEND,
-              amount: -redeemedPoints,
-              balanceAfter,
-              sourceType: "POS_SALE",
-              sourceId: fullSale.id,
-              invoiceId: `pos:${fullSale.id}:redeem`,
-              description: `POS худалдан авалтад M Point хасуулсан - ${fullSale.receiptNo}`,
+              customerPhone: loyaltyPhone,
+              action:
+                loyaltyMode === "EARN"
+                  ? MPointLedgerType.EARN
+                  : MPointLedgerType.SPEND,
+              baseRate: POS_MPOINT_BASE_RATE,
+              effectiveRate,
+              saleTotal: Number(fullSale.grandTotal),
+              earnedPoints,
+              redeemedPoints,
+              membershipBadge,
+              ledgerId: ledgerId || undefined,
+              note:
+                loyaltyMode === "EARN"
+                  ? "POS checkout reward"
+                  : "POS checkout redemption",
             },
-            select: { id: true },
           });
-          ledgerId = spendLedger.id;
-        }
 
-        if (earnedPoints > 0) {
-          balanceAfter = (balanceAfter ?? currentBalance) + earnedPoints;
-          const earnLedger = await tx.mPointLedger.create({
-            data: {
-              userId: loyaltyUser.id,
-              type: MPointLedgerType.EARN,
-              amount: earnedPoints,
-              balanceAfter,
-              sourceType: "POS_SALE",
-              sourceId: fullSale.id,
-              invoiceId: `pos:${fullSale.id}:earn`,
-              description: `POS худалдан авалтын ${Math.round(effectiveRate * 100)}% буцаан олголт - ${fullSale.receiptNo}`,
-            },
-            select: { id: true },
-          });
-          if (!ledgerId) ledgerId = earnLedger.id;
-        }
-
-        await tx.posLoyaltyTransaction.create({
-          data: {
-            saleId: fullSale.id,
-            organizationId: effectiveOrganizationId,
-            branchId: body.branchId!,
-            userId: loyaltyUser.id,
-            customerPhone: loyaltyPhone,
-            action: loyaltyMode === "EARN" ? MPointLedgerType.EARN : MPointLedgerType.SPEND,
-            baseRate: POS_MPOINT_BASE_RATE,
-            effectiveRate,
-            saleTotal: Number(fullSale.grandTotal),
+          loyaltyResponse = {
+            mode: loyaltyMode === "EARN" ? "EARN" : "REDEEM",
+            phone: loyaltyPhone,
             earnedPoints,
             redeemedPoints,
+            balanceAfter,
+            earnRate: effectiveRate,
             membershipBadge,
-            ledgerId: ledgerId || undefined,
-            note: loyaltyMode === "EARN" ? "POS checkout reward" : "POS checkout redemption",
+          };
+        }
+
+        const saleResponse = {
+          id: fullSale.id,
+          receiptNo: fullSale.receiptNo,
+          branchName: fullSale.branch.name,
+          cashierName: fullSale.cashier.email,
+          paymentMethod: fullSale.paymentMethod,
+          ebarimt: null,
+          paymentBreakdown: normalizedPayments.map((item) => {
+            if (item.method === PaymentMethod.CARD && item.attemptId) {
+              const attemptMeta = cardAttemptMap.get(String(item.attemptId));
+              return {
+                ...item,
+                traceno: attemptMeta?.traceno ?? null,
+                terminalId: attemptMeta?.terminalId ?? null,
+              };
+            }
+            return item;
+          }),
+          credit: creditSale ? mapCreditSaleResponse(creditSale) : null,
+          createdAt: fullSale.createdAt.toISOString(),
+          lines: fullSale.lines.map((l) => ({
+            productId: l.productId,
+            name: l.productName,
+            qty: l.qty,
+            unitPrice: Number(l.unitPrice),
+            taxAmount: Number(l.taxAmount),
+            taxType: l.taxType,
+            taxRate: Number(l.taxRate),
+            cityTaxRate: Number(l.cityTaxRate),
+            cityTaxAmount: Number(l.cityTaxAmount),
+            classificationCode: l.classificationCode,
+            taxProductCode: l.taxProductCode,
+            measureUnit: l.measureUnit,
+            lineTotal: Number(l.lineTotal),
+          })),
+          subTotal: Number(fullSale.subtotal),
+          taxTotal: Number(fullSale.taxTotal),
+          discountTotal: Number(fullSale.discountTotal),
+          grandTotal: Number(fullSale.grandTotal),
+          loyalty: loyaltyResponse,
+        };
+
+        await tx.posSaleIdempotency.update({
+          where: {
+            organizationId_clientSaleId: {
+              organizationId: effectiveOrganizationId,
+              clientSaleId,
+            },
           },
+          data: { response: saleResponse as object },
         });
 
-        loyaltyResponse = {
-          mode: loyaltyMode === "EARN" ? "EARN" : "REDEEM",
-          phone: loyaltyPhone,
-          earnedPoints,
-          redeemedPoints,
-          balanceAfter,
-          earnRate: effectiveRate,
-          membershipBadge,
+        return {
+          saleResponse,
+          effectiveOrganizationId,
+          grandTotal,
+          loyalty: loyaltyResponse,
         };
-      }
-
-      const saleResponse = {
-        id: fullSale.id,
-        receiptNo: fullSale.receiptNo,
-        branchName: fullSale.branch.name,
-        cashierName: fullSale.cashier.email,
-        paymentMethod: fullSale.paymentMethod,
-        ebarimt: null,
-        paymentBreakdown: normalizedPayments.map((item) => {
-          if (item.method === PaymentMethod.CARD && item.attemptId) {
-            const attemptMeta = cardAttemptMap.get(String(item.attemptId));
-            return { ...item, traceno: attemptMeta?.traceno ?? null, terminalId: attemptMeta?.terminalId ?? null };
-          }
-          return item;
-        }),
-        credit: creditSale ? mapCreditSaleResponse(creditSale) : null,
-        createdAt: fullSale.createdAt.toISOString(),
-        lines: fullSale.lines.map((l) => ({
-          productId: l.productId,
-          name: l.productName,
-          qty: l.qty,
-          unitPrice: Number(l.unitPrice),
-          taxAmount: Number(l.taxAmount),
-          lineTotal: Number(l.lineTotal),
-        })),
-        subTotal: Number(fullSale.subtotal),
-        taxTotal: Number(fullSale.taxTotal),
-        discountTotal: Number(fullSale.discountTotal),
-        grandTotal: Number(fullSale.grandTotal),
-        loyalty: loyaltyResponse,
-      };
-
-      await tx.posSaleIdempotency.update({
-        where: {
-          organizationId_clientSaleId: {
-            organizationId: effectiveOrganizationId,
-            clientSaleId,
-          },
-        },
-        data: { response: saleResponse as object },
-      });
-
-      return { saleResponse, effectiveOrganizationId, grandTotal, loyalty: loyaltyResponse };
-    });
+      },
+    );
 
     void prisma.auditLog.create({
       data: {
@@ -987,9 +1366,14 @@ router.post("/pos/sales", async (req, res) => {
           select: { response: true },
         });
         if (existingSale?.response) {
-          const existingResponse = existingSale.response as Record<string, unknown>;
+          const existingResponse = existingSale.response as Record<
+            string,
+            unknown
+          >;
           if (existingResponse.pending === true) {
-            return res.status(409).json({ message: "Sale request одоо боловсруулагдаж байна" });
+            return res
+              .status(409)
+              .json({ message: "Sale request одоо боловсруулагдаж байна" });
           }
           return res.status(200).json(existingSale.response as object);
         }
@@ -1000,7 +1384,9 @@ router.post("/pos/sales", async (req, res) => {
 
     const maybeApiError = error as Partial<ApiError>;
     if (maybeApiError?.status && maybeApiError?.message) {
-      return res.status(maybeApiError.status).json({ message: maybeApiError.message });
+      return res
+        .status(maybeApiError.status)
+        .json({ message: maybeApiError.message });
     }
 
     res.status(500).json({ message: "POS борлуулалт үүсгэхэд алдаа гарлаа" });
@@ -1029,8 +1415,13 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
       return res.status(404).json({ message: "POS борлуулалт олдсонгүй" });
     }
 
-    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, sale.organizationId))) {
-      return res.status(403).json({ message: "Энэ борлуулалтын eBarimt мэдээлэл засах эрхгүй" });
+    if (
+      actor.role !== "ADMIN" &&
+      !(await hasOrgMembership(actor.id, sale.organizationId))
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Энэ борлуулалтын eBarimt мэдээлэл засах эрхгүй" });
     }
 
     const body = req.body as {
@@ -1048,7 +1439,9 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
       const text = String(value ?? "").trim();
       return text || null;
     };
-    const status = cleanText(body.status)?.toUpperCase() || (body.error ? "FAILED" : "SUCCESS");
+    const status =
+      cleanText(body.status)?.toUpperCase() ||
+      (body.error ? "FAILED" : "SUCCESS");
 
     const updated = await prisma.posSale.update({
       where: { id: sale.id },
@@ -1096,7 +1489,9 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
     return res.json({ ebarimt: mapEbarimtReceipt(updated) });
   } catch (error) {
     console.error("attach ebarimt receipt error", error);
-    return res.status(500).json({ message: "eBarimt мэдээлэл хадгалахад алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "eBarimt мэдээлэл хадгалахад алдаа гарлаа" });
   }
 });
 

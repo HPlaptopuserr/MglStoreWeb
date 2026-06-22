@@ -31,6 +31,7 @@ type MenuCategory =
   | "DESSERT"
   | "DRINK";
 type KitchenStation = "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR";
+type TaxType = "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
 
 type RestaurantProduct = {
   id: string;
@@ -41,6 +42,10 @@ type RestaurantProduct = {
   price: number;
   costPrice: number | null;
   stock: number;
+  taxType: TaxType;
+  cityTaxRate: number;
+  classificationCode: string;
+  taxProductCode: string | null;
   isActive: boolean;
   isRestaurantMenuItem: boolean;
   menuCategory: MenuCategory | null;
@@ -60,6 +65,10 @@ type MenuForm = {
   kitchenStation: KitchenStation;
   preparationMinutes: string;
   imageUrl: string;
+  taxType: TaxType;
+  cityTaxRate: string;
+  classificationCode: string;
+  taxProductCode: string;
 };
 
 const menuCategories: Array<{
@@ -84,6 +93,13 @@ const kitchenStations: Array<{
   { value: "BAR", label: "Бар" },
 ];
 
+const taxTypes: Array<{ value: TaxType; label: string }> = [
+  { value: "VAT_ABLE", label: "НӨАТ-тэй" },
+  { value: "VAT_FREE", label: "НӨАТ-аас чөлөөлөгдсөн" },
+  { value: "VAT_ZERO", label: "НӨАТ 0%" },
+  { value: "NOT_VAT", label: "НӨАТ ногдохгүй" },
+];
+
 const emptyForm: MenuForm = {
   name: "",
   description: "",
@@ -95,6 +111,10 @@ const emptyForm: MenuForm = {
   kitchenStation: "HOT_KITCHEN",
   preparationMinutes: "15",
   imageUrl: "",
+  taxType: "VAT_ABLE",
+  cityTaxRate: "0",
+  classificationCode: "4711000",
+  taxProductCode: "",
 };
 
 const categoryLabel = (value?: MenuCategory | null) =>
@@ -206,6 +226,10 @@ export function RestaurantProductsScreen() {
       kitchenStation: product.kitchenStation || "HOT_KITCHEN",
       preparationMinutes: String(product.preparationMinutes ?? 15),
       imageUrl: product.images[0]?.url || "",
+      taxType: product.taxType || "VAT_ABLE",
+      cityTaxRate: String(product.cityTaxRate ?? 0),
+      classificationCode: product.classificationCode || "4711000",
+      taxProductCode: product.taxProductCode || "",
     });
     setFormOpen(true);
   };
@@ -228,6 +252,7 @@ export function RestaurantProductsScreen() {
     const costPrice = form.costPrice.trim() ? Number(form.costPrice) : null;
     const stock = Number(form.stock);
     const preparationMinutes = Number(form.preparationMinutes);
+    const cityTaxRate = Number(form.cityTaxRate);
 
     if (!form.name.trim()) {
       showMessage("error", "Хоолны нэр оруулна уу");
@@ -253,6 +278,15 @@ export function RestaurantProductsScreen() {
       showMessage("error", "Бэлтгэх хугацаа 0-1440 минут байна");
       return;
     }
+    if (
+      !Number.isFinite(cityTaxRate) ||
+      cityTaxRate < 0 ||
+      cityTaxRate > 100
+    ) {
+      showMessage("error", "Хотын татвар 0-100 хувь байна");
+      return;
+    }
+
     setSaving(true);
     try {
       const response = await authFetch(
@@ -274,6 +308,11 @@ export function RestaurantProductsScreen() {
             menuCategory: form.menuCategory,
             kitchenStation: form.kitchenStation,
             preparationMinutes,
+            taxType: form.taxType,
+            cityTaxRate,
+            classificationCode:
+              form.classificationCode.trim() || "4711000",
+            taxProductCode: form.taxProductCode.trim() || null,
             images: form.imageUrl.trim() ? [form.imageUrl.trim()] : [],
           }),
         },
@@ -952,6 +991,71 @@ function MenuItemForm({
                     {imageError}
                   </p>
                 ) : null}
+              </div>
+
+              <div className="border border-slate-200 p-4">
+                <div className="mb-4">
+                  <h3 className="text-sm font-black text-slate-950">
+                    eBarimt тохиргоо
+                  </h3>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                    Касс дээр баримт үүсгэхэд ашиглагдана.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <Field label="Татварын төрөл">
+                    <select
+                      value={form.taxType}
+                      onChange={(event) =>
+                        update("taxType", event.target.value as TaxType)
+                      }
+                      className={inputClass}
+                    >
+                      {taxTypes.map((taxType) => (
+                        <option key={taxType.value} value={taxType.value}>
+                          {taxType.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                    <Field label="Хотын татвар" suffix="%">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={form.cityTaxRate}
+                        onChange={(event) =>
+                          update("cityTaxRate", event.target.value)
+                        }
+                        className={inputClass}
+                      />
+                    </Field>
+                    <Field label="Ангиллын код">
+                      <input
+                        value={form.classificationCode}
+                        onChange={(event) =>
+                          update("classificationCode", event.target.value)
+                        }
+                        className={inputClass}
+                      />
+                    </Field>
+                  </div>
+
+                  <Field label="Tax product code">
+                    <input
+                      value={form.taxProductCode}
+                      onChange={(event) =>
+                        update("taxProductCode", event.target.value)
+                      }
+                      placeholder="Шаардлагатай бол"
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
               </div>
 
               <div className="flex items-center gap-3 border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">

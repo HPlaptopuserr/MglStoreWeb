@@ -76,6 +76,7 @@ const normalizePreorderLeadTimeDays = (value: unknown) => {
 
 const PREORDER_PRODUCTS_FEATURE_KEY = "preorder-products-enabled";
 const TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
+const TAX_TYPES = new Set(["VAT_ABLE", "VAT_FREE", "VAT_ZERO", "NOT_VAT"]);
 const RESTAURANT_MENU_CATEGORIES = new Set([
   "HOT",
   "COLD",
@@ -86,6 +87,26 @@ const RESTAURANT_MENU_CATEGORIES = new Set([
   "DRINK",
 ]);
 const KITCHEN_STATIONS = new Set(["HOT_KITCHEN", "COLD_KITCHEN", "BAR"]);
+
+const normalizeTaxType = (value: unknown) => {
+  const normalized = String(value || "VAT_ABLE").trim().toUpperCase();
+  return TAX_TYPES.has(normalized) ? normalized : "VAT_ABLE";
+};
+
+const normalizePercent = (value: unknown, fallback = 0) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return undefined;
+  return parsed;
+};
+
+const normalizeClassificationCode = (value: unknown) =>
+  String(value || "4711000").trim() || "4711000";
+
+const normalizeOptionalText = (value: unknown) => {
+  const text = String(value ?? "").trim();
+  return text || null;
+};
 
 const normalizeRestaurantMenuCategory = (value: unknown) => {
   const normalized = String(value || "")
@@ -109,6 +130,28 @@ const normalizePreparationMinutes = (value: unknown) => {
   }
   return parsed;
 };
+
+function emptyProductInterestProfile() {
+  return {
+    productScores: new Map<string, number>(),
+    categoryScores: new Map<string, number>(),
+    organizationScores: new Map<string, number>(),
+    keywordScores: new Map<string, number>(),
+    hasSignals: false,
+  };
+}
+
+async function getSafeProductInterestProfile(input: {
+  userId?: string | null;
+  visitorId?: string | null;
+}) {
+  try {
+    return await getProductInterestProfile(input);
+  } catch (error) {
+    console.warn("[products] personalization skipped", error);
+    return emptyProductInterestProfile();
+  }
+}
 
 const getExpirySortValue = (value?: Date | string | null) => {
   if (!value) return Number.POSITIVE_INFINITY;
@@ -414,9 +457,6 @@ router.get("/products", optionalAuth, async (req, res) => {
     const includeExpiredInventory = isTruthyQueryValue(
       req.query.includeExpiredInventory,
     );
-    const includeInactive =
-      isTruthyQueryValue(req.query.includeInactive) &&
-      canBypassAllWebProductsVisibility(req);
     const requestedOrganizationId = organizationId
       ? String(organizationId)
       : "";
@@ -425,13 +465,24 @@ router.get("/products", optionalAuth, async (req, res) => {
       Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, rawLimit) : 0;
     const rawOffset = parseInt(String(req.query.offset || ""), 10);
     const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+    const canBypassAllVisibility = canBypassAllWebProductsVisibility(req);
+    const canBypassRequestedOrg = requestedOrganizationId
+      ? await canBypassWebProductsVisibility(req, requestedOrganizationId)
+      : false;
+    const isOwnOrganizationCatalog =
+      Boolean(requestedOrganizationId) && canBypassRequestedOrg;
+    const includeInactive =
+      isTruthyQueryValue(req.query.includeInactive) &&
+      (canBypassAllVisibility || canBypassRequestedOrg);
 
     const where: any = {
       deletedAt: null,
       organization: { deletedAt: null, status: "ACTIVE" },
     };
-    if (!includeInactive) where.isActive = true;
-    if (!includeInactive) where.reviewStatus = "APPROVED";
+    if (!isOwnOrganizationCatalog && !includeInactive) {
+      where.isActive = true;
+      where.reviewStatus = "APPROVED";
+    }
     if (organizationId) where.organizationId = organizationId;
     if (restaurantMenuOnly) where.isRestaurantMenuItem = true;
     if (businessCategoryId) {
@@ -444,19 +495,15 @@ router.get("/products", optionalAuth, async (req, res) => {
       where.OR = buildProductSearchWhere(search);
     }
 
-    const canBypassRequestedOrg = requestedOrganizationId
-      ? await canBypassWebProductsVisibility(req, requestedOrganizationId)
-      : false;
-
     if (
-      !canBypassAllWebProductsVisibility(req) &&
+      !canBypassAllVisibility &&
       !canBypassRequestedOrg &&
       !(await areWebProductsGloballyEnabled())
     ) {
       return res.json([]);
     }
 
-    if (!canBypassAllWebProductsVisibility(req)) {
+    if (!canBypassAllVisibility) {
       if (!canBypassRequestedOrg) {
         const visibleOrganizationIds =
           await getWebProductsEnabledOrganizationIds();
@@ -517,7 +564,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       }
     }
 
-    const interestProfile = await getProductInterestProfile({
+    const interestProfile = await getSafeProductInterestProfile({
       userId: (req as any).user?.userId,
       visitorId,
     });
@@ -611,7 +658,7 @@ router.get(
       const limit =
         Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(40, rawLimit) : 16;
       const visitorId = String(req.query.visitorId || "").trim();
-      const interestProfile = await getProductInterestProfile({
+      const interestProfile = await getSafeProductInterestProfile({
         userId: (req as any).user?.userId,
         visitorId,
       });
@@ -1376,7 +1423,7 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
       },
     });
 
-    const interestProfile = await getProductInterestProfile({
+    const interestProfile = await getSafeProductInterestProfile({
       userId: (req as any).user?.userId,
       visitorId,
     });
@@ -1504,6 +1551,10 @@ router.post(
         unit,
         price,
         costPrice,
+        taxType,
+        cityTaxRate,
+        classificationCode,
+        taxProductCode,
         isRestaurantMenuItem,
         menuCategory,
         kitchenStation,
@@ -1569,6 +1620,11 @@ router.post(
           : parseOptionalExpiryDate(expiryDate);
       if (expiryDate !== undefined && parsedExpiryDate === undefined) {
         return res.status(400).json({ message: "Дуусах хугацаа буруу байна" });
+      }
+      const normalizedTaxType = normalizeTaxType(taxType);
+      const normalizedCityTaxRate = normalizePercent(cityTaxRate, 0);
+      if (normalizedCityTaxRate === undefined) {
+        return res.status(400).json({ message: "Хотын татвар 0-100 хооронд байх ёстой" });
       }
       const normalizedPreparationMinutes =
         normalizePreparationMinutes(preparationMinutes);
@@ -1662,6 +1718,10 @@ router.post(
             unit: unit ? String(unit).trim() : null,
             price: priceNum,
             costPrice: costPriceNum,
+            taxType: normalizedTaxType,
+            cityTaxRate: normalizedCityTaxRate,
+            classificationCode: normalizeClassificationCode(classificationCode),
+            taxProductCode: normalizeOptionalText(taxProductCode),
             isRestaurantMenuItem: restaurantMenuEnabled,
             menuCategory: normalizedMenuCategory,
             kitchenStation: normalizedKitchenStation,
@@ -1758,6 +1818,10 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       unit,
       price,
       costPrice,
+      taxType,
+      cityTaxRate,
+      classificationCode,
+      taxProductCode,
       isRestaurantMenuItem,
       menuCategory,
       kitchenStation,
@@ -1814,6 +1878,18 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     }
     if (costPrice !== undefined)
       data.costPrice = costPrice ? parseFloat(String(costPrice)) : null;
+    if (taxType !== undefined) data.taxType = normalizeTaxType(taxType);
+    if (cityTaxRate !== undefined) {
+      const normalizedCityTaxRate = normalizePercent(cityTaxRate, 0);
+      if (normalizedCityTaxRate === undefined) {
+        return res.status(400).json({ message: "Хотын татвар 0-100 хооронд байх ёстой" });
+      }
+      data.cityTaxRate = normalizedCityTaxRate;
+    }
+    if (classificationCode !== undefined)
+      data.classificationCode = normalizeClassificationCode(classificationCode);
+    if (taxProductCode !== undefined)
+      data.taxProductCode = normalizeOptionalText(taxProductCode);
     const nextRestaurantMenuEnabled =
       isRestaurantMenuItem !== undefined
         ? isTruthyQueryValue(isRestaurantMenuItem)

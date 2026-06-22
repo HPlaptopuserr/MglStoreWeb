@@ -106,7 +106,8 @@ const mapCreditSaleResponse = (creditSale: {
     termMonths: creditSale.termMonths,
     dueDate: payable.dueDate?.toISOString() ?? null,
     paidAt: creditSale.paidAt?.toISOString() ?? null,
-    paidAmount: creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
+    paidAmount:
+      creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
     paymentMethod: creditSale.paymentMethod ?? null,
     paymentNote: creditSale.paymentNote ?? null,
   };
@@ -125,6 +126,11 @@ router.get("/pos/products", async (req, res) => {
     if (!actor) return;
 
     const branchId = String(req.query.branchId || "").trim();
+    const restaurantMenuOnly = ["1", "true", "yes", "on"].includes(
+      String(req.query.restaurantMenu || "")
+        .trim()
+        .toLowerCase(),
+    );
     if (!branchId) {
       return res.status(400).json({ message: "branchId шаардлагатай" });
     }
@@ -159,6 +165,7 @@ router.get("/pos/products", async (req, res) => {
         isActive: true,
         deletedAt: null,
         supplyType: "IN_STOCK",
+        ...(restaurantMenuOnly ? { isRestaurantMenuItem: true } : {}),
       },
       select: {
         id: true,
@@ -166,8 +173,16 @@ router.get("/pos/products", async (req, res) => {
         barcode: true,
         name: true,
         price: true,
+        taxType: true,
+        cityTaxRate: true,
+        classificationCode: true,
+        taxProductCode: true,
         stock: true,
         isActive: true,
+        isRestaurantMenuItem: true,
+        menuCategory: true,
+        kitchenStation: true,
+        preparationMinutes: true,
         category: { select: { name: true } },
         businessCategory: { select: { name: true } },
         images: { select: { url: true }, take: 1 },
@@ -199,8 +214,18 @@ router.get("/pos/products", async (req, res) => {
           imageUrl: p.images[0]?.url ?? null,
           price: Number(p.price),
           stockQty: p.stock,
+          taxType: p.taxType || "VAT_ABLE",
+          taxRate: p.taxType === "VAT_ABLE" ? 10 : 0,
+          cityTaxRate: Number(p.cityTaxRate || 0),
+          classificationCode: p.classificationCode || "4711000",
+          taxProductCode: p.taxProductCode || null,
+          measureUnit: "pcs",
           expiryDate: expiryDate?.toISOString() ?? null,
           isActive: p.isActive,
+          isRestaurantMenuItem: p.isRestaurantMenuItem,
+          menuCategory: p.menuCategory,
+          kitchenStation: p.kitchenStation,
+          preparationMinutes: p.preparationMinutes,
           categoryName: p.category?.name || p.businessCategory?.name || null,
         };
       })
@@ -246,7 +271,11 @@ router.get("/pos/receipts", async (req, res) => {
       return res.status(404).json({ message: "Ээлж олдсонгүй" });
     }
 
-    if (shift.cashierId !== actor.id && actor.role !== "ADMIN" && actor.role !== "SUPER_ADMIN") {
+    if (
+      shift.cashierId !== actor.id &&
+      actor.role !== "ADMIN" &&
+      actor.role !== "SUPER_ADMIN"
+    ) {
       const allowed = await hasOrgMembership(actor.id, shift.organizationId);
       if (!allowed) {
         return res
@@ -261,6 +290,7 @@ router.get("/pos/receipts", async (req, res) => {
         id: true,
         receiptNo: true,
         paymentMethod: true,
+        paymentBreakdown: true,
         status: true,
         voidedAt: true,
         createdAt: true,
@@ -272,9 +302,17 @@ router.get("/pos/receipts", async (req, res) => {
           select: {
             productId: true,
             productName: true,
+            productBarcode: true,
             qty: true,
             unitPrice: true,
             taxAmount: true,
+            taxType: true,
+            taxRate: true,
+            cityTaxRate: true,
+            cityTaxAmount: true,
+            classificationCode: true,
+            taxProductCode: true,
+            measureUnit: true,
             lineTotal: true,
           },
         },
@@ -320,16 +358,46 @@ router.get("/pos/receipts", async (req, res) => {
       qpayByReceipt.set(key, [...(qpayByReceipt.get(key) || []), invoice]);
     }
 
-    const receipts = sales.map((sale) => ({
-      id: sale.id,
-      receiptNo: sale.receiptNo,
-      branchName: sale.branch.name,
-      cashierName: sale.cashier.email,
-      paymentMethod: sale.paymentMethod,
-      status: sale.status,
-      voidedAt: sale.voidedAt?.toISOString() ?? null,
-      ebarimt: null,
-      paymentBreakdown: [
+    const receipts = sales.map((sale) => {
+      const storedPaymentBreakdown = Array.isArray(sale.paymentBreakdown)
+        ? sale.paymentBreakdown
+            .map((item) => {
+              const source = item as Record<string, unknown>;
+              const method = String(source.method || "")
+                .trim()
+                .toUpperCase();
+              const amount = Number(source.amount);
+              if (!method || !Number.isFinite(amount) || amount <= 0)
+                return null;
+
+              if (method === "CARD") {
+                const attemptId = String(source.attemptId || "");
+                const attempt = (cardByReceipt.get(sale.receiptNo) || []).find(
+                  (candidate) => candidate.id === attemptId,
+                );
+                return {
+                  method,
+                  amount,
+                  attemptId: attemptId || undefined,
+                  transactionId:
+                    String(source.transactionId || "") ||
+                    attempt?.transactionId ||
+                    undefined,
+                  traceno: attempt?.traceno,
+                  terminalId: attempt?.terminalId,
+                };
+              }
+
+              return {
+                method,
+                amount,
+                invoiceId: String(source.invoiceId || "") || undefined,
+                transactionId: String(source.transactionId || "") || undefined,
+              };
+            })
+            .filter(Boolean)
+        : [];
+      const reconstructedPaymentBreakdown = [
         ...(cardByReceipt.get(sale.receiptNo) || []).map((attempt) => ({
           method: "CARD",
           amount: Number(attempt.amount),
@@ -348,21 +416,43 @@ router.get("/pos/receipts", async (req, res) => {
         qpayByReceipt.has(sale.receiptNo)
           ? []
           : [{ method: sale.paymentMethod, amount: Number(sale.grandTotal) }]),
-      ],
-      createdAt: sale.createdAt.toISOString(),
-      lines: sale.lines.map((line) => ({
-        productId: line.productId,
-        name: line.productName,
-        qty: line.qty,
-        unitPrice: Number(line.unitPrice),
-        taxAmount: Number(line.taxAmount),
-        lineTotal: Number(line.lineTotal),
-      })),
-      subTotal: Number(sale.subtotal),
-      taxTotal: Number(sale.taxTotal),
-      discountTotal: Number(sale.discountTotal),
-      grandTotal: Number(sale.grandTotal),
-    }));
+      ];
+
+      return {
+        id: sale.id,
+        receiptNo: sale.receiptNo,
+        branchName: sale.branch.name,
+        cashierName: sale.cashier.email,
+        paymentMethod: sale.paymentMethod,
+        status: sale.status,
+        voidedAt: sale.voidedAt?.toISOString() ?? null,
+        ebarimt: null,
+        paymentBreakdown:
+          storedPaymentBreakdown.length > 0
+            ? storedPaymentBreakdown
+            : reconstructedPaymentBreakdown,
+        createdAt: sale.createdAt.toISOString(),
+        lines: sale.lines.map((line) => ({
+          productId: line.productId,
+          name: line.productName,
+          qty: line.qty,
+          unitPrice: Number(line.unitPrice),
+          taxAmount: Number(line.taxAmount),
+          taxType: line.taxType,
+          taxRate: Number(line.taxRate),
+          cityTaxRate: Number(line.cityTaxRate),
+          cityTaxAmount: Number(line.cityTaxAmount),
+          classificationCode: line.classificationCode,
+          taxProductCode: line.taxProductCode,
+          measureUnit: line.measureUnit,
+          lineTotal: Number(line.lineTotal),
+        })),
+        subTotal: Number(sale.subtotal),
+        taxTotal: Number(sale.taxTotal),
+        discountTotal: Number(sale.discountTotal),
+        grandTotal: Number(sale.grandTotal),
+      };
+    });
 
     res.status(200).json(receipts);
   } catch (error) {
@@ -429,9 +519,17 @@ router.get("/pos/sales/history", async (req, res) => {
               productId: true,
               productName: true,
               productSku: true,
+              productBarcode: true,
               qty: true,
               unitPrice: true,
               taxAmount: true,
+              taxType: true,
+              taxRate: true,
+              cityTaxRate: true,
+              cityTaxAmount: true,
+              classificationCode: true,
+              taxProductCode: true,
+              measureUnit: true,
               discount: true,
               lineTotal: true,
             },
@@ -469,6 +567,13 @@ router.get("/pos/sales/history", async (req, res) => {
         qty: line.qty,
         unitPrice: Number(line.unitPrice),
         taxAmount: Number(line.taxAmount),
+        taxType: line.taxType,
+        taxRate: Number(line.taxRate),
+        cityTaxRate: Number(line.cityTaxRate),
+        cityTaxAmount: Number(line.cityTaxAmount),
+        classificationCode: line.classificationCode,
+        taxProductCode: line.taxProductCode,
+        measureUnit: line.measureUnit,
         discount: Number(line.discount),
         lineTotal: Number(line.lineTotal),
       })),
@@ -501,13 +606,19 @@ router.get("/pos/credit-sales", async (req, res) => {
 
     const queryOrgId = String(req.query.organizationId || "").trim() || null;
     const branchId = String(req.query.branchId || "").trim() || null;
-    const effectiveOrgId = actor.role === "ADMIN" ? queryOrgId : actor.organizationId || queryOrgId;
+    const effectiveOrgId =
+      actor.role === "ADMIN" ? queryOrgId : actor.organizationId || queryOrgId;
 
     if (!effectiveOrgId) {
       return res.status(400).json({ message: "organizationId шаардлагатай" });
     }
-    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, effectiveOrgId))) {
-      return res.status(403).json({ message: "Энэ байгууллагын зээлийн жагсаалт харах эрхгүй" });
+    if (
+      actor.role !== "ADMIN" &&
+      !(await hasOrgMembership(actor.id, effectiveOrgId))
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Энэ байгууллагын зээлийн жагсаалт харах эрхгүй" });
     }
 
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
@@ -567,7 +678,10 @@ router.get("/pos/credit-sales", async (req, res) => {
 
     return res.json({
       credits: credits.map((credit) => ({
-        ...mapCreditSaleResponse({ ...credit, createdAt: credit.sale.createdAt }),
+        ...mapCreditSaleResponse({
+          ...credit,
+          createdAt: credit.sale.createdAt,
+        }),
         saleId: credit.saleId,
         receiptNo: credit.sale.receiptNo,
         createdAt: credit.sale.createdAt.toISOString(),
@@ -586,7 +700,9 @@ router.get("/pos/credit-sales", async (req, res) => {
     });
   } catch (error) {
     console.error("credit sales list error", error);
-    return res.status(500).json({ message: "Зээлийн жагсаалт авахад алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "Зээлийн жагсаалт авахад алдаа гарлаа" });
   }
 });
 
@@ -596,22 +712,34 @@ router.get("/pos/credit-customers", async (req, res) => {
     if (!actor) return;
 
     const queryOrgId = String(req.query.organizationId || "").trim() || null;
-    const targetType = String(req.query.targetType || "").trim().toUpperCase();
+    const targetType = String(req.query.targetType || "")
+      .trim()
+      .toUpperCase();
     const search = String(req.query.search || "").trim();
-    const effectiveOrgId = actor.role === "ADMIN" ? queryOrgId : actor.organizationId || queryOrgId;
+    const effectiveOrgId =
+      actor.role === "ADMIN" ? queryOrgId : actor.organizationId || queryOrgId;
 
     if (!effectiveOrgId) {
       return res.status(400).json({ message: "organizationId шаардлагатай" });
     }
-    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, effectiveOrgId))) {
-      return res.status(403).json({ message: "Энэ байгууллагын зээлдэгчийн жагсаалт харах эрхгүй" });
+    if (
+      actor.role !== "ADMIN" &&
+      !(await hasOrgMembership(actor.id, effectiveOrgId))
+    ) {
+      return res
+        .status(403)
+        .json({
+          message: "Энэ байгууллагын зээлдэгчийн жагсаалт харах эрхгүй",
+        });
     }
 
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
     const customers = await prisma.posCreditCustomer.findMany({
       where: {
         organizationId: effectiveOrgId,
-        ...(targetType === "COMPANY" || targetType === "CUSTOMER" ? { targetType } : {}),
+        ...(targetType === "COMPANY" || targetType === "CUSTOMER"
+          ? { targetType }
+          : {}),
         ...(search
           ? {
               OR: [
@@ -650,7 +778,9 @@ router.get("/pos/credit-customers", async (req, res) => {
     });
   } catch (error) {
     console.error("credit customers list error", error);
-    return res.status(500).json({ message: "Зээлдэгчийн жагсаалт авахад алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "Зээлдэгчийн жагсаалт авахад алдаа гарлаа" });
   }
 });
 
@@ -684,19 +814,34 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
     if (!creditSale) {
       return res.status(404).json({ message: "Зээлийн бүртгэл олдсонгүй" });
     }
-    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, creditSale.organizationId))) {
-      return res.status(403).json({ message: "Энэ байгууллагын зээлийн бүртгэлд хандах эрхгүй" });
+    if (
+      actor.role !== "ADMIN" &&
+      !(await hasOrgMembership(actor.id, creditSale.organizationId))
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Энэ байгууллагын зээлийн бүртгэлд хандах эрхгүй" });
     }
     if (creditSale.status === PosCreditStatus.PAID) {
-      return res.status(409).json({ message: "Энэ зээл аль хэдийн төлөгдсөн байна" });
+      return res
+        .status(409)
+        .json({ message: "Энэ зээл аль хэдийн төлөгдсөн байна" });
     }
     if (creditSale.status === PosCreditStatus.CANCELLED) {
-      return res.status(409).json({ message: "Цуцлагдсан зээлийг төлсөн болгох боломжгүй" });
+      return res
+        .status(409)
+        .json({ message: "Цуцлагдсан зээлийг төлсөн болгох боломжгүй" });
     }
 
-    const paymentMethod = normalizePaymentMethod(String(req.body.paymentMethod || "")) || PaymentMethod.CASH;
+    const paymentMethod =
+      normalizePaymentMethod(String(req.body.paymentMethod || "")) ||
+      PaymentMethod.CASH;
     if (paymentMethod === PaymentMethod.CREDIT) {
-      return res.status(400).json({ message: "Зээлийн төлөлтийг CREDIT хэлбэрээр бүртгэх боломжгүй" });
+      return res
+        .status(400)
+        .json({
+          message: "Зээлийн төлөлтийг CREDIT хэлбэрээр бүртгэх боломжгүй",
+        });
     }
 
     const payable = calculatePosCreditPayable({
@@ -711,123 +856,177 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
     const paidAmount = roundMoney(Number(req.body.amount || payable.totalDue));
     const dueAmount = payable.totalDue;
     if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
-      return res.status(400).json({ message: "Төлсөн дүн 0-оос их байх ёстой" });
+      return res
+        .status(400)
+        .json({ message: "Төлсөн дүн 0-оос их байх ёстой" });
     }
     if (!moneyMatches(paidAmount, dueAmount)) {
-      return res.status(400).json({ message: `Зээлийг бүтэн төлөх дүн ${dueAmount} байна` });
+      return res
+        .status(400)
+        .json({ message: `Зээлийг бүтэн төлөх дүн ${dueAmount} байна` });
     }
 
     const qpayInvoiceId = cleanOptionalText(req.body.qpayInvoiceId);
-    const cardAttemptId = cleanOptionalText(req.body.cardAttemptId ?? req.body.attemptId ?? req.body.transactionId);
+    const cardAttemptId = cleanOptionalText(
+      req.body.cardAttemptId ?? req.body.attemptId ?? req.body.transactionId,
+    );
     const shiftId = cleanOptionalText(req.body.shiftId);
-    const paymentNote = [
-      cleanOptionalText(req.body.note),
-      qpayInvoiceId ? `QPay invoice: ${qpayInvoiceId}` : null,
-      cardAttemptId ? `Card attempt: ${cardAttemptId}` : null,
-    ].filter(Boolean).join(" | ") || null;
+    const paymentNote =
+      [
+        cleanOptionalText(req.body.note),
+        qpayInvoiceId ? `QPay invoice: ${qpayInvoiceId}` : null,
+        cardAttemptId ? `Card attempt: ${cardAttemptId}` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ") || null;
 
     const paidAt = new Date();
-    const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      if (paymentMethod === PaymentMethod.QPAY) {
-        if (!qpayInvoiceId) throw toApiError(400, "QPay төлөлтөд invoiceId шаардлагатай");
-        const invoice = await tx.qPayInvoice.findUnique({ where: { id: qpayInvoiceId } });
-        if (!invoice) throw toApiError(404, "QPay invoice олдсонгүй");
-        if (invoice.status !== PosQPayStatus.PAID) throw toApiError(409, "QPay төлбөр баталгаажаагүй байна");
-        if (invoice.saleReference || invoice.consumedAt) throw toApiError(409, "QPay invoice аль хэдийн ашиглагдсан байна");
-        if (!invoice.organizationId || invoice.organizationId !== creditSale.organizationId) {
-          throw toApiError(400, "QPay invoice байгууллага зөрүүтэй байна");
+    const updated = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        if (paymentMethod === PaymentMethod.QPAY) {
+          if (!qpayInvoiceId)
+            throw toApiError(400, "QPay төлөлтөд invoiceId шаардлагатай");
+          const invoice = await tx.qPayInvoice.findUnique({
+            where: { id: qpayInvoiceId },
+          });
+          if (!invoice) throw toApiError(404, "QPay invoice олдсонгүй");
+          if (invoice.status !== PosQPayStatus.PAID)
+            throw toApiError(409, "QPay төлбөр баталгаажаагүй байна");
+          if (invoice.saleReference || invoice.consumedAt)
+            throw toApiError(409, "QPay invoice аль хэдийн ашиглагдсан байна");
+          if (
+            !invoice.organizationId ||
+            invoice.organizationId !== creditSale.organizationId
+          ) {
+            throw toApiError(400, "QPay invoice байгууллага зөрүүтэй байна");
+          }
+          if (!moneyMatches(Number(invoice.amount), paidAmount)) {
+            throw toApiError(
+              400,
+              "QPay invoice дүн төлсөн дүнтэй таарахгүй байна",
+            );
+          }
+          await tx.qPayInvoice.update({
+            where: { id: invoice.id },
+            data: {
+              saleReference: `CREDIT-${creditSale.id}`,
+              consumedAt: paidAt,
+            },
+          });
         }
-        if (!moneyMatches(Number(invoice.amount), paidAmount)) {
-          throw toApiError(400, "QPay invoice дүн төлсөн дүнтэй таарахгүй байна");
-        }
-        await tx.qPayInvoice.update({
-          where: { id: invoice.id },
-          data: { saleReference: `CREDIT-${creditSale.id}`, consumedAt: paidAt },
-        });
-      }
 
-      if (paymentMethod === PaymentMethod.CARD && cardAttemptId) {
-        const attempt = await tx.cardPaymentAttempt.findUnique({ where: { id: cardAttemptId } });
-        if (!attempt) throw toApiError(404, "Card attempt олдсонгүй");
-        if (attempt.status !== PosPaymentStatus.APPROVED) throw toApiError(409, "Картын төлбөр баталгаажаагүй байна");
-        if (attempt.saleReference || attempt.consumedAt) throw toApiError(409, "Card attempt аль хэдийн ашиглагдсан байна");
-        if (!attempt.organizationId || attempt.organizationId !== creditSale.organizationId) {
-          throw toApiError(400, "Card attempt байгууллага зөрүүтэй байна");
+        if (paymentMethod === PaymentMethod.CARD && cardAttemptId) {
+          const attempt = await tx.cardPaymentAttempt.findUnique({
+            where: { id: cardAttemptId },
+          });
+          if (!attempt) throw toApiError(404, "Card attempt олдсонгүй");
+          if (attempt.status !== PosPaymentStatus.APPROVED)
+            throw toApiError(409, "Картын төлбөр баталгаажаагүй байна");
+          if (attempt.saleReference || attempt.consumedAt)
+            throw toApiError(409, "Card attempt аль хэдийн ашиглагдсан байна");
+          if (
+            !attempt.organizationId ||
+            attempt.organizationId !== creditSale.organizationId
+          ) {
+            throw toApiError(400, "Card attempt байгууллага зөрүүтэй байна");
+          }
+          if (!moneyMatches(Number(attempt.amount), paidAmount)) {
+            throw toApiError(
+              400,
+              "Card attempt дүн төлсөн дүнтэй таарахгүй байна",
+            );
+          }
+          await tx.cardPaymentAttempt.update({
+            where: { id: attempt.id },
+            data: {
+              saleReference: `CREDIT-${creditSale.id}`,
+              consumedAt: paidAt,
+            },
+          });
         }
-        if (!moneyMatches(Number(attempt.amount), paidAmount)) {
-          throw toApiError(400, "Card attempt дүн төлсөн дүнтэй таарахгүй байна");
-        }
-        await tx.cardPaymentAttempt.update({
-          where: { id: attempt.id },
-          data: { saleReference: `CREDIT-${creditSale.id}`, consumedAt: paidAt },
-        });
-      }
 
-      if (paymentMethod === PaymentMethod.CASH && shiftId) {
-        const shift = await tx.posShift.findUnique({ where: { id: shiftId } });
-        if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
-        if (shift.status !== ShiftStatus.OPEN) throw toApiError(409, "Хаагдсан ээлж дээр бэлэн төлөлт бүртгэх боломжгүй");
-        if (shift.organizationId !== creditSale.organizationId) throw toApiError(400, "Ээлж байгууллага зөрүүтэй байна");
-        await tx.posCashDrawerEvent.create({
+        if (paymentMethod === PaymentMethod.CASH && shiftId) {
+          const shift = await tx.posShift.findUnique({
+            where: { id: shiftId },
+          });
+          if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
+          if (shift.status !== ShiftStatus.OPEN)
+            throw toApiError(
+              409,
+              "Хаагдсан ээлж дээр бэлэн төлөлт бүртгэх боломжгүй",
+            );
+          if (shift.organizationId !== creditSale.organizationId)
+            throw toApiError(400, "Ээлж байгууллага зөрүүтэй байна");
+          await tx.posCashDrawerEvent.create({
+            data: {
+              organizationId: shift.organizationId,
+              branchId: shift.branchId,
+              registerId: shift.registerId,
+              shiftId: shift.id,
+              cashierId: actor.id,
+              type: CashDrawerEventType.PAID_IN,
+              amount: paidAmount,
+              note: paymentNote || `Credit payment ${creditSale.id}`,
+            },
+          });
+        }
+
+        return tx.posCreditSale.update({
+          where: { id: creditSale.id },
           data: {
-            organizationId: shift.organizationId,
-            branchId: shift.branchId,
-            registerId: shift.registerId,
-            shiftId: shift.id,
-            cashierId: actor.id,
-            type: CashDrawerEventType.PAID_IN,
-            amount: paidAmount,
-            note: paymentNote || `Credit payment ${creditSale.id}`,
+            status: PosCreditStatus.PAID,
+            paidAt,
+            paidAmount,
+            paymentMethod,
+            paymentNote,
+            totalInterest: payable.totalInterest,
+            totalDue: payable.totalDue,
+          },
+          select: {
+            id: true,
+            customerId: true,
+            status: true,
+            targetType: true,
+            borrowerId: true,
+            borrowerName: true,
+            borrowerPhone: true,
+            borrowerEmail: true,
+            borrowerAddress: true,
+            employeeId: true,
+            employeeName: true,
+            principalAmount: true,
+            monthlyInterestRate: true,
+            totalInterest: true,
+            totalDue: true,
+            termMonths: true,
+            dueDate: true,
+            paidAt: true,
+            paidAmount: true,
+            paymentMethod: true,
+            paymentNote: true,
+            sale: { select: { createdAt: true } },
           },
         });
-      }
+      },
+    );
 
-      return tx.posCreditSale.update({
-        where: { id: creditSale.id },
-        data: {
-          status: PosCreditStatus.PAID,
-          paidAt,
-          paidAmount,
-          paymentMethod,
-          paymentNote,
-          totalInterest: payable.totalInterest,
-          totalDue: payable.totalDue,
-        },
-        select: {
-          id: true,
-          customerId: true,
-          status: true,
-          targetType: true,
-          borrowerId: true,
-          borrowerName: true,
-          borrowerPhone: true,
-          borrowerEmail: true,
-          borrowerAddress: true,
-          employeeId: true,
-          employeeName: true,
-          principalAmount: true,
-          monthlyInterestRate: true,
-          totalInterest: true,
-          totalDue: true,
-          termMonths: true,
-          dueDate: true,
-          paidAt: true,
-          paidAmount: true,
-          paymentMethod: true,
-          paymentNote: true,
-          sale: { select: { createdAt: true } },
-        },
+    return res
+      .status(200)
+      .json({
+        credit: mapCreditSaleResponse({
+          ...updated,
+          createdAt: updated.sale.createdAt,
+        }),
       });
-    });
-
-    return res.status(200).json({ credit: mapCreditSaleResponse({ ...updated, createdAt: updated.sale.createdAt }) });
   } catch (error) {
     const known = error as ApiError;
     if (known?.status && known?.message) {
       return res.status(known.status).json({ message: known.message });
     }
     console.error("pay credit sale error", error);
-    return res.status(500).json({ message: "Зээлийн төлөлт бүртгэхэд алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "Зээлийн төлөлт бүртгэхэд алдаа гарлаа" });
   }
 });
 

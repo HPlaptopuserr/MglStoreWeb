@@ -9,10 +9,18 @@ type RawProduct = {
   imageUrl?: string | null;
   images?: { url: string }[];
   price: number;
+  taxType?: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
+  cityTaxRate?: number;
+  classificationCode?: string | null;
+  taxProductCode?: string | null;
   stock: number;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   isActive: boolean;
 };
+
+function taxRateFromType(taxType?: string | null) {
+  return taxType === "VAT_ABLE" ? 10 : 0;
+}
 
 export async function getOwnProducts(
   organizationId: string,
@@ -56,7 +64,12 @@ export async function getOwnProducts(
       imageUrl: item.imageUrl || item.images?.[0]?.url || null,
       price: Number(item.price) || 0,
       stockQty: Number(item.stock) || 0,
-      taxRate: 0,
+      taxType: item.taxType || "VAT_ABLE",
+      taxRate: taxRateFromType(item.taxType || "VAT_ABLE"),
+      cityTaxRate: Number(item.cityTaxRate) || 0,
+      classificationCode: item.classificationCode || "4711000",
+      taxProductCode: item.taxProductCode || null,
+      measureUnit: "pcs",
       isActive: item.isActive,
     }));
 }

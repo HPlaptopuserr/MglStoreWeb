@@ -20,6 +20,10 @@ export interface Product {
   description: string | null;
   price: number;
   costPrice: number | null;
+  taxType: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
+  cityTaxRate: number;
+  classificationCode: string;
+  taxProductCode: string | null;
   stock: number;
   expiryDate?: string | null;
   supplyType: "IN_STOCK" | "CHINA_PREORDER";
@@ -39,6 +43,10 @@ export interface FormState {
   description: string;
   price: string;
   costPrice: string;
+  taxType: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
+  cityTaxRate: string;
+  classificationCode: string;
+  taxProductCode: string;
   stock: string;
   expiryDate: string;
   supplyType: "IN_STOCK" | "CHINA_PREORDER";

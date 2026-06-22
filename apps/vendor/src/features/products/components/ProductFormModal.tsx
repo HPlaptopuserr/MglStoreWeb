@@ -19,6 +19,13 @@ interface Props {
   onSave: (e: React.FormEvent) => void;
 }
 
+const TAX_TYPE_OPTIONS = [
+  { value: "VAT_ABLE", label: "VAT_ABLE - НӨАТ-тэй" },
+  { value: "VAT_FREE", label: "VAT_FREE - НӨАТ-аас чөлөөлөгдсөн" },
+  { value: "VAT_ZERO", label: "VAT_ZERO - НӨАТ 0%" },
+  { value: "NOT_VAT", label: "NOT_VAT - НӨАТ ногдохгүй" },
+] as const;
+
 export function ProductFormModal({
   form,
   setForm,
@@ -208,6 +215,69 @@ export function ProductFormModal({
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                    <div className="mb-3">
+                      <p className="text-sm font-bold text-emerald-800">eBarimt татварын тохиргоо</p>
+                      <p className="mt-0.5 text-xs font-medium text-emerald-700">
+                        POS дээр сагслахад татвар болон eBarimt payload-д ашиглагдана.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">Татварын төрөл</label>
+                        <select
+                          className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
+                          value={form.taxType}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              taxType: e.target.value as typeof form.taxType,
+                            }))
+                          }
+                        >
+                          {TAX_TYPE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">Хотын татвар (%)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
+                          value={form.cityTaxRate}
+                          onChange={(e) => setForm((f) => ({ ...f, cityTaxRate: e.target.value }))}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">Ангиллын код</label>
+                        <input
+                          className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
+                          placeholder="4711000"
+                          value={form.classificationCode}
+                          onChange={(e) => setForm((f) => ({ ...f, classificationCode: e.target.value }))}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">Tax product code</label>
+                        <input
+                          className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
+                          placeholder="Шаардлагатай бол"
+                          value={form.taxProductCode}
+                          onChange={(e) => setForm((f) => ({ ...f, taxProductCode: e.target.value }))}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 

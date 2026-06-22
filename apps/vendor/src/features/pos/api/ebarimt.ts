@@ -8,9 +8,12 @@ type EbarimtPayment = {
   paidAmount: number;
 };
 
-type EbarimtInfo = {
+export type EbarimtInfo = {
   operatorTIN?: string;
+  operatorName?: string;
   posNo?: string;
+  lastSentDate?: string | null;
+  version?: string;
   merchants?: Array<{
     tin?: string;
     name?: string;
@@ -51,6 +54,20 @@ type EbarimtWrapperResponse = {
   message?: string;
 };
 
+export type LocalInvalidReceipt = {
+  id: string;
+  [key: string]: unknown;
+};
+
+export type EbarimtBuyer =
+  | { type: "B2C" }
+  | { type: "B2B"; tin: string; regNo?: string; name?: string | null };
+
+export type EbarimtTinLookupResult = {
+  regNo: string;
+  tin: string;
+};
+
 export type AttachEbarimtPayload = {
   status: "SUCCESS" | "FAILED";
   billId?: string | null;
@@ -81,6 +98,14 @@ function getPosApiUrl() {
   return configured.replace(/\/$/, "");
 }
 
+function getPosApiFetchUrl(path: string) {
+  if (typeof window !== "undefined") {
+    return `/api/ebarimt/posapi?path=${encodeURIComponent(path)}`;
+  }
+
+  return `${getPosApiUrl()}${path}`;
+}
+
 function getEbarimtConfig(key: keyof typeof EBARIMT_CONFIG, fallback: string) {
   const envValue = EBARIMT_CONFIG[key];
   return String(envValue || fallback).trim() || fallback;
@@ -94,16 +119,18 @@ function pickText(...values: unknown[]) {
   return null;
 }
 
-async function fetchLocalPosApi<T>(path: string, init?: RequestInit): Promise<T> {
+async function fetchLocalPosApi<T>(path: string, init?: RequestInit, timeoutMs = 10_000): Promise<T> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 10_000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${getPosApiUrl()}${path}`, {
+    const headers = new Headers(init?.headers);
+    if (init?.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+
+    const res = await fetch(getPosApiFetchUrl(path), {
       ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers || {}),
-      },
+      headers,
       signal: init?.signal || controller.signal,
       cache: "no-store",
     });
@@ -113,15 +140,126 @@ async function fetchLocalPosApi<T>(path: string, init?: RequestInit): Promise<T>
       throw new Error(raw || `eBarimt PosAPI алдаа гарлаа (HTTP ${res.status})`);
     }
 
-    return raw ? (JSON.parse(raw) as T) : ({} as T);
+    if (!raw) return {} as T;
+
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return raw as T;
+    }
   } catch (error: any) {
     if (error?.name === "AbortError") {
       throw new Error("eBarimt PosAPI timeout боллоо");
     }
     throw error;
   } finally {
-    window.clearTimeout(timer);
+    clearTimeout(timer);
   }
+}
+
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const text = value.trim();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return value;
+  }
+}
+
+function receiptIdFrom(value: Record<string, unknown>) {
+  return pickText(value.id, value.receiptId, value.billId, value.ddtd, value.saleId);
+}
+
+function normalizeInvalidReceipts(raw: unknown): LocalInvalidReceipt[] {
+  const value = parseMaybeJson(raw);
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "object" && item !== null ? (item as Record<string, unknown>) : null))
+      .map((item) => {
+        if (!item) return null;
+        const id = receiptIdFrom(item);
+        return id ? ({ ...item, id } as LocalInvalidReceipt) : null;
+      })
+      .filter((item): item is LocalInvalidReceipt => Boolean(item));
+  }
+
+  if (typeof value !== "object" || value === null) return [];
+
+  const objectValue = value as Record<string, unknown>;
+  if (typeof objectValue.Content === "string") {
+    return normalizeInvalidReceipts(objectValue.Content);
+  }
+
+  for (const key of ["data", "receipts", "list", "items"]) {
+    if (key in objectValue) {
+      const receipts = normalizeInvalidReceipts(objectValue[key]);
+      if (receipts.length > 0) return receipts;
+    }
+  }
+
+  const id = receiptIdFrom(objectValue);
+  return id ? [{ ...objectValue, id } as LocalInvalidReceipt] : [];
+}
+
+export async function getLocalEbarimtInfo(): Promise<EbarimtInfo> {
+  return fetchLocalPosApi<EbarimtInfo>("/rest/info");
+}
+
+export async function sendLocalEbarimtData(): Promise<EbarimtInfo> {
+  await fetchLocalPosApi<unknown>("/rest/sendData", undefined, 600_000);
+  return getLocalEbarimtInfo();
+}
+
+export async function lookupEbarimtTin(regNo: string): Promise<EbarimtTinLookupResult> {
+  const normalized = regNo.replace(/\D/g, "");
+  const res = await fetch(`/api/ebarimt/tin?regNo=${encodeURIComponent(normalized)}`, {
+    cache: "no-store",
+  });
+  const payload = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(payload?.message || `eBarimt TIN lookup failed (HTTP ${res.status})`);
+  }
+
+  return payload as EbarimtTinLookupResult;
+}
+
+export async function getLocalEbarimtInvalidReceipts(): Promise<LocalInvalidReceipt[]> {
+  const raw = await fetchLocalPosApi<unknown>("/rest/receipt/invalid/list");
+  return normalizeInvalidReceipts(raw);
+}
+
+export async function sendLocalEbarimtInvalidReceipt(id: string): Promise<unknown> {
+  return fetchLocalPosApi<unknown>(`/rest/receipt/invalid/send/${encodeURIComponent(id)}`);
+}
+
+export async function sendAllLocalEbarimtInvalidReceipts(): Promise<{
+  total: number;
+  sent: number;
+  failed: Array<{ id: string; error: string }>;
+  receipts: LocalInvalidReceipt[];
+}> {
+  const receipts = await getLocalEbarimtInvalidReceipts();
+  const failed: Array<{ id: string; error: string }> = [];
+  let sent = 0;
+
+  for (const receipt of receipts) {
+    try {
+      await sendLocalEbarimtInvalidReceipt(receipt.id);
+      sent += 1;
+    } catch (error: any) {
+      failed.push({
+        id: receipt.id,
+        error: error?.message || "Invalid receipt send failed",
+      });
+    }
+  }
+
+  return { total: receipts.length, sent, failed, receipts };
 }
 
 function parseReceiptResponse(raw: EbarimtWrapperResponse | EbarimtReceiptContent): EbarimtReceiptContent {
@@ -167,10 +305,16 @@ function vatAmount(total: number, explicitTax: number, vatPayer: boolean) {
   return money(total / 11);
 }
 
+function lineVatAmount(line: PosReceipt["lines"][number], total: number, vatPayer: boolean) {
+  if (line.taxType && line.taxType !== "VAT_ABLE") return 0;
+  return vatAmount(total, line.taxAmount, vatPayer);
+}
+
 export async function issueLocalEbarimtReceipt(
   receipt: PosReceipt,
   payments: SalePaymentLine[],
   _register?: RegisterConfig | null,
+  buyer: EbarimtBuyer = { type: "B2C" },
 ): Promise<AttachEbarimtPayload> {
   const info = await fetchLocalPosApi<EbarimtInfo>("/rest/info");
   const merchant = info.merchants?.[0];
@@ -189,34 +333,42 @@ export async function issueLocalEbarimtReceipt(
       name: line.name,
       barCode: numericBarcode(line.productId),
       barCodeType: "UNDEFINED",
-      classificationCode: getEbarimtConfig("CLASSIFICATION_CODE", DEFAULT_CLASSIFICATION_CODE),
-      measureUnit: "pcs",
+      classificationCode: line.classificationCode || getEbarimtConfig("CLASSIFICATION_CODE", DEFAULT_CLASSIFICATION_CODE),
+      measureUnit: line.measureUnit || "pcs",
       qty,
       unitPrice: money(totalAmount / qty),
       totalAmount,
-      totalVAT: vatAmount(totalAmount, line.taxAmount, vatPayer),
-      totalCityTax: 0,
+      totalVAT: lineVatAmount(line, totalAmount, vatPayer),
+      totalCityTax: money(line.cityTaxAmount || 0),
     };
   });
   const totalVAT = money(items.reduce((sum, item) => sum + item.totalVAT, 0));
+  const totalCityTax = money(items.reduce((sum, item) => sum + item.totalCityTax, 0));
+  const receiptTaxType =
+    vatPayer
+      ? receipt.lines.find((line) => line.taxType)?.taxType || "VAT_ABLE"
+      : "VAT_FREE";
+  const isB2B = buyer.type === "B2B";
 
   const payload = {
     totalAmount: money(receipt.grandTotal),
     totalVAT,
-    totalCityTax: 0,
+    totalCityTax,
     branchNo: getEbarimtConfig("BRANCH_NO", DEFAULT_BRANCH_NO),
     districtCode: getEbarimtConfig("DISTRICT_CODE", DEFAULT_DISTRICT_CODE),
     merchantTin,
     posNo,
-    type: "B2C_RECEIPT",
+    type: isB2B ? "B2B_RECEIPT" : "B2C_RECEIPT",
+    ...(isB2B ? { customerTin: buyer.tin } : {}),
     billIdSuffix: makeBillIdSuffix(receipt.receiptNo),
     receipts: [
       {
         totalAmount: money(receipt.grandTotal),
-        taxType: vatPayer ? "VAT_ABLE" : "VAT_FREE",
+        taxType: receiptTaxType,
         merchantTin,
+        ...(isB2B ? { customerTin: buyer.tin } : {}),
         totalVAT,
-        totalCityTax: 0,
+        totalCityTax,
         items,
       },
     ],

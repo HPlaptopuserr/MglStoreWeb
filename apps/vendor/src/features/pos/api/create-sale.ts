@@ -59,14 +59,21 @@ function buildMockReceipt(payload: SalePayload): PosReceipt {
     const lineSubTotal = line.qty * line.unitPrice;
     const lineDiscount = line.discountAmount * line.qty;
     const taxable = Math.max(0, lineSubTotal - lineDiscount);
-    const taxAmount = taxable * ((line.taxRate || 0) / 100);
+    const taxRate = line.taxType === "VAT_ABLE" ? Math.max(0, line.taxRate || 0) : 0;
+    const taxAmount = taxRate > 0 ? taxable * (taxRate / (100 + taxRate)) : 0;
     return {
       productId: line.productId,
       name: `Product ${line.productId.slice(0, 6)}`,
       qty: line.qty,
       unitPrice: line.unitPrice,
       taxAmount,
-      lineTotal: taxable + taxAmount,
+      taxType: line.taxType,
+      taxRate,
+      cityTaxRate: line.cityTaxRate,
+      classificationCode: line.classificationCode,
+      taxProductCode: line.taxProductCode,
+      measureUnit: line.measureUnit,
+      lineTotal: taxable,
     };
   });
 
@@ -76,7 +83,7 @@ function buildMockReceipt(payload: SalePayload): PosReceipt {
     (sum, line) => sum + line.discountAmount * line.qty,
     0,
   );
-  const grandTotal = subTotal + taxTotal - discountTotal;
+  const grandTotal = subTotal - discountTotal;
 
   return {
     id: `local-${Date.now()}`,

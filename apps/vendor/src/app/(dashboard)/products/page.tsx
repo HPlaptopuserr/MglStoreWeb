@@ -42,6 +42,10 @@ const EMPTY_FORM: FormState = {
   description: "",
   price: "",
   costPrice: "",
+  taxType: "VAT_ABLE",
+  cityTaxRate: "0",
+  classificationCode: "4711000",
+  taxProductCode: "",
   stock: "0",
   expiryDate: "",
   supplyType: "IN_STOCK",
@@ -139,13 +143,26 @@ export default function ProductsPage() {
       const params = new URLSearchParams({
         organizationId: orgId,
         includeExpiredInventory: "1",
+        includeInactive: "1",
       });
       const res = await authFetch(`${API}/products?${params.toString()}`);
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const raw = await res.text().catch(() => "");
+        let message = "Бараа ачаалахад алдаа гарлаа";
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            message = parsed?.message || parsed?.error || message;
+          } catch {
+            message = raw.slice(0, 180) || message;
+          }
+        }
+        throw new Error(`${message} (HTTP ${res.status})`);
+      }
       const data = await res.json();
       setProducts(Array.isArray(data) ? data : Array.isArray(data.products) ? data.products : []);
-    } catch {
-      showToast("error", "Бараа ачаалахад алдаа гарлаа");
+    } catch (error: any) {
+      showToast("error", error?.message || "Бараа ачаалахад алдаа гарлаа");
     } finally {
       setLoading(false);
     }
@@ -244,6 +261,10 @@ export default function ProductsPage() {
       description: p.description || "",
       price: String(p.price),
       costPrice: p.costPrice != null ? String(p.costPrice) : "",
+      taxType: p.taxType || "VAT_ABLE",
+      cityTaxRate: p.cityTaxRate != null ? String(p.cityTaxRate) : "0",
+      classificationCode: p.classificationCode || "4711000",
+      taxProductCode: p.taxProductCode || "",
       stock: String(p.stock),
       expiryDate: toDateInputValue(p.expiryDate),
       supplyType: p.supplyType || "IN_STOCK",
@@ -290,6 +311,11 @@ export default function ProductsPage() {
       return showToast("error", "Ирэх хоног 0-365 хооронд байх ёстой");
     }
 
+    const cityTaxRate = form.cityTaxRate.trim() ? parseFloat(form.cityTaxRate) : 0;
+    if (isNaN(cityTaxRate) || cityTaxRate < 0 || cityTaxRate > 100) {
+      return showToast("error", "Хотын татвар 0-100 хооронд байх ёстой");
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -300,6 +326,10 @@ export default function ProductsPage() {
         description: form.description.trim() || null,
         price,
         costPrice,
+        taxType: form.taxType,
+        cityTaxRate,
+        classificationCode: form.classificationCode.trim() || "4711000",
+        taxProductCode: form.taxProductCode.trim() || null,
         stock: stockNum,
         expiryDate,
         supplyType: form.supplyType,

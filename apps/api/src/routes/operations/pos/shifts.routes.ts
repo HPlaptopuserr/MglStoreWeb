@@ -1,20 +1,52 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CashDrawerEventType } from "@mgl/database";
+import {
+  prisma,
+  AuditAction,
+  InventoryReason,
+  PaymentMethod,
+  PosPaymentStatus,
+  PosQPayStatus,
+  PosActivationStatus,
+  ShiftStatus,
+  PosSaleStatus,
+  CashDrawerEventType,
+} from "@mgl/database";
 import type { Prisma } from "@mgl/database";
-import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
+import {
+  adjustStock,
+  resolveOrgWarehouse,
+} from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
-  requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
-  roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
-  parseBridgeResultStatus, parseQPaySuccess, parseOptionalDate,
-  makePushEcrReferral, pushEcrHeaders, pushEcrBaseUrl,
-  allowPosSimulation, isProdLikeEnv, bridgeSharedSecret,
-  pushEcrDefaultTerminalId, MONEY_EPSILON,
-  type AuthUser, type ApiError, type SaleLineInput, type SalePaymentLineInput,
-  type CreateSaleBody, type PushEcrPurchaseResponse,
+  requirePosUser,
+  requireAdminUser,
+  normalizePaymentMethod,
+  normalizeRegisterName,
+  roundMoney,
+  moneyMatches,
+  signPayload,
+  timingSafeEqualHex,
+  getHeaderValue,
+  parseBridgeResultStatus,
+  parseQPaySuccess,
+  parseOptionalDate,
+  makePushEcrReferral,
+  pushEcrHeaders,
+  pushEcrBaseUrl,
+  allowPosSimulation,
+  isProdLikeEnv,
+  bridgeSharedSecret,
+  pushEcrDefaultTerminalId,
+  MONEY_EPSILON,
+  type AuthUser,
+  type ApiError,
+  type SaleLineInput,
+  type SalePaymentLineInput,
+  type CreateSaleBody,
+  type PushEcrPurchaseResponse,
   toApiError,
 } from "./_shared";
 import {
@@ -59,7 +91,8 @@ const toShiftResponse = (shift: any) => ({
   openingCash: Number(shift.openingCash),
   closingCash: shift.closingCash === null ? null : Number(shift.closingCash),
   expectedCash: shift.expectedCash === null ? 0 : Number(shift.expectedCash),
-  cashDifference: shift.cashDifference === null ? null : Number(shift.cashDifference),
+  cashDifference:
+    shift.cashDifference === null ? null : Number(shift.cashDifference),
   cashCount: normalizeCashCountForResponse(shift.cashCount),
   cashCountedAt: shift.cashCountedAt?.toISOString?.() ?? null,
   note: shift.note ?? null,
@@ -84,7 +117,10 @@ const parseCashCountInput = (value: unknown) => {
         total: roundMoney(denomination * count),
       };
     })
-    .filter((item): item is { denomination: number; count: number; total: number } => Boolean(item));
+    .filter(
+      (item): item is { denomination: number; count: number; total: number } =>
+        Boolean(item),
+    );
 
   const total = roundMoney(counts.reduce((sum, item) => sum + item.total, 0));
   return { counts, total };
@@ -149,12 +185,18 @@ async function loadShiftAccountingSales(
   const cardByReceipt = new Map<string, number[]>();
   for (const attempt of cardAttempts) {
     const key = attempt.saleReference || "";
-    cardByReceipt.set(key, [...(cardByReceipt.get(key) || []), Number(attempt.amount)]);
+    cardByReceipt.set(key, [
+      ...(cardByReceipt.get(key) || []),
+      Number(attempt.amount),
+    ]);
   }
   const qpayByReceipt = new Map<string, number[]>();
   for (const invoice of qpayInvoices) {
     const key = invoice.saleReference || "";
-    qpayByReceipt.set(key, [...(qpayByReceipt.get(key) || []), Number(invoice.amount)]);
+    qpayByReceipt.set(key, [
+      ...(qpayByReceipt.get(key) || []),
+      Number(invoice.amount),
+    ]);
   }
 
   for (const sale of sales) {
@@ -167,7 +209,10 @@ async function loadShiftAccountingSales(
       qpayPayments: qpayByReceipt.get(sale.receiptNo) || [],
       creditAmount: Number(sale.creditSale?.principalAmount || 0),
     };
-    result.set(sale.shiftId, [...(result.get(sale.shiftId) || []), accountingSale]);
+    result.set(sale.shiftId, [
+      ...(result.get(sale.shiftId) || []),
+      accountingSale,
+    ]);
   }
 
   return result;
@@ -182,11 +227,15 @@ async function getCashDrawerEventTotals(
     select: { type: true, amount: true },
   });
   return events.reduce<{ paidIn: number; paidOut: number }>(
-    (summary: { paidIn: number; paidOut: number }, event: { type: CashDrawerEventType; amount: unknown }) => {
+    (
+      summary: { paidIn: number; paidOut: number },
+      event: { type: CashDrawerEventType; amount: unknown },
+    ) => {
       const amount = Number(event.amount);
       if (!Number.isFinite(amount)) return summary;
       if (event.type === CashDrawerEventType.PAID_IN) summary.paidIn += amount;
-      if (event.type === CashDrawerEventType.PAID_OUT) summary.paidOut += amount;
+      if (event.type === CashDrawerEventType.PAID_OUT)
+        summary.paidOut += amount;
       return summary;
     },
     { paidIn: 0, paidOut: 0 },
@@ -202,13 +251,19 @@ async function buildCashDrawerSummary(shift: any) {
     }),
   ]);
 
-  const cashSalesTotal = summarizeShiftSales(salesByShift.get(shift.id) || []).cashSales;
+  const cashSalesTotal = summarizeShiftSales(
+    salesByShift.get(shift.id) || [],
+  ).cashSales;
   const totals = events.reduce<{ paidIn: number; paidOut: number }>(
-    (summary: { paidIn: number; paidOut: number }, event: { type: CashDrawerEventType; amount: unknown }) => {
+    (
+      summary: { paidIn: number; paidOut: number },
+      event: { type: CashDrawerEventType; amount: unknown },
+    ) => {
       const amount = Number(event.amount);
       if (!Number.isFinite(amount)) return summary;
       if (event.type === CashDrawerEventType.PAID_IN) summary.paidIn += amount;
-      if (event.type === CashDrawerEventType.PAID_OUT) summary.paidOut += amount;
+      if (event.type === CashDrawerEventType.PAID_OUT)
+        summary.paidOut += amount;
       return summary;
     },
     { paidIn: 0, paidOut: 0 },
@@ -219,7 +274,8 @@ async function buildCashDrawerSummary(shift: any) {
     paidIn: totals.paidIn,
     paidOut: totals.paidOut,
   });
-  const countedCash = shift.closingCash === null ? null : Number(shift.closingCash);
+  const countedCash =
+    shift.closingCash === null ? null : Number(shift.closingCash);
 
   return {
     shift: toShiftResponse(shift),
@@ -230,7 +286,8 @@ async function buildCashDrawerSummary(shift: any) {
     paidOut: roundMoney(totals.paidOut),
     expectedCash,
     countedCash,
-    cashDifference: countedCash === null ? null : roundMoney(countedCash - expectedCash),
+    cashDifference:
+      countedCash === null ? null : roundMoney(countedCash - expectedCash),
     cashCount: normalizeCashCountForResponse(shift.cashCount),
   };
 }
@@ -248,7 +305,9 @@ router.post("/pos/shifts/open", async (req, res) => {
       return res.status(400).json({ message: "branchId шаардлагатай" });
     }
     if (!Number.isFinite(openingCash) || openingCash < 0) {
-      return res.status(400).json({ message: "openingCash 0 буюу түүнээс дээш байх ёстой" });
+      return res
+        .status(400)
+        .json({ message: "openingCash 0 буюу түүнээс дээш байх ёстой" });
     }
 
     const branch = await prisma.branch.findUnique({
@@ -262,77 +321,101 @@ router.post("/pos/shifts/open", async (req, res) => {
     if (registerId) {
       const register = await prisma.posRegister.findUnique({
         where: { id: registerId },
-        select: { id: true, branchId: true, organizationId: true, isActive: true, activationStatus: true },
+        select: {
+          id: true,
+          branchId: true,
+          organizationId: true,
+          isActive: true,
+          activationStatus: true,
+        },
       });
       if (!register) {
         return res.status(404).json({ message: "POS register олдсонгүй" });
       }
-      if (register.branchId !== branchId || register.organizationId !== branch.organizationId) {
-        return res.status(400).json({ message: "POS register салбартай зөрүүтэй байна" });
+      if (
+        register.branchId !== branchId ||
+        register.organizationId !== branch.organizationId
+      ) {
+        return res
+          .status(400)
+          .json({ message: "POS register салбартай зөрүүтэй байна" });
       }
-      if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
-        return res.status(403).json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
+      if (
+        !register.isActive ||
+        register.activationStatus !== PosActivationStatus.APPROVED
+      ) {
+        return res
+          .status(403)
+          .json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
       }
     }
 
     if (!isAdminActor(actor)) {
       const membership = await prisma.organizationMember.findFirst({
-        where: { userId: actor.id, organizationId: branch.organizationId, isActive: true },
+        where: {
+          userId: actor.id,
+          organizationId: branch.organizationId,
+          isActive: true,
+        },
         select: { id: true },
       });
       if (!membership) {
-        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй" });
+        return res
+          .status(403)
+          .json({ message: "Энэ байгууллагад хандах эрхгүй" });
       }
     }
 
-    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // Serialize concurrent shift-open requests for this cashier and register.
-      await tx.$queryRaw`
+    const result = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        // Serialize concurrent shift-open requests for this cashier and register.
+        await tx.$queryRaw`
         SELECT "id"
         FROM "User"
         WHERE "id" = ${actor.id}
         FOR UPDATE
       `;
-      if (registerId) {
-        await tx.$queryRaw`
+        if (registerId) {
+          await tx.$queryRaw`
           SELECT "id"
           FROM "PosRegister"
           WHERE "id" = ${registerId}
           FOR UPDATE
         `;
-      }
+        }
 
-      const existingOpen = await tx.posShift.findFirst({
-        where: {
-          status: ShiftStatus.OPEN,
-          OR: [
-            { cashierId: actor.id },
-            ...(registerId ? [{ registerId }] : []),
-          ],
-        },
-        select: { id: true, cashierId: true, registerId: true },
-      });
-      if (existingOpen) {
-        return { existingOpen, shift: null };
-      }
+        const existingOpen = await tx.posShift.findFirst({
+          where: {
+            status: ShiftStatus.OPEN,
+            OR: [
+              { cashierId: actor.id },
+              ...(registerId ? [{ registerId }] : []),
+            ],
+          },
+          select: { id: true, cashierId: true, registerId: true },
+        });
+        if (existingOpen) {
+          return { existingOpen, shift: null };
+        }
 
-      const shift = await tx.posShift.create({
-        data: {
-          organizationId: branch.organizationId,
-          branchId,
-          registerId,
-          cashierId: actor.id,
-          openingCash,
-          status: ShiftStatus.OPEN,
-        },
-        include: {
-          cashier: { select: { id: true, email: true } },
-          branch: { select: { id: true, name: true } },
-          register: { select: { id: true, name: true } },
-        },
-      });
-      return { existingOpen: null, shift };
-    });
+        const shift = await tx.posShift.create({
+          data: {
+            organizationId: branch.organizationId,
+            branchId,
+            registerId,
+            cashierId: actor.id,
+            openingCash,
+            status: ShiftStatus.OPEN,
+          },
+          include: {
+            cashier: { select: { id: true, email: true } },
+            branch: { select: { id: true, name: true } },
+            register: { select: { id: true, name: true } },
+          },
+        });
+        return { existingOpen: null, shift };
+      },
+    );
 
     if (result.existingOpen) {
       const message =
@@ -355,20 +438,32 @@ router.post("/pos/shifts/close", async (req, res) => {
     if (!actor) return;
 
     const shiftId = String(req.body.shiftId || "").trim();
-    const note = String(req.body.note || "").trim().slice(0, 500) || null;
+    const note =
+      String(req.body.note || "")
+        .trim()
+        .slice(0, 500) || null;
     let parsedCashCount: ReturnType<typeof parseCashCountInput> = null;
     try {
       parsedCashCount = parseCashCountInput(req.body.cashCount);
     } catch (error) {
-      return res.status(400).json({ message: error instanceof Error ? error.message : "cashCount буруу байна" });
+      return res
+        .status(400)
+        .json({
+          message:
+            error instanceof Error ? error.message : "cashCount буруу байна",
+        });
     }
-    const closingCash = parsedCashCount ? parsedCashCount.total : Number(req.body.closingCash);
+    const closingCash = parsedCashCount
+      ? parsedCashCount.total
+      : Number(req.body.closingCash);
 
     if (!shiftId) {
       return res.status(400).json({ message: "Ээлжийн ID шаардлагатай" });
     }
     if (!Number.isFinite(closingCash) || closingCash < 0) {
-      return res.status(400).json({ message: "closingCash 0 буюу түүнээс дээш байх ёстой" });
+      return res
+        .status(400)
+        .json({ message: "closingCash 0 буюу түүнээс дээш байх ёстой" });
     }
 
     const shiftForAccess = await prisma.posShift.findUnique({
@@ -379,64 +474,83 @@ router.post("/pos/shifts/close", async (req, res) => {
       return res.status(404).json({ message: "Ээлж олдсонгүй" });
     }
     if (shiftForAccess.cashierId !== actor.id && !isAdminActor(actor)) {
-      return res.status(403).json({ message: "Зөвхөн өөрийн ээлжийг хааж болно" });
+      return res
+        .status(403)
+        .json({ message: "Зөвхөн өөрийн ээлжийг хааж болно" });
     }
 
-    const updatedShift = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // A sale transaction locks the same row before inserting. This guarantees
-      // the closing total either includes that sale or the sale sees CLOSED.
-      await tx.$queryRaw`
+    const updatedShift = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        // A sale transaction locks the same row before inserting. This guarantees
+        // the closing total either includes that sale or the sale sees CLOSED.
+        await tx.$queryRaw`
         SELECT "id"
         FROM "PosShift"
         WHERE "id" = ${shiftId}
         FOR UPDATE
       `;
 
-      const shift = await tx.posShift.findUnique({
-        where: { id: shiftId },
-        include: {
-          cashier: { select: { id: true, email: true } },
-          branch: { select: { id: true, name: true } },
-          register: { select: { id: true, name: true } },
-        },
-      });
-      if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
-      if (shift.status !== ShiftStatus.OPEN) {
-        throw toApiError(409, "Ээлж аль хэдийн хаагдсан");
-      }
+        const shift = await tx.posShift.findUnique({
+          where: { id: shiftId },
+          include: {
+            cashier: { select: { id: true, email: true } },
+            branch: { select: { id: true, name: true } },
+            register: { select: { id: true, name: true } },
+          },
+        });
+        if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
+        if (shift.status !== ShiftStatus.OPEN) {
+          throw toApiError(409, "Ээлж аль хэдийн хаагдсан");
+        }
 
-      const [salesByShift, drawerTotals] = await Promise.all([
-        loadShiftAccountingSales(tx, [shift.id]),
-        getCashDrawerEventTotals(tx, shift.id),
-      ]);
-      const salesSummary = summarizeShiftSales(salesByShift.get(shift.id) || []);
-      const expectedCash = calculateExpectedCash({
-        openingCash: Number(shift.openingCash),
-        cashSales: salesSummary.cashSales,
-        paidIn: drawerTotals.paidIn,
-        paidOut: drawerTotals.paidOut,
-      });
-      const cashDifference = roundMoney(closingCash - expectedCash);
+        const openRestaurantTickets = await tx.restaurantTicket.count({
+          where: {
+            shiftId: shift.id,
+            status: { in: ["OPEN", "KITCHEN", "READY", "SERVED", "PAID"] },
+          },
+        });
+        if (openRestaurantTickets > 0) {
+          throw toApiError(
+            409,
+            `Энэ ээлж дээр ${openRestaurantTickets} нээлттэй эсвэл чөлөөлөөгүй рестораны ticket байна`,
+          );
+        }
 
-      return tx.posShift.update({
-        where: { id: shiftId },
-        data: {
-          status: ShiftStatus.CLOSED,
-          closingCash,
-          expectedCash,
-          cashDifference,
-          cashCount: parsedCashCount?.counts ?? undefined,
-          cashCountedAt: parsedCashCount ? new Date() : undefined,
-          note,
-          closedAt: new Date(),
-        },
-        include: {
-          cashier: { select: { id: true, email: true } },
-          branch: { select: { id: true, name: true } },
-          register: { select: { id: true, name: true } },
-        },
-      });
-    });
+        const [salesByShift, drawerTotals] = await Promise.all([
+          loadShiftAccountingSales(tx, [shift.id]),
+          getCashDrawerEventTotals(tx, shift.id),
+        ]);
+        const salesSummary = summarizeShiftSales(
+          salesByShift.get(shift.id) || [],
+        );
+        const expectedCash = calculateExpectedCash({
+          openingCash: Number(shift.openingCash),
+          cashSales: salesSummary.cashSales,
+          paidIn: drawerTotals.paidIn,
+          paidOut: drawerTotals.paidOut,
+        });
+        const cashDifference = roundMoney(closingCash - expectedCash);
+
+        return tx.posShift.update({
+          where: { id: shiftId },
+          data: {
+            status: ShiftStatus.CLOSED,
+            closingCash,
+            expectedCash,
+            cashDifference,
+            cashCount: parsedCashCount?.counts ?? undefined,
+            cashCountedAt: parsedCashCount ? new Date() : undefined,
+            note,
+            closedAt: new Date(),
+          },
+          include: {
+            cashier: { select: { id: true, email: true } },
+            branch: { select: { id: true, name: true } },
+            register: { select: { id: true, name: true } },
+          },
+        });
+      },
+    );
 
     res.status(200).json(toShiftResponse(updatedShift));
   } catch (error) {
@@ -479,7 +593,6 @@ router.get("/pos/shifts/current", async (req, res) => {
  * GET /pos/products?branchId=<uuid>
  * ─────────────────────────────────────────────────────────────────────── */
 
-
 router.get("/pos/shifts/:shiftId/drawer", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
@@ -506,13 +619,17 @@ router.get("/pos/shifts/:shiftId/drawer", async (req, res) => {
       !isAdminActor(actor) &&
       !(await hasOrgMembership(actor.id, shift.organizationId))
     ) {
-      return res.status(403).json({ message: "Энэ шургуулгын тайлан харах эрхгүй" });
+      return res
+        .status(403)
+        .json({ message: "Энэ шургуулгын тайлан харах эрхгүй" });
     }
 
     return res.json(await buildCashDrawerSummary(shift));
   } catch (error) {
     console.error("get cash drawer summary error", error);
-    return res.status(500).json({ message: "Кассын шургуулгын мэдээлэл авахад алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "Кассын шургуулгын мэдээлэл авахад алдаа гарлаа" });
   }
 });
 
@@ -522,15 +639,21 @@ router.post("/pos/shifts/drawer-events", async (req, res) => {
     if (!actor) return;
 
     const shiftId = String(req.body.shiftId || "").trim();
-    const typeRaw = String(req.body.type || "").trim().toUpperCase();
-    const note = String(req.body.note || "").trim().slice(0, 500) || null;
+    const typeRaw = String(req.body.type || "")
+      .trim()
+      .toUpperCase();
+    const note =
+      String(req.body.note || "")
+        .trim()
+        .slice(0, 500) || null;
     const type =
       typeRaw === CashDrawerEventType.PAID_IN ||
       typeRaw === CashDrawerEventType.PAID_OUT ||
       typeRaw === CashDrawerEventType.OPEN_DRAWER
         ? (typeRaw as CashDrawerEventType)
         : null;
-    const amount = type === CashDrawerEventType.OPEN_DRAWER ? 0 : Number(req.body.amount);
+    const amount =
+      type === CashDrawerEventType.OPEN_DRAWER ? 0 : Number(req.body.amount);
 
     if (!shiftId) {
       return res.status(400).json({ message: "Ээлжийн ID шаардлагатай" });
@@ -538,7 +661,11 @@ router.post("/pos/shifts/drawer-events", async (req, res) => {
     if (!type) {
       return res.status(400).json({ message: "Хөдөлгөөний төрөл буруу байна" });
     }
-    if (!Number.isFinite(amount) || amount < 0 || (type !== CashDrawerEventType.OPEN_DRAWER && amount <= 0)) {
+    if (
+      !Number.isFinite(amount) ||
+      amount < 0 ||
+      (type !== CashDrawerEventType.OPEN_DRAWER && amount <= 0)
+    ) {
       return res.status(400).json({ message: "Дүн 0-оос их байх ёстой" });
     }
 
@@ -554,14 +681,20 @@ router.post("/pos/shifts/drawer-events", async (req, res) => {
       return res.status(404).json({ message: "Ээлж олдсонгүй" });
     }
     if (shift.status !== ShiftStatus.OPEN) {
-      return res.status(409).json({ message: "Хаагдсан ээлж дээр шургуулгын хөдөлгөөн хийх боломжгүй" });
+      return res
+        .status(409)
+        .json({
+          message: "Хаагдсан ээлж дээр шургуулгын хөдөлгөөн хийх боломжгүй",
+        });
     }
     if (
       shift.cashierId !== actor.id &&
       !isAdminActor(actor) &&
       !(await hasOrgMembership(actor.id, shift.organizationId))
     ) {
-      return res.status(403).json({ message: "Энэ шургуулга дээр хөдөлгөөн хийх эрхгүй" });
+      return res
+        .status(403)
+        .json({ message: "Энэ шургуулга дээр хөдөлгөөн хийх эрхгүй" });
     }
 
     const event = await prisma.posCashDrawerEvent.create({
@@ -583,7 +716,9 @@ router.post("/pos/shifts/drawer-events", async (req, res) => {
     });
   } catch (error) {
     console.error("create cash drawer event error", error);
-    return res.status(500).json({ message: "Кассын шургуулгын хөдөлгөөн бүртгэхэд алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "Кассын шургуулгын хөдөлгөөн бүртгэхэд алдаа гарлаа" });
   }
 });
 
@@ -593,7 +728,9 @@ router.get("/pos/shifts/history", async (req, res) => {
     if (!actor) return;
 
     const branchId = String(req.query.branchId || "").trim();
-    const statusRaw = String(req.query.status || "CLOSED").trim().toUpperCase();
+    const statusRaw = String(req.query.status || "CLOSED")
+      .trim()
+      .toUpperCase();
     const status =
       statusRaw === "OPEN" || statusRaw === "CLOSED" ? statusRaw : "";
     const fromRaw = String(req.query.from || "").trim();
@@ -606,7 +743,10 @@ router.get("/pos/shifts/history", async (req, res) => {
 
     const from = fromRaw ? new Date(fromRaw) : null;
     const to = toRaw ? new Date(toRaw) : null;
-    if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) {
+    if (
+      (from && Number.isNaN(from.getTime())) ||
+      (to && Number.isNaN(to.getTime()))
+    ) {
       return res.status(400).json({ message: "from, to буруу огноо формат" });
     }
 
@@ -621,8 +761,13 @@ router.get("/pos/shifts/history", async (req, res) => {
       if (!branch) {
         return res.status(404).json({ message: "Салбар олдсонгүй" });
       }
-      if (!isAdminActor(actor) && !(await hasOrgMembership(actor.id, branch.organizationId))) {
-        return res.status(403).json({ message: "Энэ байгууллагын хаалтын түүх харах эрхгүй" });
+      if (
+        !isAdminActor(actor) &&
+        !(await hasOrgMembership(actor.id, branch.organizationId))
+      ) {
+        return res
+          .status(403)
+          .json({ message: "Энэ байгууллагын хаалтын түүх харах эрхгүй" });
       }
       where.branchId = branchId;
     } else if (!isAdminActor(actor)) {
@@ -645,7 +790,8 @@ router.get("/pos/shifts/history", async (req, res) => {
     const shifts = await prisma.posShift.findMany({
       where,
       take: limit,
-      orderBy: status === "CLOSED" ? { closedAt: "desc" } : { openedAt: "desc" },
+      orderBy:
+        status === "CLOSED" ? { closedAt: "desc" } : { openedAt: "desc" },
       include: {
         cashier: { select: { id: true, email: true } },
         branch: { select: { id: true, name: true } },
@@ -662,9 +808,15 @@ router.get("/pos/shifts/history", async (req, res) => {
           })
         : [],
     ]);
-    const drawerTotalsByShift = new Map<string, { paidIn: number; paidOut: number }>();
+    const drawerTotalsByShift = new Map<
+      string,
+      { paidIn: number; paidOut: number }
+    >();
     for (const event of drawerEvents) {
-      const totals = drawerTotalsByShift.get(event.shiftId) || { paidIn: 0, paidOut: 0 };
+      const totals = drawerTotalsByShift.get(event.shiftId) || {
+        paidIn: 0,
+        paidOut: 0,
+      };
       const amount = Number(event.amount);
       if (event.type === CashDrawerEventType.PAID_IN) totals.paidIn += amount;
       if (event.type === CashDrawerEventType.PAID_OUT) totals.paidOut += amount;
@@ -673,7 +825,10 @@ router.get("/pos/shifts/history", async (req, res) => {
 
     res.status(200).json({
       shifts: shifts.map((shift: any) => {
-        const drawerTotals = drawerTotalsByShift.get(shift.id) || { paidIn: 0, paidOut: 0 };
+        const drawerTotals = drawerTotalsByShift.get(shift.id) || {
+          paidIn: 0,
+          paidOut: 0,
+        };
         return {
           ...toShiftResponse(shift),
           ...summarizeShiftSales(salesByShift.get(shift.id) || []),
@@ -684,7 +839,9 @@ router.get("/pos/shifts/history", async (req, res) => {
     });
   } catch (error) {
     console.error("get shift history error", error);
-    res.status(500).json({ message: "Ээлжийн хаалтын түүх авахад алдаа гарлаа" });
+    res
+      .status(500)
+      .json({ message: "Ээлжийн хаалтын түүх авахад алдаа гарлаа" });
   }
 });
 

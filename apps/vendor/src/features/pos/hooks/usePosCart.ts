@@ -113,7 +113,12 @@ export function usePosCart() {
         qty: 1,
         stockQty: product.stockQty,
         unitPrice: product.price,
+        taxType: product.taxType || "VAT_ABLE",
         taxRate: product.taxRate ?? 0,
+        cityTaxRate: product.cityTaxRate ?? 0,
+        classificationCode: product.classificationCode || "4711000",
+        taxProductCode: product.taxProductCode || null,
+        measureUnit: product.measureUnit || "pcs",
         discountAmount: 0,
       },
     });

@@ -72,6 +72,8 @@ model User {
   posSales                     PosSale[]                 @relation("PosSaleCashier")
   posCreditSales               PosCreditSale[]           @relation("PosCreditSaleCashier")
   posLoyaltyTransactions       PosLoyaltyTransaction[]   @relation("PosLoyaltyCustomer")
+  openedRestaurantTickets      RestaurantTicket[]        @relation("RestaurantTicketOpenedBy")
+  sentKitchenTickets           KitchenTicket[]           @relation("KitchenTicketSentBy")
   contracts                    Contract[]
   productInteractions          ProductInteraction[]
   productInterestScores        ProductInterestScore[]
@@ -386,6 +388,9 @@ model Organization {
   posCreditCustomers           PosCreditCustomer[]
   posCreditSales               PosCreditSale[]
   posLoyaltyTransactions       PosLoyaltyTransaction[]
+  restaurantTables             RestaurantTable[]
+  restaurantTickets            RestaurantTicket[]
+  kitchenTickets               KitchenTicket[]
   contracts                    Contract[]
   productInteractions          ProductInteraction[]
   productInterestScores        ProductInterestScore[]
@@ -599,6 +604,9 @@ model Branch {
   posSales               PosSale[]
   posCreditSales         PosCreditSale[]
   posLoyaltyTransactions PosLoyaltyTransaction[]
+  restaurantTables       RestaurantTable[]
+  restaurantTickets      RestaurantTicket[]
+  kitchenTickets         KitchenTicket[]
   orderAssignments       Order[]                 @relation("OrderAssignedBranch")
   orderDispatchAttempts  OrderDispatchAttempt[]
 
@@ -701,6 +709,10 @@ model Product {
   /// Updated by POS sales and inventory operations. Do not treat as source of truth
   /// when warehouse management is active for this product.
   stock                 Int                         @default(0)
+  taxType               String                      @default("VAT_ABLE")
+  cityTaxRate           Decimal                     @default(0) @db.Decimal(5, 2)
+  classificationCode    String                      @default("4711000")
+  taxProductCode        String?
   isRestaurantMenuItem  Boolean                     @default(false)
   menuCategory          String?
   kitchenStation        String?
@@ -730,6 +742,8 @@ model Product {
   returnItems           DispatchReturnItem[]        @relation("ReturnProducts")
   productInteractions   ProductInteraction[]
   productInterestScores ProductInterestScore[]
+  restaurantTicketItems RestaurantTicketItem[]
+  kitchenTicketItems    KitchenTicketItem[]
   reels                 Reel[]
 
   @@unique([organizationId, sku])
@@ -2123,30 +2137,182 @@ enum DmType {
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Cashier shift — tracks opening/closing cash and links sales.
-model PosShift {
-  id             String          @id @default(uuid())
+model RestaurantTable {
+  id             String             @id @default(uuid())
   organizationId String
   branchId       String
-  registerId     String?
-  cashierId      String
-  status         ShiftStatus     @default(OPEN)
-  openingCash    Decimal         @db.Decimal(18, 2)
-  closingCash    Decimal?        @db.Decimal(18, 2)
-  expectedCash   Decimal?        @db.Decimal(18, 2)
-  cashDifference Decimal?        @db.Decimal(18, 2)
-  cashCount      Json?
-  cashCountedAt  DateTime?
+  code           String
+  label          String
+  zone           String             @default("Гол заал")
+  seats          Int                @default(4)
+  sortOrder      Int                @default(0)
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tickets        RestaurantTicket[]
+
+  @@unique([branchId, code])
+  @@index([organizationId])
+  @@index([branchId, isActive])
+  @@index([branchId, sortOrder])
+}
+
+model RestaurantTicket {
+  id             String                 @id @default(uuid())
+  ticketNo       String                 @unique
+  organizationId String
+  branchId       String
+  shiftId        String
+  tableId        String?
+  openedById     String
+  posSaleId      String?                @unique
+  orderMode      RestaurantOrderMode    @default(DINE_IN)
+  status         RestaurantTicketStatus @default(OPEN)
+  guestCount     Int                    @default(1)
   note           String?
-  openedAt       DateTime        @default(now())
+  openedAt       DateTime               @default(now())
+  sentAt         DateTime?
   closedAt       DateTime?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  organization   Organization    @relation(fields: [organizationId], references: [id])
-  branch         Branch          @relation(fields: [branchId], references: [id])
-  register       PosRegister?    @relation(fields: [registerId], references: [id])
-  cashier        User            @relation("PosShiftCashier", fields: [cashierId], references: [id])
-  sales          PosSale[]
-  creditSales    PosCreditSale[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch                 @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  shift          PosShift               @relation(fields: [shiftId], references: [id])
+  table          RestaurantTable?       @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  openedBy       User                   @relation("RestaurantTicketOpenedBy", fields: [openedById], references: [id])
+  posSale        PosSale?               @relation(fields: [posSaleId], references: [id], onDelete: SetNull)
+  items          RestaurantTicketItem[]
+  kitchenTickets KitchenTicket[]
+
+  @@index([organizationId, status])
+  @@index([branchId, status])
+  @@index([shiftId])
+  @@index([tableId, status])
+  @@index([openedById])
+  @@index([openedAt])
+}
+
+model RestaurantTicketItem {
+  id                 String              @id @default(uuid())
+  ticketId           String
+  productId          String
+  productName        String
+  unitPrice          Decimal             @db.Decimal(18, 2)
+  qty                Int
+  sentQty            Int                 @default(0)
+  note               String?
+  kitchenStation     String?
+  preparationMinutes Int?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  ticket             RestaurantTicket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  product            Product             @relation(fields: [productId], references: [id])
+  kitchenItems       KitchenTicketItem[]
+
+  @@unique([ticketId, productId])
+  @@index([productId])
+}
+
+model KitchenTicket {
+  id                 String              @id @default(uuid())
+  kitchenTicketNo    String              @unique
+  organizationId     String
+  branchId           String
+  restaurantTicketId String
+  sentById           String
+  status             KitchenTicketStatus @default(NEW)
+  sentAt             DateTime            @default(now())
+  startedAt          DateTime?
+  readyAt            DateTime?
+  servedAt           DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch             Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  restaurantTicket   RestaurantTicket    @relation(fields: [restaurantTicketId], references: [id], onDelete: Cascade)
+  sentBy             User                @relation("KitchenTicketSentBy", fields: [sentById], references: [id])
+  items              KitchenTicketItem[]
+
+  @@index([organizationId, status])
+  @@index([branchId, status])
+  @@index([restaurantTicketId])
+  @@index([sentById])
+  @@index([sentAt])
+}
+
+model KitchenTicketItem {
+  id                     String               @id @default(uuid())
+  kitchenTicketId        String
+  restaurantTicketItemId String
+  productId              String
+  productName            String
+  qty                    Int
+  note                   String?
+  kitchenStation         String?
+  preparationMinutes     Int?
+  createdAt              DateTime             @default(now())
+  kitchenTicket          KitchenTicket        @relation(fields: [kitchenTicketId], references: [id], onDelete: Cascade)
+  restaurantTicketItem   RestaurantTicketItem @relation(fields: [restaurantTicketItemId], references: [id])
+  product                Product              @relation(fields: [productId], references: [id])
+
+  @@index([kitchenTicketId])
+  @@index([restaurantTicketItemId])
+  @@index([productId])
+  @@index([kitchenStation])
+}
+
+enum RestaurantOrderMode {
+  DINE_IN
+  TO_GO
+  DELIVERY
+}
+
+enum RestaurantTicketStatus {
+  OPEN
+  KITCHEN
+  READY
+  SERVED
+  PAID
+  CLOSED
+  CANCELLED
+}
+
+enum KitchenTicketStatus {
+  NEW
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+model PosShift {
+  id                String             @id @default(uuid())
+  organizationId    String
+  branchId          String
+  registerId        String?
+  cashierId         String
+  status            ShiftStatus        @default(OPEN)
+  openingCash       Decimal            @db.Decimal(18, 2)
+  closingCash       Decimal?           @db.Decimal(18, 2)
+  expectedCash      Decimal?           @db.Decimal(18, 2)
+  cashDifference    Decimal?           @db.Decimal(18, 2)
+  cashCount         Json?
+  cashCountedAt     DateTime?
+  note              String?
+  openedAt          DateTime           @default(now())
+  closedAt          DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  organization      Organization       @relation(fields: [organizationId], references: [id])
+  branch            Branch             @relation(fields: [branchId], references: [id])
+  register          PosRegister?       @relation(fields: [registerId], references: [id])
+  cashier           User               @relation("PosShiftCashier", fields: [cashierId], references: [id])
+  sales             PosSale[]
+  creditSales       PosCreditSale[]
+  restaurantTickets RestaurantTicket[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -2215,6 +2381,7 @@ model PosSale {
   lines            PosSaleLine[]
   loyalty          PosLoyaltyTransaction?
   creditSale       PosCreditSale?
+  restaurantTicket RestaurantTicket?
 
   @@index([organizationId])
   @@index([branchId])
@@ -2329,18 +2496,26 @@ model PosCreditSale {
 
 /// Individual line item within a POS sale.
 model PosSaleLine {
-  id          String  @id @default(uuid())
-  saleId      String
-  productId   String
-  productName String
-  productSku  String?
-  qty         Int
-  unitPrice   Decimal @db.Decimal(18, 2)
-  taxAmount   Decimal @db.Decimal(18, 2)
-  discount    Decimal @db.Decimal(18, 2)
-  lineTotal   Decimal @db.Decimal(18, 2)
-  sale        PosSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  product     Product @relation(fields: [productId], references: [id])
+  id                 String  @id @default(uuid())
+  saleId             String
+  productId          String
+  productName        String
+  productSku         String?
+  productBarcode     String?
+  qty                Int
+  unitPrice          Decimal @db.Decimal(18, 2)
+  taxAmount          Decimal @db.Decimal(18, 2)
+  taxType            String  @default("VAT_ABLE")
+  taxRate            Decimal @default(10) @db.Decimal(5, 2)
+  cityTaxRate        Decimal @default(0) @db.Decimal(5, 2)
+  cityTaxAmount      Decimal @default(0) @db.Decimal(18, 2)
+  classificationCode String  @default("4711000")
+  taxProductCode     String?
+  measureUnit        String  @default("pcs")
+  discount           Decimal @db.Decimal(18, 2)
+  lineTotal          Decimal @db.Decimal(18, 2)
+  sale               PosSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product            Product @relation(fields: [productId], references: [id])
 
   @@index([saleId])
   @@index([productId])

@@ -1,0 +1,257 @@
+import type { PosReceipt, PosShift } from "@mgl/types";
+import { API, authFetch } from "@/lib/api";
+
+export type RestaurantPosRegister = {
+  id: string;
+  name: string;
+  label: string | null;
+  branchId: string;
+  organizationId: string;
+  isActive: boolean;
+  cardEnabled: boolean;
+  qpayEnabled: boolean;
+  branch: {
+    id: string;
+    name: string;
+  };
+};
+
+export type RestaurantPosProduct = {
+  id: string;
+  sku: string;
+  barcode: string | null;
+  name: string;
+  imageUrl: string | null;
+  price: number;
+  stockQty: number;
+  taxType: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
+  taxRate: number;
+  cityTaxRate: number;
+  classificationCode: string;
+  taxProductCode: string | null;
+  measureUnit: string;
+  isActive: boolean;
+  isRestaurantMenuItem: boolean;
+  menuCategory:
+    | "HOT"
+    | "COLD"
+    | "SOUP"
+    | "GRILL"
+    | "APPETIZER"
+    | "DESSERT"
+    | "DRINK"
+    | null;
+  kitchenStation: "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR" | null;
+  preparationMinutes: number | null;
+};
+
+export type RestaurantTicketLine = {
+  id: string;
+  productId: string;
+  name: string;
+  price: number;
+  qty: number;
+  sentQty: number;
+  note: string;
+  kitchenStation: string | null;
+  preparationMinutes: number | null;
+};
+
+export type RestaurantTicket = {
+  id: string;
+  ticketNo: string;
+  organizationId: string;
+  branchId: string;
+  shiftId: string;
+  tableId: string | null;
+  orderMode: "DINE_IN" | "TO_GO" | "DELIVERY";
+  status: "OPEN" | "KITCHEN" | "READY" | "SERVED" | "PAID" | "CLOSED";
+  guestCount: number;
+  note: string | null;
+  openedAt: string;
+  sentAt: string | null;
+  closedAt: string | null;
+  total: number;
+  unsentCount: number;
+  items: RestaurantTicketLine[];
+  kitchenTickets: Array<{
+    id: string;
+    kitchenTicketNo: string;
+    status: "NEW" | "PREPARING" | "READY" | "SERVED" | "CANCELLED";
+    sentAt: string;
+  }>;
+};
+
+export type RestaurantDiningTable = {
+  id: string;
+  code: string;
+  label: string;
+  zone: string;
+  seats: number;
+  status: "FREE" | "OPEN" | "KITCHEN" | "PAID";
+  total: number;
+  currentTicket: RestaurantTicket | null;
+};
+
+type CreateRestaurantCashSalePayload = {
+  shiftId: string;
+  branchId: string;
+  registerId: string;
+  organizationId: string;
+  clientSaleId: string;
+  restaurantTicketId: string;
+  total: number;
+  note: string;
+  lines: Array<{
+    productId: string;
+    qty: number;
+    unitPrice: number;
+    discountAmount: number;
+    taxRate: number;
+  }>;
+};
+
+async function readApiResponse<T>(response: Response): Promise<T> {
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      payload && typeof payload === "object" && "message" in payload
+        ? String(payload.message)
+        : `POS хүсэлт амжилтгүй (HTTP ${response.status})`;
+    throw new Error(message);
+  }
+  return payload as T;
+}
+
+export async function getRestaurantPosRegisters() {
+  const response = await authFetch(`${API}/pos/registers/mine`, {
+    cache: "no-store",
+  });
+  return readApiResponse<RestaurantPosRegister[]>(response);
+}
+
+export async function getCurrentRestaurantPosShift() {
+  const response = await authFetch(`${API}/pos/shifts/current`, {
+    cache: "no-store",
+  });
+  return readApiResponse<PosShift | null>(response);
+}
+
+export async function openRestaurantPosShift(input: {
+  branchId: string;
+  registerId: string;
+  openingCash: number;
+}) {
+  const response = await authFetch(`${API}/pos/shifts/open`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<PosShift>(response);
+}
+
+export async function closeRestaurantPosShift(input: {
+  shiftId: string;
+  closingCash: number;
+  note?: string;
+}) {
+  const response = await authFetch(`${API}/pos/shifts/close`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<PosShift>(response);
+}
+
+export async function getRestaurantPosProducts(branchId: string) {
+  const params = new URLSearchParams({
+    branchId,
+    restaurantMenu: "1",
+  });
+  const response = await authFetch(`${API}/pos/products?${params.toString()}`, {
+    cache: "no-store",
+  });
+  return readApiResponse<RestaurantPosProduct[]>(response);
+}
+
+export async function getRestaurantDiningTables(branchId: string) {
+  const params = new URLSearchParams({ branchId });
+  const response = await authFetch(
+    `${API}/restaurant/pos/tables?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantDiningTable[]>(response);
+}
+
+export async function bootstrapRestaurantDiningTables(branchId: string) {
+  const response = await authFetch(`${API}/restaurant/pos/tables/bootstrap`, {
+    method: "POST",
+    body: JSON.stringify({ branchId }),
+  });
+  return readApiResponse<{ ok: true }>(response);
+}
+
+export async function saveRestaurantTicket(input: {
+  branchId: string;
+  shiftId: string;
+  tableId: string;
+  orderMode: "DINE_IN" | "TO_GO" | "DELIVERY";
+  note?: string;
+  lines: Array<{ productId: string; qty: number; note?: string }>;
+}) {
+  const response = await authFetch(`${API}/restaurant/pos/tickets`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<RestaurantTicket | null>(response);
+}
+
+export async function sendRestaurantTicketToKitchen(ticketId: string) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/tickets/${encodeURIComponent(ticketId)}/send-kitchen`,
+    { method: "POST" },
+  );
+  return readApiResponse<{
+    ticket: RestaurantTicket;
+    kitchenTicket: {
+      id: string;
+      kitchenTicketNo: string;
+      status: string;
+      sentAt: string;
+    };
+  }>(response);
+}
+
+export async function clearRestaurantDiningTable(input: {
+  branchId: string;
+  tableId: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/tables/${encodeURIComponent(input.tableId)}/clear`,
+    {
+      method: "POST",
+      body: JSON.stringify({ branchId: input.branchId }),
+    },
+  );
+  return readApiResponse<RestaurantDiningTable>(response);
+}
+
+export async function createRestaurantCashSale(
+  input: CreateRestaurantCashSalePayload,
+) {
+  const response = await authFetch(`${API}/pos/sales`, {
+    method: "POST",
+    body: JSON.stringify({
+      shiftId: input.shiftId,
+      branchId: input.branchId,
+      registerId: input.registerId,
+      organizationId: input.organizationId,
+      restaurantTicketId: input.restaurantTicketId,
+      clientSaleId: input.clientSaleId,
+      paymentMethod: "CASH",
+      paymentBreakdown: [{ method: "CASH", amount: input.total }],
+      loyalty: { mode: "NONE" },
+      lines: input.lines,
+      note: input.note,
+    }),
+  });
+  return readApiResponse<PosReceipt>(response);
+}

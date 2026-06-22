@@ -79,7 +79,12 @@ export interface PosProduct {
   price: number;
   stockQty: number;
   expiryDate?: string | null;
+  taxType?: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
   taxRate?: number;
+  cityTaxRate?: number;
+  classificationCode?: string;
+  taxProductCode?: string | null;
+  measureUnit?: string;
   isActive: boolean;
   categoryName?: string | null;
 }
@@ -91,7 +96,12 @@ export interface CartLine {
   unitPrice: number;
   qty: number;
   stockQty: number;
+  taxType?: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
   taxRate: number;
+  cityTaxRate?: number;
+  classificationCode?: string;
+  taxProductCode?: string | null;
+  measureUnit?: string;
   discountAmount: number;
 }
 
@@ -171,7 +181,12 @@ export interface SalePayload {
     qty: number;
     unitPrice: number;
     discountAmount: number;
+    taxType?: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
     taxRate: number;
+    cityTaxRate?: number;
+    classificationCode?: string;
+    taxProductCode?: string | null;
+    measureUnit?: string;
   }>;
   note?: string;
 }
@@ -280,6 +295,13 @@ export interface ReceiptLine {
   qty: number;
   unitPrice: number;
   taxAmount: number;
+  taxType?: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
+  taxRate?: number;
+  cityTaxRate?: number;
+  cityTaxAmount?: number;
+  classificationCode?: string;
+  taxProductCode?: string | null;
+  measureUnit?: string;
   lineTotal: number;
 }
 

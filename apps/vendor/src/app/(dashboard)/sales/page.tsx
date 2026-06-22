@@ -11,6 +11,7 @@ import {
   ReceiptText,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
+import { sendAllLocalEbarimtInvalidReceipts, sendLocalEbarimtData } from "@/features/pos/api/ebarimt";
 
 /* ── Types ─────────────────────────────────────────────── */
 type SaleLine = {
@@ -72,6 +73,8 @@ export default function SalesHistoryPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ebarimtSyncing, setEbarimtSyncing] = useState(false);
+  const [ebarimtSyncMessage, setEbarimtSyncMessage] = useState<string | null>(null);
 
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
@@ -111,6 +114,26 @@ export default function SalesHistoryPage() {
 
   useEffect(() => { load(1); }, [load]);
 
+  const syncEbarimt = async () => {
+    setEbarimtSyncing(true);
+    setEbarimtSyncMessage(null);
+    try {
+      const invalidSummary = await sendAllLocalEbarimtInvalidReceipts();
+      const info = await sendLocalEbarimtData();
+      const lastSentDate = info.lastSentDate || "-";
+
+      setEbarimtSyncMessage(
+        invalidSummary.total > 0
+          ? `eBarimt invalid sent ${invalidSummary.sent}/${invalidSummary.total}, failed ${invalidSummary.failed.length}. lastSentDate: ${lastSentDate}`
+          : `eBarimt invalid list empty; sendData done. lastSentDate: ${lastSentDate}`,
+      );
+    } catch (e: any) {
+      setEbarimtSyncMessage(e?.message || "eBarimt sync failed");
+    } finally {
+      setEbarimtSyncing(false);
+    }
+  };
+
   const filtered = search.trim()
     ? sales.filter(
         (s) =>
@@ -137,6 +160,14 @@ export default function SalesHistoryPage() {
             <p className="text-sm text-slate-500">POS гүйлгээний бүртгэл</p>
           </div>
         </div>
+        <button
+          onClick={syncEbarimt}
+          disabled={ebarimtSyncing}
+          className="flex items-center gap-2 rounded-xl border border-emerald-200 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${ebarimtSyncing ? "animate-spin" : ""}`} />
+          eBarimt SendData
+        </button>
         <button
           onClick={() => load(1)}
           disabled={loading}
@@ -203,6 +234,12 @@ export default function SalesHistoryPage() {
       {/* Error */}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {ebarimtSyncMessage && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          {ebarimtSyncMessage}
+        </div>
       )}
 
       {/* Table */}
