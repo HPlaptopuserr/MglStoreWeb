@@ -4,6 +4,7 @@ import {
   prisma,
   AuditAction,
   InventoryReason,
+  KitchenTicketStatus,
   MPointLedgerType,
   PaymentMethod,
   PosPaymentStatus,
@@ -97,6 +98,15 @@ const createRedeemSessionToken = () =>
 
 const buildLoyaltyRedeemQrPayload = (token: string) =>
   `mglstore://loyalty/redeem?token=${encodeURIComponent(token)}`;
+
+const generateKitchenTicketNumber = () => {
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const suffix = `${Date.now().toString().slice(-6)}${crypto
+    .randomBytes(2)
+    .toString("hex")
+    .toUpperCase()}`;
+  return `KT-${date}-${suffix}`;
+};
 
 type PosLoyaltyRedeemSessionRecord = {
   id: string;
@@ -1016,6 +1026,10 @@ router.post("/pos/sales", async (req, res) => {
           });
         }
 
+        let restaurantTicketForSale: Prisma.RestaurantTicketGetPayload<{
+          include: { items: true };
+        }> | null = null;
+
         if (restaurantTicketId) {
           const restaurantTicket = await tx.restaurantTicket.findUnique({
             where: { id: restaurantTicketId },
@@ -1048,6 +1062,19 @@ router.post("/pos/sales", async (req, res) => {
             );
           }
 
+          const hasUnsentItems = restaurantTicket.items.some(
+            (item) => item.qty > item.sentQty,
+          );
+          if (
+            restaurantTicket.orderMode === "DINE_IN" &&
+            hasUnsentItems
+          ) {
+            throw toApiError(
+              409,
+              "Заалны захиалгын бүх хоолыг төлбөр авахаас өмнө гал тогоо руу илгээнэ үү",
+            );
+          }
+
           const ticketQtyByProduct = new Map(
             restaurantTicket.items.map((item) => [item.productId, item.qty]),
           );
@@ -1062,6 +1089,7 @@ router.post("/pos/sales", async (req, res) => {
               "Төлбөрийн бараанууд рестораны ticket-тэй таарахгүй байна",
             );
           }
+          restaurantTicketForSale = restaurantTicket;
         }
 
         await tx.posSaleIdempotency.create({
@@ -1383,7 +1411,61 @@ router.post("/pos/sales", async (req, res) => {
           select: { id: true },
         });
 
-        if (restaurantTicketId) {
+        if (restaurantTicketId && restaurantTicketForSale) {
+          const unsentItems = restaurantTicketForSale.items
+            .map((item) => ({ item, qty: item.qty - item.sentQty }))
+            .filter(({ qty }) => qty > 0);
+
+          if (
+            restaurantTicketForSale.orderMode !== "DINE_IN" &&
+            unsentItems.length > 0
+          ) {
+            const itemsByStation = new Map<string, typeof unsentItems>();
+            for (const unsentItem of unsentItems) {
+              const station =
+                unsentItem.item.kitchenStation || "HOT_KITCHEN";
+              const stationItems = itemsByStation.get(station) || [];
+              stationItems.push(unsentItem);
+              itemsByStation.set(station, stationItems);
+            }
+
+            await Promise.all(
+              [...itemsByStation.values()].map((stationItems) =>
+                tx.kitchenTicket.create({
+                  data: {
+                    kitchenTicketNo: generateKitchenTicketNumber(),
+                    organizationId: restaurantTicketForSale!.organizationId,
+                    branchId: restaurantTicketForSale!.branchId,
+                    restaurantTicketId: restaurantTicketForSale!.id,
+                    sentById: actor.id,
+                    status: KitchenTicketStatus.NEW,
+                    items: {
+                      create: stationItems.map(({ item, qty }) => ({
+                        restaurantTicketItemId: item.id,
+                        productId: item.productId,
+                        productName: item.productName,
+                        qty,
+                        note: item.note,
+                        kitchenStation:
+                          item.kitchenStation || "HOT_KITCHEN",
+                        preparationMinutes: item.preparationMinutes,
+                      })),
+                    },
+                  },
+                }),
+              ),
+            );
+
+            await Promise.all(
+              unsentItems.map(({ item }) =>
+                tx.restaurantTicketItem.update({
+                  where: { id: item.id },
+                  data: { sentQty: item.qty },
+                }),
+              ),
+            );
+          }
+
           await tx.restaurantTicket.update({
             where: { id: restaurantTicketId },
             data: {

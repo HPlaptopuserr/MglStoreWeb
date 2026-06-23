@@ -2,6 +2,7 @@ import {
   BarChart3,
   Boxes,
   Building2,
+  ChefHat,
   ClipboardList,
   Clapperboard,
   UtensilsCrossed,
@@ -41,6 +42,11 @@ export function getOrgNavItems(features: OrgFeatureState): OrgNavItem[] {
       label: "Ресторан касс",
       href: "/dashboard/restaurant-pos",
       icon: UtensilsCrossed,
+    },
+    {
+      label: "Гал тогооны дэлгэц",
+      href: "/dashboard/kitchen-display",
+      icon: ChefHat,
     },
     {
       label: "Захиалгын бараа",

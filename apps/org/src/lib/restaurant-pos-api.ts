@@ -88,9 +88,49 @@ export type RestaurantDiningTable = {
   label: string;
   zone: string;
   seats: number;
-  status: "FREE" | "OPEN" | "KITCHEN" | "PAID";
+  status: "FREE" | "OPEN" | "KITCHEN" | "READY" | "PAID";
   total: number;
   currentTicket: RestaurantTicket | null;
+};
+
+export type KitchenTicketStatus =
+  | "NEW"
+  | "PREPARING"
+  | "READY"
+  | "SERVED"
+  | "CANCELLED";
+
+export type RestaurantKitchenTicket = {
+  id: string;
+  kitchenTicketNo: string;
+  organizationId: string;
+  branchId: string;
+  status: KitchenTicketStatus;
+  sentAt: string;
+  startedAt: string | null;
+  readyAt: string | null;
+  servedAt: string | null;
+  restaurantTicket: {
+    id: string;
+    ticketNo: string;
+    orderMode: "DINE_IN" | "TO_GO" | "DELIVERY";
+    status: RestaurantTicket["status"];
+    table: {
+      id: string;
+      code: string;
+      label: string;
+      zone: string;
+    } | null;
+  };
+  items: Array<{
+    id: string;
+    productId: string;
+    name: string;
+    qty: number;
+    note: string;
+    kitchenStation: string | null;
+    preparationMinutes: number | null;
+  }>;
 };
 
 type CreateRestaurantCashSalePayload = {
@@ -217,7 +257,40 @@ export async function sendRestaurantTicketToKitchen(ticketId: string) {
       status: string;
       sentAt: string;
     };
+    kitchenTickets: Array<{
+      id: string;
+      kitchenTicketNo: string;
+      status: string;
+      sentAt: string;
+    }>;
   }>(response);
+}
+
+export async function getRestaurantKitchenTickets(branchId: string) {
+  const params = new URLSearchParams({ branchId });
+  const response = await authFetch(
+    `${API}/restaurant/pos/kitchen-tickets?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantKitchenTicket[]>(response);
+}
+
+export async function updateRestaurantKitchenTicketStatus(input: {
+  branchId: string;
+  kitchenTicketId: string;
+  status: "PREPARING" | "READY" | "SERVED";
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/kitchen-tickets/${encodeURIComponent(input.kitchenTicketId)}/status`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        branchId: input.branchId,
+        status: input.status,
+      }),
+    },
+  );
+  return readApiResponse<RestaurantKitchenTicket>(response);
 }
 
 export async function clearRestaurantDiningTable(input: {

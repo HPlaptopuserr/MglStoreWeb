@@ -55,7 +55,13 @@ type MenuCategory =
   | "drink";
 type MenuCategoryFilter = "all" | MenuCategory;
 type DishTone = "coral" | "amber" | "mint" | "lime" | "orange" | "sky";
-type TableStatus = "FREE" | "OPEN" | "KITCHEN" | "PAID" | "RESERVED";
+type TableStatus =
+  | "FREE"
+  | "OPEN"
+  | "KITCHEN"
+  | "READY"
+  | "PAID"
+  | "RESERVED";
 type PaymentMethod = "CASH" | "CARD" | "QPAY";
 
 type MenuItem = {
@@ -116,6 +122,7 @@ const tableStatusCopy: Record<TableStatus, string> = {
   FREE: "Сул",
   OPEN: "Нээлттэй",
   KITCHEN: "Гал тогоонд",
+  READY: "Бэлэн",
   PAID: "Төлсөн",
   RESERVED: "Захиалсан",
 };
@@ -124,6 +131,7 @@ const tableStatusStyles: Record<TableStatus, string> = {
   FREE: "border-white/10 bg-white/[0.03] text-slate-300",
   OPEN: "border-sky-400/70 bg-sky-400/10 text-sky-200",
   KITCHEN: "border-amber-300/70 bg-amber-300/10 text-amber-200",
+  READY: "border-emerald-300/70 bg-emerald-300/10 text-emerald-200",
   PAID: "border-emerald-300/70 bg-emerald-300/10 text-emerald-200",
   RESERVED: "border-rose-300/70 bg-rose-300/10 text-rose-200",
 };
@@ -572,6 +580,14 @@ export function RestaurantPosScreen() {
   }, [loadTables]);
 
   useEffect(() => {
+    if (!selectedRegister?.branchId) return;
+    const refreshTimer = window.setInterval(() => {
+      void loadTables({ silent: true });
+    }, 5_000);
+    return () => window.clearInterval(refreshTimer);
+  }, [loadTables, selectedRegister?.branchId]);
+
+  useEffect(() => {
     if (!selectedTable.id) {
       setTicketLines([]);
       return;
@@ -608,6 +624,7 @@ export function RestaurantPosScreen() {
     paymentOptions[0];
   const SelectedPaymentIcon = selectedPayment.icon;
   const selectedTicketPaid = selectedTable.currentTicket?.status === "PAID";
+  const hasSentItems = ticketLines.some((line) => line.sentQty > 0);
   const hasUnsentItems = ticketLines.some((line) => line.qty > line.sentQty);
   const canCheckout =
     Boolean(selectedRegister && shiftMatchesRegister) &&
@@ -619,8 +636,10 @@ export function RestaurantPosScreen() {
     !checkoutSubmitting &&
     !ticketSaving &&
     !kitchenSubmitting &&
-    !clearSubmitting;
+    !clearSubmitting &&
+    (orderMode !== "DINE_IN" || !hasUnsentItems);
   const canSendKitchen =
+    orderMode === "DINE_IN" &&
     Boolean(selectedTable.currentTicket || ticketLines.length > 0) &&
     Boolean(shiftMatchesRegister) &&
     !selectedTicketPaid &&
@@ -643,6 +662,8 @@ export function RestaurantPosScreen() {
               status: ticket
                 ? ticket.status === "OPEN"
                   ? "OPEN"
+                  : ticket.status === "READY"
+                    ? "READY"
                   : ticket.status === "PAID"
                     ? "PAID"
                     : "KITCHEN"
@@ -744,6 +765,12 @@ export function RestaurantPosScreen() {
 
   const handleOrderModeChange = async (mode: OrderMode) => {
     if (selectedTicketPaid) return;
+    if (mode !== orderMode && hasSentItems) {
+      setCheckoutError(
+        "Гал тогоо руу илгээсэн захиалгын төрлийг солих боломжгүй.",
+      );
+      return;
+    }
     setOrderMode(mode);
     if (ticketLines.length === 0 && !selectedTable.currentTicket) return;
     try {
@@ -754,7 +781,7 @@ export function RestaurantPosScreen() {
   };
 
   const handleSendKitchen = async () => {
-    if (!canSendKitchen) return;
+    if (!canSendKitchen || orderMode !== "DINE_IN") return;
     setKitchenSubmitting(true);
     setCheckoutError("");
     setNotice("");
@@ -766,9 +793,14 @@ export function RestaurantPosScreen() {
       const result = await sendRestaurantTicketToKitchen(savedTicket.id);
       updateTableTicket(selectedTable.id, result.ticket);
       setTicketLines(mapTicketLines(result.ticket, menuItems));
-      setNotice(
-        `Гал тогоо руу илгээлээ: ${result.kitchenTicket.kitchenTicketNo}`,
-      );
+      const kitchenTicketNumbers = (
+        result.kitchenTickets?.length
+          ? result.kitchenTickets
+          : [result.kitchenTicket]
+      )
+        .map((ticket) => ticket.kitchenTicketNo)
+        .join(", ");
+      setNotice(`Гал тогоо руу илгээлээ: ${kitchenTicketNumbers}`);
     } catch (error) {
       setCheckoutError(
         error instanceof Error
@@ -866,6 +898,12 @@ export function RestaurantPosScreen() {
       setCheckoutError("Зарим хоолны үлдэгдэл хүрэлцэхгүй байна.");
       return;
     }
+    if (orderMode === "DINE_IN" && hasUnsentItems) {
+      setCheckoutError(
+        "Заалны захиалгын бүх хоолыг төлбөр авахаас өмнө гал тогоо руу илгээнэ үү.",
+      );
+      return;
+    }
 
     setCheckoutSubmitting(true);
     setCheckoutError("");
@@ -912,7 +950,9 @@ export function RestaurantPosScreen() {
       updateTableTicket(selectedTable.id, paidTicket);
       setTicketLines(mapTicketLines(paidTicket, menuItems));
       setNotice(
-        `Борлуулалт амжилттай: ${receipt.receiptNo}. Ширээ "Төлсөн" төлөвтэй хэвээр байна — үйлчлүүлэгч гарсны дараа ширээг чөлөөлнө үү.`,
+        orderMode === "DINE_IN"
+          ? `Борлуулалт амжилттай: ${receipt.receiptNo}. Ширээ "Төлсөн" төлөвтэй хэвээр байна — үйлчлүүлэгч гарсны дараа ширээг чөлөөлнө үү.`
+          : `Борлуулалт амжилттай: ${receipt.receiptNo}. Захиалга гал тогоо руу автоматаар илгээгдлээ.`,
       );
       printReceipt(receipt);
       await Promise.all([loadMenu(), loadTables()]);
@@ -1068,6 +1108,13 @@ export function RestaurantPosScreen() {
             </div>
 
             <div className="flex w-full max-w-3xl items-center justify-end gap-2 max-lg:flex-wrap">
+              <Link
+                href="/dashboard/kitchen-display"
+                className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-amber-300/40 px-4 text-sm font-black text-amber-100 transition hover:bg-amber-300 hover:text-slate-950"
+              >
+                <ChefHat className="h-4 w-4" />
+                Гал тогоо
+              </Link>
               <select
                 value={selectedRegisterId}
                 onChange={(event) => handleRegisterChange(event.target.value)}
@@ -1382,7 +1429,12 @@ export function RestaurantPosScreen() {
                   key={mode}
                   type="button"
                   onClick={() => void handleOrderModeChange(mode)}
-                  disabled={ticketSaving || kitchenSubmitting || selectedTicketPaid}
+                  disabled={
+                    ticketSaving ||
+                    kitchenSubmitting ||
+                    selectedTicketPaid ||
+                    (hasSentItems && mode !== orderMode)
+                  }
                   className={`h-10 rounded-lg border text-sm font-bold transition ${
                     orderMode === mode
                       ? "border-sky-400 bg-sky-400 text-white"
@@ -1394,29 +1446,36 @@ export function RestaurantPosScreen() {
               ))}
             </div>
 
-            <button
-              type="button"
-              onClick={() => void handleSendKitchen()}
-              disabled={!canSendKitchen}
-              title={
-                hasUnsentItems
-                  ? "Шинэ хоолнуудыг гал тогоо руу илгээх"
-                  : selectedTicketPaid
-                    ? "Төлөгдсөн ticket-ийг гал тогоо руу илгээх боломжгүй"
-                    : "Гал тогоо руу илгээх шинэ хоол байхгүй"
-              }
-              className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-emerald-300/40 bg-emerald-300/10 text-sm font-black text-emerald-200 transition hover:border-emerald-300 hover:bg-emerald-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
-            >
-              {kitchenSubmitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ChefHat className="h-4 w-4" />
-              )}
-              {kitchenSubmitting
-                ? "Гал тогоо руу илгээж байна..."
-                : "Гал тогоо руу илгээх"}
-              <Send className="h-4 w-4" />
-            </button>
+            {orderMode === "DINE_IN" ? (
+              <button
+                type="button"
+                onClick={() => void handleSendKitchen()}
+                disabled={!canSendKitchen}
+                title={
+                  hasUnsentItems
+                    ? "Шинэ хоолнуудыг гал тогоо руу илгээх"
+                    : selectedTicketPaid
+                      ? "Төлөгдсөн ticket-ийг гал тогоо руу илгээх боломжгүй"
+                      : "Гал тогоо руу илгээх шинэ хоол байхгүй"
+                }
+                className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-emerald-300/40 bg-emerald-300/10 text-sm font-black text-emerald-200 transition hover:border-emerald-300 hover:bg-emerald-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+              >
+                {kitchenSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ChefHat className="h-4 w-4" />
+                )}
+                {kitchenSubmitting
+                  ? "Гал тогоо руу илгээж байна..."
+                  : "Гал тогоо руу илгээх"}
+                <Send className="h-4 w-4" />
+              </button>
+            ) : (
+              <div className="mt-4 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 py-2.5 text-xs font-bold leading-5 text-sky-100">
+                Төлбөр амжилттай бүртгэгдсэний дараа захиалга гал тогоо руу
+                автоматаар илгээгдэнэ.
+              </div>
+            )}
 
             <div className="mt-4 grid grid-cols-[1fr_70px_74px] border-b border-white/10 pb-3 text-sm font-bold text-slate-200">
               <span>Item</span>
@@ -1614,8 +1673,9 @@ export function RestaurantPosScreen() {
             {selectedTicketPaid ? (
               <div className="mt-3 rounded-xl border border-emerald-300/30 bg-emerald-300/10 p-3">
                 <p className="text-xs font-bold leading-5 text-emerald-100">
-                  Төлбөр авсан ч үйлчлүүлэгч ширээн дээр сууж байгаа гэж үзнэ.
-                  Гарсны дараа ширээг чөлөөлнө.
+                  {orderMode === "DINE_IN"
+                    ? "Төлбөр авсан ч үйлчлүүлэгч ширээн дээр сууж байгаа гэж үзнэ. Гарсны дараа ширээг чөлөөлнө."
+                    : "Төлбөр бүртгэгдэж, захиалга гал тогоо руу илгээгдсэн. Захиалгыг хүлээлгэн өгсний дараа энэ байрыг чөлөөлнө."}
                 </p>
                 <button
                   type="button"
@@ -1632,21 +1692,28 @@ export function RestaurantPosScreen() {
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => void handleCashCheckout()}
-                disabled={!canCheckout}
-                className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-sky-400 text-sm font-bold text-white shadow-lg shadow-sky-500/20 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
-              >
-                {checkoutSubmitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <SelectedPaymentIcon className="h-4 w-4" />
-                )}
-                {checkoutSubmitting
-                  ? "Борлуулалт бүртгэж байна..."
-                  : selectedPayment.action}
-              </button>
+              <div className="mt-3">
+                {orderMode === "DINE_IN" && hasUnsentItems ? (
+                  <p className="mb-2 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-bold leading-5 text-amber-100">
+                    Төлбөр авахаас өмнө бүх хоолыг гал тогоо руу илгээнэ үү.
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void handleCashCheckout()}
+                  disabled={!canCheckout}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-sky-400 text-sm font-bold text-white shadow-lg shadow-sky-500/20 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
+                >
+                  {checkoutSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <SelectedPaymentIcon className="h-4 w-4" />
+                  )}
+                  {checkoutSubmitting
+                    ? "Борлуулалт бүртгэж байна..."
+                    : selectedPayment.action}
+                </button>
+              </div>
             )}
           </div>
         </aside>

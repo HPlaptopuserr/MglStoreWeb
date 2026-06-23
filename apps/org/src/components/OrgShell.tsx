@@ -16,11 +16,13 @@ export default function OrgShell({ children }: { children: ReactNode }) {
   const { ready, user, logout } = useOrgSession();
   const features = useOrgFeatures(user?.organizationId);
   const navItems = useMemo(() => getOrgNavItems(features), [features]);
-  const isRestaurantPos = pathname.startsWith("/dashboard/restaurant-pos");
+  const isRestaurantWorkspace =
+    pathname.startsWith("/dashboard/restaurant-pos") ||
+    pathname.startsWith("/dashboard/kitchen-display");
 
   if (!ready || !user) return <OrgShellLoading />;
 
-  if (isRestaurantPos) {
+  if (isRestaurantWorkspace) {
     return (
       <OrgProvider value={{ user, features, logout }}>
         <main className="h-screen overflow-hidden bg-[#191b28] text-slate-100">

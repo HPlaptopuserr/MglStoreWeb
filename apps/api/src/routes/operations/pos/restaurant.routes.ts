@@ -24,6 +24,12 @@ const OCCUPIED_TICKET_STATUSES: RestaurantTicketStatus[] = [
   RestaurantTicketStatus.PAID,
 ];
 
+const ACTIVE_KITCHEN_TICKET_STATUSES: KitchenTicketStatus[] = [
+  KitchenTicketStatus.NEW,
+  KitchenTicketStatus.PREPARING,
+  KitchenTicketStatus.READY,
+];
+
 const DEFAULT_TABLES = [
   { code: "A1", label: "A1", zone: "Гол заал", seats: 4, sortOrder: 10 },
   { code: "A2", label: "A2", zone: "Гол заал", seats: 2, sortOrder: 20 },
@@ -107,8 +113,29 @@ const ticketInclude = {
   },
 };
 
+const kitchenTicketInclude = {
+  restaurantTicket: {
+    select: {
+      id: true,
+      ticketNo: true,
+      orderMode: true,
+      status: true,
+      table: {
+        select: { id: true, code: true, label: true, zone: true },
+      },
+    },
+  },
+  items: {
+    orderBy: { createdAt: "asc" as const },
+  },
+};
+
 type TicketWithDetails = Prisma.RestaurantTicketGetPayload<{
   include: typeof ticketInclude;
+}>;
+
+type KitchenTicketWithDetails = Prisma.KitchenTicketGetPayload<{
+  include: typeof kitchenTicketInclude;
 }>;
 
 function mapTicket(ticket: TicketWithDetails) {
@@ -166,8 +193,39 @@ function mapTicket(ticket: TicketWithDetails) {
 function mapTableStatus(ticket: ReturnType<typeof mapTicket> | null) {
   if (!ticket) return "FREE";
   if (ticket.status === RestaurantTicketStatus.OPEN) return "OPEN";
+  if (ticket.status === RestaurantTicketStatus.READY) return "READY";
   if (ticket.status === RestaurantTicketStatus.PAID) return "PAID";
   return "KITCHEN";
+}
+
+function mapKitchenTicket(ticket: KitchenTicketWithDetails) {
+  return {
+    id: ticket.id,
+    kitchenTicketNo: ticket.kitchenTicketNo,
+    organizationId: ticket.organizationId,
+    branchId: ticket.branchId,
+    status: ticket.status,
+    sentAt: ticket.sentAt.toISOString(),
+    startedAt: ticket.startedAt?.toISOString() ?? null,
+    readyAt: ticket.readyAt?.toISOString() ?? null,
+    servedAt: ticket.servedAt?.toISOString() ?? null,
+    restaurantTicket: {
+      id: ticket.restaurantTicket.id,
+      ticketNo: ticket.restaurantTicket.ticketNo,
+      orderMode: ticket.restaurantTicket.orderMode,
+      status: ticket.restaurantTicket.status,
+      table: ticket.restaurantTicket.table,
+    },
+    items: ticket.items.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      name: item.productName,
+      qty: item.qty,
+      note: item.note || "",
+      kitchenStation: item.kitchenStation,
+      preparationMinutes: item.preparationMinutes,
+    })),
+  };
 }
 
 async function loadTicket(tx: Prisma.TransactionClient, ticketId: string) {
@@ -176,6 +234,189 @@ async function loadTicket(tx: Prisma.TransactionClient, ticketId: string) {
     include: ticketInclude,
   });
 }
+
+router.get("/restaurant/pos/kitchen-tickets", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const branchId = String(req.query.branchId || "").trim();
+    if (!branchId) {
+      return res.status(400).json({ message: "branchId шаардлагатай" });
+    }
+    const access = await requireBranchAccess(actor, branchId);
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    const tickets = await prisma.kitchenTicket.findMany({
+      where: {
+        branchId,
+        organizationId: access.branch.organizationId,
+        status: { in: ACTIVE_KITCHEN_TICKET_STATUSES },
+      },
+      orderBy: [{ sentAt: "asc" }, { kitchenTicketNo: "asc" }],
+      take: 100,
+      include: kitchenTicketInclude,
+    });
+
+    return res.json(tickets.map(mapKitchenTicket));
+  } catch (error) {
+    console.error("get kitchen tickets error", error);
+    return res
+      .status(500)
+      .json({ message: "Гал тогооны захиалга авахад алдаа гарлаа" });
+  }
+});
+
+router.patch("/restaurant/pos/kitchen-tickets/:id/status", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const kitchenTicketId = String(req.params.id || "").trim();
+    const branchId = String(req.body?.branchId || "").trim();
+    const nextStatus = String(req.body?.status || "")
+      .trim()
+      .toUpperCase() as KitchenTicketStatus;
+
+    if (!kitchenTicketId || !branchId) {
+      return res
+        .status(400)
+        .json({ message: "branchId болон kitchenTicketId шаардлагатай" });
+    }
+    const allowedNextStatuses: KitchenTicketStatus[] = [
+      KitchenTicketStatus.PREPARING,
+      KitchenTicketStatus.READY,
+      KitchenTicketStatus.SERVED,
+    ];
+    if (!allowedNextStatuses.includes(nextStatus)) {
+      return res.status(400).json({ message: "Гал тогооны төлөв буруу байна" });
+    }
+
+    const access = await requireBranchAccess(actor, branchId);
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    const updated = await prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "KitchenTicket"
+          WHERE "id" = ${kitchenTicketId}
+          FOR UPDATE
+        `;
+
+        const current = await tx.kitchenTicket.findFirst({
+          where: {
+            id: kitchenTicketId,
+            branchId,
+            organizationId: access.branch.organizationId,
+          },
+          select: {
+            id: true,
+            status: true,
+            restaurantTicketId: true,
+            startedAt: true,
+          },
+        });
+        if (!current) {
+          throw Object.assign(new Error("Гал тогооны ticket олдсонгүй"), {
+            status: 404,
+          });
+        }
+
+        const expectedNext =
+          current.status === KitchenTicketStatus.NEW
+            ? KitchenTicketStatus.PREPARING
+            : current.status === KitchenTicketStatus.PREPARING
+              ? KitchenTicketStatus.READY
+              : current.status === KitchenTicketStatus.READY
+                ? KitchenTicketStatus.SERVED
+                : null;
+        if (current.status !== nextStatus && expectedNext !== nextStatus) {
+          throw Object.assign(
+            new Error(
+              `Ticket-ийн төлөвийг ${current.status}-оос ${nextStatus} болгох боломжгүй`,
+            ),
+            { status: 409 },
+          );
+        }
+
+        const now = new Date();
+        await tx.kitchenTicket.update({
+          where: { id: current.id },
+          data: {
+            status: nextStatus,
+            startedAt:
+              nextStatus === KitchenTicketStatus.PREPARING
+                ? current.startedAt || now
+                : undefined,
+            readyAt:
+              nextStatus === KitchenTicketStatus.READY ? now : undefined,
+            servedAt:
+              nextStatus === KitchenTicketStatus.SERVED ? now : undefined,
+          },
+        });
+
+        const siblingTickets = await tx.kitchenTicket.findMany({
+          where: { restaurantTicketId: current.restaurantTicketId },
+          select: { status: true },
+        });
+        const activeSiblings = siblingTickets.filter(
+          (ticket) => ticket.status !== KitchenTicketStatus.CANCELLED,
+        );
+        const restaurantStatus =
+          activeSiblings.length > 0 &&
+          activeSiblings.every(
+            (ticket) => ticket.status === KitchenTicketStatus.SERVED,
+          )
+            ? RestaurantTicketStatus.SERVED
+            : activeSiblings.length > 0 &&
+                activeSiblings.every(
+                  (ticket) =>
+                    ticket.status === KitchenTicketStatus.READY ||
+                    ticket.status === KitchenTicketStatus.SERVED,
+                )
+              ? RestaurantTicketStatus.READY
+              : RestaurantTicketStatus.KITCHEN;
+
+        await tx.restaurantTicket.updateMany({
+          where: {
+            id: current.restaurantTicketId,
+            status: { in: EDITABLE_TICKET_STATUSES },
+          },
+          data: { status: restaurantStatus },
+        });
+
+        return tx.kitchenTicket.findUnique({
+          where: { id: current.id },
+          include: kitchenTicketInclude,
+        });
+      },
+      { isolationLevel: "Serializable" },
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: "Гал тогооны ticket олдсонгүй" });
+    }
+    return res.json(mapKitchenTicket(updated));
+  } catch (error) {
+    const known = error as Error & { status?: number };
+    if (known.status) {
+      return res.status(known.status).json({ message: known.message });
+    }
+    console.error("update kitchen ticket status error", error);
+    return res
+      .status(500)
+      .json({ message: "Гал тогооны төлөв шинэчлэхэд алдаа гарлаа" });
+  }
+});
 
 router.get("/restaurant/pos/tables", async (req, res) => {
   try {
@@ -576,6 +817,14 @@ router.post("/restaurant/pos/tickets/:id/send-kitchen", async (req, res) => {
             status: 409,
           });
         }
+        if (ticket.orderMode !== RestaurantOrderMode.DINE_IN) {
+          throw Object.assign(
+            new Error(
+              "Авч явах болон хүргэлтийн захиалга төлбөр амжилттай болсны дараа автоматаар гал тогоо руу илгээгдэнэ",
+            ),
+            { status: 409 },
+          );
+        }
         const activeShift = await tx.posShift.findUnique({
           where: { id: ticket.shiftId },
           select: { status: true, cashierId: true },
@@ -601,28 +850,40 @@ router.post("/restaurant/pos/tickets/:id/send-kitchen", async (req, res) => {
           );
         }
 
-        const kitchenTicket = await tx.kitchenTicket.create({
-          data: {
-            kitchenTicketNo: generateNumber("KT"),
-            organizationId: ticket.organizationId,
-            branchId: ticket.branchId,
-            restaurantTicketId: ticket.id,
-            sentById: actor.id,
-            status: KitchenTicketStatus.NEW,
-            items: {
-              create: unsentItems.map(({ item, qty }) => ({
-                restaurantTicketItemId: item.id,
-                productId: item.productId,
-                productName: item.productName,
-                qty,
-                note: item.note,
-                kitchenStation: item.kitchenStation,
-                preparationMinutes: item.preparationMinutes,
-              })),
-            },
-          },
-          include: { items: true },
-        });
+        const itemsByStation = new Map<string, typeof unsentItems>();
+        for (const unsentItem of unsentItems) {
+          const station = unsentItem.item.kitchenStation || "HOT_KITCHEN";
+          const stationItems = itemsByStation.get(station) || [];
+          stationItems.push(unsentItem);
+          itemsByStation.set(station, stationItems);
+        }
+
+        const kitchenTickets = await Promise.all(
+          [...itemsByStation.values()].map((stationItems) =>
+            tx.kitchenTicket.create({
+              data: {
+                kitchenTicketNo: generateNumber("KT"),
+                organizationId: ticket.organizationId,
+                branchId: ticket.branchId,
+                restaurantTicketId: ticket.id,
+                sentById: actor.id,
+                status: KitchenTicketStatus.NEW,
+                items: {
+                  create: stationItems.map(({ item, qty }) => ({
+                    restaurantTicketItemId: item.id,
+                    productId: item.productId,
+                    productName: item.productName,
+                    qty,
+                    note: item.note,
+                    kitchenStation: item.kitchenStation || "HOT_KITCHEN",
+                    preparationMinutes: item.preparationMinutes,
+                  })),
+                },
+              },
+              include: { items: true },
+            }),
+          ),
+        );
 
         await Promise.all(
           unsentItems.map(({ item }) =>
@@ -642,29 +903,32 @@ router.post("/restaurant/pos/tickets/:id/send-kitchen", async (req, res) => {
 
         return {
           ticket: await loadTicket(tx, ticket.id),
-          kitchenTicket,
+          kitchenTickets,
         };
       },
       { isolationLevel: "Serializable" },
     );
 
+    const kitchenTickets = result.kitchenTickets.map((kitchenTicket) => ({
+      id: kitchenTicket.id,
+      kitchenTicketNo: kitchenTicket.kitchenTicketNo,
+      status: kitchenTicket.status,
+      sentAt: kitchenTicket.sentAt.toISOString(),
+      items: kitchenTicket.items.map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        name: item.productName,
+        qty: item.qty,
+        note: item.note || "",
+        kitchenStation: item.kitchenStation,
+        preparationMinutes: item.preparationMinutes,
+      })),
+    }));
+
     return res.status(201).json({
       ticket: mapTicket(result.ticket!),
-      kitchenTicket: {
-        id: result.kitchenTicket.id,
-        kitchenTicketNo: result.kitchenTicket.kitchenTicketNo,
-        status: result.kitchenTicket.status,
-        sentAt: result.kitchenTicket.sentAt.toISOString(),
-        items: result.kitchenTicket.items.map((item) => ({
-          id: item.id,
-          productId: item.productId,
-          name: item.productName,
-          qty: item.qty,
-          note: item.note || "",
-          kitchenStation: item.kitchenStation,
-          preparationMinutes: item.preparationMinutes,
-        })),
-      },
+      kitchenTicket: kitchenTickets[0],
+      kitchenTickets,
     });
   } catch (error) {
     const known = error as Error & { status?: number };
