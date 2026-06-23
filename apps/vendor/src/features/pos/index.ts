@@ -8,6 +8,7 @@ export * from "./api/get-receipts";
 export * from "./api/get-pos-reports";
 export * from "./api/cash-drawer";
 export * from "./api/payments";
+export * from "./api/loyalty";
 export * from "./api/void-sale";
 export * from "./api/ebarimt";
 

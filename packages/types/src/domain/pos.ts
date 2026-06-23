@@ -172,6 +172,7 @@ export interface SalePayload {
     mode: "EARN" | "REDEEM" | "NONE";
     phone?: string;
     redeemPoints?: number;
+    redeemSessionId?: string;
   };
   totalPaid?: number;
   remaining?: number;

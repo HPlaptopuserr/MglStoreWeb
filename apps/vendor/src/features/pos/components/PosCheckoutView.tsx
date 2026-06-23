@@ -15,6 +15,8 @@ import {
   QrCode,
   Gift,
   Search,
+  RefreshCw,
+  CheckCircle2,
 } from "lucide-react";
 import type { CartLine, CartTotals, PosCreditBorrower, SaleCreditPaymentMeta } from "../types/pos.types";
 import type { PaymentMethod } from "../constants/payment-methods";
@@ -43,6 +45,11 @@ type Props = {
   loyalty: CheckoutLoyaltyState;
   onLoyaltyChange: (next: CheckoutLoyaltyState) => void;
   onLookupLoyalty: () => void;
+  loyaltyRedeemSession?: CheckoutLoyaltyRedeemSession | null;
+  loyaltyRedeemLoading?: boolean;
+  onRequestLoyaltyRedeemQr: (redeemPoints: number) => void | Promise<void>;
+  onRefreshLoyaltyRedeemSession: () => void | Promise<void>;
+  onClearLoyaltyRedeemSession: () => void;
   creditBorrowers?: PosCreditBorrower[];
 };
 
@@ -77,6 +84,20 @@ export type CheckoutLoyaltyState = {
   earnRate: number;
   membershipBadge: "NONE" | "STANDARD" | "MEMBER";
   redeemPoints: number;
+};
+
+export type CheckoutLoyaltyRedeemSession = {
+  id: string;
+  token: string;
+  qrPayload: string;
+  status: "PENDING" | "CONFIRMED" | "CONSUMED" | "EXPIRED" | "CANCELLED";
+  phone: string;
+  customerName?: string | null;
+  balance: number;
+  requestedPoints: number;
+  saleTotal: number;
+  expiresAt: string;
+  confirmedAt?: string | null;
 };
 
 const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
@@ -118,6 +139,11 @@ export function PosCheckoutView({
   loyalty,
   onLoyaltyChange,
   onLookupLoyalty,
+  loyaltyRedeemSession,
+  loyaltyRedeemLoading = false,
+  onRequestLoyaltyRedeemQr,
+  onRefreshLoyaltyRedeemSession,
+  onClearLoyaltyRedeemSession,
   creditBorrowers = [],
 }: Props) {
   const [enteredAmount, setEnteredAmount] = useState("");
@@ -136,12 +162,15 @@ export function PosCheckoutView({
     ? Math.min(parsedAmount, Math.max(0, remaining))
     : Math.max(0, remaining);
   const previewRemaining = Math.max(0, remaining - paymentAmount);
-  const estimatedEarnPoints = Math.max(0, Math.floor(totals.grandTotal * loyalty.earnRate));
   const maxRedeemPoints = Math.max(0, Math.min(loyalty.balance, totals.grandTotal));
   const effectiveRedeemPoints =
     loyalty.mode === "REDEEM"
       ? Math.max(0, Math.min(maxRedeemPoints, Math.floor(Number(loyalty.redeemPoints) || 0)))
       : 0;
+  const estimatedEarnPoints = Math.max(
+    0,
+    Math.floor(Math.max(0, totals.grandTotal - effectiveRedeemPoints) * loyalty.earnRate),
+  );
   const projectedBalance =
     loyalty.mode === "EARN"
       ? loyalty.balance + estimatedEarnPoints
@@ -195,7 +224,7 @@ export function PosCheckoutView({
   };
 
   const continuePendingPayment = () => {
-    const amount = pendingPaymentAmount || paymentAmount;
+    const amount = loyalty.mode === "REDEEM" ? paymentAmount : pendingPaymentAmount || paymentAmount;
     setLoyaltyPromptSeen(true);
     setLoyaltyPanelOpen(false);
     setPendingPaymentAmount(0);
@@ -620,6 +649,13 @@ export function PosCheckoutView({
                 onLoyaltyChange={onLoyaltyChange}
                 onLookupLoyalty={onLookupLoyalty}
                 onContinue={continuePendingPayment}
+                loyaltyRedeemSession={loyaltyRedeemSession}
+                loyaltyRedeemLoading={loyaltyRedeemLoading}
+                onRequestLoyaltyRedeemQr={onRequestLoyaltyRedeemQr}
+                onRefreshLoyaltyRedeemSession={onRefreshLoyaltyRedeemSession}
+                onClearLoyaltyRedeemSession={onClearLoyaltyRedeemSession}
+                statusMessage={statusMessage}
+                statusTone={statusTone}
                 disabled={disabled}
                 estimatedEarnPoints={estimatedEarnPoints}
                 maxRedeemPoints={maxRedeemPoints}
@@ -690,26 +726,46 @@ function LoyaltyPanel({
   effectiveRedeemPoints,
   estimatedEarnPoints,
   loyalty,
+  loyaltyRedeemLoading,
+  loyaltyRedeemSession,
   maxRedeemPoints,
   onContinue,
+  onClearLoyaltyRedeemSession,
   onLookupLoyalty,
   onLoyaltyChange,
+  onRefreshLoyaltyRedeemSession,
+  onRequestLoyaltyRedeemQr,
   projectedBalance,
+  statusMessage,
+  statusTone = "idle",
 }: {
   disabled?: boolean;
   effectiveRedeemPoints: number;
   estimatedEarnPoints: number;
   loyalty: CheckoutLoyaltyState;
+  loyaltyRedeemLoading: boolean;
+  loyaltyRedeemSession?: CheckoutLoyaltyRedeemSession | null;
   maxRedeemPoints: number;
   onContinue: () => void;
+  onClearLoyaltyRedeemSession: () => void;
   onLookupLoyalty: () => void;
   onLoyaltyChange: (next: CheckoutLoyaltyState) => void;
+  onRefreshLoyaltyRedeemSession: () => void | Promise<void>;
+  onRequestLoyaltyRedeemQr: (redeemPoints: number) => void | Promise<void>;
   projectedBalance: number;
+  statusMessage?: string;
+  statusTone?: "idle" | "success" | "not-found";
 }) {
   const requiresPhone = loyalty.mode !== "NONE";
   const phoneReady = loyalty.phone.replace(/\D/g, "").length >= 6;
+  const redeemConfirmed =
+    loyalty.mode !== "REDEEM" ||
+    (loyaltyRedeemSession?.status === "CONFIRMED" &&
+      loyaltyRedeemSession.requestedPoints === effectiveRedeemPoints);
   const canContinue =
-    !disabled && !loyalty.lookupLoading && (!requiresPhone || (phoneReady && loyalty.found));
+    !disabled &&
+    !loyalty.lookupLoading &&
+    (!requiresPhone || (phoneReady && loyalty.found && redeemConfirmed));
 
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 max-[760px]:p-3">
@@ -721,7 +777,7 @@ function LoyaltyPanel({
           <div className="min-w-0">
             <p className="truncate text-lg font-black text-white max-[760px]:text-base">M Point урамшуулал</p>
             <p className="line-clamp-1 text-sm font-semibold text-zinc-500 max-[760px]:text-xs">
-              2% буцаан олголт, гишүүнчлэлтэй бол өндөр rate-д бэлэн
+              {(loyalty.earnRate * 100).toLocaleString("mn-MN", { maximumFractionDigits: 2 })}% буцаан олголт
             </p>
           </div>
         </div>
@@ -739,7 +795,8 @@ function LoyaltyPanel({
       <div className="mt-5 grid gap-3 min-[760px]:grid-cols-[minmax(0,1fr)_148px]">
         <input
           value={loyalty.phone}
-          onChange={(event) =>
+          onChange={(event) => {
+            onClearLoyaltyRedeemSession();
             onLoyaltyChange({
               ...loyalty,
               phone: event.target.value.replace(/\D/g, "").slice(0, 12),
@@ -749,8 +806,8 @@ function LoyaltyPanel({
               balance: 0,
               membershipBadge: "NONE",
               redeemPoints: 0,
-            })
-          }
+            });
+          }}
           placeholder="Хэрэглэгчийн утас"
           className="h-12 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-4 text-base font-bold text-white outline-none transition focus:border-amber-400 max-[760px]:h-11 max-[760px]:text-sm"
         />
@@ -774,13 +831,24 @@ function LoyaltyPanel({
           <button
             key={item.key}
             type="button"
-            onClick={() =>
+            onClick={() => {
+              const nextMode = item.key as CheckoutLoyaltyState["mode"];
+              const nextRedeemPoints =
+                nextMode === "REDEEM"
+                  ? Math.max(0, Math.min(maxRedeemPoints, loyalty.redeemPoints || maxRedeemPoints))
+                  : 0;
+              if (nextMode !== "REDEEM") {
+                onClearLoyaltyRedeemSession();
+              }
               onLoyaltyChange({
                 ...loyalty,
-                mode: item.key as CheckoutLoyaltyState["mode"],
-                redeemPoints: item.key === "REDEEM" ? loyalty.redeemPoints : 0,
-              })
-            }
+                mode: nextMode,
+                redeemPoints: nextRedeemPoints,
+              });
+              if (nextMode === "REDEEM" && loyalty.found && nextRedeemPoints > 0) {
+                void onRequestLoyaltyRedeemQr(nextRedeemPoints);
+              }
+            }}
             className={`truncate rounded-lg px-3 py-3 transition max-[760px]:px-2 max-[760px]:py-2 ${
               loyalty.mode === item.key ? "bg-amber-500 text-black" : "hover:text-zinc-200"
             }`}
@@ -831,23 +899,119 @@ function LoyaltyPanel({
         <div className="mt-4 grid gap-2 min-[760px]:grid-cols-[1fr_auto]">
           <input
             value={loyalty.redeemPoints || ""}
-            onChange={(event) =>
+            onChange={(event) => {
+              onClearLoyaltyRedeemSession();
               onLoyaltyChange({
                 ...loyalty,
                 redeemPoints: Math.max(0, Math.min(maxRedeemPoints, Math.floor(Number(event.target.value) || 0))),
-              })
-            }
+              });
+            }}
             placeholder="Хасуулах M Point"
             className="h-12 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-4 text-base font-bold text-white outline-none transition focus:border-amber-400 max-[760px]:h-11 max-[760px]:text-sm"
           />
           <button
             type="button"
-            onClick={() => onLoyaltyChange({ ...loyalty, redeemPoints: maxRedeemPoints })}
+            onClick={() => {
+              onClearLoyaltyRedeemSession();
+              onLoyaltyChange({ ...loyalty, redeemPoints: maxRedeemPoints });
+            }}
             disabled={maxRedeemPoints <= 0}
             className="h-12 rounded-xl border border-zinc-700 px-5 text-sm font-black text-zinc-300 hover:border-amber-400 disabled:opacity-40 max-[760px]:h-11 max-[760px]:text-xs"
           >
             Бүгд
           </button>
+        </div>
+      )}
+
+      {loyalty.mode === "REDEEM" && (
+        <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <div className="flex flex-col gap-4 min-[760px]:flex-row min-[760px]:items-center">
+            {loyaltyRedeemSession?.qrPayload ? (
+              <div className="flex h-44 w-44 shrink-0 items-center justify-center rounded-xl bg-white p-3">
+                <QRCodeSVG
+                  value={loyaltyRedeemSession.qrPayload}
+                  size={156}
+                  level="M"
+                  bgColor="#ffffff"
+                  fgColor="#000000"
+                  includeMargin
+                />
+              </div>
+            ) : (
+              <div className="flex h-44 w-44 shrink-0 items-center justify-center rounded-xl border border-dashed border-zinc-700 bg-zinc-950 text-center text-xs font-semibold text-zinc-500">
+                QR үүсгээгүй
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-black text-white">M Point app баталгаажуулалт</p>
+                {loyaltyRedeemSession?.status === "CONFIRMED" && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs font-black text-emerald-300">
+                    <CheckCircle2 size={14} />
+                    Баталгаажсан
+                  </span>
+                )}
+                {loyaltyRedeemSession?.status === "PENDING" && (
+                  <span className="rounded-full bg-amber-400/15 px-2.5 py-1 text-xs font-black text-amber-200">
+                    App уншуулж байна
+                  </span>
+                )}
+                {loyaltyRedeemSession &&
+                  ["EXPIRED", "CANCELLED", "CONSUMED"].includes(loyaltyRedeemSession.status) && (
+                    <span className="rounded-full bg-rose-400/15 px-2.5 py-1 text-xs font-black text-rose-200">
+                      Дахин QR үүсгэнэ
+                    </span>
+                  )}
+              </div>
+              {statusMessage && (
+                <div
+                  className={`mt-3 rounded-xl border px-3 py-2 text-xs font-bold ${
+                    statusTone === "success"
+                      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                      : statusTone === "not-found"
+                        ? "border-rose-400/30 bg-rose-400/10 text-rose-200"
+                        : "border-zinc-700 bg-zinc-950 text-zinc-300"
+                  }`}
+                >
+                  {statusMessage}
+                </div>
+              )}
+              <p className="mt-2 text-sm font-semibold leading-5 text-zinc-400">
+                Хэрэглэгч MGL app-аараа QR уншуулаад {effectiveRedeemPoints.toLocaleString("mn-MN")} M Point ашиглахыг батална.
+              </p>
+              {loyaltyRedeemSession?.expiresAt && (
+                <p className="mt-2 text-xs font-semibold text-zinc-500">
+                  Дуусах: {new Date(loyaltyRedeemSession.expiresAt).toLocaleTimeString("mn-MN", { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              )}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void onRequestLoyaltyRedeemQr(effectiveRedeemPoints)}
+                  disabled={
+                    disabled ||
+                    loyaltyRedeemLoading ||
+                    !loyalty.found ||
+                    effectiveRedeemPoints <= 0 ||
+                    loyaltyRedeemSession?.status === "CONFIRMED"
+                  }
+                  className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-black text-black transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <QrCode size={15} />
+                  {loyaltyRedeemLoading ? "QR үүсгэж байна..." : "QR үүсгэх"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onRefreshLoyaltyRedeemSession()}
+                  disabled={disabled || loyaltyRedeemLoading || !loyaltyRedeemSession}
+                  className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 px-4 py-2.5 text-xs font-black text-zinc-200 transition hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <RefreshCw size={15} />
+                  Төлөв шалгах
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

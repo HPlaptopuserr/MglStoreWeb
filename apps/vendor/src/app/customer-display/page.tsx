@@ -8,6 +8,7 @@ import {
   PosCustomerDisplay,
   type CartLine,
   type CartTotals,
+  type CheckoutLoyaltyRedeemSession,
   type CustomerDisplayThemeId,
   isCustomerDisplayThemeId,
 } from "@/features/pos";
@@ -26,6 +27,7 @@ type CustomerPayload = {
     qrImage: string;
     expiresAt: string;
   } | null;
+  loyaltyRedeemSession?: CheckoutLoyaltyRedeemSession | null;
   customerSuccess?: {
     text: string;
     amount: number;
@@ -55,6 +57,7 @@ export default function CustomerDisplayPage() {
     totals: EMPTY_TOTALS,
     displayTheme: "white",
     qpayModal: null,
+    loyaltyRedeemSession: null,
     customerSuccess: null,
     ts: Date.now(),
   });
@@ -191,7 +194,73 @@ export default function CustomerDisplayPage() {
         </div>
       )}
 
-      {!payload.qpayModal?.open && payload.customerSuccess && (
+      {!payload.qpayModal?.open && payload.loyaltyRedeemSession?.qrPayload && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 p-8 backdrop-blur-md">
+          <div className="grid w-full max-w-5xl grid-cols-[minmax(0,1fr)_360px] gap-8 rounded-[2rem] border border-amber-300/30 bg-white p-8 shadow-2xl">
+            <div className="flex flex-col justify-between rounded-3xl bg-slate-950 p-8 text-white">
+              <div>
+                <p className="text-sm font-black uppercase text-amber-400">
+                  M Point ашиглах
+                </p>
+                <h2 className="mt-4 text-5xl font-black leading-tight">
+                  MGL app-аар QR уншуулна уу
+                </h2>
+                <p className="mt-4 max-w-md text-lg font-medium leading-relaxed text-white/65">
+                  Оноо ашиглах хүсэлтийг апп дотроо баталгаажуулсны дараа касс
+                  төлбөрийг үргэлжлүүлнэ.
+                </p>
+              </div>
+
+              <div className="mt-8 rounded-3xl border border-white/10 bg-white/[0.06] p-6">
+                <p className="text-xs font-black uppercase text-white/45">
+                  Ашиглах оноо
+                </p>
+                <p className="mt-2 break-words text-6xl font-black leading-none text-amber-400">
+                  {payload.loyaltyRedeemSession.requestedPoints.toLocaleString("mn-MN")} M
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col justify-center">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                <QRCodeSVG
+                  value={payload.loyaltyRedeemSession.qrPayload}
+                  size={300}
+                  level="M"
+                  includeMargin
+                  className="mx-auto rounded-2xl bg-white"
+                />
+              </div>
+
+              <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 text-center">
+                {payload.loyaltyRedeemSession.status === "CONFIRMED" ? (
+                  <div className="flex items-center justify-center gap-2 text-emerald-600">
+                    <CheckCircle2 className="h-6 w-6" />
+                    <p className="text-xl font-black">Баталгаажсан</p>
+                  </div>
+                ) : (
+                  <p className="text-lg font-black text-slate-950">
+                    Апп баталгаажуулалт хүлээж байна
+                  </p>
+                )}
+                <p className="mt-2 text-sm font-bold text-slate-500">
+                  Дуусах:{" "}
+                  {new Date(
+                    payload.loyaltyRedeemSession.expiresAt,
+                  ).toLocaleTimeString("mn-MN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!payload.qpayModal?.open &&
+        !payload.loyaltyRedeemSession?.qrPayload &&
+        payload.customerSuccess && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-emerald-950/85 p-8 text-white backdrop-blur-md">
           <div className="flex w-full max-w-3xl flex-col items-center rounded-[2rem] border border-emerald-300/30 bg-white p-10 text-center text-slate-950 shadow-2xl">
             <CheckCircle2
@@ -212,7 +281,7 @@ export default function CustomerDisplayPage() {
             </p>
           </div>
         </div>
-      )}
+        )}
     </div>
   );
 }

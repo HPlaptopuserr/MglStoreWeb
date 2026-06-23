@@ -45,6 +45,7 @@ import {
   PosCheckoutView,
   type CheckoutPaymentEntry,
   type CheckoutLoyaltyState,
+  type CheckoutLoyaltyRedeemSession,
   ReceiptPreview,
   usePosCart,
   useCreateSale,
@@ -67,6 +68,8 @@ import {
   createQPayInvoice,
   getQPayInvoiceStatus,
   confirmQPayInvoice,
+  createLoyaltyRedeemSession,
+  getLoyaltyRedeemSessionStatus,
   fetchRegisterConfig,
   createCashDrawerEvent,
   getCashDrawerSummary,
@@ -116,6 +119,7 @@ type CustomerDisplayPayload = {
   totals: CartTotals;
   displayTheme: CustomerDisplayThemeId;
   qpayModal: QPayModalPayload | null;
+  loyaltyRedeemSession: CheckoutLoyaltyRedeemSession | null;
   customerSuccess: CustomerDisplaySuccess | null;
   ts: number;
 };
@@ -213,7 +217,7 @@ const initialLoyaltyState: CheckoutLoyaltyState = {
   found: false,
   customerName: null,
   balance: 0,
-  earnRate: 0.02,
+  earnRate: 0.01,
   membershipBadge: "NONE",
   redeemPoints: 0,
 };
@@ -500,6 +504,9 @@ export default function PosDemoPage() {
   const [expandedCreditCustomerKey, setExpandedCreditCustomerKey] = useState<string | null>(null);
   const [creditRepaymentSubmitting, setCreditRepaymentSubmitting] = useState(false);
   const [loyalty, setLoyalty] = useState<CheckoutLoyaltyState>(initialLoyaltyState);
+  const [loyaltyRedeemSession, setLoyaltyRedeemSession] =
+    useState<CheckoutLoyaltyRedeemSession | null>(null);
+  const [loyaltyRedeemLoading, setLoyaltyRedeemLoading] = useState(false);
   const [view, setView] = useState<PosView>("register");
   const [displayOpened, setDisplayOpened] = useState(false);
   const [customerDisplayTheme, setCustomerDisplayTheme] =
@@ -1426,8 +1433,22 @@ export default function PosDemoPage() {
 
   const appliedLoyaltyRedeem = useMemo(() => {
     if (loyalty.mode !== "REDEEM" || !loyalty.found) return 0;
+    if (
+      loyaltyRedeemSession?.status !== "CONFIRMED" ||
+      loyaltyRedeemSession.requestedPoints !== Math.floor(loyalty.redeemPoints || 0)
+    ) {
+      return 0;
+    }
     return Math.max(0, Math.min(loyalty.balance, totals.grandTotal, Math.floor(loyalty.redeemPoints || 0)));
-  }, [loyalty.balance, loyalty.found, loyalty.mode, loyalty.redeemPoints, totals.grandTotal]);
+  }, [
+    loyalty.balance,
+    loyalty.found,
+    loyalty.mode,
+    loyalty.redeemPoints,
+    loyaltyRedeemSession?.requestedPoints,
+    loyaltyRedeemSession?.status,
+    totals.grandTotal,
+  ]);
 
   const payableTotal = useMemo(
     () => Math.max(0, roundMoney(totals.grandTotal - appliedLoyaltyRedeem)),
@@ -1451,7 +1472,12 @@ export default function PosDemoPage() {
     !hasPendingPayment &&
     !isCardProcessing &&
     !creditRepaymentSubmitting &&
-    (loyalty.mode === "NONE" || (loyalty.found && loyalty.phone.replace(/\D/g, "").length >= 6));
+    (loyalty.mode === "NONE" ||
+      (loyalty.found &&
+        loyalty.phone.replace(/\D/g, "").length >= 6 &&
+        (loyalty.mode !== "REDEEM" ||
+          (loyaltyRedeemSession?.status === "CONFIRMED" &&
+            loyaltyRedeemSession.requestedPoints === Math.floor(loyalty.redeemPoints || 0)))));
 
   const selectedByCode = useMemo(() => {
     if (!lastScannedCode) return null;
@@ -1475,6 +1501,7 @@ export default function PosDemoPage() {
     setSelectedCreditRepayment(null);
     setPaymentMethod("CASH");
     setLoyalty(initialLoyaltyState);
+    setLoyaltyRedeemSession(null);
     clientSaleIdRef.current = null;
   };
 
@@ -1718,6 +1745,7 @@ export default function PosDemoPage() {
     setQpayModal(null);
     setPaymentEntries([]);
     setLoyalty(initialLoyaltyState);
+    setLoyaltyRedeemSession(null);
     setAutoCheckoutActive(false);
     clientSaleIdRef.current = null;
     dispatch({ type: "clear-cart" });
@@ -1912,6 +1940,7 @@ export default function PosDemoPage() {
                 mode: loyalty.mode,
                 phone: loyalty.phone,
                 redeemPoints: loyalty.mode === "REDEEM" ? appliedLoyaltyRedeem : 0,
+                redeemSessionId: loyalty.mode === "REDEEM" ? loyaltyRedeemSession?.id : undefined,
               },
         totalPaid: confirmedTotal,
         remaining: saleRemaining,
@@ -1996,6 +2025,7 @@ export default function PosDemoPage() {
       setQpayModal(null);
       setPaymentEntries([]);
       setLoyalty(initialLoyaltyState);
+      setLoyaltyRedeemSession(null);
       setAutoCheckoutActive(false);
       clientSaleIdRef.current = null;
       dispatch({ type: "clear-cart" });
@@ -2288,6 +2318,7 @@ export default function PosDemoPage() {
     setAutoCheckoutActive(false);
     setPaymentEntries([]);
     setQpayModal(null);
+    setLoyaltyRedeemSession(null);
     setCustomerDisplaySuccess(null);
     clientSaleIdRef.current = null;
   };
@@ -2295,10 +2326,12 @@ export default function PosDemoPage() {
   const lookupLoyalty = async () => {
     const phone = loyalty.phone.replace(/\D/g, "");
     if (phone.length < 6) {
+      setLoyaltyRedeemSession(null);
       setLoyalty((prev) => ({ ...prev, lookupError: "Утасны дугаар оруулна уу." }));
       return;
     }
 
+    setLoyaltyRedeemSession(null);
     setLoyalty((prev) => ({ ...prev, lookupLoading: true, lookupError: "" }));
     try {
       const response = await authFetch(`${API}/pos/loyalty/lookup?phone=${encodeURIComponent(phone)}`, {
@@ -2313,7 +2346,7 @@ export default function PosDemoPage() {
         found: Boolean(data.found),
         customerName: data.customerName ?? null,
         balance: Number(data.balance || 0),
-        earnRate: Number(data.earnRate || 0.02),
+        earnRate: Number(data.earnRate || 0.01),
         membershipBadge: data.membershipBadge || "NONE",
         lookupError: data.found ? "" : "Энэ дугаартай M Point хэрэглэгч олдсонгүй.",
         redeemPoints: Math.min(prev.redeemPoints, Number(data.balance || 0), totals.grandTotal),
@@ -2327,6 +2360,76 @@ export default function PosDemoPage() {
     } finally {
       setLoyalty((prev) => ({ ...prev, lookupLoading: false }));
     }
+  };
+
+  const requestLoyaltyRedeemQr = async (redeemPoints: number) => {
+    const phone = loyalty.phone.replace(/\D/g, "");
+    const safePoints = Math.max(0, Math.min(loyalty.balance, totals.grandTotal, Math.floor(Number(redeemPoints) || 0)));
+    const branchId = registerConfig?.branchId || shift?.branchId || "";
+
+    if (!loyalty.found || phone.length < 6) {
+      setScanStatus("not-found");
+      setScanMessage("Эхлээд M Point хэрэглэгчээ утсаар шалгана уу.");
+      return;
+    }
+    if (!branchId) {
+      setScanStatus("not-found");
+      setScanMessage("M Point QR үүсгэхийн тулд POS салбар шаардлагатай.");
+      return;
+    }
+    if (safePoints <= 0) {
+      setScanStatus("not-found");
+      setScanMessage("Хасуулах M Point дүнгээ оруулна уу.");
+      return;
+    }
+
+    setLoyaltyRedeemLoading(true);
+    try {
+      const session = await createLoyaltyRedeemSession({
+        phone,
+        redeemPoints: safePoints,
+        saleTotal: totals.grandTotal,
+        branchId,
+        registerId: registerConfig?.id,
+        organizationId,
+      });
+      setLoyaltyRedeemSession(session);
+      setLoyalty((prev) => ({ ...prev, mode: "REDEEM", redeemPoints: safePoints }));
+      setScanStatus("idle");
+      setScanMessage("M Point QR үүслээ. Хэрэглэгч MGL app-аар баталгаажуулна.");
+    } catch (error: any) {
+      setLoyaltyRedeemSession(null);
+      setScanStatus("not-found");
+      setScanMessage(error?.message || "M Point QR үүсгэхэд алдаа гарлаа");
+    } finally {
+      setLoyaltyRedeemLoading(false);
+    }
+  };
+
+  const refreshLoyaltyRedeemSession = async () => {
+    if (!loyaltyRedeemSession?.id) return;
+
+    setLoyaltyRedeemLoading(true);
+    try {
+      const session = await getLoyaltyRedeemSessionStatus(loyaltyRedeemSession.id);
+      setLoyaltyRedeemSession(session);
+      if (session.status === "CONFIRMED") {
+        setScanStatus("success");
+        setScanMessage(`M Point ${session.requestedPoints.toLocaleString("mn-MN")} баталгаажлаа.`);
+      } else if (session.status === "EXPIRED") {
+        setScanStatus("not-found");
+        setScanMessage("M Point QR хугацаа дууссан. Дахин QR үүсгэнэ үү.");
+      }
+    } catch (error: any) {
+      setScanStatus("not-found");
+      setScanMessage(error?.message || "M Point QR төлөв шалгахад алдаа гарлаа");
+    } finally {
+      setLoyaltyRedeemLoading(false);
+    }
+  };
+
+  const clearLoyaltyRedeemSession = () => {
+    setLoyaltyRedeemSession(null);
   };
 
   const handlePaymentMethodChange = (method: PaymentMethod) => {
@@ -2364,6 +2467,7 @@ export default function PosDemoPage() {
     }
 
     setQpayModal(null);
+    setLoyaltyRedeemSession(null);
     setCustomerDisplaySuccess(null);
     setPaymentEntries([]);
     setLoyalty((prev) => ({
@@ -2438,18 +2542,51 @@ export default function PosDemoPage() {
   }, [paymentEntries, qpayModal?.invoiceId]);
 
   useEffect(() => {
+    if (!loyaltyRedeemSession?.id || loyaltyRedeemSession.status !== "PENDING") return;
+
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const session = await getLoyaltyRedeemSessionStatus(loyaltyRedeemSession.id);
+          setLoyaltyRedeemSession(session);
+          if (session.status === "CONFIRMED") {
+            setScanStatus("success");
+            setScanMessage(`M Point ${session.requestedPoints.toLocaleString("mn-MN")} баталгаажлаа.`);
+          }
+          if (session.status === "EXPIRED") {
+            setScanStatus("not-found");
+            setScanMessage("M Point QR хугацаа дууссан. Дахин QR үүсгэнэ үү.");
+          }
+        } catch {
+          // Keep polling; transient network errors should not block checkout.
+        }
+      })();
+    }, 2500);
+
+    return () => window.clearInterval(timer);
+  }, [loyaltyRedeemSession?.id, loyaltyRedeemSession?.status]);
+
+  useEffect(() => {
     const payload: CustomerDisplayPayload = {
       lines: state.cart,
       totals,
       displayTheme: customerDisplayTheme,
       qpayModal,
+      loyaltyRedeemSession,
       customerSuccess: customerDisplaySuccess,
       ts: Date.now(),
     };
 
     localStorage.setItem("mgl_pos_customer_payload", JSON.stringify(payload));
     syncChannelRef.current?.postMessage(payload);
-  }, [state.cart, totals, customerDisplayTheme, qpayModal, customerDisplaySuccess]);
+  }, [
+    state.cart,
+    totals,
+    customerDisplayTheme,
+    qpayModal,
+    loyaltyRedeemSession,
+    customerDisplaySuccess,
+  ]);
 
   const openCustomerDisplay = () => {
     const existing = customerWindowRef.current;
@@ -3520,6 +3657,11 @@ export default function PosDemoPage() {
           loyalty={loyalty}
           onLoyaltyChange={setLoyalty}
           onLookupLoyalty={lookupLoyalty}
+          loyaltyRedeemSession={loyaltyRedeemSession}
+          loyaltyRedeemLoading={loyaltyRedeemLoading}
+          onRequestLoyaltyRedeemQr={requestLoyaltyRedeemQr}
+          onRefreshLoyaltyRedeemSession={refreshLoyaltyRedeemSession}
+          onClearLoyaltyRedeemSession={clearLoyaltyRedeemSession}
           creditBorrowers={creditBorrowers}
           onAddPayment={addPaymentEntry}
           onRequestQPay={requestQPay}

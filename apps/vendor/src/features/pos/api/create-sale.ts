@@ -32,6 +32,7 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
           mode: payload.loyalty.mode,
           phone: payload.loyalty.phone?.replace(/\D/g, ""),
           redeemPoints: Math.max(0, Math.floor(Number(payload.loyalty.redeemPoints || 0))),
+          redeemSessionId: payload.loyalty.redeemSessionId,
         }
       : undefined,
     note: sanitizeReceiptNote(payload.note),
@@ -110,11 +111,11 @@ function buildMockReceipt(payload: SalePayload): PosReceipt {
             mode: payload.loyalty.mode,
             phone: payload.loyalty.phone,
             earnedPoints:
-              payload.loyalty.mode === "EARN" ? Math.max(0, Math.floor(grandTotal * 0.02)) : 0,
+              payload.loyalty.mode === "EARN" ? Math.max(0, Math.floor(grandTotal * 0.01)) : 0,
             redeemedPoints:
               payload.loyalty.mode === "REDEEM" ? Math.max(0, Math.floor(Number(payload.loyalty.redeemPoints || 0))) : 0,
             balanceAfter: null,
-            earnRate: 0.02,
+            earnRate: 0.01,
             membershipBadge: "STANDARD",
           }
         : null,

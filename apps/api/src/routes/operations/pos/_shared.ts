@@ -95,6 +95,7 @@ export type CreateSaleBody = {
     mode?: "EARN" | "REDEEM" | "NONE";
     phone?: string;
     redeemPoints?: number;
+    redeemSessionId?: string;
   };
   lines?: SaleLineInput[];
   note?: string;

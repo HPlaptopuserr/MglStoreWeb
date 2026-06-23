@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import {
   prisma,
@@ -57,16 +58,207 @@ import {
 
 const router: ExpressRouter = Router();
 
-const POS_MPOINT_BASE_RATE = 0.02;
+type PosLoyaltyRedemptionStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "CONSUMED"
+  | "EXPIRED"
+  | "CANCELLED";
+
+const POS_LOYALTY_REDEMPTION_STATUS = {
+  PENDING: "PENDING",
+  CONFIRMED: "CONFIRMED",
+  CONSUMED: "CONSUMED",
+  EXPIRED: "EXPIRED",
+  CANCELLED: "CANCELLED",
+} as const;
+
+const POS_MPOINT_BASE_RATE = Number(process.env.POS_MPOINT_BASE_RATE || 0.01);
 const POS_MPOINT_MEMBER_RATE = Number(
-  process.env.POS_MPOINT_MEMBER_RATE || 0.03,
+  process.env.POS_MPOINT_MEMBER_RATE || POS_MPOINT_BASE_RATE,
 );
+const POS_LOYALTY_REDEEM_SESSION_TTL_MS =
+  Math.max(
+    1,
+    Number(process.env.POS_LOYALTY_REDEEM_SESSION_TTL_MINUTES || 5),
+  ) *
+  60 *
+  1000;
 
 const normalizeLoyaltyPhone = (value: unknown) =>
   String(value || "").replace(/\D/g, "");
 const cleanOptionalText = (value: unknown) => {
   const text = String(value ?? "").trim();
   return text || null;
+};
+
+const createRedeemSessionToken = () =>
+  crypto.randomBytes(24).toString("base64url");
+
+const buildLoyaltyRedeemQrPayload = (token: string) =>
+  `mglstore://loyalty/redeem?token=${encodeURIComponent(token)}`;
+
+type PosLoyaltyRedeemSessionRecord = {
+  id: string;
+  token: string;
+  organizationId: string;
+  branchId: string;
+  registerId: string | null;
+  cashierId: string;
+  userId: string;
+  customerPhone: string;
+  requestedPoints: number;
+  saleTotal: unknown;
+  status: PosLoyaltyRedemptionStatus;
+  expiresAt: Date;
+  confirmedAt: Date | null;
+};
+
+type PosLoyaltyRedeemSessionClient = Pick<
+  Prisma.TransactionClient,
+  "$queryRaw" | "$executeRaw"
+>;
+
+const mapLoyaltyRedeemSession = (
+  session: {
+    id: string;
+    token: string;
+    status: PosLoyaltyRedemptionStatus;
+    customerPhone: string;
+    requestedPoints: number;
+    saleTotal: unknown;
+    expiresAt: Date;
+    confirmedAt: Date | null;
+  },
+  extras: {
+    customerName?: string | null;
+    balance?: number;
+  } = {},
+) => ({
+  id: session.id,
+  token: session.token,
+  qrPayload: buildLoyaltyRedeemQrPayload(session.token),
+  status: session.status,
+  phone: session.customerPhone,
+  customerName: extras.customerName ?? null,
+  balance: extras.balance ?? 0,
+  requestedPoints: session.requestedPoints,
+  saleTotal: Number(session.saleTotal),
+  expiresAt: session.expiresAt.toISOString(),
+  confirmedAt: session.confirmedAt?.toISOString() ?? null,
+});
+
+const selectRedeemSessionById = async (
+  tx: PosLoyaltyRedeemSessionClient,
+  id: string,
+) => {
+  const rows = await tx.$queryRaw<PosLoyaltyRedeemSessionRecord[]>`
+    SELECT
+      "id",
+      "token",
+      "organizationId",
+      "branchId",
+      "registerId",
+      "cashierId",
+      "userId",
+      "customerPhone",
+      "requestedPoints",
+      "saleTotal",
+      "status",
+      "expiresAt",
+      "confirmedAt"
+    FROM "PosLoyaltyRedemptionSession"
+    WHERE "id" = ${id}
+    LIMIT 1
+  `;
+  return rows[0] || null;
+};
+
+const createRedeemSession = async (input: {
+  organizationId: string;
+  branchId: string;
+  registerId: string | null;
+  cashierId: string;
+  userId: string;
+  customerPhone: string;
+  requestedPoints: number;
+  saleTotal: number;
+  expiresAt: Date;
+}) => {
+  const rows = await prisma.$queryRaw<PosLoyaltyRedeemSessionRecord[]>`
+    INSERT INTO "PosLoyaltyRedemptionSession" (
+      "id",
+      "token",
+      "organizationId",
+      "branchId",
+      "registerId",
+      "cashierId",
+      "userId",
+      "customerPhone",
+      "requestedPoints",
+      "saleTotal",
+      "status",
+      "expiresAt",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${crypto.randomUUID()},
+      ${createRedeemSessionToken()},
+      ${input.organizationId},
+      ${input.branchId},
+      ${input.registerId},
+      ${input.cashierId},
+      ${input.userId},
+      ${input.customerPhone},
+      ${input.requestedPoints},
+      ${input.saleTotal},
+      CAST(${POS_LOYALTY_REDEMPTION_STATUS.PENDING} AS "PosLoyaltyRedemptionStatus"),
+      ${input.expiresAt},
+      ${new Date()},
+      ${new Date()}
+    )
+    RETURNING
+      "id",
+      "token",
+      "organizationId",
+      "branchId",
+      "registerId",
+      "cashierId",
+      "userId",
+      "customerPhone",
+      "requestedPoints",
+      "saleTotal",
+      "status",
+      "expiresAt",
+      "confirmedAt"
+  `;
+  return rows[0]!;
+};
+
+const updateRedeemSessionStatus = async (
+  tx: PosLoyaltyRedeemSessionClient,
+  input: {
+    id: string;
+    status: PosLoyaltyRedemptionStatus;
+    expectedStatus?: PosLoyaltyRedemptionStatus;
+    consumedAt?: Date;
+    saleId?: string;
+  },
+) => {
+  return tx.$executeRaw`
+    UPDATE "PosLoyaltyRedemptionSession"
+    SET
+      "status" = CAST(${input.status} AS "PosLoyaltyRedemptionStatus"),
+      "consumedAt" = COALESCE(${input.consumedAt ?? null}, "consumedAt"),
+      "saleId" = COALESCE(${input.saleId ?? null}, "saleId"),
+      "updatedAt" = ${new Date()}
+    WHERE "id" = ${input.id}
+      AND (
+        CAST(${input.expectedStatus ?? null} AS "PosLoyaltyRedemptionStatus") IS NULL
+        OR "status" = CAST(${input.expectedStatus ?? null} AS "PosLoyaltyRedemptionStatus")
+      )
+  `;
 };
 
 const buildCreditBorrowerKey = (
@@ -271,6 +463,173 @@ router.get("/pos/loyalty/lookup", async (req, res) => {
   }
 });
 
+router.post("/pos/loyalty/redeem-sessions", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const phone = normalizeLoyaltyPhone(req.body?.phone);
+    const requestedPoints = Math.max(
+      0,
+      Math.floor(Number(req.body?.redeemPoints || 0)),
+    );
+    const saleTotal = roundMoney(Number(req.body?.saleTotal || 0));
+    const registerId = String(req.body?.registerId || "").trim() || null;
+    const organizationId =
+      String(req.body?.organizationId || "").trim() || null;
+    let branchId = String(req.body?.branchId || "").trim() || null;
+
+    if (phone.length < 6) {
+      return res.status(400).json({ message: "M Point хэрэглэгчийн утас шаардлагатай" });
+    }
+    if (requestedPoints <= 0) {
+      return res.status(400).json({ message: "Хасуулах M Point 0-оос их байх ёстой" });
+    }
+    if (!Number.isFinite(saleTotal) || saleTotal <= 0) {
+      return res.status(400).json({ message: "Sale дүн буруу байна" });
+    }
+    if (requestedPoints > saleTotal) {
+      return res.status(400).json({ message: "Хасуулах оноо нийт дүнгээс их байж болохгүй" });
+    }
+
+    let effectiveOrganizationId =
+      actor.role === "ADMIN" ? organizationId : actor.organizationId;
+
+    if (registerId) {
+      const register = await prisma.posRegister.findUnique({
+        where: { id: registerId },
+        select: {
+          id: true,
+          branchId: true,
+          organizationId: true,
+          isActive: true,
+          activationStatus: true,
+        },
+      });
+      if (!register) {
+        return res.status(404).json({ message: "POS register олдсонгүй" });
+      }
+      if (
+        !register.isActive ||
+        register.activationStatus !== PosActivationStatus.APPROVED
+      ) {
+        return res.status(403).json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
+      }
+      effectiveOrganizationId = register.organizationId;
+      branchId = branchId || register.branchId;
+      if (branchId !== register.branchId) {
+        return res.status(400).json({ message: "Sale branchId нь register branch-тэй зөрүүтэй байна" });
+      }
+    }
+
+    if (!effectiveOrganizationId || !branchId) {
+      return res.status(400).json({ message: "Байгууллага болон салбар шаардлагатай" });
+    }
+
+    if (actor.role !== "ADMIN") {
+      const membership = await prisma.organizationMember.findFirst({
+        where: {
+          userId: actor.id,
+          organizationId: effectiveOrganizationId,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (!membership) {
+        return res.status(403).json({ message: "Энэ байгууллагад sale хийх эрхгүй" });
+      }
+    }
+
+    const loyaltyUser = await resolveLoyaltyUser(prisma, phone);
+    if (!loyaltyUser) {
+      return res.status(404).json({ message: "M Point хэрэглэгч олдсонгүй" });
+    }
+
+    const balance = await getPointBalance(prisma, loyaltyUser.id);
+    if (requestedPoints > balance) {
+      return res.status(409).json({
+        message: `M Point үлдэгдэл хүрэлцэхгүй байна. Боломжит: ${balance}`,
+      });
+    }
+
+    const session = await createRedeemSession({
+      organizationId: effectiveOrganizationId,
+      branchId,
+      registerId,
+      cashierId: actor.id,
+      userId: loyaltyUser.id,
+      customerPhone: phone,
+      requestedPoints,
+      saleTotal,
+      expiresAt: new Date(Date.now() + POS_LOYALTY_REDEEM_SESSION_TTL_MS),
+    });
+
+    return res.status(201).json(
+      mapLoyaltyRedeemSession(session, {
+        customerName: loyaltyUser.profile?.fullName || null,
+        balance,
+      }),
+    );
+  } catch (error) {
+    console.error("POST /pos/loyalty/redeem-sessions error", error);
+    return res.status(500).json({ message: "M Point QR үүсгэхэд алдаа гарлаа" });
+  }
+});
+
+router.get("/pos/loyalty/redeem-sessions/:id", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const sessionId = String(req.params.id || "").trim();
+    const session = await selectRedeemSessionById(prisma, sessionId);
+    if (!session) {
+      return res.status(404).json({ message: "M Point QR session олдсонгүй" });
+    }
+
+    if (
+      actor.role !== "ADMIN" &&
+      !(await hasOrgMembership(actor.id, session.organizationId))
+    ) {
+      return res.status(403).json({ message: "M Point QR session харах эрхгүй" });
+    }
+
+    let effectiveSession = session;
+    if (
+      session.status === POS_LOYALTY_REDEMPTION_STATUS.PENDING &&
+      session.expiresAt.getTime() <= Date.now()
+    ) {
+      await updateRedeemSessionStatus(prisma, {
+        id: session.id,
+        status: POS_LOYALTY_REDEMPTION_STATUS.EXPIRED,
+        expectedStatus: POS_LOYALTY_REDEMPTION_STATUS.PENDING,
+      });
+      effectiveSession = {
+        ...session,
+        status: POS_LOYALTY_REDEMPTION_STATUS.EXPIRED,
+      };
+    }
+
+    const [balance, user] = await Promise.all([
+      getPointBalance(prisma, effectiveSession.userId),
+      prisma.user.findUnique({
+        where: { id: effectiveSession.userId },
+        select: { profile: { select: { fullName: true } } },
+      }),
+    ]);
+
+    return res.json(
+      mapLoyaltyRedeemSession(effectiveSession, {
+        customerName: user?.profile?.fullName || null,
+        balance,
+      }),
+    );
+  } catch (error) {
+    console.error("GET /pos/loyalty/redeem-sessions/:id error", error);
+    return res.status(500).json({ message: "M Point QR төлөв авахад алдаа гарлаа" });
+  }
+});
+
 router.post("/pos/sales", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
@@ -448,6 +807,10 @@ router.post("/pos/sales", async (req, res) => {
       loyaltyMode === "REDEEM"
         ? Math.max(0, Math.floor(Number(body.loyalty?.redeemPoints || 0)))
         : 0;
+    const loyaltyRedeemSessionId =
+      loyaltyMode === "REDEEM"
+        ? String(body.loyalty?.redeemSessionId || "").trim()
+        : "";
     const expectedPayableTotal = roundMoney(
       Math.max(0, expectedGrandTotal - requestedRedeemPoints),
     );
@@ -486,6 +849,12 @@ router.post("/pos/sales", async (req, res) => {
       return res
         .status(400)
         .json({ message: "Хасуулах M Point 0-оос их байх ёстой" });
+    }
+
+    if (loyaltyMode === "REDEEM" && !loyaltyRedeemSessionId) {
+      return res
+        .status(409)
+        .json({ message: "M Point app QR confirmation required" });
     }
 
     if (!moneyMatches(paymentTotal, expectedPayableTotal)) {
@@ -1176,12 +1545,16 @@ router.post("/pos/sales", async (req, res) => {
           const membershipBadge = isMembershipActive(loyaltyUser)
             ? "MEMBER"
             : "STANDARD";
-          const earnedPoints = Math.max(
-            0,
-            Math.floor(Number(fullSale.grandTotal) * effectiveRate),
-          );
           const redeemedPoints =
             loyaltyMode === "REDEEM" ? requestedRedeemPoints : 0;
+          const earningBase = Math.max(
+            0,
+            Number(fullSale.grandTotal) - redeemedPoints,
+          );
+          const earnedPoints = Math.max(
+            0,
+            Math.floor(earningBase * effectiveRate),
+          );
 
           if (redeemedPoints > currentBalance) {
             throw toApiError(
@@ -1194,6 +1567,47 @@ router.post("/pos/sales", async (req, res) => {
               400,
               "Хасуулах оноо нийт дүнгээс их байж болохгүй",
             );
+          }
+
+          let redeemSession:
+            | {
+                id: string;
+                userId: string;
+                organizationId: string;
+                branchId: string;
+                customerPhone: string;
+                requestedPoints: number;
+                saleTotal: unknown;
+                status: PosLoyaltyRedemptionStatus;
+                expiresAt: Date;
+              }
+            | null = null;
+
+          if (loyaltyMode === "REDEEM" && redeemedPoints > 0) {
+            redeemSession = await selectRedeemSessionById(tx, loyaltyRedeemSessionId);
+
+            if (!redeemSession) {
+              throw toApiError(404, "M Point QR session олдсонгүй");
+            }
+            if (redeemSession.status !== POS_LOYALTY_REDEMPTION_STATUS.CONFIRMED) {
+              throw toApiError(409, "M Point QR app-аар баталгаажаагүй байна");
+            }
+            if (redeemSession.expiresAt.getTime() <= Date.now()) {
+              throw toApiError(409, "M Point QR хугацаа дууссан байна");
+            }
+            if (
+              redeemSession.userId !== loyaltyUser.id ||
+              redeemSession.organizationId !== effectiveOrganizationId ||
+              redeemSession.branchId !== body.branchId ||
+              redeemSession.customerPhone !== loyaltyPhone ||
+              redeemSession.requestedPoints !== redeemedPoints ||
+              !moneyMatches(
+                Number(redeemSession.saleTotal),
+                Number(fullSale.grandTotal),
+              )
+            ) {
+              throw toApiError(409, "M Point QR session энэ борлуулалттай таарахгүй байна");
+            }
           }
 
           let ledgerId: string | null = null;
@@ -1256,9 +1670,22 @@ router.post("/pos/sales", async (req, res) => {
               note:
                 loyaltyMode === "EARN"
                   ? "POS checkout reward"
-                  : "POS checkout redemption",
+              : "POS checkout redemption",
             },
           });
+
+          if (redeemSession) {
+            const consumedCount = await updateRedeemSessionStatus(tx, {
+              id: redeemSession.id,
+              status: POS_LOYALTY_REDEMPTION_STATUS.CONSUMED,
+              expectedStatus: POS_LOYALTY_REDEMPTION_STATUS.CONFIRMED,
+              consumedAt: new Date(),
+              saleId: fullSale.id,
+            });
+            if (consumedCount !== 1) {
+              throw toApiError(409, "M Point QR session already used");
+            }
+          }
 
           loyaltyResponse = {
             mode: loyaltyMode === "EARN" ? "EARN" : "REDEEM",

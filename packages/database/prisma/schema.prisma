@@ -2420,6 +2420,35 @@ model PosLoyaltyTransaction {
   @@index([action, createdAt])
 }
 
+model PosLoyaltyRedemptionSession {
+  id              String                     @id @default(uuid())
+  token           String                     @unique
+  organizationId  String
+  branchId        String
+  registerId      String?
+  cashierId       String
+  userId          String
+  customerPhone   String
+  requestedPoints Int
+  saleTotal       Decimal                    @db.Decimal(18, 2)
+  status          PosLoyaltyRedemptionStatus @default(PENDING)
+  expiresAt       DateTime
+  confirmedAt     DateTime?
+  consumedAt      DateTime?
+  cancelledAt     DateTime?
+  saleId          String?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([branchId, createdAt])
+  @@index([registerId, createdAt])
+  @@index([cashierId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+  @@index([saleId])
+}
+
 model PosCreditCustomer {
   id                    String          @id @default(uuid())
   organizationId        String
@@ -2556,6 +2585,14 @@ enum MPointLedgerType {
   EARN
   SPEND
   ADJUST
+}
+
+enum PosLoyaltyRedemptionStatus {
+  PENDING
+  CONFIRMED
+  CONSUMED
+  EXPIRED
+  CANCELLED
 }
 
 enum ContractStatus {
