@@ -2143,6 +2143,7 @@ model RestaurantTable {
   branchId       String
   code           String
   label          String
+  qrToken        String?            @unique
   zone           String             @default("Гол заал")
   seats          Int                @default(4)
   sortOrder      Int                @default(0)
@@ -2157,6 +2158,7 @@ model RestaurantTable {
   @@index([organizationId])
   @@index([branchId, isActive])
   @@index([branchId, sortOrder])
+  @@index([qrToken])
 }
 
 model RestaurantTicket {

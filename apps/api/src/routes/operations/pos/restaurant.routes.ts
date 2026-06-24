@@ -5,6 +5,7 @@ import {
   prisma,
   RestaurantOrderMode,
   RestaurantTicketStatus,
+  ShiftStatus,
 } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import { hasOrgMembership } from "../../../services/permission.service";
@@ -30,6 +31,8 @@ const ACTIVE_KITCHEN_TICKET_STATUSES: KitchenTicketStatus[] = [
   KitchenTicketStatus.READY,
 ];
 
+const TABLE_QR_TOKEN_BYTES = 24;
+
 const DEFAULT_TABLES = [
   { code: "A1", label: "A1", zone: "Гол заал", seats: 4, sortOrder: 10 },
   { code: "A2", label: "A2", zone: "Гол заал", seats: 2, sortOrder: 20 },
@@ -54,6 +57,9 @@ const generateNumber = (prefix: string) => {
   return `${prefix}-${date}-${suffix}`;
 };
 
+const generateTableQrToken = () =>
+  crypto.randomBytes(TABLE_QR_TOKEN_BYTES).toString("base64url");
+
 const normalizeOrderMode = (value: unknown): RestaurantOrderMode => {
   const normalized = String(value || "")
     .trim()
@@ -72,6 +78,38 @@ const normalizeNote = (value: unknown) => {
     .slice(0, 500);
   return note || null;
 };
+
+const normalizeQrCustomerNote = (value: unknown) => {
+  const note = normalizeNote(value);
+  return note ? `QR: ${note}` : "QR self-order";
+};
+
+async function ensureTableQrToken(
+  tx: Prisma.TransactionClient,
+  tableId: string,
+) {
+  const existing = await tx.restaurantTable.findUnique({
+    where: { id: tableId },
+    select: { qrToken: true },
+  });
+  if (!existing) return null;
+  if (existing.qrToken) return existing.qrToken;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const updated = await tx.restaurantTable.update({
+        where: { id: tableId },
+        data: { qrToken: generateTableQrToken() },
+        select: { qrToken: true },
+      });
+      return updated.qrToken;
+    } catch (error) {
+      if (attempt === 2) throw error;
+    }
+  }
+
+  return null;
+}
 
 async function requireBranchAccess(actor: AuthUser, branchId: string) {
   const branch = await prisma.branch.findFirst({
@@ -234,6 +272,416 @@ async function loadTicket(tx: Prisma.TransactionClient, ticketId: string) {
     include: ticketInclude,
   });
 }
+
+router.get("/restaurant/menu/:token", async (req, res) => {
+  try {
+    const qrToken = String(req.params.token || "").trim();
+    if (!qrToken) {
+      return res.status(404).json({ message: "QR menu олдсонгүй" });
+    }
+
+    const table = await prisma.restaurantTable.findUnique({
+      where: { qrToken },
+      select: {
+        id: true,
+        code: true,
+        label: true,
+        zone: true,
+        seats: true,
+        isActive: true,
+        organizationId: true,
+        branchId: true,
+        organization: { select: { id: true, name: true } },
+        branch: {
+          select: { id: true, name: true, deletedAt: true },
+        },
+      },
+    });
+    if (!table || !table.isActive || table.branch.deletedAt) {
+      return res.status(404).json({ message: "QR menu олдсонгүй" });
+    }
+
+    const [products, activeShift] = await Promise.all([
+      prisma.product.findMany({
+        where: {
+          organizationId: table.organizationId,
+          deletedAt: null,
+          isActive: true,
+          isRestaurantMenuItem: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          stock: true,
+          taxType: true,
+          cityTaxRate: true,
+          classificationCode: true,
+          taxProductCode: true,
+          menuCategory: true,
+          kitchenStation: true,
+          preparationMinutes: true,
+          images: { select: { url: true }, take: 1 },
+        },
+        orderBy: [{ menuCategory: "asc" }, { name: "asc" }],
+      }),
+      prisma.posShift.findFirst({
+        where: {
+          organizationId: table.organizationId,
+          branchId: table.branchId,
+          status: ShiftStatus.OPEN,
+        },
+        select: { id: true },
+        orderBy: { openedAt: "desc" },
+      }),
+    ]);
+
+    return res.json({
+      organization: table.organization,
+      branch: { id: table.branch.id, name: table.branch.name },
+      table: {
+        id: table.id,
+        code: table.code,
+        label: table.label,
+        zone: table.zone,
+        seats: table.seats,
+      },
+      orderingAvailable: Boolean(activeShift),
+      products: products.map((product) => ({
+        id: product.id,
+        name: product.name,
+        imageUrl: product.images[0]?.url ?? null,
+        price: Number(product.price),
+        stockQty: product.stock,
+        taxType: product.taxType || "VAT_ABLE",
+        taxRate: product.taxType === "VAT_ABLE" ? 10 : 0,
+        cityTaxRate: Number(product.cityTaxRate || 0),
+        classificationCode: product.classificationCode || "4711000",
+        taxProductCode: product.taxProductCode || null,
+        menuCategory: product.menuCategory,
+        kitchenStation: product.kitchenStation,
+        preparationMinutes: product.preparationMinutes,
+      })),
+    });
+  } catch (error) {
+    console.error("get public restaurant menu error", error);
+    return res
+      .status(500)
+      .json({ message: "QR menu ачаалахад алдаа гарлаа" });
+  }
+});
+
+router.post("/restaurant/menu/:token/orders", async (req, res) => {
+  try {
+    const qrToken = String(req.params.token || "").trim();
+    const rawLines = Array.isArray(req.body?.lines)
+      ? (req.body.lines as TicketLineInput[])
+      : Array.isArray(req.body?.items)
+        ? (req.body.items as TicketLineInput[])
+        : [];
+    if (!qrToken) {
+      return res.status(404).json({ message: "QR menu олдсонгүй" });
+    }
+
+    const normalizedByProductId = new Map<
+      string,
+      { productId: string; qty: number; note: string | null }
+    >();
+    for (const rawLine of rawLines) {
+      const productId = String(rawLine.productId || "").trim();
+      const qty = Math.floor(Number(rawLine.qty || 0));
+      const note = normalizeNote(rawLine.note);
+      if (!productId || !Number.isFinite(qty) || qty <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Захиалгын item-ийн мэдээлэл буруу байна" });
+      }
+      const existing = normalizedByProductId.get(productId);
+      normalizedByProductId.set(productId, {
+        productId,
+        qty: (existing?.qty || 0) + qty,
+        note: note || existing?.note || null,
+      });
+    }
+
+    const normalizedLines = [...normalizedByProductId.values()];
+    if (normalizedLines.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Захиалах хоол сонгоно уу" });
+    }
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const table = await tx.restaurantTable.findUnique({
+          where: { qrToken },
+          select: {
+            id: true,
+            code: true,
+            label: true,
+            isActive: true,
+            organizationId: true,
+            branchId: true,
+            branch: { select: { deletedAt: true } },
+          },
+        });
+        if (!table || !table.isActive || table.branch.deletedAt) {
+          throw Object.assign(new Error("QR menu олдсонгүй"), { status: 404 });
+        }
+
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "RestaurantTable"
+          WHERE "id" = ${table.id}
+          FOR UPDATE
+        `;
+
+        const activeShift = await tx.posShift.findFirst({
+          where: {
+            organizationId: table.organizationId,
+            branchId: table.branchId,
+            status: ShiftStatus.OPEN,
+          },
+          select: { id: true, cashierId: true },
+          orderBy: { openedAt: "desc" },
+        });
+        if (!activeShift) {
+          throw Object.assign(
+            new Error("Касс нээгдээгүй байна. Зөөгчид хандаарай."),
+            { status: 409 },
+          );
+        }
+
+        let ticket = await tx.restaurantTicket.findFirst({
+          where: {
+            tableId: table.id,
+            status: { in: EDITABLE_TICKET_STATUSES },
+          },
+          orderBy: { updatedAt: "desc" },
+          include: { items: true, kitchenTickets: { select: { id: true } } },
+        });
+
+        if (!ticket) {
+          const paidOccupiedTicket = await tx.restaurantTicket.findFirst({
+            where: {
+              tableId: table.id,
+              status: RestaurantTicketStatus.PAID,
+            },
+            orderBy: { updatedAt: "desc" },
+            select: { ticketNo: true },
+          });
+          if (paidOccupiedTicket) {
+            throw Object.assign(
+              new Error(
+                `Ширээ төлбөр төлсөн ticket-тэй (${paidOccupiedTicket.ticketNo}) хэвээр байна. Зөөгчид хандаарай.`,
+              ),
+              { status: 409 },
+            );
+          }
+        }
+
+        if (ticket && ticket.shiftId !== activeShift.id) {
+          throw Object.assign(
+            new Error("Энэ ширээний ticket өөр ээлж дээр нээлттэй байна. Зөөгчид хандаарай."),
+            { status: 409 },
+          );
+        }
+
+        const productIds = normalizedLines.map((line) => line.productId);
+        const products = await tx.product.findMany({
+          where: {
+            id: { in: productIds },
+            organizationId: table.organizationId,
+            deletedAt: null,
+            isActive: true,
+            isRestaurantMenuItem: true,
+          },
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            stock: true,
+            kitchenStation: true,
+            preparationMinutes: true,
+          },
+        });
+        if (products.length !== productIds.length) {
+          throw Object.assign(
+            new Error("Зарим хоол идэвхгүй эсвэл менюд байхгүй байна"),
+            { status: 400 },
+          );
+        }
+
+        const qrOrderNote = normalizeQrCustomerNote(req.body?.note);
+        if (!ticket) {
+          ticket = await tx.restaurantTicket.create({
+            data: {
+              ticketNo: generateNumber("RT"),
+              organizationId: table.organizationId,
+              branchId: table.branchId,
+              shiftId: activeShift.id,
+              tableId: table.id,
+              openedById: activeShift.cashierId,
+              orderMode: RestaurantOrderMode.DINE_IN,
+              note: qrOrderNote,
+            },
+            include: { items: true, kitchenTickets: { select: { id: true } } },
+          });
+        } else if (normalizeNote(req.body?.note)) {
+          const nextNote = [ticket.note, qrOrderNote]
+            .filter(Boolean)
+            .join(" | ")
+            .slice(0, 500);
+          await tx.restaurantTicket.update({
+            where: { id: ticket.id },
+            data: { note: nextNote || null },
+          });
+        }
+
+        const existingByProduct = new Map(
+          ticket.items.map((item) => [item.productId, item]),
+        );
+        const orderedKitchenItems: Array<{
+          ticketItemId: string;
+          productId: string;
+          productName: string;
+          qty: number;
+          note: string | null;
+          kitchenStation: string | null;
+          preparationMinutes: number | null;
+        }> = [];
+        for (const line of normalizedLines) {
+          const product = products.find((item) => item.id === line.productId)!;
+          const existing = existingByProduct.get(line.productId);
+          const nextQty = (existing?.qty || 0) + line.qty;
+          const nextSentQty = Math.min(
+            nextQty,
+            (existing?.sentQty || 0) + line.qty,
+          );
+          if (nextQty > product.stock) {
+            throw Object.assign(
+              new Error(
+                `"${product.name}" хоолны үлдэгдэл хүрэлцэхгүй (${product.stock})`,
+              ),
+              { status: 409 },
+            );
+          }
+
+          const savedItem = await tx.restaurantTicketItem.upsert({
+            where: {
+              ticketId_productId: {
+                ticketId: ticket.id,
+                productId: line.productId,
+              },
+            },
+            create: {
+              ticketId: ticket.id,
+              productId: product.id,
+              productName: product.name,
+              unitPrice: product.price,
+              qty: line.qty,
+              sentQty: line.qty,
+              note: line.note,
+              kitchenStation: product.kitchenStation,
+              preparationMinutes: product.preparationMinutes,
+            },
+            update: {
+              productName: product.name,
+              qty: nextQty,
+              sentQty: nextSentQty,
+              note: line.note || existing?.note || null,
+              kitchenStation: product.kitchenStation,
+              preparationMinutes: product.preparationMinutes,
+            },
+            select: {
+              id: true,
+              productId: true,
+              productName: true,
+              note: true,
+              kitchenStation: true,
+              preparationMinutes: true,
+            },
+          });
+
+          orderedKitchenItems.push({
+            ticketItemId: savedItem.id,
+            productId: savedItem.productId,
+            productName: savedItem.productName,
+            qty: line.qty,
+            note: savedItem.note,
+            kitchenStation: savedItem.kitchenStation,
+            preparationMinutes: savedItem.preparationMinutes,
+          });
+        }
+
+        const itemsByStation = new Map<string, typeof orderedKitchenItems>();
+        for (const kitchenItem of orderedKitchenItems) {
+          const station = kitchenItem.kitchenStation || "HOT_KITCHEN";
+          const stationItems = itemsByStation.get(station) || [];
+          stationItems.push(kitchenItem);
+          itemsByStation.set(station, stationItems);
+        }
+
+        await Promise.all(
+          [...itemsByStation.values()].map((stationItems) =>
+            tx.kitchenTicket.create({
+              data: {
+                kitchenTicketNo: generateNumber("KT"),
+                organizationId: table.organizationId,
+                branchId: table.branchId,
+                restaurantTicketId: ticket.id,
+                sentById: activeShift.cashierId,
+                status: KitchenTicketStatus.NEW,
+                items: {
+                  create: stationItems.map((item) => ({
+                    restaurantTicketItemId: item.ticketItemId,
+                    productId: item.productId,
+                    productName: item.productName,
+                    qty: item.qty,
+                    note: item.note,
+                    kitchenStation: item.kitchenStation || "HOT_KITCHEN",
+                    preparationMinutes: item.preparationMinutes,
+                  })),
+                },
+              },
+            }),
+          ),
+        );
+
+        await tx.restaurantTicket.update({
+          where: { id: ticket.id },
+          data: {
+            status: RestaurantTicketStatus.KITCHEN,
+            sentAt: ticket.sentAt || new Date(),
+          },
+        });
+
+        return loadTicket(tx, ticket.id);
+      },
+      { isolationLevel: "Serializable" },
+    );
+
+    if (!result) {
+      return res
+        .status(500)
+        .json({ message: "Захиалга үүсгэхэд алдаа гарлаа" });
+    }
+
+    return res.status(201).json({
+      ticket: mapTicket(result),
+      message: "Захиалга касс болон гал тогоо руу амжилттай илгээгдлээ",
+    });
+  } catch (error) {
+    const known = error as Error & { status?: number };
+    if (known.status) {
+      return res.status(known.status).json({ message: known.message });
+    }
+    console.error("create public restaurant order error", error);
+    return res
+      .status(500)
+      .json({ message: "QR захиалга үүсгэхэд алдаа гарлаа" });
+  }
+});
 
 router.get("/restaurant/pos/kitchen-tickets", async (req, res) => {
   try {
@@ -456,6 +904,7 @@ router.get("/restaurant/pos/tables", async (req, res) => {
           id: table.id,
           code: table.code,
           label: table.label,
+          qrToken: table.qrToken,
           zone: table.zone,
           seats: table.seats,
           status: mapTableStatus(currentTicket),
@@ -493,6 +942,7 @@ router.post("/restaurant/pos/tables/bootstrap", async (req, res) => {
         id: crypto.randomUUID(),
         organizationId: access.branch.organizationId,
         branchId,
+        qrToken: generateTableQrToken(),
         ...table,
       })),
       skipDuplicates: true,
@@ -504,6 +954,79 @@ router.post("/restaurant/pos/tables/bootstrap", async (req, res) => {
     return res
       .status(500)
       .json({ message: "Рестораны ширээ үүсгэхэд алдаа гарлаа" });
+  }
+});
+
+router.post("/restaurant/pos/tables/:id/qr-token", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const tableId = String(req.params.id || "").trim();
+    const branchId = String(req.body?.branchId || "").trim();
+    if (!tableId || !branchId) {
+      return res
+        .status(400)
+        .json({ message: "branchId болон tableId шаардлагатай" });
+    }
+
+    const access = await requireBranchAccess(actor, branchId);
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "RestaurantTable"
+          WHERE "id" = ${tableId}
+          FOR UPDATE
+        `;
+
+        const table = await tx.restaurantTable.findFirst({
+          where: {
+            id: tableId,
+            branchId,
+            organizationId: access.branch.organizationId,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            code: true,
+            label: true,
+            qrToken: true,
+          },
+        });
+        if (!table) {
+          throw Object.assign(new Error("Ширээ олдсонгүй"), { status: 404 });
+        }
+
+        const qrToken =
+          table.qrToken || (await ensureTableQrToken(tx, table.id));
+        if (!qrToken) {
+          throw Object.assign(new Error("QR token үүсгэхэд алдаа гарлаа"), {
+            status: 500,
+          });
+        }
+
+        return { ...table, qrToken };
+      },
+      { isolationLevel: "Serializable" },
+    );
+
+    return res.json(result);
+  } catch (error) {
+    const known = error as Error & { status?: number };
+    if (known.status) {
+      return res.status(known.status).json({ message: known.message });
+    }
+    console.error("ensure restaurant table qr token error", error);
+    return res
+      .status(500)
+      .json({ message: "Ширээний QR token үүсгэхэд алдаа гарлаа" });
   }
 });
 

@@ -86,11 +86,48 @@ export type RestaurantDiningTable = {
   id: string;
   code: string;
   label: string;
+  qrToken: string | null;
   zone: string;
   seats: number;
   status: "FREE" | "OPEN" | "KITCHEN" | "READY" | "PAID";
   total: number;
   currentTicket: RestaurantTicket | null;
+};
+
+export type RestaurantPublicMenuProduct = {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  price: number;
+  stockQty: number;
+  taxType: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
+  taxRate: number;
+  cityTaxRate: number;
+  classificationCode: string;
+  taxProductCode: string | null;
+  menuCategory: RestaurantPosProduct["menuCategory"];
+  kitchenStation: RestaurantPosProduct["kitchenStation"];
+  preparationMinutes: number | null;
+};
+
+export type RestaurantPublicMenu = {
+  organization: {
+    id: string;
+    name: string;
+  };
+  branch: {
+    id: string;
+    name: string;
+  };
+  table: {
+    id: string;
+    code: string;
+    label: string;
+    zone: string;
+    seats: number;
+  };
+  orderingAvailable: boolean;
+  products: RestaurantPublicMenuProduct[];
 };
 
 export type KitchenTicketStatus =
@@ -227,6 +264,53 @@ export async function bootstrapRestaurantDiningTables(branchId: string) {
     body: JSON.stringify({ branchId }),
   });
   return readApiResponse<{ ok: true }>(response);
+}
+
+export async function ensureRestaurantTableQrToken(input: {
+  branchId: string;
+  tableId: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/tables/${encodeURIComponent(input.tableId)}/qr-token`,
+    {
+      method: "POST",
+      body: JSON.stringify({ branchId: input.branchId }),
+    },
+  );
+  return readApiResponse<{
+    id: string;
+    code: string;
+    label: string;
+    qrToken: string;
+  }>(response);
+}
+
+export async function getPublicRestaurantMenu(token: string) {
+  const response = await fetch(
+    `${API}/restaurant/menu/${encodeURIComponent(token)}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantPublicMenu>(response);
+}
+
+export async function createPublicRestaurantOrder(
+  token: string,
+  input: {
+    note?: string;
+    lines: Array<{ productId: string; qty: number; note?: string }>;
+  },
+) {
+  const response = await fetch(
+    `${API}/restaurant/menu/${encodeURIComponent(token)}/orders`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return readApiResponse<{ ticket: RestaurantTicket; message: string }>(
+    response,
+  );
 }
 
 export async function saveRestaurantTicket(input: {

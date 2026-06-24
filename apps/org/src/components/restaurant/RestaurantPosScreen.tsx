@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { QrGenerator } from "@mgl/ui";
 import {
   ArrowLeft,
   Banknote,
@@ -34,6 +35,7 @@ import {
   getRestaurantDiningTables,
   getRestaurantPosProducts,
   getRestaurantPosRegisters,
+  ensureRestaurantTableQrToken,
   openRestaurantPosShift,
   saveRestaurantTicket,
   sendRestaurantTicketToKitchen,
@@ -91,6 +93,7 @@ type TicketLine = {
 type DiningTable = {
   id: string;
   label: string;
+  qrToken: string | null;
   zone: string;
   seats: number;
   status: TableStatus;
@@ -208,6 +211,7 @@ const createClientSaleId = () =>
 const mapDiningTable = (table: RestaurantDiningTable): DiningTable => ({
   id: table.id,
   label: table.label,
+  qrToken: table.qrToken,
   zone: table.zone,
   seats: table.seats,
   status: table.status,
@@ -218,6 +222,7 @@ const mapDiningTable = (table: RestaurantDiningTable): DiningTable => ({
 const EMPTY_DINING_TABLE: DiningTable = {
   id: "",
   label: "-",
+  qrToken: null,
   zone: "",
   seats: 0,
   status: "FREE",
@@ -426,6 +431,14 @@ export function RestaurantPosScreen() {
   const [notice, setNotice] = useState("");
   const [lastReceipt, setLastReceipt] = useState<PosReceipt | null>(null);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrSelectedTableId, setQrSelectedTableId] = useState("");
+  const [qrTokensByTableId, setQrTokensByTableId] = useState<
+    Record<string, string>
+  >({});
+  const [qrLoadingTableId, setQrLoadingTableId] = useState("");
+  const [qrError, setQrError] = useState("");
+  const qrPrintRef = useRef<HTMLDivElement>(null);
 
   const selectedRegister = useMemo(
     () =>
@@ -442,6 +455,19 @@ export function RestaurantPosScreen() {
   const activeTables = diningTables.filter(
     (table) => table.status !== "FREE",
   ).length;
+  const qrSelectedTable =
+    diningTables.find((table) => table.id === qrSelectedTableId) ??
+    selectedTable;
+  const qrSelectedToken =
+    (qrSelectedTable.id ? qrTokensByTableId[qrSelectedTable.id] : "") ||
+    qrSelectedTable.qrToken ||
+    "";
+  const qrMenuUrl =
+    qrSelectedToken && typeof window !== "undefined"
+      ? `${window.location.origin}/menu/${encodeURIComponent(qrSelectedToken)}`
+      : qrSelectedToken
+        ? `/menu/${encodeURIComponent(qrSelectedToken)}`
+        : "";
 
   const loadPosSetup = useCallback(async () => {
     setSetupLoading(true);
@@ -735,6 +761,152 @@ export function RestaurantPosScreen() {
     });
   };
 
+  const ensureQrTokenForTable = async (table: DiningTable) => {
+    if (!selectedRegister || !table.id) {
+      throw new Error("QR үүсгэхийн тулд POS register болон ширээ сонгоно уу.");
+    }
+    const existingToken = qrTokensByTableId[table.id] || table.qrToken;
+    if (existingToken) return existingToken;
+
+    setQrLoadingTableId(table.id);
+    setQrError("");
+    try {
+      const result = await ensureRestaurantTableQrToken({
+        branchId: selectedRegister.branchId,
+        tableId: table.id,
+      });
+      setQrTokensByTableId((current) => ({
+        ...current,
+        [table.id]: result.qrToken,
+      }));
+      setDiningTables((current) =>
+        current.map((item) =>
+          item.id === table.id ? { ...item, qrToken: result.qrToken } : item,
+        ),
+      );
+      return result.qrToken;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Ширээний QR үүсгэхэд алдаа гарлаа";
+      setQrError(message);
+      throw error;
+    } finally {
+      setQrLoadingTableId("");
+    }
+  };
+
+  const handleOpenQrModal = async () => {
+    const table = selectedTable.id ? selectedTable : diningTables[0];
+    setQrModalOpen(true);
+    setQrSelectedTableId(table?.id ?? "");
+    setQrError("");
+    if (!table?.id) {
+      setQrError("QR үүсгэх ширээ олдсонгүй.");
+      return;
+    }
+    try {
+      await ensureQrTokenForTable(table);
+    } catch {
+      // qrError is set by ensureQrTokenForTable.
+    }
+  };
+
+  const copyQrMenuUrl = async () => {
+    if (!qrMenuUrl) return;
+    try {
+      await navigator.clipboard.writeText(qrMenuUrl);
+      setNotice(`Ширээ ${qrSelectedTable.label} QR menu link хуулагдлаа.`);
+    } catch {
+      setQrError("Link хуулах боломжгүй байна. Доорх URL-г гараар хуулна уу.");
+    }
+  };
+
+  const printQrMenu = () => {
+    if (!qrMenuUrl || typeof document === "undefined") return;
+    const qrMarkup = qrPrintRef.current?.innerHTML || "";
+    if (!qrMarkup) {
+      window.print();
+      return;
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+
+    const cleanup = () => {
+      window.setTimeout(() => iframe.remove(), 800);
+    };
+
+    iframe.onload = () => {
+      const printWindow = iframe.contentWindow;
+      if (!printWindow) {
+        cleanup();
+        return;
+      }
+      window.setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+        cleanup();
+      }, 80);
+    };
+
+    iframe.srcdoc = `<!doctype html>
+      <html lang="mn">
+        <head>
+          <meta charset="utf-8" />
+          <title>Table QR ${escapeReceiptHtml(qrSelectedTable.label)}</title>
+          <style>
+            @page { size: 90mm 120mm; margin: 6mm; }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              color: #111827;
+              background: #fff;
+              font-family: Arial, Helvetica, sans-serif;
+              text-align: center;
+            }
+            .card {
+              min-height: 100mm;
+              border: 2px solid #111827;
+              border-radius: 18px;
+              padding: 12mm 6mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              gap: 5mm;
+            }
+            h1 { margin: 0; font-size: 20px; }
+            p { margin: 0; font-size: 12px; line-height: 1.45; }
+            .table { font-size: 32px; font-weight: 800; }
+            .url { max-width: 70mm; overflow-wrap: anywhere; font-size: 9px; color: #4b5563; }
+            svg { width: 54mm; height: 54mm; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div>
+              <h1>${escapeReceiptHtml(user.organizationName || "MGL Store Restaurant")}</h1>
+              <p>${escapeReceiptHtml(selectedRegister?.branch.name || "")}</p>
+            </div>
+            <div class="table">${escapeReceiptHtml(qrSelectedTable.label)}</div>
+            <div>${qrMarkup}</div>
+            <p>QR уншуулаад менюгээсээ захиална уу</p>
+            <p class="url">${escapeReceiptHtml(qrMenuUrl)}</p>
+          </div>
+        </body>
+      </html>`;
+
+    document.body.appendChild(iframe);
+  };
+
   const handleRegisterChange = (registerId: string) => {
     if (shift?.registerId && shift.registerId !== registerId) {
       setSetupError(
@@ -748,6 +920,9 @@ export function RestaurantPosScreen() {
     setTicketLines([]);
     setCheckoutError("");
     setNotice("");
+    setQrSelectedTableId("");
+    setQrTokensByTableId({});
+    setQrError("");
     if (typeof window !== "undefined") {
       window.localStorage.setItem(REGISTER_STORAGE_KEY, registerId);
     }
@@ -1108,6 +1283,15 @@ export function RestaurantPosScreen() {
             </div>
 
             <div className="flex w-full max-w-3xl items-center justify-end gap-2 max-lg:flex-wrap">
+              <button
+                type="button"
+                onClick={() => void handleOpenQrModal()}
+                disabled={!selectedRegister || diningTables.length === 0}
+                className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-emerald-300/40 px-4 text-sm font-black text-emerald-100 transition hover:bg-emerald-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-600"
+              >
+                <QrCode className="h-4 w-4" />
+                QR хэвлэх
+              </button>
               <Link
                 href="/dashboard/kitchen-display"
                 className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-amber-300/40 px-4 text-sm font-black text-amber-100 transition hover:bg-amber-300 hover:text-slate-950"
@@ -1718,6 +1902,169 @@ export function RestaurantPosScreen() {
           </div>
         </aside>
       </div>
+
+      {qrModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="grid max-h-[92vh] w-full max-w-5xl grid-cols-[320px_minmax(0,1fr)] overflow-hidden rounded-2xl border border-white/10 bg-[#242735] shadow-2xl max-lg:grid-cols-1">
+            <div className="min-h-0 border-r border-white/10 p-5 max-lg:border-b max-lg:border-r-0">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wider text-emerald-300">
+                    QR menu
+                  </p>
+                  <h3 className="mt-1 text-2xl font-black text-white">
+                    Сонгосон ширээний QR
+                  </h3>
+                  <p className="mt-2 text-sm font-semibold text-slate-400">
+                    Энэ ширээний нэг QR-г хэвлээд бодит ширээн дээр байрлуулна.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setQrModalOpen(false)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white"
+                  aria-label="Хаах"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-5 max-h-[58vh] space-y-2 overflow-y-auto pr-1 max-lg:max-h-52">
+                {diningTables.map((table) => {
+                  const isActive = table.id === qrSelectedTable.id;
+                  const loadingQr = qrLoadingTableId === table.id;
+                  const hasQr = Boolean(qrTokensByTableId[table.id] || table.qrToken);
+
+                  return (
+                    <button
+                      key={table.id}
+                      type="button"
+                      onClick={() => {
+                        setQrSelectedTableId(table.id);
+                        setQrError("");
+                        void ensureQrTokenForTable(table);
+                      }}
+                      className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left transition ${
+                        isActive
+                          ? "border-emerald-300 bg-emerald-300/10 text-white"
+                          : "border-white/10 bg-white/[0.03] text-slate-200 hover:border-emerald-300/50"
+                      }`}
+                    >
+                      <span>
+                        <span className="block text-sm font-black">
+                          Ширээ {table.label}
+                        </span>
+                        <span className="mt-0.5 block text-xs font-semibold text-slate-500">
+                          {table.zone} · {table.seats} суудал
+                        </span>
+                      </span>
+                      {loadingQr ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />
+                      ) : hasQr ? (
+                        <QrCode className="h-4 w-4 text-emerald-300" />
+                      ) : (
+                        <Plus className="h-4 w-4 text-slate-500" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="min-h-0 overflow-y-auto p-6">
+              <div className="rounded-2xl border border-white/10 bg-[#1b1d2b] p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-400">
+                      QR дээрх ширээ
+                    </p>
+                    <h4 className="mt-1 text-3xl font-black text-white">
+                      {qrSelectedTable.id
+                        ? `Ширээ ${qrSelectedTable.label}`
+                        : "Ширээ сонгоно уу"}
+                    </h4>
+                    <p className="mt-2 text-sm font-semibold text-slate-500">
+                      Scan хийхэд энэ ширээний web menu нээгдэнэ.
+                    </p>
+                  </div>
+                  <span className="rounded-xl bg-emerald-300/10 px-3 py-1 text-xs font-black text-emerald-200">
+                    /menu/token
+                  </span>
+                </div>
+
+                <div className="mt-6 grid grid-cols-[260px_minmax(0,1fr)] gap-5 max-md:grid-cols-1">
+                  <div
+                    ref={qrPrintRef}
+                    className="flex min-h-72 items-center justify-center rounded-2xl bg-white p-5 text-slate-950"
+                  >
+                    {qrSelectedTable.id &&
+                    qrLoadingTableId === qrSelectedTable.id ? (
+                      <Loader2 className="h-10 w-10 animate-spin text-slate-400" />
+                    ) : qrMenuUrl ? (
+                      <QrGenerator value={qrMenuUrl} size={220} />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void ensureQrTokenForTable(qrSelectedTable)}
+                        disabled={!qrSelectedTable.id}
+                        className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:opacity-50"
+                      >
+                        QR үүсгэх
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <label className="block">
+                      <span className="text-sm font-bold text-slate-300">
+                        QR menu URL
+                      </span>
+                      <input
+                        value={qrMenuUrl}
+                        readOnly
+                        placeholder="QR token үүсээгүй байна"
+                        className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none"
+                      />
+                    </label>
+
+                    {qrError ? (
+                      <p className="mt-3 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold leading-5 text-rose-200">
+                        {qrError}
+                      </p>
+                    ) : null}
+
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => void copyQrMenuUrl()}
+                        disabled={!qrMenuUrl}
+                        className="flex h-12 items-center justify-center gap-2 rounded-lg border border-white/10 text-sm font-black text-slate-100 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:text-slate-600"
+                      >
+                        <QrCode className="h-4 w-4" />
+                        Link хуулах
+                      </button>
+                      <button
+                        type="button"
+                        onClick={printQrMenu}
+                        disabled={!qrMenuUrl}
+                        className="flex h-12 items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-black text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                      >
+                        <Printer className="h-4 w-4" />
+                        Хэвлэх
+                      </button>
+                    </div>
+
+                    <div className="mt-5 rounded-xl border border-sky-300/20 bg-sky-300/10 p-4 text-sm font-semibold leading-6 text-sky-100">
+                      QR захиалга шууд гал тогооны дэлгэц рүү илгээгдэж, касс дээр
+                      тухайн ширээний active order болж харагдана.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showOpenShift && selectedRegister && !shift ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
