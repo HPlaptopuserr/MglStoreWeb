@@ -3,20 +3,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
+  CreditCard,
+  ExternalLink,
   Loader2,
   Menu,
   Minus,
   Plus,
   RefreshCw,
-  Send,
   ShoppingBag,
   UtensilsCrossed,
 } from "lucide-react";
+import { QrGenerator } from "@mgl/ui";
 import {
-  createPublicRestaurantOrder,
+  createPublicRestaurantQPayInvoice,
+  getPublicRestaurantQPayStatus,
   getPublicRestaurantMenu,
   type RestaurantPublicMenu,
   type RestaurantPublicMenuProduct,
+  type RestaurantPublicQPayInvoice,
   type RestaurantTicket,
 } from "@/lib/restaurant-pos-api";
 
@@ -63,13 +67,18 @@ const buildProductDescription = (product: RestaurantPublicMenuProduct) => {
 
 export function RestaurantQrMenuScreen({ token }: { token: string }) {
   const [menu, setMenu] = useState<RestaurantPublicMenu | null>(null);
-  const [activeCategory, setActiveCategory] =
-    useState<PublicMenuCategory | "ALL">("ALL");
+  const [activeCategory, setActiveCategory] = useState<
+    PublicMenuCategory | "ALL"
+  >("ALL");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [orderNote, setOrderNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [checkingPayment, setCheckingPayment] = useState(false);
   const [error, setError] = useState("");
+  const [paymentMessage, setPaymentMessage] = useState("");
+  const [paymentInvoice, setPaymentInvoice] =
+    useState<RestaurantPublicQPayInvoice | null>(null);
   const [successTicket, setSuccessTicket] = useState<RestaurantTicket | null>(
     null,
   );
@@ -128,13 +137,16 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
       : "Энэ ангиллын хоол, уух зүйлс";
   const cartTotal = cart.reduce((sum, line) => sum + line.price * line.qty, 0);
   const cartQty = cart.reduce((sum, line) => sum + line.qty, 0);
+  const paymentPending = paymentInvoice?.status === "PENDING";
   const canSubmit =
     Boolean(menu?.orderingAvailable) &&
     cart.length > 0 &&
     cartTotal > 0 &&
-    !submitting;
+    !submitting &&
+    !paymentPending;
 
   const addToCart = (product: RestaurantPublicMenuProduct) => {
+    if (paymentPending) return;
     setSuccessTicket(null);
     setError("");
     setCart((current) => {
@@ -162,6 +174,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
   };
 
   const changeQty = (lineId: string, delta: number) => {
+    if (paymentPending) return;
     setCart((current) =>
       current
         .map((line) => {
@@ -176,6 +189,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
   };
 
   const updateLineNote = (lineId: string, note: string) => {
+    if (paymentPending) return;
     setCart((current) =>
       current.map((line) => (line.id === lineId ? { ...line, note } : line)),
     );
@@ -186,8 +200,9 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
     setSubmitting(true);
     setError("");
     setSuccessTicket(null);
+    setPaymentMessage("");
     try {
-      const result = await createPublicRestaurantOrder(token, {
+      const result = await createPublicRestaurantQPayInvoice(token, {
         note: orderNote.trim() || undefined,
         lines: cart.map((line) => ({
           productId: line.id,
@@ -195,10 +210,8 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
           note: line.note.trim() || undefined,
         })),
       });
-      setSuccessTicket(result.ticket);
-      setCart([]);
-      setOrderNote("");
-      await loadMenu();
+      setPaymentInvoice(result);
+      setPaymentMessage("QPay QR уншуулж төлбөрөө төлнө үү.");
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -209,6 +222,52 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
       setSubmitting(false);
     }
   };
+
+  const paymentInvoiceId = paymentInvoice?.invoiceId || "";
+  const paymentInvoiceStatus = paymentInvoice?.status || "";
+
+  const checkPaymentStatus = useCallback(
+    async (silent = false) => {
+      if (!paymentInvoiceId || paymentInvoiceStatus !== "PENDING") return;
+      if (!silent) setCheckingPayment(true);
+      try {
+        const result = await getPublicRestaurantQPayStatus(
+          token,
+          paymentInvoiceId,
+        );
+        setPaymentInvoice(result);
+        setPaymentMessage(result.message);
+        if (result.status === "PAID" && result.ticket) {
+          setSuccessTicket(result.ticket);
+          setCart([]);
+          setOrderNote("");
+          setPaymentInvoice(null);
+          setPaymentMessage("");
+          await loadMenu();
+        } else if (result.status === "EXPIRED") {
+          setError(result.message);
+        }
+      } catch (statusError) {
+        setError(
+          statusError instanceof Error
+            ? statusError.message
+            : "QPay төлбөр шалгахад алдаа гарлаа",
+        );
+      } finally {
+        if (!silent) setCheckingPayment(false);
+      }
+    },
+    [loadMenu, paymentInvoiceId, paymentInvoiceStatus, token],
+  );
+
+  useEffect(() => {
+    if (!paymentInvoiceId || paymentInvoiceStatus !== "PENDING") return;
+    void checkPaymentStatus(true);
+    const timer = window.setInterval(() => {
+      void checkPaymentStatus(true);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [checkPaymentStatus, paymentInvoiceId, paymentInvoiceStatus]);
 
   if (loading) {
     return (
@@ -344,7 +403,9 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
                   key={product.id}
                   type="button"
                   onClick={() => addToCart(product)}
-                  disabled={!menu.orderingAvailable || soldOut}
+                  disabled={
+                    !menu.orderingAvailable || soldOut || paymentPending
+                  }
                   className="group grid min-h-[136px] grid-cols-[minmax(0,1fr)_120px] overflow-hidden rounded-sm border border-slate-200 bg-white text-left shadow-sm transition hover:border-slate-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:grid-cols-[minmax(0,1fr)_148px]"
                 >
                   <span className="flex min-w-0 flex-col px-4 py-4">
@@ -398,6 +459,102 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
       {cart.length > 0 ? (
         <section className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white p-3 shadow-[0_-8px_30px_rgba(15,23,42,0.10)]">
           <div className="mx-auto max-w-6xl">
+            {paymentInvoice ? (
+              <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center">
+                  <div className="mx-auto flex shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:mx-0">
+                    {paymentInvoice.qrText ? (
+                      <QrGenerator
+                        value={paymentInvoice.qrText}
+                        size={190}
+                        level="M"
+                      />
+                    ) : paymentInvoice.qrImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`data:image/png;base64,${paymentInvoice.qrImage}`}
+                        alt="QPay QR"
+                        className="h-[190px] w-[190px]"
+                      />
+                    ) : (
+                      <Loader2 className="h-9 w-9 animate-spin text-slate-400" />
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white">
+                        <CreditCard className="h-3.5 w-3.5" />
+                        QPay төлбөр
+                      </span>
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-700">
+                        {paymentInvoice.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-lg font-extrabold text-slate-950">
+                      {formatMoney(paymentInvoice.amount)}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold leading-5 text-slate-600">
+                      {paymentMessage || "QPay QR уншуулж төлбөрөө төлнө үү."}
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-slate-500">
+                      Дуусах хугацаа:{" "}
+                      {new Date(paymentInvoice.expiresAt).toLocaleTimeString(
+                        "mn-MN",
+                        { hour: "2-digit", minute: "2-digit" },
+                      )}
+                    </p>
+
+                    {paymentInvoice.deepLinks.length > 0 ? (
+                      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                        {paymentInvoice.deepLinks.map((link, index) => (
+                          <a
+                            key={`${link.link}-${index}`}
+                            href={link.link}
+                            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800"
+                          >
+                            {link.name || link.description || "Банк"}
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void checkPaymentStatus(false)}
+                        disabled={
+                          checkingPayment || paymentInvoice.status !== "PENDING"
+                        }
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        {checkingPayment ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                        Төлбөр шалгах
+                      </button>
+                      {paymentInvoice.status === "EXPIRED" ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentInvoice(null);
+                            setPaymentMessage("");
+                            setError("");
+                          }}
+                          className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800"
+                        >
+                          Шинэ QR үүсгэх
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-3">
@@ -418,9 +575,9 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
                     {submitting ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Send className="h-4 w-4" />
+                      <CreditCard className="h-4 w-4" />
                     )}
-                    Захиалах
+                    {paymentPending ? "Төлбөр хүлээгдэж байна" : "QPay-р төлөх"}
                   </button>
                 </div>
 
@@ -444,6 +601,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
                           onChange={(event) =>
                             updateLineNote(line.id, event.target.value)
                           }
+                          disabled={paymentPending}
                           placeholder="Тэмдэглэл: сонгино багатай..."
                           className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-400"
                         />
@@ -452,6 +610,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
                         <button
                           type="button"
                           onClick={() => changeQty(line.id, -1)}
+                          disabled={paymentPending}
                           className="flex h-7 w-7 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
                           aria-label={`${line.name} хасах`}
                         >
@@ -463,7 +622,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
                         <button
                           type="button"
                           onClick={() => changeQty(line.id, 1)}
-                          disabled={line.qty >= line.stockQty}
+                          disabled={paymentPending || line.qty >= line.stockQty}
                           className="flex h-7 w-7 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 disabled:text-slate-300"
                           aria-label={`${line.name} нэмэх`}
                         >
@@ -477,6 +636,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
                 <textarea
                   value={orderNote}
                   onChange={(event) => setOrderNote(event.target.value)}
+                  disabled={paymentPending}
                   rows={2}
                   placeholder="Нийт захиалгын тэмдэглэл..."
                   className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-400"

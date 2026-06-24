@@ -313,6 +313,60 @@ export async function createPublicRestaurantOrder(
   );
 }
 
+export type RestaurantPublicQPayDeepLink = {
+  name?: string;
+  description?: string;
+  logo?: string;
+  link: string;
+};
+
+export type RestaurantPublicQPayInvoice = {
+  invoiceId: string;
+  providerInvoiceId: string;
+  amount: number;
+  qrText: string;
+  qrImage: string;
+  deepLinks: RestaurantPublicQPayDeepLink[];
+  status: "PENDING" | "PAID" | "EXPIRED";
+  expiresAt: string;
+  createdAt: string;
+};
+
+export type RestaurantPublicQPayStatus = RestaurantPublicQPayInvoice & {
+  paidAt: string | null;
+  ticket: RestaurantTicket | null;
+  message: string;
+};
+
+export async function createPublicRestaurantQPayInvoice(
+  token: string,
+  input: {
+    note?: string;
+    lines: Array<{ productId: string; qty: number; note?: string }>;
+  },
+) {
+  const response = await fetch(
+    `${API}/restaurant/menu/${encodeURIComponent(token)}/qpay/invoice`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return readApiResponse<RestaurantPublicQPayInvoice>(response);
+}
+
+export async function getPublicRestaurantQPayStatus(
+  token: string,
+  invoiceId: string,
+) {
+  const response = await fetch(
+    `${API}/restaurant/menu/${encodeURIComponent(token)}/qpay/status/${encodeURIComponent(invoiceId)}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantPublicQPayStatus>(response);
+}
+
 export async function saveRestaurantTicket(input: {
   branchId: string;
   shiftId: string;

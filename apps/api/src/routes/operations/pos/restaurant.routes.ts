@@ -2,6 +2,8 @@ import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import {
   KitchenTicketStatus,
+  PosActivationStatus,
+  PosQPayStatus,
   prisma,
   RestaurantOrderMode,
   RestaurantTicketStatus,
@@ -9,6 +11,16 @@ import {
 } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import { hasOrgMembership } from "../../../services/permission.service";
+import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
+import type { QPayMerchantContext } from "../../../services/qpay.types";
+import {
+  getVendorMerchantConfig,
+  getVendorSystemQrConfig,
+} from "../../../services/vendor-merchant.service";
+import {
+  checkSystemQrPayment,
+  createSystemQrInvoice,
+} from "../../../services/systemqr";
 import { requirePosUser, type AuthUser } from "./_shared";
 
 const router: ExpressRouter = Router();
@@ -21,6 +33,11 @@ const EDITABLE_TICKET_STATUSES: RestaurantTicketStatus[] = [
 ];
 
 const OCCUPIED_TICKET_STATUSES: RestaurantTicketStatus[] = [
+  ...EDITABLE_TICKET_STATUSES,
+  RestaurantTicketStatus.PAID,
+];
+
+const QR_APPENDABLE_TICKET_STATUSES: RestaurantTicketStatus[] = [
   ...EDITABLE_TICKET_STATUSES,
   RestaurantTicketStatus.PAID,
 ];
@@ -47,6 +64,38 @@ type TicketLineInput = {
   qty?: number;
   note?: string;
 };
+
+type NormalizedTicketLine = {
+  productId: string;
+  qty: number;
+  note: string | null;
+};
+
+type RestaurantQrOrderPayload = {
+  source: "RESTAURANT_QR_MENU";
+  qrToken: string;
+  tableId: string;
+  branchId: string;
+  organizationId: string;
+  shiftId: string;
+  cashierId: string;
+  note: string | null;
+  amount: number;
+  lines: NormalizedTicketLine[];
+  provider?: "QPAY" | "SYSTEMQR";
+  providerInvoiceId?: string;
+  merchantCode?: string | null;
+  qrImage?: string;
+  deepLinks?: unknown;
+  merchantKey?: string | null;
+  lastPaymentCheck?: unknown;
+  lastWebhook?: unknown;
+  finalizedRestaurantTicketId?: string;
+  finalizedTicketNo?: string;
+  finalizedAt?: string;
+};
+
+const RESTAURANT_QR_QPAY_SOURCE = "RESTAURANT_QR_MENU";
 
 const generateNumber = (prefix: string) => {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -83,6 +132,162 @@ const normalizeQrCustomerNote = (value: unknown) => {
   const note = normalizeNote(value);
   return note ? `QR: ${note}` : "QR self-order";
 };
+
+const isPublicCallbackBaseUrl = (value?: string | null) => {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+      return false;
+    }
+    if (
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    ) {
+      return false;
+    }
+    return url.protocol === "https:" || process.env.NODE_ENV !== "production";
+  } catch {
+    return false;
+  }
+};
+
+function normalizeQrOrderLines(rawLines: TicketLineInput[]) {
+  const normalizedByProductId = new Map<string, NormalizedTicketLine>();
+
+  for (const rawLine of rawLines) {
+    const productId = String(rawLine.productId || "").trim();
+    const qty = Math.floor(Number(rawLine.qty || 0));
+    const note = normalizeNote(rawLine.note);
+    if (!productId || !Number.isFinite(qty) || qty <= 0) {
+      throw Object.assign(
+        new Error("Захиалгын item-ийн мэдээлэл буруу байна"),
+        {
+          status: 400,
+        },
+      );
+    }
+    const existing = normalizedByProductId.get(productId);
+    normalizedByProductId.set(productId, {
+      productId,
+      qty: (existing?.qty || 0) + qty,
+      note: note || existing?.note || null,
+    });
+  }
+
+  const normalizedLines = [...normalizedByProductId.values()];
+  if (normalizedLines.length === 0) {
+    throw Object.assign(new Error("Захиалах хоол сонгоно уу"), {
+      status: 400,
+    });
+  }
+
+  return normalizedLines;
+}
+
+function readRestaurantQrOrderPayload(
+  value: Prisma.JsonValue | null,
+): RestaurantQrOrderPayload | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const payload = value as Record<string, unknown>;
+  if (payload.source !== RESTAURANT_QR_QPAY_SOURCE) return null;
+
+  const lines = Array.isArray(payload.lines)
+    ? payload.lines
+        .map((line) => {
+          if (!line || typeof line !== "object" || Array.isArray(line)) {
+            return null;
+          }
+          const record = line as Record<string, unknown>;
+          const productId = String(record.productId || "").trim();
+          const qty = Math.floor(Number(record.qty || 0));
+          const note = normalizeNote(record.note);
+          if (!productId || !Number.isFinite(qty) || qty <= 0) return null;
+          return { productId, qty, note } satisfies NormalizedTicketLine;
+        })
+        .filter((line): line is NormalizedTicketLine => Boolean(line))
+    : [];
+
+  const qrToken = String(payload.qrToken || "").trim();
+  const tableId = String(payload.tableId || "").trim();
+  const branchId = String(payload.branchId || "").trim();
+  const organizationId = String(payload.organizationId || "").trim();
+  const shiftId = String(payload.shiftId || "").trim();
+  const cashierId = String(payload.cashierId || "").trim();
+
+  if (
+    !qrToken ||
+    !tableId ||
+    !branchId ||
+    !organizationId ||
+    !shiftId ||
+    !cashierId ||
+    lines.length === 0
+  ) {
+    return null;
+  }
+
+  return {
+    source: RESTAURANT_QR_QPAY_SOURCE,
+    qrToken,
+    tableId,
+    branchId,
+    organizationId,
+    shiftId,
+    cashierId,
+    note: normalizeNote(payload.note),
+    amount: Number(payload.amount || 0),
+    lines,
+    provider:
+      String(payload.provider || "").toUpperCase() === "SYSTEMQR"
+        ? "SYSTEMQR"
+        : String(payload.provider || "").toUpperCase() === "QPAY"
+          ? "QPAY"
+          : undefined,
+    providerInvoiceId:
+      String(payload.providerInvoiceId || "").trim() || undefined,
+    merchantCode: String(payload.merchantCode || "").trim() || null,
+    qrImage: String(payload.qrImage || ""),
+    deepLinks: payload.deepLinks,
+    merchantKey: String(payload.merchantKey || "").trim() || null,
+    lastPaymentCheck: payload.lastPaymentCheck,
+    lastWebhook: payload.lastWebhook,
+    finalizedRestaurantTicketId:
+      String(payload.finalizedRestaurantTicketId || "").trim() || undefined,
+    finalizedTicketNo:
+      String(payload.finalizedTicketNo || "").trim() || undefined,
+    finalizedAt: String(payload.finalizedAt || "").trim() || undefined,
+  };
+}
+
+async function resolveRestaurantSystemQrConfig(organizationId: string | null) {
+  if (!organizationId) return null;
+  return getVendorSystemQrConfig(organizationId, "POS");
+}
+
+async function resolveRestaurantQPayContext(organizationId: string) {
+  const systemQrConfig = await resolveRestaurantSystemQrConfig(organizationId);
+
+  let merchantContext: QPayMerchantContext | null = null;
+  if (!systemQrConfig) {
+    const orgRes = await getVendorMerchantConfig(organizationId);
+    merchantContext = orgRes.config ?? null;
+  }
+
+  if (merchantContext && !merchantContext.bankAccounts?.length) {
+    const orgRes = await getVendorMerchantConfig(organizationId);
+    if (orgRes.config?.bankAccounts?.length) {
+      merchantContext = {
+        ...merchantContext,
+        bankAccounts: orgRes.config.bankAccounts,
+      };
+    }
+  }
+
+  return { systemQrConfig, merchantContext };
+}
 
 async function ensureTableQrToken(
   tx: Prisma.TransactionClient,
@@ -273,6 +478,314 @@ async function loadTicket(tx: Prisma.TransactionClient, ticketId: string) {
   });
 }
 
+async function finalizePaidRestaurantQrInvoice(
+  tx: Prisma.TransactionClient,
+  invoiceId: string,
+) {
+  await tx.$queryRaw`
+    SELECT "id"
+    FROM "QPayInvoice"
+    WHERE "id" = ${invoiceId}
+    FOR UPDATE
+  `;
+
+  const invoice = await tx.qPayInvoice.findUnique({
+    where: { id: invoiceId },
+  });
+  if (!invoice) {
+    throw Object.assign(new Error("QPay invoice олдсонгүй"), { status: 404 });
+  }
+
+  const payload = readRestaurantQrOrderPayload(invoice.webhookPayload);
+  if (!payload) {
+    throw Object.assign(new Error("QR захиалгын payload буруу байна"), {
+      status: 400,
+    });
+  }
+
+  const finalizedTicketId =
+    payload.finalizedRestaurantTicketId ||
+    (invoice.saleReference?.startsWith("RESTAURANT:")
+      ? invoice.saleReference.slice("RESTAURANT:".length)
+      : "");
+  if (finalizedTicketId) {
+    const existingTicket = await loadTicket(tx, finalizedTicketId);
+    return existingTicket;
+  }
+
+  if (invoice.status !== PosQPayStatus.PAID) {
+    return null;
+  }
+
+  const table = await tx.restaurantTable.findUnique({
+    where: { id: payload.tableId },
+    select: {
+      id: true,
+      qrToken: true,
+      isActive: true,
+      organizationId: true,
+      branchId: true,
+      branch: { select: { deletedAt: true } },
+    },
+  });
+  if (
+    !table ||
+    !table.isActive ||
+    table.branch.deletedAt ||
+    table.qrToken !== payload.qrToken ||
+    table.organizationId !== payload.organizationId ||
+    table.branchId !== payload.branchId
+  ) {
+    throw Object.assign(new Error("QR menu олдсонгүй"), { status: 404 });
+  }
+
+  await tx.$queryRaw`
+    SELECT "id"
+    FROM "RestaurantTable"
+    WHERE "id" = ${table.id}
+    FOR UPDATE
+  `;
+
+  const shift = await tx.posShift.findFirst({
+    where: {
+      id: payload.shiftId,
+      organizationId: payload.organizationId,
+      branchId: payload.branchId,
+    },
+    select: { id: true, cashierId: true },
+  });
+  if (!shift) {
+    throw Object.assign(
+      new Error("Захиалгын кассын ээлж олдсонгүй. Ажилтанд хандана уу."),
+      { status: 409 },
+    );
+  }
+
+  let ticket = await tx.restaurantTicket.findFirst({
+    where: {
+      tableId: table.id,
+      status: { in: QR_APPENDABLE_TICKET_STATUSES },
+    },
+    orderBy: { updatedAt: "desc" },
+    include: { items: true, kitchenTickets: { select: { id: true } } },
+  });
+
+  if (!ticket) {
+    const paidOccupiedTicket = await tx.restaurantTicket.findFirst({
+      where: {
+        tableId: table.id,
+        status: RestaurantTicketStatus.PAID,
+      },
+      orderBy: { updatedAt: "desc" },
+      select: { ticketNo: true },
+    });
+    if (paidOccupiedTicket) {
+      throw Object.assign(
+        new Error(
+          `Ширээ төлбөр төлсөн ticket-тэй (${paidOccupiedTicket.ticketNo}) хэвээр байна. Ажилтанд хандана уу.`,
+        ),
+        { status: 409 },
+      );
+    }
+  }
+
+  if (ticket && ticket.shiftId !== shift.id) {
+    throw Object.assign(
+      new Error(
+        "Энэ ширээний ticket өөр ээлж дээр нээлттэй байна. Ажилтанд хандана уу.",
+      ),
+      { status: 409 },
+    );
+  }
+
+  const productIds = payload.lines.map((line) => line.productId);
+  const products = await tx.product.findMany({
+    where: {
+      id: { in: productIds },
+      organizationId: payload.organizationId,
+      deletedAt: null,
+      isActive: true,
+      isRestaurantMenuItem: true,
+    },
+    select: {
+      id: true,
+      name: true,
+      price: true,
+      stock: true,
+      kitchenStation: true,
+      preparationMinutes: true,
+    },
+  });
+  if (products.length !== productIds.length) {
+    throw Object.assign(
+      new Error("Зарим хоол идэвхгүй эсвэл менюд байхгүй байна"),
+      { status: 400 },
+    );
+  }
+
+  const qrOrderNote = payload.note
+    ? `QR/QPay: ${payload.note}`
+    : "QR/QPay self-order";
+  if (!ticket) {
+    ticket = await tx.restaurantTicket.create({
+      data: {
+        ticketNo: generateNumber("RT"),
+        organizationId: payload.organizationId,
+        branchId: payload.branchId,
+        shiftId: shift.id,
+        tableId: table.id,
+        openedById: shift.cashierId,
+        orderMode: RestaurantOrderMode.DINE_IN,
+        note: qrOrderNote,
+      },
+      include: { items: true, kitchenTickets: { select: { id: true } } },
+    });
+  } else if (payload.note) {
+    const nextNote = [ticket.note, qrOrderNote]
+      .filter(Boolean)
+      .join(" | ")
+      .slice(0, 500);
+    await tx.restaurantTicket.update({
+      where: { id: ticket.id },
+      data: { note: nextNote || null },
+    });
+  }
+
+  const existingByProduct = new Map(
+    ticket.items.map((item) => [item.productId, item]),
+  );
+  const orderedKitchenItems: Array<{
+    ticketItemId: string;
+    productId: string;
+    productName: string;
+    qty: number;
+    note: string | null;
+    kitchenStation: string | null;
+    preparationMinutes: number | null;
+  }> = [];
+
+  for (const line of payload.lines) {
+    const product = products.find((item) => item.id === line.productId)!;
+    const existing = existingByProduct.get(line.productId);
+    const nextQty = (existing?.qty || 0) + line.qty;
+    const nextSentQty = Math.min(nextQty, (existing?.sentQty || 0) + line.qty);
+    if (nextQty > product.stock) {
+      throw Object.assign(
+        new Error(
+          `"${product.name}" хоолны үлдэгдэл хүрэлцэхгүй (${product.stock})`,
+        ),
+        { status: 409 },
+      );
+    }
+
+    const savedItem = await tx.restaurantTicketItem.upsert({
+      where: {
+        ticketId_productId: {
+          ticketId: ticket.id,
+          productId: line.productId,
+        },
+      },
+      create: {
+        ticketId: ticket.id,
+        productId: product.id,
+        productName: product.name,
+        unitPrice: product.price,
+        qty: line.qty,
+        sentQty: line.qty,
+        note: line.note,
+        kitchenStation: product.kitchenStation,
+        preparationMinutes: product.preparationMinutes,
+      },
+      update: {
+        productName: product.name,
+        qty: nextQty,
+        sentQty: nextSentQty,
+        note: line.note || existing?.note || null,
+        kitchenStation: product.kitchenStation,
+        preparationMinutes: product.preparationMinutes,
+      },
+      select: {
+        id: true,
+        productId: true,
+        productName: true,
+        note: true,
+        kitchenStation: true,
+        preparationMinutes: true,
+      },
+    });
+
+    orderedKitchenItems.push({
+      ticketItemId: savedItem.id,
+      productId: savedItem.productId,
+      productName: savedItem.productName,
+      qty: line.qty,
+      note: savedItem.note,
+      kitchenStation: savedItem.kitchenStation,
+      preparationMinutes: savedItem.preparationMinutes,
+    });
+  }
+
+  const itemsByStation = new Map<string, typeof orderedKitchenItems>();
+  for (const kitchenItem of orderedKitchenItems) {
+    const station = kitchenItem.kitchenStation || "HOT_KITCHEN";
+    const stationItems = itemsByStation.get(station) || [];
+    stationItems.push(kitchenItem);
+    itemsByStation.set(station, stationItems);
+  }
+
+  await Promise.all(
+    [...itemsByStation.values()].map((stationItems) =>
+      tx.kitchenTicket.create({
+        data: {
+          kitchenTicketNo: generateNumber("KT"),
+          organizationId: payload.organizationId,
+          branchId: payload.branchId,
+          restaurantTicketId: ticket!.id,
+          sentById: shift.cashierId,
+          status: KitchenTicketStatus.NEW,
+          items: {
+            create: stationItems.map((item) => ({
+              restaurantTicketItemId: item.ticketItemId,
+              productId: item.productId,
+              productName: item.productName,
+              qty: item.qty,
+              note: item.note,
+              kitchenStation: item.kitchenStation || "HOT_KITCHEN",
+              preparationMinutes: item.preparationMinutes,
+            })),
+          },
+        },
+      }),
+    ),
+  );
+
+  await tx.restaurantTicket.update({
+    where: { id: ticket.id },
+    data: {
+      status: RestaurantTicketStatus.PAID,
+      sentAt: ticket.sentAt || new Date(),
+      closedAt: new Date(),
+    },
+  });
+
+  const now = new Date();
+  await tx.qPayInvoice.update({
+    where: { id: invoice.id },
+    data: {
+      saleReference: `RESTAURANT:${ticket.id}`,
+      consumedAt: now,
+      webhookPayload: {
+        ...payload,
+        finalizedRestaurantTicketId: ticket.id,
+        finalizedTicketNo: ticket.ticketNo,
+        finalizedAt: now.toISOString(),
+      } as unknown as Prisma.JsonObject,
+    },
+  });
+
+  return loadTicket(tx, ticket.id);
+}
+
 router.get("/restaurant/menu/:token", async (req, res) => {
   try {
     const qrToken = String(req.params.token || "").trim();
@@ -365,11 +878,428 @@ router.get("/restaurant/menu/:token", async (req, res) => {
     });
   } catch (error) {
     console.error("get public restaurant menu error", error);
-    return res
-      .status(500)
-      .json({ message: "QR menu ачаалахад алдаа гарлаа" });
+    return res.status(500).json({ message: "QR menu ачаалахад алдаа гарлаа" });
   }
 });
+
+router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
+  try {
+    const qrToken = String(req.params.token || "").trim();
+    const rawLines = Array.isArray(req.body?.lines)
+      ? (req.body.lines as TicketLineInput[])
+      : Array.isArray(req.body?.items)
+        ? (req.body.items as TicketLineInput[])
+        : [];
+    if (!qrToken) {
+      return res.status(404).json({ message: "QR menu олдсонгүй" });
+    }
+
+    const normalizedLines = normalizeQrOrderLines(rawLines);
+
+    const table = await prisma.restaurantTable.findUnique({
+      where: { qrToken },
+      select: {
+        id: true,
+        code: true,
+        label: true,
+        isActive: true,
+        organizationId: true,
+        branchId: true,
+        organization: { select: { id: true, name: true } },
+        branch: { select: { deletedAt: true } },
+      },
+    });
+    if (!table || !table.isActive || table.branch.deletedAt) {
+      return res.status(404).json({ message: "QR menu олдсонгүй" });
+    }
+
+    const activeShift = await prisma.posShift.findFirst({
+      where: {
+        organizationId: table.organizationId,
+        branchId: table.branchId,
+        status: ShiftStatus.OPEN,
+      },
+      select: {
+        id: true,
+        cashierId: true,
+        registerId: true,
+        register: {
+          select: {
+            id: true,
+            organizationId: true,
+            isActive: true,
+            activationStatus: true,
+          },
+        },
+      },
+      orderBy: { openedAt: "desc" },
+    });
+    if (!activeShift) {
+      return res.status(409).json({
+        message: "Касс нээгдээгүй байна. Зөөгчид хандаарай.",
+      });
+    }
+    if (
+      activeShift.register &&
+      (!activeShift.register.isActive ||
+        activeShift.register.activationStatus !== PosActivationStatus.APPROVED)
+    ) {
+      return res.status(403).json({
+        message: "POS register идэвхгүй эсвэл батлагдаагүй байна.",
+      });
+    }
+
+    const existingTableTicket = await prisma.restaurantTicket.findFirst({
+      where: {
+        tableId: table.id,
+        status: { in: QR_APPENDABLE_TICKET_STATUSES },
+      },
+      orderBy: { updatedAt: "desc" },
+      select: { shiftId: true, ticketNo: true },
+    });
+    if (existingTableTicket && existingTableTicket.shiftId !== activeShift.id) {
+      return res.status(409).json({
+        message: `Энэ ширээний ticket өөр ээлж дээр нээлттэй байна (${existingTableTicket.ticketNo}). Ажилтанд хандана уу.`,
+      });
+    }
+
+    const productIds = normalizedLines.map((line) => line.productId);
+    const products = await prisma.product.findMany({
+      where: {
+        id: { in: productIds },
+        organizationId: table.organizationId,
+        deletedAt: null,
+        isActive: true,
+        isRestaurantMenuItem: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        stock: true,
+      },
+    });
+    if (products.length !== productIds.length) {
+      return res
+        .status(400)
+        .json({ message: "Зарим хоол идэвхгүй эсвэл менюд байхгүй байна" });
+    }
+
+    const amount =
+      Math.round(
+        normalizedLines.reduce((sum, line) => {
+          const product = products.find((item) => item.id === line.productId)!;
+          if (line.qty > product.stock) {
+            throw Object.assign(
+              new Error(
+                `"${product.name}" хоолны үлдэгдэл хүрэлцэхгүй (${product.stock})`,
+              ),
+              { status: 409 },
+            );
+          }
+          return sum + Number(product.price) * line.qty;
+        }, 0) * 100,
+      ) / 100;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: "QPay amount буруу байна" });
+    }
+
+    const { systemQrConfig, merchantContext } =
+      await resolveRestaurantQPayContext(table.organizationId);
+    if (!merchantContext && !systemQrConfig) {
+      return res.status(400).json({
+        message:
+          "QPay merchant тохиргоо дутуу байна. Байгууллагын тохиргоо дээр Minu Dynamic QR submerchant бүртгэнэ үү.",
+      });
+    }
+
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const orderPayload: RestaurantQrOrderPayload = {
+      source: RESTAURANT_QR_QPAY_SOURCE,
+      qrToken,
+      tableId: table.id,
+      branchId: table.branchId,
+      organizationId: table.organizationId,
+      shiftId: activeShift.id,
+      cashierId: activeShift.cashierId,
+      note: normalizeNote(req.body?.note),
+      amount,
+      lines: normalizedLines,
+    };
+    const invoice = await prisma.qPayInvoice.create({
+      data: {
+        registerId: activeShift.registerId || null,
+        organizationId: table.organizationId,
+        initiatedById: activeShift.cashierId,
+        amount,
+        qrText: "",
+        status: PosQPayStatus.PENDING,
+        expiresAt,
+        webhookPayload: orderPayload as unknown as Prisma.JsonObject,
+      },
+    });
+
+    try {
+      let qpayData: Awaited<ReturnType<typeof createQPayInvoice>>;
+      if (systemQrConfig) {
+        const publicUrl = (
+          process.env.API_PUBLIC_URL ||
+          process.env.API_URL ||
+          ""
+        ).replace(/\/+$/, "");
+        const systemQrInvoiceParams = {
+          merchantCode: systemQrConfig.merchantCode,
+          amount,
+          referenceNumber: invoice.id,
+          webhook: isPublicCallbackBaseUrl(publicUrl)
+            ? `${publicUrl}/api/pos/qpay/cb?invoiceId=${invoice.id}`
+            : undefined,
+        };
+        let systemQr: Awaited<ReturnType<typeof createSystemQrInvoice>>;
+        try {
+          systemQr = await createSystemQrInvoice(
+            systemQrInvoiceParams,
+            systemQrConfig.username,
+            systemQrConfig.password,
+          );
+        } catch (systemQrError) {
+          const message =
+            systemQrError instanceof Error
+              ? systemQrError.message
+              : String(systemQrError);
+          if (
+            !systemQrConfig.password ||
+            !/SystemQR Login Error|username or password|credential|unauthorized|401|403/i.test(
+              message,
+            )
+          ) {
+            throw systemQrError;
+          }
+          systemQr = await createSystemQrInvoice(systemQrInvoiceParams);
+        }
+
+        qpayData = {
+          invoice_id: systemQr.invoiceId,
+          qr_text: systemQr.qrText,
+          qr_image: "",
+          urls: systemQr.urls,
+        };
+      } else {
+        qpayData = await createQPayInvoice({
+          orderId: invoice.id,
+          orderNumber: `RQR-${invoice.id.slice(0, 8)}`,
+          amount,
+          description: `${table.organization.name} - ширээ ${table.label}`,
+          merchantContext: merchantContext || undefined,
+          callbackConfig: {
+            path: "/api/pos/qpay/cb",
+            query: {},
+          },
+        });
+      }
+
+      const updatedPayload: RestaurantQrOrderPayload = {
+        ...orderPayload,
+        provider: systemQrConfig ? "SYSTEMQR" : "QPAY",
+        providerInvoiceId: qpayData.invoice_id,
+        merchantCode: systemQrConfig?.merchantCode || null,
+        qrImage: qpayData.qr_image,
+        deepLinks: qpayData.urls as unknown,
+        merchantKey: merchantContext?.merchantKey || null,
+      };
+      const updated = await prisma.qPayInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          qrText: qpayData.qr_text,
+          webhookPayload: updatedPayload as unknown as Prisma.JsonObject,
+        },
+      });
+
+      return res.status(201).json({
+        invoiceId: updated.id,
+        providerInvoiceId: qpayData.invoice_id,
+        amount: Number(updated.amount),
+        qrText: updated.qrText,
+        qrImage: qpayData.qr_image,
+        deepLinks: qpayData.urls,
+        status: updated.status,
+        expiresAt: updated.expiresAt.toISOString(),
+        createdAt: updated.createdAt.toISOString(),
+      });
+    } catch (qpayError) {
+      await prisma.qPayInvoice.delete({ where: { id: invoice.id } });
+      throw qpayError;
+    }
+  } catch (error) {
+    const known = error as Error & { status?: number };
+    if (known.status) {
+      return res.status(known.status).json({ message: known.message });
+    }
+    console.error("create public restaurant qpay invoice error", error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : "QPay invoice үүсгэхэд алдаа гарлаа";
+    return res.status(500).json({ message });
+  }
+});
+
+router.get(
+  "/restaurant/menu/:token/qpay/status/:invoiceId",
+  async (req, res) => {
+    try {
+      const qrToken = String(req.params.token || "").trim();
+      const invoiceId = String(req.params.invoiceId || "").trim();
+      if (!qrToken || !invoiceId) {
+        return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+      }
+
+      const invoice = await prisma.qPayInvoice.findUnique({
+        where: { id: invoiceId },
+      });
+      if (!invoice) {
+        return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+      }
+
+      const payload = readRestaurantQrOrderPayload(invoice.webhookPayload);
+      if (!payload || payload.qrToken !== qrToken) {
+        return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+      }
+
+      let current = invoice;
+      if (
+        invoice.status === PosQPayStatus.PENDING &&
+        invoice.expiresAt <= new Date()
+      ) {
+        current = await prisma.qPayInvoice.update({
+          where: { id: invoiceId },
+          data: { status: PosQPayStatus.EXPIRED },
+        });
+      } else if (invoice.status === PosQPayStatus.PENDING) {
+        const existingPayload = (invoice.webhookPayload || {}) as Record<
+          string,
+          unknown
+        >;
+        const providerInvoiceId = String(
+          payload.providerInvoiceId || "",
+        ).trim();
+        if (providerInvoiceId && payload.provider === "SYSTEMQR") {
+          const resolved = await resolveRestaurantSystemQrConfig(
+            invoice.organizationId || payload.organizationId,
+          );
+          const merchantCode = String(
+            payload.merchantCode || resolved?.merchantCode || "",
+          ).trim();
+          if (merchantCode) {
+            const check = await checkSystemQrPayment(
+              { merchantCode, invoiceNumber: providerInvoiceId },
+              resolved?.username,
+              resolved?.password,
+            );
+            if (check.paid) {
+              current = await prisma.qPayInvoice.update({
+                where: { id: invoiceId },
+                data: {
+                  status: PosQPayStatus.PAID,
+                  paymentId: `systemqr-${providerInvoiceId}`,
+                  paidAt: new Date(),
+                  webhookPayload: {
+                    ...existingPayload,
+                    lastPaymentCheck: check,
+                  } as unknown as Prisma.JsonObject,
+                },
+              });
+            }
+          }
+        } else if (providerInvoiceId) {
+          let statusMerchantContext: QPayMerchantContext | null = null;
+          if (invoice.organizationId) {
+            const orgRes = await getVendorMerchantConfig(
+              invoice.organizationId,
+            );
+            statusMerchantContext = orgRes.config ?? null;
+          }
+          if (
+            statusMerchantContext &&
+            !statusMerchantContext.bankAccounts?.length &&
+            invoice.organizationId
+          ) {
+            const orgRes = await getVendorMerchantConfig(
+              invoice.organizationId,
+            );
+            if (orgRes.config?.bankAccounts?.length) {
+              statusMerchantContext = {
+                ...statusMerchantContext,
+                bankAccounts: orgRes.config.bankAccounts,
+              };
+            }
+          }
+
+          const check = await checkQPayPayment(
+            providerInvoiceId,
+            statusMerchantContext || undefined,
+          );
+          const paidRow = Array.isArray(check.rows) ? check.rows[0] : null;
+          if (check.count > 0 && paidRow?.payment_id) {
+            current = await prisma.qPayInvoice.update({
+              where: { id: invoiceId },
+              data: {
+                status: PosQPayStatus.PAID,
+                paymentId: paidRow.payment_id,
+                paidAt: new Date(),
+                webhookPayload: {
+                  ...existingPayload,
+                  lastPaymentCheck: check,
+                } as unknown as Prisma.JsonObject,
+              },
+            });
+          }
+        }
+      }
+
+      let ticket: TicketWithDetails | null = null;
+      if (current.status === PosQPayStatus.PAID) {
+        ticket = await prisma.$transaction(
+          (tx) => finalizePaidRestaurantQrInvoice(tx, current.id),
+          { isolationLevel: "Serializable" },
+        );
+      }
+
+      const currentPayload =
+        readRestaurantQrOrderPayload(current.webhookPayload) || payload;
+      return res.json({
+        invoiceId: current.id,
+        providerInvoiceId: currentPayload.providerInvoiceId || "",
+        amount: Number(current.amount),
+        qrText: current.qrText,
+        qrImage: currentPayload.qrImage || "",
+        deepLinks: Array.isArray(currentPayload.deepLinks)
+          ? currentPayload.deepLinks
+          : [],
+        status: current.status,
+        expiresAt: current.expiresAt.toISOString(),
+        paidAt: current.paidAt?.toISOString() ?? null,
+        createdAt: current.createdAt.toISOString(),
+        ticket: ticket ? mapTicket(ticket) : null,
+        message:
+          current.status === PosQPayStatus.PAID && ticket
+            ? "Төлбөр амжилттай. Захиалга касс болон гал тогоо руу илгээгдлээ."
+            : current.status === PosQPayStatus.EXPIRED
+              ? "QPay invoice хугацаа дууссан байна."
+              : "Төлбөр хүлээгдэж байна.",
+      });
+    } catch (error) {
+      const known = error as Error & { status?: number };
+      if (known.status) {
+        return res.status(known.status).json({ message: known.message });
+      }
+      console.error("restaurant qpay status error", error);
+      return res
+        .status(500)
+        .json({ message: "QPay статус авахад алдаа гарлаа" });
+    }
+  },
+);
 
 router.post("/restaurant/menu/:token/orders", async (req, res) => {
   try {
@@ -406,9 +1336,7 @@ router.post("/restaurant/menu/:token/orders", async (req, res) => {
 
     const normalizedLines = [...normalizedByProductId.values()];
     if (normalizedLines.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "Захиалах хоол сонгоно уу" });
+      return res.status(400).json({ message: "Захиалах хоол сонгоно уу" });
     }
 
     const result = await prisma.$transaction(
@@ -482,7 +1410,9 @@ router.post("/restaurant/menu/:token/orders", async (req, res) => {
 
         if (ticket && ticket.shiftId !== activeShift.id) {
           throw Object.assign(
-            new Error("Энэ ширээний ticket өөр ээлж дээр нээлттэй байна. Зөөгчид хандаарай."),
+            new Error(
+              "Энэ ширээний ticket өөр ээлж дээр нээлттэй байна. Зөөгчид хандаарай.",
+            ),
             { status: 409 },
           );
         }
@@ -805,8 +1735,7 @@ router.patch("/restaurant/pos/kitchen-tickets/:id/status", async (req, res) => {
               nextStatus === KitchenTicketStatus.PREPARING
                 ? current.startedAt || now
                 : undefined,
-            readyAt:
-              nextStatus === KitchenTicketStatus.READY ? now : undefined,
+            readyAt: nextStatus === KitchenTicketStatus.READY ? now : undefined,
             servedAt:
               nextStatus === KitchenTicketStatus.SERVED ? now : undefined,
           },
@@ -1515,7 +2444,9 @@ router.post("/restaurant/pos/tables/:id/clear", async (req, res) => {
         });
         if (unpaidCount > 0) {
           throw Object.assign(
-            new Error("Төлбөр дуусаагүй ticket байгаа тул ширээ чөлөөлөх боломжгүй"),
+            new Error(
+              "Төлбөр дуусаагүй ticket байгаа тул ширээ чөлөөлөх боломжгүй",
+            ),
             { status: 409 },
           );
         }
@@ -1567,9 +2498,7 @@ router.post("/restaurant/pos/tables/:id/clear", async (req, res) => {
       return res.status(known.status).json({ message: known.message });
     }
     console.error("clear restaurant table error", error);
-    return res
-      .status(500)
-      .json({ message: "Ширээ чөлөөлөхөд алдаа гарлаа" });
+    return res.status(500).json({ message: "Ширээ чөлөөлөхөд алдаа гарлаа" });
   }
 });
 
