@@ -459,12 +459,16 @@ export async function updateRestaurantKitchenTicketStatus(input: {
 export async function clearRestaurantDiningTable(input: {
   branchId: string;
   tableId: string;
+  forceCancel?: boolean;
 }) {
   const response = await authFetch(
     `${API}/restaurant/pos/tables/${encodeURIComponent(input.tableId)}/clear`,
     {
       method: "POST",
-      body: JSON.stringify({ branchId: input.branchId }),
+      body: JSON.stringify({
+        branchId: input.branchId,
+        forceCancel: Boolean(input.forceCancel),
+      }),
     },
   );
   return readApiResponse<RestaurantDiningTable>(response);

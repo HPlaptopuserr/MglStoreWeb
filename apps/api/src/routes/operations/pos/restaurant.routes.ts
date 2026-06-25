@@ -1816,7 +1816,10 @@ router.get("/restaurant/pos/tables", async (req, res) => {
       orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
       include: {
         tickets: {
-          where: { status: { in: OCCUPIED_TICKET_STATUSES } },
+          where: {
+            status: { in: OCCUPIED_TICKET_STATUSES },
+            items: { some: {} },
+          },
           orderBy: { updatedAt: "desc" },
           take: 1,
           include: ticketInclude,
@@ -2209,11 +2212,18 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
           data: { orderMode, note: normalizeNote(req.body?.note) },
         });
 
-        if (
-          normalizedLines.length === 0 &&
-          ticket.kitchenTickets.length === 0
-        ) {
-          await tx.restaurantTicket.delete({ where: { id: ticket.id } });
+        if (normalizedLines.length === 0) {
+          if (ticket.kitchenTickets.length === 0) {
+            await tx.restaurantTicket.delete({ where: { id: ticket.id } });
+          } else {
+            await tx.restaurantTicket.update({
+              where: { id: ticket.id },
+              data: {
+                status: RestaurantTicketStatus.CANCELLED,
+                closedAt: new Date(),
+              },
+            });
+          }
           return null;
         }
 
@@ -2401,6 +2411,7 @@ router.post("/restaurant/pos/tables/:id/clear", async (req, res) => {
 
     const tableId = String(req.params.id || "").trim();
     const branchId = String(req.body?.branchId || "").trim();
+    const forceCancel = Boolean(req.body?.forceCancel);
     if (!tableId || !branchId) {
       return res
         .status(400)
@@ -2436,19 +2447,66 @@ router.post("/restaurant/pos/tables/:id/clear", async (req, res) => {
           throw Object.assign(new Error("Ширээ олдсонгүй"), { status: 404 });
         }
 
+        await tx.restaurantTicket.updateMany({
+          where: {
+            tableId,
+            status: { in: EDITABLE_TICKET_STATUSES },
+            items: { none: {} },
+          },
+          data: {
+            status: RestaurantTicketStatus.CANCELLED,
+            closedAt: new Date(),
+          },
+        });
+
         const unpaidCount = await tx.restaurantTicket.count({
           where: {
             tableId,
             status: { in: EDITABLE_TICKET_STATUSES },
+            items: { some: {} },
           },
         });
         if (unpaidCount > 0) {
-          throw Object.assign(
-            new Error(
-              "Төлбөр дуусаагүй ticket байгаа тул ширээ чөлөөлөх боломжгүй",
-            ),
-            { status: 409 },
-          );
+          if (!forceCancel) {
+            throw Object.assign(
+              new Error(
+                "Төлбөр дуусаагүй ticket байгаа тул ширээ чөлөөлөх боломжгүй",
+              ),
+              { status: 409 },
+            );
+          }
+
+          const activeKitchenTicket = await tx.restaurantTicket.findFirst({
+            where: {
+              tableId,
+              status: { in: EDITABLE_TICKET_STATUSES },
+              items: { some: {} },
+              kitchenTickets: {
+                some: { status: { in: ACTIVE_KITCHEN_TICKET_STATUSES } },
+              },
+            },
+            select: { ticketNo: true },
+          });
+          if (activeKitchenTicket) {
+            throw Object.assign(
+              new Error(
+                `Гал тогоонд идэвхтэй ticket (${activeKitchenTicket.ticketNo}) байгаа тул эхлээд гал тогооны төлөвийг дуусгана уу.`,
+              ),
+              { status: 409 },
+            );
+          }
+
+          await tx.restaurantTicket.updateMany({
+            where: {
+              tableId,
+              status: { in: EDITABLE_TICKET_STATUSES },
+              items: { some: {} },
+            },
+            data: {
+              status: RestaurantTicketStatus.CANCELLED,
+              closedAt: new Date(),
+            },
+          });
         }
 
         await tx.restaurantTicket.updateMany({
@@ -2466,7 +2524,10 @@ router.post("/restaurant/pos/tables/:id/clear", async (req, res) => {
           where: { id: tableId },
           include: {
             tickets: {
-              where: { status: { in: OCCUPIED_TICKET_STATUSES } },
+              where: {
+                status: { in: OCCUPIED_TICKET_STATUSES },
+                items: { some: {} },
+              },
               orderBy: { updatedAt: "desc" },
               take: 1,
               include: ticketInclude,

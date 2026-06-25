@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   Loader2,
   Minus,
+  Monitor,
   Plus,
   Printer,
   QrCode,
@@ -48,6 +49,12 @@ import {
   type RestaurantPosRegister,
   type RestaurantTicket,
 } from "@/lib/restaurant-pos-api";
+import {
+  RESTAURANT_CUSTOMER_DISPLAY_CHANNEL,
+  RESTAURANT_CUSTOMER_DISPLAY_STORAGE_KEY,
+  type RestaurantCustomerDisplayPayload,
+  type RestaurantCustomerDisplaySuccess,
+} from "./customer-display";
 import type { PosReceipt, PosShift } from "@mgl/types";
 
 type OrderMode = "DINE_IN" | "TO_GO" | "DELIVERY";
@@ -458,6 +465,8 @@ export function RestaurantPosScreen() {
   const [qpayChecking, setQpayChecking] = useState(false);
   const [qpayFinalizing, setQpayFinalizing] = useState(false);
   const [qpayMessage, setQpayMessage] = useState("");
+  const [customerDisplaySuccess, setCustomerDisplaySuccess] =
+    useState<RestaurantCustomerDisplaySuccess | null>(null);
   const [notice, setNotice] = useState("");
   const [lastReceipt, setLastReceipt] = useState<PosReceipt | null>(null);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
@@ -469,6 +478,7 @@ export function RestaurantPosScreen() {
   const [qrLoadingTableId, setQrLoadingTableId] = useState("");
   const [qrError, setQrError] = useState("");
   const qrPrintRef = useRef<HTMLDivElement>(null);
+  const customerDisplayChannelRef = useRef<BroadcastChannel | null>(null);
   const qpayFinalizedInvoiceRef = useRef<string | null>(null);
 
   const selectedRegister = useMemo(
@@ -686,7 +696,9 @@ export function RestaurantPosScreen() {
   const qpayPending = qpayCheckout?.invoice.status === "PENDING";
   const qpayPaymentActive = Boolean(qpayCheckout);
   const selectedTicketPaid = selectedTable.currentTicket?.status === "PAID";
-  const hasSentItems = ticketLines.some((line) => line.sentQty > 0);
+  const selectedTicketActive = Boolean(
+    selectedTable.currentTicket && !selectedTicketPaid,
+  );
   const hasUnsentItems = ticketLines.some((line) => line.qty > line.sentQty);
   const canCheckout =
     Boolean(selectedRegister && shiftMatchesRegister) &&
@@ -712,6 +724,92 @@ export function RestaurantPosScreen() {
     !ticketSaving &&
     !kitchenSubmitting &&
     !clearSubmitting;
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel(RESTAURANT_CUSTOMER_DISPLAY_CHANNEL);
+    customerDisplayChannelRef.current = channel;
+    return () => {
+      channel.close();
+      customerDisplayChannelRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!customerDisplaySuccess) return;
+    const timer = window.setTimeout(
+      () => setCustomerDisplaySuccess(null),
+      10_000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [customerDisplaySuccess]);
+
+  useEffect(() => {
+    const payload: RestaurantCustomerDisplayPayload = {
+      organizationName: user.organizationName || "MGL Store Restaurant",
+      branchName: selectedRegister?.branch.name || "Салбар сонгогдоогүй",
+      registerName:
+        selectedRegister?.label || selectedRegister?.name || "Restaurant POS",
+      tableLabel: selectedTable.label,
+      orderMode,
+      paymentMethod,
+      lines: ticketLines.map((line) => ({
+        id: line.id,
+        name: line.name,
+        qty: line.qty,
+        sentQty: line.sentQty,
+        unitPrice: line.price,
+        lineTotal: line.price * line.qty,
+        note: line.note.trim() || undefined,
+        imageUrl: line.imageUrl,
+      })),
+      totals: {
+        subtotal,
+        discount,
+        total,
+      },
+      qpay: qpayCheckout
+        ? {
+            invoiceId: qpayCheckout.invoice.invoiceId,
+            amount: qpayCheckout.amount,
+            qrText: qpayCheckout.invoice.qrText,
+            qrImage: qpayCheckout.invoice.qrImage,
+            status: qpayCheckout.invoice.status,
+            expiresAt: qpayCheckout.invoice.expiresAt,
+            deepLinks: qpayCheckout.invoice.deepLinks,
+          }
+        : null,
+      message: qpayMessage || notice,
+      success: customerDisplaySuccess,
+      updatedAt: Date.now(),
+    };
+
+    try {
+      window.localStorage.setItem(
+        RESTAURANT_CUSTOMER_DISPLAY_STORAGE_KEY,
+        JSON.stringify(payload),
+      );
+      customerDisplayChannelRef.current?.postMessage(payload);
+    } catch {
+      // Customer display sync is best-effort; POS flow should continue.
+    }
+  }, [
+    customerDisplaySuccess,
+    discount,
+    notice,
+    orderMode,
+    paymentMethod,
+    qpayCheckout,
+    qpayMessage,
+    selectedRegister?.branch.name,
+    selectedRegister?.label,
+    selectedRegister?.name,
+    selectedTable.label,
+    subtotal,
+    ticketLines,
+    total,
+    user.organizationName,
+  ]);
 
   const updateTableTicket = (
     tableId: string,
@@ -843,6 +941,14 @@ export function RestaurantPosScreen() {
   ) => {
     setLastReceipt(receipt);
     setReceiptPreviewOpen(true);
+    setCustomerDisplaySuccess({
+      title: "Төлбөр амжилттай",
+      text: `Баримт ${receipt.receiptNo} хэвлэгдлээ.`,
+      receiptNo: receipt.receiptNo,
+      amount: receipt.grandTotal,
+      paymentMethod: receipt.paymentMethod,
+      ts: Date.now(),
+    });
     const paidTicket: RestaurantTicket = {
       ...ticket,
       status: "PAID",
@@ -1070,6 +1176,7 @@ export function RestaurantPosScreen() {
     setTicketLines([]);
     setCheckoutError("");
     setNotice("");
+    setCustomerDisplaySuccess(null);
     setQrSelectedTableId("");
     setQrTokensByTableId({});
     setQrError("");
@@ -1092,17 +1199,14 @@ export function RestaurantPosScreen() {
     setOrderMode(table.currentTicket?.orderMode ?? "DINE_IN");
     setCheckoutError("");
     setNotice("");
+    setCustomerDisplaySuccess(null);
   };
 
   const handleOrderModeChange = async (mode: OrderMode) => {
     if (selectedTicketPaid || qpayPaymentActive) return;
-    if (mode !== orderMode && hasSentItems) {
-      setCheckoutError(
-        "Гал тогоо руу илгээсэн захиалгын төрлийг солих боломжгүй.",
-      );
-      return;
-    }
     setOrderMode(mode);
+    setCheckoutError("");
+    setNotice("");
     if (ticketLines.length === 0 && !selectedTable.currentTicket) return;
     try {
       await persistTicketLines(ticketLines, mode);
@@ -1243,6 +1347,7 @@ export function RestaurantPosScreen() {
     setCheckoutSubmitting(true);
     setCheckoutError("");
     setNotice("");
+    setCustomerDisplaySuccess(null);
     setQpayMessage("");
     try {
       const savedTicket = await persistTicketLines(ticketLines);
@@ -1364,8 +1469,13 @@ export function RestaurantPosScreen() {
     return () => window.clearInterval(timer);
   }, [qpayCheckout?.invoice.invoiceId, qpayCheckout?.invoice.status]);
 
-  const handleClearTable = async () => {
-    if (!selectedRegister || !selectedTable.id || !selectedTicketPaid) return;
+  const handleClearTable = async (options?: { forceCancel?: boolean }) => {
+    if (
+      !selectedRegister ||
+      !selectedTable.id ||
+      (!selectedTicketPaid && !options?.forceCancel)
+    )
+      return;
 
     setClearSubmitting(true);
     setCheckoutError("");
@@ -1374,6 +1484,7 @@ export function RestaurantPosScreen() {
       const table = await clearRestaurantDiningTable({
         branchId: selectedRegister.branchId,
         tableId: selectedTable.id,
+        forceCancel: options?.forceCancel,
       });
       setDiningTables((current) =>
         current.map((item) =>
@@ -1382,7 +1493,12 @@ export function RestaurantPosScreen() {
       );
       setTicketLines([]);
       setOrderMode("DINE_IN");
-      setNotice(`Ширээ ${table.label} чөлөөлөгдлөө.`);
+      setCustomerDisplaySuccess(null);
+      setNotice(
+        options?.forceCancel
+          ? `Ширээ ${table.label} дээрх ticket цуцлагдаж, ширээ сул боллоо.`
+          : `Ширээ ${table.label} чөлөөлөгдлөө.`,
+      );
       void loadTables({ silent: true });
     } catch (error) {
       setCheckoutError(
@@ -1408,6 +1524,8 @@ export function RestaurantPosScreen() {
       setNotice(`"${item.name}" хоолны үлдэгдэл хүрэлцэхгүй байна.`);
       return;
     }
+
+    setCustomerDisplaySuccess(null);
 
     const nextLines = existing
       ? ticketLines.map((line) =>
@@ -1449,12 +1567,51 @@ export function RestaurantPosScreen() {
       return;
     }
 
+    setCustomerDisplaySuccess(null);
+
     const nextLines = ticketLines
       .map((line) => {
         if (line.id !== lineId) return line;
         return { ...line, qty: Math.max(0, line.qty + delta) };
       })
       .filter((line) => line.qty > 0);
+    try {
+      await persistTicketLines(nextLines);
+    } catch {
+      // Error state and server reload are handled by persistTicketLines.
+    }
+  };
+
+  const removeLine = async (lineId: string) => {
+    if (ticketSaving || selectedTicketPaid || qpayPaymentActive) return;
+    const target = ticketLines.find((line) => line.id === lineId);
+    if (!target) return;
+
+    if (target.sentQty > 0) {
+      if (target.qty <= target.sentQty) {
+        setNotice(
+          `"${target.name}" гал тогоонд ${target.sentQty}ш илгээгдсэн тул сагснаас шууд устгах боломжгүй. Цуцлалт хийх flow дараагийн алхамд хэрэгтэй.`,
+        );
+        return;
+      }
+
+      const nextLines = ticketLines.map((line) =>
+        line.id === lineId ? { ...line, qty: line.sentQty } : line,
+      );
+      setCustomerDisplaySuccess(null);
+      setNotice(
+        `"${target.name}"-ийн гал тогоонд илгээгдээгүй ${target.qty - target.sentQty}ш хасагдлаа.`,
+      );
+      try {
+        await persistTicketLines(nextLines);
+      } catch {
+        // Error state and server reload are handled by persistTicketLines.
+      }
+      return;
+    }
+
+    const nextLines = ticketLines.filter((line) => line.id !== lineId);
+    setCustomerDisplaySuccess(null);
     try {
       await persistTicketLines(nextLines);
     } catch {
@@ -1484,11 +1641,20 @@ export function RestaurantPosScreen() {
     }
   };
 
+  const openCustomerDisplay = () => {
+    if (typeof window === "undefined") return;
+    window.open(
+      "/restaurant-customer-display",
+      "mgl-restaurant-customer-display",
+      "width=1180,height=760,noopener,noreferrer",
+    );
+  };
+
   return (
     <section className="relative h-full overflow-hidden bg-[#202331] text-slate-100 shadow-2xl shadow-slate-950/20">
       <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_390px] bg-[#222532] max-xl:grid-cols-1 max-xl:overflow-y-auto">
         <main className="flex min-h-0 flex-col px-7 py-5 max-xl:min-h-[760px] max-md:px-4">
-          <header className="flex shrink-0 items-start justify-between gap-4 max-2xl:flex-col">
+          <header className="flex shrink-0 flex-col gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-3">
                 <Link
@@ -1516,7 +1682,7 @@ export function RestaurantPosScreen() {
               </div>
             </div>
 
-            <div className="flex w-full max-w-3xl items-center justify-end gap-2 max-lg:flex-wrap">
+            <div className="flex w-full flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => void handleOpenQrModal()}
@@ -1525,6 +1691,14 @@ export function RestaurantPosScreen() {
               >
                 <QrCode className="h-4 w-4" />
                 QR хэвлэх
+              </button>
+              <button
+                type="button"
+                onClick={openCustomerDisplay}
+                className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-sky-300/40 px-4 text-sm font-black text-sky-100 transition hover:bg-sky-300 hover:text-slate-950"
+              >
+                <Monitor className="h-4 w-4" />
+                Хэрэглэгчийн дэлгэц
               </button>
               <Link
                 href="/dashboard/kitchen-display"
@@ -1853,8 +2027,7 @@ export function RestaurantPosScreen() {
                     ticketSaving ||
                     kitchenSubmitting ||
                     selectedTicketPaid ||
-                    qpayPaymentActive ||
-                    (hasSentItems && mode !== orderMode)
+                    qpayPaymentActive
                   }
                   className={`h-10 rounded-lg border text-sm font-bold transition ${
                     orderMode === mode
@@ -2029,14 +2202,15 @@ export function RestaurantPosScreen() {
                     />
                     <button
                       type="button"
-                      onClick={() => void changeQty(line.id, -line.qty)}
+                      onClick={() => void removeLine(line.id)}
                       disabled={
-                        ticketSaving ||
-                        selectedTicketPaid ||
-                        qpayPaymentActive ||
-                        line.sentQty > 0
+                        ticketSaving || selectedTicketPaid || qpayPaymentActive
                       }
-                      className="flex h-12 items-center justify-center rounded-lg border border-sky-400/70 text-sky-400 transition hover:bg-sky-400 hover:text-white"
+                      className={`flex h-12 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                        line.sentQty > 0
+                          ? "border-amber-300/50 text-amber-200 hover:bg-amber-300 hover:text-slate-950"
+                          : "border-sky-400/70 text-sky-400 hover:bg-sky-400 hover:text-white"
+                      }`}
                       aria-label={`${line.name} устгах`}
                       title="Устгах"
                     >
@@ -2132,6 +2306,37 @@ export function RestaurantPosScreen() {
               </div>
             ) : (
               <div className="mt-3">
+                {selectedTicketActive ? (
+                  <div className="mb-3 rounded-xl border border-amber-300/30 bg-amber-300/10 p-3">
+                    <p className="text-xs font-bold leading-5 text-amber-100">
+                      Энэ ширээн дээр төлбөр аваагүй ticket байна. Хэрвээ
+                      захиалгыг цуцлаад ширээг суллах бол доорх товчийг дарна.
+                      Гал тогоонд идэвхтэй ticket байвал систем цуцлахгүй.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleClearTable({ forceCancel: true })
+                      }
+                      disabled={
+                        clearSubmitting ||
+                        ticketSaving ||
+                        kitchenSubmitting ||
+                        checkoutSubmitting ||
+                        qpayPaymentActive
+                      }
+                      className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-300/10 text-sm font-black text-amber-100 transition hover:bg-amber-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {clearSubmitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                      Захиалга цуцалж ширээ суллах
+                    </button>
+                  </div>
+                ) : null}
+
                 {orderMode === "DINE_IN" && hasUnsentItems ? (
                   <p className="mb-2 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-bold leading-5 text-amber-100">
                     Төлбөр авахаас өмнө бүх хоолыг гал тогоо руу илгээнэ үү.
