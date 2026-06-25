@@ -188,6 +188,31 @@ type CreateRestaurantCashSalePayload = {
   }>;
 };
 
+type CreateRestaurantSalePayload = CreateRestaurantCashSalePayload & {
+  paymentMethod: "CASH" | "QPAY";
+  qpayInvoiceId?: string;
+};
+
+export type RestaurantPosQPayDeepLink = {
+  name?: string;
+  description?: string;
+  logo?: string;
+  link: string;
+};
+
+export type RestaurantPosQPayInvoice = {
+  invoiceId: string;
+  providerInvoiceId?: string;
+  amount: number;
+  qrText: string;
+  qrImage?: string;
+  deepLinks?: RestaurantPosQPayDeepLink[];
+  status: "PENDING" | "PAID" | "EXPIRED";
+  expiresAt: string;
+  paidAt?: string | null;
+  createdAt: string;
+};
+
 async function readApiResponse<T>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
@@ -445,9 +470,31 @@ export async function clearRestaurantDiningTable(input: {
   return readApiResponse<RestaurantDiningTable>(response);
 }
 
-export async function createRestaurantCashSale(
-  input: CreateRestaurantCashSalePayload,
-) {
+export async function createRestaurantQPayInvoice(input: {
+  amount: number;
+  registerId: string;
+  organizationId: string;
+}) {
+  const response = await authFetch(`${API}/pos/payments/qpay/invoice`, {
+    method: "POST",
+    body: JSON.stringify({
+      amount: input.amount,
+      registerId: input.registerId,
+      organizationId: input.organizationId,
+    }),
+  });
+  return readApiResponse<RestaurantPosQPayInvoice>(response);
+}
+
+export async function getRestaurantQPayInvoiceStatus(invoiceId: string) {
+  const response = await authFetch(
+    `${API}/pos/payments/qpay/status/${encodeURIComponent(invoiceId)}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantPosQPayInvoice>(response);
+}
+
+async function createRestaurantSale(input: CreateRestaurantSalePayload) {
   const response = await authFetch(`${API}/pos/sales`, {
     method: "POST",
     body: JSON.stringify({
@@ -457,12 +504,34 @@ export async function createRestaurantCashSale(
       organizationId: input.organizationId,
       restaurantTicketId: input.restaurantTicketId,
       clientSaleId: input.clientSaleId,
-      paymentMethod: "CASH",
-      paymentBreakdown: [{ method: "CASH", amount: input.total }],
+      paymentMethod: input.paymentMethod,
+      paymentBreakdown: [
+        {
+          method: input.paymentMethod,
+          amount: input.total,
+          ...(input.qpayInvoiceId ? { invoiceId: input.qpayInvoiceId } : {}),
+        },
+      ],
       loyalty: { mode: "NONE" },
       lines: input.lines,
       note: input.note,
     }),
   });
   return readApiResponse<PosReceipt>(response);
+}
+
+export async function createRestaurantCashSale(
+  input: CreateRestaurantCashSalePayload,
+) {
+  return createRestaurantSale({ ...input, paymentMethod: "CASH" });
+}
+
+export async function createRestaurantQPaySale(
+  input: CreateRestaurantCashSalePayload & { qpayInvoiceId: string },
+) {
+  return createRestaurantSale({
+    ...input,
+    paymentMethod: "QPAY",
+    qpayInvoiceId: input.qpayInvoiceId,
+  });
 }

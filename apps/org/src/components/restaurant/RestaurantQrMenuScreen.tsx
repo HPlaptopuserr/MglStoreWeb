@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   ShoppingBag,
+  Smartphone,
   UtensilsCrossed,
 } from "lucide-react";
 import { QrGenerator } from "@mgl/ui";
@@ -51,6 +52,190 @@ const categoryLabels: Record<PublicMenuCategory, string> = {
 
 const moneyFormatter = new Intl.NumberFormat("mn-MN");
 const formatMoney = (value: number) => `${moneyFormatter.format(value)}₮`;
+
+const LOCAL_BANK_APP_LOGOS = [
+  {
+    src: "/payment-apps/khan-bank.png",
+    patterns: ["khan bank", "khan", "хаан банк", "хаан"],
+  },
+  {
+    src: "/payment-apps/state-bank.png",
+    patterns: ["state bank", "statebank", "төрийн банк", "төрийн"],
+  },
+  {
+    src: "/payment-apps/xac-bank.png",
+    patterns: [
+      "xac bank",
+      "xac",
+      "khas bank",
+      "khas",
+      "хас банк",
+      "хасбанк",
+      "хас",
+    ],
+  },
+  {
+    src: "/payment-apps/tdb.png",
+    patterns: [
+      "trade and development",
+      "tdb online",
+      "tdb",
+      "худалдаа хөгжлийн",
+      "худалдаа",
+    ],
+  },
+  {
+    src: "/payment-apps/social-pay.png",
+    patterns: ["social pay", "socialpay"],
+  },
+  {
+    src: "/payment-apps/most-money.png",
+    patterns: ["most money", "mostmoney", "most"],
+  },
+  {
+    src: "/payment-apps/national-investment-bank.png",
+    patterns: [
+      "national investment bank",
+      "national investment",
+      "investment bank",
+      "nib",
+      "үндэсний хөрөнгө оруулалтын банк",
+      "үндэсний хөрөнгө",
+    ],
+  },
+  {
+    src: "/payment-apps/chinggis-khaan-bank.png",
+    patterns: [
+      "chinggis khaan",
+      "chinggis",
+      "chingis",
+      "чингис хаан",
+      "чингис",
+    ],
+  },
+  {
+    src: "/payment-apps/capitron-bank.png",
+    patterns: ["capitron bank", "capitron", "капитрон банк", "капитрон"],
+  },
+  {
+    src: "/payment-apps/bogd-bank.png",
+    patterns: ["bogd bank", "bogd", "богд банк", "богд"],
+  },
+  {
+    src: "/payment-apps/toki.png",
+    patterns: ["toki app", "toki pay", "toki"],
+  },
+  {
+    src: "/payment-apps/arig-bank.png",
+    patterns: ["arig bank", "arig", "ариг банк", "ариг"],
+  },
+  {
+    src: "/payment-apps/monpay.png",
+    patterns: ["monpay", "mon pay", "мон пэй"],
+  },
+  {
+    src: "/payment-apps/hipay.png",
+    patterns: ["hipay", "hi pay"],
+  },
+  {
+    src: "/payment-apps/happy-pay.png",
+    patterns: ["happy pay mn", "happy pay", "happypay"],
+  },
+  {
+    src: "/payment-apps/sono.png",
+    patterns: ["sono"],
+  },
+  {
+    src: "/payment-apps/payon.png",
+    patterns: ["payon", "pay on"],
+  },
+] as const;
+
+type BankDeepLinkLike = {
+  name?: string;
+  description?: string;
+  logo?: string;
+  link?: string;
+};
+
+const normalizeBankText = (value?: string) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+function findLocalBankLogo(link: BankDeepLinkLike) {
+  const haystack = normalizeBankText(
+    [link.name, link.description, link.link].filter(Boolean).join(" "),
+  );
+  let bestMatch: { src: string; score: number } | null = null;
+
+  for (const logo of LOCAL_BANK_APP_LOGOS) {
+    for (const pattern of logo.patterns) {
+      const normalizedPattern = normalizeBankText(pattern);
+      if (!normalizedPattern || !haystack.includes(normalizedPattern)) continue;
+      if (!bestMatch || normalizedPattern.length > bestMatch.score) {
+        bestMatch = { src: logo.src, score: normalizedPattern.length };
+      }
+    }
+  }
+
+  return bestMatch?.src;
+}
+
+function looksLikeBase64Image(value: string) {
+  if (value.length < 80 || value.includes("/") || value.includes("\\")) {
+    return false;
+  }
+  return /^[A-Za-z0-9+/=]+$/.test(value);
+}
+
+function getBankLogoCandidates(link: BankDeepLinkLike) {
+  const logo = String(link.logo || "").trim();
+  const localLogo = findLocalBankLogo(link);
+  const candidates: string[] = [];
+
+  if (logo.startsWith("data:image")) {
+    candidates.push(logo);
+  } else if (looksLikeBase64Image(logo)) {
+    candidates.push(`data:image/png;base64,${logo}`);
+  } else if (logo.startsWith("//")) {
+    candidates.push(`https:${logo}`);
+  } else if (logo.startsWith("http://")) {
+    candidates.push(`https://${logo.slice("http://".length)}`, logo);
+  } else if (logo.startsWith("https://") || logo.startsWith("/payment-apps/")) {
+    candidates.push(logo);
+  } else if (logo) {
+    const path = logo.replace(/^\/+/, "");
+    candidates.push(
+      `https://api.minu.mn/${path}`,
+      `https://api.minu.mn/qrpay/${path}`,
+      `https://api.minu.mn/deeplink/${path}`,
+    );
+  }
+
+  if (localLogo) candidates.push(localLogo);
+  return [...new Set(candidates)];
+}
+
+function BankAppLogo({ link }: { link: BankDeepLinkLike }) {
+  const candidates = useMemo(() => getBankLogoCandidates(link), [link]);
+  const [candidateIndex, setCandidateIndex] = useState(0);
+  const src = candidates[candidateIndex];
+
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        onError={() => setCandidateIndex((index) => index + 1)}
+        className="h-full w-full object-contain p-1"
+      />
+    );
+  }
+
+  return <Smartphone className="h-4 w-4" />;
+}
 
 const getProductCategory = (
   product: RestaurantPublicMenuProduct,
@@ -211,7 +396,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
         })),
       });
       setPaymentInvoice(result);
-      setPaymentMessage("QPay QR уншуулж төлбөрөө төлнө үү.");
+      setPaymentMessage("Банкны апп сонгоод төлбөрөө төлнө үү.");
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -225,6 +410,8 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
 
   const paymentInvoiceId = paymentInvoice?.invoiceId || "";
   const paymentInvoiceStatus = paymentInvoice?.status || "";
+  const bankDeepLinks = paymentInvoice?.deepLinks ?? [];
+  const hasBankDeepLinks = bankDeepLinks.length > 0;
 
   const checkPaymentStatus = useCallback(
     async (silent = false) => {
@@ -461,95 +648,106 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
           <div className="mx-auto max-w-6xl">
             {paymentInvoice ? (
               <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <div className="flex flex-col gap-4 md:flex-row md:items-center">
-                  <div className="mx-auto flex shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:mx-0">
-                    {paymentInvoice.qrText ? (
-                      <QrGenerator
-                        value={paymentInvoice.qrText}
-                        size={190}
-                        level="M"
-                      />
-                    ) : paymentInvoice.qrImage ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={`data:image/png;base64,${paymentInvoice.qrImage}`}
-                        alt="QPay QR"
-                        className="h-[190px] w-[190px]"
-                      />
-                    ) : (
-                      <Loader2 className="h-9 w-9 animate-spin text-slate-400" />
-                    )}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white">
+                      <CreditCard className="h-3.5 w-3.5" />
+                      Банкны апп-аар төлөх
+                    </span>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-700">
+                      {paymentInvoice.status}
+                    </span>
                   </div>
+                  <p className="mt-2 text-xl font-extrabold text-slate-950">
+                    {formatMoney(paymentInvoice.amount)}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold leading-5 text-slate-600">
+                    {paymentMessage || "Банкны апп сонгоод төлбөрөө төлнө үү."}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-slate-500">
+                    Дуусах хугацаа:{" "}
+                    {new Date(paymentInvoice.expiresAt).toLocaleTimeString(
+                      "mn-MN",
+                      { hour: "2-digit", minute: "2-digit" },
+                    )}
+                  </p>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white">
-                        <CreditCard className="h-3.5 w-3.5" />
-                        QPay төлбөр
-                      </span>
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-700">
-                        {paymentInvoice.status}
-                      </span>
+                  {hasBankDeepLinks ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {bankDeepLinks.map((link, index) => (
+                        <a
+                          key={`${link.link}-${index}`}
+                          href={link.link}
+                          className="group flex min-h-14 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition active:scale-[0.98]"
+                        >
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-slate-700">
+                            <BankAppLogo link={link} />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-extrabold text-slate-950">
+                              {link.name || link.description || "Банк"}
+                            </span>
+                            <span className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-slate-500">
+                              Апп нээх
+                              <ExternalLink className="h-3 w-3" />
+                            </span>
+                          </span>
+                        </a>
+                      ))}
                     </div>
-                    <p className="mt-2 text-lg font-extrabold text-slate-950">
-                      {formatMoney(paymentInvoice.amount)}
-                    </p>
-                    <p className="mt-1 text-sm font-semibold leading-5 text-slate-600">
-                      {paymentMessage || "QPay QR уншуулж төлбөрөө төлнө үү."}
-                    </p>
-                    <p className="mt-1 text-xs font-medium text-slate-500">
-                      Дуусах хугацаа:{" "}
-                      {new Date(paymentInvoice.expiresAt).toLocaleTimeString(
-                        "mn-MN",
-                        { hour: "2-digit", minute: "2-digit" },
+                  ) : (
+                    <div className="mt-3 flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-3 text-center">
+                      <p className="mb-2 text-xs font-bold text-slate-500">
+                        Банкны апп линк ирсэнгүй. QR fallback ашиглана уу.
+                      </p>
+                      {paymentInvoice.qrText ? (
+                        <QrGenerator
+                          value={paymentInvoice.qrText}
+                          size={170}
+                          level="M"
+                        />
+                      ) : paymentInvoice.qrImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`data:image/png;base64,${paymentInvoice.qrImage}`}
+                          alt="QPay QR"
+                          className="h-[170px] w-[170px]"
+                        />
+                      ) : (
+                        <Loader2 className="h-9 w-9 animate-spin text-slate-400" />
                       )}
-                    </p>
+                    </div>
+                  )}
 
-                    {paymentInvoice.deepLinks.length > 0 ? (
-                      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                        {paymentInvoice.deepLinks.map((link, index) => (
-                          <a
-                            key={`${link.link}-${index}`}
-                            href={link.link}
-                            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800"
-                          >
-                            {link.name || link.description || "Банк"}
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </a>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void checkPaymentStatus(false)}
+                      disabled={
+                        checkingPayment || paymentInvoice.status !== "PENDING"
+                      }
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      {checkingPayment ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      Төлбөр шалгах
+                    </button>
+                    {paymentInvoice.status === "EXPIRED" ? (
                       <button
                         type="button"
-                        onClick={() => void checkPaymentStatus(false)}
-                        disabled={
-                          checkingPayment || paymentInvoice.status !== "PENDING"
-                        }
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                        onClick={() => {
+                          setPaymentInvoice(null);
+                          setPaymentMessage("");
+                          setError("");
+                        }}
+                        className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800"
                       >
-                        {checkingPayment ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-4 w-4" />
-                        )}
-                        Төлбөр шалгах
+                        Шинэ QR үүсгэх
                       </button>
-                      {paymentInvoice.status === "EXPIRED" ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPaymentInvoice(null);
-                            setPaymentMessage("");
-                            setError("");
-                          }}
-                          className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800"
-                        >
-                          Шинэ QR үүсгэх
-                        </button>
-                      ) : null}
-                    </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -577,7 +775,9 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
                     ) : (
                       <CreditCard className="h-4 w-4" />
                     )}
-                    {paymentPending ? "Төлбөр хүлээгдэж байна" : "QPay-р төлөх"}
+                    {paymentPending
+                      ? "Төлбөр хүлээгдэж байна"
+                      : "Банкны апп-аар төлөх"}
                   </button>
                 </div>
 
