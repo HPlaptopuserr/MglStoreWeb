@@ -50,6 +50,7 @@ export const ProductCard = ({
   const primaryTag = tag || tags?.[0];
   const hasCartAction = showCartAction && typeof onAddToCart === "function";
   const showImage = Boolean(image) && !imageFailed;
+  const showQuotePrice = price <= 0;
 
   useEffect(() => {
     setImageFailed(false);
@@ -168,16 +169,18 @@ export const ProductCard = ({
           <div className="min-w-0">
             <span
               className={`block truncate text-base font-black leading-5 sm:text-lg ${
-                hasDiscount
+                showQuotePrice
+                  ? "text-slate-700"
+                  : hasDiscount
                   ? isMemberDiscount
                     ? "text-emerald-600"
                     : "text-red-500"
                   : "text-slate-950"
               }`}
             >
-              ₮{price.toLocaleString()}
+              {showQuotePrice ? "Үнэ тохиролцоно" : `₮${price.toLocaleString()}`}
             </span>
-            {hasDiscount && (
+            {hasDiscount && !showQuotePrice && (
               <span className="block truncate text-xs text-slate-400 line-through">
                 ₮{originalPrice.toLocaleString()}
               </span>
