@@ -58,6 +58,7 @@ const FAQ_ITEMS = [
 ];
 
 function formatPrice(value: number) {
+  if (value <= 0) return "Үнэ тохиролцоно";
   return `${value.toLocaleString("en-US")}₮`;
 }
 

@@ -9,6 +9,7 @@
     "lint": "eslint \"src/**/*.ts\" --fix",
     "categories:cleanup": "tsx src/scripts/cleanup-business-categories.ts",
     "categories:seed-marketplace": "tsx src/scripts/seed-marketplace-categories.ts",
+    "seed:mgl-water-products": "tsx src/scripts/seed-mgl-water-products.ts",
     "products:classify": "tsx src/scripts/classify-products.ts",
     "test:pos-shift": "tsx --test src/routes/operations/pos/shift-accounting.test.ts",
     "type-check": "tsc --noEmit"
