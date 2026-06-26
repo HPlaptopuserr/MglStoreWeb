@@ -2404,6 +2404,231 @@ router.post("/restaurant/pos/tickets/:id/send-kitchen", async (req, res) => {
   }
 });
 
+router.post(
+  "/restaurant/pos/tickets/:id/items/:itemId/cancel",
+  async (req, res) => {
+    try {
+      const actor = await requirePosUser(req, res);
+      if (!actor) return;
+
+      const ticketId = String(req.params.id || "").trim();
+      const itemId = String(req.params.itemId || "").trim();
+      const branchId = String(req.body?.branchId || "").trim();
+      if (!ticketId || !itemId || !branchId) {
+        return res.status(400).json({
+          message: "branchId, ticketId болон itemId шаардлагатай",
+        });
+      }
+
+      const access = await requireBranchAccess(actor, branchId);
+      if ("error" in access && access.error) {
+        return res
+          .status(access.error.status)
+          .json({ message: access.error.message });
+      }
+
+      const result = await prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`
+            SELECT "id"
+            FROM "RestaurantTicket"
+            WHERE "id" = ${ticketId}
+            FOR UPDATE
+          `;
+
+          const ticket = await tx.restaurantTicket.findFirst({
+            where: {
+              id: ticketId,
+              branchId,
+              organizationId: access.branch.organizationId,
+            },
+            include: { items: true },
+          });
+          if (!ticket) {
+            throw Object.assign(new Error("Ticket олдсонгүй"), {
+              status: 404,
+            });
+          }
+          if (!EDITABLE_TICKET_STATUSES.includes(ticket.status)) {
+            throw Object.assign(new Error("Ticket аль хэдийн хаагдсан"), {
+              status: 409,
+            });
+          }
+
+          const activeShift = await tx.posShift.findUnique({
+            where: { id: ticket.shiftId },
+            select: { status: true, cashierId: true },
+          });
+          if (
+            !activeShift ||
+            activeShift.status !== ShiftStatus.OPEN ||
+            activeShift.cashierId !== actor.id
+          ) {
+            throw Object.assign(
+              new Error("Ticket-ийн кассын ээлж нээлттэй биш байна"),
+              { status: 409 },
+            );
+          }
+
+          const item = ticket.items.find((line) => line.id === itemId);
+          if (!item) {
+            throw Object.assign(new Error("Ticket item олдсонгүй"), {
+              status: 404,
+            });
+          }
+
+          await tx.$queryRaw`
+            SELECT kti."id"
+            FROM "KitchenTicketItem" kti
+            INNER JOIN "KitchenTicket" kt ON kt."id" = kti."kitchenTicketId"
+            WHERE kti."restaurantTicketItemId" = ${itemId}
+              AND kt."restaurantTicketId" = ${ticketId}
+            FOR UPDATE
+          `;
+
+          const activeKitchenItems = await tx.kitchenTicketItem.findMany({
+            where: {
+              restaurantTicketItemId: item.id,
+              kitchenTicket: {
+                restaurantTicketId: ticket.id,
+                branchId: ticket.branchId,
+                organizationId: ticket.organizationId,
+                status: { in: ACTIVE_KITCHEN_TICKET_STATUSES },
+              },
+            },
+            select: { id: true, qty: true, kitchenTicketId: true },
+          });
+
+          if (activeKitchenItems.length === 0) {
+            if (item.qty > item.sentQty) {
+              await tx.restaurantTicketItem.update({
+                where: { id: item.id },
+                data: { qty: item.sentQty },
+              });
+              return loadTicket(tx, ticket.id);
+            }
+
+            throw Object.assign(
+              new Error(
+                `"${item.productName}" аль хэдийн гал тогоонд дууссан тул item-level цуцлах боломжгүй. Төлбөр авах эсвэл ticket цуцалж ширээ суллана уу.`,
+              ),
+              { status: 409 },
+            );
+          }
+
+          const affectedKitchenTicketIds = [
+            ...new Set(
+              activeKitchenItems.map(
+                (kitchenItem) => kitchenItem.kitchenTicketId,
+              ),
+            ),
+          ];
+          const activeCancelQty = activeKitchenItems.reduce(
+            (sum, kitchenItem) => sum + kitchenItem.qty,
+            0,
+          );
+
+          await tx.kitchenTicketItem.deleteMany({
+            where: {
+              id: {
+                in: activeKitchenItems.map((kitchenItem) => kitchenItem.id),
+              },
+            },
+          });
+
+          const emptyKitchenTicketIds: string[] = [];
+          for (const kitchenTicketId of affectedKitchenTicketIds) {
+            const remainingItemCount = await tx.kitchenTicketItem.count({
+              where: { kitchenTicketId },
+            });
+            if (remainingItemCount === 0) {
+              emptyKitchenTicketIds.push(kitchenTicketId);
+            }
+          }
+
+          if (emptyKitchenTicketIds.length > 0) {
+            await tx.kitchenTicket.updateMany({
+              where: { id: { in: emptyKitchenTicketIds } },
+              data: {
+                status: KitchenTicketStatus.CANCELLED,
+                cancelledAt: new Date(),
+              },
+            });
+          }
+
+          const remainingSentQty = Math.max(0, item.sentQty - activeCancelQty);
+          if (remainingSentQty === 0) {
+            await tx.restaurantTicketItem.delete({ where: { id: item.id } });
+          } else {
+            await tx.restaurantTicketItem.update({
+              where: { id: item.id },
+              data: {
+                qty: remainingSentQty,
+                sentQty: remainingSentQty,
+              },
+            });
+          }
+
+          const remainingItemCount = await tx.restaurantTicketItem.count({
+            where: { ticketId: ticket.id },
+          });
+          if (remainingItemCount === 0) {
+            await tx.restaurantTicket.update({
+              where: { id: ticket.id },
+              data: {
+                status: RestaurantTicketStatus.CANCELLED,
+                closedAt: new Date(),
+              },
+            });
+            return null;
+          }
+
+          const siblingKitchenTickets = await tx.kitchenTicket.findMany({
+            where: { restaurantTicketId: ticket.id },
+            select: { status: true },
+          });
+          const activeSiblings = siblingKitchenTickets.filter(
+            (sibling) => sibling.status !== KitchenTicketStatus.CANCELLED,
+          );
+          const restaurantStatus =
+            activeSiblings.length === 0
+              ? RestaurantTicketStatus.OPEN
+              : activeSiblings.every(
+                    (sibling) => sibling.status === KitchenTicketStatus.SERVED,
+                  )
+                ? RestaurantTicketStatus.SERVED
+                : activeSiblings.every(
+                      (sibling) =>
+                        sibling.status === KitchenTicketStatus.READY ||
+                        sibling.status === KitchenTicketStatus.SERVED,
+                    )
+                  ? RestaurantTicketStatus.READY
+                  : RestaurantTicketStatus.KITCHEN;
+
+          await tx.restaurantTicket.update({
+            where: { id: ticket.id },
+            data: { status: restaurantStatus },
+          });
+
+          return loadTicket(tx, ticket.id);
+        },
+        { isolationLevel: "Serializable" },
+      );
+
+      return res.json(result ? mapTicket(result) : null);
+    } catch (error) {
+      const known = error as Error & { status?: number };
+      if (known.status) {
+        return res.status(known.status).json({ message: known.message });
+      }
+      console.error("cancel restaurant ticket item error", error);
+      return res
+        .status(500)
+        .json({ message: "Ticket item цуцлахад алдаа гарлаа" });
+    }
+  },
+);
+
 router.post("/restaurant/pos/tables/:id/clear", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
@@ -2476,24 +2701,26 @@ router.post("/restaurant/pos/tables/:id/clear", async (req, res) => {
             );
           }
 
-          const activeKitchenTicket = await tx.restaurantTicket.findFirst({
+          const ticketsToCancel = await tx.restaurantTicket.findMany({
             where: {
               tableId,
               status: { in: EDITABLE_TICKET_STATUSES },
               items: { some: {} },
-              kitchenTickets: {
-                some: { status: { in: ACTIVE_KITCHEN_TICKET_STATUSES } },
-              },
             },
-            select: { ticketNo: true },
+            select: { id: true },
           });
-          if (activeKitchenTicket) {
-            throw Object.assign(
-              new Error(
-                `Гал тогоонд идэвхтэй ticket (${activeKitchenTicket.ticketNo}) байгаа тул эхлээд гал тогооны төлөвийг дуусгана уу.`,
-              ),
-              { status: 409 },
-            );
+          const ticketIdsToCancel = ticketsToCancel.map((ticket) => ticket.id);
+          if (ticketIdsToCancel.length > 0) {
+            await tx.kitchenTicket.updateMany({
+              where: {
+                restaurantTicketId: { in: ticketIdsToCancel },
+                status: { in: ACTIVE_KITCHEN_TICKET_STATUSES },
+              },
+              data: {
+                status: KitchenTicketStatus.CANCELLED,
+                cancelledAt: new Date(),
+              },
+            });
           }
 
           await tx.restaurantTicket.updateMany({

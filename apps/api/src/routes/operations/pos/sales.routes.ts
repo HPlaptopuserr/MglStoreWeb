@@ -79,10 +79,7 @@ const POS_MPOINT_MEMBER_RATE = Number(
   process.env.POS_MPOINT_MEMBER_RATE || POS_MPOINT_BASE_RATE,
 );
 const POS_LOYALTY_REDEEM_SESSION_TTL_MS =
-  Math.max(
-    1,
-    Number(process.env.POS_LOYALTY_REDEEM_SESSION_TTL_MINUTES || 5),
-  ) *
+  Math.max(1, Number(process.env.POS_LOYALTY_REDEEM_SESSION_TTL_MINUTES || 5)) *
   60 *
   1000;
 
@@ -490,16 +487,22 @@ router.post("/pos/loyalty/redeem-sessions", async (req, res) => {
     let branchId = String(req.body?.branchId || "").trim() || null;
 
     if (phone.length < 6) {
-      return res.status(400).json({ message: "M Point хэрэглэгчийн утас шаардлагатай" });
+      return res
+        .status(400)
+        .json({ message: "M Point хэрэглэгчийн утас шаардлагатай" });
     }
     if (requestedPoints <= 0) {
-      return res.status(400).json({ message: "Хасуулах M Point 0-оос их байх ёстой" });
+      return res
+        .status(400)
+        .json({ message: "Хасуулах M Point 0-оос их байх ёстой" });
     }
     if (!Number.isFinite(saleTotal) || saleTotal <= 0) {
       return res.status(400).json({ message: "Sale дүн буруу байна" });
     }
     if (requestedPoints > saleTotal) {
-      return res.status(400).json({ message: "Хасуулах оноо нийт дүнгээс их байж болохгүй" });
+      return res
+        .status(400)
+        .json({ message: "Хасуулах оноо нийт дүнгээс их байж болохгүй" });
     }
 
     let effectiveOrganizationId =
@@ -523,17 +526,25 @@ router.post("/pos/loyalty/redeem-sessions", async (req, res) => {
         !register.isActive ||
         register.activationStatus !== PosActivationStatus.APPROVED
       ) {
-        return res.status(403).json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
+        return res
+          .status(403)
+          .json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
       }
       effectiveOrganizationId = register.organizationId;
       branchId = branchId || register.branchId;
       if (branchId !== register.branchId) {
-        return res.status(400).json({ message: "Sale branchId нь register branch-тэй зөрүүтэй байна" });
+        return res
+          .status(400)
+          .json({
+            message: "Sale branchId нь register branch-тэй зөрүүтэй байна",
+          });
       }
     }
 
     if (!effectiveOrganizationId || !branchId) {
-      return res.status(400).json({ message: "Байгууллага болон салбар шаардлагатай" });
+      return res
+        .status(400)
+        .json({ message: "Байгууллага болон салбар шаардлагатай" });
     }
 
     if (actor.role !== "ADMIN") {
@@ -546,7 +557,9 @@ router.post("/pos/loyalty/redeem-sessions", async (req, res) => {
         select: { id: true },
       });
       if (!membership) {
-        return res.status(403).json({ message: "Энэ байгууллагад sale хийх эрхгүй" });
+        return res
+          .status(403)
+          .json({ message: "Энэ байгууллагад sale хийх эрхгүй" });
       }
     }
 
@@ -582,7 +595,9 @@ router.post("/pos/loyalty/redeem-sessions", async (req, res) => {
     );
   } catch (error) {
     console.error("POST /pos/loyalty/redeem-sessions error", error);
-    return res.status(500).json({ message: "M Point QR үүсгэхэд алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "M Point QR үүсгэхэд алдаа гарлаа" });
   }
 });
 
@@ -601,7 +616,9 @@ router.get("/pos/loyalty/redeem-sessions/:id", async (req, res) => {
       actor.role !== "ADMIN" &&
       !(await hasOrgMembership(actor.id, session.organizationId))
     ) {
-      return res.status(403).json({ message: "M Point QR session харах эрхгүй" });
+      return res
+        .status(403)
+        .json({ message: "M Point QR session харах эрхгүй" });
     }
 
     let effectiveSession = session;
@@ -636,7 +653,9 @@ router.get("/pos/loyalty/redeem-sessions/:id", async (req, res) => {
     );
   } catch (error) {
     console.error("GET /pos/loyalty/redeem-sessions/:id error", error);
-    return res.status(500).json({ message: "M Point QR төлөв авахад алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "M Point QR төлөв авахад алдаа гарлаа" });
   }
 });
 
@@ -750,12 +769,10 @@ router.post("/pos/sales", async (req, res) => {
           !item.credit?.borrowerName ||
           !item.credit?.targetType
         ) {
-          return res
-            .status(400)
-            .json({
-              message:
-                "Зээлийн төлбөр дээр байгууллага/хэрэглэгчийн мэдээлэл шаардлагатай",
-            });
+          return res.status(400).json({
+            message:
+              "Зээлийн төлбөр дээр байгууллага/хэрэглэгчийн мэдээлэл шаардлагатай",
+          });
         }
         if (
           !Number.isFinite(Number(item.credit.monthlyInterestRate)) ||
@@ -1059,19 +1076,6 @@ router.post("/pos/sales", async (req, res) => {
             throw toApiError(
               409,
               "Рестораны ticket аль хэдийн төлөгдсөн байна",
-            );
-          }
-
-          const hasUnsentItems = restaurantTicket.items.some(
-            (item) => item.qty > item.sentQty,
-          );
-          if (
-            restaurantTicket.orderMode === "DINE_IN" &&
-            hasUnsentItems
-          ) {
-            throw toApiError(
-              409,
-              "Заалны захиалгын бүх хоолыг төлбөр авахаас өмнө гал тогоо руу илгээнэ үү",
             );
           }
 
@@ -1416,14 +1420,10 @@ router.post("/pos/sales", async (req, res) => {
             .map((item) => ({ item, qty: item.qty - item.sentQty }))
             .filter(({ qty }) => qty > 0);
 
-          if (
-            restaurantTicketForSale.orderMode !== "DINE_IN" &&
-            unsentItems.length > 0
-          ) {
+          if (unsentItems.length > 0) {
             const itemsByStation = new Map<string, typeof unsentItems>();
             for (const unsentItem of unsentItems) {
-              const station =
-                unsentItem.item.kitchenStation || "HOT_KITCHEN";
+              const station = unsentItem.item.kitchenStation || "HOT_KITCHEN";
               const stationItems = itemsByStation.get(station) || [];
               stationItems.push(unsentItem);
               itemsByStation.set(station, stationItems);
@@ -1446,8 +1446,7 @@ router.post("/pos/sales", async (req, res) => {
                         productName: item.productName,
                         qty,
                         note: item.note,
-                        kitchenStation:
-                          item.kitchenStation || "HOT_KITCHEN",
+                        kitchenStation: item.kitchenStation || "HOT_KITCHEN",
                         preparationMinutes: item.preparationMinutes,
                       })),
                     },
@@ -1471,6 +1470,9 @@ router.post("/pos/sales", async (req, res) => {
             data: {
               posSaleId: posSale.id,
               status: "PAID",
+              sentAt:
+                restaurantTicketForSale.sentAt ||
+                (unsentItems.length > 0 ? new Date() : undefined),
               closedAt: new Date(),
             },
           });
@@ -1651,27 +1653,30 @@ router.post("/pos/sales", async (req, res) => {
             );
           }
 
-          let redeemSession:
-            | {
-                id: string;
-                userId: string;
-                organizationId: string;
-                branchId: string;
-                customerPhone: string;
-                requestedPoints: number;
-                saleTotal: unknown;
-                status: PosLoyaltyRedemptionStatus;
-                expiresAt: Date;
-              }
-            | null = null;
+          let redeemSession: {
+            id: string;
+            userId: string;
+            organizationId: string;
+            branchId: string;
+            customerPhone: string;
+            requestedPoints: number;
+            saleTotal: unknown;
+            status: PosLoyaltyRedemptionStatus;
+            expiresAt: Date;
+          } | null = null;
 
           if (loyaltyMode === "REDEEM" && redeemedPoints > 0) {
-            redeemSession = await selectRedeemSessionById(tx, loyaltyRedeemSessionId);
+            redeemSession = await selectRedeemSessionById(
+              tx,
+              loyaltyRedeemSessionId,
+            );
 
             if (!redeemSession) {
               throw toApiError(404, "M Point QR session олдсонгүй");
             }
-            if (redeemSession.status !== POS_LOYALTY_REDEMPTION_STATUS.CONFIRMED) {
+            if (
+              redeemSession.status !== POS_LOYALTY_REDEMPTION_STATUS.CONFIRMED
+            ) {
               throw toApiError(409, "M Point QR app-аар баталгаажаагүй байна");
             }
             if (redeemSession.expiresAt.getTime() <= Date.now()) {
@@ -1688,7 +1693,10 @@ router.post("/pos/sales", async (req, res) => {
                 Number(fullSale.grandTotal),
               )
             ) {
-              throw toApiError(409, "M Point QR session энэ борлуулалттай таарахгүй байна");
+              throw toApiError(
+                409,
+                "M Point QR session энэ борлуулалттай таарахгүй байна",
+              );
             }
           }
 
@@ -1752,7 +1760,7 @@ router.post("/pos/sales", async (req, res) => {
               note:
                 loyaltyMode === "EARN"
                   ? "POS checkout reward"
-              : "POS checkout redemption",
+                  : "POS checkout redemption",
             },
           });
 

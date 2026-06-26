@@ -29,6 +29,7 @@ import {
 import { useOrg } from "@/components/org/OrgContext";
 import {
   bootstrapRestaurantDiningTables,
+  cancelRestaurantTicketItem,
   clearRestaurantDiningTable,
   closeRestaurantPosShift,
   createRestaurantCashSale,
@@ -84,6 +85,7 @@ type MenuItem = {
 
 type TicketLine = {
   id: string;
+  ticketItemId?: string;
   name: string;
   price: number;
   qty: number;
@@ -269,6 +271,7 @@ const mapTicketLines = (
     const menuItem = menuItems.find((product) => product.id === item.productId);
     return {
       id: item.productId,
+      ticketItemId: item.id,
       name: item.name,
       price: item.price,
       qty: item.qty,
@@ -456,6 +459,7 @@ export function RestaurantPosScreen() {
   const [ticketLines, setTicketLines] = useState<TicketLine[]>([]);
   const [ticketSaving, setTicketSaving] = useState(false);
   const [kitchenSubmitting, setKitchenSubmitting] = useState(false);
+  const [cancellingLineId, setCancellingLineId] = useState("");
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
   const [clearSubmitting, setClearSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
@@ -712,8 +716,8 @@ export function RestaurantPosScreen() {
     !qpayFinalizing &&
     !ticketSaving &&
     !kitchenSubmitting &&
-    !clearSubmitting &&
-    (orderMode !== "DINE_IN" || !hasUnsentItems);
+    !cancellingLineId &&
+    !clearSubmitting;
   const canSendKitchen =
     orderMode === "DINE_IN" &&
     Boolean(selectedTable.currentTicket || ticketLines.length > 0) &&
@@ -723,6 +727,7 @@ export function RestaurantPosScreen() {
     hasUnsentItems &&
     !ticketSaving &&
     !kitchenSubmitting &&
+    !cancellingLineId &&
     !clearSubmitting;
 
   useEffect(() => {
@@ -1337,13 +1342,6 @@ export function RestaurantPosScreen() {
       setCheckoutError("Зарим хоолны үлдэгдэл хүрэлцэхгүй байна.");
       return;
     }
-    if (orderMode === "DINE_IN" && hasUnsentItems) {
-      setCheckoutError(
-        "Заалны захиалгын бүх хоолыг төлбөр авахаас өмнө гал тогоо руу илгээнэ үү.",
-      );
-      return;
-    }
-
     setCheckoutSubmitting(true);
     setCheckoutError("");
     setNotice("");
@@ -1515,6 +1513,7 @@ export function RestaurantPosScreen() {
     if (
       !selectedTable.id ||
       ticketSaving ||
+      Boolean(cancellingLineId) ||
       selectedTicketPaid ||
       qpayPaymentActive
     )
@@ -1554,7 +1553,13 @@ export function RestaurantPosScreen() {
   };
 
   const changeQty = async (lineId: string, delta: number) => {
-    if (ticketSaving || selectedTicketPaid || qpayPaymentActive) return;
+    if (
+      ticketSaving ||
+      Boolean(cancellingLineId) ||
+      selectedTicketPaid ||
+      qpayPaymentActive
+    )
+      return;
     const target = ticketLines.find((line) => line.id === lineId);
     if (target && target.qty + delta > target.available) {
       setNotice(`"${target.name}" хоолны үлдэгдэл хүрэлцэхгүй байна.`);
@@ -1583,29 +1588,50 @@ export function RestaurantPosScreen() {
   };
 
   const removeLine = async (lineId: string) => {
-    if (ticketSaving || selectedTicketPaid || qpayPaymentActive) return;
+    if (
+      ticketSaving ||
+      Boolean(cancellingLineId) ||
+      selectedTicketPaid ||
+      qpayPaymentActive
+    )
+      return;
     const target = ticketLines.find((line) => line.id === lineId);
     if (!target) return;
 
     if (target.sentQty > 0) {
-      if (target.qty <= target.sentQty) {
-        setNotice(
-          `"${target.name}" гал тогоонд ${target.sentQty}ш илгээгдсэн тул сагснаас шууд устгах боломжгүй. Цуцлалт хийх flow дараагийн алхамд хэрэгтэй.`,
-        );
+      if (
+        !selectedRegister ||
+        !selectedTable.currentTicket?.id ||
+        !target.ticketItemId
+      ) {
         return;
       }
 
-      const nextLines = ticketLines.map((line) =>
-        line.id === lineId ? { ...line, qty: line.sentQty } : line,
-      );
+      setCancellingLineId(lineId);
       setCustomerDisplaySuccess(null);
-      setNotice(
-        `"${target.name}"-ийн гал тогоонд илгээгдээгүй ${target.qty - target.sentQty}ш хасагдлаа.`,
-      );
+      setCheckoutError("");
+      setNotice("");
       try {
-        await persistTicketLines(nextLines);
-      } catch {
-        // Error state and server reload are handled by persistTicketLines.
+        const ticket = await cancelRestaurantTicketItem({
+          branchId: selectedRegister.branchId,
+          ticketId: selectedTable.currentTicket.id,
+          itemId: target.ticketItemId,
+        });
+        updateTableTicket(selectedTable.id, ticket);
+        setTicketLines(mapTicketLines(ticket, menuItems));
+        setNotice(
+          ticket
+            ? `"${target.name}" цуцлагдлаа. Гал тогооны дэлгэц шинэчлэгдэнэ.`
+            : `"${target.name}" цуцлагдаж, ширээ сул боллоо.`,
+        );
+        void loadTables({ silent: true });
+      } catch (error) {
+        setCheckoutError(
+          error instanceof Error ? error.message : "Хоол цуцлахад алдаа гарлаа",
+        );
+        await loadTables({ silent: true });
+      } finally {
+        setCancellingLineId("");
       }
       return;
     }
@@ -1620,7 +1646,8 @@ export function RestaurantPosScreen() {
   };
 
   const updateNote = (lineId: string, note: string) => {
-    if (selectedTicketPaid || qpayPaymentActive) return;
+    if (selectedTicketPaid || qpayPaymentActive || Boolean(cancellingLineId))
+      return;
     setTicketLines((current) =>
       current.map((line) => (line.id === lineId ? { ...line, note } : line)),
     );
@@ -1629,6 +1656,7 @@ export function RestaurantPosScreen() {
   const saveCurrentNotes = async () => {
     if (
       ticketSaving ||
+      Boolean(cancellingLineId) ||
       selectedTicketPaid ||
       qpayPaymentActive ||
       ticketLines.length === 0
@@ -2125,100 +2153,121 @@ export function RestaurantPosScreen() {
                 ) : null}
               </div>
             ) : (
-              ticketLines.map((line) => (
-                <article key={line.id} className="space-y-3">
-                  <div className="grid grid-cols-[1fr_54px_72px] items-center gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <DishVisual
-                        tone={line.tone}
-                        size="sm"
-                        imageUrl={line.imageUrl}
-                      />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-slate-100">
-                          {line.name}
-                        </p>
-                        <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                          {formatMoney(line.price)}
-                        </p>
-                        {line.sentQty > 0 ? (
-                          <p className="mt-0.5 text-[10px] font-black text-amber-300">
-                            Гал тогоонд {line.sentQty}ш
+              ticketLines.map((line) => {
+                const cancellingLine = cancellingLineId === line.id;
+
+                return (
+                  <article key={line.id} className="space-y-3">
+                    <div className="grid grid-cols-[1fr_54px_72px] items-center gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <DishVisual
+                          tone={line.tone}
+                          size="sm"
+                          imageUrl={line.imageUrl}
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-slate-100">
+                            {line.name}
                           </p>
-                        ) : null}
+                          <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                            {formatMoney(line.price)}
+                          </p>
+                          {line.sentQty > 0 ? (
+                            <p className="mt-0.5 text-[10px] font-black text-amber-300">
+                              Гал тогоонд {line.sentQty}ш
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
+
+                      <div className="flex h-12 items-center justify-center gap-1 rounded-lg bg-[#2d3142]">
+                        <button
+                          type="button"
+                          onClick={() => void changeQty(line.id, -1)}
+                          disabled={
+                            ticketSaving ||
+                            Boolean(cancellingLineId) ||
+                            selectedTicketPaid ||
+                            qpayPaymentActive ||
+                            line.qty <= line.sentQty
+                          }
+                          className="flex h-8 w-5 items-center justify-center text-slate-400 hover:text-white"
+                          aria-label={`${line.name} хасах`}
+                          title="Хасах"
+                        >
+                          <Minus className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="w-5 text-center text-sm font-bold tabular-nums text-white">
+                          {line.qty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void changeQty(line.id, 1)}
+                          disabled={
+                            ticketSaving ||
+                            Boolean(cancellingLineId) ||
+                            selectedTicketPaid ||
+                            qpayPaymentActive
+                          }
+                          className="flex h-8 w-5 items-center justify-center text-slate-400 hover:text-white"
+                          aria-label={`${line.name} нэмэх`}
+                          title="Нэмэх"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      <p className="text-right text-sm font-bold tabular-nums text-white">
+                        {formatMoney(line.price * line.qty)}
+                      </p>
                     </div>
 
-                    <div className="flex h-12 items-center justify-center gap-1 rounded-lg bg-[#2d3142]">
-                      <button
-                        type="button"
-                        onClick={() => void changeQty(line.id, -1)}
+                    <div className="grid grid-cols-[1fr_54px] gap-3">
+                      <input
+                        value={line.note}
+                        onChange={(event) =>
+                          updateNote(line.id, event.target.value)
+                        }
+                        onBlur={() => void saveCurrentNotes()}
                         disabled={
-                          ticketSaving ||
                           selectedTicketPaid ||
                           qpayPaymentActive ||
-                          line.qty <= line.sentQty
+                          Boolean(cancellingLineId)
                         }
-                        className="flex h-8 w-5 items-center justify-center text-slate-400 hover:text-white"
-                        aria-label={`${line.name} хасах`}
-                        title="Хасах"
-                      >
-                        <Minus className="h-3.5 w-3.5" />
-                      </button>
-                      <span className="w-5 text-center text-sm font-bold tabular-nums text-white">
-                        {line.qty}
-                      </span>
+                        placeholder="Захиалгын тэмдэглэл..."
+                        className="h-12 rounded-lg border border-white/5 bg-[#2d3142] px-4 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400/70"
+                      />
                       <button
                         type="button"
-                        onClick={() => void changeQty(line.id, 1)}
+                        onClick={() => void removeLine(line.id)}
                         disabled={
                           ticketSaving ||
+                          Boolean(cancellingLineId) ||
                           selectedTicketPaid ||
                           qpayPaymentActive
                         }
-                        className="flex h-8 w-5 items-center justify-center text-slate-400 hover:text-white"
-                        aria-label={`${line.name} нэмэх`}
-                        title="Нэмэх"
+                        className={`flex h-12 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                          line.sentQty > 0
+                            ? "border-amber-300/50 text-amber-200 hover:bg-amber-300 hover:text-slate-950"
+                            : "border-sky-400/70 text-sky-400 hover:bg-sky-400 hover:text-white"
+                        }`}
+                        aria-label={`${line.name} устгах`}
+                        title={
+                          line.sentQty > 0
+                            ? "Гал тогоонд явсан хоол цуцлах"
+                            : "Устгах"
+                        }
                       >
-                        <Plus className="h-3.5 w-3.5" />
+                        {cancellingLine ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
-
-                    <p className="text-right text-sm font-bold tabular-nums text-white">
-                      {formatMoney(line.price * line.qty)}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-[1fr_54px] gap-3">
-                    <input
-                      value={line.note}
-                      onChange={(event) =>
-                        updateNote(line.id, event.target.value)
-                      }
-                      onBlur={() => void saveCurrentNotes()}
-                      disabled={selectedTicketPaid || qpayPaymentActive}
-                      placeholder="Захиалгын тэмдэглэл..."
-                      className="h-12 rounded-lg border border-white/5 bg-[#2d3142] px-4 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400/70"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void removeLine(line.id)}
-                      disabled={
-                        ticketSaving || selectedTicketPaid || qpayPaymentActive
-                      }
-                      className={`flex h-12 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-45 ${
-                        line.sentQty > 0
-                          ? "border-amber-300/50 text-amber-200 hover:bg-amber-300 hover:text-slate-950"
-                          : "border-sky-400/70 text-sky-400 hover:bg-sky-400 hover:text-white"
-                      }`}
-                      aria-label={`${line.name} устгах`}
-                      title="Устгах"
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </button>
-                  </div>
-                </article>
-              ))
+                  </article>
+                );
+              })
             )}
           </div>
 
@@ -2311,7 +2360,8 @@ export function RestaurantPosScreen() {
                     <p className="text-xs font-bold leading-5 text-amber-100">
                       Энэ ширээн дээр төлбөр аваагүй ticket байна. Хэрвээ
                       захиалгыг цуцлаад ширээг суллах бол доорх товчийг дарна.
-                      Гал тогоонд идэвхтэй ticket байвал систем цуцлахгүй.
+                      Гал тогоонд идэвхтэй ticket байвал хамт цуцлагдаж
+                      queue-ээс гарна.
                     </p>
                     <button
                       type="button"
@@ -2339,7 +2389,8 @@ export function RestaurantPosScreen() {
 
                 {orderMode === "DINE_IN" && hasUnsentItems ? (
                   <p className="mb-2 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-bold leading-5 text-amber-100">
-                    Төлбөр авахаас өмнө бүх хоолыг гал тогоо руу илгээнэ үү.
+                    Төлбөр амжилттай болсны дараа илгээгдээгүй хоолнууд гал
+                    тогоо руу автоматаар явна.
                   </p>
                 ) : null}
                 <button

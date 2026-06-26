@@ -429,6 +429,21 @@ export async function sendRestaurantTicketToKitchen(ticketId: string) {
   }>(response);
 }
 
+export async function cancelRestaurantTicketItem(input: {
+  branchId: string;
+  ticketId: string;
+  itemId: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/tickets/${encodeURIComponent(input.ticketId)}/items/${encodeURIComponent(input.itemId)}/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify({ branchId: input.branchId }),
+    },
+  );
+  return readApiResponse<RestaurantTicket | null>(response);
+}
+
 export async function getRestaurantKitchenTickets(branchId: string) {
   const params = new URLSearchParams({ branchId });
   const response = await authFetch(
