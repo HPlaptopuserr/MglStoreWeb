@@ -181,6 +181,8 @@ export default function CheckoutPage() {
     null;
   const displaySubtotal = deliverySession?.subtotal ?? total;
   const displayTotal = deliverySession?.total ?? total;
+  const isPreorderCart =
+    items.length > 0 && items.every((item) => item.supplyType === "CHINA_PREORDER");
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -233,7 +235,7 @@ export default function CheckoutPage() {
     return () => window.clearInterval(poll);
   }, [authFetch, deliverySession]);
 
-  const createPayment = async (session: DeliverySession) => {
+  const createPayment = async (session: Pick<DeliverySession, "orderId">) => {
     setLoading(true);
     setError("");
 
@@ -278,10 +280,64 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (isPreorderCart) {
+      await submitPreorderCheckout();
+      return;
+    }
+
     if (checkoutStep !== "confirm-location") {
       setCheckoutStep("confirm-location");
       setError("");
       return;
+    }
+  };
+
+  const submitPreorderCheckout = async () => {
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
+    if (items.length === 0) return;
+    if (!phone.trim()) {
+      setError("Захиалга баталгаажуулах утасны дугаараа оруулна уу.");
+      return;
+    }
+    if (!orderNote.trim()) {
+      setError("Захиалгын нэмэлт мэдээллээ оруулна уу.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setDeliveryUnavailable(false);
+
+    try {
+      const res = await authFetch(`${API}/store/checkout`, {
+        method: "POST",
+        body: JSON.stringify({
+          lines: items.map((i) => ({ productId: i.id, qty: i.quantity })),
+          phone: phone.trim(),
+          secondaryPhone: secondaryPhone.trim() || undefined,
+          note: orderNote.trim(),
+        }),
+      });
+
+      if (res.status === 401) {
+        setAuthOpen(true);
+        return;
+      }
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || "Захиалга үүсгэхэд алдаа гарлаа");
+        return;
+      }
+
+      await createPayment({ orderId: data.orderId });
+    } catch {
+      setError("Сүлжээний алдаа гарлаа");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -605,6 +661,8 @@ export default function CheckoutPage() {
                 <span className="font-medium text-green-600">
                   {checkoutStep === "confirm-location"
                     ? "Байршил шалгана"
+                    : isPreorderCart
+                      ? "Байршил шаардахгүй"
                     : deliveryUnavailable
                       ? "Салбараас авна"
                     : deliverySession && !deliverySession.canPay
@@ -635,8 +693,8 @@ export default function CheckoutPage() {
                 (items.length === 0 && !deliverySession?.canPay) ||
                 (!deliverySession?.canPay && !phone.trim()) ||
                 (!deliverySession?.canPay && !orderNote.trim()) ||
-                deliveryUnavailable ||
-                checkoutStep === "confirm-location" ||
+                (!isPreorderCart && deliveryUnavailable) ||
+                (!isPreorderCart && checkoutStep === "confirm-location") ||
                 Boolean(deliverySession && !deliverySession.canPay)
               }
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-sm font-bold text-white transition-colors hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -646,11 +704,11 @@ export default function CheckoutPage() {
                   <Loader2 size={18} className="animate-spin" />
                   Түр хүлээнэ үү...
                 </>
-              ) : deliveryUnavailable ? (
+              ) : !isPreorderCart && deliveryUnavailable ? (
                 "Салбар дээрээс авах"
               ) : deliverySession && !deliverySession.canPay ? (
                 "5 салбараас хариу хүлээж байна"
-              ) : checkoutStep === "confirm-location" ? (
+              ) : !isPreorderCart && checkoutStep === "confirm-location" ? (
                 "Байршлаа баталгаажуулна уу"
               ) : deliverySession?.canPay ? (
                 "QPay-ээр төлөх"
@@ -658,6 +716,8 @@ export default function CheckoutPage() {
                 "Утасны дугаар оруулна уу"
               ) : !orderNote.trim() ? (
                 "Нэмэлт мэдээлэл оруулна уу"
+              ) : user && isPreorderCart ? (
+                "Захиалга бүртгэж төлөх"
               ) : user ? (
                 "Захиалга өгөх"
               ) : (

@@ -48,20 +48,7 @@ import {
   parseLoginMarketingBanner,
 } from "@/lib/site-banners";
 
-const getBusinessUrl = () => {
-  const isLocal =
-    typeof window !== "undefined" &&
-    ["localhost", "127.0.0.1"].includes(window.location.hostname);
-
-  if (isLocal) return "http://localhost:3005";
-
-  return (
-    process.env.NEXT_PUBLIC_BUSINESS_URL?.replace(/\/$/, "") ||
-    (process.env.NODE_ENV === "production"
-      ? "https://mglbusiness.mn"
-      : "http://localhost:3005")
-  );
-};
+const presentationPdfUrl = "/mgl-sma-taniltsuulga.pdf";
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -87,7 +74,6 @@ export const Header = () => {
   const hideBrowseNav =
     pathname.startsWith("/study") || isProfileRoute || isOrdersRoute;
   const hideSearch = isProfileRoute || isOrdersRoute;
-  const businessUrl = getBusinessUrl();
 
   // Desktop category scroll
   const catScrollRef = useRef<HTMLDivElement>(null);
@@ -221,7 +207,8 @@ export const Header = () => {
               <div className="hidden items-center gap-8 sm:flex py-3">
                 <div className="h-8 w-px bg-gradient-to-b from-transparent via-amber-400 to-transparent" />
                 <a
-                  href={businessUrl}
+                  href={presentationPdfUrl}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="group inline-flex h-11 max-w-[270px] items-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 text-sm font-black text-slate-900 shadow-sm shadow-emerald-100/40 transition hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-4 lg:max-w-[310px]"
                   title="MGL Store нэгдсэн танилцуулга үзэх"
@@ -253,7 +240,8 @@ export const Header = () => {
 
             <div className="flex shrink-0 items-center gap-1 sm:gap-6">
               <a
-                href={businessUrl}
+                href={presentationPdfUrl}
+                target="_blank"
                 rel="noopener noreferrer"
                 className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-700 shadow-sm transition active:scale-95 active:bg-emerald-100 sm:hidden"
                 aria-label="MGL Business"
@@ -510,7 +498,8 @@ export const Header = () => {
             style={{ scrollbarWidth: "none" }}
           >
             <a
-              href={businessUrl}
+              href={presentationPdfUrl}
+              target="_blank"
               rel="noopener noreferrer"
               onClick={closeMobile}
               className="mb-4 flex items-center gap-3 rounded-3xl border border-emerald-100 bg-white px-4 py-3.5 shadow-sm transition active:scale-[0.99] active:bg-emerald-50"

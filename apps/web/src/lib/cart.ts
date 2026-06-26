@@ -8,6 +8,7 @@ export interface CartItem {
   price: number;
   originalPrice?: number | null;
   memberDiscountPercent?: number | null;
+  supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   image?: string;
   quantity: number;
 }

@@ -14,11 +14,6 @@ import {
 } from "../../services/permission.service";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 import {
-  requireActivePlan,
-  checkProductLimit,
-  checkImportLimit,
-} from "../../middleware/plan-guard";
-import {
   areWebProductsGloballyEnabled,
   canBypassAllWebProductsVisibility,
   canBypassWebProductsVisibility,
@@ -874,8 +869,6 @@ function toProductImportErrorRow(
 router.post(
   "/products/import",
   requireAuth,
-  requireActivePlan("body"),
-  checkImportLimit(),
   upload.single("file"),
   async (req, res) => {
     try {
@@ -1538,8 +1531,6 @@ router.post(
   "/products",
   requireAuth,
   requireOrgPermission({ from: "body" }, Permission.MANAGE_PRODUCTS),
-  requireActivePlan("body"),
-  checkProductLimit(1),
   async (req, res) => {
     try {
       const {

@@ -205,6 +205,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           price: discountedPrice,
           originalPrice,
           memberDiscountPercent: pricing.active ? pricing.percent : null,
+          supplyType: product.supplyType,
           image: images[0]?.url,
           quantity: 1,
         });

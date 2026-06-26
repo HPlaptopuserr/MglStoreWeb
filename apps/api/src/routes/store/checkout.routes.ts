@@ -108,6 +108,55 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
+const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
+const STORE_CHECKOUT_ACCOUNT_REF =
+  process.env.STORE_CHECKOUT_PAYMENT_ACCOUNT_REF?.trim() || "9999";
+
+type StorePaymentAccount = {
+  id?: string;
+  label?: string;
+  merchantName?: string;
+  merchantCode?: string;
+  username?: string;
+  password?: string;
+  accountNumber?: string;
+};
+
+function accountMatchesStoreCheckoutRef(account: StorePaymentAccount) {
+  const ref = STORE_CHECKOUT_ACCOUNT_REF.toLowerCase();
+  return [account.id, account.label, account.merchantCode, account.accountNumber]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .some((value) => value === ref || value.includes(ref));
+}
+
+async function getStoreCheckoutPaymentAccount() {
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
+    select: { value: true },
+  });
+  if (!setting?.value) return null;
+
+  try {
+    const parsed = JSON.parse(setting.value);
+    if (!Array.isArray(parsed)) return null;
+    return (
+      parsed
+        .map((account): StorePaymentAccount => ({
+          id: String(account?.id || "").trim(),
+          label: String(account?.label || "").trim(),
+          merchantName: String(account?.merchantName || "").trim(),
+          merchantCode: String(account?.merchantCode || "").trim(),
+          username: String(account?.username || account?.merchantCode || "").trim(),
+          password: String(account?.password || "").trim(),
+          accountNumber: String(account?.accountNumber || "").trim(),
+        }))
+        .find((account) => account.merchantCode && accountMatchesStoreCheckoutRef(account)) || null
+    );
+  } catch {
+    return null;
+  }
+}
+
 async function getDeliveryReadiness(organizationId: string) {
   const availableBranchCount = await prisma.branch.count({
     where: {
@@ -280,6 +329,39 @@ async function createStorePaymentInvoice(params: {
   orderNumber: string;
   amount: number;
 }) {
+  const storePaymentAccount = await getStoreCheckoutPaymentAccount();
+  if (storePaymentAccount?.merchantCode) {
+    const systemQr = await createSystemQrInvoice(
+      {
+        merchantCode: storePaymentAccount.merchantCode,
+        amount: params.amount,
+        referenceNumber: params.orderId,
+        webhook: getStoreQPayCallbackUrl(params.orderId),
+      },
+      storePaymentAccount.username || undefined,
+      storePaymentAccount.password || undefined,
+    );
+
+    return {
+      data: {
+        invoice_id: systemQr.invoiceId,
+        qr_text: systemQr.qrText,
+        qr_image: "",
+        urls: systemQr.urls,
+      },
+      rawPayload: {
+        provider: "SYSTEMQR",
+        source: "ADMIN_PAYMENT_ACCOUNT",
+        accountRef: STORE_CHECKOUT_ACCOUNT_REF,
+        merchantCode: storePaymentAccount.merchantCode,
+        invoice_id: systemQr.invoiceId,
+        qr_text: systemQr.qrText,
+        qr_image: "",
+        urls: systemQr.urls,
+      },
+    };
+  }
+
   const systemQrConfig = await getVendorSystemQrConfig(params.organizationId);
 
   if (systemQrConfig) {
@@ -346,8 +428,15 @@ async function checkStorePayment(params: {
 
   if (provider === "SYSTEMQR") {
     const resolved = await getVendorSystemQrConfig(params.organizationId);
+    const adminAccount =
+      String(rawPayload.source || "").toUpperCase() === "ADMIN_PAYMENT_ACCOUNT"
+        ? await getStoreCheckoutPaymentAccount()
+        : null;
     const merchantCode = String(
-      rawPayload.merchantCode || resolved?.merchantCode || "",
+      rawPayload.merchantCode ||
+        adminAccount?.merchantCode ||
+        resolved?.merchantCode ||
+        "",
     ).trim();
     if (!merchantCode)
       return {
@@ -357,8 +446,8 @@ async function checkStorePayment(params: {
 
     const check = await checkSystemQrPayment(
       { merchantCode, invoiceNumber: params.providerRef },
-      resolved?.username,
-      resolved?.password,
+      String(adminAccount?.username || resolved?.username || "").trim() || undefined,
+      String(adminAccount?.password || resolved?.password || "").trim() || undefined,
     );
 
     return {
@@ -664,6 +753,9 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     }
 
     const productMap = new Map(products.map((p) => [p.id, p]));
+    const isPreorderOnlyOrder = products.every(
+      (product) => product.supplyType === "CHINA_PREORDER",
+    );
 
     // Validate stock & build order items
     let subtotal = 0;
@@ -724,9 +816,14 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     const normalizedCustomerLat = toNumberOrNull(customerLat);
     const normalizedCustomerLng = toNumberOrNull(customerLng);
     const total = subtotal; // no delivery fee for now
-    const deliveryReadiness = await getDeliveryReadiness(orgIds[0]);
+    const deliveryReadiness = isPreorderOnlyOrder
+      ? null
+      : await getDeliveryReadiness(orgIds[0]);
 
-    if (normalizedCustomerLat === null || normalizedCustomerLng === null) {
+    if (
+      !isPreorderOnlyOrder &&
+      (normalizedCustomerLat === null || normalizedCustomerLng === null)
+    ) {
       return res.status(400).json({
         code: "CUSTOMER_LOCATION_REQUIRED",
         message:
@@ -734,7 +831,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       });
     }
 
-    if (!deliveryReadiness.canDeliver) {
+    if (deliveryReadiness && !deliveryReadiness.canDeliver) {
       return res.status(409).json({
         code: "DELIVERY_AREA_UNAVAILABLE",
         message:
@@ -753,7 +850,8 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           status: OrderStatus.PENDING,
           paymentStatus: PaymentStatus.PENDING,
           paymentMethod: PaymentMethod.QPAY,
-          shippingAddress: shippingAddress || "",
+          shippingAddress:
+            shippingAddress || (isPreorderOnlyOrder ? "Урьдчилсан захиалга" : ""),
           phone: normalizedPhone,
           note: orderNote || null,
           customerLat: normalizedCustomerLat,
@@ -767,7 +865,9 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
             create: {
               toStatus: OrderStatus.PENDING,
               changedById: customer.id,
-              note: "Захиалга үүсгэж, ойр салбар хайж эхэлсэн",
+              note: isPreorderOnlyOrder
+                ? "Урьдчилсан захиалга бүртгэгдсэн"
+                : "Захиалга үүсгэж, ойр салбар хайж эхэлсэн",
             },
           },
         },
@@ -776,17 +876,21 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         },
       });
 
-      await seedOrderDispatchRadar(tx, {
-        id: ord.id,
-        organizationId: ord.organizationId,
-        customerLat: ord.customerLat,
-        customerLng: ord.customerLng,
-      });
+      if (!isPreorderOnlyOrder) {
+        await seedOrderDispatchRadar(tx, {
+          id: ord.id,
+          organizationId: ord.organizationId,
+          customerLat: ord.customerLat,
+          customerLng: ord.customerLng,
+        });
+      }
 
       return ord;
     });
 
-    const dispatch = await getCheckoutDispatchSnapshot(order.id, customer.id);
+    const dispatch = isPreorderOnlyOrder
+      ? null
+      : await getCheckoutDispatchSnapshot(order.id, customer.id);
 
     return res.status(201).json({
       orderId: order.id,
@@ -795,7 +899,8 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       subtotal: Number(order.subtotal),
       paymentId: null,
       paymentRequired: false,
-      dispatchStatus: dispatch?.status || "SEARCHING",
+      dispatchStatus: dispatch?.status || "PREORDER_REGISTERED",
+      preorderOrder: isPreorderOnlyOrder,
       dispatch,
       items: order.items.map((i) => ({
         productId: i.productId,
@@ -951,7 +1056,13 @@ router.post(
       const order = await prisma.order.findUnique({
         where: { id: orderId },
         include: {
-          items: true,
+          items: {
+            include: {
+              product: {
+                select: { supplyType: true },
+              },
+            },
+          },
           payments: {
             where: { method: PaymentMethod.QPAY },
             orderBy: { createdAt: "desc" },
@@ -965,7 +1076,10 @@ router.post(
       if (order.customerId !== customer.id) {
         return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
       }
-      if (!order.branchId) {
+      const isPreorderOnlyOrder = order.items.every(
+        (item) => item.product?.supplyType === "CHINA_PREORDER",
+      );
+      if (!order.branchId && !isPreorderOnlyOrder) {
         return res
           .status(409)
           .json({
