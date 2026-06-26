@@ -291,6 +291,20 @@ export async function bootstrapRestaurantDiningTables(branchId: string) {
   return readApiResponse<{ ok: true }>(response);
 }
 
+export async function createRestaurantDiningTable(input: {
+  branchId: string;
+  label: string;
+  code?: string;
+  zone?: string;
+  seats: number;
+}) {
+  const response = await authFetch(`${API}/restaurant/pos/tables`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<RestaurantDiningTable>(response);
+}
+
 export async function ensureRestaurantTableQrToken(input: {
   branchId: string;
   tableId: string;
