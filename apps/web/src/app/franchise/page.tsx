@@ -101,7 +101,7 @@ export default function FranchisePage() {
           <div className="w-fit rounded-xl border border-orange-200/20 bg-white/[0.04] px-5 py-4 text-sm font-black text-orange-100 shadow-[0_18px_45px_rgba(0,0,0,0.24)]">
             Санал гомдол авах дугаар:{" "}
             <a href="tel:88008800" className="underline">
-              95606060
+              91601316
             </a>
           </div>
           <div className="w-fit rounded-xl border border-orange-200/20 bg-white/[0.04] px-5 py-4 text-sm font-black text-orange-100 shadow-[0_18px_45px_rgba(0,0,0,0.24)]">
