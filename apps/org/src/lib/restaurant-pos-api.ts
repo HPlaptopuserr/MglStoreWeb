@@ -263,15 +263,70 @@ export async function closeRestaurantPosShift(input: {
   return readApiResponse<PosShift>(response);
 }
 
-export async function getRestaurantPosProducts(branchId: string) {
-  const params = new URLSearchParams({
-    branchId,
-    restaurantMenu: "1",
-  });
+export async function getRestaurantPosProducts(
+  branchId: string,
+  options?: { restaurantMenuOnly?: boolean },
+) {
+  const params = new URLSearchParams({ branchId });
+  if (options?.restaurantMenuOnly !== false) {
+    params.set("restaurantMenu", "1");
+  }
   const response = await authFetch(`${API}/pos/products?${params.toString()}`, {
     cache: "no-store",
   });
   return readApiResponse<RestaurantPosProduct[]>(response);
+}
+
+export async function enableRestaurantMenuProduct(input: {
+  productId: string;
+  menuCategory: NonNullable<RestaurantPosProduct["menuCategory"]>;
+  kitchenStation: NonNullable<RestaurantPosProduct["kitchenStation"]>;
+  preparationMinutes: number;
+}) {
+  const response = await authFetch(
+    `${API}/products/${encodeURIComponent(input.productId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        isRestaurantMenuItem: true,
+        menuCategory: input.menuCategory,
+        kitchenStation: input.kitchenStation,
+        preparationMinutes: input.preparationMinutes,
+      }),
+    },
+  );
+  return readApiResponse<{ id: string }>(response);
+}
+
+export async function createRestaurantMenuProduct(input: {
+  organizationId: string;
+  name: string;
+  price: number;
+  stock: number;
+  menuCategory: NonNullable<RestaurantPosProduct["menuCategory"]>;
+  kitchenStation: NonNullable<RestaurantPosProduct["kitchenStation"]>;
+  preparationMinutes: number;
+}) {
+  const response = await authFetch(`${API}/products`, {
+    method: "POST",
+    body: JSON.stringify({
+      organizationId: input.organizationId,
+      name: input.name,
+      unit: "порц",
+      price: input.price,
+      stock: input.stock,
+      supplyType: "IN_STOCK",
+      isRestaurantMenuItem: true,
+      menuCategory: input.menuCategory,
+      kitchenStation: input.kitchenStation,
+      preparationMinutes: input.preparationMinutes,
+      taxType: "VAT_ABLE",
+      cityTaxRate: 0,
+      classificationCode: "4711000",
+      images: [],
+    }),
+  });
+  return readApiResponse<{ id: string }>(response);
 }
 
 export async function getRestaurantDiningTables(branchId: string) {

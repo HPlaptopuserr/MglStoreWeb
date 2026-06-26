@@ -40,9 +40,11 @@ import {
   clearRestaurantDiningTable,
   closeRestaurantPosShift,
   createRestaurantCashSale,
+  createRestaurantMenuProduct,
   createRestaurantDiningTable,
   createRestaurantQPayInvoice,
   createRestaurantQPaySale,
+  enableRestaurantMenuProduct,
   getCurrentRestaurantPosShift,
   getRestaurantQPayInvoiceStatus,
   getRestaurantDiningTables,
@@ -79,6 +81,11 @@ type MenuCategoryFilter = "all" | MenuCategory;
 type DishTone = "coral" | "amber" | "mint" | "lime" | "orange" | "sky";
 type TableStatus = "FREE" | "OPEN" | "KITCHEN" | "READY" | "PAID" | "RESERVED";
 type PaymentMethod = "CASH" | "CARD" | "QPAY";
+type RestaurantMenuCategory = NonNullable<RestaurantPosProduct["menuCategory"]>;
+type RestaurantKitchenStation = NonNullable<
+  RestaurantPosProduct["kitchenStation"]
+>;
+type ProductManagerMode = "existing" | "new";
 
 type MenuItem = {
   id: string;
@@ -143,6 +150,28 @@ const categories: { id: MenuCategoryFilter; label: string }[] = [
   { id: "appetizer", label: "Зууш" },
   { id: "dessert", label: "Амттан" },
   { id: "drink", label: "Ундаа" },
+];
+
+const restaurantMenuCategories: Array<{
+  value: RestaurantMenuCategory;
+  label: string;
+}> = [
+  { value: "HOT", label: "Халуун хоол" },
+  { value: "COLD", label: "Хүйтэн хоол" },
+  { value: "SOUP", label: "Шөл" },
+  { value: "GRILL", label: "Грилл" },
+  { value: "APPETIZER", label: "Зууш" },
+  { value: "DESSERT", label: "Амттан" },
+  { value: "DRINK", label: "Ундаа" },
+];
+
+const restaurantKitchenStations: Array<{
+  value: RestaurantKitchenStation;
+  label: string;
+}> = [
+  { value: "HOT_KITCHEN", label: "Халуун гал тогоо" },
+  { value: "COLD_KITCHEN", label: "Хүйтэн гал тогоо" },
+  { value: "BAR", label: "Бар" },
 ];
 
 const dishToneStyles: Record<DishTone, string> = {
@@ -464,6 +493,25 @@ export function RestaurantPosScreen() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState("");
+  const [productManagerOpen, setProductManagerOpen] = useState(false);
+  const [productManagerMode, setProductManagerMode] =
+    useState<ProductManagerMode>("new");
+  const [catalogProducts, setCatalogProducts] = useState<
+    RestaurantPosProduct[]
+  >([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
+  const [productManagerSaving, setProductManagerSaving] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [menuProductCategory, setMenuProductCategory] =
+    useState<RestaurantMenuCategory>("HOT");
+  const [menuProductStation, setMenuProductStation] =
+    useState<RestaurantKitchenStation>("HOT_KITCHEN");
+  const [menuProductPreparationMinutes, setMenuProductPreparationMinutes] =
+    useState("15");
+  const [newProductName, setNewProductName] = useState("");
+  const [newProductPrice, setNewProductPrice] = useState("");
+  const [newProductStock, setNewProductStock] = useState("100");
   const [ticketLines, setTicketLines] = useState<TicketLine[]>([]);
   const [ticketSaving, setTicketSaving] = useState(false);
   const [kitchenSubmitting, setKitchenSubmitting] = useState(false);
@@ -586,16 +634,17 @@ export function RestaurantPosScreen() {
     try {
       const products = await getRestaurantPosProducts(
         selectedRegister.branchId,
+        {
+          restaurantMenuOnly: false,
+        },
       );
       const nextItems = products
-        .filter(
-          (product) =>
-            product.isActive &&
-            product.isRestaurantMenuItem &&
-            product.menuCategory,
-        )
+        .filter((product) => product.isActive)
         .map((product) => {
-          const category = menuCategoryMap[product.menuCategory!];
+          const menuCategory =
+            product.menuCategory ||
+            (product.kitchenStation === "BAR" ? "DRINK" : "HOT");
+          const category = menuCategoryMap[menuCategory];
           return {
             id: product.id,
             name: product.name,
@@ -620,6 +669,31 @@ export function RestaurantPosScreen() {
   useEffect(() => {
     void loadMenu();
   }, [loadMenu]);
+
+  const loadCatalogProducts = useCallback(async () => {
+    if (!selectedRegister?.branchId) {
+      setCatalogProducts([]);
+      return;
+    }
+
+    setCatalogLoading(true);
+    setCatalogError("");
+    try {
+      const products = await getRestaurantPosProducts(
+        selectedRegister.branchId,
+        { restaurantMenuOnly: false },
+      );
+      setCatalogProducts(products);
+    } catch (error) {
+      setCatalogError(
+        error instanceof Error
+          ? error.message
+          : "Бүтээгдэхүүний жагсаалт авахад алдаа гарлаа",
+      );
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, [selectedRegister?.branchId]);
 
   const loadTables = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -700,7 +774,20 @@ export function RestaurantPosScreen() {
       return matchesCategory && matchesQuery;
     });
   }, [activeCategory, menuItems, query]);
-
+  const filteredCatalogProducts = useMemo(() => {
+    const normalizedQuery = productSearch.trim().toLowerCase();
+    return catalogProducts.filter((product) => {
+      if (!normalizedQuery) return true;
+      return (
+        product.name.toLowerCase().includes(normalizedQuery) ||
+        product.sku.toLowerCase().includes(normalizedQuery) ||
+        (product.barcode || "").toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [catalogProducts, productSearch]);
+  const availableCatalogProducts = filteredCatalogProducts.filter(
+    (product) => !product.isRestaurantMenuItem,
+  );
   const subtotal = ticketLines.reduce(
     (sum, line) => sum + line.price * line.qty,
     0,
@@ -1081,6 +1168,95 @@ export function RestaurantPosScreen() {
       await ensureQrTokenForTable(table);
     } catch {
       // qrError is set by ensureQrTokenForTable.
+    }
+  };
+
+  const openProductManager = () => {
+    setProductManagerOpen(true);
+    setProductManagerMode("new");
+    setCatalogError("");
+    setMenuProductCategory("HOT");
+    setMenuProductStation("HOT_KITCHEN");
+    setMenuProductPreparationMinutes("15");
+    setNewProductName("");
+    setNewProductPrice("");
+    setNewProductStock("100");
+  };
+
+  const readPreparationMinutes = () => {
+    const value = Math.floor(Number(menuProductPreparationMinutes || 0));
+    return Number.isFinite(value) ? Math.min(1440, Math.max(0, value)) : 0;
+  };
+
+  const handleEnableMenuProduct = async (product: RestaurantPosProduct) => {
+    setProductManagerSaving(true);
+    setCatalogError("");
+    try {
+      await enableRestaurantMenuProduct({
+        productId: product.id,
+        menuCategory: menuProductCategory,
+        kitchenStation: menuProductStation,
+        preparationMinutes: readPreparationMinutes(),
+      });
+      setNotice(`"${product.name}" рестораны менюд нэмэгдлээ.`);
+      setProductManagerOpen(false);
+      await loadMenu();
+      await loadCatalogProducts();
+    } catch (error) {
+      setCatalogError(
+        error instanceof Error ? error.message : "Менюд нэмэхэд алдаа гарлаа",
+      );
+    } finally {
+      setProductManagerSaving(false);
+    }
+  };
+
+  const handleCreateMenuProduct = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!user.organizationId) {
+      setCatalogError("Байгууллагын мэдээлэл олдсонгүй.");
+      return;
+    }
+
+    const name = newProductName.trim();
+    const price = Number(newProductPrice);
+    const stock = Math.floor(Number(newProductStock || 0));
+    if (!name) {
+      setCatalogError("Хоолны нэр оруулна уу.");
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      setCatalogError("Үнэ буруу байна.");
+      return;
+    }
+    if (!Number.isFinite(stock) || stock < 0) {
+      setCatalogError("Үлдэгдэл 0-ээс багагүй байх ёстой.");
+      return;
+    }
+
+    setProductManagerSaving(true);
+    setCatalogError("");
+    try {
+      await createRestaurantMenuProduct({
+        organizationId: user.organizationId,
+        name,
+        price,
+        stock,
+        menuCategory: menuProductCategory,
+        kitchenStation: menuProductStation,
+        preparationMinutes: readPreparationMinutes(),
+      });
+      setNotice(`"${name}" шинээр үүсэж, рестораны менюд нэмэгдлээ.`);
+      setProductManagerOpen(false);
+      await loadMenu();
+    } catch (error) {
+      setCatalogError(
+        error instanceof Error
+          ? error.message
+          : "Шинэ хоол үүсгэхэд алдаа гарлаа",
+      );
+    } finally {
+      setProductManagerSaving(false);
     }
   };
 
@@ -2017,9 +2193,20 @@ export function RestaurantPosScreen() {
               <h3 className="text-xl font-bold tracking-normal text-white">
                 Меню сонгох
               </h3>
-              <p className="text-sm font-semibold text-slate-500">
-                {filteredMenu.length} item
-              </p>
+              <div className="flex items-center gap-3">
+                <p className="text-sm font-semibold text-slate-500">
+                  {filteredMenu.length} item
+                </p>
+                <button
+                  type="button"
+                  onClick={openProductManager}
+                  disabled={!selectedRegister}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-sky-400/50 bg-sky-400/10 px-3 text-sm font-black text-sky-100 transition hover:bg-sky-400 hover:text-white disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
+                >
+                  <Plus className="h-4 w-4" />
+                  Хоол нэмэх
+                </button>
+              </div>
             </div>
 
             {menuLoading ? (
@@ -2046,13 +2233,14 @@ export function RestaurantPosScreen() {
                     : "Менюд хоол бүртгэгдээгүй байна"}
                 </p>
                 {!query && activeCategory === "all" ? (
-                  <Link
-                    href="/dashboard/products"
+                  <button
+                    type="button"
+                    onClick={openProductManager}
                     className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-sky-400 px-4 text-sm font-black text-white"
                   >
                     <Plus className="h-4 w-4" />
                     Хоол нэмэх
-                  </Link>
+                  </button>
                 ) : null}
               </div>
             ) : (
@@ -2496,6 +2684,306 @@ export function RestaurantPosScreen() {
           </div>
         </aside>
       </div>
+
+      {productManagerOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="grid max-h-[92vh] w-full max-w-5xl grid-cols-[320px_minmax(0,1fr)] overflow-hidden rounded-2xl border border-white/10 bg-[#242735] shadow-2xl max-lg:grid-cols-1">
+            <div className="border-r border-white/10 p-5 max-lg:border-b max-lg:border-r-0">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wider text-sky-300">
+                    Restaurant menu
+                  </p>
+                  <h3 className="mt-1 text-2xl font-black text-white">
+                    Хоол нэмэх
+                  </h3>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-400">
+                    Байгууллагын active product-ууд касс дээр шууд харагдана.
+                    Энд зөвхөн байхгүй хоолыг шинээр үүсгэнэ.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProductManagerOpen(false)}
+                  disabled={productManagerSaving}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-40"
+                  aria-label="Хаах"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                {[{ value: "new" as const, label: "Шинээр" }].map((mode) => (
+                  <button
+                    key={mode.value}
+                    type="button"
+                    onClick={() => {
+                      setProductManagerMode(mode.value);
+                      setCatalogError("");
+                    }}
+                    disabled={productManagerSaving}
+                    className={`h-10 rounded-lg border text-sm font-black transition ${
+                      productManagerMode === mode.value
+                        ? "border-sky-400 bg-sky-400 text-white"
+                        : "border-white/10 text-slate-300 hover:border-sky-400/50 hover:text-white"
+                    }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-5 space-y-3">
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-500">
+                    Ангилал
+                  </span>
+                  <select
+                    value={menuProductCategory}
+                    onChange={(event) =>
+                      setMenuProductCategory(
+                        event.target.value as RestaurantMenuCategory,
+                      )
+                    }
+                    disabled={productManagerSaving}
+                    className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-sm font-bold text-slate-100 outline-none focus:border-sky-400/70"
+                  >
+                    {restaurantMenuCategories.map((category) => (
+                      <option key={category.value} value={category.value}>
+                        {category.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-500">
+                    Гал тогооны хэсэг
+                  </span>
+                  <select
+                    value={menuProductStation}
+                    onChange={(event) =>
+                      setMenuProductStation(
+                        event.target.value as RestaurantKitchenStation,
+                      )
+                    }
+                    disabled={productManagerSaving}
+                    className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-sm font-bold text-slate-100 outline-none focus:border-sky-400/70"
+                  >
+                    {restaurantKitchenStations.map((station) => (
+                      <option key={station.value} value={station.value}>
+                        {station.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-500">
+                    Бэлтгэх минут
+                  </span>
+                  <input
+                    value={menuProductPreparationMinutes}
+                    onChange={(event) =>
+                      setMenuProductPreparationMinutes(event.target.value)
+                    }
+                    inputMode="numeric"
+                    disabled={productManagerSaving}
+                    className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-sm font-bold text-slate-100 outline-none focus:border-sky-400/70"
+                  />
+                </label>
+              </div>
+
+              {catalogError ? (
+                <p className="mt-4 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold leading-5 text-rose-200">
+                  {catalogError}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="min-h-0 overflow-y-auto p-5">
+              {productManagerMode === "existing" ? (
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xl font-black text-white">
+                        Байгаа бүтээгдэхүүнээс нэмэх
+                      </h4>
+                      <p className="mt-1 text-sm font-semibold text-slate-500">
+                        Менюд ороогүй product-ийг сонгоод restaurant item
+                        болгоно.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadCatalogProducts()}
+                      disabled={catalogLoading || productManagerSaving}
+                      className="flex h-10 items-center gap-2 rounded-lg border border-white/10 px-3 text-sm font-black text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                    >
+                      <RefreshCw
+                        className={`h-4 w-4 ${
+                          catalogLoading ? "animate-spin" : ""
+                        }`}
+                      />
+                      Шинэчлэх
+                    </button>
+                  </div>
+
+                  <label className="mt-4 flex h-12 items-center gap-3 rounded-xl border border-white/10 bg-[#11131d] px-4">
+                    <Search className="h-4 w-4 text-slate-500" />
+                    <input
+                      value={productSearch}
+                      onChange={(event) => setProductSearch(event.target.value)}
+                      placeholder="Product нэр, SKU, barcode хайх..."
+                      className="h-full min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600"
+                    />
+                  </label>
+
+                  <div className="mt-4 max-h-[58vh] space-y-2 overflow-y-auto pr-1">
+                    {catalogLoading ? (
+                      <div className="flex h-36 items-center justify-center gap-2 text-sm font-bold text-slate-500">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Бүтээгдэхүүн ачаалж байна...
+                      </div>
+                    ) : availableCatalogProducts.length === 0 ? (
+                      <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 text-center">
+                        <ChefHat className="h-8 w-8 text-slate-600" />
+                        <p className="mt-3 text-sm font-bold text-slate-300">
+                          Нэмэх боломжтой product олдсонгүй.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setProductManagerMode("new")}
+                          className="mt-3 h-9 rounded-lg bg-sky-400 px-4 text-sm font-black text-white"
+                        >
+                          Шинээр үүсгэх
+                        </button>
+                      </div>
+                    ) : (
+                      availableCatalogProducts.map((product) => (
+                        <div
+                          key={product.id}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-white">
+                              {product.name}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">
+                              {formatMoney(product.price)} · үлдэгдэл{" "}
+                              {product.stockQty}
+                              {product.sku ? ` · SKU ${product.sku}` : ""}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleEnableMenuProduct(product)
+                            }
+                            disabled={productManagerSaving}
+                            className="flex h-10 shrink-0 items-center gap-2 rounded-lg bg-sky-400 px-3 text-sm font-black text-white hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                          >
+                            {productManagerSaving ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Plus className="h-4 w-4" />
+                            )}
+                            Менюд
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleCreateMenuProduct} className="space-y-4">
+                  <div>
+                    <h4 className="text-xl font-black text-white">
+                      Шинэ хоол үүсгэх
+                    </h4>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                      Product catalog дээр үүсээд restaurant menu-д шууд орно.
+                    </p>
+                  </div>
+
+                  <label className="block">
+                    <span className="text-sm font-bold text-slate-300">
+                      Хоолны нэр
+                    </span>
+                    <input
+                      value={newProductName}
+                      onChange={(event) =>
+                        setNewProductName(event.target.value)
+                      }
+                      placeholder="Жишээ: Chicken burger"
+                      autoFocus
+                      disabled={productManagerSaving}
+                      className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400/70 disabled:opacity-60"
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="text-sm font-bold text-slate-300">
+                        Үнэ
+                      </span>
+                      <input
+                        value={newProductPrice}
+                        onChange={(event) =>
+                          setNewProductPrice(event.target.value)
+                        }
+                        inputMode="decimal"
+                        placeholder="0"
+                        disabled={productManagerSaving}
+                        className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400/70 disabled:opacity-60"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-sm font-bold text-slate-300">
+                        Үлдэгдэл / порц
+                      </span>
+                      <input
+                        value={newProductStock}
+                        onChange={(event) =>
+                          setNewProductStock(event.target.value)
+                        }
+                        inputMode="numeric"
+                        disabled={productManagerSaving}
+                        className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none focus:border-sky-400/70 disabled:opacity-60"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setProductManagerOpen(false)}
+                      disabled={productManagerSaving}
+                      className="flex h-12 items-center justify-center rounded-lg border border-white/10 text-sm font-black text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Болих
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={productManagerSaving}
+                      className="flex h-12 items-center justify-center gap-2 rounded-lg bg-sky-400 text-sm font-black text-white transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                    >
+                      {productManagerSaving ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4" />
+                      )}
+                      Үүсгээд нэмэх
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {tableCreateOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">

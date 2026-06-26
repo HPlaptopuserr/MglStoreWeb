@@ -2224,7 +2224,6 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
                 organizationId: access.branch.organizationId,
                 deletedAt: null,
                 isActive: true,
-                isRestaurantMenuItem: true,
               },
               select: {
                 id: true,
@@ -2238,7 +2237,7 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
           : [];
         if (products.length !== productIds.length) {
           throw Object.assign(
-            new Error("Зарим хоол идэвхгүй эсвэл рестораны менюд байхгүй"),
+            new Error("Зарим бүтээгдэхүүн идэвхгүй эсвэл олдсонгүй"),
             { status: 400 },
           );
         }
