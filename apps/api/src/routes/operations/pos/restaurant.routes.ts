@@ -128,6 +128,19 @@ const normalizeNote = (value: unknown) => {
   return note || null;
 };
 
+const normalizeRestaurantTableCode = (value: unknown) =>
+  String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .toUpperCase()
+    .slice(0, 32);
+
+const normalizeRestaurantTableText = (value: unknown, maxLength = 80) =>
+  String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, maxLength);
+
 const normalizeQrCustomerNote = (value: unknown) => {
   const note = normalizeNote(value);
   return note ? `QR: ${note}` : "QR self-order";
@@ -1850,6 +1863,112 @@ router.get("/restaurant/pos/tables", async (req, res) => {
     return res
       .status(500)
       .json({ message: "Рестораны ширээ авахад алдаа гарлаа" });
+  }
+});
+
+router.post("/restaurant/pos/tables", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const branchId = String(req.body?.branchId || "").trim();
+    const label = normalizeRestaurantTableText(req.body?.label, 40);
+    const code = normalizeRestaurantTableCode(req.body?.code || label);
+    const zone = normalizeRestaurantTableText(req.body?.zone, 60) || "Гол заал";
+    const rawSeats = Math.floor(Number(req.body?.seats || 4));
+    const seats = Number.isFinite(rawSeats)
+      ? Math.min(99, Math.max(1, rawSeats))
+      : 4;
+
+    if (!branchId) {
+      return res.status(400).json({ message: "branchId шаардлагатай" });
+    }
+    if (!label || !code) {
+      return res
+        .status(400)
+        .json({ message: "Ширээний нэр эсвэл код шаардлагатай" });
+    }
+
+    const access = await requireBranchAccess(actor, branchId);
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    const table = await prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.restaurantTable.findUnique({
+          where: { branchId_code: { branchId, code } },
+          select: { id: true, isActive: true },
+        });
+        if (existing?.isActive) {
+          throw Object.assign(
+            new Error(`"${code}" кодтой ширээ аль хэдийн байна`),
+            { status: 409 },
+          );
+        }
+
+        const lastTable = await tx.restaurantTable.findFirst({
+          where: { branchId },
+          orderBy: { sortOrder: "desc" },
+          select: { sortOrder: true },
+        });
+        const sortOrder = (lastTable?.sortOrder || 0) + 10;
+
+        if (existing) {
+          return tx.restaurantTable.update({
+            where: { id: existing.id },
+            data: {
+              organizationId: access.branch.organizationId,
+              branchId,
+              code,
+              label,
+              zone,
+              seats,
+              sortOrder,
+              isActive: true,
+              qrToken: generateTableQrToken(),
+            },
+          });
+        }
+
+        return tx.restaurantTable.create({
+          data: {
+            organizationId: access.branch.organizationId,
+            branchId,
+            code,
+            label,
+            zone,
+            seats,
+            sortOrder,
+            qrToken: generateTableQrToken(),
+          },
+        });
+      },
+      { isolationLevel: "Serializable" },
+    );
+
+    return res.status(201).json({
+      id: table.id,
+      code: table.code,
+      label: table.label,
+      qrToken: table.qrToken,
+      zone: table.zone,
+      seats: table.seats,
+      status: "FREE",
+      total: 0,
+      currentTicket: null,
+    });
+  } catch (error) {
+    const known = error as Error & { status?: number };
+    if (known.status) {
+      return res.status(known.status).json({ message: known.message });
+    }
+    console.error("create restaurant table error", error);
+    return res
+      .status(500)
+      .json({ message: "Рестораны ширээ нэмэхэд алдаа гарлаа" });
   }
 });
 

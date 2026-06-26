@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { QrGenerator } from "@mgl/ui";
 import {
   ArrowLeft,
@@ -33,6 +40,7 @@ import {
   clearRestaurantDiningTable,
   closeRestaurantPosShift,
   createRestaurantCashSale,
+  createRestaurantDiningTable,
   createRestaurantQPayInvoice,
   createRestaurantQPaySale,
   getCurrentRestaurantPosShift,
@@ -474,6 +482,12 @@ export function RestaurantPosScreen() {
   const [notice, setNotice] = useState("");
   const [lastReceipt, setLastReceipt] = useState<PosReceipt | null>(null);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
+  const [tableCreateOpen, setTableCreateOpen] = useState(false);
+  const [tableCreating, setTableCreating] = useState(false);
+  const [tableCreateError, setTableCreateError] = useState("");
+  const [newTableLabel, setNewTableLabel] = useState("");
+  const [newTableZone, setNewTableZone] = useState("Гол заал");
+  const [newTableSeats, setNewTableSeats] = useState("4");
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [qrSelectedTableId, setQrSelectedTableId] = useState("");
   const [qrTokensByTableId, setQrTokensByTableId] = useState<
@@ -1067,6 +1081,64 @@ export function RestaurantPosScreen() {
       await ensureQrTokenForTable(table);
     } catch {
       // qrError is set by ensureQrTokenForTable.
+    }
+  };
+
+  const openCreateTableModal = () => {
+    setNewTableLabel("");
+    setNewTableZone(selectedTable.zone || "Гол заал");
+    setNewTableSeats("4");
+    setTableCreateError("");
+    setTableCreateOpen(true);
+  };
+
+  const handleCreateTable = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedRegister) {
+      setTableCreateError("Ширээ нэмэхийн тулд POS register сонгоно уу.");
+      return;
+    }
+
+    const label = newTableLabel.trim();
+    const zone = newTableZone.trim() || "Гол заал";
+    const seats = Math.floor(Number(newTableSeats || 4));
+    if (!label) {
+      setTableCreateError("Ширээний нэр оруулна уу.");
+      return;
+    }
+    if (!Number.isFinite(seats) || seats < 1) {
+      setTableCreateError("Суудлын тоо 1-ээс их байх ёстой.");
+      return;
+    }
+
+    setTableCreating(true);
+    setTableCreateError("");
+    try {
+      const created = await createRestaurantDiningTable({
+        branchId: selectedRegister.branchId,
+        label,
+        zone,
+        seats,
+      });
+      const mapped = mapDiningTable(created);
+      setDiningTables((current) => [...current, mapped]);
+      setSelectedTableId(mapped.id);
+      const qrToken = mapped.qrToken;
+      if (qrToken) {
+        setQrTokensByTableId((current) => ({
+          ...current,
+          [mapped.id]: qrToken,
+        }));
+      }
+      setTableCreateOpen(false);
+      setNotice(`Ширээ ${mapped.label} нэмэгдлээ.`);
+      void loadTables({ silent: true });
+    } catch (error) {
+      setTableCreateError(
+        error instanceof Error ? error.message : "Ширээ нэмэхэд алдаа гарлаа",
+      );
+    } finally {
+      setTableCreating(false);
     }
   };
 
@@ -1828,9 +1900,20 @@ export function RestaurantPosScreen() {
                 <LayoutGrid className="h-4 w-4 text-sky-400" />
                 Ширээний зураглал
               </div>
-              <span className="text-xs font-bold text-slate-500">
-                {activeTables} идэвхтэй · {diningTables.length} ширээ
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500">
+                  {activeTables} идэвхтэй · {diningTables.length} ширээ
+                </span>
+                <button
+                  type="button"
+                  onClick={openCreateTableModal}
+                  disabled={!selectedRegister}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-sky-400/50 bg-sky-400/10 px-3 text-xs font-black text-sky-200 transition hover:bg-sky-400 hover:text-white disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Ширээ нэмэх
+                </button>
+              </div>
             </div>
             {tablesError ? (
               <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-200">
@@ -2413,6 +2496,111 @@ export function RestaurantPosScreen() {
           </div>
         </aside>
       </div>
+
+      {tableCreateOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={handleCreateTable}
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#242735] shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-sky-300">
+                  Restaurant table
+                </p>
+                <h3 className="mt-1 text-2xl font-black text-white">
+                  Ширээ нэмэх
+                </h3>
+                <p className="mt-2 text-sm font-semibold text-slate-400">
+                  Шинэ ширээ зураглал дээр нэмэгдэж, QR token автоматаар үүснэ.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTableCreateOpen(false)}
+                disabled={tableCreating}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-40"
+                aria-label="Хаах"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <label className="block">
+                <span className="text-sm font-bold text-slate-300">
+                  Ширээний нэр
+                </span>
+                <input
+                  value={newTableLabel}
+                  onChange={(event) => setNewTableLabel(event.target.value)}
+                  placeholder="Жишээ: A5, VIP 2"
+                  autoFocus
+                  disabled={tableCreating}
+                  className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400/70 disabled:opacity-60"
+                />
+              </label>
+
+              <div className="grid grid-cols-[minmax(0,1fr)_110px] gap-3">
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-300">
+                    Бүс / заал
+                  </span>
+                  <input
+                    value={newTableZone}
+                    onChange={(event) => setNewTableZone(event.target.value)}
+                    placeholder="Гол заал"
+                    disabled={tableCreating}
+                    className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400/70 disabled:opacity-60"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-300">
+                    Суудал
+                  </span>
+                  <input
+                    value={newTableSeats}
+                    onChange={(event) => setNewTableSeats(event.target.value)}
+                    inputMode="numeric"
+                    disabled={tableCreating}
+                    className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none focus:border-sky-400/70 disabled:opacity-60"
+                  />
+                </label>
+              </div>
+
+              {tableCreateError ? (
+                <p className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold leading-5 text-rose-200">
+                  {tableCreateError}
+                </p>
+              ) : null}
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setTableCreateOpen(false)}
+                  disabled={tableCreating}
+                  className="flex h-12 items-center justify-center rounded-lg border border-white/10 text-sm font-black text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Болих
+                </button>
+                <button
+                  type="submit"
+                  disabled={tableCreating}
+                  className="flex h-12 items-center justify-center gap-2 rounded-lg bg-sky-400 text-sm font-black text-white transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                >
+                  {tableCreating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  Нэмэх
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {qrModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
