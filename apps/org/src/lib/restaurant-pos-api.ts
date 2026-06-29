@@ -1,8 +1,11 @@
 import type {
   CardAttempt,
+  CashDenominationCount,
+  CashDrawerSummary,
   PosCreditBorrower,
   PosReceipt,
   PosShift,
+  PosShiftHistoryResponse,
   SaleCreditPaymentMeta,
 } from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
@@ -512,6 +515,7 @@ export async function openRestaurantPosShift(input: {
 export async function closeRestaurantPosShift(input: {
   shiftId: string;
   closingCash: number;
+  cashCount?: CashDenominationCount[];
   note?: string;
 }) {
   const response = await authFetch(`${API}/pos/shifts/close`, {
@@ -519,6 +523,46 @@ export async function closeRestaurantPosShift(input: {
     body: JSON.stringify(input),
   });
   return readApiResponse<PosShift>(response);
+}
+
+export async function getRestaurantCashDrawerSummary(
+  shiftId: string,
+  signal?: AbortSignal,
+) {
+  const response = await authFetch(
+    `${API}/pos/shifts/${encodeURIComponent(shiftId)}/drawer`,
+    {
+      cache: "no-store",
+      signal,
+    },
+  );
+  return readApiResponse<CashDrawerSummary>(response);
+}
+
+export async function getRestaurantShiftHistory(
+  input: {
+    branchId?: string;
+    status?: "OPEN" | "CLOSED";
+    from?: string;
+    to?: string;
+    limit?: number;
+  } = {},
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams();
+  if (input.branchId) params.set("branchId", input.branchId);
+  if (input.status) params.set("status", input.status);
+  if (input.from) params.set("from", input.from);
+  if (input.to) params.set("to", input.to);
+  if (input.limit) params.set("limit", String(input.limit));
+  const response = await authFetch(
+    `${API}/pos/shifts/history?${params.toString()}`,
+    {
+      cache: "no-store",
+      signal,
+    },
+  );
+  return readApiResponse<PosShiftHistoryResponse>(response);
 }
 
 export async function getRestaurantPosProducts(

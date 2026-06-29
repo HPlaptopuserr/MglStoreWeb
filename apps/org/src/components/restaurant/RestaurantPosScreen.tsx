@@ -18,6 +18,7 @@ import {
   ChevronDown,
   CreditCard,
   HandCoins,
+  History,
   LayoutGrid,
   Loader2,
   Minus,
@@ -53,12 +54,14 @@ import {
   enableRestaurantMenuProduct,
   getCurrentRestaurantPosShift,
   getRestaurantCardAttemptStatus,
+  getRestaurantCashDrawerSummary,
   getRestaurantCreditCustomers,
   getRestaurantCreditSales,
   getRestaurantQPayInvoiceStatus,
   getRestaurantDiningTables,
   getRestaurantPosProducts,
   getRestaurantPosRegisters,
+  getRestaurantShiftHistory,
   ensureRestaurantTableQrToken,
   openRestaurantPosShift,
   payRestaurantCreditSale,
@@ -81,9 +84,12 @@ import {
 } from "./customer-display";
 import type {
   CardAttempt,
+  CashDenominationCount,
+  CashDrawerSummary,
   PosCreditBorrower,
   PosReceipt,
   PosShift,
+  PosShiftHistoryItem,
   SaleCreditPaymentMeta,
 } from "@mgl/types";
 
@@ -293,6 +299,55 @@ const paymentOptions = [
 const moneyFormatter = new Intl.NumberFormat("mn-MN");
 const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 const formatMoney = (value: number) => `${moneyFormatter.format(value)}₮`;
+const CASH_DENOMINATIONS = [
+  20000,
+  10000,
+  5000,
+  1000,
+  500,
+  100,
+  50,
+  20,
+  10,
+] as const;
+
+const buildCashCount = (
+  counts: Record<number, number>,
+): CashDenominationCount[] =>
+  CASH_DENOMINATIONS.map((denomination) => {
+    const count = Math.max(0, Math.floor(Number(counts[denomination]) || 0));
+    return {
+      denomination,
+      count,
+      total: denomination * count,
+    };
+  });
+
+const sumCashCount = (counts: CashDenominationCount[]) =>
+  roundMoney(counts.reduce((sum, item) => sum + item.total, 0));
+const SHIFT_HISTORY_RANGE_OPTIONS = [
+  { id: "7", label: "7 хоног", description: "Сүүлийн 7 хоног", days: 7 },
+  { id: "14", label: "14 хоног", description: "Сүүлийн 14 хоног", days: 14 },
+  { id: "30", label: "30 хоног", description: "Сүүлийн 30 хоног", days: 30 },
+  { id: "100", label: "100 хаалт", description: "Сүүлийн 100 хаалт", days: null },
+] as const;
+type ShiftHistoryRangeId = (typeof SHIFT_HISTORY_RANGE_OPTIONS)[number]["id"];
+
+const getShiftHistoryRangeParams = (rangeId: ShiftHistoryRangeId) => {
+  const option =
+    SHIFT_HISTORY_RANGE_OPTIONS.find((item) => item.id === rangeId) ??
+    SHIFT_HISTORY_RANGE_OPTIONS[0];
+  if (!option.days) return { limit: 100 };
+
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - option.days);
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+    limit: 100,
+  };
+};
 const DEFAULT_ANDROID_PGW_BRIDGE_URL = "http://127.0.0.1:7420";
 const LONG_RUNNING_CARD_PROVIDERS = new Set([
   "PUSH_ECR",
@@ -574,7 +629,19 @@ export function RestaurantPosScreen() {
   const [showCloseShift, setShowCloseShift] = useState(false);
   const [openingCash, setOpeningCash] = useState("0");
   const [closingCash, setClosingCash] = useState("");
+  const [cashCounts, setCashCounts] = useState<Record<number, number>>({});
+  const [drawerSummary, setDrawerSummary] =
+    useState<CashDrawerSummary | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState("");
   const [shiftNote, setShiftNote] = useState("");
+  const [showShiftHistory, setShowShiftHistory] = useState(false);
+  const [shiftHistory, setShiftHistory] = useState<PosShiftHistoryItem[]>([]);
+  const [shiftHistoryLoading, setShiftHistoryLoading] = useState(false);
+  const [shiftHistoryError, setShiftHistoryError] = useState("");
+  const [shiftHistoryRange, setShiftHistoryRange] =
+    useState<ShiftHistoryRangeId>("7");
+  const [selectedShiftHistoryId, setSelectedShiftHistoryId] = useState("");
   const [activeCategory, setActiveCategory] =
     useState<MenuCategoryFilter>("all");
   const [query, setQuery] = useState("");
@@ -686,6 +753,121 @@ export function RestaurantPosScreen() {
   );
   const shiftMatchesRegister =
     Boolean(shift?.registerId) && shift?.registerId === selectedRegister?.id;
+  const countedCashItems = useMemo(
+    () => buildCashCount(cashCounts),
+    [cashCounts],
+  );
+  const hasCountedCash = countedCashItems.some((item) => item.count > 0);
+  const countedCashTotal = useMemo(
+    () => sumCashCount(countedCashItems),
+    [countedCashItems],
+  );
+  const closingCashPreview = hasCountedCash
+    ? countedCashTotal
+    : Number(closingCash) || 0;
+  const expectedCashPreview =
+    drawerSummary?.expectedCash ?? shift?.expectedCash ?? 0;
+  const closingDifferencePreview = roundMoney(
+    closingCashPreview - expectedCashPreview,
+  );
+  const selectedShiftHistory = useMemo(
+    () =>
+      shiftHistory.find((item) => item.id === selectedShiftHistoryId) ??
+      shiftHistory[0] ??
+      null,
+    [shiftHistory, selectedShiftHistoryId],
+  );
+  const shiftHistoryTotals = useMemo(
+    () =>
+      shiftHistory.reduce(
+        (totals, item) => ({
+          totalSales: roundMoney(totals.totalSales + item.totalSales),
+          cashSales: roundMoney(totals.cashSales + item.cashSales),
+          cardSales: roundMoney(totals.cardSales + item.cardSales),
+          qpaySales: roundMoney(totals.qpaySales + item.qpaySales),
+          creditSales: roundMoney(totals.creditSales + item.creditSales),
+          salesCount: totals.salesCount + item.salesCount,
+        }),
+        {
+          totalSales: 0,
+          cashSales: 0,
+          cardSales: 0,
+          qpaySales: 0,
+          creditSales: 0,
+          salesCount: 0,
+        },
+      ),
+    [shiftHistory],
+  );
+  const selectedShiftHistoryRange = useMemo(
+    () =>
+      SHIFT_HISTORY_RANGE_OPTIONS.find((item) => item.id === shiftHistoryRange) ??
+      SHIFT_HISTORY_RANGE_OPTIONS[0],
+    [shiftHistoryRange],
+  );
+
+  const loadShiftHistory = useCallback(
+    async (signal?: AbortSignal) => {
+      setShiftHistoryLoading(true);
+      setShiftHistoryError("");
+      try {
+        const rangeParams = getShiftHistoryRangeParams(shiftHistoryRange);
+        const data = await getRestaurantShiftHistory(
+          {
+            branchId: selectedRegister?.branchId,
+            status: "CLOSED",
+            ...rangeParams,
+          },
+          signal,
+        );
+        const shifts = Array.isArray(data.shifts) ? data.shifts : [];
+        setShiftHistory(shifts);
+        setSelectedShiftHistoryId((current) =>
+          shifts.some((item) => item.id === current)
+            ? current
+            : shifts[0]?.id ?? "",
+        );
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setShiftHistoryError(
+          error instanceof Error
+            ? error.message
+            : "Хаалтын түүх авахад алдаа гарлаа",
+        );
+      } finally {
+        setShiftHistoryLoading(false);
+      }
+    },
+    [selectedRegister?.branchId, shiftHistoryRange],
+  );
+
+  const refreshCashDrawerSummary = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!shift?.id) return null;
+      setDrawerLoading(true);
+      setDrawerError("");
+      try {
+        const summary = await getRestaurantCashDrawerSummary(shift.id, signal);
+        setDrawerSummary(summary);
+        return summary;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return null;
+        }
+        setDrawerError(
+          error instanceof Error
+            ? error.message
+            : "Кассын хаалтын мэдээлэл авахад алдаа гарлаа",
+        );
+        return null;
+      } finally {
+        setDrawerLoading(false);
+      }
+    },
+    [shift?.id],
+  );
 
   const selectedTable =
     diningTables.find((table) => table.id === selectedTableId) ??
@@ -693,6 +875,9 @@ export function RestaurantPosScreen() {
     EMPTY_DINING_TABLE;
   const activeTables = diningTables.filter(
     (table) => table.status !== "FREE",
+  ).length;
+  const openTicketCount = diningTables.filter(
+    (table) => table.currentTicket,
   ).length;
   const qrSelectedTable =
     diningTables.find((table) => table.id === qrSelectedTableId) ??
@@ -753,6 +938,20 @@ export function RestaurantPosScreen() {
   useEffect(() => {
     void loadPosSetup();
   }, [loadPosSetup]);
+
+  useEffect(() => {
+    if (!showCloseShift || !shift?.id) return;
+    const controller = new AbortController();
+    void refreshCashDrawerSummary(controller.signal);
+    return () => controller.abort();
+  }, [showCloseShift, shift?.id, refreshCashDrawerSummary]);
+
+  useEffect(() => {
+    if (!showShiftHistory) return;
+    const controller = new AbortController();
+    void loadShiftHistory(controller.signal);
+    return () => controller.abort();
+  }, [showShiftHistory, loadShiftHistory]);
 
   const loadMenu = useCallback(async () => {
     if (!selectedRegister?.branchId) {
@@ -1918,11 +2117,12 @@ export function RestaurantPosScreen() {
       );
       return;
     }
-    if (!closingCash.trim()) {
+    const activeCashCount = hasCountedCash ? countedCashItems : undefined;
+    if (!activeCashCount && !closingCash.trim()) {
       setSetupError("Хаалтын бэлэн мөнгөний дүнг оруулна уу.");
       return;
     }
-    const amount = Number(closingCash);
+    const amount = activeCashCount ? countedCashTotal : Number(closingCash);
     if (!Number.isFinite(amount) || amount < 0) {
       setSetupError("Хаалтын бэлэн мөнгө 0 эсвэл түүнээс их байна.");
       return;
@@ -1931,17 +2131,37 @@ export function RestaurantPosScreen() {
     setShiftSubmitting(true);
     setSetupError("");
     try {
+      const latestSummary = await refreshCashDrawerSummary();
+      if (!latestSummary) {
+        throw new Error("Хаалтын тооцоог шинэчилж чадсангүй.");
+      }
+      const latestDifference = roundMoney(amount - latestSummary.expectedCash);
+      const confirmed = window.confirm(
+        [
+          "Ээлжийг хаах уу?",
+          `Тооцоолсон бэлэн: ${formatMoney(latestSummary.expectedCash)}`,
+          `Тоолсон бэлэн: ${formatMoney(amount)}`,
+          `Зөрүү: ${formatMoney(latestDifference)}`,
+        ].join("\n"),
+      );
+      if (!confirmed) return;
       await closeRestaurantPosShift({
         shiftId: shift.id,
         closingCash: amount,
+        cashCount: activeCashCount,
         note: shiftNote.trim() || undefined,
       });
       setShift(null);
       setShowCloseShift(false);
       setClosingCash("");
+      setCashCounts({});
+      setDrawerSummary(null);
+      setDrawerError("");
       setShiftNote("");
       setNotice("Кассын ээлж амжилттай хаагдлаа.");
-      setShowOpenShift(true);
+      setShowOpenShift(false);
+      setShowShiftHistory(true);
+      void loadShiftHistory();
     } catch (error) {
       setSetupError(
         error instanceof Error ? error.message : "Ээлж хаахад алдаа гарлаа",
@@ -3050,7 +3270,11 @@ export function RestaurantPosScreen() {
               {shiftMatchesRegister ? (
                 <button
                   type="button"
-                  onClick={() => setShowCloseShift(true)}
+                  onClick={() => {
+                    setSetupError("");
+                    setDrawerError("");
+                    setShowCloseShift(true);
+                  }}
                   className="h-12 shrink-0 rounded-lg border border-rose-300/40 px-4 text-sm font-black text-rose-200 transition hover:bg-rose-300 hover:text-slate-950"
                 >
                   Ээлж хаах
@@ -3065,6 +3289,18 @@ export function RestaurantPosScreen() {
                   Ээлж нээх
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowShiftHistory(true);
+                  setShiftHistoryError("");
+                }}
+                className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-violet-300/40 px-4 text-sm font-black text-violet-100 transition hover:bg-violet-300 hover:text-slate-950"
+              >
+                <History className="h-4 w-4" />
+                Хаалтын түүх
+              </button>
 
               <label className="relative min-w-56 flex-1">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
@@ -5315,10 +5551,296 @@ export function RestaurantPosScreen() {
         </div>
       ) : null}
 
+      {showShiftHistory ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#242735] shadow-2xl">
+            <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-white/10 px-6 py-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-violet-300">
+                  POS ээлж
+                </p>
+                <h3 className="mt-1 text-2xl font-black text-white">
+                  Хаалтын түүх
+                </h3>
+                <p className="mt-2 text-sm font-semibold text-slate-400">
+                  {selectedRegister?.branch.name || "Бүх салбар"} ·{" "}
+                  {selectedShiftHistoryRange.description}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadShiftHistory()}
+                  disabled={shiftHistoryLoading}
+                  className="flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-black text-slate-200 hover:border-violet-300 hover:text-violet-200 disabled:opacity-60"
+                >
+                  {shiftHistoryLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Шинэчлэх
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowShiftHistory(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white"
+                  aria-label="Хаах"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+              <div className="flex flex-wrap gap-2">
+                {SHIFT_HISTORY_RANGE_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setShiftHistoryRange(option.id)}
+                    className={`h-9 rounded-lg px-3 text-xs font-black transition ${
+                      shiftHistoryRange === option.id
+                        ? "bg-violet-300 text-slate-950"
+                        : "border border-white/10 text-slate-300 hover:border-violet-300 hover:text-violet-100"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              {shiftHistoryError ? (
+                <div className="rounded-xl border border-rose-300/40 bg-rose-300/10 px-4 py-3 text-sm font-bold text-rose-100">
+                  {shiftHistoryError}
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                {[
+                  ["Хаалт", shiftHistory.length],
+                  ["Баримт", shiftHistoryTotals.salesCount],
+                  ["Нийт", shiftHistoryTotals.totalSales],
+                  ["Бэлэн", shiftHistoryTotals.cashSales],
+                  ["Карт", shiftHistoryTotals.cardSales],
+                  ["QPay", shiftHistoryTotals.qpaySales],
+                ].map(([label, value]) => (
+                  <div
+                    key={String(label)}
+                    className="rounded-xl border border-white/10 bg-[#1b1d2b] px-4 py-3"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      {label}
+                    </p>
+                    <p className="mt-1 text-lg font-black tabular-nums text-white">
+                      {label === "Хаалт" || label === "Баримт"
+                        ? Number(value).toLocaleString("mn-MN")
+                        : formatMoney(Number(value) || 0)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid min-h-0 gap-4 lg:grid-cols-[1fr_1.2fr]">
+                <section className="min-h-0 rounded-2xl border border-white/10 bg-[#1b1d2b]">
+                  <div className="border-b border-white/10 px-4 py-3">
+                    <p className="text-sm font-black text-white">
+                      Хаалтууд
+                    </p>
+                  </div>
+                  <div className="max-h-[52vh] overflow-y-auto p-2">
+                    {shiftHistoryLoading ? (
+                      <div className="flex h-40 items-center justify-center text-slate-400">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      </div>
+                    ) : shiftHistory.length === 0 ? (
+                      <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-white/10 text-center text-sm font-bold text-slate-500">
+                        Хаалтын түүх алга байна.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {shiftHistory.map((item) => {
+                          const selected = item.id === selectedShiftHistory?.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => setSelectedShiftHistoryId(item.id)}
+                              className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                                selected
+                                  ? "border-violet-300 bg-violet-300/15"
+                                  : "border-white/10 bg-[#242735] hover:border-violet-300/60"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-black text-white">
+                                    {formatReceiptDate(item.closedAt || item.openedAt)}
+                                  </p>
+                                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                                    {item.registerName || "POS касс"} · {item.cashierName || "Кассчин"}
+                                  </p>
+                                </div>
+                                <span
+                                  className={`rounded-full px-2 py-1 text-[10px] font-black ${
+                                    item.cashDifference
+                                      ? "bg-rose-300/15 text-rose-200"
+                                      : "bg-emerald-300/15 text-emerald-200"
+                                  }`}
+                                >
+                                  Зөрүү {formatMoney(item.cashDifference || 0)}
+                                </span>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-400">
+                                <span>Нийт {formatMoney(item.totalSales)}</span>
+                                <span>Бэлэн {formatMoney(item.cashSales)}</span>
+                                <span>Баримт {item.salesCount}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-white/10 bg-[#1b1d2b] p-4">
+                  {selectedShiftHistory ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-wider text-violet-300">
+                            Дэлгэрэнгүй
+                          </p>
+                          <h4 className="mt-1 text-xl font-black text-white">
+                            {formatReceiptDate(
+                              selectedShiftHistory.closedAt ||
+                                selectedShiftHistory.openedAt,
+                            )}
+                          </h4>
+                          <p className="mt-1 text-sm font-semibold text-slate-500">
+                            Нээсэн: {formatReceiptDate(selectedShiftHistory.openedAt)}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-slate-950/40 px-3 py-1 text-xs font-black text-slate-300">
+                          {selectedShiftHistory.branchName} ·{" "}
+                          {selectedShiftHistory.registerName || "POS касс"}
+                        </span>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {[
+                          ["Эхлэх мөнгө", selectedShiftHistory.openingCash],
+                          ["Тооцоолсон бэлэн", selectedShiftHistory.expectedCash],
+                          ["Тоолсон бэлэн", selectedShiftHistory.closingCash || 0],
+                          ["Зөрүү", selectedShiftHistory.cashDifference || 0],
+                          ["Орлого", selectedShiftHistory.paidIn],
+                          ["Зарлага", selectedShiftHistory.paidOut],
+                        ].map(([label, value]) => {
+                          const isDifference = label === "Зөрүү";
+                          const numericValue = Number(value) || 0;
+                          return (
+                            <div
+                              key={String(label)}
+                              className="rounded-xl border border-white/10 bg-[#242735] px-4 py-3"
+                            >
+                              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                {label}
+                              </p>
+                              <p
+                                className={`mt-1 text-base font-black tabular-nums ${
+                                  isDifference && numericValue !== 0
+                                    ? "text-rose-300"
+                                    : "text-white"
+                                }`}
+                              >
+                                {formatMoney(numericValue)}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="rounded-xl border border-white/10 bg-[#242735] p-4">
+                        <p className="text-sm font-black text-white">
+                          Борлуулалтын задаргаа
+                        </p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {[
+                            ["Нийт борлуулалт", selectedShiftHistory.totalSales],
+                            ["Бэлэн", selectedShiftHistory.cashSales],
+                            ["Карт", selectedShiftHistory.cardSales],
+                            ["QPay", selectedShiftHistory.qpaySales],
+                            ["Зээл", selectedShiftHistory.creditSales],
+                            ["Холимог", selectedShiftHistory.mixedSales],
+                          ].map(([label, value]) => (
+                            <div
+                              key={String(label)}
+                              className="flex items-center justify-between gap-3 text-sm"
+                            >
+                              <span className="font-bold text-slate-400">
+                                {label}
+                              </span>
+                              <span className="font-black text-white">
+                                {formatMoney(Number(value) || 0)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {selectedShiftHistory.cashCount?.length ? (
+                        <div className="rounded-xl border border-white/10 bg-[#242735] p-4">
+                          <p className="text-sm font-black text-white">
+                            Дэвсгэртээр тоолсон
+                          </p>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {selectedShiftHistory.cashCount
+                              .filter((item) => item.count > 0)
+                              .map((item) => (
+                                <div
+                                  key={item.denomination}
+                                  className="flex items-center justify-between rounded-lg bg-slate-950/30 px-3 py-2 text-xs"
+                                >
+                                  <span className="font-bold text-slate-400">
+                                    {formatMoney(item.denomination)} × {item.count}
+                                  </span>
+                                  <span className="font-black text-white">
+                                    {formatMoney(item.total)}
+                                  </span>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {selectedShiftHistory.note ? (
+                        <div className="rounded-xl border border-white/10 bg-[#242735] p-4">
+                          <p className="text-xs font-black uppercase tracking-wider text-slate-500">
+                            Тэмдэглэл
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-slate-200">
+                            {selectedShiftHistory.note}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="flex h-72 items-center justify-center text-sm font-bold text-slate-500">
+                      Сонгосон хаалт алга байна.
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showCloseShift && shift ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#242735] p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#242735] shadow-2xl">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 px-6 py-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-rose-300">
                   POS ээлж
@@ -5327,56 +5849,222 @@ export function RestaurantPosScreen() {
                   Ээлж хаах
                 </h3>
                 <p className="mt-2 text-sm font-semibold text-slate-400">
-                  Тоолж дууссан бэлэн мөнгөний дүнг оруулна уу.
+                  {selectedRegister?.branch.name || shift.branchName || "Салбар"} ·{" "}
+                  {selectedRegister?.label || selectedRegister?.name || shift.registerName || "POS касс"}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowCloseShift(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white"
-                aria-label="Хаах"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void refreshCashDrawerSummary()}
+                  disabled={drawerLoading}
+                  className="flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-black text-slate-200 hover:border-sky-300 hover:text-sky-200 disabled:opacity-60"
+                >
+                  {drawerLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Шинэчлэх
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCloseShift(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white"
+                  aria-label="Хаах"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
-            <label className="mt-6 block">
-              <span className="text-sm font-bold text-slate-300">
-                Хаалтын бэлэн мөнгө
-              </span>
-              <input
-                type="number"
-                min="0"
-                step="100"
-                value={closingCash}
-                onChange={(event) => setClosingCash(event.target.value)}
-                className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#1b1d2b] px-4 text-lg font-black tabular-nums text-white outline-none focus:border-rose-300"
-              />
-            </label>
-
-            <label className="mt-4 block">
-              <span className="text-sm font-bold text-slate-300">
-                Тэмдэглэл
-              </span>
-              <textarea
-                value={shiftNote}
-                onChange={(event) => setShiftNote(event.target.value)}
-                rows={3}
-                className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-[#1b1d2b] px-4 py-3 text-sm font-semibold text-white outline-none focus:border-rose-300"
-              />
-            </label>
-
-            <button
-              type="button"
-              onClick={() => void handleCloseShift()}
-              disabled={shiftSubmitting}
-              className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-rose-300 font-black text-slate-950 hover:bg-rose-200 disabled:opacity-60"
-            >
-              {shiftSubmitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+              {openTicketCount > 0 ? (
+                <div className="rounded-xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-100">
+                  {openTicketCount} чөлөөлөөгүй ширээний ticket байна. Ээлж хаахаас өмнө төлбөрийг дуусгаад ширээг чөлөөлнө үү.
+                </div>
               ) : null}
-              Ээлж хаах
-            </button>
+
+              {setupError || drawerError ? (
+                <div className="rounded-xl border border-rose-300/40 bg-rose-300/10 px-4 py-3 text-sm font-bold text-rose-100">
+                  {setupError || drawerError}
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                {[
+                  ["Эхлэх мөнгө", drawerSummary?.openingCash ?? shift.openingCash],
+                  ["Бэлэн борлуулалт", drawerSummary?.cashSales ?? 0],
+                  ["Орлого", drawerSummary?.paidIn ?? 0],
+                  ["Зарлага", drawerSummary?.paidOut ?? 0],
+                  ["Тооцоолсон", expectedCashPreview],
+                  ["Зөрүү", closingDifferencePreview],
+                ].map(([label, value]) => {
+                  const isDifference = label === "Зөрүү";
+                  const numericValue = Number(value) || 0;
+                  return (
+                    <div
+                      key={String(label)}
+                      className="rounded-xl border border-white/10 bg-[#1b1d2b] px-4 py-3"
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                        {label}
+                      </p>
+                      <p
+                        className={`mt-1 text-lg font-black tabular-nums ${
+                          isDifference && numericValue !== 0
+                            ? "text-rose-300"
+                            : "text-white"
+                        }`}
+                      >
+                        {formatMoney(numericValue)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+                <section className="rounded-2xl border border-white/10 bg-[#1b1d2b] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-white">
+                        Задгай мөнгө тоолох
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">
+                        Дэвсгэрт бүрийн ширхэгийг оруулахад тоолсон дүн автоматаар бодогдоно.
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-bold text-slate-500">
+                        Тоолсон бэлэн
+                      </p>
+                      <p className="text-xl font-black text-emerald-300">
+                        {formatMoney(countedCashTotal)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+                    {CASH_DENOMINATIONS.map((denomination) => (
+                      <label
+                        key={denomination}
+                        className="rounded-xl border border-white/10 bg-[#242735] px-3 py-2"
+                      >
+                        <span className="block text-[11px] font-black text-slate-400">
+                          {formatMoney(denomination)}
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={cashCounts[denomination] ?? ""}
+                          onChange={(event) =>
+                            setCashCounts((current) => ({
+                              ...current,
+                              [denomination]: Math.max(
+                                0,
+                                Math.floor(Number(event.target.value) || 0),
+                              ),
+                            }))
+                          }
+                          placeholder="0"
+                          className="mt-2 h-9 w-full rounded-lg border border-white/10 bg-slate-950/30 px-3 text-sm font-black tabular-nums text-white outline-none focus:border-emerald-300"
+                        />
+                      </label>
+                    ))}
+                  </div>
+
+                  {hasCountedCash ? (
+                    <button
+                      type="button"
+                      onClick={() => setCashCounts({})}
+                      className="mt-3 text-xs font-black text-slate-400 underline-offset-4 hover:text-white hover:underline"
+                    >
+                      Тоололт цэвэрлэх
+                    </button>
+                  ) : null}
+                </section>
+
+                <section className="rounded-2xl border border-white/10 bg-[#1b1d2b] p-4">
+                  <label className="block">
+                    <span className="text-sm font-bold text-slate-300">
+                      Хаалтын бэлэн мөнгө
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      value={hasCountedCash ? String(countedCashTotal) : closingCash}
+                      onChange={(event) => setClosingCash(event.target.value)}
+                      disabled={hasCountedCash}
+                      className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#242735] px-4 text-lg font-black tabular-nums text-white outline-none focus:border-rose-300 disabled:cursor-not-allowed disabled:opacity-70"
+                    />
+                    <span className="mt-2 block text-xs font-semibold text-slate-500">
+                      Дэвсгэртээр тоолсон бол энэ дүн автоматаар бөглөгдөнө.
+                    </span>
+                  </label>
+
+                  <div className="mt-4 rounded-xl border border-white/10 bg-slate-950/20 p-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-bold text-slate-400">Тооцоолсон</span>
+                      <span className="font-black text-white">
+                        {formatMoney(expectedCashPreview)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-sm">
+                      <span className="font-bold text-slate-400">Тоолсон</span>
+                      <span className="font-black text-white">
+                        {formatMoney(closingCashPreview)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-sm">
+                      <span className="font-black text-slate-300">Зөрүү</span>
+                      <span
+                        className={`font-black ${
+                          closingDifferencePreview !== 0
+                            ? "text-rose-300"
+                            : "text-emerald-300"
+                        }`}
+                      >
+                        {formatMoney(closingDifferencePreview)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <label className="mt-4 block">
+                    <span className="text-sm font-bold text-slate-300">
+                      Тэмдэглэл
+                    </span>
+                    <textarea
+                      value={shiftNote}
+                      onChange={(event) =>
+                        setShiftNote(event.target.value.slice(0, 500))
+                      }
+                      rows={4}
+                      placeholder="Зөрүү, тайлбар байвал бичнэ..."
+                      className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-[#242735] px-4 py-3 text-sm font-semibold text-white outline-none focus:border-rose-300"
+                    />
+                  </label>
+                </section>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-white/10 px-6 py-4">
+              <p className="text-xs font-semibold text-slate-500">
+                Хаах үед тооцоог дахин шинэчилж, баталгаажуулсны дараа ээлж хаагдана.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleCloseShift()}
+                disabled={shiftSubmitting || drawerLoading || openTicketCount > 0}
+                className="flex h-12 min-w-40 items-center justify-center gap-2 rounded-lg bg-rose-300 px-5 font-black text-slate-950 hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {shiftSubmitting || drawerLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                Ээлж хаах
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
