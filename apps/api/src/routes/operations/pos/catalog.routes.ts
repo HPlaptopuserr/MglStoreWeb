@@ -875,6 +875,11 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
     const cardAttemptId = cleanOptionalText(
       req.body.cardAttemptId ?? req.body.attemptId ?? req.body.transactionId,
     );
+    if (paymentMethod === PaymentMethod.CARD && !cardAttemptId) {
+      return res
+        .status(400)
+        .json({ message: "Картын төлөлтөд cardAttemptId шаардлагатай" });
+    }
     const shiftId = cleanOptionalText(req.body.shiftId);
     const paymentNote =
       [

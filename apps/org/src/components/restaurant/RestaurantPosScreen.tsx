@@ -160,6 +160,20 @@ type PendingCreditQPayRepayment = {
   note: string;
 };
 
+type RestaurantCreditSaleGroup = {
+  key: string;
+  borrowerName: string;
+  borrowerPhone: string | null;
+  employeeName: string | null;
+  borrowerId: string;
+  credits: RestaurantCreditSale[];
+  totalDue: number;
+  totalLines: number;
+  overdue: boolean;
+  createdAt: string;
+  dueDate: string | null;
+};
+
 type DiningTable = {
   id: string;
   label: string;
@@ -310,6 +324,12 @@ const creditBorrowerSubtitle = (borrower: PosCreditBorrower) =>
   ]
     .filter(Boolean)
     .join(" · ") || "Дэлгэрэнгүй мэдээлэлгүй";
+const getCreditSaleGroupKey = (credit: RestaurantCreditSale) =>
+  (
+    credit.customerId ||
+    `${credit.targetType}:${credit.borrowerId || credit.borrowerPhone || credit.borrowerName}`
+  ).toLowerCase();
+
 const paymentMethodLabel = (method?: string | null) => {
   const normalized = String(method || "").toUpperCase();
   if (normalized === "QPAY" || normalized === "QR") return "QPay";
@@ -1020,6 +1040,49 @@ export function RestaurantPosScreen() {
     (sum, credit) => sum + Number(credit.totalDue || 0),
     0,
   );
+  const filteredCreditSaleGroups = useMemo(() => {
+    const groups = new Map<string, RestaurantCreditSaleGroup>();
+
+    for (const credit of filteredCreditSales) {
+      const key = getCreditSaleGroupKey(credit);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.credits.push(credit);
+        existing.totalDue += Number(credit.totalDue || 0);
+        existing.totalLines += credit.lines.length;
+        existing.overdue = existing.overdue || credit.status === "OVERDUE";
+        if (new Date(credit.createdAt).getTime() < new Date(existing.createdAt).getTime()) {
+          existing.createdAt = credit.createdAt;
+        }
+        if (
+          credit.dueDate &&
+          (!existing.dueDate ||
+            new Date(credit.dueDate).getTime() < new Date(existing.dueDate).getTime())
+        ) {
+          existing.dueDate = credit.dueDate;
+        }
+        continue;
+      }
+
+      groups.set(key, {
+        key,
+        borrowerName: credit.borrowerName,
+        borrowerPhone: credit.borrowerPhone,
+        employeeName: credit.employeeName,
+        borrowerId: credit.borrowerId,
+        credits: [credit],
+        totalDue: Number(credit.totalDue || 0),
+        totalLines: credit.lines.length,
+        overdue: credit.status === "OVERDUE",
+        createdAt: credit.createdAt,
+        dueDate: credit.dueDate,
+      });
+    }
+
+    return [...groups.values()].sort((a, b) =>
+      a.borrowerName.localeCompare(b.borrowerName),
+    );
+  }, [filteredCreditSales]);
   const totalOpenCreditDue = creditSales.reduce(
     (sum, credit) => sum + Number(credit.totalDue || 0),
     0,
@@ -1099,41 +1162,72 @@ export function RestaurantPosScreen() {
   }, [customerDisplaySuccess]);
 
   useEffect(() => {
+    const displayQPay = qpayCheckout
+      ? {
+          invoiceId: qpayCheckout.invoice.invoiceId,
+          amount: qpayCheckout.amount,
+          qrText: qpayCheckout.invoice.qrText,
+          qrImage: qpayCheckout.invoice.qrImage,
+          status: qpayCheckout.invoice.status,
+          expiresAt: qpayCheckout.invoice.expiresAt,
+          deepLinks: qpayCheckout.invoice.deepLinks,
+        }
+      : creditQPayRepayment
+        ? {
+            invoiceId: creditQPayRepayment.invoice.invoiceId,
+            amount: creditQPayRepayment.amount,
+            qrText: creditQPayRepayment.invoice.qrText,
+            qrImage: creditQPayRepayment.invoice.qrImage,
+            status: creditQPayRepayment.invoice.status,
+            expiresAt: creditQPayRepayment.invoice.expiresAt,
+            deepLinks: creditQPayRepayment.invoice.deepLinks,
+          }
+        : null;
+    const displayLines = creditQPayRepayment
+      ? creditQPayRepayment.credit.lines.map((line) => ({
+          id: line.id,
+          name: line.productName,
+          qty: line.qty,
+          sentQty: line.qty,
+          unitPrice: line.unitPrice,
+          lineTotal: line.lineTotal,
+        }))
+      : ticketLines.map((line) => ({
+          id: line.id,
+          name: line.name,
+          qty: line.qty,
+          sentQty: line.sentQty,
+          unitPrice: line.price,
+          lineTotal: line.price * line.qty,
+          note: line.note.trim() || undefined,
+          imageUrl: line.imageUrl,
+        }));
+    const displayTotals = creditQPayRepayment
+      ? {
+          subtotal: creditQPayRepayment.amount,
+          discount: 0,
+          total: creditQPayRepayment.amount,
+        }
+      : {
+          subtotal,
+          discount,
+          total,
+        };
+
     const payload: RestaurantCustomerDisplayPayload = {
       organizationName: user.organizationName || "MGL Store Restaurant",
       branchName: selectedRegister?.branch.name || "Салбар сонгогдоогүй",
       registerName:
         selectedRegister?.label || selectedRegister?.name || "Restaurant POS",
-      tableLabel: selectedTable.label,
+      tableLabel: creditQPayRepayment
+        ? `Зээлийн төлөлт · ${creditQPayRepayment.credit.borrowerName}`
+        : selectedTable.label,
       orderMode,
-      paymentMethod,
-      lines: ticketLines.map((line) => ({
-        id: line.id,
-        name: line.name,
-        qty: line.qty,
-        sentQty: line.sentQty,
-        unitPrice: line.price,
-        lineTotal: line.price * line.qty,
-        note: line.note.trim() || undefined,
-        imageUrl: line.imageUrl,
-      })),
-      totals: {
-        subtotal,
-        discount,
-        total,
-      },
-      qpay: qpayCheckout
-        ? {
-            invoiceId: qpayCheckout.invoice.invoiceId,
-            amount: qpayCheckout.amount,
-            qrText: qpayCheckout.invoice.qrText,
-            qrImage: qpayCheckout.invoice.qrImage,
-            status: qpayCheckout.invoice.status,
-            expiresAt: qpayCheckout.invoice.expiresAt,
-            deepLinks: qpayCheckout.invoice.deepLinks,
-          }
-        : null,
-      message: qpayMessage || cardMessage || notice,
+      paymentMethod: creditQPayRepayment ? "QPAY" : paymentMethod,
+      lines: displayLines,
+      totals: displayTotals,
+      qpay: displayQPay,
+      message: creditQPayMessage || qpayMessage || cardMessage || notice,
       success: customerDisplaySuccess,
       updatedAt: Date.now(),
     };
@@ -1150,6 +1244,8 @@ export function RestaurantPosScreen() {
   }, [
     customerDisplaySuccess,
     cardMessage,
+    creditQPayMessage,
+    creditQPayRepayment,
     discount,
     notice,
     orderMode,
@@ -2242,6 +2338,63 @@ export function RestaurantPosScreen() {
         error instanceof Error
           ? error.message
           : "QPay төлөлт үүсгэхэд алдаа гарлаа",
+      );
+    } finally {
+      setCreditRepaymentId("");
+    }
+  };
+
+  const handlePayCreditCard = async (credit: RestaurantCreditSale) => {
+    if (!selectedRegister || !user.organizationId) {
+      setCreditSalesError(
+        "Картын төлөлт авахын тулд POS register сонгогдсон байх ёстой.",
+      );
+      return;
+    }
+    if (!cardTerminalReady) {
+      setCreditSalesError(
+        "Картын terminal холбогдоогүй байна. Dashboard > Тохиргоо > POS terminal дээрээс холбоно уу.",
+      );
+      return;
+    }
+    if (qpayPaymentActive || creditQPayRepayment) {
+      setCreditSalesError("Өөр төлбөр нээлттэй байна. Эхлээд хаана уу.");
+      return;
+    }
+
+    const dueAmount = Number(credit.totalDue || 0);
+    if (!Number.isFinite(dueAmount) || dueAmount <= 0) {
+      setCreditSalesError("Зээлийн төлөх дүн буруу байна.");
+      return;
+    }
+
+    setCreditRepaymentId(credit.id);
+    setCreditRepaymentMessage("");
+    setCreditSalesError("");
+    try {
+      const attempt = await authorizeCardPayment(dueAmount);
+      await payRestaurantCreditSale({
+        creditSaleId: credit.id,
+        amount: dueAmount,
+        paymentMethod: "CARD",
+        cardAttemptId: attempt.attemptId,
+        note: `Restaurant credit card repayment ${credit.receiptNo}`,
+      });
+      setCreditSales((current) =>
+        current.filter((item) => item.id !== credit.id),
+      );
+      setCreditRepaymentMessage(
+        `${credit.borrowerName} зээлийн картын төлөлт ${formatMoney(dueAmount)} амжилттай бүртгэгдлээ.`,
+      );
+      setNotice(
+        `${credit.borrowerName} зээлийн картын төлөлт ${formatMoney(dueAmount)} амжилттай бүртгэгдлээ.`,
+      );
+      void loadCreditSales();
+    } catch (error) {
+      setCreditSalesError(
+        error instanceof Error
+          ? error.message
+          : "Картын зээлийн төлөлт бүртгэхэд алдаа гарлаа",
       );
     } finally {
       setCreditRepaymentId("");
@@ -3717,7 +3870,7 @@ export function RestaurantPosScreen() {
                   />
                 </label>
                 <div className="flex h-11 items-center justify-center rounded-xl border border-amber-300/25 bg-amber-300/10 px-4 text-sm font-black text-amber-100">
-                  {filteredCreditSales.length} зээл · {formatMoney(filteredCreditSalesTotalDue)}
+                  {filteredCreditSaleGroups.length} хүн · {filteredCreditSales.length} зээл · {formatMoney(filteredCreditSalesTotalDue)}
                 </div>
                 <button
                   type="button"
@@ -3755,7 +3908,7 @@ export function RestaurantPosScreen() {
                 <div className="rounded-xl border border-rose-300/30 bg-rose-300/10 px-4 py-3 text-sm font-bold text-rose-200">
                   {creditSalesError}
                 </div>
-              ) : filteredCreditSales.length === 0 ? (
+              ) : filteredCreditSaleGroups.length === 0 ? (
                 <div className="flex h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 text-center">
                   <HandCoins className="h-9 w-9 text-slate-600" />
                   <p className="mt-3 text-sm font-black text-slate-300">
@@ -3766,137 +3919,190 @@ export function RestaurantPosScreen() {
                   </p>
                 </div>
               ) : (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {filteredCreditSales.map((credit) => {
-                    const overdue = credit.status === "OVERDUE";
-                    const visibleLines = credit.lines.slice(0, 3);
-                    const hiddenLineCount = Math.max(
-                      0,
-                      credit.lines.length - visibleLines.length,
-                    );
-                    const payingThisCredit = creditRepaymentId === credit.id;
-                    return (
-                      <article
-                        key={credit.id}
-                        className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="truncate text-base font-black text-white">
-                                {credit.borrowerName}
-                              </p>
-                              <span
-                                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
-                                  overdue
-                                    ? "bg-rose-300/15 text-rose-200"
-                                    : "bg-emerald-300/15 text-emerald-200"
-                                }`}
-                              >
-                                {overdue ? "Хугацаа хэтэрсэн" : "Нээлттэй"}
-                              </span>
-                            </div>
-                            <p className="mt-1 truncate text-xs font-semibold text-slate-500">
-                              {[credit.borrowerPhone, credit.employeeName, credit.receiptNo]
-                                .filter(Boolean)
-                                .join(" · ") || credit.borrowerId}
+                <div className="grid gap-3">
+                  {filteredCreditSaleGroups.map((group) => (
+                    <article
+                      key={group.key}
+                      className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-base font-black text-white">
+                              {group.borrowerName}
                             </p>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <p className="text-base font-black tabular-nums text-amber-200">
-                              {formatMoney(credit.totalDue)}
-                            </p>
-                            <p className="mt-1 text-[10px] font-bold text-slate-500">
-                              {credit.termMonths} сар
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 rounded-xl bg-[#11131d] p-3">
-                          <div className="grid grid-cols-2 gap-3 text-[11px] font-bold text-slate-500">
-                            <span>Үүссэн: {formatReceiptDate(credit.createdAt)}</span>
-                            <span className="text-right">
-                              Дуусах: {credit.dueDate ? formatReceiptDate(credit.dueDate) : "-"}
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                                group.overdue
+                                  ? "bg-rose-300/15 text-rose-200"
+                                  : "bg-emerald-300/15 text-emerald-200"
+                              }`}
+                            >
+                              {group.overdue ? "Хугацаа хэтэрсэн" : "Нээлттэй"}
+                            </span>
+                            <span className="shrink-0 rounded-full bg-sky-300/10 px-2 py-0.5 text-[10px] font-black text-sky-100">
+                              {group.credits.length} зээл · {group.totalLines} мөр
                             </span>
                           </div>
-                          <div className="mt-3 space-y-2">
-                            {visibleLines.length > 0 ? (
-                              visibleLines.map((line) => (
-                                <div
-                                  key={line.id}
-                                  className="flex items-center justify-between gap-3 text-xs"
-                                >
-                                  <span className="min-w-0 truncate font-bold text-slate-200">
-                                    {line.productName}
-                                  </span>
-                                  <span className="shrink-0 font-black tabular-nums text-white">
-                                    {line.qty}ш · {formatMoney(line.lineTotal)}
-                                  </span>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-xs font-bold text-slate-500">
-                                Барааны мөр байхгүй.
-                              </p>
-                            )}
-                            {hiddenLineCount > 0 ? (
-                              <p className="text-[11px] font-bold text-slate-500">
-                                +{hiddenLineCount} мөр нэмэлт байна
-                              </p>
-                            ) : null}
-                          </div>
+                          <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+                            {[group.borrowerPhone, group.employeeName, group.borrowerId]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
                         </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-base font-black tabular-nums text-amber-200">
+                            {formatMoney(group.totalDue)}
+                          </p>
+                          <p className="mt-1 text-[10px] font-bold text-slate-500">
+                            нийт төлөх
+                          </p>
+                        </div>
+                      </div>
 
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void handlePayCreditCash(credit)}
-                            disabled={
-                              payingThisCredit ||
-                              creditRepaymentId !== "" ||
-                              Boolean(creditQPayRepayment) ||
-                              !shift ||
-                              !shiftMatchesRegister
-                            }
-                            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-300 text-sm font-black text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                            title={
-                              shift && shiftMatchesRegister
-                                ? "Зээлийн төлөлтийг бэлнээр бүртгэх"
-                                : "Эхлээд рестораны кассын ээлж нээнэ үү"
-                            }
-                          >
-                            {payingThisCredit ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Banknote className="h-4 w-4" />
-                            )}
-                            Бэлэн
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleStartCreditQPay(credit)}
-                            disabled={
-                              payingThisCredit ||
-                              creditRepaymentId !== "" ||
-                              Boolean(creditQPayRepayment) ||
-                              qpayPaymentActive ||
-                              !selectedRegister ||
-                              !user.organizationId
-                            }
-                            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-sky-300/40 bg-sky-300/10 text-sm font-black text-sky-100 transition hover:bg-sky-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-slate-700 disabled:text-slate-400"
-                            title="Зээлийн төлөлтийг QPay-р авах"
-                          >
-                            {payingThisCredit ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <QrCode className="h-4 w-4" />
-                            )}
-                            QPay
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
+                      <div className="mt-3 space-y-3">
+                        {group.credits.map((credit) => {
+                          const visibleLines = credit.lines.slice(0, 3);
+                          const hiddenLineCount = Math.max(
+                            0,
+                            credit.lines.length - visibleLines.length,
+                          );
+                          const payingThisCredit =
+                            creditRepaymentId === credit.id;
+                          return (
+                            <div
+                              key={credit.id}
+                              className="rounded-xl bg-[#11131d] p-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate text-xs font-black text-slate-200">
+                                    {credit.receiptNo}
+                                  </p>
+                                  <p className="mt-1 text-[11px] font-bold text-slate-500">
+                                    Үүссэн: {formatReceiptDate(credit.createdAt)} · Дуусах:{" "}
+                                    {credit.dueDate ? formatReceiptDate(credit.dueDate) : "-"}
+                                  </p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="text-sm font-black tabular-nums text-white">
+                                    {formatMoney(credit.totalDue)}
+                                  </p>
+                                  <p className="mt-1 text-[10px] font-bold text-slate-500">
+                                    {credit.termMonths} сар
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 space-y-2">
+                                {visibleLines.length > 0 ? (
+                                  visibleLines.map((line) => (
+                                    <div
+                                      key={line.id}
+                                      className="flex items-center justify-between gap-3 text-xs"
+                                    >
+                                      <span className="min-w-0 truncate font-bold text-slate-200">
+                                        {line.productName}
+                                      </span>
+                                      <span className="shrink-0 font-black tabular-nums text-white">
+                                        {line.qty}ш · {formatMoney(line.lineTotal)}
+                                      </span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs font-bold text-slate-500">
+                                    Барааны мөр байхгүй.
+                                  </p>
+                                )}
+                                {hiddenLineCount > 0 ? (
+                                  <p className="text-[11px] font-bold text-slate-500">
+                                    +{hiddenLineCount} мөр нэмэлт байна
+                                  </p>
+                                ) : null}
+                              </div>
+
+                              <div className="mt-3 grid grid-cols-3 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handlePayCreditCash(credit)}
+                                  disabled={
+                                    payingThisCredit ||
+                                    creditRepaymentId !== "" ||
+                                    Boolean(creditQPayRepayment) ||
+                                    cardProcessing ||
+                                    !shift ||
+                                    !shiftMatchesRegister
+                                  }
+                                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-emerald-300 text-xs font-black text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                                  title={
+                                    shift && shiftMatchesRegister
+                                      ? "Зээлийн төлөлтийг бэлнээр бүртгэх"
+                                      : "Эхлээд рестораны кассын ээлж нээнэ үү"
+                                  }
+                                >
+                                  {payingThisCredit ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Banknote className="h-4 w-4" />
+                                  )}
+                                  Бэлэн
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handlePayCreditCard(credit)}
+                                  disabled={
+                                    payingThisCredit ||
+                                    creditRepaymentId !== "" ||
+                                    Boolean(creditQPayRepayment) ||
+                                    qpayPaymentActive ||
+                                    cardProcessing ||
+                                    !selectedRegister ||
+                                    !user.organizationId ||
+                                    !cardTerminalReady
+                                  }
+                                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-violet-300/40 bg-violet-300/10 text-xs font-black text-violet-100 transition hover:bg-violet-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-slate-700 disabled:text-slate-400"
+                                  title={
+                                    cardTerminalReady
+                                      ? "Зээлийн төлөлтийг картаар авах"
+                                      : "Эхлээд картын terminal холбоно уу"
+                                  }
+                                >
+                                  {payingThisCredit ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <CreditCard className="h-4 w-4" />
+                                  )}
+                                  Карт
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleStartCreditQPay(credit)}
+                                  disabled={
+                                    payingThisCredit ||
+                                    creditRepaymentId !== "" ||
+                                    Boolean(creditQPayRepayment) ||
+                                    qpayPaymentActive ||
+                                    cardProcessing ||
+                                    !selectedRegister ||
+                                    !user.organizationId
+                                  }
+                                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-sky-300/40 bg-sky-300/10 text-xs font-black text-sky-100 transition hover:bg-sky-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-slate-700 disabled:text-slate-400"
+                                  title="Зээлийн төлөлтийг QPay-р авах"
+                                >
+                                  {payingThisCredit ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <QrCode className="h-4 w-4" />
+                                  )}
+                                  QPay
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </article>
+                  ))}
                 </div>
               )}
             </div>

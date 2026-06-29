@@ -970,6 +970,13 @@ type PayRestaurantCreditSaleInput =
       paymentMethod: "QPAY";
       qpayInvoiceId: string;
       note?: string;
+    }
+  | {
+      creditSaleId: string;
+      amount: number;
+      paymentMethod: "CARD";
+      cardAttemptId: string;
+      note?: string;
     };
 
 export async function payRestaurantCreditSale(
@@ -985,6 +992,9 @@ export async function payRestaurantCreditSale(
         ...("shiftId" in input ? { shiftId: input.shiftId } : {}),
         ...("qpayInvoiceId" in input
           ? { qpayInvoiceId: input.qpayInvoiceId }
+          : {}),
+        ...("cardAttemptId" in input
+          ? { cardAttemptId: input.cardAttemptId }
           : {}),
         note: input.note,
       }),
