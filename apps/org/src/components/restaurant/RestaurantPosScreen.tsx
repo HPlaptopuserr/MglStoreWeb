@@ -38,8 +38,12 @@ import { useOrg } from "@/components/org/OrgContext";
 import {
   bootstrapRestaurantDiningTables,
   cancelRestaurantTicketItem,
+  chargeRestaurantClientBridge,
   clearRestaurantDiningTable,
   closeRestaurantPosShift,
+  connectRestaurantCardTerminal,
+  createRestaurantCardAttempt,
+  createRestaurantCardSale,
   createRestaurantCashSale,
   createRestaurantCreditSale,
   createRestaurantMenuProduct,
@@ -48,6 +52,7 @@ import {
   createRestaurantQPaySale,
   enableRestaurantMenuProduct,
   getCurrentRestaurantPosShift,
+  getRestaurantCardAttemptStatus,
   getRestaurantCreditCustomers,
   getRestaurantCreditSales,
   getRestaurantQPayInvoiceStatus,
@@ -59,6 +64,7 @@ import {
   payRestaurantCreditSale,
   saveRestaurantTicket,
   sendRestaurantTicketToKitchen,
+  submitRestaurantClientBridgeResult,
   type RestaurantDiningTable,
   type RestaurantCreditSale,
   type RestaurantPosQPayInvoice,
@@ -73,6 +79,7 @@ import {
   type RestaurantCustomerDisplaySuccess,
 } from "./customer-display";
 import type {
+  CardAttempt,
   PosCreditBorrower,
   PosReceipt,
   PosShift,
@@ -139,6 +146,11 @@ type PendingQPayCheckout = {
   lines: SaleLinePayload[];
   orderMode: OrderMode;
   tableLabel: string;
+};
+
+type CardPaymentRun = {
+  abortController: AbortController;
+  cancelled: boolean;
 };
 
 type PendingCreditQPayRepayment = {
@@ -238,7 +250,7 @@ const paymentOptions = [
     label: "Карт",
     action: "Картын төлбөр авах",
     icon: CreditCard,
-    enabled: false,
+    enabled: true,
   },
   {
     value: "QPAY",
@@ -264,6 +276,22 @@ const paymentOptions = [
 
 const moneyFormatter = new Intl.NumberFormat("mn-MN");
 const formatMoney = (value: number) => `${moneyFormatter.format(value)}₮`;
+const DEFAULT_ANDROID_PGW_BRIDGE_URL = "http://127.0.0.1:7420";
+const LONG_RUNNING_CARD_PROVIDERS = new Set([
+  "PUSH_ECR",
+  "MINU_AGENT",
+  "ANDROID_PGW",
+]);
+const terminalNeedsWaitingOverlay = (provider?: string | null) =>
+  Boolean(provider && LONG_RUNNING_CARD_PROVIDERS.has(provider));
+const getEffectiveCardProvider = (register?: RestaurantPosRegister | null) =>
+  register?.cardProviderType || (register?.minuAgentEnabled ? "MINU_AGENT" : null);
+const cardTerminalSourceLabel = (source?: string | null) => {
+  if (source === "ORG_REGISTER") return "Байгууллагын existing POS terminal";
+  if (source === "CARD_TERMINAL_REQUEST") return "Батлагдсан terminal хүсэлт";
+  if (source === "REGISTER") return "Энэ кассын terminal";
+  return "Terminal тохируулаагүй";
+};
 const CREDIT_MONTHLY_INTEREST_RATE = 0.012;
 const addCreditMonths = (date: Date, months: number) => {
   const next = new Date(date);
@@ -568,6 +596,20 @@ export function RestaurantPosScreen() {
   const [qpayChecking, setQpayChecking] = useState(false);
   const [qpayFinalizing, setQpayFinalizing] = useState(false);
   const [qpayMessage, setQpayMessage] = useState("");
+  const [cardProcessing, setCardProcessing] = useState(false);
+  const [cardMessage, setCardMessage] = useState("");
+  const [cardSetupProvider, setCardSetupProvider] = useState<
+    "ANDROID_PGW" | "MINU_AGENT"
+  >("ANDROID_PGW");
+  const [cardSetupBridgeUrl, setCardSetupBridgeUrl] = useState(
+    DEFAULT_ANDROID_PGW_BRIDGE_URL,
+  );
+  const [cardSetupTerminalId, setCardSetupTerminalId] = useState("");
+  const [cardSetupMinuUsername, setCardSetupMinuUsername] = useState("");
+  const [cardSetupMinuPassword, setCardSetupMinuPassword] = useState("");
+  const [cardSetupMinuBranchId, setCardSetupMinuBranchId] = useState("");
+  const [cardSetupSubmitting, setCardSetupSubmitting] = useState(false);
+  const [cardSetupError, setCardSetupError] = useState("");
   const [creditBorrowers, setCreditBorrowers] = useState<PosCreditBorrower[]>(
     [],
   );
@@ -611,6 +653,7 @@ export function RestaurantPosScreen() {
   const qrPrintRef = useRef<HTMLDivElement>(null);
   const customerDisplayChannelRef = useRef<BroadcastChannel | null>(null);
   const qpayFinalizedInvoiceRef = useRef<string | null>(null);
+  const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
   const creditQPayFinalizedInvoiceRef = useRef<string | null>(null);
 
   const selectedRegister = useMemo(
@@ -983,6 +1026,19 @@ export function RestaurantPosScreen() {
   );
   const qpayPending = qpayCheckout?.invoice.status === "PENDING";
   const qpayPaymentActive = Boolean(qpayCheckout);
+  const effectiveCardProvider = getEffectiveCardProvider(selectedRegister);
+  const cardTerminalReady = Boolean(
+    selectedRegister?.cardEnabled &&
+      effectiveCardProvider &&
+      (effectiveCardProvider === "ANDROID_PGW"
+        ? selectedRegister.terminalBridgeUrl
+        : selectedRegister.cardTerminalId),
+  );
+  const cardTerminalLabel = effectiveCardProvider
+    ? effectiveCardProvider === "ANDROID_PGW"
+      ? `Android PGW · ${selectedRegister?.terminalBridgeUrl || DEFAULT_ANDROID_PGW_BRIDGE_URL}`
+      : `${effectiveCardProvider} · ${selectedRegister?.cardTerminalId || "terminalId дутуу"}`
+    : "Terminal тохируулаагүй";
   const selectedTicketPaid = selectedTable.currentTicket?.status === "PAID";
   const selectedTicketActive = Boolean(
     selectedTable.currentTicket && !selectedTicketPaid,
@@ -994,8 +1050,8 @@ export function RestaurantPosScreen() {
     !selectedTicketPaid &&
     ticketLines.length > 0 &&
     total > 0 &&
-    paymentMethod !== "CARD" &&
     !qpayPaymentActive &&
+    !cardProcessing &&
     !checkoutSubmitting &&
     !qpayFinalizing &&
     !ticketSaving &&
@@ -1021,6 +1077,15 @@ export function RestaurantPosScreen() {
     return () => {
       channel.close();
       customerDisplayChannelRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (cardPaymentRunRef.current) {
+        cardPaymentRunRef.current.cancelled = true;
+        cardPaymentRunRef.current.abortController.abort();
+      }
     };
   }, []);
 
@@ -1068,7 +1133,7 @@ export function RestaurantPosScreen() {
             deepLinks: qpayCheckout.invoice.deepLinks,
           }
         : null,
-      message: qpayMessage || notice,
+      message: qpayMessage || cardMessage || notice,
       success: customerDisplaySuccess,
       updatedAt: Date.now(),
     };
@@ -1084,6 +1149,7 @@ export function RestaurantPosScreen() {
     }
   }, [
     customerDisplaySuccess,
+    cardMessage,
     discount,
     notice,
     orderMode,
@@ -1638,6 +1704,8 @@ export function RestaurantPosScreen() {
     setCheckoutError("");
     setNotice("");
     setCustomerDisplaySuccess(null);
+    setCardMessage("");
+    setCardSetupError("");
     setSelectedCreditBorrowerId("");
     setCreditSearch("");
     setCreditBorrowersError("");
@@ -1782,6 +1850,164 @@ export function RestaurantPosScreen() {
     }
   };
 
+  const updateRegisterInState = (updated: RestaurantPosRegister) => {
+    setRegisters((current) =>
+      current.map((register) =>
+        register.id === updated.id ? { ...register, ...updated } : register,
+      ),
+    );
+  };
+
+  const handleConnectCardTerminal = async () => {
+    if (!selectedRegister) {
+      setCardSetupError("POS register сонгоно уу.");
+      return;
+    }
+
+    setCardSetupSubmitting(true);
+    setCardSetupError("");
+    setCheckoutError("");
+    try {
+      const updated =
+        cardSetupProvider === "ANDROID_PGW"
+          ? await connectRestaurantCardTerminal({
+              registerId: selectedRegister.id,
+              providerType: "ANDROID_PGW",
+              terminalBridgeUrl:
+                cardSetupBridgeUrl.trim() || DEFAULT_ANDROID_PGW_BRIDGE_URL,
+            })
+          : await connectRestaurantCardTerminal({
+              registerId: selectedRegister.id,
+              providerType: "MINU_AGENT",
+              cardTerminalId: cardSetupTerminalId.trim(),
+              minuAgentUsername: cardSetupMinuUsername.trim() || undefined,
+              minuAgentPassword: cardSetupMinuPassword.trim() || undefined,
+              minuAgentBranchId: cardSetupMinuBranchId.trim() || undefined,
+            });
+      updateRegisterInState(updated);
+      setCardSetupMinuPassword("");
+      setNotice(`${updated.cardProviderType || cardSetupProvider} terminal холбогдлоо.`);
+      setCardMessage("Картын terminal бэлэн боллоо.");
+    } catch (error) {
+      setCardSetupError(
+        error instanceof Error ? error.message : "Terminal холбох үед алдаа гарлаа",
+      );
+    } finally {
+      setCardSetupSubmitting(false);
+    }
+  };
+
+  const authorizeCardPayment = async (amount: number): Promise<CardAttempt> => {
+    if (!selectedRegister || !user.organizationId) {
+      throw new Error("POS register шаардлагатай.");
+    }
+    const provider = getEffectiveCardProvider(selectedRegister);
+    if (!provider || !selectedRegister.cardEnabled) {
+      throw new Error("Картын terminal холбогдоогүй байна.");
+    }
+    if (provider === "ANDROID_PGW" && !selectedRegister.terminalBridgeUrl) {
+      throw new Error(
+        "ANDROID_PGW Bridge URL тохируулаагүй байна. http://127.0.0.1:7420 оруулна уу.",
+      );
+    }
+    if (provider !== "ANDROID_PGW" && !selectedRegister.cardTerminalId) {
+      throw new Error(`${provider} terminalId тохируулаагүй байна.`);
+    }
+
+    const run: CardPaymentRun = {
+      abortController: new AbortController(),
+      cancelled: false,
+    };
+    cardPaymentRunRef.current?.abortController.abort();
+    if (cardPaymentRunRef.current) {
+      cardPaymentRunRef.current.cancelled = true;
+    }
+    cardPaymentRunRef.current = run;
+
+    const isCancelled = () => run.cancelled || cardPaymentRunRef.current !== run;
+    const terminalId = selectedRegister.cardTerminalId || "terminal-1";
+    const useClientBridge =
+      provider === "ANDROID_PGW" && Boolean(selectedRegister.terminalBridgeUrl);
+
+    setCardProcessing(true);
+    setCardMessage(
+      provider === "ANDROID_PGW"
+        ? "Android PGW terminal руу төлбөр илгээж байна..."
+        : `${provider} terminal дээр карт уншуулна уу...`,
+    );
+
+    try {
+      const attempt = await createRestaurantCardAttempt({
+        amount,
+        terminalId,
+        bridgeUrl: useClientBridge ? selectedRegister.terminalBridgeUrl : null,
+        registerId: selectedRegister.id,
+        organizationId: user.organizationId,
+        clientBridge: useClientBridge,
+      });
+      if (isCancelled()) throw new Error("Картын төлбөр цуцлагдлаа.");
+
+      let approvedAttempt = attempt;
+      if (useClientBridge) {
+        try {
+          const bridgeResult = await chargeRestaurantClientBridge({
+            bridgeUrl: selectedRegister.terminalBridgeUrl!,
+            attemptId: attempt.attemptId,
+            amount,
+            terminalId,
+            signal: run.abortController.signal,
+          });
+          if (isCancelled()) throw new Error("Картын төлбөр цуцлагдлаа.");
+          approvedAttempt = await submitRestaurantClientBridgeResult({
+            attemptId: attempt.attemptId,
+            result: bridgeResult,
+          });
+        } catch (bridgeError) {
+          if (isCancelled()) throw bridgeError;
+          const message =
+            bridgeError instanceof Error
+              ? bridgeError.message
+              : "Картын terminal холболтын алдаа гарлаа";
+          approvedAttempt = await submitRestaurantClientBridgeResult({
+            attemptId: attempt.attemptId,
+            result: { status: "FAILED", message },
+          }).catch(() => ({ ...attempt, status: "FAILED" as const, message }));
+        }
+      } else {
+        const maxPolls = terminalNeedsWaitingOverlay(provider) ? 150 : 8;
+        for (let index = 0; index < maxPolls; index += 1) {
+          if (isCancelled()) throw new Error("Картын төлбөр цуцлагдлаа.");
+          if (approvedAttempt.status === "APPROVED") break;
+          if (
+            approvedAttempt.status === "DECLINED" ||
+            approvedAttempt.status === "FAILED"
+          ) {
+            break;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 800));
+          approvedAttempt = await getRestaurantCardAttemptStatus(attempt.attemptId);
+        }
+      }
+
+      if (approvedAttempt.status !== "APPROVED") {
+        throw new Error(
+          approvedAttempt.message ||
+            (approvedAttempt.status === "PENDING"
+              ? "Terminal төлбөр баталгаажаагүй байна."
+              : "Картын төлбөр амжилтгүй боллоо."),
+        );
+      }
+
+      setCardMessage("Картын төлбөр амжилттай баталгаажлаа.");
+      return approvedAttempt;
+    } finally {
+      if (cardPaymentRunRef.current === run) {
+        cardPaymentRunRef.current = null;
+      }
+      setCardProcessing(false);
+    }
+  };
+
   const handleCheckout = async () => {
     if (!selectedRegister || !shift || !user.organizationId) {
       setCheckoutError("POS register болон нээлттэй ээлж шаардлагатай.");
@@ -1791,8 +2017,10 @@ export function RestaurantPosScreen() {
       setCheckoutError("Нээлттэй ээлж сонгосон POS касстай таарахгүй байна.");
       return;
     }
-    if (paymentMethod === "CARD") {
-      setCheckoutError("Картын төлбөр дараагийн үе шатанд холбогдоно.");
+    if (paymentMethod === "CARD" && !cardTerminalReady) {
+      setCheckoutError(
+        "Картын terminal холбогдоогүй байна. Доорх хэсгээс Android PGW эсвэл Minu Agent холбоно уу.",
+      );
       return;
     }
     if (paymentMethod === "CREDIT" && !selectedCreditBorrower) {
@@ -1842,6 +2070,30 @@ export function RestaurantPosScreen() {
           tableLabel: selectedTable.label,
         });
         setQpayMessage("QPay QR уншуулж төлбөрөө төлнө үү.");
+        return;
+      }
+
+      if (paymentMethod === "CARD") {
+        const cardAttempt = await authorizeCardPayment(total);
+        const receipt = await createRestaurantCardSale({
+          shiftId: shift.id,
+          branchId: selectedRegister.branchId,
+          registerId: selectedRegister.id,
+          organizationId: user.organizationId,
+          restaurantTicketId: savedTicket.id,
+          clientSaleId: createClientSaleId(),
+          total,
+          note: saleNote,
+          lines: saleLines,
+          cardAttemptId: cardAttempt.attemptId,
+          cardTransactionId: cardAttempt.transactionId,
+        });
+        await completePaidSale(
+          receipt,
+          savedTicket,
+          orderMode,
+          selectedTable.label,
+        );
         return;
       }
 
@@ -3034,7 +3286,8 @@ export function RestaurantPosScreen() {
                         if (
                           option.enabled &&
                           !selectedTicketPaid &&
-                          !qpayPaymentActive
+                          !qpayPaymentActive &&
+                          !cardProcessing
                         ) {
                           setPaymentMethod(option.value);
                           setCheckoutError("");
@@ -3046,7 +3299,8 @@ export function RestaurantPosScreen() {
                       disabled={
                         !option.enabled ||
                         selectedTicketPaid ||
-                        qpayPaymentActive
+                        qpayPaymentActive ||
+                        cardProcessing
                       }
                       title={
                         option.enabled
@@ -3069,6 +3323,150 @@ export function RestaurantPosScreen() {
                 })}
               </div>
             </div>
+
+            {paymentMethod === "CARD" ? (
+              <div className="mt-3 rounded-xl border border-sky-300/25 bg-sky-300/10 p-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-sky-100">
+                      Картын terminal
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold leading-4 text-sky-100/70">
+                      {cardTerminalReady
+                        ? `${cardTerminalLabel} · ${cardTerminalSourceLabel(selectedRegister?.cardTerminalSource)}`
+                        : "Terminal холбогдоогүй байна. Android PGW bridge эсвэл Minu Agent terminal шинээр холбоно уу."}
+                    </p>
+                  </div>
+                  {cardTerminalReady ? (
+                    <span className="shrink-0 rounded-full bg-emerald-300 px-2 py-1 text-[10px] font-black text-slate-950">
+                      READY
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-amber-300 px-2 py-1 text-[10px] font-black text-slate-950">
+                      SETUP
+                    </span>
+                  )}
+                </div>
+
+                {cardMessage ? (
+                  <p className="mt-2 rounded-lg border border-sky-200/20 bg-sky-200/10 px-3 py-2 text-xs font-bold leading-5 text-sky-50">
+                    {cardMessage}
+                  </p>
+                ) : null}
+
+                {!cardTerminalReady ? (
+                  <div className="mt-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["ANDROID_PGW", "MINU_AGENT"] as const).map(
+                        (provider) => (
+                          <button
+                            key={provider}
+                            type="button"
+                            onClick={() => {
+                              setCardSetupProvider(provider);
+                              setCardSetupError("");
+                            }}
+                            className={`h-9 rounded-lg border text-xs font-black transition ${
+                              cardSetupProvider === provider
+                                ? "border-sky-300 bg-sky-300 text-slate-950"
+                                : "border-white/10 text-slate-300 hover:border-sky-300/60 hover:text-white"
+                            }`}
+                          >
+                            {provider === "ANDROID_PGW"
+                              ? "Android PGW"
+                              : "Minu Agent"}
+                          </button>
+                        ),
+                      )}
+                    </div>
+
+                    {cardSetupProvider === "ANDROID_PGW" ? (
+                      <label className="block">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-sky-100/70">
+                          Bridge URL
+                        </span>
+                        <input
+                          value={cardSetupBridgeUrl}
+                          onChange={(event) =>
+                            setCardSetupBridgeUrl(event.target.value)
+                          }
+                          placeholder={DEFAULT_ANDROID_PGW_BRIDGE_URL}
+                          className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
+                        />
+                      </label>
+                    ) : (
+                      <div className="space-y-2">
+                        <input
+                          value={cardSetupTerminalId}
+                          onChange={(event) =>
+                            setCardSetupTerminalId(event.target.value)
+                          }
+                          placeholder="Minu terminalId"
+                          className="h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            value={cardSetupMinuUsername}
+                            onChange={(event) =>
+                              setCardSetupMinuUsername(event.target.value)
+                            }
+                            placeholder={
+                              selectedRegister?.minuAgentUsername ||
+                              "Minu username"
+                            }
+                            className="h-9 rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
+                          />
+                          <input
+                            value={cardSetupMinuBranchId}
+                            onChange={(event) =>
+                              setCardSetupMinuBranchId(event.target.value)
+                            }
+                            placeholder={
+                              selectedRegister?.minuAgentBranchId ||
+                              "Minu branchId"
+                            }
+                            className="h-9 rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
+                          />
+                        </div>
+                        <input
+                          value={cardSetupMinuPassword}
+                          onChange={(event) =>
+                            setCardSetupMinuPassword(event.target.value)
+                          }
+                          type="password"
+                          placeholder={
+                            selectedRegister?.minuAgentPasswordSet
+                              ? "Password хадгалагдсан бол хоосон үлдээж болно"
+                              : "Minu password"
+                          }
+                          className="h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
+                        />
+                      </div>
+                    )}
+
+                    {cardSetupError ? (
+                      <p className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-100">
+                        {cardSetupError}
+                      </p>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={() => void handleConnectCardTerminal()}
+                      disabled={cardSetupSubmitting || !selectedRegister}
+                      className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-sky-300 text-xs font-black text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                    >
+                      {cardSetupSubmitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CreditCard className="h-4 w-4" />
+                      )}
+                      Terminal холбох
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {paymentMethod === "CREDIT" ? (
               <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 p-2.5">

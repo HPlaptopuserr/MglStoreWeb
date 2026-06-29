@@ -7,8 +7,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { CheckCircle2, Loader2, RefreshCw, Unplug } from "lucide-react";
+import { CheckCircle2, CreditCard, Loader2, RefreshCw, Unplug } from "lucide-react";
 import { API, authFetch, getStoredOrgUser } from "@/lib/api";
+import {
+  connectRestaurantCardTerminal,
+  getRestaurantPosRegisters,
+  type RestaurantPosRegister,
+} from "@/lib/restaurant-pos-api";
 
 type MerchantStatus = {
   success?: boolean;
@@ -51,6 +56,14 @@ const BANK_OPTIONS = [
 
 const inputClass =
   "h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 disabled:bg-slate-100";
+const DEFAULT_ANDROID_PGW_BRIDGE_URL = "http://127.0.0.1:7420";
+
+const terminalSourceLabel = (source?: string | null) => {
+  if (source === "REGISTER") return "Энэ кассын terminal";
+  if (source === "ORG_REGISTER") return "Байгууллагын existing terminal";
+  if (source === "CARD_TERMINAL_REQUEST") return "Батлагдсан terminal хүсэлт";
+  return "Terminal тохируулаагүй";
+};
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -78,6 +91,27 @@ export function OrgMerchantSettings() {
     text: string;
   } | null>(null);
   const [tab, setTab] = useState<"manual" | "register">("manual");
+  const [posRegisters, setPosRegisters] = useState<RestaurantPosRegister[]>(
+    [],
+  );
+  const [terminalLoading, setTerminalLoading] = useState(true);
+  const [terminalSubmitting, setTerminalSubmitting] = useState(false);
+  const [terminalMessage, setTerminalMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [selectedTerminalRegisterId, setSelectedTerminalRegisterId] =
+    useState("");
+  const [terminalProvider, setTerminalProvider] = useState<
+    "ANDROID_PGW" | "MINU_AGENT"
+  >("ANDROID_PGW");
+  const [terminalBridgeUrl, setTerminalBridgeUrl] = useState(
+    DEFAULT_ANDROID_PGW_BRIDGE_URL,
+  );
+  const [terminalId, setTerminalId] = useState("");
+  const [minuUsername, setMinuUsername] = useState("");
+  const [minuPassword, setMinuPassword] = useState("");
+  const [minuBranchId, setMinuBranchId] = useState("");
 
   const [manualMerchantCode, setManualMerchantCode] = useState("");
 
@@ -110,6 +144,20 @@ export function OrgMerchantSettings() {
   const query = useMemo(() => buildQuery(organizationId), [organizationId]);
   const selectedCity = cities.find((city) => city.code === cityId);
   const districts = selectedCity?.districts || [];
+  const selectedTerminalRegister = useMemo(
+    () =>
+      posRegisters.find((register) => register.id === selectedTerminalRegisterId) ||
+      posRegisters[0] ||
+      null,
+    [posRegisters, selectedTerminalRegisterId],
+  );
+  const terminalReady = Boolean(
+    selectedTerminalRegister?.cardEnabled &&
+      selectedTerminalRegister.cardProviderType &&
+      (selectedTerminalRegister.cardProviderType === "ANDROID_PGW"
+        ? selectedTerminalRegister.terminalBridgeUrl
+        : selectedTerminalRegister.cardTerminalId),
+  );
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -162,6 +210,32 @@ export function OrgMerchantSettings() {
     }
   }, [subCategoryId]);
 
+  const loadPosRegisters = useCallback(async () => {
+    setTerminalLoading(true);
+    setTerminalMessage(null);
+    try {
+      const registers = await getRestaurantPosRegisters();
+      setPosRegisters(registers);
+      setSelectedTerminalRegisterId((current) =>
+        registers.some((register) => register.id === current)
+          ? current
+          : (registers[0]?.id ?? ""),
+      );
+    } catch (error) {
+      setTerminalMessage({
+        type: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "POS register жагсаалт авахад алдаа гарлаа",
+      });
+      setPosRegisters([]);
+      setSelectedTerminalRegisterId("");
+    } finally {
+      setTerminalLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setOrganizationId(getStoredOrgUser()?.organizationId || null);
   }, []);
@@ -169,7 +243,35 @@ export function OrgMerchantSettings() {
   useEffect(() => {
     void loadStatus();
     void loadMeta();
-  }, [loadMeta, loadStatus]);
+    void loadPosRegisters();
+  }, [loadMeta, loadPosRegisters, loadStatus]);
+
+  useEffect(() => {
+    if (!selectedTerminalRegister) return;
+
+    if (
+      selectedTerminalRegister.cardProviderType === "ANDROID_PGW" ||
+      selectedTerminalRegister.cardProviderType === "MINU_AGENT"
+    ) {
+      setTerminalProvider(selectedTerminalRegister.cardProviderType);
+    }
+
+    if (selectedTerminalRegister.terminalBridgeUrl) {
+      setTerminalBridgeUrl(selectedTerminalRegister.terminalBridgeUrl);
+    }
+
+    if (selectedTerminalRegister.cardTerminalId) {
+      setTerminalId(selectedTerminalRegister.cardTerminalId);
+    }
+
+    if (selectedTerminalRegister.minuAgentUsername) {
+      setMinuUsername(selectedTerminalRegister.minuAgentUsername);
+    }
+
+    if (selectedTerminalRegister.minuAgentBranchId) {
+      setMinuBranchId(selectedTerminalRegister.minuAgentBranchId);
+    }
+  }, [selectedTerminalRegister]);
 
   useEffect(() => {
     setDistrictId("");
@@ -341,6 +443,64 @@ export function OrgMerchantSettings() {
     }
   };
 
+  const handleConnectPosTerminal = async () => {
+    if (!selectedTerminalRegister) {
+      setTerminalMessage({ type: "error", text: "POS register сонгоно уу" });
+      return;
+    }
+
+    if (terminalProvider === "MINU_AGENT" && !terminalId.trim()) {
+      setTerminalMessage({
+        type: "error",
+        text: "Minu Agent terminalId оруулна уу",
+      });
+      return;
+    }
+
+    setTerminalSubmitting(true);
+    setTerminalMessage(null);
+    try {
+      const updated =
+        terminalProvider === "ANDROID_PGW"
+          ? await connectRestaurantCardTerminal({
+              registerId: selectedTerminalRegister.id,
+              providerType: "ANDROID_PGW",
+              terminalBridgeUrl:
+                terminalBridgeUrl.trim() || DEFAULT_ANDROID_PGW_BRIDGE_URL,
+            })
+          : await connectRestaurantCardTerminal({
+              registerId: selectedTerminalRegister.id,
+              providerType: "MINU_AGENT",
+              cardTerminalId: terminalId.trim(),
+              minuAgentUsername: minuUsername.trim() || undefined,
+              minuAgentPassword: minuPassword.trim() || undefined,
+              minuAgentBranchId: minuBranchId.trim() || undefined,
+            });
+
+      setPosRegisters((current) =>
+        current.map((register) =>
+          register.id === updated.id ? { ...register, ...updated } : register,
+        ),
+      );
+      setSelectedTerminalRegisterId(updated.id);
+      setMinuPassword("");
+      setTerminalMessage({
+        type: "success",
+        text: `${updated.cardProviderType || terminalProvider} terminal холбогдлоо`,
+      });
+    } catch (error) {
+      setTerminalMessage({
+        type: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "POS terminal холбох үед алдаа гарлаа",
+      });
+    } finally {
+      setTerminalSubmitting(false);
+    }
+  };
+
   const handleDisconnect = async () => {
     if (!window.confirm("Minu Dynamic QR тохиргоог салгах уу?")) return;
 
@@ -413,6 +573,256 @@ export function OrgMerchantSettings() {
           {message.text}
         </div>
       ) : null}
+
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white">
+              <CreditCard className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">
+                POS terminal
+              </p>
+              <h4 className="mt-1 text-xl font-black text-slate-950">
+                Картын терминал холболт
+              </h4>
+              <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
+                Рестораны касс дээр картын төлбөр авах terminal-аа эндээс
+                холбоно. Нэг байгууллагын холболттой terminal-ыг бусад касс
+                автоматаар ашиглаж чадна.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadPosRegisters()}
+            disabled={terminalLoading || terminalSubmitting}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          >
+            {terminalLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Шинэчлэх
+          </button>
+        </div>
+
+        {terminalMessage ? (
+          <div
+            className={`mt-4 rounded-xl border px-4 py-3 text-sm font-bold ${
+              terminalMessage.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-rose-200 bg-rose-50 text-rose-800"
+            }`}
+          >
+            {terminalMessage.text}
+          </div>
+        ) : null}
+
+        {terminalLoading ? (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-5 text-sm font-bold text-slate-500">
+            POS register жагсаалт ачаалж байна...
+          </div>
+        ) : posRegisters.length === 0 ? (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-900">
+            POS register олдсонгүй. Эхлээд рестораны касс дээр register үүсгээд
+            дараа нь terminal холбоно.
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+              <Field label="POS register">
+                <select
+                  value={selectedTerminalRegisterId}
+                  onChange={(event) =>
+                    setSelectedTerminalRegisterId(event.target.value)
+                  }
+                  disabled={terminalSubmitting}
+                  className={inputClass}
+                >
+                  {posRegisters.map((register) => (
+                    <option key={register.id} value={register.id}>
+                      {register.label || register.name} · {register.branch.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <div
+                className={`rounded-2xl border p-4 ${
+                  terminalReady
+                    ? "border-emerald-200 bg-emerald-50"
+                    : "border-slate-200 bg-slate-50"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  {terminalReady ? (
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                  ) : (
+                    <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
+                  )}
+                  <div>
+                    <p
+                      className={`font-black ${
+                        terminalReady ? "text-emerald-950" : "text-slate-800"
+                      }`}
+                    >
+                      {terminalReady
+                        ? "Картын terminal бэлэн"
+                        : "Terminal холбогдоогүй"}
+                    </p>
+                    <p
+                      className={`mt-1 text-sm font-semibold ${
+                        terminalReady ? "text-emerald-800" : "text-slate-500"
+                      }`}
+                    >
+                      {terminalSourceLabel(
+                        selectedTerminalRegister?.cardTerminalSource,
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 text-sm font-bold text-slate-700 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Provider
+                    </p>
+                    <p className="mt-1 text-slate-950">
+                      {selectedTerminalRegister?.cardProviderType || "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Terminal ID
+                    </p>
+                    <p className="mt-1 break-all font-mono text-slate-950">
+                      {selectedTerminalRegister?.cardTerminalId || "-"}
+                    </p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      Bridge URL
+                    </p>
+                    <p className="mt-1 break-all font-mono text-slate-950">
+                      {selectedTerminalRegister?.terminalBridgeUrl || "-"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+              <div>
+                <p className="font-black text-slate-950">
+                  Terminal тохируулах
+                </p>
+                <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+                  Android PGW нь cashier PC дээрх bridge ашиглана. Minu Agent нь
+                  terminalId шаарддаг.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTerminalProvider("ANDROID_PGW")}
+                  disabled={terminalSubmitting}
+                  className={`h-11 rounded-xl border text-sm font-black ${
+                    terminalProvider === "ANDROID_PGW"
+                      ? "border-slate-950 bg-slate-950 text-white"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  } disabled:opacity-60`}
+                >
+                  Android PGW
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTerminalProvider("MINU_AGENT")}
+                  disabled={terminalSubmitting}
+                  className={`h-11 rounded-xl border text-sm font-black ${
+                    terminalProvider === "MINU_AGENT"
+                      ? "border-slate-950 bg-slate-950 text-white"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  } disabled:opacity-60`}
+                >
+                  Minu Agent
+                </button>
+              </div>
+
+              {terminalProvider === "ANDROID_PGW" ? (
+                <Field label="Bridge URL">
+                  <input
+                    value={terminalBridgeUrl}
+                    onChange={(event) => setTerminalBridgeUrl(event.target.value)}
+                    placeholder={DEFAULT_ANDROID_PGW_BRIDGE_URL}
+                    disabled={terminalSubmitting}
+                    className={inputClass}
+                  />
+                </Field>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Terminal ID">
+                    <input
+                      value={terminalId}
+                      onChange={(event) => setTerminalId(event.target.value)}
+                      placeholder="terminalId"
+                      disabled={terminalSubmitting}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Branch ID">
+                    <input
+                      value={minuBranchId}
+                      onChange={(event) => setMinuBranchId(event.target.value)}
+                      placeholder="optional"
+                      disabled={terminalSubmitting}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Minu username">
+                    <input
+                      value={minuUsername}
+                      onChange={(event) => setMinuUsername(event.target.value)}
+                      placeholder="optional"
+                      disabled={terminalSubmitting}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Minu password">
+                    <input
+                      value={minuPassword}
+                      onChange={(event) => setMinuPassword(event.target.value)}
+                      placeholder="Хоосон бол өмнөх password ашиглана"
+                      type="password"
+                      disabled={terminalSubmitting}
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => void handleConnectPosTerminal()}
+                disabled={
+                  terminalSubmitting ||
+                  !selectedTerminalRegister ||
+                  (terminalProvider === "MINU_AGENT" && !terminalId.trim())
+                }
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {terminalSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                Terminal холбох
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm font-bold text-slate-500">

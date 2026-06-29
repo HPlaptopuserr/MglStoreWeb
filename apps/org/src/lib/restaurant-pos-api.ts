@@ -1,4 +1,5 @@
 import type {
+  CardAttempt,
   PosCreditBorrower,
   PosReceipt,
   PosShift,
@@ -14,7 +15,19 @@ export type RestaurantPosRegister = {
   organizationId: string;
   isActive: boolean;
   cardEnabled: boolean;
+  cardProviderType: string | null;
+  cardTerminalId: string | null;
+  terminalBridgeUrl: string | null;
+  hasOwnCardTerminal?: boolean;
+  cardTerminalSource?: "REGISTER" | "ORG_REGISTER" | "CARD_TERMINAL_REQUEST" | null;
+  cardTerminalSourceRegisterId?: string | null;
+  cardTerminalSourceRequestId?: string | null;
   qpayEnabled: boolean;
+  minuAgentEnabled?: boolean;
+  minuAgentUsername?: string | null;
+  minuAgentBranchId?: string | null;
+  minuAgentConnectedAt?: string | null;
+  minuAgentPasswordSet?: boolean;
   branch: {
     id: string;
     name: string;
@@ -234,9 +247,48 @@ type CreateRestaurantCashSalePayload = {
 };
 
 type CreateRestaurantSalePayload = CreateRestaurantCashSalePayload & {
-  paymentMethod: "CASH" | "QPAY" | "CREDIT";
+  paymentMethod: "CASH" | "CARD" | "QPAY" | "CREDIT";
+  cardAttemptId?: string;
+  cardTransactionId?: string;
   qpayInvoiceId?: string;
   credit?: SaleCreditPaymentMeta;
+};
+
+export type RestaurantCardTerminalProvider = "ANDROID_PGW" | "MINU_AGENT";
+
+export type RestaurantCardTerminalConnectInput =
+  | {
+      registerId: string;
+      useExisting: true;
+    }
+  | {
+      registerId: string;
+      providerType: "ANDROID_PGW";
+      terminalBridgeUrl?: string;
+    }
+  | {
+      registerId: string;
+      providerType: "MINU_AGENT";
+      cardTerminalId: string;
+      minuAgentUsername?: string;
+      minuAgentPassword?: string;
+      minuAgentBranchId?: string;
+    };
+
+export type RestaurantClientBridgeChargeResult = {
+  status?: string;
+  transactionId?: string;
+  message?: string;
+  [key: string]: unknown;
+};
+
+type RestaurantClientBridgeHealth = {
+  ok?: boolean;
+  provider?: string;
+  message?: string;
+  serialPath?: string;
+  raw?: string;
+  [key: string]: unknown;
 };
 
 export type RestaurantPosQPayDeepLink = {
@@ -276,6 +328,166 @@ export async function getRestaurantPosRegisters() {
     cache: "no-store",
   });
   return readApiResponse<RestaurantPosRegister[]>(response);
+}
+
+export async function connectRestaurantCardTerminal(
+  input: RestaurantCardTerminalConnectInput,
+) {
+  const { registerId, ...body } = input;
+  const response = await authFetch(
+    `${API}/pos/registers/${encodeURIComponent(registerId)}/card-terminal/connect`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+  return readApiResponse<RestaurantPosRegister>(response);
+}
+
+export async function createRestaurantCardAttempt(input: {
+  amount: number;
+  terminalId?: string | null;
+  bridgeUrl?: string | null;
+  registerId: string;
+  organizationId: string;
+  clientBridge?: boolean;
+}) {
+  const response = await authFetch(`${API}/pos/payments/card/authorize`, {
+    method: "POST",
+    body: JSON.stringify({
+      amount: input.amount,
+      terminalId: input.terminalId || "terminal-1",
+      bridgeUrl: input.bridgeUrl || null,
+      registerId: input.registerId,
+      organizationId: input.organizationId,
+      clientBridge: input.clientBridge === true,
+    }),
+  });
+  return readApiResponse<CardAttempt>(response);
+}
+
+export async function getRestaurantCardAttemptStatus(attemptId: string) {
+  const response = await authFetch(
+    `${API}/pos/payments/card/status/${encodeURIComponent(attemptId)}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<CardAttempt>(response);
+}
+
+export async function submitRestaurantClientBridgeResult(input: {
+  attemptId: string;
+  result: RestaurantClientBridgeChargeResult;
+}) {
+  const response = await authFetch(
+    `${API}/pos/payments/card/client-bridge-result`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return readApiResponse<CardAttempt>(response);
+}
+
+async function getRestaurantClientBridgeHealth(
+  bridgeUrl: string,
+  signal?: AbortSignal,
+): Promise<RestaurantClientBridgeHealth> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 8_000);
+  const abortFromCaller = () => controller.abort();
+
+  try {
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    signal?.addEventListener("abort", abortFromCaller, { once: true });
+
+    const response = await fetch(`${bridgeUrl}/health`, {
+      method: "GET",
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    const data = (await response.json().catch(() => ({}))) as RestaurantClientBridgeHealth;
+    if (!response.ok) {
+      throw new Error(String(data.message || `Bridge health HTTP ${response.status}`));
+    }
+    return data;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("POS bridge health шалгах хугацаа дууслаа");
+    }
+    throw error;
+  } finally {
+    signal?.removeEventListener("abort", abortFromCaller);
+    window.clearTimeout(timeout);
+  }
+}
+
+export async function chargeRestaurantClientBridge(input: {
+  bridgeUrl: string;
+  attemptId: string;
+  amount: number;
+  terminalId: string;
+  signal?: AbortSignal;
+}): Promise<RestaurantClientBridgeChargeResult> {
+  const bridgeUrl = input.bridgeUrl.replace(/\/$/, "");
+  const health = await getRestaurantClientBridgeHealth(bridgeUrl, input.signal);
+  const provider = String(health.provider || "").toLowerCase();
+
+  if (provider && provider !== "android-pgw") {
+    throw new Error(
+      `POS bridge provider ${health.provider} байна. BRIDGE_PROVIDER=android-pgw болгож bridge restart хийнэ үү.`,
+    );
+  }
+
+  if (health.ok === false) {
+    throw new Error(health.message || "Android PGW terminal холбогдоогүй байна");
+  }
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 120_000);
+  const abortFromCaller = () => controller.abort();
+
+  try {
+    if (input.signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    input.signal?.addEventListener("abort", abortFromCaller, { once: true });
+
+    const response = await fetch(`${bridgeUrl}/charge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        attemptId: input.attemptId,
+        amount: input.amount,
+        terminalId: input.terminalId,
+      }),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    const text = await response.text();
+    let data: RestaurantClientBridgeChargeResult = {};
+    if (text) {
+      try {
+        data = JSON.parse(text) as RestaurantClientBridgeChargeResult;
+      } catch {
+        data = { status: "FAILED", message: text.slice(0, 220) };
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(String(data.message || `Bridge HTTP ${response.status}`));
+    }
+    return data;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Terminal хариу өгөх хугацаа дууслаа");
+    }
+    throw error;
+  } finally {
+    input.signal?.removeEventListener("abort", abortFromCaller);
+    window.clearTimeout(timeout);
+  }
 }
 
 export async function getCurrentRestaurantPosShift() {
@@ -688,6 +900,10 @@ async function createRestaurantSale(input: CreateRestaurantSalePayload) {
         {
           method: input.paymentMethod,
           amount: input.total,
+          ...(input.cardAttemptId ? { attemptId: input.cardAttemptId } : {}),
+          ...(input.cardTransactionId
+            ? { transactionId: input.cardTransactionId }
+            : {}),
           ...(input.qpayInvoiceId ? { invoiceId: input.qpayInvoiceId } : {}),
           ...(input.credit ? { credit: input.credit } : {}),
         },
@@ -704,6 +920,20 @@ export async function createRestaurantCashSale(
   input: CreateRestaurantCashSalePayload,
 ) {
   return createRestaurantSale({ ...input, paymentMethod: "CASH" });
+}
+
+export async function createRestaurantCardSale(
+  input: CreateRestaurantCashSalePayload & {
+    cardAttemptId: string;
+    cardTransactionId?: string | null;
+  },
+) {
+  return createRestaurantSale({
+    ...input,
+    paymentMethod: "CARD",
+    cardAttemptId: input.cardAttemptId,
+    cardTransactionId: input.cardTransactionId || undefined,
+  });
 }
 
 export async function createRestaurantQPaySale(

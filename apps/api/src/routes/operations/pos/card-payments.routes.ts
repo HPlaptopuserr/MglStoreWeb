@@ -1,5 +1,5 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus } from "@mgl/database";
+import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CardTerminalRequestStatus } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
@@ -25,6 +25,81 @@ import {
 
 const router: ExpressRouter = Router();
 const LOCAL_BRIDGE_CARD_PROVIDERS = new Set(["ANDROID_PGW", "QPOSLANE", "GANTIGO", "IDPAY"]);
+const CLOUD_CARD_PROVIDERS = new Set(["MINU_AGENT", "PUSH_ECR"]);
+
+const normalizeNullableString = (value: unknown) => {
+  const normalized = String(value ?? "").trim();
+  return normalized || null;
+};
+
+const isSupportedCardProvider = (provider: string | null | undefined) =>
+  Boolean(provider && (LOCAL_BRIDGE_CARD_PROVIDERS.has(provider) || CLOUD_CARD_PROVIDERS.has(provider)));
+
+const isUsableCardConfig = (config: {
+  cardEnabled?: boolean;
+  cardProviderType?: string | null;
+  cardTerminalId?: string | null;
+  terminalBridgeUrl?: string | null;
+}) => {
+  if (config.cardEnabled === false) return false;
+  const provider = normalizeNullableString(config.cardProviderType);
+  if (!isSupportedCardProvider(provider)) return false;
+  if (provider && LOCAL_BRIDGE_CARD_PROVIDERS.has(provider)) {
+    return Boolean(normalizeNullableString(config.terminalBridgeUrl));
+  }
+  return Boolean(normalizeNullableString(config.cardTerminalId));
+};
+
+async function resolveOrganizationCardTerminalFallback(input: {
+  organizationId: string;
+  currentRegisterId?: string | null;
+}) {
+  const orgRegister = await prisma.posRegister.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      deletedAt: null,
+      isActive: true,
+      activationStatus: PosActivationStatus.APPROVED,
+      cardEnabled: true,
+      cardProviderType: { not: null },
+      ...(input.currentRegisterId ? { id: { not: input.currentRegisterId } } : {}),
+    },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      cardProviderType: true,
+      cardTerminalId: true,
+      terminalBridgeUrl: true,
+    },
+  });
+  if (orgRegister && isUsableCardConfig({ ...orgRegister, cardEnabled: true })) {
+    return {
+      cardProviderType: orgRegister.cardProviderType,
+      cardTerminalId: orgRegister.cardTerminalId,
+      terminalBridgeUrl: orgRegister.terminalBridgeUrl,
+    };
+  }
+
+  const request = await prisma.cardTerminalRequest.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      status: CardTerminalRequestStatus.APPROVED,
+      providerType: { in: ["ANDROID_PGW", "MINU_AGENT", "PUSH_ECR", "QPOSLANE", "GANTIGO", "IDPAY"] },
+    },
+    orderBy: [{ reviewedAt: "desc" }, { updatedAt: "desc" }],
+    select: {
+      providerType: true,
+      cardTerminalId: true,
+      terminalBridgeUrl: true,
+    },
+  });
+  if (!request) return null;
+  const requestConfig = {
+    cardProviderType: normalizeNullableString(request.providerType),
+    cardTerminalId: normalizeNullableString(request.cardTerminalId),
+    terminalBridgeUrl: normalizeNullableString(request.terminalBridgeUrl),
+  };
+  return isUsableCardConfig({ ...requestConfig, cardEnabled: true }) ? requestConfig : null;
+}
 
 type CardAttemptResponseSource = {
   id: string;
@@ -114,26 +189,54 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
   let isPushEcr = false;
   let isMinuAgent = false;
   let isAndroidPgw = false;
+  let inheritedCardTerminalId: string | null = null;
+  let inheritedTerminalBridgeUrl: string | null = null;
   if (registerId) {
     const regForProvider = await prisma.posRegister.findUnique({
       where: { id: registerId },
       select: {
         cardEnabled: true,
         cardProviderType: true,
+        cardTerminalId: true,
+        terminalBridgeUrl: true,
+        organizationId: true,
         organization: { select: { minuAgentEnabled: true } },
       },
     });
     if (!regForProvider) {
       return res.status(404).json({ message: "POS register олдсонгүй" });
     }
-    cardProviderType = regForProvider?.cardProviderType ?? null;
+    let effectiveCardConfig = {
+      cardEnabled: regForProvider.cardEnabled,
+      cardProviderType: regForProvider.cardProviderType,
+      cardTerminalId: regForProvider.cardTerminalId,
+      terminalBridgeUrl: regForProvider.terminalBridgeUrl,
+    };
+    if (!isUsableCardConfig(effectiveCardConfig)) {
+      const fallback = await resolveOrganizationCardTerminalFallback({
+        organizationId: regForProvider.organizationId,
+        currentRegisterId: registerId,
+      });
+      if (fallback) {
+        effectiveCardConfig = {
+          cardEnabled: true,
+          cardProviderType: fallback.cardProviderType,
+          cardTerminalId: fallback.cardTerminalId,
+          terminalBridgeUrl: fallback.terminalBridgeUrl,
+        };
+      }
+    }
+
+    cardProviderType = effectiveCardConfig.cardProviderType ?? null;
+    inheritedCardTerminalId = effectiveCardConfig.cardTerminalId ?? null;
+    inheritedTerminalBridgeUrl = effectiveCardConfig.terminalBridgeUrl ?? null;
     isPushEcr = cardProviderType === "PUSH_ECR";
     isMinuAgent =
       cardProviderType === "MINU_AGENT" ||
       (!cardProviderType && regForProvider?.organization.minuAgentEnabled === true);
     isAndroidPgw = cardProviderType === "ANDROID_PGW";
 
-    if (!regForProvider.cardEnabled) {
+    if (!effectiveCardConfig.cardEnabled) {
       return res.status(400).json({ message: "Энэ POS register дээр картын төлбөр идэвхгүй байна" });
     }
     if (!cardProviderType && !isMinuAgent) {
@@ -149,10 +252,12 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
   const isLocalBridgeProvider = Boolean(
     cardProviderType && LOCAL_BRIDGE_CARD_PROVIDERS.has(cardProviderType)
   );
+  const effectiveBridgeUrl =
+    bridgeUrl || (isLocalBridgeProvider ? inheritedTerminalBridgeUrl : null);
 
-  if (bridgeUrl !== null) {
+  if (effectiveBridgeUrl !== null) {
     try {
-      const parsed = new URL(bridgeUrl);
+      const parsed = new URL(effectiveBridgeUrl);
       if (!["http:", "https:"].includes(parsed.protocol)) {
         return res.status(400).json({ message: "bridgeUrl зөвхөн http/https байх ёстой" });
       }
@@ -161,20 +266,20 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     }
   }
 
-  if (!bridgeUrl && isLocalBridgeProvider) {
+  if (!effectiveBridgeUrl && isLocalBridgeProvider) {
     return res.status(400).json({
       message: `${cardProviderType} terminalBridgeUrl тохируулаагүй байна. POS Register дээр Bridge URL оруулна уу.`,
     });
   }
 
-  if (!bridgeUrl && !allowPosSimulation && !isPushEcr && !isMinuAgent) {
+  if (!effectiveBridgeUrl && !allowPosSimulation && !isPushEcr && !isMinuAgent) {
     return res.status(400).json({
       message:
         "Card simulation идэвхгүй байна. terminalBridgeUrl тохируулж bridge-р authorize хийнэ үү.",
     });
   }
 
-  const usesLocalBridge = Boolean(bridgeUrl && !isPushEcr && !isMinuAgent);
+  const usesLocalBridge = Boolean(effectiveBridgeUrl && !isPushEcr && !isMinuAgent);
 
   if (clientBridge && !isAndroidPgw) {
     return res.status(400).json({
@@ -222,7 +327,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
         return res.status(403).json({ message: "Өөр байгууллагын register дээр authorize хийх боломжгүй" });
       }
 
-      registerCardTerminalId = register.cardTerminalId || null;
+      registerCardTerminalId = register.cardTerminalId || inheritedCardTerminalId || null;
       effectiveOrganizationId = register.organizationId;
 
       if (isMinuAgent) {
@@ -281,7 +386,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
         organizationId: effectiveOrganizationId || null,
         initiatedById: actor?.id || null,
         terminalId,
-        bridgeUrl: usesLocalBridge ? bridgeUrl : null,
+        bridgeUrl: usesLocalBridge ? effectiveBridgeUrl : null,
         amount,
         status: PosPaymentStatus.PENDING,
       },
@@ -312,7 +417,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       void (async () => {
         try {
           const requestPayload = JSON.stringify({ attemptId: attempt.id, amount, terminalId });
-          const bridgeRes = await fetch(`${bridgeUrl}/charge`, {
+          const bridgeRes = await fetch(`${effectiveBridgeUrl}/charge`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
