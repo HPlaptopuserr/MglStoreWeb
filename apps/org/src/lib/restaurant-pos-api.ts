@@ -1,4 +1,9 @@
-import type { PosReceipt, PosShift } from "@mgl/types";
+import type {
+  PosCreditBorrower,
+  PosReceipt,
+  PosShift,
+  SaleCreditPaymentMeta,
+} from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
 
 export type RestaurantPosRegister = {
@@ -130,6 +135,46 @@ export type RestaurantPublicMenu = {
   products: RestaurantPublicMenuProduct[];
 };
 
+export type RestaurantCreditSaleLine = {
+  id: string;
+  productId: string;
+  productName: string;
+  productSku: string | null;
+  qty: number;
+  unitPrice: number;
+  taxAmount: number;
+  discount: number;
+  lineTotal: number;
+};
+
+export type RestaurantCreditSale = {
+  id: string;
+  customerId: string | null;
+  saleId: string;
+  receiptNo: string;
+  status: string;
+  targetType: string;
+  borrowerId: string;
+  borrowerName: string;
+  borrowerPhone: string | null;
+  borrowerEmail: string | null;
+  borrowerAddress: string | null;
+  employeeId: string | null;
+  employeeName: string | null;
+  principalAmount: number;
+  monthlyInterestRate: number;
+  totalInterest: number;
+  totalDue: number;
+  termMonths: number;
+  dueDate: string | null;
+  paidAt: string | null;
+  paidAmount: number | null;
+  paymentMethod: string | null;
+  paymentNote: string | null;
+  createdAt: string;
+  lines: RestaurantCreditSaleLine[];
+};
+
 export type KitchenTicketStatus =
   | "NEW"
   | "PREPARING"
@@ -189,8 +234,9 @@ type CreateRestaurantCashSalePayload = {
 };
 
 type CreateRestaurantSalePayload = CreateRestaurantCashSalePayload & {
-  paymentMethod: "CASH" | "QPAY";
+  paymentMethod: "CASH" | "QPAY" | "CREDIT";
   qpayInvoiceId?: string;
+  credit?: SaleCreditPaymentMeta;
 };
 
 export type RestaurantPosQPayDeepLink = {
@@ -270,11 +316,56 @@ export async function getRestaurantPosProducts(
   const params = new URLSearchParams({ branchId });
   if (options?.restaurantMenuOnly !== false) {
     params.set("restaurantMenu", "1");
+  } else {
+    params.set("includeAllSupplyTypes", "1");
   }
   const response = await authFetch(`${API}/pos/products?${params.toString()}`, {
     cache: "no-store",
   });
   return readApiResponse<RestaurantPosProduct[]>(response);
+}
+
+export async function getRestaurantCreditCustomers(
+  organizationId: string,
+  options?: { search?: string; limit?: number },
+) {
+  const params = new URLSearchParams({
+    organizationId,
+    limit: String(options?.limit ?? 100),
+  });
+  const search = options?.search?.trim();
+  if (search) {
+    params.set("search", search);
+  }
+  const response = await authFetch(
+    `${API}/pos/credit-customers?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  const payload = await readApiResponse<{ customers?: PosCreditBorrower[] }>(
+    response,
+  );
+  return Array.isArray(payload.customers) ? payload.customers : [];
+}
+
+export async function getRestaurantCreditSales(
+  organizationId: string,
+  options?: { branchId?: string; limit?: number },
+) {
+  const params = new URLSearchParams({
+    organizationId,
+    limit: String(options?.limit ?? 100),
+  });
+  if (options?.branchId) {
+    params.set("branchId", options.branchId);
+  }
+  const response = await authFetch(
+    `${API}/pos/credit-sales?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  const payload = await readApiResponse<{ credits?: RestaurantCreditSale[] }>(
+    response,
+  );
+  return Array.isArray(payload.credits) ? payload.credits : [];
 }
 
 export async function enableRestaurantMenuProduct(input: {
@@ -598,6 +689,7 @@ async function createRestaurantSale(input: CreateRestaurantSalePayload) {
           method: input.paymentMethod,
           amount: input.total,
           ...(input.qpayInvoiceId ? { invoiceId: input.qpayInvoiceId } : {}),
+          ...(input.credit ? { credit: input.credit } : {}),
         },
       ],
       loyalty: { mode: "NONE" },
@@ -622,4 +714,51 @@ export async function createRestaurantQPaySale(
     paymentMethod: "QPAY",
     qpayInvoiceId: input.qpayInvoiceId,
   });
+}
+
+export async function createRestaurantCreditSale(
+  input: CreateRestaurantCashSalePayload & { credit: SaleCreditPaymentMeta },
+) {
+  return createRestaurantSale({
+    ...input,
+    paymentMethod: "CREDIT",
+    credit: input.credit,
+  });
+}
+
+type PayRestaurantCreditSaleInput =
+  | {
+      creditSaleId: string;
+      amount: number;
+      paymentMethod: "CASH";
+      shiftId: string;
+      note?: string;
+    }
+  | {
+      creditSaleId: string;
+      amount: number;
+      paymentMethod: "QPAY";
+      qpayInvoiceId: string;
+      note?: string;
+    };
+
+export async function payRestaurantCreditSale(
+  input: PayRestaurantCreditSaleInput,
+) {
+  const response = await authFetch(
+    `${API}/pos/credit-sales/${encodeURIComponent(input.creditSaleId)}/pay`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        amount: input.amount,
+        paymentMethod: input.paymentMethod,
+        ...("shiftId" in input ? { shiftId: input.shiftId } : {}),
+        ...("qpayInvoiceId" in input
+          ? { qpayInvoiceId: input.qpayInvoiceId }
+          : {}),
+        note: input.note,
+      }),
+    },
+  );
+  return readApiResponse<{ credit: RestaurantCreditSale }>(response);
 }

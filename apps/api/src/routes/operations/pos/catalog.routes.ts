@@ -131,6 +131,11 @@ router.get("/pos/products", async (req, res) => {
         .trim()
         .toLowerCase(),
     );
+    const includeAllSupplyTypes = ["1", "true", "yes", "on"].includes(
+      String(req.query.includeAllSupplyTypes || "")
+        .trim()
+        .toLowerCase(),
+    );
     if (!branchId) {
       return res.status(400).json({ message: "branchId шаардлагатай" });
     }
@@ -164,7 +169,7 @@ router.get("/pos/products", async (req, res) => {
         organizationId: branch.organizationId,
         isActive: true,
         deletedAt: null,
-        supplyType: "IN_STOCK",
+        ...(includeAllSupplyTypes ? {} : { supplyType: "IN_STOCK" }),
         ...(restaurantMenuOnly ? { isRestaurantMenuItem: true } : {}),
       },
       select: {

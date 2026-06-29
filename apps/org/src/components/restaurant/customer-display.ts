@@ -10,7 +10,11 @@ export type RestaurantCustomerDisplayOrderMode =
   | "TO_GO"
   | "DELIVERY";
 
-export type RestaurantCustomerDisplayPaymentMethod = "CASH" | "CARD" | "QPAY";
+export type RestaurantCustomerDisplayPaymentMethod =
+  | "CASH"
+  | "CARD"
+  | "QPAY"
+  | "CREDIT";
 
 export type RestaurantCustomerDisplayLine = {
   id: string;

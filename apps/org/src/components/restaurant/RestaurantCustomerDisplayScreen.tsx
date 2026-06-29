@@ -37,6 +37,7 @@ const paymentMethodCopy: Record<
   CASH: "Бэлэн",
   CARD: "Карт",
   QPAY: "QPay",
+  CREDIT: "Зээл",
 };
 
 const EMPTY_PAYLOAD: RestaurantCustomerDisplayPayload = {
@@ -87,6 +88,7 @@ function paymentMethodLabel(method?: string | null) {
   const normalized = String(method || "").toUpperCase();
   if (normalized === "QPAY" || normalized === "QR") return "QPay";
   if (normalized === "CARD") return "Карт";
+  if (normalized === "CREDIT") return "Зээл";
   return "Бэлэн";
 }
 
