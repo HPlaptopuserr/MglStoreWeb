@@ -618,7 +618,6 @@ async function finalizePaidRestaurantQrInvoice(
       organizationId: payload.organizationId,
       deletedAt: null,
       isActive: true,
-      isRestaurantMenuItem: true,
     },
     select: {
       id: true,
@@ -833,7 +832,6 @@ router.get("/restaurant/menu/:token", async (req, res) => {
           organizationId: table.organizationId,
           deletedAt: null,
           isActive: true,
-          isRestaurantMenuItem: true,
         },
         select: {
           id: true,
@@ -983,7 +981,6 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
         organizationId: table.organizationId,
         deletedAt: null,
         isActive: true,
-        isRestaurantMenuItem: true,
       },
       select: {
         id: true,
@@ -1437,7 +1434,6 @@ router.post("/restaurant/menu/:token/orders", async (req, res) => {
             organizationId: table.organizationId,
             deletedAt: null,
             isActive: true,
-            isRestaurantMenuItem: true,
           },
           select: {
             id: true,
