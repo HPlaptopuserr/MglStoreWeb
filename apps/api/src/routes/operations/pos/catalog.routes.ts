@@ -789,6 +789,281 @@ router.get("/pos/credit-customers", async (req, res) => {
   }
 });
 
+router.post("/pos/credit-sales/pay-bulk", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const creditSaleIds: string[] = Array.isArray(req.body.creditSaleIds)
+      ? Array.from(
+          new Set<string>(
+            req.body.creditSaleIds
+              .map((value: unknown): string => String(value || "").trim())
+              .filter((value: string) => Boolean(value)),
+          ),
+        )
+      : [];
+    if (creditSaleIds.length < 2) {
+      return res
+        .status(400)
+        .json({ message: "Нийт төлөлтөд 2 буюу түүнээс олон зээл сонгоно уу" });
+    }
+
+    const paymentMethod =
+      normalizePaymentMethod(String(req.body.paymentMethod || "")) ||
+      PaymentMethod.CASH;
+    if (paymentMethod === PaymentMethod.CREDIT) {
+      return res.status(400).json({
+        message: "Зээлийн төлөлтийг CREDIT хэлбэрээр бүртгэх боломжгүй",
+      });
+    }
+
+    const credits = await prisma.posCreditSale.findMany({
+      where: { id: { in: creditSaleIds } },
+      select: {
+        id: true,
+        organizationId: true,
+        branchId: true,
+        registerId: true,
+        createdAt: true,
+        status: true,
+        principalAmount: true,
+        monthlyInterestRate: true,
+        totalDue: true,
+        termMonths: true,
+        dueDate: true,
+        paidAt: true,
+      },
+    });
+    if (credits.length !== creditSaleIds.length) {
+      return res.status(404).json({ message: "Зарим зээлийн бүртгэл олдсонгүй" });
+    }
+
+    const organizationIds = new Set(credits.map((credit) => credit.organizationId));
+    if (organizationIds.size !== 1) {
+      return res
+        .status(400)
+        .json({ message: "Нийт төлөлт зөвхөн нэг байгууллагын зээлүүд дээр хийгдэнэ" });
+    }
+    const organizationId = credits[0]!.organizationId;
+    if (
+      actor.role !== "ADMIN" &&
+      !(await hasOrgMembership(actor.id, organizationId))
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Энэ байгууллагын зээлийн бүртгэлд хандах эрхгүй" });
+    }
+
+    const invalidCredit = credits.find(
+      (credit) =>
+        credit.status === PosCreditStatus.PAID ||
+        credit.status === PosCreditStatus.CANCELLED,
+    );
+    if (invalidCredit) {
+      return res.status(409).json({
+        message:
+          invalidCredit.status === PosCreditStatus.PAID
+            ? "Сонгосон зээлүүдийн нэг нь аль хэдийн төлөгдсөн байна"
+            : "Цуцлагдсан зээлийг төлсөн болгох боломжгүй",
+      });
+    }
+
+    const payables = credits.map((credit) => ({
+      credit,
+      payable: calculatePosCreditPayable({
+        principalAmount: credit.principalAmount,
+        monthlyInterestRate: credit.monthlyInterestRate,
+        termMonths: credit.termMonths,
+        dueDate: credit.dueDate,
+        createdAt: credit.createdAt,
+        paidAt: credit.paidAt,
+      }),
+    }));
+    const dueAmount = roundMoney(
+      payables.reduce((sum, item) => sum + item.payable.totalDue, 0),
+    );
+    const paidAmount = roundMoney(Number(req.body.amount || dueAmount));
+    if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
+      return res
+        .status(400)
+        .json({ message: "Төлсөн дүн 0-оос их байх ёстой" });
+    }
+    if (!moneyMatches(paidAmount, dueAmount)) {
+      return res
+        .status(400)
+        .json({ message: `Нийт зээлийг бүтэн төлөх дүн ${dueAmount} байна` });
+    }
+
+    const qpayInvoiceId = cleanOptionalText(req.body.qpayInvoiceId);
+    const cardAttemptId = cleanOptionalText(
+      req.body.cardAttemptId ?? req.body.attemptId ?? req.body.transactionId,
+    );
+    if (paymentMethod === PaymentMethod.CARD && !cardAttemptId) {
+      return res
+        .status(400)
+        .json({ message: "Картын төлөлтөд cardAttemptId шаардлагатай" });
+    }
+    const shiftId = cleanOptionalText(req.body.shiftId);
+    const paymentNote =
+      [
+        cleanOptionalText(req.body.note),
+        `Bulk credit count: ${credits.length}`,
+        qpayInvoiceId ? `QPay invoice: ${qpayInvoiceId}` : null,
+        cardAttemptId ? `Card attempt: ${cardAttemptId}` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ") || null;
+
+    const paidAt = new Date();
+    const updated = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        if (paymentMethod === PaymentMethod.QPAY) {
+          if (!qpayInvoiceId)
+            throw toApiError(400, "QPay төлөлтөд invoiceId шаардлагатай");
+          const invoice = await tx.qPayInvoice.findUnique({
+            where: { id: qpayInvoiceId },
+          });
+          if (!invoice) throw toApiError(404, "QPay invoice олдсонгүй");
+          if (invoice.status !== PosQPayStatus.PAID)
+            throw toApiError(409, "QPay төлбөр баталгаажаагүй байна");
+          if (invoice.saleReference || invoice.consumedAt)
+            throw toApiError(409, "QPay invoice аль хэдийн ашиглагдсан байна");
+          if (!invoice.organizationId || invoice.organizationId !== organizationId) {
+            throw toApiError(400, "QPay invoice байгууллага зөрүүтэй байна");
+          }
+          if (!moneyMatches(Number(invoice.amount), paidAmount)) {
+            throw toApiError(
+              400,
+              "QPay invoice дүн төлсөн дүнтэй таарахгүй байна",
+            );
+          }
+          await tx.qPayInvoice.update({
+            where: { id: invoice.id },
+            data: {
+              saleReference: `CREDIT-BULK-${creditSaleIds[0]}`,
+              consumedAt: paidAt,
+            },
+          });
+        }
+
+        if (paymentMethod === PaymentMethod.CARD && cardAttemptId) {
+          const attempt = await tx.cardPaymentAttempt.findUnique({
+            where: { id: cardAttemptId },
+          });
+          if (!attempt) throw toApiError(404, "Card attempt олдсонгүй");
+          if (attempt.status !== PosPaymentStatus.APPROVED)
+            throw toApiError(409, "Картын төлбөр баталгаажаагүй байна");
+          if (attempt.saleReference || attempt.consumedAt)
+            throw toApiError(409, "Card attempt аль хэдийн ашиглагдсан байна");
+          if (!attempt.organizationId || attempt.organizationId !== organizationId) {
+            throw toApiError(400, "Card attempt байгууллага зөрүүтэй байна");
+          }
+          if (!moneyMatches(Number(attempt.amount), paidAmount)) {
+            throw toApiError(
+              400,
+              "Card attempt дүн төлсөн дүнтэй таарахгүй байна",
+            );
+          }
+          await tx.cardPaymentAttempt.update({
+            where: { id: attempt.id },
+            data: {
+              saleReference: `CREDIT-BULK-${creditSaleIds[0]}`,
+              consumedAt: paidAt,
+            },
+          });
+        }
+
+        if (paymentMethod === PaymentMethod.CASH && shiftId) {
+          const shift = await tx.posShift.findUnique({
+            where: { id: shiftId },
+          });
+          if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
+          if (shift.status !== ShiftStatus.OPEN)
+            throw toApiError(
+              409,
+              "Хаагдсан ээлж дээр бэлэн төлөлт бүртгэх боломжгүй",
+            );
+          if (shift.organizationId !== organizationId)
+            throw toApiError(400, "Ээлж байгууллага зөрүүтэй байна");
+          await tx.posCashDrawerEvent.create({
+            data: {
+              organizationId: shift.organizationId,
+              branchId: shift.branchId,
+              registerId: shift.registerId,
+              shiftId: shift.id,
+              cashierId: actor.id,
+              type: CashDrawerEventType.PAID_IN,
+              amount: paidAmount,
+              note: paymentNote || `Bulk credit payment ${creditSaleIds[0]}`,
+            },
+          });
+        }
+
+        return Promise.all(
+          payables.map(({ credit, payable }) =>
+            tx.posCreditSale.update({
+              where: { id: credit.id },
+              data: {
+                status: PosCreditStatus.PAID,
+                paidAt,
+                paidAmount: payable.totalDue,
+                paymentMethod,
+                paymentNote,
+                totalInterest: payable.totalInterest,
+                totalDue: payable.totalDue,
+              },
+              select: {
+                id: true,
+                customerId: true,
+                status: true,
+                targetType: true,
+                borrowerId: true,
+                borrowerName: true,
+                borrowerPhone: true,
+                borrowerEmail: true,
+                borrowerAddress: true,
+                employeeId: true,
+                employeeName: true,
+                principalAmount: true,
+                monthlyInterestRate: true,
+                totalInterest: true,
+                totalDue: true,
+                termMonths: true,
+                dueDate: true,
+                paidAt: true,
+                paidAmount: true,
+                paymentMethod: true,
+                paymentNote: true,
+                createdAt: true,
+              },
+            }),
+          ),
+        );
+      },
+    );
+
+    return res.status(200).json({
+      credits: updated.map((credit) =>
+        mapCreditSaleResponse({
+          ...credit,
+          createdAt: credit.createdAt,
+        }),
+      ),
+      paidAmount,
+    });
+  } catch (error) {
+    const known = error as ApiError;
+    if (known?.status && known?.message) {
+      return res.status(known.status).json({ message: known.message });
+    }
+    console.error("pay bulk credit sales error", error);
+    return res
+      .status(500)
+      .json({ message: "Нийт зээлийн төлөлт бүртгэхэд алдаа гарлаа" });
+  }
+});
+
 router.post("/pos/credit-sales/:id/pay", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);

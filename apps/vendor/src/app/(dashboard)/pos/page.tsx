@@ -181,6 +181,12 @@ type PosCreditListItem = {
   lines: PosCreditListLine[];
 };
 
+type PosCreditRepaymentSelection = PosCreditListItem & {
+  isBulk?: boolean;
+  creditIds?: string[];
+  credits?: PosCreditListItem[];
+};
+
 type PosCreditListResponse = {
   credits: PosCreditListItem[];
 };
@@ -190,7 +196,7 @@ type PosCreditBorrowerListResponse = {
 };
 
 type CreditRepaymentEbarimtReceiptOptions = {
-  credit: PosCreditListItem;
+  credit: PosCreditRepaymentSelection;
   payment: SalePaymentLine;
   branchName: string;
   cashierName: string;
@@ -252,7 +258,7 @@ const formatDateTime = (value?: string | null) => {
   return `${date.getFullYear()} оны ${date.getMonth() + 1}-р сарын ${date.getDate()} ${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`;
 };
 
-function buildCreditRepaymentCartLines(credit: PosCreditListItem): CartLine[] {
+function buildCreditRepaymentCartLines(credit: PosCreditRepaymentSelection): CartLine[] {
   const principal = credit.principalAmount || credit.lines.reduce((sum, line) => sum + line.lineTotal, 0);
   const multiplier = principal > 0 ? credit.totalDue / principal : 1;
   let allocated = 0;
@@ -275,6 +281,63 @@ function buildCreditRepaymentCartLines(credit: PosCreditListItem): CartLine[] {
       discountAmount: 0,
     };
   });
+}
+
+function buildBulkCreditRepaymentSelection(group: PosCreditCustomerGroup): PosCreditRepaymentSelection | null {
+  const seenCreditIds = new Set<string>();
+  const credits = group.rows
+    .map(({ credit }) => credit)
+    .filter((credit) => {
+      if (seenCreditIds.has(credit.id)) return false;
+      seenCreditIds.add(credit.id);
+      return true;
+    });
+
+  if (credits.length < 2) return null;
+
+  const baseCredit = credits[0]!;
+  const principalAmount = roundMoney(credits.reduce((sum, credit) => sum + credit.principalAmount, 0));
+  const totalInterest = roundMoney(credits.reduce((sum, credit) => sum + credit.totalInterest, 0));
+  const totalDue = roundMoney(credits.reduce((sum, credit) => sum + credit.totalDue, 0));
+  const termMonths = Math.max(...credits.map((credit) => credit.termMonths || 0));
+  const dueDate =
+    credits
+      .map((credit) => credit.dueDate)
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => new Date(left).getTime() - new Date(right).getTime())[0] || null;
+  const createdAt =
+    credits
+      .map((credit) => credit.createdAt)
+      .filter(Boolean)
+      .sort((left, right) => new Date(left).getTime() - new Date(right).getTime())[0] ||
+    baseCredit.createdAt;
+
+  return {
+    ...baseCredit,
+    id: `bulk:${group.key}`,
+    saleId: `bulk:${group.key}`,
+    receiptNo: `Нийт ${credits.length} зээл`,
+    status: "OPEN",
+    principalAmount,
+    totalInterest,
+    totalDue,
+    termMonths,
+    dueDate,
+    paidAt: null,
+    paidAmount: null,
+    paymentMethod: null,
+    paymentNote: null,
+    createdAt,
+    lines: credits.flatMap((credit) =>
+      credit.lines.map((line) => ({
+        ...line,
+        id: `${credit.id}:${line.id}`,
+      })),
+    ),
+    isBulk: true,
+    creditIds: credits.map((credit) => credit.id),
+    credits,
+  };
 }
 
 function buildCreditRepaymentEbarimtReceipt({
@@ -304,8 +367,12 @@ function buildCreditRepaymentEbarimtReceipt({
     };
   });
 
+  const createdAt = new Date().toISOString();
+
   return {
-    id: credit.saleId,
+    id: credit.isBulk
+      ? `credit-bulk:${credit.creditIds?.join(",") || credit.id}:${createdAt}`
+      : credit.saleId,
     receiptNo: credit.receiptNo,
     branchName,
     cashierName,
@@ -322,7 +389,7 @@ function buildCreditRepaymentEbarimtReceipt({
       },
     ],
     credit,
-    createdAt: new Date().toISOString(),
+    createdAt,
     lines,
     subTotal: roundMoney(credit.totalDue),
     taxTotal: 0,
@@ -500,7 +567,8 @@ export default function PosDemoPage() {
   const [creditSalesLoading, setCreditSalesLoading] = useState(false);
   const [creditSalesError, setCreditSalesError] = useState("");
   const [creditBorrowers, setCreditBorrowers] = useState<PosCreditBorrower[]>([]);
-  const [selectedCreditRepayment, setSelectedCreditRepayment] = useState<PosCreditListItem | null>(null);
+  const [selectedCreditRepayment, setSelectedCreditRepayment] =
+    useState<PosCreditRepaymentSelection | null>(null);
   const [expandedCreditCustomerKey, setExpandedCreditCustomerKey] = useState<string | null>(null);
   const [creditRepaymentSubmitting, setCreditRepaymentSubmitting] = useState(false);
   const [loyalty, setLoyalty] = useState<CheckoutLoyaltyState>(initialLoyaltyState);
@@ -1534,9 +1602,44 @@ export default function PosDemoPage() {
     paymentSectionRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   };
 
+  const handleSelectCreditGroupRepayment = (group: PosCreditCustomerGroup) => {
+    const selection = buildBulkCreditRepaymentSelection(group);
+    if (!selection) {
+      setScanStatus("not-found");
+      setScanMessage("Нийт төлөхөд 2 буюу түүнээс олон нээлттэй зээл хэрэгтэй.");
+      return;
+    }
+
+    const repaymentLines = buildCreditRepaymentCartLines(selection);
+    if (repaymentLines.length === 0) {
+      setScanStatus("not-found");
+      setScanMessage("Зээлийн барааны мэдээлэл хоосон байна.");
+      return;
+    }
+
+    resetCreditRepaymentMode();
+    dispatch({ type: "clear-cart" });
+    repaymentLines.forEach((line) => {
+      dispatch({ type: "add-line", payload: line });
+    });
+    setSelectedCreditRepayment(selection);
+    setPaymentMethod("CASH");
+    setView("register");
+    setScanStatus("success");
+    setScanMessage(
+      `${selection.borrowerName} нийт ${selection.creditIds?.length || 0} зээлийн төлөлт сонгогдлоо.`,
+    );
+    paymentSectionRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
+
   const finalizeCreditRepayment = async () => {
     const credit = selectedCreditRepayment;
     if (!credit) return;
+    const creditIds = credit.creditIds?.length ? credit.creditIds : [credit.id];
+    const isBulkRepayment = creditIds.length > 1;
+    const repaymentLabel = isBulkRepayment
+      ? `${credit.borrowerName} нийт ${creditIds.length} зээл`
+      : `${credit.borrowerName} зээл`;
 
     const confirmedPayments = paymentEntries.filter((item) => item.status === "confirmed");
     if (confirmedPayments.length !== 1) {
@@ -1569,16 +1672,30 @@ export default function PosDemoPage() {
 
     setCreditRepaymentSubmitting(true);
     try {
-      const response = await authFetch(`${API}/pos/credit-sales/${encodeURIComponent(credit.id)}/pay`, {
+      const response = await authFetch(isBulkRepayment
+        ? `${API}/pos/credit-sales/pay-bulk`
+        : `${API}/pos/credit-sales/${encodeURIComponent(credit.id)}/pay`, {
         method: "POST",
-        body: JSON.stringify({
-          amount: paidAmount,
-          paymentMethod: payment.method,
-          qpayInvoiceId: payment.invoiceId,
-          cardAttemptId: payment.attemptId,
-          shiftId: shift?.id,
-          note: `POS credit repayment ${credit.receiptNo}`,
-        }),
+        body: JSON.stringify(
+          isBulkRepayment
+            ? {
+                creditSaleIds: creditIds,
+                amount: paidAmount,
+                paymentMethod: payment.method,
+                qpayInvoiceId: payment.invoiceId,
+                cardAttemptId: payment.attemptId,
+                shiftId: shift?.id,
+                note: `POS bulk credit repayment ${credit.borrowerName}`,
+              }
+            : {
+                amount: paidAmount,
+                paymentMethod: payment.method,
+                qpayInvoiceId: payment.invoiceId,
+                cardAttemptId: payment.attemptId,
+                shiftId: shift?.id,
+                note: `POS credit repayment ${credit.receiptNo}`,
+              },
+        ),
       });
       const data = await response.json().catch(() => ({}));
       const paymentBreakdown: SalePaymentLine[] = [
@@ -1596,7 +1713,7 @@ export default function PosDemoPage() {
         branchName: registerConfig?.branch.name || credit.receiptNo,
         cashierName: shift?.cashierName || "POS",
       });
-      let repaymentMessage = `${credit.borrowerName} зээлийн төлөлт амжилттай бүртгэгдлээ.`;
+      let repaymentMessage = `${repaymentLabel} төлөлт амжилттай бүртгэгдлээ.`;
 
       if (response.ok && EBARIMT_ENABLED) {
         try {
@@ -1608,14 +1725,16 @@ export default function PosDemoPage() {
             registerConfig,
           );
           repaymentReceipt = { ...repaymentReceipt, ebarimt: mapEbarimtPayload(ebarimtPayload) };
-          try {
-            const saved = await attachEbarimtReceipt(credit.saleId, ebarimtPayload);
-            repaymentReceipt = { ...repaymentReceipt, ebarimt: saved.ebarimt || repaymentReceipt.ebarimt };
-          } catch (saveError) {
-            console.warn("Credit repayment eBarimt created locally but failed to attach to sale", saveError);
+          if (!isBulkRepayment) {
+            try {
+              const saved = await attachEbarimtReceipt(credit.saleId, ebarimtPayload);
+              repaymentReceipt = { ...repaymentReceipt, ebarimt: saved.ebarimt || repaymentReceipt.ebarimt };
+            } catch (saveError) {
+              console.warn("Credit repayment eBarimt created locally but failed to attach to sale", saveError);
+            }
           }
           startEbarimtSendDataSync(`credit repayment ${credit.receiptNo}`);
-          repaymentMessage = `${credit.borrowerName} зээлийн төлөлт болон eBarimt амжилттай.`;
+          repaymentMessage = `${repaymentLabel} төлөлт болон eBarimt амжилттай.`;
         } catch (ebarimtError: any) {
           const errorMessage = ebarimtError?.message || "eBarimt баримт үүсгэхэд алдаа гарлаа";
           repaymentReceipt = {
@@ -1626,11 +1745,13 @@ export default function PosDemoPage() {
               syncedAt: new Date().toISOString(),
             },
           };
-          repaymentMessage = `${credit.borrowerName} зээлийн төлөлт амжилттай. eBarimt: ${errorMessage}`;
-          await attachEbarimtReceipt(credit.saleId, {
-            status: "FAILED",
-            error: errorMessage,
-          }).catch(() => {});
+          repaymentMessage = `${repaymentLabel} төлөлт амжилттай. eBarimt: ${errorMessage}`;
+          if (!isBulkRepayment) {
+            await attachEbarimtReceipt(credit.saleId, {
+              status: "FAILED",
+              error: errorMessage,
+            }).catch(() => {});
+          }
         }
       }
       if (!response.ok) {
@@ -1641,7 +1762,7 @@ export default function PosDemoPage() {
       resetCreditRepaymentMode();
       setListMode("credits");
       setScanStatus("success");
-      setScanMessage(`${credit.borrowerName} зээлийн төлөлт амжилттай бүртгэгдлээ.`);
+      setScanMessage(`${repaymentLabel} төлөлт амжилттай бүртгэгдлээ.`);
       showSuccessOverlay("Зээлийн төлөлт амжилттай");
       setScanMessage(repaymentMessage);
       setReceiptHistory((items) => [repaymentReceipt, ...items.filter((item) => item.id !== repaymentReceipt.id)]);
@@ -4164,9 +4285,12 @@ export default function PosDemoPage() {
                     </thead>
                     <tbody className="divide-y divide-amber-100">
                       {filteredCreditGroups.map((group, groupIndex) => {
+                        const selectedCreditIds =
+                          selectedCreditRepayment?.creditIds ||
+                          (selectedCreditRepayment ? [selectedCreditRepayment.id] : []);
                         const isExpanded =
                           expandedCreditCustomerKey === group.key ||
-                          group.rows.some(({ credit }) => selectedCreditRepayment?.id === credit.id);
+                          selectedCreditIds.some((creditId) => group.creditIds.has(creditId));
                         const totalQty = group.rows.reduce((sum, row) => sum + row.line.qty, 0);
 
                         return (
@@ -4215,6 +4339,20 @@ export default function PosDemoPage() {
                                 <p className="text-[10px] font-semibold text-slate-400">
                                   Хүү: {formatMoney(group.totalInterest)}
                                 </p>
+                                {group.creditCount > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleSelectCreditGroupRepayment(group);
+                                    }}
+                                    disabled={creditRepaymentSubmitting}
+                                    className="mt-2 inline-flex items-center justify-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[11px] font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    <HandCoins size={13} />
+                                    Нийт төлөх
+                                  </button>
+                                )}
                               </td>
                             </tr>
                             {isExpanded &&
@@ -4223,7 +4361,7 @@ export default function PosDemoPage() {
                                   key={`${credit.id}:${line.id}`}
                                   onClick={() => handleSelectCreditRepayment(credit)}
                                   className={`cursor-pointer transition ${
-                                    selectedCreditRepayment?.id === credit.id
+                                    selectedCreditIds.includes(credit.id)
                                       ? "bg-blue-50"
                                       : "hover:bg-slate-50"
                                   }`}

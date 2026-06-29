@@ -1002,3 +1002,51 @@ export async function payRestaurantCreditSale(
   );
   return readApiResponse<{ credit: RestaurantCreditSale }>(response);
 }
+
+type PayRestaurantCreditSalesBulkInput =
+  | {
+      creditSaleIds: string[];
+      amount: number;
+      paymentMethod: "CASH";
+      shiftId: string;
+      note?: string;
+    }
+  | {
+      creditSaleIds: string[];
+      amount: number;
+      paymentMethod: "QPAY";
+      qpayInvoiceId: string;
+      note?: string;
+    }
+  | {
+      creditSaleIds: string[];
+      amount: number;
+      paymentMethod: "CARD";
+      cardAttemptId: string;
+      note?: string;
+    };
+
+export async function payRestaurantCreditSalesBulk(
+  input: PayRestaurantCreditSalesBulkInput,
+) {
+  const response = await authFetch(`${API}/pos/credit-sales/pay-bulk`, {
+    method: "POST",
+    body: JSON.stringify({
+      creditSaleIds: input.creditSaleIds,
+      amount: input.amount,
+      paymentMethod: input.paymentMethod,
+      ...("shiftId" in input ? { shiftId: input.shiftId } : {}),
+      ...("qpayInvoiceId" in input
+        ? { qpayInvoiceId: input.qpayInvoiceId }
+        : {}),
+      ...("cardAttemptId" in input
+        ? { cardAttemptId: input.cardAttemptId }
+        : {}),
+      note: input.note,
+    }),
+  });
+  return readApiResponse<{
+    credits: RestaurantCreditSale[];
+    paidAmount: number;
+  }>(response);
+}

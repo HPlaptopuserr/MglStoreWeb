@@ -62,6 +62,7 @@ import {
   ensureRestaurantTableQrToken,
   openRestaurantPosShift,
   payRestaurantCreditSale,
+  payRestaurantCreditSalesBulk,
   saveRestaurantTicket,
   sendRestaurantTicketToKitchen,
   submitRestaurantClientBridgeResult,
@@ -155,6 +156,7 @@ type CardPaymentRun = {
 
 type PendingCreditQPayRepayment = {
   credit: RestaurantCreditSale;
+  credits: RestaurantCreditSale[];
   invoice: RestaurantPosQPayInvoice;
   amount: number;
   note: string;
@@ -289,6 +291,7 @@ const paymentOptions = [
 }>;
 
 const moneyFormatter = new Intl.NumberFormat("mn-MN");
+const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 const formatMoney = (value: number) => `${moneyFormatter.format(value)}₮`;
 const DEFAULT_ANDROID_PGW_BRIDGE_URL = "http://127.0.0.1:7420";
 const LONG_RUNNING_CARD_PROVIDERS = new Set([
@@ -1184,14 +1187,16 @@ export function RestaurantPosScreen() {
           }
         : null;
     const displayLines = creditQPayRepayment
-      ? creditQPayRepayment.credit.lines.map((line) => ({
-          id: line.id,
+      ? creditQPayRepayment.credits.flatMap((credit) =>
+          credit.lines.map((line) => ({
+          id: `${credit.id}:${line.id}`,
           name: line.productName,
           qty: line.qty,
           sentQty: line.qty,
           unitPrice: line.unitPrice,
           lineTotal: line.lineTotal,
-        }))
+          })),
+        )
       : ticketLines.map((line) => ({
           id: line.id,
           name: line.name,
@@ -2328,6 +2333,7 @@ export function RestaurantPosScreen() {
       creditQPayFinalizedInvoiceRef.current = null;
       setCreditQPayRepayment({
         credit,
+        credits: [credit],
         invoice,
         amount: dueAmount,
         note: `Restaurant credit QPay repayment ${credit.receiptNo}`,
@@ -2401,6 +2407,174 @@ export function RestaurantPosScreen() {
     }
   };
 
+  const handlePayCreditGroupCash = async (group: RestaurantCreditSaleGroup) => {
+    if (!shift || !selectedRegister || !shiftMatchesRegister) {
+      setCreditSalesError(
+        "Нийт зээлийн төлөлт авахын тулд энэ рестораны кассын ээлж нээлттэй байх ёстой.",
+      );
+      return;
+    }
+    if (group.credits.length < 2) {
+      setCreditSalesError("Нийт төлөхөд 2 буюу түүнээс олон зээл хэрэгтэй.");
+      return;
+    }
+    const dueAmount = roundMoney(group.totalDue);
+    if (!Number.isFinite(dueAmount) || dueAmount <= 0) {
+      setCreditSalesError("Нийт төлөх дүн буруу байна.");
+      return;
+    }
+
+    setCreditRepaymentId(`group:${group.key}`);
+    setCreditRepaymentMessage("");
+    setCreditSalesError("");
+    try {
+      await payRestaurantCreditSalesBulk({
+        creditSaleIds: group.credits.map((credit) => credit.id),
+        amount: dueAmount,
+        paymentMethod: "CASH",
+        shiftId: shift.id,
+        note: `Restaurant bulk credit cash repayment ${group.borrowerName}`,
+      });
+      const paidCreditIds = new Set(group.credits.map((credit) => credit.id));
+      setCreditSales((current) =>
+        current.filter((item) => !paidCreditIds.has(item.id)),
+      );
+      setCreditRepaymentMessage(
+        `${group.borrowerName} нийт ${group.credits.length} зээлийн бэлэн төлөлт ${formatMoney(dueAmount)} амжилттай бүртгэгдлээ.`,
+      );
+      setNotice(
+        `${group.borrowerName} нийт ${group.credits.length} зээлийн бэлэн төлөлт ${formatMoney(dueAmount)} амжилттай бүртгэгдлээ.`,
+      );
+      void loadCreditSales();
+    } catch (error) {
+      setCreditSalesError(
+        error instanceof Error
+          ? error.message
+          : "Нийт зээлийн төлөлт бүртгэхэд алдаа гарлаа",
+      );
+    } finally {
+      setCreditRepaymentId("");
+    }
+  };
+
+  const handlePayCreditGroupCard = async (group: RestaurantCreditSaleGroup) => {
+    if (!selectedRegister || !user.organizationId) {
+      setCreditSalesError(
+        "Картын төлөлт авахын тулд POS register сонгогдсон байх ёстой.",
+      );
+      return;
+    }
+    if (!cardTerminalReady) {
+      setCreditSalesError(
+        "Картын terminal холбогдоогүй байна. Dashboard > Тохиргоо > POS terminal дээрээс холбоно уу.",
+      );
+      return;
+    }
+    if (group.credits.length < 2) {
+      setCreditSalesError("Нийт төлөхөд 2 буюу түүнээс олон зээл хэрэгтэй.");
+      return;
+    }
+    if (qpayPaymentActive || creditQPayRepayment) {
+      setCreditSalesError("Өөр төлбөр нээлттэй байна. Эхлээд хаана уу.");
+      return;
+    }
+
+    const dueAmount = roundMoney(group.totalDue);
+    if (!Number.isFinite(dueAmount) || dueAmount <= 0) {
+      setCreditSalesError("Нийт төлөх дүн буруу байна.");
+      return;
+    }
+
+    setCreditRepaymentId(`group:${group.key}`);
+    setCreditRepaymentMessage("");
+    setCreditSalesError("");
+    try {
+      const attempt = await authorizeCardPayment(dueAmount);
+      await payRestaurantCreditSalesBulk({
+        creditSaleIds: group.credits.map((credit) => credit.id),
+        amount: dueAmount,
+        paymentMethod: "CARD",
+        cardAttemptId: attempt.attemptId,
+        note: `Restaurant bulk credit card repayment ${group.borrowerName}`,
+      });
+      const paidCreditIds = new Set(group.credits.map((credit) => credit.id));
+      setCreditSales((current) =>
+        current.filter((item) => !paidCreditIds.has(item.id)),
+      );
+      setCreditRepaymentMessage(
+        `${group.borrowerName} нийт ${group.credits.length} зээлийн картын төлөлт ${formatMoney(dueAmount)} амжилттай бүртгэгдлээ.`,
+      );
+      setNotice(
+        `${group.borrowerName} нийт ${group.credits.length} зээлийн картын төлөлт ${formatMoney(dueAmount)} амжилттай бүртгэгдлээ.`,
+      );
+      void loadCreditSales();
+    } catch (error) {
+      setCreditSalesError(
+        error instanceof Error
+          ? error.message
+          : "Картын нийт зээлийн төлөлт бүртгэхэд алдаа гарлаа",
+      );
+    } finally {
+      setCreditRepaymentId("");
+    }
+  };
+
+  const handleStartCreditGroupQPay = async (
+    group: RestaurantCreditSaleGroup,
+  ) => {
+    if (!selectedRegister || !user.organizationId) {
+      setCreditSalesError(
+        "QPay төлөлт үүсгэхийн тулд POS register сонгогдсон байх ёстой.",
+      );
+      return;
+    }
+    if (group.credits.length < 2) {
+      setCreditSalesError("Нийт төлөхөд 2 буюу түүнээс олон зээл хэрэгтэй.");
+      return;
+    }
+    if (qpayPaymentActive || creditQPayRepayment) {
+      setCreditSalesError("Өөр QPay төлбөр нээлттэй байна. Эхлээд хаана уу.");
+      return;
+    }
+
+    const dueAmount = roundMoney(group.totalDue);
+    if (!Number.isFinite(dueAmount) || dueAmount <= 0) {
+      setCreditSalesError("Нийт төлөх дүн буруу байна.");
+      return;
+    }
+
+    setCreditRepaymentId(`group:${group.key}`);
+    setCreditRepaymentMessage("");
+    setCreditQPayMessage("");
+    setCreditSalesError("");
+    try {
+      const invoice = await createRestaurantQPayInvoice({
+        amount: dueAmount,
+        registerId: selectedRegister.id,
+        organizationId: user.organizationId,
+      });
+      creditQPayFinalizedInvoiceRef.current = null;
+      setCreditQPayRepayment({
+        credit: group.credits[0]!,
+        credits: group.credits,
+        invoice,
+        amount: dueAmount,
+        note: `Restaurant bulk credit QPay repayment ${group.borrowerName}`,
+      });
+      setCreditQPayMessage(
+        "QPay QR уншуулж нийт зээлийн төлбөрөө төлнө үү.",
+      );
+    } catch (error) {
+      setCreditSalesError(
+        error instanceof Error
+          ? error.message
+          : "QPay нийт төлөлт үүсгэхэд алдаа гарлаа",
+      );
+    } finally {
+      setCreditRepaymentId("");
+    }
+  };
+
   const finalizeCreditQPayRepayment = async (
     repayment: PendingCreditQPayRepayment,
     paidInvoice: RestaurantPosQPayInvoice,
@@ -2410,23 +2584,40 @@ export function RestaurantPosScreen() {
     setCreditQPayFinalizing(true);
     setCreditQPayMessage("QPay төлбөр баталгаажлаа. Зээлийг хааж байна...");
     try {
-      await payRestaurantCreditSale({
-        creditSaleId: repayment.credit.id,
-        amount: repayment.amount,
-        paymentMethod: "QPAY",
-        qpayInvoiceId: paidInvoice.invoiceId,
-        note: repayment.note,
-      });
+      if (repayment.credits.length > 1) {
+        await payRestaurantCreditSalesBulk({
+          creditSaleIds: repayment.credits.map((credit) => credit.id),
+          amount: repayment.amount,
+          paymentMethod: "QPAY",
+          qpayInvoiceId: paidInvoice.invoiceId,
+          note: repayment.note,
+        });
+      } else {
+        await payRestaurantCreditSale({
+          creditSaleId: repayment.credit.id,
+          amount: repayment.amount,
+          paymentMethod: "QPAY",
+          qpayInvoiceId: paidInvoice.invoiceId,
+          note: repayment.note,
+        });
+      }
+      const paidCreditIds = new Set(
+        repayment.credits.map((credit) => credit.id),
+      );
       setCreditSales((current) =>
-        current.filter((item) => item.id !== repayment.credit.id),
+        current.filter((item) => !paidCreditIds.has(item.id)),
       );
       setCreditQPayRepayment(null);
       setCreditQPayMessage("");
+      const repaymentLabel =
+        repayment.credits.length > 1
+          ? `${repayment.credit.borrowerName} нийт ${repayment.credits.length} зээл`
+          : `${repayment.credit.borrowerName} зээлийн`;
       setCreditRepaymentMessage(
-        `${repayment.credit.borrowerName} зээлийн QPay төлөлт ${formatMoney(repayment.amount)} амжилттай бүртгэгдлээ.`,
+        `${repaymentLabel} QPay төлөлт ${formatMoney(repayment.amount)} амжилттай бүртгэгдлээ.`,
       );
       setNotice(
-        `${repayment.credit.borrowerName} зээлийн QPay төлөлт ${formatMoney(repayment.amount)} амжилттай бүртгэгдлээ.`,
+        `${repaymentLabel} QPay төлөлт ${formatMoney(repayment.amount)} амжилттай бүртгэгдлээ.`,
       );
       void loadCreditSales();
     } catch (error) {
@@ -3959,6 +4150,62 @@ export function RestaurantPosScreen() {
                           </p>
                         </div>
                       </div>
+
+                      {group.credits.length > 1 ? (
+                        <div className="mt-3 grid gap-2 rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
+                          <p className="text-xs font-bold text-amber-100">
+                            Энэ зээлдэгчийн {group.credits.length} зээлийг нийтээр нь төлөх
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void handlePayCreditGroupCash(group)}
+                            disabled={
+                              creditRepaymentId !== "" ||
+                              Boolean(creditQPayRepayment) ||
+                              cardProcessing ||
+                              !shift ||
+                              !shiftMatchesRegister
+                            }
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-300 px-3 text-xs font-black text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                          >
+                            <Banknote className="h-4 w-4" />
+                            Нийт бэлэн
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handlePayCreditGroupCard(group)}
+                            disabled={
+                              creditRepaymentId !== "" ||
+                              Boolean(creditQPayRepayment) ||
+                              qpayPaymentActive ||
+                              cardProcessing ||
+                              !selectedRegister ||
+                              !user.organizationId ||
+                              !cardTerminalReady
+                            }
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-violet-300/40 bg-violet-300/10 px-3 text-xs font-black text-violet-100 transition hover:bg-violet-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-slate-700 disabled:text-slate-400"
+                          >
+                            <CreditCard className="h-4 w-4" />
+                            Нийт карт
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleStartCreditGroupQPay(group)}
+                            disabled={
+                              creditRepaymentId !== "" ||
+                              Boolean(creditQPayRepayment) ||
+                              qpayPaymentActive ||
+                              cardProcessing ||
+                              !selectedRegister ||
+                              !user.organizationId
+                            }
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-sky-300/40 bg-sky-300/10 px-3 text-xs font-black text-sky-100 transition hover:bg-sky-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-slate-700 disabled:text-slate-400"
+                          >
+                            <QrCode className="h-4 w-4" />
+                            Нийт QPay
+                          </button>
+                        </div>
+                      ) : null}
 
                       <div className="mt-3 space-y-3">
                         {group.credits.map((credit) => {
