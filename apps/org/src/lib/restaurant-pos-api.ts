@@ -191,6 +191,49 @@ export type RestaurantCreditSale = {
   lines: RestaurantCreditSaleLine[];
 };
 
+export type RestaurantSalesHistoryLine = {
+  productId: string;
+  productName: string;
+  productSku: string | null;
+  qty: number;
+  unitPrice: number;
+  taxAmount: number;
+  taxType: string;
+  taxRate: number;
+  cityTaxRate: number;
+  cityTaxAmount: number;
+  classificationCode: string | null;
+  taxProductCode: string | null;
+  measureUnit: string | null;
+  discount: number;
+  lineTotal: number;
+};
+
+export type RestaurantSalesHistoryItem = {
+  id: string;
+  receiptNo: string;
+  branchName: string;
+  registerName: string | null;
+  cashierName: string;
+  paymentMethod: string;
+  status: string;
+  ebarimt: unknown;
+  subtotal: number;
+  taxTotal: number;
+  discountTotal: number;
+  grandTotal: number;
+  createdAt: string;
+  lines: RestaurantSalesHistoryLine[];
+};
+
+export type RestaurantSalesHistoryResponse = {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  sales: RestaurantSalesHistoryItem[];
+};
+
 export type KitchenTicketStatus =
   | "NEW"
   | "PREPARING"
@@ -622,6 +665,26 @@ export async function getRestaurantCreditSales(
     response,
   );
   return Array.isArray(payload.credits) ? payload.credits : [];
+}
+
+export async function getRestaurantSalesHistory(
+  organizationId: string,
+  options: { from?: string; to?: string; page?: number; limit?: number } = {},
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({
+    organizationId,
+    page: String(options.page ?? 1),
+    limit: String(options.limit ?? 8),
+  });
+  if (options.from) params.set("from", options.from);
+  if (options.to) params.set("to", options.to);
+
+  const response = await authFetch(
+    `${API}/pos/sales/history?${params.toString()}`,
+    { cache: "no-store", signal },
+  );
+  return readApiResponse<RestaurantSalesHistoryResponse>(response);
 }
 
 export async function enableRestaurantMenuProduct(input: {

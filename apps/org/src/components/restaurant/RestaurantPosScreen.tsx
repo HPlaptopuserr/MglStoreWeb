@@ -1970,9 +1970,7 @@ export function RestaurantPosScreen() {
               break-inside: avoid;
               page-break-inside: avoid;
             }
-            h1 { margin: 0; font-size: 14pt; font-weight: 700; line-height: 1.2; }
             p { margin: 0; line-height: 1.35; }
-            .branch { margin-top: 1mm; font-size: 9pt; font-weight: 500; color: #4b5563; }
             .table { font-size: 27pt; font-weight: 800; line-height: 1; }
             .qr-note { max-width: 68mm; font-size: 14pt; font-weight: 700; line-height: 1.25; }
             .qr-box {
@@ -1992,10 +1990,6 @@ export function RestaurantPosScreen() {
         </head>
         <body>
           <div class="card">
-            <div>
-              <h1>${escapeReceiptHtml(user.organizationName || "MGL Store Restaurant")}</h1>
-              <p class="branch">${escapeReceiptHtml(selectedRegister?.branch.name || "")}</p>
-            </div>
             <div class="table">${escapeReceiptHtml(qrSelectedTable.label)}</div>
             <p class="qr-note">${escapeReceiptHtml(qrInstruction)}</p>
             <div class="qr-box">${qrSvgMarkup}</div>
