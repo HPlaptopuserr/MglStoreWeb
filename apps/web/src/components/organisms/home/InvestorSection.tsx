@@ -17,6 +17,7 @@ interface Investor {
   tierLabel: string;
   featured: boolean;
   investmentLevel: string | null;
+  investmentAmount?: number | null;
   joinedAt: string;
 }
 
@@ -80,6 +81,7 @@ export function InvestorSection() {
             tier={inv.tier}
             tierLabel={inv.tierLabel}
             investmentLevel={inv.investmentLevel}
+            investmentAmount={inv.investmentAmount}
             description={inv.description}
             featured={inv.featured}
           />

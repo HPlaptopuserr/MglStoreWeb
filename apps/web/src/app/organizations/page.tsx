@@ -42,6 +42,7 @@ export interface Investor {
   tierLabel: string;
   featured: boolean;
   investmentLevel: string | null;
+  investmentAmount?: number | null;
   description: string | null;
 }
 

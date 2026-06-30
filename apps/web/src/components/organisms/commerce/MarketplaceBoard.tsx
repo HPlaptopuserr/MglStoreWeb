@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -22,6 +22,10 @@ export type MarketplaceCategory = {
   name: string;
   slug?: string;
   icon?: string | null;
+  parentId?: string | null;
+  level?: number;
+  productCount?: number;
+  directProductCount?: number;
   _count?: { products?: number };
 };
 
@@ -72,6 +76,15 @@ function SafeCategoryIcon({
   }
 
   return <PackageSearch className={className} />;
+}
+
+function getCategoryCount(category: MarketplaceCategory) {
+  return (
+    category.productCount ??
+    category._count?.products ??
+    category.directProductCount ??
+    0
+  );
 }
 
 export type MarketplaceProduct = {
@@ -154,7 +167,30 @@ export function MarketplaceBoard({
 }: MarketplaceBoardProps) {
   const router = useRouter();
   const [localSearch, setLocalSearch] = useState(searchQuery);
-  const visibleCategories = categories.slice(0, 6);
+  const {
+    childrenByParent,
+    visibleCategories,
+    parentByChild,
+  } = useMemo(() => {
+    const byParent = new Map<string, MarketplaceCategory[]>();
+    const childToParent = new Map<string, string>();
+
+    for (const category of categories) {
+      if (!category.parentId) continue;
+      byParent.set(category.parentId, [
+        ...(byParent.get(category.parentId) || []),
+        category,
+      ]);
+      childToParent.set(category.id, category.parentId);
+    }
+
+    const roots = categories.filter((category) => !category.parentId);
+    return {
+      childrenByParent: byParent,
+      visibleCategories: (roots.length ? roots : categories).slice(0, 6),
+      parentByChild: childToParent,
+    };
+  }, [categories]);
   const spotlightProducts = products.slice(0, 4);
   const discounted = products.find(
     (product) => product.discounts?.[0]?.percent,
@@ -162,6 +198,9 @@ export function MarketplaceBoard({
   const preorder = products.find(
     (product) => product.supplyType === "CHINA_PREORDER",
   );
+  const activeParentId = activeCategory
+    ? parentByChild.get(activeCategory) || activeCategory
+    : null;
 
   useEffect(() => {
     setLocalSearch(searchQuery);
@@ -228,44 +267,96 @@ export function MarketplaceBoard({
                 const href =
                   categoryHref?.(category) ||
                   `/products?category=${encodeURIComponent(category.slug || category.id)}`;
+                const children = childrenByParent.get(category.id) || [];
+                const isParentActive = activeParentId === category.id;
 
                 return (
-                  <CategoryLink
-                    key={category.id}
-                    href={href}
-                    onClick={
-                      onCategoryClick
-                        ? () => onCategoryClick(category.id)
-                        : undefined
-                    }
-                    className={`group flex h-10 w-full items-center justify-between gap-3 rounded-xl px-2.5 text-left text-sm font-black transition ${
-                      activeCategory === category.id
-                        ? "bg-orange-500 text-white shadow-md shadow-orange-100"
-                        : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm"
-                    }`}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base ${
-                          activeCategory === category.id
-                            ? "bg-white/20"
-                            : "bg-white ring-1 ring-slate-100"
-                        }`}
-                      >
-                        <SafeCategoryIcon
-                          icon={category.icon}
-                          name={category.name}
-                          className={
-                            activeCategory === category.id
-                              ? "h-3.5 w-3.5 text-white"
-                              : "h-3.5 w-3.5 text-orange-500"
-                          }
-                        />
+                  <div key={category.id}>
+                    <CategoryLink
+                      href={href}
+                      onClick={
+                        onCategoryClick
+                          ? () => onCategoryClick(category.id)
+                          : undefined
+                      }
+                      className={`group flex h-10 w-full items-center justify-between gap-3 rounded-xl px-2.5 text-left text-sm font-black transition ${
+                        isParentActive
+                          ? "bg-orange-500 text-white shadow-md shadow-orange-100"
+                          : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm"
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base ${
+                            isParentActive
+                              ? "bg-white/20"
+                              : "bg-white ring-1 ring-slate-100"
+                          }`}
+                        >
+                          <SafeCategoryIcon
+                            icon={category.icon}
+                            name={category.name}
+                            className={
+                              isParentActive
+                                ? "h-3.5 w-3.5 text-white"
+                                : "h-3.5 w-3.5 text-orange-500"
+                            }
+                          />
+                        </span>
+                        <span className="truncate">{category.name}</span>
                       </span>
-                      <span className="truncate">{category.name}</span>
-                    </span>
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0 opacity-0 transition group-hover:opacity-100" />
-                  </CategoryLink>
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        {children.length > 0 && (
+                          <span
+                            className={`rounded-full px-1.5 py-0.5 text-[10px] font-black ${
+                              isParentActive
+                                ? "bg-white/20 text-white"
+                                : "bg-slate-100 text-slate-400"
+                            }`}
+                          >
+                            {children.length}
+                          </span>
+                        )}
+                        <ArrowRight className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
+                      </span>
+                    </CategoryLink>
+
+                    {isParentActive && children.length > 0 && (
+                      <div className="ml-9 mt-2 flex flex-wrap gap-1.5 pb-1">
+                        {children.slice(0, 8).map((child) => {
+                          const childHref =
+                            categoryHref?.(child) ||
+                            `/products?category=${encodeURIComponent(child.slug || child.id)}`;
+                          const isChildActive = activeCategory === child.id;
+                          const count = getCategoryCount(child);
+
+                          return (
+                            <CategoryLink
+                              key={child.id}
+                              href={childHref}
+                              onClick={
+                                onCategoryClick
+                                  ? () => onCategoryClick(child.id)
+                                  : undefined
+                              }
+                              className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-black transition ${
+                                isChildActive
+                                  ? "border-orange-500 bg-orange-50 text-orange-600"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-orange-200 hover:text-orange-600"
+                              }`}
+                            >
+                              <span className="truncate">{child.name}</span>
+                              {count > 0 && (
+                                <span className="text-[10px] text-slate-400">
+                                  {count}
+                                </span>
+                              )}
+                            </CategoryLink>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -351,33 +442,64 @@ export function MarketplaceBoard({
             const href =
               categoryHref?.(category) ||
               `/products?category=${encodeURIComponent(category.slug || category.id)}`;
+            const children = childrenByParent.get(category.id) || [];
+            const isParentActive = activeParentId === category.id;
 
             return (
-              <CategoryLink
-                key={category.id}
-                href={href}
-                onClick={
-                  onCategoryClick
-                    ? () => onCategoryClick(category.id)
-                    : undefined
-                }
-                className={`flex h-9 shrink-0 items-center gap-2 rounded-xl border px-3 text-sm font-black transition sm:h-10 sm:px-4 ${
-                  activeCategory === category.id
-                    ? "border-orange-500 bg-orange-500 text-white shadow-md shadow-orange-100"
-                    : "border-slate-200 bg-white/90 text-slate-700 hover:border-orange-200 hover:text-orange-600"
-                }`}
-              >
-                <SafeCategoryIcon
-                  icon={category.icon}
-                  name={category.name}
-                  className={
-                    activeCategory === category.id
-                      ? "h-4 w-4 text-white"
-                      : "h-4 w-4 text-orange-500"
+              <Fragment key={category.id}>
+                <CategoryLink
+                  href={href}
+                  onClick={
+                    onCategoryClick
+                      ? () => onCategoryClick(category.id)
+                      : undefined
                   }
-                />
-                {category.name}
-              </CategoryLink>
+                  className={`flex h-9 shrink-0 items-center gap-2 rounded-xl border px-3 text-sm font-black transition sm:h-10 sm:px-4 ${
+                    isParentActive
+                      ? "border-orange-500 bg-orange-500 text-white shadow-md shadow-orange-100"
+                      : "border-slate-200 bg-white/90 text-slate-700 hover:border-orange-200 hover:text-orange-600"
+                  }`}
+                >
+                  <SafeCategoryIcon
+                    icon={category.icon}
+                    name={category.name}
+                    className={
+                      isParentActive
+                        ? "h-4 w-4 text-white"
+                        : "h-4 w-4 text-orange-500"
+                    }
+                  />
+                  {category.name}
+                </CategoryLink>
+
+                {isParentActive &&
+                  children.slice(0, 8).map((child) => {
+                    const childHref =
+                      categoryHref?.(child) ||
+                      `/products?category=${encodeURIComponent(child.slug || child.id)}`;
+                    const isChildActive = activeCategory === child.id;
+
+                    return (
+                      <CategoryLink
+                        key={child.id}
+                        href={childHref}
+                        onClick={
+                          onCategoryClick
+                            ? () => onCategoryClick(child.id)
+                            : undefined
+                        }
+                        className={`flex h-9 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-xs font-black transition sm:h-10 ${
+                          isChildActive
+                            ? "border-orange-500 bg-orange-50 text-orange-600"
+                            : "border-slate-200 bg-white/90 text-slate-600 hover:border-orange-200 hover:text-orange-600"
+                        }`}
+                      >
+                        {child.name}
+                      </CategoryLink>
+                    );
+                  })}
+
+              </Fragment>
             );
           })}
         </div>

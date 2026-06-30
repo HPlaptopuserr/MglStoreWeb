@@ -51,6 +51,7 @@ interface ApiProduct {
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
   preorderNote?: string | null;
+  marketplacePriority?: number;
   images: { id: string; url: string }[];
   organization: { id: string; name: string; logoUrl?: string | null } | null;
   discounts: { percent: number }[];
@@ -163,6 +164,13 @@ function expandLocalSearchTokens(query: string) {
     ...tokens,
     ...tokens.flatMap((token) => LATIN_SEARCH_ALIASES[token] || []),
   ].filter(Boolean);
+}
+
+function compareMarketplacePriority(
+  a: { marketplacePriority?: number | null },
+  b: { marketplacePriority?: number | null },
+) {
+  return (b.marketplacePriority || 0) - (a.marketplacePriority || 0);
 }
 
 function productMatchesSearch(product: ApiProduct, query: string) {
@@ -666,23 +674,33 @@ function ProductsContent() {
     // Sort
     switch (sortKey) {
       case "price_asc":
-        list.sort((a, b) => a.price - b.price);
+        list.sort((a, b) => compareMarketplacePriority(a, b) || a.price - b.price);
         break;
       case "price_desc":
-        list.sort((a, b) => b.price - a.price);
+        list.sort((a, b) => compareMarketplacePriority(a, b) || b.price - a.price);
         break;
       case "discount":
-        list.sort((a, b) => (b.discounts[0]?.percent ?? 0) - (a.discounts[0]?.percent ?? 0));
+        list.sort(
+          (a, b) =>
+            compareMarketplacePriority(a, b) ||
+            (b.discounts[0]?.percent ?? 0) - (a.discounts[0]?.percent ?? 0),
+        );
         break;
       case "name_asc":
-        list.sort((a, b) => a.name.localeCompare(b.name));
+        list.sort((a, b) => compareMarketplacePriority(a, b) || a.name.localeCompare(b.name));
         break;
       case "newest":
       default:
         if (searchQuery.trim() && list.some((product) => product.searchScore)) {
-          list.sort((a, b) => (b.searchScore ?? 0) - (a.searchScore ?? 0));
+          list.sort((a, b) => {
+            return compareMarketplacePriority(a, b) || (b.searchScore ?? 0) - (a.searchScore ?? 0);
+          });
         } else {
-          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          list.sort(
+            (a, b) =>
+              compareMarketplacePriority(a, b) ||
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          );
         }
         break;
     }

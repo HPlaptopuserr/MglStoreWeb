@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { getInvestorTierLabel } from "@mgl/types";
 import { TeamHero } from "./_components/TeamHero";
 import { TeamCompanyNetwork } from "./_components/TeamCompanyNetwork";
 import { TeamLeadershipSections } from "./_components/TeamLeadershipSections";
@@ -22,14 +23,14 @@ function investorToMember(investor: TeamInvestor, index: number): TeamMember {
   return {
     id: `investor-${investor.id}`,
     name: investor.name,
-    role: investor.tierLabel || "Хөрөнгө оруулагч",
+    role: investor.tierLabel || getInvestorTierLabel(investor.tier),
     department: "Хөрөнгө оруулагчид",
     bio: investor.description,
     avatarUrl: investor.logoUrl,
     email: null,
     linkedinUrl: null,
-    experience: investor.investmentLevel ? `${investor.investmentLevel}` : "Investor",
-    skills: ["Investor", investor.tier, "Partner"].filter(Boolean),
+    experience: investor.investmentLevel ? `${investor.investmentLevel}` : getInvestorTierLabel(investor.tier),
+    skills: ["Хөрөнгө оруулагч", getInvestorTierLabel(investor.tier), "Түнш"].filter(Boolean),
     order: 2000 + index,
   };
 }

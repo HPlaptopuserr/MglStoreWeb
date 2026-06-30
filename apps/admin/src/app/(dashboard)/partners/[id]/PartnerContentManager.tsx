@@ -75,6 +75,7 @@ type Product = {
   supplyType?: SupplyType;
   preorderLeadTimeDays?: number | null;
   preorderNote?: string | null;
+  marketplacePriority?: number | null;
   isActive: boolean;
   images: { id: string; url: string }[];
   businessCategoryId: string | null;
@@ -122,6 +123,7 @@ type ProductForm = {
   supplyType: SupplyType;
   preorderLeadTimeDays: string;
   preorderNote: string;
+  marketplacePriority: string;
   businessCategoryId: string;
   images: string[];
   isActive: boolean;
@@ -150,6 +152,7 @@ const EMPTY_PRODUCT_FORM: ProductForm = {
   supplyType: "IN_STOCK",
   preorderLeadTimeDays: "14",
   preorderNote: "",
+  marketplacePriority: "0",
   businessCategoryId: "",
   images: [],
   isActive: true,
@@ -548,14 +551,20 @@ export function PartnerContentManager({
 
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
-    if (!query) return products;
-    return products.filter((product) => {
-      return (
-        product.name.toLowerCase().includes(query) ||
-        (product.sku || "").toLowerCase().includes(query) ||
-        (product.barcode || "").toLowerCase().includes(query)
-      );
-    });
+    const matched = query
+      ? products.filter((product) => {
+          return (
+            product.name.toLowerCase().includes(query) ||
+            (product.sku || "").toLowerCase().includes(query) ||
+            (product.barcode || "").toLowerCase().includes(query)
+          );
+        })
+      : products;
+    return [...matched].sort(
+      (a, b) =>
+        (b.marketplacePriority || 0) - (a.marketplacePriority || 0) ||
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime(),
+    );
   }, [products, productSearch]);
 
   const handleOrgImageChange = async (
@@ -662,6 +671,7 @@ export function PartnerContentManager({
       supplyType: product.supplyType || "IN_STOCK",
       preorderLeadTimeDays: product.preorderLeadTimeDays != null ? String(product.preorderLeadTimeDays) : "14",
       preorderNote: product.preorderNote || "",
+      marketplacePriority: String(product.marketplacePriority ?? 0),
       businessCategoryId: product.businessCategoryId || "",
       images: product.images.map((image) => image.url),
       isActive: product.isActive,
@@ -697,6 +707,13 @@ export function PartnerContentManager({
     const leadTimeDays = productForm.preorderLeadTimeDays.trim()
       ? parseInt(productForm.preorderLeadTimeDays, 10)
       : null;
+    const marketplacePriority = productForm.marketplacePriority.trim()
+      ? parseInt(productForm.marketplacePriority, 10)
+      : 0;
+    if (!Number.isInteger(marketplacePriority) || marketplacePriority < 0 || marketplacePriority > 1_000_000) {
+      showToast("error", "Эхэнд гаргах дараалал 0-1,000,000 хооронд бүхэл тоо байх ёстой");
+      return;
+    }
 
     setSavingProduct(true);
     try {
@@ -713,6 +730,7 @@ export function PartnerContentManager({
         supplyType: productForm.supplyType,
         preorderLeadTimeDays: productForm.supplyType === "CHINA_PREORDER" ? leadTimeDays : null,
         preorderNote: productForm.supplyType === "CHINA_PREORDER" ? productForm.preorderNote.trim() || null : null,
+        marketplacePriority,
         businessCategoryId: productForm.businessCategoryId || null,
         images: productForm.images,
         isActive: productForm.isActive,
@@ -1094,9 +1112,16 @@ export function PartnerContentManager({
                             {product.sku || product.barcode || "Кодгүй"} · {product.businessCategory?.name || "Ангилалгүй"}
                           </p>
                         </div>
-                        <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${product.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                          {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
-                        </span>
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {(product.marketplacePriority || 0) > 0 && (
+                            <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700">
+                              Эхэнд #{product.marketplacePriority}
+                            </span>
+                          )}
+                          <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${product.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                            {product.isActive ? "Идэвхтэй" : "Идэвхгүй"}
+                          </span>
+                        </div>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-600">
                         <span>{formatMoney(product.price)}</span>
@@ -1176,6 +1201,33 @@ export function PartnerContentManager({
               <div>
                 <FieldLabel>Тайлбар</FieldLabel>
                 <TextArea rows={3} value={productForm.description} onChange={(event) => setProductForm((current) => ({ ...current, description: event.target.value }))} />
+              </div>
+              <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+                  <ToggleButton
+                    checked={Number(productForm.marketplacePriority || 0) > 0}
+                    label="Marketplace эхэнд гаргах"
+                    onClick={() =>
+                      setProductForm((current) => ({
+                        ...current,
+                        marketplacePriority: Number(current.marketplacePriority || 0) > 0 ? "0" : "100",
+                      }))
+                    }
+                  />
+                  <div>
+                    <FieldLabel>Дараалал</FieldLabel>
+                    <TextInput
+                      type="number"
+                      min="0"
+                      max="1000000"
+                      step="1"
+                      value={productForm.marketplacePriority}
+                      onChange={(event) =>
+                        setProductForm((current) => ({ ...current, marketplacePriority: event.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <ToggleButton checked={productForm.supplyType === "CHINA_PREORDER"} label="Захиалгын бараа" onClick={() => setProductForm((current) => ({ ...current, supplyType: current.supplyType === "CHINA_PREORDER" ? "IN_STOCK" : "CHINA_PREORDER" }))} />

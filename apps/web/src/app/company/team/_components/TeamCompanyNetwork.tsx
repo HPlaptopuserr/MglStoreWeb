@@ -33,7 +33,7 @@ function NetworkCompanyCard({
     : company.stats?.products
       ? `${company.stats.products} бүтээгдэхүүн`
       : company.isInvestor
-        ? "Investor"
+        ? "Хөрөнгө оруулагч"
         : "Түнш";
 
   return (
@@ -67,7 +67,7 @@ function NetworkCompanyCard({
 
         <div className="mt-14">
           <div className="mb-3 inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-slate-500">
-            {company.businessCategory || (company.isInvestor ? "Investor" : "Partner")}
+            {company.businessCategory || (company.isInvestor ? "Хөрөнгө оруулагч" : "Түнш")}
           </div>
           <h3 className="line-clamp-2 text-xl font-black tracking-tight text-slate-950">
             {company.name}
