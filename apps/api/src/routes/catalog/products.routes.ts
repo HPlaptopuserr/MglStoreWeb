@@ -460,6 +460,12 @@ router.get("/products", optionalAuth, async (req, res) => {
     >;
     const restaurantMenuOnly = isTruthyQueryValue(req.query.restaurantMenu);
     const search = String(req.query.search ?? req.query.q ?? "").trim();
+    const supplyType = String(req.query.type || req.query.supplyType || "").trim();
+    const sort = String(req.query.sort || "newest").trim();
+    const stockFilter = String(req.query.stock || "").trim();
+    const discountOnly = isTruthyQueryValue(req.query.discount);
+    const priceMin = Number(req.query.priceMin);
+    const priceMax = Number(req.query.priceMax);
     const visitorId = String(req.query.visitorId || "").trim();
     const includeExpiredInventory = isTruthyQueryValue(
       req.query.includeExpiredInventory,
@@ -472,6 +478,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, rawLimit) : 0;
     const rawOffset = parseInt(String(req.query.offset || ""), 10);
     const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+    const includeMeta = isTruthyQueryValue(req.query.meta);
     const canBypassAllVisibility = canBypassAllWebProductsVisibility(req);
     const canBypassRequestedOrg = requestedOrganizationId
       ? await canBypassWebProductsVisibility(req, requestedOrganizationId)
@@ -492,6 +499,32 @@ router.get("/products", optionalAuth, async (req, res) => {
     }
     if (organizationId) where.organizationId = organizationId;
     if (restaurantMenuOnly) where.isRestaurantMenuItem = true;
+    if (supplyType === "stock") where.supplyType = { not: "CHINA_PREORDER" };
+    if (supplyType === "preorder") where.supplyType = "CHINA_PREORDER";
+    if (Number.isFinite(priceMin) || Number.isFinite(priceMax)) {
+      where.price = {
+        ...(Number.isFinite(priceMin) ? { gte: priceMin } : {}),
+        ...(Number.isFinite(priceMax) ? { lte: priceMax } : {}),
+      };
+    }
+    if (stockFilter === "in_stock") {
+      where.OR = [
+        ...(Array.isArray(where.OR) ? where.OR : []),
+        { supplyType: "CHINA_PREORDER" },
+        { stock: { gt: 0 } },
+      ];
+    } else if (stockFilter === "low_stock") {
+      where.supplyType = { not: "CHINA_PREORDER" };
+      where.stock = { gt: 0, lte: 5 };
+    } else if (stockFilter === "sold_out") {
+      where.supplyType = { not: "CHINA_PREORDER" };
+      where.stock = { lte: 0 };
+    }
+    if (discountOnly) {
+      where.discounts = {
+        some: { isActive: true, validUntil: { gte: new Date() } },
+      };
+    }
     if (businessCategoryId) {
       where.businessCategoryId = {
         in: await resolveBusinessCategoryFilter(businessCategoryId),
@@ -499,7 +532,8 @@ router.get("/products", optionalAuth, async (req, res) => {
     }
 
     if (search) {
-      where.OR = buildProductSearchWhere(search);
+      const searchWhere = buildProductSearchWhere(search);
+      where.AND = [...(Array.isArray(where.AND) ? where.AND : []), { OR: searchWhere }];
     }
 
     if (
@@ -524,16 +558,34 @@ router.get("/products", optionalAuth, async (req, res) => {
       }
     }
 
+    const totalCountPromise = includeMeta ? prisma.product.count({ where }) : null;
+    const useDatabasePagination = limit > 0 && !search;
     const productCandidateLimit =
       limit > 0
-        ? search
+        ? useDatabasePagination
+          ? limit
+          : search
           ? Math.min(Math.max(offset + limit, limit * 3), 240)
           : offset + limit
         : 0;
 
     const products = await prisma.product.findMany({
       where,
-      orderBy: [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
+      orderBy:
+        sort === "price_asc"
+          ? [{ marketplacePriority: "desc" }, { price: "asc" }]
+          : sort === "price_desc"
+            ? [{ marketplacePriority: "desc" }, { price: "desc" }]
+            : sort === "name_asc"
+              ? [{ marketplacePriority: "desc" }, { name: "asc" }]
+              : sort === "discount"
+                ? [
+                    { marketplacePriority: "desc" },
+                    { discounts: { _count: "desc" } },
+                    { createdAt: "desc" },
+                  ]
+              : [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
+      ...(useDatabasePagination ? { skip: offset } : {}),
       ...(productCandidateLimit > 0 ? { take: productCandidateLimit } : {}),
       include: {
         images: { select: { id: true, url: true }, take: 1 },
@@ -599,20 +651,14 @@ router.get("/products", optionalAuth, async (req, res) => {
       })
       .filter((product) => !search || product.searchScore > 0)
       .sort((a, b) => {
+        if (!search) return 0;
         const priorityDiff =
           (b.marketplacePriority || 0) - (a.marketplacePriority || 0);
         if (priorityDiff !== 0) return priorityDiff;
-        if (search) {
-          const combinedA = a.searchScore + (a.interestScore || 0) * 0.18;
-          const combinedB = b.searchScore + (b.interestScore || 0) * 0.18;
-          if (combinedB !== combinedA) return combinedB - combinedA;
-        } else if (
-          interestProfile.hasSignals &&
-          b.interestScore !== a.interestScore
-        ) {
-          return b.interestScore - a.interestScore;
-        }
-        if (search && b.searchScore !== a.searchScore) {
+        const combinedA = a.searchScore + (a.interestScore || 0) * 0.18;
+        const combinedB = b.searchScore + (b.interestScore || 0) * 0.18;
+        if (combinedB !== combinedA) return combinedB - combinedA;
+        if (b.searchScore !== a.searchScore) {
           return b.searchScore - a.searchScore;
         }
         const expiryDiff =
@@ -623,10 +669,22 @@ router.get("/products", optionalAuth, async (req, res) => {
         );
       });
 
-    if (limit > 0) {
+    if (limit > 0 && !useDatabasePagination) {
       response = response.slice(offset, offset + limit);
-    } else if (offset > 0) {
+    } else if (offset > 0 && !useDatabasePagination) {
       response = response.slice(offset);
+    }
+
+    if (includeMeta) {
+      const totalCount = await totalCountPromise;
+      return res.json({
+        products: response,
+        total: totalCount ?? response.length,
+        limit,
+        offset,
+        hasMore:
+          limit > 0 ? offset + response.length < (totalCount ?? response.length) : false,
+      });
     }
 
     return res.json(response);

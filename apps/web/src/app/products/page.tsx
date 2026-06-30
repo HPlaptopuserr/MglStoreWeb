@@ -22,7 +22,6 @@ import {
 import { ProductSearchHero } from "./_components/ProductSearchHero";
 
 const PRODUCTS_PER_PAGE = 16;
-const PRODUCT_FETCH_LIMIT = 80;
 const MARKETPLACE_SIDE_BANNER_KEY = "marketplace-side-banner";
 const MARKETPLACE_SERVICES_PROMO_KEY = "marketplace-services-promo";
 
@@ -66,6 +65,16 @@ interface ApiProduct {
   createdAt: string;
   searchScore?: number;
 }
+
+type ProductsApiResponse =
+  | ApiProduct[]
+  | {
+      products?: ApiProduct[];
+      total?: number;
+      hasMore?: boolean;
+      limit?: number;
+      offset?: number;
+    };
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "newest", label: "Шинэ эхэнд" },
@@ -115,7 +124,7 @@ function buildProductsUrl(
   categoryId: string | null,
   search: string,
   supplyType: SupplyKey = "all",
-  options: { sort?: SortKey; discountOnly?: boolean } = {},
+  options: { sort?: SortKey; discountOnly?: boolean; page?: number } = {},
 ) {
   const params = new URLSearchParams();
   if (categoryId) params.set("category", categoryId);
@@ -124,6 +133,7 @@ function buildProductsUrl(
   if (supplyType !== "all") params.set("type", supplyType);
   if (options.sort && options.sort !== "newest") params.set("sort", options.sort);
   if (options.discountOnly) params.set("discount", "1");
+  if (options.page && options.page > 1) params.set("page", String(options.page));
   const qs = params.toString();
   return qs ? `/products?${qs}` : "/products";
 }
@@ -134,68 +144,6 @@ function normalizeSearchText(value: string) {
     .replace(/[^\p{L}\p{N}\s]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function tokenizeSearchText(value: string) {
-  return normalizeSearchText(value)
-    .split(" ")
-    .filter((token) => token.length > 1 && !["юм", "зүйл", "хийх", "авах"].includes(token));
-}
-
-const LATIN_SEARCH_ALIASES: Record<string, string[]> = {
-  hool: ["хоол"],
-  huns: ["хүнс"],
-  undaa: ["ундаа"],
-  utas: ["утас"],
-  huvtsas: ["хувцас"],
-  tsamts: ["цамц"],
-  gutal: ["гутал"],
-  omd: ["өмд"],
-  umd: ["өмд"],
-  goy: ["гоо", "гоё"],
-  goyo: ["гоо", "гоё"],
-  tseneglegch: ["цэнэглэгч"],
-  tsahilgaan: ["цахилгаан"],
-};
-
-function expandLocalSearchTokens(query: string) {
-  const tokens = tokenizeSearchText(query);
-  return [
-    normalizeSearchText(query),
-    ...tokens,
-    ...tokens.flatMap((token) => LATIN_SEARCH_ALIASES[token] || []),
-  ].filter(Boolean);
-}
-
-function compareMarketplacePriority(
-  a: { marketplacePriority?: number | null },
-  b: { marketplacePriority?: number | null },
-) {
-  return (b.marketplacePriority || 0) - (a.marketplacePriority || 0);
-}
-
-function productMatchesSearch(product: ApiProduct, query: string) {
-  const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery) return true;
-  if ((product.searchScore ?? 0) > 0) return true;
-  const haystack = normalizeSearchText(
-    [
-      product.name,
-      product.description,
-      product.sku,
-      product.barcode,
-      product.organization?.name,
-      product.businessCategory?.name,
-      product.businessCategory?.slug,
-      product.businessCategory?.parent?.name,
-      product.businessCategory?.parent?.slug,
-    ]
-      .filter(Boolean)
-      .join(" "),
-  );
-  if (haystack.includes(normalizedQuery)) return true;
-  const tokens = expandLocalSearchTokens(query);
-  return tokens.length > 0 && tokens.some((token) => haystack.includes(token));
 }
 
 function buildSearchSuggestions({
@@ -388,6 +336,7 @@ function ProductsContent() {
   const typeParam = searchParams.get("type");
   const sortParam = searchParams.get("sort");
   const discountParam = searchParams.get("discount");
+  const pageParam = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
   const supplyParam: SupplyKey =
     typeParam === "preorder" ? "preorder" : typeParam === "stock" ? "stock" : "all";
   const initialSortKey: SortKey = SORT_OPTIONS.some((option) => option.key === sortParam)
@@ -403,7 +352,8 @@ function ProductsContent() {
   const [projectBanners, setProjectBanners] = useState<MarketplaceProjectBanner[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(categoryParam);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(pageParam);
+  const [totalProductCount, setTotalProductCount] = useState(0);
 
   // Filter & Sort state
   const [sortKey, setSortKey] = useState<SortKey>(initialSortKey);
@@ -464,34 +414,30 @@ function ProductsContent() {
     const loadProducts = async () => {
       setProductsLoading(true);
       try {
-        const fetchProducts = async (limit?: number) => {
-          const params = new URLSearchParams();
-          if (activeCategory) params.set("businessCategoryId", activeCategory);
-          if (debouncedSearch) params.set("search", debouncedSearch);
-          if (limit) params.set("limit", String(limit));
-          appendProductVisitorId(params);
-          const query = params.toString();
-          const url = `${API}/products${query ? `?${query}` : ""}`;
-          const res = await authFetch(url);
-          if (!res.ok) return [];
-          const data = await res.json();
-          return Array.isArray(data) ? data : [];
-        };
-
-        const firstBatch = await fetchProducts(PRODUCT_FETCH_LIMIT);
+        const params = new URLSearchParams();
+        if (activeCategory) params.set("businessCategoryId", activeCategory);
+        if (selectedOrganization) params.set("organizationId", selectedOrganization);
+        if (debouncedSearch) params.set("search", debouncedSearch);
+        if (supplyFilter !== "all") params.set("type", supplyFilter);
+        if (sortKey !== "newest") params.set("sort", sortKey);
+        if (discountOnly) params.set("discount", "1");
+        if (priceMin) params.set("priceMin", priceMin);
+        if (priceMax) params.set("priceMax", priceMax);
+        if (stockFilter !== "all") params.set("stock", stockFilter);
+        params.set("limit", String(PRODUCTS_PER_PAGE));
+        params.set("offset", String((currentPage - 1) * PRODUCTS_PER_PAGE));
+        params.set("meta", "1");
+        appendProductVisitorId(params);
+        const query = params.toString();
+        const url = `${API}/products?${query}`;
+        const res = await authFetch(url);
+        if (!res.ok) return;
+        const data = (await res.json()) as ProductsApiResponse;
+        const products = Array.isArray(data) ? data : Array.isArray(data.products) ? data.products : [];
+        const total = Array.isArray(data) ? data.length : data.total ?? products.length;
         if (cancelled) return;
-        setApiProducts(firstBatch);
-        setProductsLoading(false);
-
-        if (firstBatch.length === PRODUCT_FETCH_LIMIT) {
-          const fullCatalog = await fetchProducts();
-          if (cancelled || fullCatalog.length === 0) return;
-          setApiProducts((current) => {
-            const byId = new Map(current.map((product) => [product.id, product]));
-            for (const product of fullCatalog) byId.set(product.id, product);
-            return [...byId.values()];
-          });
-        }
+        setApiProducts(products);
+        setTotalProductCount(total);
       } catch {}
       finally { setProductsLoading(false); }
     };
@@ -499,7 +445,7 @@ function ProductsContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeCategory, authFetch, debouncedSearch]);
+  }, [activeCategory, authFetch, currentPage, debouncedSearch, discountOnly, priceMax, priceMin, selectedOrganization, sortKey, stockFilter, supplyFilter]);
 
   useEffect(() => {
     if (!activeCategory) return;
@@ -527,8 +473,8 @@ function ProductsContent() {
     setSupplyFilter(supplyParam);
     setSortKey(initialSortKey);
     setDiscountOnly(initialDiscountOnly);
-    setCurrentPage(1);
-  }, [resolvedCategoryParam, searchParam, supplyParam, initialSortKey, initialDiscountOnly]);
+    setCurrentPage(pageParam);
+  }, [resolvedCategoryParam, searchParam, supplyParam, initialSortKey, initialDiscountOnly, pageParam]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -632,10 +578,10 @@ function ProductsContent() {
   ].filter(Boolean).length;
 
   const supplyCounts = useMemo(() => ({
-    all: apiProducts.length,
+    all: totalProductCount,
     stock: apiProducts.filter((p) => p.supplyType !== "CHINA_PREORDER").length,
     preorder: apiProducts.filter((p) => p.supplyType === "CHINA_PREORDER").length,
-  }), [apiProducts]);
+  }), [apiProducts, totalProductCount]);
 
   const availableOrganizations = useMemo(() => {
     const byId = new Map<string, { id: string; name: string; count: number }>();
@@ -653,97 +599,23 @@ function ProductsContent() {
     return [...byId.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   }, [apiProducts]);
 
-  // Apply filters + sort client-side
-  const processedProducts = useMemo(() => {
-    let list = [...apiProducts];
+  const processedProducts = apiProducts;
 
-    // Search
-    if (searchQuery.trim()) {
-      list = list.filter((product) => productMatchesSearch(product, searchQuery));
-    }
+  const totalPages = Math.max(1, Math.ceil(totalProductCount / PRODUCTS_PER_PAGE));
 
-    // Discount only
-    if (discountOnly) {
-      list = list.filter((p) => p.discounts.length > 0);
-    }
-
-    if (selectedOrganization) {
-      list = list.filter((p) => p.organization?.id === selectedOrganization);
-    }
-
-    if (supplyFilter === "stock") {
-      list = list.filter((p) => p.supplyType !== "CHINA_PREORDER");
-    } else if (supplyFilter === "preorder") {
-      list = list.filter((p) => p.supplyType === "CHINA_PREORDER");
-    }
-
-    if (stockFilter === "in_stock") {
-      list = list.filter((p) => p.supplyType === "CHINA_PREORDER" || (p.stock ?? 0) > 0);
-    } else if (stockFilter === "low_stock") {
-      list = list.filter((p) => {
-        const stock = p.stock ?? 0;
-        return p.supplyType !== "CHINA_PREORDER" && stock > 0 && stock <= 5;
-      });
-    } else if (stockFilter === "sold_out") {
-      list = list.filter((p) => p.supplyType !== "CHINA_PREORDER" && (p.stock ?? 0) <= 0);
-    }
-
-    // Price range
-    const min = priceMin !== "" ? parseFloat(priceMin) : null;
-    const max = priceMax !== "" ? parseFloat(priceMax) : null;
-    if (min !== null) list = list.filter((p) => p.price >= min);
-    if (max !== null) list = list.filter((p) => p.price <= max);
-
-    // Sort
-    switch (sortKey) {
-      case "price_asc":
-        list.sort((a, b) => compareMarketplacePriority(a, b) || a.price - b.price);
-        break;
-      case "price_desc":
-        list.sort((a, b) => compareMarketplacePriority(a, b) || b.price - a.price);
-        break;
-      case "discount":
-        list.sort(
-          (a, b) =>
-            compareMarketplacePriority(a, b) ||
-            (b.discounts[0]?.percent ?? 0) - (a.discounts[0]?.percent ?? 0),
-        );
-        break;
-      case "name_asc":
-        list.sort((a, b) => compareMarketplacePriority(a, b) || a.name.localeCompare(b.name));
-        break;
-      case "newest":
-      default:
-        if (searchQuery.trim() && list.some((product) => product.searchScore)) {
-          list.sort((a, b) => {
-            return compareMarketplacePriority(a, b) || (b.searchScore ?? 0) - (a.searchScore ?? 0);
-          });
-        } else {
-          list.sort(
-            (a, b) =>
-              compareMarketplacePriority(a, b) ||
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          );
-        }
-        break;
-    }
-
-    return list;
-  }, [apiProducts, searchQuery, discountOnly, selectedOrganization, supplyFilter, stockFilter, priceMin, priceMax, sortKey]);
-
-  const totalPages = Math.max(1, Math.ceil(processedProducts.length / PRODUCTS_PER_PAGE));
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [processedProducts.length, discountOnly, priceMin, priceMax, selectedOrganization, supplyFilter, stockFilter, sortKey]);
-
-  const displayProducts = processedProducts.slice(
-    (currentPage - 1) * PRODUCTS_PER_PAGE,
-    currentPage * PRODUCTS_PER_PAGE,
-  );
+  const displayProducts = processedProducts;
 
   const goToPage = (p: number) => {
-    setCurrentPage(p);
+    const nextPage = Math.min(totalPages, Math.max(1, p));
+    setCurrentPage(nextPage);
+    router.push(
+      buildProductsUrl(activeCategory, searchQuery, supplyFilter, {
+        sort: sortKey,
+        discountOnly,
+        page: nextPage,
+      }),
+      { scroll: false },
+    );
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -795,7 +667,7 @@ function ProductsContent() {
         categories={apiCategories}
         activeCategory={activeCategory}
         searchQuery={searchQuery}
-        total={processedProducts.length}
+        total={totalProductCount}
         products={apiProducts}
         onCategoryClick={handleCategoryClick}
         sideBanner={sideBanner}
@@ -806,7 +678,7 @@ function ProductsContent() {
       />
 
       <ProductCommandBar
-        total={processedProducts.length}
+        total={totalProductCount}
         activeFilterCount={activeFilterCount}
         sortOptions={SORT_OPTIONS}
         sortKey={sortKey}
@@ -1007,7 +879,7 @@ function ProductsContent() {
           loading={productsLoading}
           currentPage={currentPage}
           totalPages={totalPages}
-          totalProducts={processedProducts.length}
+          totalProducts={totalProductCount}
           pageSize={PRODUCTS_PER_PAGE}
           hasActiveFilters={activeFilterCount > 0}
           isMember={isMember}
