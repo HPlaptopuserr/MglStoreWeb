@@ -525,7 +525,11 @@ router.get("/products", optionalAuth, async (req, res) => {
     }
 
     const productCandidateLimit =
-      limit > 0 ? Math.max(offset + limit, Math.min(limit * 3, 240)) : 0;
+      limit > 0
+        ? search
+          ? Math.min(Math.max(offset + limit, limit * 3), 240)
+          : offset + limit
+        : 0;
 
     const products = await prisma.product.findMany({
       where,
