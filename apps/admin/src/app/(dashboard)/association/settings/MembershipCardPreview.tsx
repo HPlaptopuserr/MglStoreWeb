@@ -41,8 +41,8 @@ export function MembershipCardPreview({
 
       <div className={`rounded-2xl border p-4 shadow-sm ${PREVIEW_ACCENTS[idx % PREVIEW_ACCENTS.length]}`}>
         <div className="mb-4 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="truncate text-xl font-black text-slate-950">
+          <div className="min-w-0 flex-1">
+            <h3 className="max-w-full break-words text-xl font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">
               {type.label || "Tier нэр"}
             </h3>
             <div className="mt-2 flex items-end gap-1.5">
