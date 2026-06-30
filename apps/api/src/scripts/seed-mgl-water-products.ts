@@ -220,19 +220,29 @@ async function findOrCreateOrganization() {
 }
 
 async function getCategoryIds() {
-  const [businessCategory, category] = await Promise.all([
-    prisma.businessCategory.findFirst({
+  const [businessCategories, category] = await Promise.all([
+    prisma.businessCategory.findMany({
       where: {
         OR: [
-          { slug: "beverages" },
-          { slug: "beverage-shop" },
-          { slug: "food-beverage" },
+          { slug: { contains: "beverage", mode: "insensitive" } },
+          { slug: { contains: "drink", mode: "insensitive" } },
+          { slug: { contains: "water", mode: "insensitive" } },
+          { slug: { contains: "food", mode: "insensitive" } },
           { name: { contains: "Ундаа, ус", mode: "insensitive" } },
           { name: { contains: "Ундаа", mode: "insensitive" } },
+          { name: { contains: "Ус", mode: "insensitive" } },
+          { name: { contains: "Хоол хүнс", mode: "insensitive" } },
         ],
+        isActive: true,
       },
-      select: { id: true, name: true },
-      orderBy: [{ level: "desc" }, { sortOrder: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        level: true,
+        sortOrder: true,
+        parent: { select: { slug: true, name: true } },
+      },
     }),
     prisma.category.findFirst({
       where: {
@@ -244,6 +254,33 @@ async function getCategoryIds() {
       select: { id: true, name: true },
     }),
   ]);
+
+  const scoreBusinessCategory = (item: (typeof businessCategories)[number]) => {
+    const text = `${item.slug} ${item.name} ${item.parent?.slug || ""} ${item.parent?.name || ""}`.toLowerCase();
+    let score = 0;
+
+    if (text.includes("ус")) score += 90;
+    if (text.includes("ундаа")) score += 80;
+    if (text.includes("beverage")) score += 70;
+    if (text.includes("drink")) score += 60;
+    if (text.includes("water")) score += 60;
+    if (text.includes("food") || text.includes("хүнс") || text.includes("хоол")) score += 25;
+    if (item.parent && (text.includes("food") || text.includes("хүнс") || text.includes("хоол"))) score += 20;
+    if (text.includes("equipment") || text.includes("төхөөрөмж") || text.includes("бэлтгэх")) score -= 120;
+    if ((item.level || 0) > 0) score += 10;
+
+    return score;
+  };
+
+  const businessCategory = businessCategories
+    .map((item) => ({ item, score: scoreBusinessCategory(item) }))
+    .filter(({ score }) => score > 0)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (b.item.level || 0) - (a.item.level || 0) ||
+        (a.item.sortOrder || 0) - (b.item.sortOrder || 0),
+    )[0]?.item;
 
   return {
     businessCategoryId: businessCategory?.id ?? null,
