@@ -33,6 +33,7 @@ import {
   Video,
 } from "lucide-react";
 import { getServicePostCategories } from "@mgl/ui";
+import { getInvestorTierLabel } from "@mgl/types";
 import { resolveApiAssetUrl } from "@/lib/api";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 import { ProductDetailOverlay } from "@/components/organisms/ProductDetailOverlay";
@@ -224,7 +225,7 @@ function HeroSection({ data }: { data: OrganizationDetailData }) {
                 {data.investor?.isInvestor && (
                   <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 text-[10px] font-bold px-2.5 py-1 rounded-full border border-amber-200">
                     <Crown className="w-3 h-3" />
-                    {data.investor.level || "Investor"}
+                    {data.investor.level || getInvestorTierLabel(data.investor.tier)}
                   </span>
                 )}
                 {data.categories.map((cat, i) => (

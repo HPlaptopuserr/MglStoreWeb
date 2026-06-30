@@ -8,12 +8,6 @@ interface InvestorsSectionProps {
   investors: Investor[];
 }
 
-const TIER_LABEL: Record<string, string> = {
-  TOP: "Top Investor",
-  STRATEGIC: "Strategic Investor",
-  INVESTOR: "Investor",
-};
-
 export function InvestorsSection({ investors }: InvestorsSectionProps) {
   return (
     <section className="relative overflow-hidden border-b border-slate-200 bg-[linear-gradient(180deg,#eef2f7_0%,#f8fafc_100%)]">
@@ -40,8 +34,9 @@ export function InvestorsSection({ investors }: InvestorsSectionProps) {
               slug={inv.slug}
               logoUrl={inv.logoUrl}
               tier={inv.tier}
-              tierLabel={inv.tierLabel || TIER_LABEL[inv.tier] || "Investor"}
+              tierLabel={inv.tierLabel}
               investmentLevel={inv.investmentLevel}
+              investmentAmount={inv.investmentAmount}
               description={inv.description}
               featured={inv.featured}
             />

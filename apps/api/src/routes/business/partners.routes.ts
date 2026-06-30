@@ -14,7 +14,7 @@ import {
 } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import bcrypt from "bcryptjs";
-import { Permission } from "@mgl/types";
+import { parseInvestmentAmount, Permission } from "@mgl/types";
 import {
   optionalAuth,
   requireAuth,
@@ -84,9 +84,7 @@ const getPartnerPublicInfoScore = (partner: any) => {
 };
 
 const getPartnerInvestmentAmount = (partner: any) =>
-  partner?.investorProfile?.investmentLevel
-    ? Number(partner.investorProfile.investmentLevel) || 0
-    : 0;
+  parseInvestmentAmount(partner?.investorProfile?.investmentLevel) || 0;
 
 const compareWebPartners = (a: any, b: any) => {
   const publicInfoDiff = getPartnerPublicInfoScore(b) - getPartnerPublicInfoScore(a);
@@ -912,9 +910,9 @@ router.patch(
         id: updated!.id,
         name: updated!.name,
         isInvestor: !!updated!.investorProfile,
-        investmentAmount: updated!.investorProfile?.investmentLevel
-          ? Number(updated!.investorProfile.investmentLevel)
-          : null,
+        investmentAmount: parseInvestmentAmount(
+          updated!.investorProfile?.investmentLevel,
+        ),
       });
     } catch (error) {
       console.error("toggle investor error", error);
@@ -1128,9 +1126,8 @@ router.get("/partners", async (req, res) => {
       createdAt: partner.createdAt,
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
-      investmentAmount: partner.investorProfile?.investmentLevel
-        ? Number(partner.investorProfile.investmentLevel)
-        : null,
+      investorLevel: partner.investorProfile?.investmentLevel || null,
+      investmentAmount: parseInvestmentAmount(partner.investorProfile?.investmentLevel),
       publicInfoScore: getPartnerPublicInfoScore(partner),
       subdomainEnabled: partner.subdomainEnabled,
       planActivatedAt: partner.planActivatedAt,
@@ -1292,9 +1289,8 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
       createdAt: partner.createdAt,
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
-      investmentAmount: partner.investorProfile?.investmentLevel
-        ? Number(partner.investorProfile.investmentLevel)
-        : null,
+      investorLevel: partner.investorProfile?.investmentLevel || null,
+      investmentAmount: parseInvestmentAmount(partner.investorProfile?.investmentLevel),
       subdomainEnabled: partner.subdomainEnabled,
       planType: (partner as any).planType,
       planActivatedAt: partner.planActivatedAt,
@@ -1978,9 +1974,8 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
       createdAt: partner.createdAt,
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
-      investmentAmount: partner.investorProfile?.investmentLevel
-        ? Number(partner.investorProfile.investmentLevel)
-        : null,
+      investorLevel: partner.investorProfile?.investmentLevel || null,
+      investmentAmount: parseInvestmentAmount(partner.investorProfile?.investmentLevel),
       subdomainEnabled: partner.subdomainEnabled,
       planActivatedAt: partner.planActivatedAt,
       planExpiresAt: partner.planExpiresAt,

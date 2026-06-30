@@ -15,6 +15,7 @@ import {
   Check,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
+import { getInvestorTierLabel } from "@mgl/types";
 
 interface Organization {
   id: string;
@@ -40,9 +41,9 @@ interface InvestorProfile {
 }
 
 const TIER_LABELS: Record<string, string> = {
-  TOP: "Top Investor",
-  STRATEGIC: "Strategic Investor",
-  INVESTOR: "Investor",
+  TOP: getInvestorTierLabel("TOP"),
+  STRATEGIC: getInvestorTierLabel("STRATEGIC"),
+  INVESTOR: getInvestorTierLabel("INVESTOR"),
 };
 
 const TIER_STYLES: Record<string, string> = {
@@ -439,13 +440,13 @@ export default function InvestorsPage() {
               {/* Investment Level */}
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-600">
-                  Хөрөнгө оруулалтын түвшин (нэр)
+                  Хөрөнгө оруулалтын хэмжээ эсвэл ангилал
                 </label>
                 <input
                   type="text"
                   value={formLevel}
                   onChange={(e) => setFormLevel(e.target.value)}
-                  placeholder="жишээ: Gold, Platinum..."
+                  placeholder="жишээ: 50000000 эсвэл Platinum"
                   className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                 />
               </div>

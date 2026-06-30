@@ -113,7 +113,7 @@ const QUICK_SKILLS = [
   "Founder",
   "Strategy",
   "Leadership",
-  "Investor",
+  "Хөрөнгө оруулагч",
   "Finance",
   "Advisor",
   "HR",

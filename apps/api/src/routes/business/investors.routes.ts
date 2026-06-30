@@ -1,15 +1,14 @@
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
-import { Permission } from "@mgl/types";
+import {
+  getInvestorTierLabel,
+  INVESTOR_TIER_ORDER,
+  parseInvestmentAmount,
+  Permission,
+} from "@mgl/types";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
-
-const TIER_LABELS: Record<string, string> = {
-  TOP: "Top Investor",
-  STRATEGIC: "Strategic Investor",
-  INVESTOR: "Investor",
-};
 
 // Get all public investors (ordered by tier → priority → joinedAt)
 router.get("/investors", async (req, res) => {
@@ -43,10 +42,9 @@ router.get("/investors", async (req, res) => {
     });
 
     // Re-sort: TOP > STRATEGIC > INVESTOR
-    const tierOrder: Record<string, number> = { TOP: 0, STRATEGIC: 1, INVESTOR: 2 };
     investors.sort((a: (typeof investors)[number], b: (typeof investors)[number]) => {
       const tierDiff =
-        (tierOrder[a.tier] ?? 2) - (tierOrder[b.tier] ?? 2);
+        (INVESTOR_TIER_ORDER[a.tier] ?? 2) - (INVESTOR_TIER_ORDER[b.tier] ?? 2);
       if (tierDiff !== 0) return tierDiff;
       return b.priority - a.priority;
     });
@@ -60,9 +58,10 @@ router.get("/investors", async (req, res) => {
       bannerUrl: inv.organization.bannerUrl,
       description: inv.organization.shortDescription || inv.description,
       tier: inv.tier,
-      tierLabel: TIER_LABELS[inv.tier] || "Investor",
+      tierLabel: getInvestorTierLabel(inv.tier),
       featured: inv.featured,
       investmentLevel: inv.investmentLevel,
+      investmentAmount: parseInvestmentAmount(inv.investmentLevel),
       joinedAt: inv.joinedAt,
     }));
 
@@ -102,10 +101,9 @@ router.get("/investors/featured", async (req, res) => {
       },
     });
 
-    const tierOrder: Record<string, number> = { TOP: 0, STRATEGIC: 1, INVESTOR: 2 };
     investors.sort((a: (typeof investors)[number], b: (typeof investors)[number]) => {
       const tierDiff =
-        (tierOrder[a.tier] ?? 2) - (tierOrder[b.tier] ?? 2);
+        (INVESTOR_TIER_ORDER[a.tier] ?? 2) - (INVESTOR_TIER_ORDER[b.tier] ?? 2);
       if (tierDiff !== 0) return tierDiff;
       return b.priority - a.priority;
     });
@@ -119,9 +117,10 @@ router.get("/investors/featured", async (req, res) => {
       bannerUrl: inv.organization.bannerUrl,
       description: inv.organization.shortDescription || inv.description,
       tier: inv.tier,
-      tierLabel: TIER_LABELS[inv.tier] || "Investor",
+      tierLabel: getInvestorTierLabel(inv.tier),
       featured: inv.featured,
       investmentLevel: inv.investmentLevel,
+      investmentAmount: parseInvestmentAmount(inv.investmentLevel),
       joinedAt: inv.joinedAt,
     }));
 

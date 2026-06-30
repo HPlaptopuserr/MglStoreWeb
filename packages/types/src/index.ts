@@ -8,6 +8,7 @@ export * from "./ui/companyCard";
 export * from "./ui/productCard";
 
 export * from "./domain/company";
+export * from "./domain/investor";
 export * from "./domain/user";
 export * from "./domain/product";
 export * from "./domain/order";

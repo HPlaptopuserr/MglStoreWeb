@@ -14,6 +14,7 @@ interface Investor {
   logoUrl: string | null;
   tier: string;
   investmentLevel: string | null;
+  investmentAmount?: number | null;
 }
 
 export const BrandTicker = () => {
@@ -56,7 +57,7 @@ export const BrandTicker = () => {
                 href={`/organizations/${inv.slug}`}
                 className="group/item flex shrink-0 items-center gap-2.5 rounded-full border border-white/5 bg-white/[0.03] py-1 pl-1 pr-3.5 shadow-sm shadow-black/20 transition-all hover:-translate-y-0.5 hover:border-amber-300/25 hover:bg-white/[0.07] hover:shadow-lg hover:shadow-amber-950/30"
               >
-                <InvestorRingWrapper investmentAmount={inv.investmentLevel} rounded="full">
+                <InvestorRingWrapper investmentAmount={inv.investmentAmount} rounded="full">
                   <div className="h-8 w-8 overflow-hidden rounded-full bg-white p-0.5 shadow-md shadow-black/25">
                     <div className="relative h-full w-full overflow-hidden rounded-full bg-slate-100">
                       {inv.logoUrl ? (

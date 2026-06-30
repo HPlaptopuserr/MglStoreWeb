@@ -11,6 +11,7 @@ interface InvestorCardProps {
   tier: "TOP" | "STRATEGIC" | "INVESTOR";
   tierLabel: string;
   investmentLevel?: string | null;
+  investmentAmount?: number | null;
   description?: string | null;
   featured?: boolean;
 }
@@ -49,6 +50,7 @@ export function InvestorCard({
   tier,
   tierLabel,
   investmentLevel,
+  investmentAmount,
   description,
   featured,
 }: InvestorCardProps) {
@@ -70,7 +72,7 @@ export function InvestorCard({
       </div>
 
       <div className="mt-2">
-        <InvestorRingWrapper investmentAmount={investmentLevel} rounded="xl">
+        <InvestorRingWrapper investmentAmount={investmentAmount} rounded="xl">
           <div
             className={`relative ${style.logoSize} overflow-hidden rounded-2xl bg-slate-50`}
           >
@@ -96,13 +98,12 @@ export function InvestorCard({
         {name}
       </h3>
 
-      {/* Investment level label */}
-{/*       {investmentLevel && (
-        <span className="text-xs font-medium text-amber-400/80">
+      {investmentLevel && (
+        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
           {investmentLevel}
         </span>
       )}
- */}
+
       {/* Description */}
       {description && tier !== "INVESTOR" && (
         <p className="line-clamp-2 max-w-[240px] text-xs leading-5 text-slate-500">
