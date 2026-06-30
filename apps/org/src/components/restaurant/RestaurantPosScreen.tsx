@@ -1904,11 +1904,13 @@ export function RestaurantPosScreen() {
 
   const printQrMenu = () => {
     if (!qrMenuUrl || typeof document === "undefined") return;
-    const qrMarkup = qrPrintRef.current?.innerHTML || "";
-    if (!qrMarkup) {
-      window.print();
+    const qrSvgMarkup =
+      qrPrintRef.current?.querySelector("svg")?.outerHTML || "";
+    if (!qrSvgMarkup) {
+      setQrError("QR бүрэн үүсээгүй байна. Дахин оролдоно уу.");
       return;
     }
+    const qrInstruction = "QR уншуулан захиалгаа өгнө үү";
 
     const iframe = document.createElement("iframe");
     iframe.setAttribute("aria-hidden", "true");
@@ -1942,42 +1944,61 @@ export function RestaurantPosScreen() {
           <meta charset="utf-8" />
           <title>Table QR ${escapeReceiptHtml(qrSelectedTable.label)}</title>
           <style>
-            @page { size: 90mm 120mm; margin: 6mm; }
+            @page { size: A4 portrait; margin: 12mm; }
             * { box-sizing: border-box; }
             body {
               margin: 0;
               color: #111827;
               background: #fff;
-              font-family: Arial, Helvetica, sans-serif;
+              font-family: "Segoe UI", Arial, Helvetica, sans-serif;
               text-align: center;
+              min-height: calc(100vh - 24mm);
+              display: flex;
+              align-items: flex-start;
+              justify-content: center;
+              padding-top: 8mm;
             }
             .card {
-              min-height: 100mm;
-              border: 2px solid #111827;
-              border-radius: 18px;
-              padding: 12mm 6mm;
+              width: 82mm;
+              border: 1.4pt solid #111827;
+              border-radius: 14pt;
+              padding: 8mm 7mm;
               display: flex;
               flex-direction: column;
               align-items: center;
-              justify-content: center;
-              gap: 5mm;
+              gap: 4mm;
+              break-inside: avoid;
+              page-break-inside: avoid;
             }
-            h1 { margin: 0; font-size: 20px; }
-            p { margin: 0; font-size: 12px; line-height: 1.45; }
-            .table { font-size: 32px; font-weight: 800; }
-            .url { max-width: 70mm; overflow-wrap: anywhere; font-size: 9px; color: #4b5563; }
-            svg { width: 54mm; height: 54mm; }
+            h1 { margin: 0; font-size: 14pt; font-weight: 700; line-height: 1.2; }
+            p { margin: 0; line-height: 1.35; }
+            .branch { margin-top: 1mm; font-size: 9pt; font-weight: 500; color: #4b5563; }
+            .table { font-size: 27pt; font-weight: 800; line-height: 1; }
+            .qr-note { max-width: 68mm; font-size: 14pt; font-weight: 700; line-height: 1.25; }
+            .qr-box {
+              display: flex;
+              width: 58mm;
+              height: 58mm;
+              align-items: center;
+              justify-content: center;
+            }
+            .qr-box svg {
+              display: block;
+              width: 58mm !important;
+              height: 58mm !important;
+            }
+            .url { max-width: 68mm; overflow-wrap: anywhere; font-size: 6pt; color: #6b7280; }
           </style>
         </head>
         <body>
           <div class="card">
             <div>
               <h1>${escapeReceiptHtml(user.organizationName || "MGL Store Restaurant")}</h1>
-              <p>${escapeReceiptHtml(selectedRegister?.branch.name || "")}</p>
+              <p class="branch">${escapeReceiptHtml(selectedRegister?.branch.name || "")}</p>
             </div>
             <div class="table">${escapeReceiptHtml(qrSelectedTable.label)}</div>
-            <div>${qrMarkup}</div>
-            <p>QR уншуулаад менюгээсээ захиална уу</p>
+            <p class="qr-note">${escapeReceiptHtml(qrInstruction)}</p>
+            <div class="qr-box">${qrSvgMarkup}</div>
             <p class="url">${escapeReceiptHtml(qrMenuUrl)}</p>
           </div>
         </body>
@@ -5267,8 +5288,13 @@ export function RestaurantPosScreen() {
                 <div className="mt-6 grid grid-cols-[260px_minmax(0,1fr)] gap-5 max-md:grid-cols-1">
                   <div
                     ref={qrPrintRef}
-                    className="flex min-h-72 items-center justify-center rounded-2xl bg-white p-5 text-slate-950"
+                    className="flex min-h-72 flex-col items-center justify-center rounded-2xl bg-white p-5 text-slate-950"
                   >
+                    {qrMenuUrl ? (
+                      <p className="qr-note mb-4 text-center text-lg font-bold leading-6 text-slate-950">
+                        QR уншуулан захиалгаа өгнө үү
+                      </p>
+                    ) : null}
                     {qrSelectedTable.id &&
                     qrLoadingTableId === qrSelectedTable.id ? (
                       <Loader2 className="h-10 w-10 animate-spin text-slate-400" />
