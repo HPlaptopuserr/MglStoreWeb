@@ -809,6 +809,125 @@ router.get(
   },
 );
 
+router.get("/products/trending", optionalAuth, async (req, res) => {
+  try {
+    const rawLimit = parseInt(String(req.query.limit || ""), 10);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(18, rawLimit) : 6;
+    const categoryId = String(req.query.businessCategoryId || "").trim();
+    const period = String(req.query.period || "1d").trim().toLowerCase();
+    const periodDays = period === "1m" ? 30 : period === "1w" ? 7 : 1;
+    const since = new Date(Date.now() - periodDays * 86_400_000);
+
+    const productWhere: any = {
+      deletedAt: null,
+      organization: { deletedAt: null, status: "ACTIVE" },
+      isActive: true,
+      reviewStatus: "APPROVED",
+    };
+
+    if (categoryId) {
+      productWhere.businessCategoryId = {
+        in: await resolveBusinessCategoryFilter(categoryId),
+      };
+    }
+
+    if (!canBypassAllWebProductsVisibility(req)) {
+      const visibleOrganizationIds =
+        await getWebProductsEnabledOrganizationIds();
+      productWhere.organizationId = { in: visibleOrganizationIds };
+    }
+
+    const trendingProductInclude = {
+      images: { select: { id: true, url: true }, take: 1 },
+      businessCategory: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          parent: { select: { id: true, name: true, slug: true } },
+        },
+      },
+      organization: { select: { id: true, name: true, logoUrl: true } },
+      discounts: {
+        where: { isActive: true, validUntil: { gte: new Date() } },
+        select: { percent: true, validUntil: true },
+        take: 1,
+      },
+    } as const;
+
+    const viewedGroups = await prisma.productInteraction.groupBy({
+      by: ["productId"],
+      where: {
+        productId: { not: null },
+        type: "VIEW",
+        createdAt: { gte: since },
+        product: productWhere,
+      },
+      _sum: { weight: true },
+      _count: { productId: true },
+      orderBy: [{ _count: { productId: "desc" } }],
+      take: limit,
+    });
+
+    const popularIds = viewedGroups
+      .map((item) => item.productId)
+      .filter((id): id is string => Boolean(id));
+    const popularWeightById = new Map(
+      viewedGroups
+        .filter((item) => item.productId)
+        .map((item) => [
+          item.productId as string,
+          (item._sum.weight || 0) + item._count.productId,
+        ]),
+    );
+
+    const popularProducts = popularIds.length
+      ? await prisma.product.findMany({
+          where: { ...productWhere, id: { in: popularIds } },
+          include: trendingProductInclude,
+        })
+      : [];
+
+    const popularById = new Map(
+      popularProducts.map((product) => [product.id, product]),
+    );
+    const rankedProducts = popularIds
+      .map((id) => popularById.get(id))
+      .filter((product): product is (typeof popularProducts)[number] =>
+        Boolean(product),
+      );
+
+    const fallbackProducts =
+      rankedProducts.length >= limit
+        ? []
+        : await prisma.product.findMany({
+            where: {
+              ...productWhere,
+              ...(popularIds.length ? { id: { notIn: popularIds } } : {}),
+            },
+            orderBy: [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
+            take: limit - rankedProducts.length,
+            include: trendingProductInclude,
+          });
+
+    const products = [...rankedProducts, ...fallbackProducts].map((product) => ({
+      ...product,
+      images: product.images.filter(
+        (image) => !isOversizedInlineImage(image.url),
+      ),
+      trendScore: popularWeightById.get(product.id) || 0,
+    }));
+
+    return res.json({ products, period, categoryId: categoryId || null });
+  } catch (error) {
+    console.error("get trending products error", error);
+    return res
+      .status(500)
+      .json({ message: "Их үзсэн бараа авахад алдаа гарлаа" });
+  }
+});
+
 /* ─── GET /products/import-template ──────────────────────────────────── */
 router.get("/products/import-template", async (req, res) => {
   try {

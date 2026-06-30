@@ -9,8 +9,13 @@ import {
   X,
   Tag,
   Loader2,
+  ImageIcon,
 } from "lucide-react";
-import { API } from "@/lib/api";
+import { API, resolveApiAssetUrl } from "@/lib/api";
+import {
+  appendProductVisitorId,
+  trackProductInteraction,
+} from "@/lib/product-interest";
 
 type ApiTreeNode = {
   id: string;
@@ -35,6 +40,23 @@ type MegaCategory = {
   }[];
 };
 
+type TrendPeriod = "1d" | "1w" | "1m";
+
+type TrendingProduct = {
+  id: string;
+  name: string;
+  price: number;
+  images?: { id?: string; url?: string | null }[];
+  businessCategory?: { id: string; name: string } | null;
+  organization?: { id: string; name: string } | null;
+};
+
+const TREND_PERIODS: { key: TrendPeriod; label: string }[] = [
+  { key: "1d", label: "1D" },
+  { key: "1w", label: "1W" },
+  { key: "1m", label: "1M" },
+];
+
 function apiTreeToMega(tree: ApiTreeNode[]): MegaCategory[] {
   return tree.map((root) => ({
     id: root.id,
@@ -55,6 +77,9 @@ const buildProductUrl = (categoryId: string, subName?: string) => {
   if (subName) params.set("sub", subName);
   return `/products?${params.toString()}`;
 };
+
+const productDetailUrl = (productId: string) =>
+  `/products/${encodeURIComponent(productId)}`;
 
 function CategoryIcon({
   icon,
@@ -91,6 +116,142 @@ function CategoryIcon({
   return <span style={{ fontSize: size - 2 }}>{icon}</span>;
 }
 
+function TrendProductTile({
+  product,
+  onClick,
+}: {
+  product: TrendingProduct;
+  onClick: (product: TrendingProduct) => void;
+}) {
+  const imageUrl = resolveApiAssetUrl(product.images?.[0]?.url);
+
+  return (
+    <Link
+      href={productDetailUrl(product.id)}
+      onClick={() => onClick(product)}
+      title={product.name}
+      className="group relative overflow-hidden rounded-lg border border-slate-100 bg-slate-50 pb-[120%] transition hover:border-[#ffad02]/60 hover:shadow-sm"
+    >
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt={product.name}
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center text-slate-300">
+          <ImageIcon size={22} />
+        </div>
+      )}
+    </Link>
+  );
+}
+
+function TrendProductSkeleton() {
+  return (
+    <div className="relative overflow-hidden rounded-lg border border-slate-100 bg-slate-100 pb-[120%]">
+      <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200" />
+    </div>
+  );
+}
+
+function TrendPanel({
+  activeCategory,
+  products,
+  loading,
+  period,
+  onPeriodChange,
+  onProductClick,
+  onClose,
+}: {
+  activeCategory: MegaCategory | null;
+  products: TrendingProduct[];
+  loading: boolean;
+  period: TrendPeriod;
+  onPeriodChange: (period: TrendPeriod) => void;
+  onProductClick: (product: TrendingProduct) => void;
+  onClose: () => void;
+}) {
+  const heroProduct = products[0];
+  const heroImage = resolveApiAssetUrl(heroProduct?.images?.[0]?.url);
+  const heroHref = activeCategory
+    ? buildProductUrl(activeCategory.id)
+    : "/products";
+  const heroTitle = activeCategory?.name || "Ангилал";
+
+  return (
+    <div className="flex w-[280px] shrink-0 flex-col border-l border-slate-100 bg-white p-6">
+      <Link
+        href={heroHref}
+        onClick={onClose}
+        className="group relative mb-6 h-72 shrink-0 cursor-pointer overflow-hidden rounded-xl bg-slate-100"
+      >
+        {heroImage ? (
+          <img
+            src={heroImage}
+            alt={heroProduct?.name || heroTitle}
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-[linear-gradient(145deg,#f8fafc_0%,#e2e8f0_100%)]" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+        <div className="absolute inset-x-4 bottom-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-white/70">
+            Онцлох ангилал
+          </p>
+          <p className="mt-1 line-clamp-2 text-2xl font-black leading-tight text-white drop-shadow">
+            {heroTitle}
+          </p>
+        </div>
+      </Link>
+
+      <div className="mb-5 flex shrink-0 items-center justify-between">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+          Хамгийн их үзсэн
+        </h3>
+        <div className="flex gap-3 text-[11px] font-bold">
+          {TREND_PERIODS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => onPeriodChange(item.key)}
+              className={
+                period === item.key
+                  ? "text-[#ffad02]"
+                  : "text-slate-400 transition-colors hover:text-slate-800"
+              }
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid min-h-0 flex-1 grid-cols-3 gap-2 overflow-hidden">
+        {loading
+          ? Array.from({ length: 6 }).map((_, index) => (
+              <TrendProductSkeleton key={index} />
+            ))
+          : products.length > 0
+            ? products.map((product) => (
+                <TrendProductTile
+                  key={product.id}
+                  product={product}
+                  onClick={onProductClick}
+                />
+              ))
+            : (
+              <div className="col-span-3 flex min-h-32 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 text-center text-xs font-semibold text-slate-400">
+                <ImageIcon size={22} className="mb-2 opacity-50" />
+                Бараа олдсонгүй
+              </div>
+            )}
+      </div>
+    </div>
+  );
+}
+
 export const MegaMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [categories, setCategories] = useState<MegaCategory[]>([]);
@@ -99,6 +260,11 @@ export const MegaMenu = () => {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>("1d");
+  const [trendingProducts, setTrendingProducts] = useState<TrendingProduct[]>(
+    [],
+  );
+  const [trendingLoading, setTrendingLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -152,9 +318,56 @@ export const MegaMenu = () => {
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || !activeCategory) return;
+
+    let cancelled = false;
+    const params = appendProductVisitorId(
+      new URLSearchParams({
+        businessCategoryId: activeCategory.id,
+        period: trendPeriod,
+        limit: "6",
+      }),
+    );
+
+    setTrendingLoading(true);
+    fetch(`${API}/products/trending?${params.toString()}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const products = Array.isArray(data?.products)
+          ? (data.products as TrendingProduct[])
+          : [];
+        setTrendingProducts(products);
+      })
+      .catch(() => {
+        if (!cancelled) setTrendingProducts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTrendingLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCategory, isOpen, trendPeriod]);
+
   const toggleMenu = () => {
     if (isOpen) closeMenu();
     else setIsOpen(true);
+  };
+
+  const handleTrendingClick = (product: TrendingProduct) => {
+    trackProductInteraction({
+      type: "RECOMMENDATION_CLICK",
+      productId: product.id,
+      businessCategoryId:
+        product.businessCategory?.id || activeCategory?.id || null,
+      organizationId: product.organization?.id,
+      source: "mega-menu-trending",
+      metadata: { period: trendPeriod },
+    });
+    closeMenu();
   };
 
   const filteredCategories = useMemo(() => {
@@ -372,58 +585,15 @@ export const MegaMenu = () => {
             )}
           </div>
 
-          {/* ── Right sidebar: Banner + trending ── */}
-          <div className="w-[280px] border-l border-slate-100 bg-white p-6 flex flex-col shrink-0">
-            <div className="relative h-72 bg-slate-100 rounded-xl overflow-hidden mb-6 group cursor-pointer shrink-0">
-              <div
-                className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
-                style={{
-                  backgroundImage:
-                    'url("https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=800")',
-                }}
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="font-serif text-4xl font-extrabold tracking-[0.2em] text-white/95 drop-shadow-lg scale-y-110">
-                  LIU•JO
-                </span>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center mb-5 shrink-0">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                Хамгийн их үзсэн
-              </h3>
-              <div className="flex gap-3 text-[11px] font-bold">
-                <button className="text-[#ffad02]">1D</button>
-                <button className="text-slate-400 hover:text-slate-800 transition-colors">
-                  1W
-                </button>
-                <button className="text-slate-400 hover:text-slate-800 transition-colors">
-                  1M
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 flex-1 overflow-hidden min-h-0">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div
-                  key={i}
-                  className="bg-slate-50 border border-slate-100 rounded-lg overflow-hidden group cursor-pointer relative pb-[120%]"
-                >
-                  <img
-                    src={`https://images.unsplash.com/photo-${1550000000000 + i * 140000}?auto=format&fit=crop&q=80&w=200`}
-                    alt="placeholder"
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&q=80&w=200";
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
+          <TrendPanel
+            activeCategory={activeCategory}
+            products={trendingProducts}
+            loading={trendingLoading}
+            period={trendPeriod}
+            onPeriodChange={setTrendPeriod}
+            onProductClick={handleTrendingClick}
+            onClose={closeMenu}
+          />
         </div>
       )}
     </div>
