@@ -338,6 +338,45 @@ export function ProductFormModal({
                       onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                     />
                   </div>
+
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4 space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-bold text-amber-900">Marketplace эхэнд гаргах</p>
+                        <p className="mt-1 text-xs font-medium leading-5 text-amber-700">
+                          Асаасан бараа mglstore.mn дээр жагсаалт болон хайлтын эхэнд гарна.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            marketplacePriority: Number(f.marketplacePriority || 0) > 0 ? "0" : "100",
+                          }))
+                        }
+                        className={`shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+                          Number(form.marketplacePriority || 0) > 0
+                            ? "bg-amber-500 text-white hover:bg-amber-600"
+                            : "bg-white text-slate-600 ring-1 ring-amber-200 hover:bg-amber-100"
+                        }`}
+                      >
+                        {Number(form.marketplacePriority || 0) > 0 ? "Асаалттай" : "Унтраалттай"}
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-700">Дарааллын оноо</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="1000000"
+                        step="1"
+                        className="w-full h-12 px-4 rounded-xl border border-amber-200 bg-white text-slate-900 text-sm outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all font-medium"
+                        value={form.marketplacePriority}
+                        onChange={(e) => setForm((f) => ({ ...f, marketplacePriority: e.target.value }))}
+                      />
+                    </div>
+                  </div>
                 </div>
 
               </div>

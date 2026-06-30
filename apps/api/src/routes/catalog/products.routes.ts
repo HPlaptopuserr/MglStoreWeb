@@ -155,6 +155,15 @@ const getExpirySortValue = (value?: Date | string | null) => {
   return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
 };
 
+function normalizeMarketplacePriority(value: unknown, fallback = 0) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 1_000_000) {
+    return undefined;
+  }
+  return parsed;
+}
+
 const getStartOfToday = () => {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -576,6 +585,9 @@ router.get("/products", optionalAuth, async (req, res) => {
       })
       .filter((product) => !search || product.searchScore > 0)
       .sort((a, b) => {
+        const priorityDiff =
+          (b.marketplacePriority || 0) - (a.marketplacePriority || 0);
+        if (priorityDiff !== 0) return priorityDiff;
         if (search) {
           const combinedA = a.searchScore + (a.interestScore || 0) * 0.18;
           const combinedB = b.searchScore + (b.interestScore || 0) * 0.18;
@@ -1555,6 +1567,7 @@ router.post(
         supplyType,
         preorderLeadTimeDays,
         preorderNote,
+        marketplacePriority,
         businessCategoryId: inputCategoryId,
         images, // string[] — base64 or URL
       } = req.body;
@@ -1659,6 +1672,13 @@ router.post(
           .status(400)
           .json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
       }
+      const normalizedMarketplacePriority =
+        normalizeMarketplacePriority(marketplacePriority);
+      if (normalizedMarketplacePriority === undefined) {
+        return res.status(400).json({
+          message: "Marketplace дараалал 0-1,000,000 хооронд бүхэл тоо байх ёстой",
+        });
+      }
 
       const normalizedSku = sku ? String(sku).trim() : null;
       const normalizedBarcode = barcode ? String(barcode).trim() : null;
@@ -1729,6 +1749,7 @@ router.post(
               normalizedSupplyType === "CHINA_PREORDER" && preorderNote
                 ? String(preorderNote).trim()
                 : null,
+            marketplacePriority: normalizedMarketplacePriority,
             businessCategoryId: businessCategoryId || null,
             isActive: true,
             ...reviewData,
@@ -1822,6 +1843,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       supplyType,
       preorderLeadTimeDays,
       preorderNote,
+      marketplacePriority,
       businessCategoryId,
       isActive,
       images, // full replacement: string[]
@@ -1970,6 +1992,16 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     }
     if (preorderNote !== undefined)
       data.preorderNote = preorderNote ? String(preorderNote).trim() : null;
+    if (marketplacePriority !== undefined) {
+      const normalizedMarketplacePriority =
+        normalizeMarketplacePriority(marketplacePriority);
+      if (normalizedMarketplacePriority === undefined) {
+        return res.status(400).json({
+          message: "Marketplace дараалал 0-1,000,000 хооронд бүхэл тоо байх ёстой",
+        });
+      }
+      data.marketplacePriority = normalizedMarketplacePriority;
+    }
     if (businessCategoryId !== undefined)
       data.businessCategoryId = businessCategoryId || null;
     if (isActive !== undefined) data.isActive = Boolean(isActive);

@@ -51,6 +51,7 @@ const EMPTY_FORM: FormState = {
   supplyType: "IN_STOCK",
   preorderLeadTimeDays: "14",
   preorderNote: "",
+  marketplacePriority: "0",
   businessCategoryId: "",
   images: [],
 };
@@ -270,6 +271,7 @@ export default function ProductsPage() {
       supplyType: p.supplyType || "IN_STOCK",
       preorderLeadTimeDays: p.preorderLeadTimeDays != null ? String(p.preorderLeadTimeDays) : "14",
       preorderNote: p.preorderNote || "",
+      marketplacePriority: String(p.marketplacePriority ?? 0),
       businessCategoryId: p.businessCategoryId || "",
       images: p.images.map((img) => img.url),
     });
@@ -315,6 +317,16 @@ export default function ProductsPage() {
     if (isNaN(cityTaxRate) || cityTaxRate < 0 || cityTaxRate > 100) {
       return showToast("error", "Хотын татвар 0-100 хооронд байх ёстой");
     }
+    const marketplacePriority = form.marketplacePriority.trim()
+      ? parseInt(form.marketplacePriority, 10)
+      : 0;
+    if (
+      !Number.isInteger(marketplacePriority) ||
+      marketplacePriority < 0 ||
+      marketplacePriority > 1_000_000
+    ) {
+      return showToast("error", "Marketplace дараалал 0-1,000,000 хооронд бүхэл тоо байх ёстой");
+    }
 
     setSaving(true);
     try {
@@ -335,6 +347,7 @@ export default function ProductsPage() {
         supplyType: form.supplyType,
         preorderLeadTimeDays: form.supplyType === "CHINA_PREORDER" ? leadTimeDays : null,
         preorderNote: form.supplyType === "CHINA_PREORDER" ? form.preorderNote.trim() || null : null,
+        marketplacePriority,
         businessCategoryId: form.businessCategoryId || null,
         images: form.images,
       };
@@ -417,7 +430,11 @@ export default function ProductsPage() {
       (statusFilter === "inactive" && !p.isActive);
 
     return matchSearch && matchStatus;
-  });
+  }).sort(
+    (a, b) =>
+      (b.marketplacePriority || 0) - (a.marketplacePriority || 0) ||
+      new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime(),
+  );
 
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 md:p-6 space-y-6">
@@ -647,6 +664,11 @@ export default function ProductsPage() {
                 {selectedProduct.supplyType === "CHINA_PREORDER" && (
                   <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
                     Хятадаас захиалгаар
+                  </span>
+                )}
+                {(selectedProduct.marketplacePriority || 0) > 0 && (
+                  <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+                    Marketplace эхэнд #{selectedProduct.marketplacePriority}
                   </span>
                 )}
               </div>
@@ -894,6 +916,11 @@ export default function ProductsPage() {
                             {product.supplyType === "CHINA_PREORDER" && (
                               <span className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
                                 Хятадаас захиалгаар
+                              </span>
+                            )}
+                            {(product.marketplacePriority || 0) > 0 && (
+                              <span className="mt-1 ml-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                                Эхэнд #{product.marketplacePriority}
                               </span>
                             )}
                           </div>

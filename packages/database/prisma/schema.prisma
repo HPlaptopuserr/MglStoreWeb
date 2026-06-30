@@ -720,6 +720,7 @@ model Product {
   supplyType            ProductSupplyType           @default(IN_STOCK)
   preorderLeadTimeDays  Int?
   preorderNote          String?
+  marketplacePriority   Int                         @default(0)
   isActive              Boolean                     @default(true)
   reviewStatus          VendorContentReviewStatus   @default(APPROVED)
   reviewedAt            DateTime?
@@ -753,6 +754,7 @@ model Product {
   @@index([categoryId])
   @@index([businessCategoryId])
   @@index([deletedAt])
+  @@index([marketplacePriority])
   @@index([name])
   @@index([barcode])
   @@index([supplyType])
