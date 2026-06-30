@@ -1288,6 +1288,30 @@ router.get("/site-settings", async (req, res) => {
   }
 });
 
+router.get("/site-settings/marketplace-chrome", async (_req, res) => {
+  try {
+    const keys = ["marketplace-side-banner", "marketplace-services-promo"];
+    const settings = await prisma.siteSetting.findMany({
+      where: { key: { in: keys } },
+      select: { key: true, value: true },
+    });
+    const obj: Record<string, string> = {};
+    for (const setting of settings) {
+      if (Buffer.byteLength(setting.value, "utf8") <= SETTING_VALUE_MAX_BYTES) {
+        obj[setting.key] = setting.value;
+      }
+    }
+    res.setHeader(
+      "Cache-Control",
+      "public, max-age=30, stale-while-revalidate=60",
+    );
+    res.json(obj);
+  } catch (error) {
+    console.error("get marketplace chrome settings error", error);
+    res.status(500).json({ message: "Marketplace тохиргоо авахад алдаа гарлаа" });
+  }
+});
+
 // GET all site settings with private values (admin only)
 router.get(
   "/site-settings/admin",

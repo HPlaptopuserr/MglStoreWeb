@@ -22,6 +22,7 @@ import {
 import { ProductSearchHero } from "./_components/ProductSearchHero";
 
 const PRODUCTS_PER_PAGE = 16;
+const PRODUCT_FETCH_LIMIT = 80;
 const MARKETPLACE_SIDE_BANNER_KEY = "marketplace-side-banner";
 const MARKETPLACE_SERVICES_PROMO_KEY = "marketplace-services-promo";
 
@@ -439,7 +440,7 @@ function ProductsContent() {
       try {
         const [categoryRes, settingsRes, projectRes] = await Promise.all([
           fetch(`${API}/business-categories?hasProducts=1`),
-          fetch(`${API}/site-settings`),
+          fetch(`${API}/site-settings/marketplace-chrome`),
           fetch(`${API}/site-settings/projects`),
         ]);
         if (categoryRes.ok) setApiCategories(await categoryRes.json());
@@ -464,6 +465,7 @@ function ProductsContent() {
         const params = new URLSearchParams();
         if (activeCategory) params.set("businessCategoryId", activeCategory);
         if (debouncedSearch) params.set("search", debouncedSearch);
+        params.set("limit", String(PRODUCT_FETCH_LIMIT));
         appendProductVisitorId(params);
         const query = params.toString();
         const url = `${API}/products${query ? `?${query}` : ""}`;

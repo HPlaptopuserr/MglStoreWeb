@@ -180,6 +180,9 @@ const isTruthyQueryValue = (value: unknown) =>
 const getInventoryExpiryFilter = (includeExpired: boolean) =>
   includeExpired ? { not: null } : { gte: getStartOfToday() };
 
+const isOversizedInlineImage = (url: string) =>
+  url.startsWith("data:") && url.length > 12_000;
+
 const parseOptionalExpiryDate = (value: unknown) => {
   if (value === undefined) return undefined;
   if (value === null || value === "") return null;
@@ -521,11 +524,15 @@ router.get("/products", optionalAuth, async (req, res) => {
       }
     }
 
+    const productCandidateLimit =
+      limit > 0 ? Math.max(offset + limit, Math.min(limit * 3, 240)) : 0;
+
     const products = await prisma.product.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
+      ...(productCandidateLimit > 0 ? { take: productCandidateLimit } : {}),
       include: {
-        images: { select: { id: true, url: true } },
+        images: { select: { id: true, url: true }, take: 1 },
         businessCategory: {
           select: {
             id: true,
@@ -578,6 +585,9 @@ router.get("/products", optionalAuth, async (req, res) => {
         const expiryDate = expiryByProductId.get(product.id) ?? null;
         return {
           ...product,
+          images: product.images.filter(
+            (image) => !isOversizedInlineImage(image.url),
+          ),
           expiryDate: expiryDate?.toISOString() ?? null,
           searchScore: search ? scoreProductForSearch(product, search) : 0,
           interestScore: scoreProductForInterest(product, interestProfile),
