@@ -459,25 +459,50 @@ function ProductsContent() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadProducts = async () => {
       setProductsLoading(true);
       try {
-        const params = new URLSearchParams();
-        if (activeCategory) params.set("businessCategoryId", activeCategory);
-        if (debouncedSearch) params.set("search", debouncedSearch);
-        params.set("limit", String(PRODUCT_FETCH_LIMIT));
-        appendProductVisitorId(params);
-        const query = params.toString();
-        const url = `${API}/products${query ? `?${query}` : ""}`;
-        const res = await authFetch(url);
-        if (res.ok) {
+        const fetchBatch = async (offset: number) => {
+          const params = new URLSearchParams();
+          if (activeCategory) params.set("businessCategoryId", activeCategory);
+          if (debouncedSearch) params.set("search", debouncedSearch);
+          params.set("limit", String(PRODUCT_FETCH_LIMIT));
+          if (offset > 0) params.set("offset", String(offset));
+          appendProductVisitorId(params);
+          const query = params.toString();
+          const url = `${API}/products${query ? `?${query}` : ""}`;
+          const res = await authFetch(url);
+          if (!res.ok) return [];
           const data = await res.json();
-          setApiProducts(Array.isArray(data) ? data : []);
+          return Array.isArray(data) ? data : [];
+        };
+
+        const firstBatch = await fetchBatch(0);
+        if (cancelled) return;
+        setApiProducts(firstBatch);
+        setProductsLoading(false);
+
+        let offset = firstBatch.length;
+        while (!cancelled && firstBatch.length === PRODUCT_FETCH_LIMIT) {
+          const batch = await fetchBatch(offset);
+          if (cancelled || batch.length === 0) break;
+          setApiProducts((current) => {
+            const byId = new Map(current.map((product) => [product.id, product]));
+            for (const product of batch) byId.set(product.id, product);
+            return [...byId.values()];
+          });
+          if (batch.length < PRODUCT_FETCH_LIMIT) break;
+          offset += batch.length;
         }
       } catch {}
       finally { setProductsLoading(false); }
     };
     loadProducts();
+    return () => {
+      cancelled = true;
+    };
   }, [activeCategory, authFetch, debouncedSearch]);
 
   useEffect(() => {
