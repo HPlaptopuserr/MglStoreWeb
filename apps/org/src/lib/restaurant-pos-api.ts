@@ -217,6 +217,8 @@ export type RestaurantSalesHistoryItem = {
   cashierName: string;
   paymentMethod: string;
   status: string;
+  voidedAt: string | null;
+  voidReason: string | null;
   ebarimt: unknown;
   subtotal: number;
   taxTotal: number;
@@ -692,6 +694,17 @@ export async function getRestaurantSalesHistory(
     { cache: "no-store", signal },
   );
   return readApiResponse<RestaurantSalesHistoryResponse>(response);
+}
+
+export async function voidRestaurantSale(saleId: string, reason: string) {
+  const response = await authFetch(
+    `${API}/pos/sales/${encodeURIComponent(saleId)}/void`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  );
+  return readApiResponse<{ ok: boolean; message: string }>(response);
 }
 
 export async function enableRestaurantMenuProduct(input: {

@@ -28,6 +28,7 @@ import {
   QrCode,
   ReceiptText,
   RefreshCw,
+  RotateCcw,
   Search,
   Send,
   Trash2,
@@ -70,6 +71,7 @@ import {
   saveRestaurantTicket,
   sendRestaurantTicketToKitchen,
   submitRestaurantClientBridgeResult,
+  voidRestaurantSale,
   type RestaurantDiningTable,
   type RestaurantCreditSale,
   type RestaurantPosQPayInvoice,
@@ -531,6 +533,7 @@ const mapSalesHistoryToReceipt = (
   cashierName: sale.cashierName,
   paymentMethod: sale.paymentMethod,
   status: sale.status,
+  voidedAt: sale.voidedAt,
   ebarimt:
     sale.ebarimt && typeof sale.ebarimt === "object"
       ? (sale.ebarimt as PosReceipt["ebarimt"])
@@ -805,6 +808,7 @@ export function RestaurantPosScreen() {
   const [salesHistoryRange, setSalesHistoryRange] =
     useState<SalesHistoryRangeId>("7");
   const [selectedSaleHistoryId, setSelectedSaleHistoryId] = useState("");
+  const [voidingSaleId, setVoidingSaleId] = useState("");
   const [tableCreateOpen, setTableCreateOpen] = useState(false);
   const [tableCreating, setTableCreating] = useState(false);
   const [tableCreateError, setTableCreateError] = useState("");
@@ -894,22 +898,33 @@ export function RestaurantPosScreen() {
     () =>
       salesHistory.reduce(
         (totals, item) => ({
-          totalSales: roundMoney(totals.totalSales + item.grandTotal),
+          totalSales: roundMoney(
+            totals.totalSales +
+              (item.status === "VOIDED" ? 0 : item.grandTotal),
+          ),
           cashSales: roundMoney(
             totals.cashSales +
-              (item.paymentMethod === "CASH" ? item.grandTotal : 0),
+              (item.status !== "VOIDED" && item.paymentMethod === "CASH"
+                ? item.grandTotal
+                : 0),
           ),
           cardSales: roundMoney(
             totals.cardSales +
-              (item.paymentMethod === "CARD" ? item.grandTotal : 0),
+              (item.status !== "VOIDED" && item.paymentMethod === "CARD"
+                ? item.grandTotal
+                : 0),
           ),
           qpaySales: roundMoney(
             totals.qpaySales +
-              (item.paymentMethod === "QPAY" ? item.grandTotal : 0),
+              (item.status !== "VOIDED" && item.paymentMethod === "QPAY"
+                ? item.grandTotal
+                : 0),
           ),
           creditSales: roundMoney(
             totals.creditSales +
-              (item.paymentMethod === "CREDIT" ? item.grandTotal : 0),
+              (item.status !== "VOIDED" && item.paymentMethod === "CREDIT"
+                ? item.grandTotal
+                : 0),
           ),
         }),
         {
@@ -1807,6 +1822,54 @@ export function RestaurantPosScreen() {
     if (!sale) return;
     setLastReceipt(mapSalesHistoryToReceipt(sale));
     setReceiptPreviewOpen(true);
+  };
+
+  const handleVoidSalesHistoryReceipt = async (
+    sale: RestaurantSalesHistoryItem | null,
+  ) => {
+    if (!sale || sale.status === "VOIDED") return;
+    const defaultReason =
+      sale.paymentMethod === "CARD"
+        ? "Картын буцаалт хийсэн"
+        : sale.paymentMethod === "QPAY"
+          ? "QPay буцаалт хийсэн"
+          : "Бараа буцаалт";
+    const reason = window.prompt(
+      `Баримт цуцлах шалтгаанаа оруулна уу.\nReceipt: ${sale.receiptNo}`,
+      defaultReason,
+    );
+    if (!reason?.trim()) return;
+
+    const paymentWarning =
+      sale.paymentMethod === "CARD"
+        ? "Картын мөнгийг terminal/provider талд буцаасан эсэхээ шалгана уу. "
+        : sale.paymentMethod === "QPAY"
+          ? "QPay мөнгийг QPay талд эсвэл гараар буцаасан эсэхээ шалгана уу. "
+          : sale.paymentMethod === "CASH"
+            ? "Бэлэн мөнгийг хэрэглэгчид буцааж өгсөн эсэхээ шалгана уу. "
+            : "Төлбөрийн буцаалтаа шалгана уу. ";
+
+    if (
+      !window.confirm(
+        `${paymentWarning}Систем дээр баримт VOIDED болж, барааны нөөц буцаж нэмэгдэнэ. Үргэлжлүүлэх үү?`,
+      )
+    ) {
+      return;
+    }
+
+    setVoidingSaleId(sale.id);
+    setSalesHistoryError("");
+    try {
+      const result = await voidRestaurantSale(sale.id, reason.trim());
+      setNotice(result.message || `Баримт ${sale.receiptNo} цуцлагдлаа.`);
+      await loadSalesHistory();
+    } catch (error) {
+      setSalesHistoryError(
+        error instanceof Error ? error.message : "Баримт цуцлахад алдаа гарлаа",
+      );
+    } finally {
+      setVoidingSaleId("");
+    }
   };
 
   const completePaidSale = async (
@@ -6203,8 +6266,16 @@ export function RestaurantPosScreen() {
                                     {formatReceiptDate(sale.createdAt)}
                                   </p>
                                 </div>
-                                <span className="rounded-full bg-slate-950/40 px-2 py-1 text-[10px] font-black text-cyan-200">
-                                  {paymentMethodLabel(sale.paymentMethod)}
+                                <span
+                                  className={`rounded-full px-2 py-1 text-[10px] font-black ${
+                                    sale.status === "VOIDED"
+                                      ? "bg-rose-300/15 text-rose-200"
+                                      : "bg-slate-950/40 text-cyan-200"
+                                  }`}
+                                >
+                                  {sale.status === "VOIDED"
+                                    ? "Цуцлагдсан"
+                                    : paymentMethodLabel(sale.paymentMethod)}
                                 </span>
                               </div>
                               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
@@ -6238,11 +6309,26 @@ export function RestaurantPosScreen() {
                             {formatReceiptDate(selectedSalesHistory.createdAt)}
                           </p>
                         </div>
-                        <span className="rounded-full bg-slate-950/40 px-3 py-1 text-xs font-black text-slate-300">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-black ${
+                            selectedSalesHistory.status === "VOIDED"
+                              ? "bg-rose-300/15 text-rose-200"
+                              : "bg-slate-950/40 text-slate-300"
+                          }`}
+                        >
                           {paymentMethodLabel(selectedSalesHistory.paymentMethod)} ·{" "}
-                          {selectedSalesHistory.status}
+                          {selectedSalesHistory.status === "VOIDED"
+                            ? "Цуцлагдсан"
+                            : selectedSalesHistory.status}
                         </span>
                       </div>
+
+                      {selectedSalesHistory.status === "VOIDED" ? (
+                        <div className="rounded-xl border border-rose-300/40 bg-rose-300/10 px-4 py-3 text-sm font-bold text-rose-100">
+                          Энэ баримт {selectedSalesHistory.voidedAt ? formatReceiptDate(selectedSalesHistory.voidedAt) : ""} цуцлагдсан.
+                          {selectedSalesHistory.voidReason ? ` Шалтгаан: ${selectedSalesHistory.voidReason}` : ""}
+                        </div>
+                      ) : null}
 
                       <div className="grid gap-2 sm:grid-cols-2">
                         {[
@@ -6346,6 +6432,25 @@ export function RestaurantPosScreen() {
                           <Printer className="h-4 w-4" />
                           Дахин хэвлэх
                         </button>
+                        {selectedSalesHistory.status !== "VOIDED" ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleVoidSalesHistoryReceipt(
+                                selectedSalesHistory,
+                              )
+                            }
+                            disabled={voidingSaleId === selectedSalesHistory.id}
+                            className="flex h-11 items-center gap-2 rounded-lg border border-rose-300/40 px-4 text-sm font-black text-rose-100 hover:bg-rose-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {voidingSaleId === selectedSalesHistory.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4" />
+                            )}
+                            Баримт цуцлах
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   ) : (
