@@ -61,6 +61,7 @@ import {
   getRestaurantDiningTables,
   getRestaurantPosProducts,
   getRestaurantPosRegisters,
+  getRestaurantSalesHistory,
   getRestaurantShiftHistory,
   ensureRestaurantTableQrToken,
   openRestaurantPosShift,
@@ -74,6 +75,7 @@ import {
   type RestaurantPosQPayInvoice,
   type RestaurantPosProduct,
   type RestaurantPosRegister,
+  type RestaurantSalesHistoryItem,
   type RestaurantTicket,
 } from "@/lib/restaurant-pos-api";
 import {
@@ -348,6 +350,29 @@ const getShiftHistoryRangeParams = (rangeId: ShiftHistoryRangeId) => {
     limit: 100,
   };
 };
+const SALES_HISTORY_RANGE_OPTIONS = [
+  { id: "7", label: "7 хоног", description: "Сүүлийн 7 хоног", days: 7 },
+  { id: "14", label: "14 хоног", description: "Сүүлийн 14 хоног", days: 14 },
+  { id: "30", label: "30 хоног", description: "Сүүлийн 30 хоног", days: 30 },
+  { id: "100", label: "100 баримт", description: "Сүүлийн 100 баримт", days: null },
+] as const;
+type SalesHistoryRangeId = (typeof SALES_HISTORY_RANGE_OPTIONS)[number]["id"];
+
+const getSalesHistoryRangeParams = (rangeId: SalesHistoryRangeId) => {
+  const option =
+    SALES_HISTORY_RANGE_OPTIONS.find((item) => item.id === rangeId) ??
+    SALES_HISTORY_RANGE_OPTIONS[0];
+  if (!option.days) return { limit: 100 };
+
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - option.days);
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+    limit: 100,
+  };
+};
 const DEFAULT_ANDROID_PGW_BRIDGE_URL = "http://127.0.0.1:7420";
 const LONG_RUNNING_CARD_PROVIDERS = new Set([
   "PUSH_ECR",
@@ -496,6 +521,49 @@ const formatReceiptDate = (value: string) => {
     second: "2-digit",
   }).format(date);
 };
+
+const mapSalesHistoryToReceipt = (
+  sale: RestaurantSalesHistoryItem,
+): PosReceipt => ({
+  id: sale.id,
+  receiptNo: sale.receiptNo,
+  branchName: sale.branchName,
+  cashierName: sale.cashierName,
+  paymentMethod: sale.paymentMethod,
+  status: sale.status,
+  ebarimt:
+    sale.ebarimt && typeof sale.ebarimt === "object"
+      ? (sale.ebarimt as PosReceipt["ebarimt"])
+      : null,
+  paymentBreakdown: [
+    {
+      method: sale.paymentMethod,
+      amount: sale.grandTotal,
+    },
+  ],
+  loyalty: null,
+  credit: null,
+  createdAt: sale.createdAt,
+  lines: sale.lines.map((line) => ({
+    productId: line.productId,
+    name: line.productName,
+    qty: line.qty,
+    unitPrice: line.unitPrice,
+    taxAmount: line.taxAmount,
+    taxType: line.taxType as PosReceipt["lines"][number]["taxType"],
+    taxRate: line.taxRate,
+    cityTaxRate: line.cityTaxRate,
+    cityTaxAmount: line.cityTaxAmount,
+    classificationCode: line.classificationCode || undefined,
+    taxProductCode: line.taxProductCode || null,
+    measureUnit: line.measureUnit || undefined,
+    lineTotal: line.lineTotal,
+  })),
+  subTotal: sale.subtotal,
+  taxTotal: sale.taxTotal,
+  discountTotal: sale.discountTotal,
+  grandTotal: sale.grandTotal,
+});
 
 function printRestaurantReceipt(
   receipt: PosReceipt,
@@ -727,6 +795,16 @@ export function RestaurantPosScreen() {
   const [notice, setNotice] = useState("");
   const [lastReceipt, setLastReceipt] = useState<PosReceipt | null>(null);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
+  const [salesHistoryOpen, setSalesHistoryOpen] = useState(false);
+  const [salesHistory, setSalesHistory] = useState<RestaurantSalesHistoryItem[]>(
+    [],
+  );
+  const [salesHistoryTotal, setSalesHistoryTotal] = useState(0);
+  const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
+  const [salesHistoryError, setSalesHistoryError] = useState("");
+  const [salesHistoryRange, setSalesHistoryRange] =
+    useState<SalesHistoryRangeId>("7");
+  const [selectedSaleHistoryId, setSelectedSaleHistoryId] = useState("");
   const [tableCreateOpen, setTableCreateOpen] = useState(false);
   const [tableCreating, setTableCreating] = useState(false);
   const [tableCreateError, setTableCreateError] = useState("");
@@ -804,6 +882,96 @@ export function RestaurantPosScreen() {
       SHIFT_HISTORY_RANGE_OPTIONS.find((item) => item.id === shiftHistoryRange) ??
       SHIFT_HISTORY_RANGE_OPTIONS[0],
     [shiftHistoryRange],
+  );
+  const selectedSalesHistory = useMemo(
+    () =>
+      salesHistory.find((item) => item.id === selectedSaleHistoryId) ??
+      salesHistory[0] ??
+      null,
+    [salesHistory, selectedSaleHistoryId],
+  );
+  const salesHistoryTotals = useMemo(
+    () =>
+      salesHistory.reduce(
+        (totals, item) => ({
+          totalSales: roundMoney(totals.totalSales + item.grandTotal),
+          cashSales: roundMoney(
+            totals.cashSales +
+              (item.paymentMethod === "CASH" ? item.grandTotal : 0),
+          ),
+          cardSales: roundMoney(
+            totals.cardSales +
+              (item.paymentMethod === "CARD" ? item.grandTotal : 0),
+          ),
+          qpaySales: roundMoney(
+            totals.qpaySales +
+              (item.paymentMethod === "QPAY" ? item.grandTotal : 0),
+          ),
+          creditSales: roundMoney(
+            totals.creditSales +
+              (item.paymentMethod === "CREDIT" ? item.grandTotal : 0),
+          ),
+        }),
+        {
+          totalSales: 0,
+          cashSales: 0,
+          cardSales: 0,
+          qpaySales: 0,
+          creditSales: 0,
+        },
+      ),
+    [salesHistory],
+  );
+  const selectedSalesHistoryRange = useMemo(
+    () =>
+      SALES_HISTORY_RANGE_OPTIONS.find((item) => item.id === salesHistoryRange) ??
+      SALES_HISTORY_RANGE_OPTIONS[0],
+    [salesHistoryRange],
+  );
+
+  const loadSalesHistory = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!user.organizationId) {
+        setSalesHistory([]);
+        setSalesHistoryTotal(0);
+        setSelectedSaleHistoryId("");
+        return;
+      }
+      setSalesHistoryLoading(true);
+      setSalesHistoryError("");
+      try {
+        const rangeParams = getSalesHistoryRangeParams(salesHistoryRange);
+        const data = await getRestaurantSalesHistory(
+          user.organizationId,
+          {
+            branchId: selectedRegister?.branchId,
+            page: 1,
+            ...rangeParams,
+          },
+          signal,
+        );
+        const sales = Array.isArray(data.sales) ? data.sales : [];
+        setSalesHistory(sales);
+        setSalesHistoryTotal(data.total || sales.length);
+        setSelectedSaleHistoryId((current) =>
+          sales.some((item) => item.id === current)
+            ? current
+            : sales[0]?.id ?? "",
+        );
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setSalesHistoryError(
+          error instanceof Error
+            ? error.message
+            : "Борлуулалтын түүх авахад алдаа гарлаа",
+        );
+      } finally {
+        setSalesHistoryLoading(false);
+      }
+    },
+    [selectedRegister?.branchId, salesHistoryRange, user.organizationId],
   );
 
   const loadShiftHistory = useCallback(
@@ -952,6 +1120,13 @@ export function RestaurantPosScreen() {
     void loadShiftHistory(controller.signal);
     return () => controller.abort();
   }, [showShiftHistory, loadShiftHistory]);
+
+  useEffect(() => {
+    if (!salesHistoryOpen) return;
+    const controller = new AbortController();
+    void loadSalesHistory(controller.signal);
+    return () => controller.abort();
+  }, [salesHistoryOpen, loadSalesHistory]);
 
   const loadMenu = useCallback(async () => {
     if (!selectedRegister?.branchId) {
@@ -1611,6 +1786,27 @@ export function RestaurantPosScreen() {
           ? `${orderModeCopy[receiptOrderMode]} · Ширээ ${receiptTableLabel}`
           : orderModeCopy[receiptOrderMode],
     });
+  };
+
+  const reprintSalesHistoryReceipt = (
+    sale: RestaurantSalesHistoryItem | null,
+  ) => {
+    if (!sale) return;
+    const receipt = mapSalesHistoryToReceipt(sale);
+    printRestaurantReceipt(receipt, {
+      organizationName: user.organizationName || "MGL Store Restaurant",
+      registerName: sale.registerName || "Restaurant POS",
+      orderLabel: "Борлуулалтын түүх",
+    });
+    setNotice(`Баримт ${sale.receiptNo} дахин хэвлэгдлээ.`);
+  };
+
+  const previewSalesHistoryReceipt = (
+    sale: RestaurantSalesHistoryItem | null,
+  ) => {
+    if (!sale) return;
+    setLastReceipt(mapSalesHistoryToReceipt(sale));
+    setReceiptPreviewOpen(true);
   };
 
   const completePaidSale = async (
@@ -3315,6 +3511,18 @@ export function RestaurantPosScreen() {
               >
                 <History className="h-4 w-4" />
                 Хаалтын түүх
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSalesHistoryOpen(true);
+                  setSalesHistoryError("");
+                }}
+                className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-cyan-300/40 px-4 text-sm font-black text-cyan-100 transition hover:bg-cyan-300 hover:text-slate-950"
+              >
+                <ReceiptText className="h-4 w-4" />
+                Борлуулалтын түүх
               </button>
 
               <label className="relative min-w-56 flex-1">
@@ -5856,6 +6064,293 @@ export function RestaurantPosScreen() {
                   ) : (
                     <div className="flex h-72 items-center justify-center text-sm font-bold text-slate-500">
                       Сонгосон хаалт алга байна.
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {salesHistoryOpen ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#242735] shadow-2xl">
+            <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-white/10 px-6 py-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-cyan-300">
+                  POS борлуулалт
+                </p>
+                <h3 className="mt-1 text-2xl font-black text-white">
+                  Борлуулалтын түүх
+                </h3>
+                <p className="mt-2 text-sm font-semibold text-slate-400">
+                  {selectedRegister?.branch.name || "Бүх салбар"} ·{" "}
+                  {selectedSalesHistoryRange.description}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadSalesHistory()}
+                  disabled={salesHistoryLoading}
+                  className="flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-black text-slate-200 hover:border-cyan-300 hover:text-cyan-200 disabled:opacity-60"
+                >
+                  {salesHistoryLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Шинэчлэх
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSalesHistoryOpen(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white"
+                  aria-label="Хаах"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+              <div className="flex flex-wrap gap-2">
+                {SALES_HISTORY_RANGE_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setSalesHistoryRange(option.id)}
+                    className={`h-9 rounded-lg px-3 text-xs font-black transition ${
+                      salesHistoryRange === option.id
+                        ? "bg-cyan-300 text-slate-950"
+                        : "border border-white/10 text-slate-300 hover:border-cyan-300 hover:text-cyan-100"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              {salesHistoryError ? (
+                <div className="rounded-xl border border-rose-300/40 bg-rose-300/10 px-4 py-3 text-sm font-bold text-rose-100">
+                  {salesHistoryError}
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                {[
+                  ["Олдсон", salesHistoryTotal],
+                  ["Харагдаж буй", salesHistory.length],
+                  ["Нийт", salesHistoryTotals.totalSales],
+                  ["Бэлэн", salesHistoryTotals.cashSales],
+                  ["Карт", salesHistoryTotals.cardSales],
+                  ["QPay", salesHistoryTotals.qpaySales],
+                ].map(([label, value]) => (
+                  <div
+                    key={String(label)}
+                    className="rounded-xl border border-white/10 bg-[#1b1d2b] px-4 py-3"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      {label}
+                    </p>
+                    <p className="mt-1 text-lg font-black tabular-nums text-white">
+                      {label === "Олдсон" || label === "Харагдаж буй"
+                        ? Number(value).toLocaleString("mn-MN")
+                        : formatMoney(Number(value) || 0)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid min-h-0 gap-4 lg:grid-cols-[1fr_1.2fr]">
+                <section className="min-h-0 rounded-2xl border border-white/10 bg-[#1b1d2b]">
+                  <div className="border-b border-white/10 px-4 py-3">
+                    <p className="text-sm font-black text-white">
+                      Баримтууд
+                    </p>
+                  </div>
+                  <div className="max-h-[52vh] overflow-y-auto p-2">
+                    {salesHistoryLoading ? (
+                      <div className="flex h-40 items-center justify-center text-slate-400">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      </div>
+                    ) : salesHistory.length === 0 ? (
+                      <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-white/10 text-center text-sm font-bold text-slate-500">
+                        Борлуулалтын түүх алга байна.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {salesHistory.map((sale) => {
+                          const selected = sale.id === selectedSalesHistory?.id;
+                          return (
+                            <button
+                              key={sale.id}
+                              type="button"
+                              onClick={() => setSelectedSaleHistoryId(sale.id)}
+                              className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                                selected
+                                  ? "border-cyan-300 bg-cyan-300/15"
+                                  : "border-white/10 bg-[#242735] hover:border-cyan-300/60"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-black text-white">
+                                    {sale.receiptNo}
+                                  </p>
+                                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                                    {formatReceiptDate(sale.createdAt)}
+                                  </p>
+                                </div>
+                                <span className="rounded-full bg-slate-950/40 px-2 py-1 text-[10px] font-black text-cyan-200">
+                                  {paymentMethodLabel(sale.paymentMethod)}
+                                </span>
+                              </div>
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+                                <span className="text-slate-400">
+                                  {sale.registerName || "POS касс"} · {sale.cashierName}
+                                </span>
+                                <span className="text-white">
+                                  {formatMoney(sale.grandTotal)}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-white/10 bg-[#1b1d2b] p-4">
+                  {selectedSalesHistory ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-wider text-cyan-300">
+                            Баримт
+                          </p>
+                          <h4 className="mt-1 text-xl font-black text-white">
+                            {selectedSalesHistory.receiptNo}
+                          </h4>
+                          <p className="mt-1 text-sm font-semibold text-slate-500">
+                            {formatReceiptDate(selectedSalesHistory.createdAt)}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-slate-950/40 px-3 py-1 text-xs font-black text-slate-300">
+                          {paymentMethodLabel(selectedSalesHistory.paymentMethod)} ·{" "}
+                          {selectedSalesHistory.status}
+                        </span>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {[
+                          ["Салбар", selectedSalesHistory.branchName],
+                          ["Касс", selectedSalesHistory.registerName || "POS касс"],
+                          ["Кассчин", selectedSalesHistory.cashierName],
+                          ["Төлбөр", paymentMethodLabel(selectedSalesHistory.paymentMethod)],
+                        ].map(([label, value]) => (
+                          <div
+                            key={String(label)}
+                            className="rounded-xl border border-white/10 bg-[#242735] px-4 py-3"
+                          >
+                            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                              {label}
+                            </p>
+                            <p className="mt-1 text-sm font-black text-white">
+                              {value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="rounded-xl border border-white/10 bg-[#242735] p-4">
+                        <p className="text-sm font-black text-white">
+                          Бараанууд
+                        </p>
+                        <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
+                          {selectedSalesHistory.lines.map((line) => (
+                            <div
+                              key={`${selectedSalesHistory.id}:${line.productId}:${line.productName}`}
+                              className="flex items-start justify-between gap-3 rounded-lg bg-slate-950/30 px-3 py-2"
+                            >
+                              <div>
+                                <p className="text-sm font-black text-white">
+                                  {line.productName}
+                                </p>
+                                <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                                  {line.productSku || line.productId} · {line.qty} ×{" "}
+                                  {formatMoney(line.unitPrice)}
+                                </p>
+                              </div>
+                              <span className="shrink-0 text-sm font-black text-white">
+                                {formatMoney(line.lineTotal)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-white/10 bg-[#242735] p-4">
+                        <div className="space-y-2 text-sm">
+                          {[
+                            ["Дэд дүн", selectedSalesHistory.subtotal],
+                            ["Хөнгөлөлт", -selectedSalesHistory.discountTotal],
+                            ["НӨАТ", selectedSalesHistory.taxTotal],
+                            ["Нийт", selectedSalesHistory.grandTotal],
+                          ].map(([label, value]) => (
+                            <div
+                              key={String(label)}
+                              className="flex items-center justify-between gap-3"
+                            >
+                              <span
+                                className={`font-bold ${
+                                  label === "Нийт" ? "text-white" : "text-slate-400"
+                                }`}
+                              >
+                                {label}
+                              </span>
+                              <span
+                                className={`font-black ${
+                                  label === "Нийт"
+                                    ? "text-xl text-emerald-300"
+                                    : "text-white"
+                                }`}
+                              >
+                                {formatMoney(Number(value) || 0)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            previewSalesHistoryReceipt(selectedSalesHistory)
+                          }
+                          className="flex h-11 items-center gap-2 rounded-lg border border-white/10 px-4 text-sm font-black text-slate-100 hover:border-cyan-300 hover:text-cyan-200"
+                        >
+                          <ReceiptText className="h-4 w-4" />
+                          Баримт харах
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            reprintSalesHistoryReceipt(selectedSalesHistory)
+                          }
+                          className="flex h-11 items-center gap-2 rounded-lg bg-cyan-300 px-4 text-sm font-black text-slate-950 hover:bg-cyan-200"
+                        >
+                          <Printer className="h-4 w-4" />
+                          Дахин хэвлэх
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex h-72 items-center justify-center text-sm font-bold text-slate-500">
+                      Сонгосон баримт алга байна.
                     </div>
                   )}
                 </section>

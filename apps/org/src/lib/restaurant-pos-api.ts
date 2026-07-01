@@ -669,7 +669,13 @@ export async function getRestaurantCreditSales(
 
 export async function getRestaurantSalesHistory(
   organizationId: string,
-  options: { from?: string; to?: string; page?: number; limit?: number } = {},
+  options: {
+    branchId?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    limit?: number;
+  } = {},
   signal?: AbortSignal,
 ) {
   const params = new URLSearchParams({
@@ -677,6 +683,7 @@ export async function getRestaurantSalesHistory(
     page: String(options.page ?? 1),
     limit: String(options.limit ?? 8),
   });
+  if (options.branchId) params.set("branchId", options.branchId);
   if (options.from) params.set("from", options.from);
   if (options.to) params.set("to", options.to);
 

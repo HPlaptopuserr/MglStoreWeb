@@ -494,10 +494,12 @@ router.get("/pos/sales/history", async (req, res) => {
 
     const fromStr = String(req.query.from || "").trim();
     const toStr = String(req.query.to || "").trim();
+    const branchId = String(req.query.branchId || "").trim();
     const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
 
     const where: Record<string, unknown> = { organizationId: effectiveOrgId };
+    if (branchId) where.branchId = branchId;
     if (fromStr || toStr) {
       where.createdAt = {
         ...(fromStr ? { gte: new Date(fromStr) } : {}),
