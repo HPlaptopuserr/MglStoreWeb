@@ -3839,7 +3839,7 @@ export function RestaurantPosScreen() {
                 ) : null}
               </div>
             ) : (
-              <div className="mt-3 grid min-h-0 flex-1 auto-rows-[174px] grid-cols-5 content-start gap-3 overflow-y-auto pr-2 2xl:grid-cols-6 max-2xl:grid-cols-4 max-lg:grid-cols-3 max-sm:grid-cols-2">
+              <div className="mt-3 grid min-h-0 flex-1 auto-rows-[184px] grid-cols-5 content-start gap-3 overflow-y-auto pr-2 2xl:grid-cols-6 max-2xl:grid-cols-4 max-lg:grid-cols-3 max-sm:grid-cols-2">
                 {filteredMenu.map((item) => (
                   <button
                     key={item.id}
@@ -3864,11 +3864,11 @@ export function RestaurantPosScreen() {
                       imageUrl={item.imageUrl}
                       className="mb-2"
                     />
-                    <div className="flex min-h-0 flex-1 flex-col items-center justify-end">
-                      <p className="line-clamp-2 min-h-9 text-sm font-black leading-[18px] text-slate-100">
+                    <div className="flex min-h-0 w-full flex-1 flex-col items-center">
+                      <p className="line-clamp-2 min-h-10 w-full px-1 text-sm font-black leading-5 text-slate-100">
                         {item.name}
                       </p>
-                      <p className="mt-1.5 text-base font-black tabular-nums text-[#92d9ff]">
+                      <p className="mt-auto pt-2 text-base font-black tabular-nums text-[#92d9ff]">
                         {formatMoney(item.price)}
                       </p>
                       <p className="mt-1 text-[10px] font-semibold text-[#86929a]">
@@ -6817,9 +6817,9 @@ function DishVisual({
   className?: string;
 }) {
   const sizeClass =
-    size === "lg" ? "h-24 w-24" : size === "md" ? "h-20 w-20" : "h-11 w-11";
+    size === "lg" ? "h-24 w-24" : size === "md" ? "h-16 w-16" : "h-11 w-11";
   const innerClass =
-    size === "lg" ? "inset-2.5" : size === "md" ? "inset-2" : "inset-1.5";
+    size === "lg" ? "inset-2.5" : size === "md" ? "inset-1.5" : "inset-1.5";
 
   return (
     <span
