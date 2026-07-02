@@ -249,8 +249,8 @@ const tableStatusCopy: Record<TableStatus, string> = {
 };
 
 const tableStatusStyles: Record<TableStatus, string> = {
-  FREE: "border-white/10 bg-white/[0.03] text-slate-300",
-  OPEN: "border-sky-400/70 bg-sky-400/10 text-sky-200",
+  FREE: "border-[#3d484f] bg-[#122131] text-[#d4e4fa]",
+  OPEN: "border-[#00c2ff]/70 bg-[#00c2ff]/15 text-[#92d9ff]",
   KITCHEN: "border-amber-300/70 bg-amber-300/10 text-amber-200",
   READY: "border-emerald-300/70 bg-emerald-300/10 text-emerald-200",
   PAID: "border-emerald-300/70 bg-emerald-300/10 text-emerald-200",
@@ -3464,43 +3464,99 @@ export function RestaurantPosScreen() {
   };
 
   return (
-    <section className="relative h-full overflow-hidden bg-[#202331] text-slate-100 shadow-2xl shadow-slate-950/20">
-      <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_430px] bg-[#222532] max-xl:grid-cols-1 max-xl:overflow-y-auto">
+    <section className="relative h-full overflow-hidden bg-[#051424] text-[#d4e4fa] shadow-2xl shadow-slate-950/20">
+      <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_430px] bg-[#051424] max-xl:grid-cols-1 max-xl:overflow-y-auto">
         <main className="flex min-h-0 flex-col px-7 py-5 max-xl:min-h-[760px] max-md:px-4">
-          <header className="flex shrink-0 flex-col gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-3">
+          <header className="shrink-0 rounded-xl border border-[#273647] bg-[#010f1f] p-3 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
                 <Link
                   href="/dashboard"
-                  className="flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-[#1b1d2b] px-3 text-sm font-bold text-slate-200 transition hover:border-sky-400/60 hover:text-white"
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[#3d484f] bg-[#122131] text-[#bcc8d1] transition hover:border-[#75d1ff]/60 hover:text-white"
                   aria-label="Буцах"
                   title="Буцах"
                 >
                   <ArrowLeft className="h-5 w-5" />
-                  Буцах
                 </Link>
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-sky-400 text-white">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#00c2ff] text-[#003548]">
                   <UtensilsCrossed className="h-6 w-6" />
                 </span>
-                <div className="min-w-0">
-                  <h2 className="truncate text-3xl font-semibold tracking-normal text-white">
+                <div className="min-w-0 border-l border-[#273647] pl-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#92d9ff]">
+                    Restaurant POS
+                  </p>
+                  <h2 className="truncate text-4xl font-black leading-none tracking-tight text-[#d4e4fa] max-2xl:text-3xl">
                     Ресторан касс
                   </h2>
-                  <p className="mt-1 text-sm font-medium text-slate-400">
+                  <p className="mt-1 truncate text-xs font-semibold text-[#bcc8d1]">
                     {selectedRegister?.branch.name || "Салбар сонгоогүй"} ·{" "}
                     {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"} ·
                     Ширээ {selectedTable.label}
                   </p>
                 </div>
               </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <span
+                  className={`inline-flex h-9 items-center rounded-full px-3 text-xs font-black ${
+                    shiftMatchesRegister
+                      ? "bg-[#00c2ff]/15 text-[#92d9ff]"
+                      : "bg-amber-300/10 text-amber-200"
+                  }`}
+                >
+                  {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"}
+                </span>
+                <select
+                  value={selectedRegisterId}
+                  onChange={(event) => handleRegisterChange(event.target.value)}
+                  disabled={
+                    setupLoading ||
+                    registers.length === 0 ||
+                    Boolean(shift?.registerId)
+                  }
+                  className="h-10 min-w-48 rounded-lg border border-[#3d484f] bg-[#122131] px-3 text-sm font-bold text-[#d4e4fa] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label="POS касс сонгох"
+                >
+                  {registers.length === 0 ? (
+                    <option value="">POS касс байхгүй</option>
+                  ) : null}
+                  {registers.map((register) => (
+                    <option key={register.id} value={register.id}>
+                      {register.branch.name} · {register.label || register.name}
+                    </option>
+                  ))}
+                </select>
+                {shiftMatchesRegister ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSetupError("");
+                      setDrawerError("");
+                      setShowCloseShift(true);
+                    }}
+                    className="h-10 shrink-0 rounded-lg border border-rose-300/50 px-4 text-sm font-black text-rose-200 transition hover:bg-rose-300 hover:text-slate-950"
+                  >
+                    Ээлж хаах
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowOpenShift(true)}
+                    disabled={!selectedRegister || setupLoading}
+                    className="h-10 shrink-0 rounded-lg bg-[#00c2ff] px-4 text-sm font-black text-[#003548] transition hover:bg-[#75d1ff] disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                  >
+                    Ээлж нээх
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="flex w-full flex-wrap items-center gap-2">
+            <div className="mt-3 flex w-full flex-wrap items-center gap-2 border-t border-[#273647] pt-3">
               <button
                 type="button"
                 onClick={() => void handleOpenQrModal()}
                 disabled={!selectedRegister || diningTables.length === 0}
-                className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-emerald-300/40 px-4 text-sm font-black text-emerald-100 transition hover:bg-emerald-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-600"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c] disabled:cursor-not-allowed disabled:text-slate-600"
               >
                 <QrCode className="h-4 w-4" />
                 QR хэвлэх
@@ -3508,61 +3564,18 @@ export function RestaurantPosScreen() {
               <button
                 type="button"
                 onClick={openCustomerDisplay}
-                className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-sky-300/40 px-4 text-sm font-black text-sky-100 transition hover:bg-sky-300 hover:text-slate-950"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
               >
                 <Monitor className="h-4 w-4" />
                 Хэрэглэгчийн дэлгэц
               </button>
               <Link
                 href="/dashboard/kitchen-display"
-                className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-amber-300/40 px-4 text-sm font-black text-amber-100 transition hover:bg-amber-300 hover:text-slate-950"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
               >
                 <ChefHat className="h-4 w-4" />
                 Гал тогоо
               </Link>
-              <select
-                value={selectedRegisterId}
-                onChange={(event) => handleRegisterChange(event.target.value)}
-                disabled={
-                  setupLoading ||
-                  registers.length === 0 ||
-                  Boolean(shift?.registerId)
-                }
-                className="h-12 min-w-48 rounded-lg border border-white/10 bg-[#303442] px-3 text-sm font-bold text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                aria-label="POS касс сонгох"
-              >
-                {registers.length === 0 ? (
-                  <option value="">POS касс байхгүй</option>
-                ) : null}
-                {registers.map((register) => (
-                  <option key={register.id} value={register.id}>
-                    {register.branch.name} · {register.label || register.name}
-                  </option>
-                ))}
-              </select>
-
-              {shiftMatchesRegister ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSetupError("");
-                    setDrawerError("");
-                    setShowCloseShift(true);
-                  }}
-                  className="h-12 shrink-0 rounded-lg border border-rose-300/40 px-4 text-sm font-black text-rose-200 transition hover:bg-rose-300 hover:text-slate-950"
-                >
-                  Ээлж хаах
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowOpenShift(true)}
-                  disabled={!selectedRegister || setupLoading}
-                  className="h-12 shrink-0 rounded-lg bg-emerald-400 px-4 text-sm font-black text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                >
-                  Ээлж нээх
-                </button>
-              )}
 
               <button
                 type="button"
@@ -3570,7 +3583,7 @@ export function RestaurantPosScreen() {
                   setShowShiftHistory(true);
                   setShiftHistoryError("");
                 }}
-                className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-violet-300/40 px-4 text-sm font-black text-violet-100 transition hover:bg-violet-300 hover:text-slate-950"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
               >
                 <History className="h-4 w-4" />
                 Хаалтын түүх
@@ -3582,18 +3595,18 @@ export function RestaurantPosScreen() {
                   setSalesHistoryOpen(true);
                   setSalesHistoryError("");
                 }}
-                className="flex h-12 shrink-0 items-center gap-2 rounded-lg border border-cyan-300/40 px-4 text-sm font-black text-cyan-100 transition hover:bg-cyan-300 hover:text-slate-950"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
               >
                 <ReceiptText className="h-4 w-4" />
                 Борлуулалтын түүх
               </button>
 
               <label className="relative min-w-56 flex-1">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#75d1ff]" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  className="h-12 w-full rounded-lg border border-white/5 bg-[#303442] pl-11 pr-4 text-sm font-semibold text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-400/70"
+                  className="h-11 w-full rounded-lg border border-[#3d484f] bg-[#051424] pl-11 pr-4 text-sm font-semibold text-[#d4e4fa] outline-none transition placeholder:text-[#86929a] focus:border-[#00c2ff]/70"
                   placeholder="Хоол, ундаа хайх..."
                 />
               </label>
@@ -3635,24 +3648,29 @@ export function RestaurantPosScreen() {
             </div>
           ) : null}
 
-          <section className="mt-4 shrink-0 rounded-lg border border-white/5 bg-[#1d1d2b] p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-bold text-white">
-                <LayoutGrid className="h-4 w-4 text-sky-400" />
-                Ширээний зураглал
+          <section className="mt-2 shrink-0 rounded-lg border border-[#273647] bg-[#0d1c2d] px-2 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#122131] text-[#92d9ff]">
+                  <LayoutGrid className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-xs font-black text-[#d4e4fa]">Ширээ</p>
+                  <p className="text-[10px] font-semibold text-[#86929a]">Compact map</p>
+                </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-500">
+                <span className="text-[11px] font-bold text-[#86929a]">
                   {activeTables} идэвхтэй · {diningTables.length} ширээ
                 </span>
                 <button
                   type="button"
                   onClick={openCreateTableModal}
                   disabled={!selectedRegister}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-sky-400/50 bg-sky-400/10 px-3 text-xs font-black text-sky-200 transition hover:bg-sky-400 hover:text-white disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
+                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-[#00c2ff]/40 bg-[#00c2ff]/10 px-2.5 text-[11px] font-black text-[#92d9ff] transition hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
                 >
-                  <Plus className="h-3.5 w-3.5" />
-                  Ширээ нэмэх
+                  <Plus className="h-3 w-3" />
+                  Нэмэх
                 </button>
               </div>
             </div>
@@ -3664,9 +3682,9 @@ export function RestaurantPosScreen() {
                 </button>
               </div>
             ) : null}
-            <div className="mt-3 grid grid-cols-6 gap-2 max-2xl:grid-cols-3 max-md:grid-cols-2">
+            <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-0.5">
               {tablesLoading ? (
-                <div className="col-span-full flex h-16 items-center justify-center gap-2 text-sm font-bold text-slate-500">
+                <div className="flex h-11 min-w-full items-center justify-center gap-2 text-xs font-bold text-[#86929a]">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Ширээ ачаалж байна...
                 </div>
@@ -3695,22 +3713,22 @@ export function RestaurantPosScreen() {
                         clearSubmitting ||
                         qpayPaymentActive
                       }
-                      className={`h-16 rounded-lg border px-3 py-2 text-left transition ${
+                      className={`h-11 w-[86px] shrink-0 rounded-lg border px-2 py-1.5 text-left transition ${
                         isSelected
-                          ? "border-sky-400 bg-sky-400 text-white shadow-lg shadow-sky-500/20"
-                          : `${tableStatusStyles[displayStatus]} hover:border-sky-400/50`
+                          ? "border-[#00c2ff] bg-[#00c2ff] text-[#003548] shadow-lg shadow-[#00c2ff]/20"
+                          : `${tableStatusStyles[displayStatus]} hover:border-[#75d1ff]/60`
                       }`}
                     >
                       <span className="flex items-center justify-between gap-2">
                         <span className="text-base font-black leading-none">
                           {table.label}
                         </span>
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold opacity-80">
-                          <Users className="h-3 w-3" />
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-black opacity-80">
+                          <Users className="h-2.5 w-2.5" />
                           {table.seats}
                         </span>
                       </span>
-                      <span className="mt-2 block truncate text-xs font-bold opacity-90">
+                      <span className="mt-0.5 block truncate text-[9px] font-black opacity-90">
                         {tableStatusCopy[displayStatus]}
                         {displayTotal > 0
                           ? ` · ${formatMoney(displayTotal)}`
@@ -3732,13 +3750,13 @@ export function RestaurantPosScreen() {
                   onClick={() => setActiveCategory(category.id)}
                   className={`relative h-9 shrink-0 text-sm font-bold transition ${
                     activeCategory === category.id
-                      ? "text-sky-400"
-                      : "text-slate-200 hover:text-white"
+                      ? "text-[#92d9ff]"
+                      : "text-[#bcc8d1] hover:text-white"
                   }`}
                 >
                   {category.label}
                   {activeCategory === category.id ? (
-                    <span className="absolute inset-x-0 -bottom-1 h-0.5 rounded-full bg-sky-400" />
+                    <span className="absolute inset-x-0 -bottom-1 h-0.5 rounded-full bg-[#00c2ff]" />
                   ) : null}
                 </button>
               ))}
@@ -3778,7 +3796,7 @@ export function RestaurantPosScreen() {
                   type="button"
                   onClick={openProductManager}
                   disabled={!selectedRegister}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-sky-400/50 bg-sky-400/10 px-3 text-sm font-black text-sky-100 transition hover:bg-sky-400 hover:text-white disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#00c2ff]/50 bg-[#00c2ff]/10 px-3 text-sm font-black text-[#92d9ff] transition hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
                 >
                   <Plus className="h-4 w-4" />
                   Хоол нэмэх
@@ -3821,7 +3839,7 @@ export function RestaurantPosScreen() {
                 ) : null}
               </div>
             ) : (
-              <div className="mt-3 grid min-h-0 flex-1 auto-rows-[184px] grid-cols-3 content-start gap-x-8 gap-y-5 overflow-y-auto pr-2 max-2xl:gap-x-5 max-lg:grid-cols-2 max-sm:grid-cols-1">
+              <div className="mt-3 grid min-h-0 flex-1 auto-rows-[174px] grid-cols-5 content-start gap-3 overflow-y-auto pr-2 2xl:grid-cols-6 max-2xl:grid-cols-4 max-lg:grid-cols-3 max-sm:grid-cols-2">
                 {filteredMenu.map((item) => (
                   <button
                     key={item.id}
@@ -3838,29 +3856,29 @@ export function RestaurantPosScreen() {
                       clearSubmitting ||
                       qpayPaymentActive
                     }
-                    className="group relative h-full rounded-lg bg-[#1d1b2b] px-5 pb-4 pt-16 text-center shadow-xl shadow-black/10 transition hover:-translate-y-1 hover:bg-[#242235] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                    className="group relative flex h-full flex-col items-center rounded-lg border border-[#273647] bg-[#122131] p-3 text-center shadow-xl shadow-black/10 transition hover:-translate-y-1 hover:border-[#75d1ff]/70 hover:bg-[#1c2b3c] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
                   >
                     <DishVisual
                       tone={item.tone}
-                      size="lg"
+                      size="md"
                       imageUrl={item.imageUrl}
-                      className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-8"
+                      className="mb-2"
                     />
-                    <div className="flex h-full flex-col items-center justify-end">
-                      <p className="line-clamp-2 min-h-10 text-sm font-bold leading-5 text-slate-100">
+                    <div className="flex min-h-0 flex-1 flex-col items-center justify-end">
+                      <p className="line-clamp-2 min-h-9 text-sm font-black leading-[18px] text-slate-100">
                         {item.name}
                       </p>
-                      <p className="mt-2 text-sm font-semibold tabular-nums text-slate-200">
+                      <p className="mt-1.5 text-base font-black tabular-nums text-[#92d9ff]">
                         {formatMoney(item.price)}
                       </p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500">
+                      <p className="mt-1 text-[10px] font-semibold text-[#86929a]">
                         {item.available > 0
                           ? `${item.available} порц боломжтой`
                           : "Дууссан"}
                       </p>
                     </div>
-                    <span className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-lg border border-white/5 text-sky-400 opacity-0 transition group-hover:opacity-100">
-                      <Plus className="h-4 w-4" />
+                    <span className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg border border-[#3d484f] bg-[#051424]/80 text-[#92d9ff] opacity-0 transition group-hover:opacity-100">
+                      <Plus className="h-3.5 w-3.5" />
                     </span>
                   </button>
                 ))}
@@ -3869,7 +3887,7 @@ export function RestaurantPosScreen() {
           </div>
         </main>
 
-        <aside className="flex min-h-0 flex-col overflow-hidden bg-[#1b1726] px-5 py-4 max-xl:min-h-[720px] max-sm:px-3 max-sm:py-3">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-l border-[#273647] bg-[#0d1c2d] px-5 py-4 max-xl:min-h-[720px] max-sm:px-3 max-sm:py-3">
           <div className="shrink-0">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -3886,7 +3904,7 @@ export function RestaurantPosScreen() {
               <span
                 className={`shrink-0 rounded-lg px-3 py-1 text-xs font-black ${
                   shiftMatchesRegister
-                    ? "bg-emerald-400/10 text-emerald-300"
+                    ? "bg-[#00c2ff]/15 text-[#92d9ff]"
                     : "bg-amber-300/10 text-amber-200"
                 }`}
               >
@@ -3907,8 +3925,8 @@ export function RestaurantPosScreen() {
                   }
                   className={`h-10 rounded-lg border text-sm font-bold transition ${
                     orderMode === mode
-                      ? "border-sky-400 bg-sky-400 text-white"
-                      : "border-white/10 bg-transparent text-sky-400 hover:bg-white/5"
+                      ? "border-[#00c2ff] bg-[#00c2ff] text-[#003548]"
+                      : "border-[#273647] bg-[#122131] text-[#bcc8d1] hover:bg-[#1c2b3c]"
                   }`}
                 >
                   {orderModeCopy[mode]}
@@ -3928,7 +3946,7 @@ export function RestaurantPosScreen() {
                       ? "Төлөгдсөн ticket-ийг гал тогоо руу илгээх боломжгүй"
                       : "Гал тогоо руу илгээх шинэ хоол байхгүй"
                 }
-                className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-emerald-300/40 bg-emerald-300/10 text-sm font-black text-emerald-200 transition hover:border-emerald-300 hover:bg-emerald-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-[#00c2ff]/40 bg-[#00c2ff]/10 text-sm font-black text-[#92d9ff] transition hover:border-[#00c2ff] hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
               >
                 {kitchenSubmitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -4127,14 +4145,14 @@ export function RestaurantPosScreen() {
             )}
           </div>
 
-          <div className="min-h-0 max-h-[46dvh] shrink overflow-y-auto overscroll-contain border-t border-white/10 pt-4 pr-1 max-xl:max-h-[42dvh]">
+          <div className="min-h-0 max-h-[46dvh] shrink overflow-y-auto overscroll-contain border-t border-[#273647] pt-4 pr-1 max-xl:max-h-[42dvh]">
             <TotalLine label="Discount" value={formatMoney(discount)} />
             <TotalLine label="Sub total" value={formatMoney(subtotal)} />
             <TotalLine label="Total" value={formatMoney(total)} strong />
 
             <div className="mt-3">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-xs font-bold text-slate-500">
+                <p className="text-xs font-bold text-[#86929a]">
                   Төлбөрийн хэлбэр
                 </p>
                 <button
@@ -4184,9 +4202,9 @@ export function RestaurantPosScreen() {
                       aria-pressed={isActive}
                       className={`flex h-12 flex-col items-center justify-center gap-1 rounded-lg border text-xs font-bold transition ${
                         isActive
-                          ? "border-sky-400 bg-sky-400 text-white shadow-lg shadow-sky-500/20"
+                          ? "border-[#92d9ff] bg-[#92d9ff] text-[#003548] shadow-lg shadow-[#00c2ff]/20"
                           : option.enabled
-                            ? "border-white/10 bg-white/[0.02] text-slate-300 hover:border-sky-400/50 hover:text-white"
+                            ? "border-[#273647] bg-[#122131] text-[#bcc8d1] hover:border-[#75d1ff]/60 hover:text-white"
                             : "cursor-not-allowed border-white/5 bg-white/[0.01] text-slate-600"
                       }`}
                     >
@@ -4537,7 +4555,7 @@ export function RestaurantPosScreen() {
                   type="button"
                   onClick={() => void handleCheckout()}
                   disabled={!canCheckout}
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-sky-400 text-sm font-bold text-white shadow-lg shadow-sky-500/20 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
+                  className="flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-[#00c2ff] text-sm font-black text-[#003548] shadow-lg shadow-[#00c2ff]/20 transition hover:bg-[#75d1ff] disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
                 >
                   {checkoutSubmitting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -6794,12 +6812,14 @@ function DishVisual({
   className = "",
 }: {
   tone: DishTone;
-  size: "sm" | "lg";
+  size: "sm" | "md" | "lg";
   imageUrl?: string;
   className?: string;
 }) {
-  const sizeClass = size === "lg" ? "h-24 w-24" : "h-11 w-11";
-  const innerClass = size === "lg" ? "inset-2.5" : "inset-1.5";
+  const sizeClass =
+    size === "lg" ? "h-24 w-24" : size === "md" ? "h-20 w-20" : "h-11 w-11";
+  const innerClass =
+    size === "lg" ? "inset-2.5" : size === "md" ? "inset-2" : "inset-1.5";
 
   return (
     <span
@@ -6840,7 +6860,7 @@ function TotalLine({
     <div className="mb-4 flex items-center justify-between gap-3 text-sm">
       <span
         className={
-          strong ? "font-bold text-slate-200" : "font-semibold text-slate-500"
+          strong ? "font-bold text-[#d4e4fa]" : "font-semibold text-[#86929a]"
         }
       >
         {label}
@@ -6848,8 +6868,8 @@ function TotalLine({
       <span
         className={
           strong
-            ? "text-base font-black tabular-nums text-white"
-            : "font-bold tabular-nums text-slate-100"
+            ? "text-base font-black tabular-nums text-[#92d9ff]"
+            : "font-bold tabular-nums text-[#d4e4fa]"
         }
       >
         {value}

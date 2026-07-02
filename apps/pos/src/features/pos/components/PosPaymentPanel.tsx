@@ -32,8 +32,13 @@ export function PosPaymentPanel({
   } as const;
 
   return (
-    <section className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
-      <div className="grid grid-cols-[repeat(4,minmax(0,1fr))_minmax(190px,0.9fr)] gap-2">
+    <section className="shrink-0 overflow-hidden rounded-xl border border-[#273647] bg-[#0d1c2d] p-3 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#bcc8d1]">Төлбөрийн хэлбэр</p>
+        <p className="text-xs font-black tabular-nums text-[#92d9ff]">Нийт {totals.grandTotal.toLocaleString()}₮</p>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2">
         {PAYMENT_METHODS.map((method) => {
           const isActive = paymentMethod === method.value;
           const Icon = paymentIcon[method.value];
@@ -42,34 +47,30 @@ export function PosPaymentPanel({
               key={method.value}
               type="button"
               onClick={() => onChangeMethod(method.value as PaymentMethod)}
-              className={`flex h-12 flex-col items-center justify-center rounded-lg border text-xs font-black transition-colors ${
+              className={`flex h-[74px] flex-col items-center justify-center rounded-lg border text-[11px] font-black transition-colors ${
                 isActive
-                  ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50"
+                  ? "border-[#92d9ff] bg-[#92d9ff] text-[#003548]"
+                  : "border-[#273647] bg-[#122131] text-[#bcc8d1] hover:border-[#75d1ff]/60 hover:bg-[#1c2b3c]"
               }`}
             >
-              <Icon size={18} />
-              <span className="mt-1">
-                {method.value === "QR" ? "QR төлбөр" : method.label}
-              </span>
+              <Icon size={20} />
+              <span className="mt-1">{method.value === "QR" ? "QPay" : method.label}</span>
               <span className="text-[10px] font-bold opacity-70">{shortcuts[method.value]}</span>
             </button>
           );
         })}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onSubmit}
-          className="flex h-12 items-center justify-between rounded-lg bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <span>Төлбөр авах</span>
-          <span className="text-xs opacity-80">F12</span>
-        </button>
       </div>
 
-      <p className="mt-1.5 text-right text-[10px] font-semibold text-slate-400">
-        Нийт төлөх: ₮{totals.grandTotal.toLocaleString()}
-      </p>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onSubmit}
+        className="mt-3 flex h-16 w-full items-center justify-center gap-3 rounded-xl bg-[#00c2ff] px-4 text-lg font-black text-[#003548] shadow-[0_18px_45px_rgba(0,194,255,0.22)] transition-colors hover:bg-[#75d1ff] active:bg-[#00a8df] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Banknote size={24} />
+        Төлбөр авах
+        <span className="text-xs opacity-70">F12</span>
+      </button>
     </section>
   );
 }

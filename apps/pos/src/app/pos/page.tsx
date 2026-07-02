@@ -22,8 +22,6 @@ function MobileBlock() {
 import {
   Barcode,
   Search,
-  ScanLine,
-  ScanBarcode,
   AlertTriangle,
   Banknote,
   CheckCircle2,
@@ -37,6 +35,8 @@ import {
   Printer,
   RefreshCw,
   Settings,
+  Utensils,
+  UsersRound,
   X,
 } from "lucide-react";
 import {
@@ -140,6 +140,25 @@ type CardPaymentRun = {
 };
 
 type PosListMode = "products" | "credits";
+
+type RestaurantTable = {
+  id: string;
+  label: string;
+  seats: number;
+  status: "active" | "empty" | "reserved";
+  zone: string;
+};
+
+const RESTAURANT_TABLES: RestaurantTable[] = [
+  { id: "A1", label: "A1", seats: 4, status: "active", zone: "Гол заал" },
+  { id: "A2", label: "A2", seats: 2, status: "empty", zone: "Гол заал" },
+  { id: "A3", label: "A3", seats: 6, status: "empty", zone: "Гол заал" },
+  { id: "A4", label: "A4", seats: 4, status: "reserved", zone: "Террас" },
+  { id: "T1", label: "T1", seats: 4, status: "empty", zone: "Террас" },
+  { id: "VIP", label: "VIP", seats: 8, status: "empty", zone: "Өрөө" },
+  { id: "B1", label: "B1", seats: 4, status: "empty", zone: "Бар" },
+  { id: "B2", label: "B2", seats: 2, status: "empty", zone: "Бар" },
+];
 
 type PosCreditListLine = {
   id: string;
@@ -522,6 +541,7 @@ export default function PosDemoPage() {
     visible: false,
     text: "",
   });
+  const [selectedRestaurantTableId, setSelectedRestaurantTableId] = useState(RESTAURANT_TABLES[0]?.id ?? "A1");
   const [customerDisplaySuccess, setCustomerDisplaySuccess] = useState<CustomerDisplaySuccess | null>(null);
   const [registerConfig, setRegisterConfig] = useState<RegisterConfig | null>(null);
   const [showPosSettings, setShowPosSettings] = useState(false);
@@ -1355,6 +1375,9 @@ export default function PosDemoPage() {
     const cats = new Set(products.map(p => p.categoryName || "Бусад"));
     return ["Бүгд", ...Array.from(cats).sort()];
   }, [products]);
+
+  const selectedRestaurantTable =
+    RESTAURANT_TABLES.find((table) => table.id === selectedRestaurantTableId) ?? RESTAURANT_TABLES[0];
 
   const lowerSearch = searchInput.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -3262,8 +3285,8 @@ export default function PosDemoPage() {
           </div>
         </div>
       )}
-    <div className="hidden min-h-screen bg-slate-50 p-4 md:block">
-      <div className="mx-auto flex h-[calc(100vh-2rem)] max-w-[1800px] flex-col gap-3 overflow-hidden">
+    <div className="hidden min-h-screen bg-[#051424] p-3 text-[#d4e4fa] md:block">
+      <div className="mx-auto flex h-[calc(100vh-1.5rem)] max-w-[1800px] flex-col gap-3 overflow-hidden">
       {/* ── Register setup banner ────────────────────────────────── */}
       {!registerConfig && !showSetupPanel && !showRegisterPicker && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
@@ -3767,8 +3790,20 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      <div className="flex h-11 shrink-0 items-center justify-between rounded-xl border border-slate-200 bg-white px-2 shadow-sm">
-        <div className="flex h-full items-center gap-1">
+      <div className="flex min-h-16 shrink-0 items-center justify-between gap-4 rounded-xl border border-[#273647] bg-[#010f1f] px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#00c2ff] text-[#003548]">
+            <Utensils size={22} strokeWidth={2.5} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-black tracking-tight text-[#d4e4fa]">Ресторан касс</h1>
+            <p className="truncate text-xs font-semibold text-[#bcc8d1]">
+              {registerConfig?.branch.name ?? "Салбар"} · {shift ? "Ээлж нээлттэй" : "Ээлж хаалттай"} · Ширээ {selectedRestaurantTable?.label ?? "A1"}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex h-full items-center gap-2">
           {(
             [
               { id: "register", label: "Борлуулалт" },
@@ -3797,8 +3832,8 @@ export default function PosDemoPage() {
               }}
               className={`h-9 rounded-lg px-4 text-sm font-bold transition-colors ${
                 (tab.id === "shift" ? showShiftHistoryPanel : view === tab.id || (view === "checkout" && tab.id === "register"))
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                  ? "bg-[#00c2ff] text-[#003548] shadow-sm"
+                  : "bg-[#122131] text-[#bcc8d1] hover:bg-[#1c2b3c] hover:text-[#d4e4fa]"
               }`}
             >
               {tab.label}
@@ -3806,16 +3841,16 @@ export default function PosDemoPage() {
           ))}
           <button
             type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#3d484f] bg-[#122131] text-[#92d9ff] hover:bg-[#1c2b3c]"
             aria-label="Нэмэх"
           >
             +
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#273647] bg-[#122131] px-3 py-1.5 text-xs font-semibold text-[#bcc8d1]">
+            <span className="h-2 w-2 rounded-full bg-[#00c2ff]" />
             Онлайн
           </span>
           <button
@@ -3823,8 +3858,8 @@ export default function PosDemoPage() {
             onClick={() => setShowPosSettings((value) => !value)}
             className={`flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-bold transition-colors ${
               showPosSettings
-                ? "bg-slate-900 text-white"
-                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                ? "bg-[#d4e4fa] text-[#233143]"
+                : "border border-[#3d484f] bg-[#122131] text-[#bcc8d1] hover:bg-[#1c2b3c]"
             }`}
           >
             <Settings size={15} />
@@ -3936,7 +3971,7 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(380px,0.58fr)_minmax(720px,1.42fr)] gap-3 2xl:grid-cols-[minmax(430px,0.54fr)_minmax(860px,1.46fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] gap-3 2xl:grid-cols-[minmax(0,1fr)_460px]">
         {view === "history" ? (
           <section className="flex min-h-0 flex-col gap-3">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex-1 min-h-0 flex flex-col md:flex-row gap-4">
@@ -3966,46 +4001,21 @@ export default function PosDemoPage() {
           </section>
         ) : (
         <section className="flex min-h-0 flex-col gap-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="hidden mb-3 flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                  <ScanLine size={20} />
-                </div>
-                <div>
-                  <h1 className="text-base font-black text-slate-950">Barcode уншуулах</h1>
-                  <p className="text-xs font-medium text-slate-500">Уншуулсан бараа сагсанд шууд нэмэгдэнэ</p>
-                </div>
+          <div className="rounded-xl border border-[#273647] bg-[#0d1c2d] p-3 shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
+            <form
+              onSubmit={handleManualSubmit}
+              className="grid shrink-0 grid-cols-[minmax(0,1fr)_104px_104px] gap-2"
+            >
+              <div className="relative">
+                <Barcode size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#75d1ff]" />
+                <input
+                  ref={scannerInputRef}
+                  value={scanBuffer}
+                  onChange={(e) => setScanBuffer(e.target.value)}
+                  placeholder="Barcode, SKU эсвэл хоолны нэрээр оруулах"
+                  className="h-11 w-full rounded-lg border border-[#3d484f] bg-[#051424] pl-11 pr-4 text-sm font-bold tracking-wide text-[#d4e4fa] outline-none transition placeholder:text-[#86929a] focus:border-[#00c2ff] focus:ring-2 focus:ring-[#00c2ff]/25"
+                />
               </div>
-              <div
-                className={`min-w-56 rounded-xl border px-3 py-2 ${
-                  scanStatus === "success"
-                    ? "border-emerald-200 bg-emerald-50"
-                    : scanStatus === "not-found"
-                      ? "border-amber-200 bg-amber-50"
-                      : "border-slate-200 bg-slate-50"
-                }`}
-              >
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Scanner</p>
-                <p className="truncate text-sm font-bold text-slate-900">{scanMessage || "Бэлэн"}</p>
-              </div>
-            </div>
-
-          <form
-            onSubmit={handleManualSubmit}
-            className="flex shrink-0 flex-col gap-2"
-          >
-            <div className="relative">
-              <Barcode size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                ref={scannerInputRef}
-                value={scanBuffer}
-                onChange={(e) => setScanBuffer(e.target.value)}
-                placeholder="Barcode уншуулах эсвэл гараар оруулах"
-                className="h-12 w-full rounded-lg border-2 border-blue-500 bg-white pl-12 pr-4 text-base font-bold tracking-wide text-slate-950 outline-none transition focus:ring-4 focus:ring-blue-100"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -4015,18 +4025,75 @@ export default function PosDemoPage() {
                   setScanStatus("idle");
                   scannerInputRef.current?.focus();
                 }}
-                className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
+                className="h-11 rounded-lg border border-[#3d484f] bg-[#122131] px-3 text-xs font-bold text-[#bcc8d1] transition hover:bg-[#1c2b3c]"
               >
                 Цэвэрлэх
               </button>
               <button
                 type="submit"
-                className="h-11 rounded-lg bg-blue-600 px-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
+                className="h-11 rounded-lg bg-[#00c2ff] px-3 text-sm font-black text-[#003548] shadow-sm transition hover:bg-[#75d1ff]"
               >
                 Унших
               </button>
+            </form>
+          </div>
+
+          <div className="rounded-xl border border-[#273647] bg-[#0d1c2d] p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#122131] text-[#92d9ff]">
+                  <UsersRound size={16} />
+                </span>
+                <div>
+                  <h2 className="text-sm font-black text-[#d4e4fa]">Ширээний зураглал</h2>
+                  <p className="text-[11px] font-semibold text-[#86929a]">Жижиг горим · хурдан сонголт</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-[11px] font-bold text-[#bcc8d1]">
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-[#00c2ff]" />
+                  Завгүй
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-[#3d484f]" />
+                  Сул
+                </span>
+              </div>
             </div>
-          </form>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {RESTAURANT_TABLES.map((table) => {
+                const selected = selectedRestaurantTable?.id === table.id;
+                const occupied = table.status === "active";
+                return (
+                  <button
+                    key={table.id}
+                    type="button"
+                    onClick={() => setSelectedRestaurantTableId(table.id)}
+                    className={`h-[70px] w-[88px] shrink-0 rounded-lg border px-2.5 py-2 text-left transition ${
+                      selected
+                        ? "border-[#00c2ff] bg-[#00c2ff] text-[#003548] ring-2 ring-[#00c2ff]/25"
+                        : occupied
+                          ? "border-[#00c2ff]/45 bg-[#00c2ff]/15 text-[#d4e4fa]"
+                          : "border-[#3d484f] bg-[#122131] text-[#d4e4fa] hover:border-[#75d1ff]/60"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-1">
+                      <span className="text-xl font-black leading-none">{table.label}</span>
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-black">
+                        <UsersRound size={11} />
+                        {table.seats}
+                      </span>
+                    </div>
+                    <p className={`mt-1 truncate text-[10px] font-black ${selected ? "text-[#004c66]" : "text-[#92d9ff]"}`}>
+                      {selected ? "Идэвхтэй" : table.status === "reserved" ? "Захиалгатай" : "Сул"}
+                    </p>
+                    <p className={`truncate text-[10px] font-semibold ${selected ? "text-[#004c66]/80" : "text-[#86929a]"}`}>
+                      {table.zone}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div
@@ -4103,31 +4170,36 @@ export default function PosDemoPage() {
             )}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-[#273647] bg-[#0d1c2d] p-3 shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
             <div className="mb-2 flex shrink-0 flex-col gap-2">
-              <div>
-                <h2 className="text-sm font-black text-slate-950">
-                  {listMode === "products" ? "Барааны жагсаалт" : "Зээлийн жагсаалт"}
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                <h2 className="text-lg font-black tracking-tight text-[#d4e4fa]">
+                  {listMode === "products" ? "Меню сонгох" : "Зээлийн жагсаалт"}
                 </h2>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] font-semibold text-[#86929a]">
                   {listMode === "products"
-                    ? `${filtered.length} бараа харагдаж байна`
+                    ? `${filtered.length} хоол, бараа харагдаж байна`
                     : `${filteredCreditGroups.length} зээлдэгч, ${filteredCreditRowCount} бараа байна`}
                 </p>
+                </div>
+                <span className="rounded-full border border-[#273647] bg-[#122131] px-3 py-1 text-[11px] font-black text-[#92d9ff]">
+                  Ширээ {selectedRestaurantTable?.label ?? "A1"}
+                </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-[#273647] bg-[#051424] p-1">
                 <button
                   type="button"
                   onClick={() => setListMode("products")}
                   className={`inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-black transition ${
                     listMode === "products"
-                      ? "bg-white text-blue-700 shadow-sm"
-                      : "text-slate-500 hover:text-slate-800"
+                      ? "bg-[#00c2ff] text-[#003548] shadow-sm"
+                      : "text-[#86929a] hover:text-[#d4e4fa]"
                   }`}
                 >
                   <Barcode size={14} />
-                  <span className="truncate">Барааны жагсаалт</span>
+                  <span className="truncate">Меню</span>
                 </button>
                 <button
                   type="button"
@@ -4137,8 +4209,8 @@ export default function PosDemoPage() {
                   }}
                   className={`inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-black transition ${
                     listMode === "credits"
-                      ? "bg-white text-amber-700 shadow-sm"
-                      : "text-slate-500 hover:text-slate-800"
+                      ? "bg-[#d8e3fb] text-[#111c2d] shadow-sm"
+                      : "text-[#86929a] hover:text-[#d4e4fa]"
                   }`}
                 >
                   <HandCoins size={14} />
@@ -4148,17 +4220,17 @@ export default function PosDemoPage() {
 
               <div className="flex items-center gap-2">
               <div className="relative w-full max-w-xs">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#75d1ff]" />
                 <input
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder={listMode === "products" ? "Barcode, SKU, нэрээр хайх" : "Зээлдэгч, утас, бараагаар хайх"}
-                  className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                  className="h-9 w-full rounded-lg border border-[#3d484f] bg-[#051424] pl-9 pr-3 text-xs font-semibold text-[#d4e4fa] outline-none transition placeholder:text-[#86929a] focus:border-[#00c2ff] focus:ring-2 focus:ring-[#00c2ff]/20"
                 />
               </div>
               <button
                 type="button"
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#3d484f] bg-[#122131] px-2.5 text-xs font-bold text-[#bcc8d1] hover:bg-[#1c2b3c]"
               >
                 <Filter size={15} />
                 Шүүлтүүр
@@ -4166,7 +4238,7 @@ export default function PosDemoPage() {
               <button
                 type="button"
                 onClick={listMode === "products" ? reloadProducts : () => void reloadCreditSales()}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#3d484f] bg-[#122131] px-2.5 text-xs font-bold text-[#bcc8d1] hover:bg-[#1c2b3c]"
               >
                 <RefreshCw size={15} />
                 Сэргээх
@@ -4183,8 +4255,8 @@ export default function PosDemoPage() {
                   onClick={() => setSelectedCategory(category)}
                   className={`h-7 shrink-0 rounded-lg px-2.5 text-[11px] font-bold transition-colors ${
                     selectedCategory === category
-                      ? "bg-blue-600 text-white"
-                      : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"
+                      ? "bg-[#92d9ff] text-[#003548]"
+                      : "border border-[#3d484f] bg-[#122131] text-[#bcc8d1] hover:bg-[#1c2b3c]"
                   }`}
                 >
                   {category}
@@ -4321,75 +4393,121 @@ export default function PosDemoPage() {
                 </div>
               )
             ) : loading ? (
-              <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
-                <Loader2 className="animate-spin text-slate-400" size={20} />
+              <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-[#273647] bg-[#051424]">
+                <Loader2 className="animate-spin text-[#75d1ff]" size={20} />
               </div>
             ) : error ? (
-              <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+              <div className="rounded-xl border border-[#ffb4ab]/30 bg-[#93000a]/25 px-4 py-3 text-sm font-medium text-[#ffdad6]">
                 {error}
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center">
+              <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-[#3d484f] bg-[#051424] text-center">
                 <div>
-                  <p className="text-sm font-bold text-slate-700">Бараа олдсонгүй</p>
-                  <p className="mt-1 text-xs text-slate-500">Нэр, SKU эсвэл barcode-оо шалгаарай</p>
+                  <Utensils className="mx-auto mb-3 h-9 w-9 text-[#3d484f]" />
+                  <p className="text-sm font-bold text-[#d4e4fa]">Меню олдсонгүй</p>
+                  <p className="mt-1 text-xs text-[#86929a]">Нэр, SKU эсвэл barcode-оо шалгаарай</p>
                 </div>
               </div>
             ) : (
-              <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200">
-                <table className="min-w-full text-left text-xs">
-                  <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="w-9 px-2 py-2">№</th>
-                      <th className="px-2 py-2">SKU</th>
-                      <th className="px-2 py-2">Барааны нэр</th>
-                      <th className="px-2 py-2 text-right">Үнэ</th>
-                      <th className="px-2 py-2 text-right">Нөөц</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filtered.map((product, index) => {
-                      const inCartQty = state.cart.find((line) => line.productId === product.id)?.qty ?? 0;
-                      const isOutOfStock = product.stockQty <= 0 || inCartQty >= product.stockQty;
-                      return (
-                        <tr
-                          key={product.id}
-                          onClick={() => {
-                            if (isOutOfStock) return;
-                            const result = addRegisterProduct(product);
-                            if (!result.ok) {
-                              setScanMessage(`Нөөц хүрэлцэхгүй: ${product.name}`);
-                              setScanStatus("not-found");
-                            }
-                          }}
-                          className={`cursor-pointer transition-colors ${
-                            inCartQty > 0 ? "bg-blue-50" : "hover:bg-slate-50"
-                          } ${isOutOfStock ? "opacity-50" : ""}`}
-                        >
-                          <td className="px-2 py-2.5 font-semibold text-slate-500">{index + 1}</td>
-                          <td className="max-w-28 px-2 py-2.5 font-mono text-[11px] text-slate-600">
-                            {product.barcode || product.sku}
-                            {product.barcode && <p className="mt-0.5 text-[11px] text-slate-400">SKU: {product.sku}</p>}
-                          </td>
-                          <td className="px-2 py-2.5 font-bold text-slate-900">{product.name}</td>
-                          <td className="px-2 py-2.5 text-right font-bold tabular-nums text-slate-900">
-                            {product.price.toLocaleString()}
-                          </td>
-                          <td className="px-2 py-2.5 text-right font-semibold tabular-nums text-slate-700">
-                            {product.stockQty}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="min-h-0 flex-1 overflow-auto pr-1">
+                <div className="grid auto-rows-[178px] grid-cols-3 gap-3 xl:grid-cols-4 2xl:grid-cols-5">
+                  {filtered.map((product) => {
+                    const inCartQty = state.cart.find((line) => line.productId === product.id)?.qty ?? 0;
+                    const isOutOfStock = product.stockQty <= 0 || inCartQty >= product.stockQty;
+                    return (
+                      <button
+                        key={product.id}
+                        type="button"
+                        onClick={() => {
+                          if (isOutOfStock) return;
+                          const result = addRegisterProduct(product);
+                          if (!result.ok) {
+                            setScanMessage(`Нөөц хүрэлцэхгүй: ${product.name}`);
+                            setScanStatus("not-found");
+                          }
+                        }}
+                        disabled={isOutOfStock}
+                        className={`group relative flex min-h-0 flex-col overflow-hidden rounded-xl border bg-[#122131] text-left transition hover:-translate-y-0.5 hover:border-[#75d1ff]/70 disabled:cursor-not-allowed disabled:opacity-45 ${
+                          inCartQty > 0
+                            ? "border-[#00c2ff] ring-2 ring-[#00c2ff]/20"
+                            : "border-[#273647]"
+                        }`}
+                      >
+                        {inCartQty > 0 ? (
+                          <span className="absolute right-2 top-2 z-10 rounded-full bg-[#00c2ff] px-2 py-0.5 text-[10px] font-black text-[#003548]">
+                            {inCartQty}x
+                          </span>
+                        ) : null}
+                        <div className="relative h-[82px] shrink-0 bg-[#1c2b3c]">
+                          {product.imageUrl ? (
+                            <img
+                              src={product.imageUrl}
+                              alt={product.name}
+                              className="h-full w-full object-cover opacity-90 transition group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#273647] text-[#bcc8d1]">
+                                <Utensils size={26} />
+                              </span>
+                            </div>
+                          )}
+                          <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#122131] to-transparent" />
+                        </div>
+                        <div className="flex min-h-0 flex-1 flex-col px-3 py-2">
+                          <p className="line-clamp-2 text-sm font-black leading-tight text-[#d4e4fa]">
+                            {product.name}
+                          </p>
+                          <p className="mt-1 truncate text-[10px] font-semibold text-[#86929a]">
+                            {product.categoryName || "Бусад"} · SKU {product.sku}
+                          </p>
+                          <div className="mt-auto flex items-end justify-between gap-2">
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-[#86929a]">Үнэ</p>
+                              <p className="text-lg font-black leading-none tabular-nums text-[#92d9ff]">
+                                ₮{product.price.toLocaleString()}
+                              </p>
+                            </div>
+                            <span
+                              className={`rounded-full px-2 py-1 text-[10px] font-black ${
+                                product.stockQty <= 0
+                                  ? "bg-[#93000a]/35 text-[#ffdad6]"
+                                  : product.stockQty < 5
+                                    ? "bg-[#f59e0b]/20 text-[#fbbf24]"
+                                    : "bg-[#10b981]/15 text-[#6ee7b7]"
+                              }`}
+                            >
+                              {product.stockQty}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
         </section>
         )}
 
-        <section ref={paymentSectionRef} className="flex min-h-0 flex-col gap-3 pr-1">
+        <section ref={paymentSectionRef} className="flex min-h-0 flex-col gap-3">
+            <div className="shrink-0 rounded-xl border border-[#273647] bg-[#0d1c2d] p-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#bcc8d1]">Идэвхтэй захиалга</p>
+              <div className="mt-2 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="truncate text-3xl font-black tracking-tight text-[#d4e4fa]">
+                    Ширээ {selectedRestaurantTable?.label ?? "A1"}
+                  </h2>
+                  <p className="mt-1 text-sm font-semibold text-[#bcc8d1]">
+                    {selectedRestaurantTable?.zone ?? "Гол заал"} · {selectedRestaurantTable?.seats ?? 4} суудал
+                  </p>
+                </div>
+                <span className="rounded-full border border-[#00c2ff]/35 bg-[#00c2ff]/15 px-3 py-1 text-[11px] font-black text-[#92d9ff]">
+                  {state.cart.length} мөр
+                </span>
+              </div>
+            </div>
             <PosCartPanel
               className="min-h-[360px] flex-[1_1_360px]"
               lines={state.cart}
@@ -4422,17 +4540,17 @@ export default function PosDemoPage() {
               </div>
             )}
 
-            <div className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex h-9 items-end border-b border-slate-100 px-4">
+            <div className="shrink-0 overflow-hidden rounded-xl border border-[#273647] bg-[#0d1c2d] shadow-sm">
+              <div className="flex h-9 items-end border-b border-[#273647] px-4">
                 <button
                   type="button"
-                  className="h-9 border-b-2 border-blue-600 px-3 text-xs font-black text-blue-600"
+                  className="h-9 border-b-2 border-[#00c2ff] px-3 text-xs font-black text-[#92d9ff]"
                 >
                   eBarimt
                 </button>
                 <button
                   type="button"
-                  className="h-9 px-3 text-xs font-bold text-slate-500"
+                  className="h-9 px-3 text-xs font-bold text-[#86929a]"
                 >
                   Төлбөр
                 </button>
@@ -4441,46 +4559,46 @@ export default function PosDemoPage() {
                 {receiptForPreview?.ebarimt?.status === "SUCCESS" && receiptForPreview.ebarimt.qrData ? (
                   <>
                     <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                      <span className="text-slate-500">Баримтын дугаар:</span>
-                      <span className="font-black text-emerald-600">
+                      <span className="text-[#86929a]">Баримтын дугаар:</span>
+                      <span className="font-black text-[#6ee7b7]">
                         {receiptForPreview.ebarimt.lottery || receiptForPreview.ebarimt.billId || receiptForPreview.receiptNo}
                       </span>
-                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">
+                      <span className="rounded-full bg-[#10b981]/15 px-2 py-1 text-[11px] font-black text-[#6ee7b7]">
                         Амжилттай
                       </span>
                     </div>
                     <div className="grid grid-cols-[130px_minmax(0,1fr)] gap-3">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
-                        <p className="mb-1 text-[11px] font-bold text-slate-600">E-barimt QR</p>
+                      <div className="rounded-lg border border-[#273647] bg-[#051424] p-2 text-center">
+                        <p className="mb-1 text-[11px] font-bold text-[#bcc8d1]">E-barimt QR</p>
                         <div className="inline-flex rounded bg-white p-1">
                           <QRCodeSVG value={receiptForPreview.ebarimt.qrData} size={104} level="M" includeMargin />
                         </div>
-                        <p className="mt-1 text-[10px] leading-tight text-slate-500">
+                        <p className="mt-1 text-[10px] leading-tight text-[#86929a]">
                           Энэ баримтыг ebarimt апп-аар уншуулна уу.
                         </p>
                       </div>
-                      <div className="space-y-1.5 text-xs text-slate-600">
+                      <div className="space-y-1.5 text-xs text-[#bcc8d1]">
                         <div className="flex justify-between gap-2">
                           <span>ДДТД:</span>
-                          <span className="text-right font-semibold text-slate-900">
+                          <span className="text-right font-semibold text-[#d4e4fa]">
                             {receiptForPreview.ebarimt.billId || "-"}
                           </span>
                         </div>
                         <div className="flex justify-between gap-2">
                           <span>Касс:</span>
-                          <span className="text-right font-semibold text-slate-900">{registerConfig?.name ?? "POS"}</span>
+                          <span className="text-right font-semibold text-[#d4e4fa]">{registerConfig?.name ?? "POS"}</span>
                         </div>
                         <div className="flex justify-between gap-2">
                           <span>Кассчин:</span>
-                          <span className="text-right font-semibold text-slate-900">{receiptForPreview.cashierName}</span>
+                          <span className="text-right font-semibold text-[#d4e4fa]">{receiptForPreview.cashierName}</span>
                         </div>
                         <div className="flex justify-between gap-2">
                           <span>Салбар:</span>
-                          <span className="text-right font-semibold text-slate-900">{receiptForPreview.branchName}</span>
+                          <span className="text-right font-semibold text-[#d4e4fa]">{receiptForPreview.branchName}</span>
                         </div>
                         <div className="flex justify-between gap-2">
                           <span>Огноо:</span>
-                          <span className="text-right font-semibold text-slate-900">
+                          <span className="text-right font-semibold text-[#d4e4fa]">
                             {new Date(receiptForPreview.createdAt).toLocaleString("mn-MN")}
                           </span>
                         </div>
@@ -4488,9 +4606,9 @@ export default function PosDemoPage() {
                     </div>
                   </>
                 ) : (
-                  <div className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4">
-                    <p className="text-sm font-black text-slate-700">eBarimt QR</p>
-                    <p className="truncate text-right text-xs font-semibold text-slate-500">
+                  <div className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-dashed border-[#3d484f] bg-[#051424] px-4">
+                    <p className="text-sm font-black text-[#d4e4fa]">eBarimt QR</p>
+                    <p className="truncate text-right text-xs font-semibold text-[#86929a]">
                       {EBARIMT_ENABLED
                         ? "Гүйлгээ батлагдсаны дараа QR харагдана."
                         : "eBarimt одоогоор идэвхгүй байна."}
