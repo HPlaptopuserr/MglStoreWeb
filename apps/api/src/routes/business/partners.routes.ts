@@ -2688,6 +2688,7 @@ router.patch("/partners/:id/profile", requireAuth, async (req, res) => {
       address,
       logoUrl,
       bannerUrl,
+      businessCategory,
       description,
       shortDescription,
       openingHours,
@@ -2698,12 +2699,20 @@ router.patch("/partners/:id/profile", requireAuth, async (req, res) => {
 
     const updateData: Record<string, any> = {};
 
-    if (name !== undefined) updateData.name = name;
+    if (name !== undefined) {
+      const normalizedName = String(name).trim();
+      if (!normalizedName) {
+        return res.status(400).json({ message: "Байгууллагын нэр шаардлагатай" });
+      }
+      updateData.name = normalizedName;
+    }
     if (phone !== undefined) updateData.phone = phone;
     if (email !== undefined) updateData.email = email;
     if (address !== undefined) updateData.address = address;
     if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
     if (bannerUrl !== undefined) updateData.bannerUrl = bannerUrl;
+    if (businessCategory !== undefined)
+      updateData.businessCategory = businessCategory || null;
     if (description !== undefined) updateData.description = description;
     if (shortDescription !== undefined)
       updateData.shortDescription = shortDescription;
@@ -2727,6 +2736,7 @@ router.patch("/partners/:id/profile", requireAuth, async (req, res) => {
       address: updated.address,
       logoUrl: updated.logoUrl,
       bannerUrl: updated.bannerUrl,
+      businessCategory: updated.businessCategory,
       description: updated.description,
       shortDescription: updated.shortDescription,
       openingHours: updated.openingHours,
