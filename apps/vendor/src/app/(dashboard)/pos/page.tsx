@@ -460,22 +460,19 @@ const validateCardRegisterConfig = (register: RegisterConfig | null) => {
   if (!register) {
     throw new Error("POS register тохиргоо олдсонгүй");
   }
-  if (!register.cardEnabled) {
-    throw new Error("Энэ касс дээр картын төлбөр идэвхгүй байна");
-  }
 
   const provider = getEffectiveCardProvider(register);
   if (!provider) {
-    throw new Error("Картын terminal provider тохируулаагүй байна");
+    return null;
   }
   if (provider === "ANDROID_PGW" && !register.terminalBridgeUrl) {
-    throw new Error("ANDROID_PGW Bridge URL тохируулаагүй байна. POS Register дээр http://127.0.0.1:7420 оруулна уу.");
+    return null;
   }
   if ((provider === "PUSH_ECR" || provider === "MINU_AGENT") && !register.cardTerminalId) {
-    throw new Error(`${provider} terminalId тохируулаагүй байна`);
+    return null;
   }
   if (!LONG_RUNNING_CARD_PROVIDERS.has(provider) && !register.terminalBridgeUrl) {
-    throw new Error(`${provider} Bridge URL тохируулаагүй байна`);
+    return null;
   }
 
   return provider;
@@ -2233,12 +2230,6 @@ export default function PosDemoPage() {
           effectiveCardProvider !== "MINU_AGENT" &&
           effectiveCardProvider !== "PUSH_ECR";
 
-        if (effectiveCardProvider === "ANDROID_PGW" && !freshRegisterConfig.terminalBridgeUrl) {
-          throw new Error(
-            "ANDROID_PGW Bridge URL тохируулаагүй байна. POS Register дээр http://127.0.0.1:7420 оруулна уу."
-          );
-        }
-
         const attempt = await createCardAttempt({
           amount: safeAmount,
           terminalId,
@@ -2318,6 +2309,7 @@ export default function PosDemoPage() {
               : item,
           ),
         );
+        setAutoCheckoutActive(true);
         clearProgressTicker();
         setScanStatus("success");
         setScanMessage("Картын төлбөр амжилттай баталгаажлаа");

@@ -227,27 +227,15 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       }
     }
 
-    cardProviderType = effectiveCardConfig.cardProviderType ?? null;
-    inheritedCardTerminalId = effectiveCardConfig.cardTerminalId ?? null;
-    inheritedTerminalBridgeUrl = effectiveCardConfig.terminalBridgeUrl ?? null;
+    const terminalCardEnabled = effectiveCardConfig.cardEnabled !== false;
+    cardProviderType = terminalCardEnabled ? effectiveCardConfig.cardProviderType ?? null : null;
+    inheritedCardTerminalId = terminalCardEnabled ? effectiveCardConfig.cardTerminalId ?? null : null;
+    inheritedTerminalBridgeUrl = terminalCardEnabled ? effectiveCardConfig.terminalBridgeUrl ?? null : null;
     isPushEcr = cardProviderType === "PUSH_ECR";
     isMinuAgent =
       cardProviderType === "MINU_AGENT" ||
-      (!cardProviderType && regForProvider?.organization.minuAgentEnabled === true);
+      (!cardProviderType && terminalCardEnabled && regForProvider?.organization.minuAgentEnabled === true);
     isAndroidPgw = cardProviderType === "ANDROID_PGW";
-
-    if (!effectiveCardConfig.cardEnabled) {
-      return res.status(400).json({ message: "Энэ POS register дээр картын төлбөр идэвхгүй байна" });
-    }
-    if (!cardProviderType && !isMinuAgent) {
-      return res.status(400).json({ message: "Картын terminal provider тохируулаагүй байна" });
-    }
-    if (isPushEcr) {
-      const configError = pushEcrConfigError();
-      if (configError) {
-        return res.status(500).json({ message: configError });
-      }
-    }
   }
   const isLocalBridgeProvider = Boolean(
     cardProviderType && LOCAL_BRIDGE_CARD_PROVIDERS.has(cardProviderType)
@@ -266,22 +254,9 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     }
   }
 
-  if (!effectiveBridgeUrl && isLocalBridgeProvider) {
-    return res.status(400).json({
-      message: `${cardProviderType} terminalBridgeUrl тохируулаагүй байна. POS Register дээр Bridge URL оруулна уу.`,
-    });
-  }
-
-  if (!effectiveBridgeUrl && !allowPosSimulation && !isPushEcr && !isMinuAgent) {
-    return res.status(400).json({
-      message:
-        "Card simulation идэвхгүй байна. terminalBridgeUrl тохируулж bridge-р authorize хийнэ үү.",
-    });
-  }
-
   const usesLocalBridge = Boolean(effectiveBridgeUrl && !isPushEcr && !isMinuAgent);
 
-  if (clientBridge && !isAndroidPgw) {
+  if (clientBridge && usesLocalBridge && !isAndroidPgw) {
     return res.status(400).json({
       message: "clientBridge горим зөвхөн ANDROID_PGW terminal дээр дэмжигдэнэ",
     });
@@ -297,6 +272,8 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     let effectiveOrganizationId: string | null = null;
     let registerCardTerminalId: string | null = null;
     let minuAgentContext: MinuAgentContext | null = null;
+    let forceManualCard = false;
+    let manualCardReason = "terminal-not-configured";
     if (registerId) {
       const register = await prisma.posRegister.findUnique({
         where: { id: registerId },
@@ -333,15 +310,15 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       if (isMinuAgent) {
         const org = register.organization;
         if (!org.minuAgentEnabled || !org.minuAgentUsername || !org.minuAgentPassword || !org.minuAgentBranchId) {
-          return res.status(400).json({
-            message: "Энэ байгууллагын Minu Agent merchant тохиргоо бүрэн биш байна",
-          });
+          forceManualCard = true;
+          manualCardReason = "minu-agent-config-incomplete";
+        } else {
+          minuAgentContext = {
+            username: org.minuAgentUsername,
+            password: org.minuAgentPassword,
+            branchId: org.minuAgentBranchId,
+          };
         }
-        minuAgentContext = {
-          username: org.minuAgentUsername,
-          password: org.minuAgentPassword,
-          branchId: org.minuAgentBranchId,
-        };
       }
     }
 
@@ -361,10 +338,10 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
         terminalId !== "terminal-1"
           ? terminalId
           : (registerCardTerminalId || pushEcrDefaultTerminalId || "");
-      if (!effectiveTerminalId || effectiveTerminalId === "terminal-1") {
-        return res.status(400).json({
-          message: "Push ECR terminalId тохируулаагүй байна. POS Register дээр terminalId оруулна уу.",
-        });
+      const configError = pushEcrConfigError();
+      if (!effectiveTerminalId || effectiveTerminalId === "terminal-1" || configError) {
+        forceManualCard = true;
+        manualCardReason = configError ? "push-ecr-config-incomplete" : "push-ecr-terminal-not-configured";
       }
     }
 
@@ -374,11 +351,12 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           ? terminalId
           : (registerCardTerminalId || "");
       if (!effectiveTerminalId || effectiveTerminalId === "terminal-1") {
-        return res.status(400).json({
-          message: "Minu terminalId тохируулаагүй байна. POS Register дээр terminalId оруулна уу.",
-        });
+        forceManualCard = true;
+        manualCardReason = "minu-terminal-not-configured";
       }
     }
+
+    const manualCardAttempt = forceManualCard || (!usesLocalBridge && !isPushEcr && !isMinuAgent);
 
     const attempt = await prisma.cardPaymentAttempt.create({
       data: {
@@ -388,7 +366,17 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
         terminalId,
         bridgeUrl: usesLocalBridge ? effectiveBridgeUrl : null,
         amount,
-        status: PosPaymentStatus.PENDING,
+        status: manualCardAttempt ? PosPaymentStatus.APPROVED : PosPaymentStatus.PENDING,
+        transactionId: manualCardAttempt ? `manual-card-${Date.now()}` : null,
+        message: manualCardAttempt ? "Manual card payment recorded" : null,
+        providerPayload: manualCardAttempt
+          ? {
+              mode: "manual-card",
+              provider: cardProviderType,
+              reason: manualCardReason,
+              env: runtimeEnv,
+            } as object
+          : undefined,
       },
     });
 
@@ -401,7 +389,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       },
     });
 
-    if (usesLocalBridge && clientBridge) {
+    if (!manualCardAttempt && usesLocalBridge && clientBridge) {
       await prisma.cardPaymentAttempt.update({
         where: { id: attempt.id },
         data: {
@@ -412,7 +400,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           } as object,
         },
       });
-    } else if (usesLocalBridge) {
+    } else if (!manualCardAttempt && usesLocalBridge) {
       // Forward to local bridge; bridge translates to terminal native protocol.
       void (async () => {
         try {
@@ -466,7 +454,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           });
         }
       })();
-    } else if (isPushEcr) {
+    } else if (!manualCardAttempt && isPushEcr) {
       // Push ECR: call PayPRO cloud API directly (terminal handles the card transaction)
       // terminalId priority: request body → register.cardTerminalId → env PUSH_ECR_TERMINAL_ID
       const effectiveTerminalId = terminalId !== "terminal-1" ? terminalId
@@ -514,7 +502,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           });
         }
       })();
-    } else if (isMinuAgent) {
+    } else if (!manualCardAttempt && isMinuAgent) {
       const effectiveTerminalId = terminalId !== "terminal-1" ? terminalId : (registerCardTerminalId || terminalId);
       const invoice = `MGL-${attempt.id.replace(/-/g, "").slice(0, 24).toUpperCase()}`;
 
@@ -588,7 +576,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           });
         }
       })();
-    } else if (allowPosSimulation && !isPushEcr && !isMinuAgent && !isLocalBridgeProvider) {
+    } else if (!manualCardAttempt && allowPosSimulation && !isPushEcr && !isMinuAgent && !isLocalBridgeProvider) {
       setTimeout(() => {
         void prisma.cardPaymentAttempt.update({
           where: { id: attempt.id },
