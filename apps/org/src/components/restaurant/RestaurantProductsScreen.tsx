@@ -162,7 +162,6 @@ export function RestaurantProductsScreen() {
       const params = new URLSearchParams({
         organizationId: user.organizationId,
         includeInactive: "1",
-        restaurantMenu: "1",
       });
       const response = await authFetch(`${API}/products?${params.toString()}`, {
         cache: "no-store",
