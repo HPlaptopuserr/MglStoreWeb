@@ -2,7 +2,7 @@ import { Router, type Router as ExpressRouter } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { prisma } from "@mgl/database";
+import { prisma, type Prisma } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
@@ -14,9 +14,16 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const ALLOWED_DM_MIMES = [
-  "image/jpeg", "image/png", "image/gif", "image/webp",
-  "audio/webm", "audio/ogg", "audio/mpeg", "audio/mp4",
-  "video/mp4", "video/webm",
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "audio/webm",
+  "audio/ogg",
+  "audio/mpeg",
+  "audio/mp4",
+  "video/mp4",
+  "video/webm",
   "application/pdf",
 ];
 
@@ -62,7 +69,11 @@ router.get("/dm/conversations", requireAuth, async (req, res) => {
                     id: true,
                     email: true,
                     profile: {
-                      select: { fullName: true, avatarUrl: true, phoneNumber: true },
+                      select: {
+                        fullName: true,
+                        avatarUrl: true,
+                        phoneNumber: true,
+                      },
                     },
                   },
                 },
@@ -113,6 +124,7 @@ router.get("/dm/conversations", requireAuth, async (req, res) => {
           fullName: pp.user.profile?.fullName || "",
           avatarUrl: pp.user.profile?.avatarUrl || null,
           email: pp.user.email,
+          role: pp.role,
         })),
         lastMessage: lastMsg
           ? {
@@ -139,7 +151,9 @@ router.get("/dm/conversations", requireAuth, async (req, res) => {
     return res.json(result);
   } catch (error) {
     console.error("dm conversations error", error);
-    return res.status(500).json({ message: "Чат жагсаалт ачаалахад алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "Чат жагсаалт ачаалахад алдаа гарлаа" });
   }
 });
 
@@ -148,7 +162,71 @@ router.get("/dm/conversations", requireAuth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────
 router.post("/dm/conversations", requireAuth, async (req, res) => {
   const user = (req as any).user as AuthPayload;
-  const { recipientId } = req.body as { recipientId?: string };
+  const { recipientId, type, name, participantIds } = req.body as {
+    recipientId?: string;
+    type?: "DIRECT" | "GROUP";
+    name?: string;
+    participantIds?: string[];
+  };
+
+  if (type === "GROUP") {
+    const groupName = (name || "").trim();
+    const uniqueParticipantIds = Array.from(
+      new Set((participantIds || []).filter((id) => id && id !== user.userId)),
+    );
+
+    if (groupName.length < 2) {
+      return res
+        .status(400)
+        .json({ message: "Group chat-ийн нэр шаардлагатай" });
+    }
+    if (uniqueParticipantIds.length < 2) {
+      return res.status(400).json({
+        message: "Group chat үүсгэхэд хамгийн багадаа 2 хүн сонгоно уу",
+      });
+    }
+
+    try {
+      const users = await prisma.user.findMany({
+        where: {
+          id: { in: uniqueParticipantIds },
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      const activeIds = users.map((item) => item.id);
+
+      if (activeIds.length !== uniqueParticipantIds.length) {
+        return res
+          .status(404)
+          .json({ message: "Сонгосон хэрэглэгчийн зарим нь олдсонгүй" });
+      }
+
+      const conv = await prisma.conversation.create({
+        data: {
+          type: "GROUP",
+          name: groupName,
+          participants: {
+            create: [
+              { userId: user.userId, role: "ADMIN" },
+              ...activeIds.map((id) => ({
+                userId: id,
+                role: "MEMBER" as const,
+              })),
+            ],
+          },
+        },
+      });
+
+      return res.status(201).json({ conversationId: conv.id, isNew: true });
+    } catch (error) {
+      console.error("dm create group conversation error", error);
+      return res
+        .status(500)
+        .json({ message: "Group chat үүсгэхэд алдаа гарлаа" });
+    }
+  }
 
   if (!recipientId) {
     return res.status(400).json({ message: "recipientId шаардлагатай" });
@@ -193,10 +271,7 @@ router.post("/dm/conversations", requireAuth, async (req, res) => {
       data: {
         type: "DIRECT",
         participants: {
-          create: [
-            { userId: user.userId },
-            { userId: recipientId },
-          ],
+          create: [{ userId: user.userId }, { userId: recipientId }],
         },
       },
     });
@@ -205,6 +280,80 @@ router.post("/dm/conversations", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("dm create conversation error", error);
     return res.status(500).json({ message: "Чат үүсгэхэд алдаа гарлаа" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// GET /dm/conversations/:id — group/direct info with participants
+// ─────────────────────────────────────────────────────────────────────────
+router.get("/dm/conversations/:id", requireAuth, async (req, res) => {
+  const user = (req as any).user as AuthPayload;
+  const { id } = req.params;
+
+  try {
+    const participant = await prisma.conversationParticipant.findUnique({
+      where: {
+        conversationId_userId: { conversationId: id, userId: user.userId },
+      },
+    });
+    if (!participant) {
+      return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id },
+      include: {
+        participants: {
+          orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                profile: {
+                  select: {
+                    fullName: true,
+                    avatarUrl: true,
+                    phoneNumber: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        _count: { select: { messages: true } },
+      },
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ message: "Чат олдсонгүй" });
+    }
+
+    return res.json({
+      id: conversation.id,
+      type: conversation.type,
+      name: conversation.name,
+      avatarUrl: conversation.avatarUrl,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+      currentUserRole: participant.role,
+      messageCount: conversation._count.messages,
+      participants: conversation.participants.map((p) => ({
+        id: p.user.id,
+        fullName: p.user.profile?.fullName || "",
+        avatarUrl: p.user.profile?.avatarUrl || null,
+        email: p.user.email,
+        phone: p.user.profile?.phoneNumber || null,
+        role: p.role,
+        joinedAt: p.joinedAt,
+        isCurrentUser: p.userId === user.userId,
+      })),
+    });
+  } catch (error) {
+    console.error("dm conversation detail error", error);
+    return res
+      .status(500)
+      .json({ message: "Group мэдээлэл ачаалахад алдаа гарлаа" });
   }
 });
 
@@ -220,7 +369,9 @@ router.get("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
   try {
     // Verify user is participant
     const participant = await prisma.conversationParticipant.findUnique({
-      where: { conversationId_userId: { conversationId: id, userId: user.userId } },
+      where: {
+        conversationId_userId: { conversationId: id, userId: user.userId },
+      },
     });
     if (!participant) {
       return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
@@ -252,10 +403,7 @@ router.get("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
         id: m.id,
         type: m.type,
         content: m.type === "TEXT" ? m.content : undefined,
-        fileUrl:
-          m.type !== "TEXT"
-            ? `/api/dm/uploads/${m.content}`
-            : undefined,
+        fileUrl: m.type !== "TEXT" ? `/api/dm/uploads/${m.content}` : undefined,
         fileName: m.fileName,
         fileSize: m.fileSize,
         duration: m.duration,
@@ -268,7 +416,9 @@ router.get("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
     );
   } catch (error) {
     console.error("dm get messages error", error);
-    return res.status(500).json({ message: "Мессежүүд ачаалахад алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "Мессежүүд ачаалахад алдаа гарлаа" });
   }
 });
 
@@ -286,7 +436,9 @@ router.post("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
 
   try {
     const participant = await prisma.conversationParticipant.findUnique({
-      where: { conversationId_userId: { conversationId: id, userId: user.userId } },
+      where: {
+        conversationId_userId: { conversationId: id, userId: user.userId },
+      },
     });
     if (!participant) {
       return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
@@ -308,7 +460,9 @@ router.post("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
         data: { updatedAt: new Date() },
       }),
       prisma.conversationParticipant.update({
-        where: { conversationId_userId: { conversationId: id, userId: user.userId } },
+        where: {
+          conversationId_userId: { conversationId: id, userId: user.userId },
+        },
         data: { lastReadAt: message.createdAt },
       }),
     ]);
@@ -345,7 +499,9 @@ router.post(
 
     try {
       const participant = await prisma.conversationParticipant.findUnique({
-        where: { conversationId_userId: { conversationId: id, userId: user.userId } },
+        where: {
+          conversationId_userId: { conversationId: id, userId: user.userId },
+        },
       });
       if (!participant) {
         return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
@@ -369,7 +525,9 @@ router.post(
           data: { updatedAt: new Date() },
         }),
         prisma.conversationParticipant.update({
-          where: { conversationId_userId: { conversationId: id, userId: user.userId } },
+          where: {
+            conversationId_userId: { conversationId: id, userId: user.userId },
+          },
           data: { lastReadAt: message.createdAt },
         }),
       ]);
@@ -387,7 +545,9 @@ router.post(
       });
     } catch (error) {
       console.error("dm send voice error", error);
-      return res.status(500).json({ message: "Дуут мессеж илгээхэд алдаа гарлаа" });
+      return res
+        .status(500)
+        .json({ message: "Дуут мессеж илгээхэд алдаа гарлаа" });
     }
   },
 );
@@ -409,7 +569,9 @@ router.post(
 
     try {
       const participant = await prisma.conversationParticipant.findUnique({
-        where: { conversationId_userId: { conversationId: id, userId: user.userId } },
+        where: {
+          conversationId_userId: { conversationId: id, userId: user.userId },
+        },
       });
       if (!participant) {
         return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
@@ -435,7 +597,9 @@ router.post(
           data: { updatedAt: new Date() },
         }),
         prisma.conversationParticipant.update({
-          where: { conversationId_userId: { conversationId: id, userId: user.userId } },
+          where: {
+            conversationId_userId: { conversationId: id, userId: user.userId },
+          },
           data: { lastReadAt: message.createdAt },
         }),
       ]);
@@ -466,13 +630,256 @@ router.patch("/dm/conversations/:id/read", requireAuth, async (req, res) => {
 
   try {
     await prisma.conversationParticipant.update({
-      where: { conversationId_userId: { conversationId: id, userId: user.userId } },
+      where: {
+        conversationId_userId: { conversationId: id, userId: user.userId },
+      },
       data: { lastReadAt: new Date() },
     });
 
     return res.json({ success: true });
   } catch {
     return res.status(404).json({ message: "Чат олдсонгүй" });
+  }
+});
+
+async function requireGroupAdmin(conversationId: string, userId: string) {
+  const participant = await prisma.conversationParticipant.findUnique({
+    where: { conversationId_userId: { conversationId, userId } },
+    include: { conversation: { select: { type: true } } },
+  });
+  return participant?.conversation.type === "GROUP" &&
+    participant.role === "ADMIN"
+    ? participant
+    : null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /dm/conversations/:id/participants — add members to a group
+// ─────────────────────────────────────────────────────────────────────────
+router.post(
+  "/dm/conversations/:id/participants",
+  requireAuth,
+  async (req, res) => {
+    const user = (req as any).user as AuthPayload;
+    const { id } = req.params;
+    const { participantIds } = req.body as { participantIds?: string[] };
+
+    const admin = await requireGroupAdmin(id, user.userId);
+    if (!admin) {
+      return res.status(403).json({ message: "Group admin эрх шаардлагатай" });
+    }
+
+    const uniqueIds = Array.from(
+      new Set(
+        (participantIds || []).filter((item) => item && item !== user.userId),
+      ),
+    );
+    if (uniqueIds.length === 0) {
+      return res.status(400).json({ message: "Нэмэх гишүүн сонгоно уу" });
+    }
+
+    try {
+      const users = await prisma.user.findMany({
+        where: { id: { in: uniqueIds }, isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      const activeIds = users.map((item) => item.id);
+      if (activeIds.length !== uniqueIds.length) {
+        return res
+          .status(404)
+          .json({ message: "Сонгосон хэрэглэгчийн зарим нь олдсонгүй" });
+      }
+
+      await prisma.conversationParticipant.createMany({
+        data: activeIds.map((userId) => ({
+          conversationId: id,
+          userId,
+          role: "MEMBER",
+        })),
+        skipDuplicates: true,
+      });
+
+      await prisma.conversation.update({
+        where: { id },
+        data: { updatedAt: new Date() },
+      });
+      return res.status(201).json({ success: true });
+    } catch (error) {
+      console.error("dm add group participants error", error);
+      return res.status(500).json({ message: "Гишүүн нэмэхэд алдаа гарлаа" });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// PATCH /dm/conversations/:id/participants/:userId/role — set group role
+// ─────────────────────────────────────────────────────────────────────────
+router.patch(
+  "/dm/conversations/:id/participants/:userId/role",
+  requireAuth,
+  async (req, res) => {
+    const user = (req as any).user as AuthPayload;
+    const { id, userId } = req.params;
+    const role = String(
+      (req.body as { role?: string }).role || "",
+    ).toUpperCase();
+
+    const admin = await requireGroupAdmin(id, user.userId);
+    if (!admin) {
+      return res.status(403).json({ message: "Group admin эрх шаардлагатай" });
+    }
+    if (!["ADMIN", "MEMBER"].includes(role)) {
+      return res
+        .status(400)
+        .json({ message: "role нь ADMIN эсвэл MEMBER байх ёстой" });
+    }
+
+    try {
+      const adminCount = await prisma.conversationParticipant.count({
+        where: { conversationId: id, role: "ADMIN" },
+      });
+      const target = await prisma.conversationParticipant.findUnique({
+        where: { conversationId_userId: { conversationId: id, userId } },
+      });
+      if (!target) {
+        return res.status(404).json({ message: "Гишүүн олдсонгүй" });
+      }
+      if (target.role === "ADMIN" && role === "MEMBER" && adminCount <= 1) {
+        return res
+          .status(400)
+          .json({ message: "Сүүлийн admin эрхийг авах боломжгүй" });
+      }
+
+      await prisma.conversationParticipant.update({
+        where: { conversationId_userId: { conversationId: id, userId } },
+        data: { role: role as "ADMIN" | "MEMBER" },
+      });
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("dm update group role error", error);
+      return res.status(500).json({ message: "Role шинэчлэхэд алдаа гарлаа" });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// DELETE /dm/conversations/:id/participants/me — leave group
+// ─────────────────────────────────────────────────────────────────────────
+router.delete(
+  "/dm/conversations/:id/participants/me",
+  requireAuth,
+  async (req, res) => {
+    const user = (req as any).user as AuthPayload;
+    const { id } = req.params;
+
+    try {
+      const participant = await prisma.conversationParticipant.findUnique({
+        where: {
+          conversationId_userId: { conversationId: id, userId: user.userId },
+        },
+        include: { conversation: { select: { type: true } } },
+      });
+      if (!participant || participant.conversation.type !== "GROUP") {
+        return res.status(404).json({ message: "Group олдсонгүй" });
+      }
+
+      if (participant.role === "ADMIN") {
+        const adminCount = await prisma.conversationParticipant.count({
+          where: { conversationId: id, role: "ADMIN" },
+        });
+        if (adminCount <= 1) {
+          return res
+            .status(400)
+            .json({ message: "Гарахаас өмнө өөр admin онооно уу" });
+        }
+      }
+
+      await prisma.conversationParticipant.delete({
+        where: {
+          conversationId_userId: { conversationId: id, userId: user.userId },
+        },
+      });
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("dm leave group error", error);
+      return res
+        .status(500)
+        .json({ message: "Group-ээс гарахад алдаа гарлаа" });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// GET /dm/conversations/:id/media?kind=images|files|videos|text&q=
+// ─────────────────────────────────────────────────────────────────────────
+router.get("/dm/conversations/:id/media", requireAuth, async (req, res) => {
+  const user = (req as any).user as AuthPayload;
+  const { id } = req.params;
+  const kind = String(req.query.kind || "all");
+  const q = String(req.query.q || "").trim();
+
+  try {
+    const participant = await prisma.conversationParticipant.findUnique({
+      where: {
+        conversationId_userId: { conversationId: id, userId: user.userId },
+      },
+    });
+    if (!participant) {
+      return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
+    }
+
+    const where: Prisma.DirectMessageWhereInput = { conversationId: id };
+    if (kind === "images") where.type = "IMAGE";
+    if (kind === "files" || kind === "videos") where.type = "FILE";
+    if (kind === "text") where.type = "TEXT";
+    if (q) {
+      where.OR = [
+        { content: { contains: q, mode: "insensitive" } },
+        { fileName: { contains: q, mode: "insensitive" } },
+      ];
+    }
+
+    const messages = await prisma.directMessage.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 80,
+      include: {
+        sender: {
+          select: {
+            id: true,
+            email: true,
+            profile: { select: { fullName: true, avatarUrl: true } },
+          },
+        },
+      },
+    });
+
+    const filtered =
+      kind === "videos"
+        ? messages.filter((m) => /\.(mp4|webm)$/i.test(m.fileName || m.content))
+        : messages;
+
+    return res.json(
+      filtered.map((m) => ({
+        id: m.id,
+        type: m.type,
+        content: m.type === "TEXT" ? m.content : undefined,
+        fileUrl: m.type !== "TEXT" ? `/api/dm/uploads/${m.content}` : undefined,
+        fileName: m.fileName,
+        fileSize: m.fileSize,
+        duration: m.duration,
+        senderId: m.senderId,
+        senderName: m.sender.profile?.fullName || m.sender.email,
+        senderAvatar: m.sender.profile?.avatarUrl || null,
+        createdAt: m.createdAt,
+        isOwn: m.senderId === user.userId,
+      })),
+    );
+  } catch (error) {
+    console.error("dm group media error", error);
+    return res
+      .status(500)
+      .json({ message: "Медиа жагсаалт ачаалахад алдаа гарлаа" });
   }
 });
 
@@ -484,7 +891,9 @@ router.get("/dm/users/search", requireAuth, async (req, res) => {
   const q = ((req.query.q as string) || "").trim();
 
   if (q.length < 2) {
-    return res.status(400).json({ message: "Хайлтын үг 2-оос дээш тэмдэгт байх ёстой" });
+    return res
+      .status(400)
+      .json({ message: "Хайлтын үг 2-оос дээш тэмдэгт байх ёстой" });
   }
 
   try {
@@ -551,7 +960,9 @@ router.get("/dm/unread-count", requireAuth, async (req, res) => {
     return res.json({ unreadCount: totalUnread });
   } catch (error) {
     console.error("dm unread count error", error);
-    return res.status(500).json({ message: "Уншаагүй мессеж тоолоход алдаа гарлаа" });
+    return res
+      .status(500)
+      .json({ message: "Уншаагүй мессеж тоолоход алдаа гарлаа" });
   }
 });
 

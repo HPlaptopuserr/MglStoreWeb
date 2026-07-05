@@ -2093,13 +2093,14 @@ model Conversation {
 }
 
 model ConversationParticipant {
-  id             String       @id @default(cuid())
+  id             String                      @id @default(cuid())
   conversationId String
   userId         String
+  role           ConversationParticipantRole @default(MEMBER)
   lastReadAt     DateTime?
-  joinedAt       DateTime     @default(now())
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id])
+  joinedAt       DateTime                    @default(now())
+  conversation   Conversation                @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User                        @relation(fields: [userId], references: [id])
 
   @@unique([conversationId, userId])
   @@index([userId])
@@ -2125,6 +2126,11 @@ model DirectMessage {
 enum ConversationType {
   DIRECT
   GROUP
+}
+
+enum ConversationParticipantRole {
+  ADMIN
+  MEMBER
 }
 
 enum DmType {
