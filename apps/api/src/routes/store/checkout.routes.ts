@@ -157,24 +157,6 @@ async function getStoreCheckoutPaymentAccount() {
   }
 }
 
-async function getDeliveryReadiness(organizationId: string) {
-  const availableBranchCount = await prisma.branch.count({
-    where: {
-      organizationId,
-      deletedAt: null,
-      organization: {
-        deletedAt: null,
-        status: "ACTIVE",
-      },
-    },
-  });
-
-  return {
-    canDeliver: availableBranchCount > 0,
-    availableBranchCount,
-  };
-}
-
 async function advanceExpiredDispatchAttempts(orderId: string) {
   await prisma.$transaction(async (tx) => {
     const expired = await tx.orderDispatchAttempt.findMany({
@@ -671,7 +653,7 @@ async function decrementOrderStock(
 /* ══════════════════════════════════════════════════════════
    POST /store/checkout
    Creates an Order + OrderItems + QPay mock invoice.
-   Body: { lines: [{productId,qty}], phone, note, shippingAddress? }
+   Body: { lines: [{productId,qty}], phone, email?, note?, shippingAddress? }
    ══════════════════════════════════════════════════════════ */
 router.post("/store/checkout", async (req: Request, res: Response) => {
   try {
@@ -683,6 +665,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     const {
       lines,
       phone,
+      email,
       secondaryPhone,
       note,
       shippingAddress,
@@ -691,6 +674,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     } = req.body as {
       lines?: { productId: string; qty: number }[];
       phone?: string;
+      email?: string;
       secondaryPhone?: string;
       note?: string;
       shippingAddress?: string;
@@ -710,14 +694,16 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           message: "Захиалга баталгаажуулах утасны дугаар шаардлагатай.",
         });
     }
+    const normalizedEmail = email?.trim().toLowerCase();
     const normalizedNote = note?.trim();
-    if (!normalizedNote) {
-      return res
-        .status(400)
-        .json({ message: "Захиалгын нэмэлт мэдээлэл шаардлагатай." });
-    }
     const normalizedSecondaryPhone = secondaryPhone?.trim();
+    const noteAlreadyIncludesEmail = Boolean(
+      normalizedEmail && normalizedNote?.toLowerCase().includes(normalizedEmail),
+    );
     const orderNote = [
+      normalizedEmail && !noteAlreadyIncludesEmail
+        ? `Имэйл: ${normalizedEmail}`
+        : null,
       normalizedNote,
       normalizedSecondaryPhone
         ? `Нэмэлт дугаар: ${normalizedSecondaryPhone}`
@@ -816,9 +802,6 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     const normalizedCustomerLat = toNumberOrNull(customerLat);
     const normalizedCustomerLng = toNumberOrNull(customerLng);
     const total = subtotal; // no delivery fee for now
-    const deliveryReadiness = isPreorderOnlyOrder
-      ? null
-      : await getDeliveryReadiness(orgIds[0]);
 
     if (
       !isPreorderOnlyOrder &&
@@ -828,15 +811,6 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         code: "CUSTOMER_LOCATION_REQUIRED",
         message:
           "Хүргэлт хайхын тулд хэрэглэгчийн байршлын өргөрөг, уртраг тодорхой байх шаардлагатай.",
-      });
-    }
-
-    if (deliveryReadiness && !deliveryReadiness.canDeliver) {
-      return res.status(409).json({
-        code: "DELIVERY_AREA_UNAVAILABLE",
-        message:
-          "Одоогоор энэ дэлгүүрийн хүргэлтийн байршил бэлэн болоогүй байна. Хүргэлтийн хэсэг удахгүй идэвхжинэ.",
-        delivery: deliveryReadiness,
       });
     }
 
@@ -891,6 +865,10 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     const dispatch = isPreorderOnlyOrder
       ? null
       : await getCheckoutDispatchSnapshot(order.id, customer.id);
+    const dispatchStatus =
+      dispatch?.status === "NOT_STARTED" && !isPreorderOnlyOrder
+        ? "MANUAL_REVIEW"
+        : dispatch?.status || "PREORDER_REGISTERED";
 
     return res.status(201).json({
       orderId: order.id,
@@ -899,7 +877,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       subtotal: Number(order.subtotal),
       paymentId: null,
       paymentRequired: false,
-      dispatchStatus: dispatch?.status || "PREORDER_REGISTERED",
+      dispatchStatus,
       preorderOrder: isPreorderOnlyOrder,
       dispatch,
       items: order.items.map((i) => ({
@@ -1041,7 +1019,7 @@ router.post(
 
 /* ══════════════════════════════════════════════════════════
    POST /store/checkout/:orderId/payment
-   Create QPay invoice only after a branch accepts the radar request.
+   Create MinuPOS/SystemQR invoice only after a branch accepts the radar request.
    ══════════════════════════════════════════════════════════ */
 router.post(
   "/store/checkout/:orderId/payment",
@@ -1136,17 +1114,17 @@ router.post(
           amount: Number(order.total),
         });
       } catch (err) {
-        console.error("QPay invoice creation failed:", err);
+        console.error("Store payment invoice creation failed:", err);
         if (err instanceof Error && err.message === "QPAY_NOT_CONFIGURED") {
           return res
             .status(400)
             .json({
-              message: "Дэлгүүр QPay төлбөрийн тохиргоо холбоогүй байна.",
+              message: "Дэлгүүр MinuPOS төлбөрийн тохиргоо холбоогүй байна.",
             });
         }
         return res
           .status(502)
-          .json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
+          .json({ message: "Төлбөрийн нэхэмжлэх үүсгэхэд алдаа гарлаа" });
       }
 
       await prisma.paymentAttempt.update({
@@ -1185,7 +1163,7 @@ router.post(
 
 /* ══════════════════════════════════════════════════════════
    POST /store/checkout/:orderId/confirm
-   Check QPay payment status and confirm if paid.
+   Check checkout payment status and confirm if paid.
    ══════════════════════════════════════════════════════════ */
 router.post(
   "/store/checkout/:orderId/confirm",
@@ -1239,10 +1217,10 @@ router.post(
         });
       }
 
-      // Check QPay payment via invoiceId
+      // Check payment via invoiceId.
       const payment = order.payments[0];
       if (!payment?.providerRef) {
-        return res.status(400).json({ message: "QPay нэхэмжлэх олдсонгүй" });
+        return res.status(400).json({ message: "Төлбөрийн нэхэмжлэх олдсонгүй" });
       }
 
       const paymentCheck = await checkStorePayment({
@@ -1264,7 +1242,7 @@ router.post(
         order,
         payment.id,
         paymentCheck.payload,
-        "QPay төлбөр амжилттай",
+        "MinuPOS төлбөр амжилттай",
       );
 
       return res.json({
@@ -1284,7 +1262,7 @@ router.post(
 
 /* ══════════════════════════════════════════════════════════
    GET /store/checkout/:orderId/payment-status
-   Polling endpoint — check QPay payment status.
+   Polling endpoint — check checkout payment status.
    ══════════════════════════════════════════════════════════ */
 router.get(
   "/store/checkout/:orderId/payment-status",
@@ -1351,7 +1329,7 @@ router.get(
         order,
         payment.id,
         paymentCheck.payload,
-        "QPay төлбөр амжилттай (auto-poll)",
+        "MinuPOS төлбөр амжилттай (auto-poll)",
       );
 
       return res.json({ status: "PAID" });

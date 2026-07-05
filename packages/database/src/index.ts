@@ -44,4 +44,6 @@ export {
   ReelAssetKind,
   ReelProcessingStatus,
   ReelInteractionType,
+  OrganizationTaskPriority,
+  OrganizationTaskStatus,
 } from "@prisma/client";

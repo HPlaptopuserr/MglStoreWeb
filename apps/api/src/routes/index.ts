@@ -2,9 +2,11 @@ export { authRoutes } from "./auth";
 
 export {
   associationRoutes,
+  businessDashboardRoutes,
   investorRoutes,
   orgJoinRoutes,
   orgMemberRoutes,
+  orgTaskRoutes,
   partnerRequestRoutes,
   partnerRoutes,
   vendorSetupRoutes,

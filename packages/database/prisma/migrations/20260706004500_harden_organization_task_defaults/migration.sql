@@ -1,0 +1,7 @@
+ALTER TABLE "OrganizationTask"
+ALTER COLUMN "id" SET DEFAULT gen_random_uuid(),
+ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE "OrganizationTaskAssignee"
+ALTER COLUMN "id" SET DEFAULT gen_random_uuid(),
+ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP;

@@ -58,12 +58,13 @@ router.get("/dm/conversations", requireAuth, async (req, res) => {
 
   try {
     const participations = await prisma.conversationParticipant.findMany({
-      where: { userId: user.userId },
+      where: { userId: user.userId, status: { not: "DECLINED" } },
       include: {
         conversation: {
           include: {
-            participants: {
-              include: {
+        participants: {
+          where: { status: { not: "DECLINED" } },
+          include: {
                 user: {
                   select: {
                     id: true,
@@ -109,6 +110,8 @@ router.get("/dm/conversations", requireAuth, async (req, res) => {
       return {
         id: conv.id,
         type: conv.type,
+        requestStatus: p.status,
+        isRequest: p.status === "PENDING",
         name:
           conv.type === "GROUP"
             ? conv.name
@@ -125,6 +128,7 @@ router.get("/dm/conversations", requireAuth, async (req, res) => {
           avatarUrl: pp.user.profile?.avatarUrl || null,
           email: pp.user.email,
           role: pp.role,
+          status: pp.status,
         })),
         lastMessage: lastMsg
           ? {
@@ -208,11 +212,12 @@ router.post("/dm/conversations", requireAuth, async (req, res) => {
           type: "GROUP",
           name: groupName,
           participants: {
-            create: [
-              { userId: user.userId, role: "ADMIN" },
+          create: [
+              { userId: user.userId, role: "ADMIN", status: "ACCEPTED" },
               ...activeIds.map((id) => ({
                 userId: id,
                 role: "MEMBER" as const,
+                status: "ACCEPTED" as const,
               })),
             ],
           },
@@ -263,7 +268,44 @@ router.post("/dm/conversations", requireAuth, async (req, res) => {
     });
 
     if (existing) {
-      return res.json({ conversationId: existing.id, isNew: false });
+      const currentParticipant = await prisma.conversationParticipant.findUnique({
+        where: {
+          conversationId_userId: {
+            conversationId: existing.id,
+            userId: user.userId,
+          },
+        },
+        select: { status: true },
+      });
+      const recipientParticipant = await prisma.conversationParticipant.findUnique({
+        where: {
+          conversationId_userId: {
+            conversationId: existing.id,
+            userId: recipientId,
+          },
+        },
+        select: { status: true },
+      });
+      if (recipientParticipant?.status === "DECLINED") {
+        await prisma.conversationParticipant.update({
+          where: {
+            conversationId_userId: {
+              conversationId: existing.id,
+              userId: recipientId,
+            },
+          },
+          data: { status: "PENDING" },
+        });
+        await prisma.conversation.update({
+          where: { id: existing.id },
+          data: { updatedAt: new Date() },
+        });
+      }
+      return res.json({
+        conversationId: existing.id,
+        isNew: false,
+        requestStatus: currentParticipant?.status ?? "ACCEPTED",
+      });
     }
 
     // Create new conversation
@@ -271,12 +313,19 @@ router.post("/dm/conversations", requireAuth, async (req, res) => {
       data: {
         type: "DIRECT",
         participants: {
-          create: [{ userId: user.userId }, { userId: recipientId }],
+          create: [
+            { userId: user.userId, status: "ACCEPTED" },
+            { userId: recipientId, status: "PENDING" },
+          ],
         },
       },
     });
 
-    return res.status(201).json({ conversationId: conv.id, isNew: true });
+    return res.status(201).json({
+      conversationId: conv.id,
+      isNew: true,
+      requestStatus: "ACCEPTED",
+    });
   } catch (error) {
     console.error("dm create conversation error", error);
     return res.status(500).json({ message: "Чат үүсгэхэд алдаа гарлаа" });
@@ -337,6 +386,8 @@ router.get("/dm/conversations/:id", requireAuth, async (req, res) => {
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
       currentUserRole: participant.role,
+      requestStatus: participant.status,
+      isRequest: participant.status === "PENDING",
       messageCount: conversation._count.messages,
       participants: conversation.participants.map((p) => ({
         id: p.user.id,
@@ -345,6 +396,7 @@ router.get("/dm/conversations/:id", requireAuth, async (req, res) => {
         email: p.user.email,
         phone: p.user.profile?.phoneNumber || null,
         role: p.role,
+        status: p.status,
         joinedAt: p.joinedAt,
         isCurrentUser: p.userId === user.userId,
       })),
@@ -356,6 +408,96 @@ router.get("/dm/conversations/:id", requireAuth, async (req, res) => {
       .json({ message: "Group мэдээлэл ачаалахад алдаа гарлаа" });
   }
 });
+
+router.patch("/dm/conversations/:id/request/accept", requireAuth, async (req, res) => {
+  const user = (req as any).user as AuthPayload;
+  const { id } = req.params;
+
+  try {
+    const participant = await prisma.conversationParticipant.findUnique({
+      where: {
+        conversationId_userId: { conversationId: id, userId: user.userId },
+      },
+      include: { conversation: { select: { type: true } } },
+    });
+
+    if (!participant) {
+      return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
+    }
+    if (participant.conversation.type !== "DIRECT") {
+      return res.status(400).json({ message: "Group chat request биш байна" });
+    }
+    if (participant.status === "DECLINED") {
+      return res.status(400).json({ message: "Энэ request татгалзсан байна" });
+    }
+
+    await prisma.conversationParticipant.update({
+      where: {
+        conversationId_userId: { conversationId: id, userId: user.userId },
+      },
+      data: { status: "ACCEPTED", joinedAt: new Date() },
+    });
+    await prisma.conversation.update({
+      where: { id },
+      data: { updatedAt: new Date() },
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("dm accept request error", error);
+    return res.status(500).json({ message: "Chat request зөвшөөрөхөд алдаа гарлаа" });
+  }
+});
+
+router.patch("/dm/conversations/:id/request/decline", requireAuth, async (req, res) => {
+  const user = (req as any).user as AuthPayload;
+  const { id } = req.params;
+
+  try {
+    const participant = await prisma.conversationParticipant.findUnique({
+      where: {
+        conversationId_userId: { conversationId: id, userId: user.userId },
+      },
+      include: { conversation: { select: { type: true } } },
+    });
+
+    if (!participant) {
+      return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
+    }
+    if (participant.conversation.type !== "DIRECT") {
+      return res.status(400).json({ message: "Group chat request биш байна" });
+    }
+
+    await prisma.conversationParticipant.update({
+      where: {
+        conversationId_userId: { conversationId: id, userId: user.userId },
+      },
+      data: { status: "DECLINED" },
+    });
+    await prisma.conversation.update({
+      where: { id },
+      data: { updatedAt: new Date() },
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("dm decline request error", error);
+    return res.status(500).json({ message: "Chat request татгалзахад алдаа гарлаа" });
+  }
+});
+
+async function isConversationReadyForMessages(conversationId: string) {
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: {
+      type: true,
+      participants: { select: { status: true } },
+    },
+  });
+  if (!conversation) return false;
+  if (conversation.type === "GROUP") return true;
+  return conversation.participants.every((item) => item.status === "ACCEPTED");
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // GET /dm/conversations/:id/messages — get messages with polling
@@ -375,6 +517,9 @@ router.get("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
     });
     if (!participant) {
       return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
+    }
+    if (participant.status === "DECLINED") {
+      return res.status(403).json({ message: "Энэ chat request татгалзсан байна" });
     }
 
     const messages = await prisma.directMessage.findMany({
@@ -443,6 +588,16 @@ router.post("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
     if (!participant) {
       return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
     }
+    if (participant.status !== "ACCEPTED") {
+      return res
+        .status(403)
+        .json({ message: "Chat request зөвшөөрсний дараа мессеж бичнэ." });
+    }
+    if (!(await isConversationReadyForMessages(id))) {
+      return res
+        .status(403)
+        .json({ message: "Нөгөө тал chat request зөвшөөрсний дараа мессеж бичнэ." });
+    }
 
     const message = await prisma.directMessage.create({
       data: {
@@ -505,6 +660,16 @@ router.post(
       });
       if (!participant) {
         return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
+      }
+      if (participant.status !== "ACCEPTED") {
+        return res
+          .status(403)
+          .json({ message: "Chat request зөвшөөрсний дараа мессеж бичнэ." });
+      }
+      if (!(await isConversationReadyForMessages(id))) {
+        return res
+          .status(403)
+          .json({ message: "Нөгөө тал chat request зөвшөөрсний дараа дуут мессеж илгээнэ." });
       }
 
       const message = await prisma.directMessage.create({
@@ -575,6 +740,16 @@ router.post(
       });
       if (!participant) {
         return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
+      }
+      if (participant.status !== "ACCEPTED") {
+        return res
+          .status(403)
+          .json({ message: "Chat request зөвшөөрсний дараа файл илгээнэ." });
+      }
+      if (!(await isConversationReadyForMessages(id))) {
+        return res
+          .status(403)
+          .json({ message: "Нөгөө тал chat request зөвшөөрсний дараа файл илгээнэ." });
       }
 
       const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(req.file.originalname);
@@ -827,6 +1002,11 @@ router.get("/dm/conversations/:id/media", requireAuth, async (req, res) => {
     if (!participant) {
       return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
     }
+    if (participant.status !== "ACCEPTED") {
+      return res
+        .status(403)
+        .json({ message: "Chat request зөвшөөрсний дараа медиа харагдана." });
+    }
 
     const where: Prisma.DirectMessageWhereInput = { conversationId: id };
     if (kind === "images") where.type = "IMAGE";
@@ -941,7 +1121,7 @@ router.get("/dm/unread-count", requireAuth, async (req, res) => {
 
   try {
     const participations = await prisma.conversationParticipant.findMany({
-      where: { userId: user.userId },
+      where: { userId: user.userId, status: "ACCEPTED" },
       select: { conversationId: true, lastReadAt: true },
     });
 

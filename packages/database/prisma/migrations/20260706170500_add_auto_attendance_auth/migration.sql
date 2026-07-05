@@ -1,0 +1,1 @@
+ALTER TYPE "AttendanceAuth" ADD VALUE IF NOT EXISTS 'AUTO';

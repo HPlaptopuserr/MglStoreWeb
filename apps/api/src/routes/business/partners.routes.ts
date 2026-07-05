@@ -61,7 +61,8 @@ const sortProductsByExpiry = <
     );
   });
 
-const hasText = (value?: string | null) => String(value || "").trim().length > 0;
+const hasText = (value?: string | null) =>
+  String(value || "").trim().length > 0;
 
 const getPartnerPublicInfoScore = (partner: any) => {
   let score = 0;
@@ -75,7 +76,8 @@ const getPartnerPublicInfoScore = (partner: any) => {
   if (partner.subdomainEnabled) score += 4;
   if (partner.isVerified) score += 2;
   if (hasText(partner.businessCategory)) score += 2;
-  if (Array.isArray(partner.openingHours) && partner.openingHours.length > 0) score += 2;
+  if (Array.isArray(partner.openingHours) && partner.openingHours.length > 0)
+    score += 2;
   if (hasText(partner.deliveryText)) score += 2;
   if (hasText(partner.address)) score += 1;
   if (hasText(partner.phone)) score += 1;
@@ -87,16 +89,21 @@ const getPartnerInvestmentAmount = (partner: any) =>
   parseInvestmentAmount(partner?.investorProfile?.investmentLevel) || 0;
 
 const compareWebPartners = (a: any, b: any) => {
-  const publicInfoDiff = getPartnerPublicInfoScore(b) - getPartnerPublicInfoScore(a);
+  const publicInfoDiff =
+    getPartnerPublicInfoScore(b) - getPartnerPublicInfoScore(a);
   if (publicInfoDiff !== 0) return publicInfoDiff;
 
-  const investorDiff = Number(Boolean(b.investorProfile)) - Number(Boolean(a.investorProfile));
+  const investorDiff =
+    Number(Boolean(b.investorProfile)) - Number(Boolean(a.investorProfile));
   if (investorDiff !== 0) return investorDiff;
 
-  const investmentDiff = getPartnerInvestmentAmount(b) - getPartnerInvestmentAmount(a);
+  const investmentDiff =
+    getPartnerInvestmentAmount(b) - getPartnerInvestmentAmount(a);
   if (investmentDiff !== 0) return investmentDiff;
 
-  const createdDiff = getExpirySortValue(b.createdAt ?? null) - getExpirySortValue(a.createdAt ?? null);
+  const createdDiff =
+    getExpirySortValue(b.createdAt ?? null) -
+    getExpirySortValue(a.createdAt ?? null);
   if (createdDiff !== 0) return createdDiff;
 
   return String(a.name || "").localeCompare(String(b.name || ""), "mn");
@@ -110,6 +117,46 @@ const getStartOfToday = () => {
   date.setHours(0, 0, 0, 0);
   return date;
 };
+
+const toBusinessAppControlPayload = (organization: {
+  id: string;
+  name: string;
+  slug: string;
+  maxMembers: number;
+  businessOrdersEnabled: boolean;
+  businessInventoryEnabled: boolean;
+  businessAttendanceEnabled: boolean;
+  businessTasksEnabled: boolean;
+  members?: Array<{
+    id: string;
+    role: string;
+    isPrimary: boolean;
+    isActive: boolean;
+    createdAt: Date;
+    user: {
+      id: string;
+      email: string | null;
+      isActive: boolean;
+      passwordHash: string | null;
+      lastLoginAt: Date | null;
+      profile: { fullName: string | null; phoneNumber: string | null } | null;
+    };
+  }>;
+  _count?: { members?: number };
+}) => ({
+  id: organization.id,
+  name: organization.name,
+  slug: organization.slug,
+  maxMembers: organization.maxMembers,
+  activeMembers: organization._count?.members ?? 0,
+  features: {
+    orders: organization.businessOrdersEnabled,
+    inventory: organization.businessInventoryEnabled,
+    attendance: organization.businessAttendanceEnabled,
+    tasks: organization.businessTasksEnabled,
+  },
+  members: organization.members?.map(mapOrganizationLoginMember) ?? [],
+});
 
 const orgImportUpload = multer({
   storage: multer.memoryStorage(),
@@ -279,9 +326,7 @@ function normalizeLoginPhone(value: unknown) {
 
   const digits = raw.replace(/[^\d]/g, "");
   const phone =
-    digits.startsWith("976") && digits.length === 11
-      ? digits.slice(3)
-      : digits;
+    digits.startsWith("976") && digits.length === 11 ? digits.slice(3) : digits;
 
   if (phone.length < 6 || phone.length > 12) {
     return {
@@ -293,7 +338,10 @@ function normalizeLoginPhone(value: unknown) {
   return { phone, error: "" };
 }
 
-async function assertVendorPhoneIsAvailable(phone: string | null, userId: string) {
+async function assertVendorPhoneIsAvailable(
+  phone: string | null,
+  userId: string,
+) {
   if (!phone) return null;
 
   return prisma.profile.findFirst({
@@ -417,6 +465,190 @@ function haversineDistanceMeters(
   return earthRadius * c;
 }
 
+router.get(
+  "/admin/organizations/app-controls",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const search = String(req.query.search || "").trim();
+      const organizations = await prisma.organization.findMany({
+        where: {
+          deletedAt: null,
+          ...(search
+            ? {
+                OR: [
+                  { name: { contains: search, mode: "insensitive" } },
+                  { slug: { contains: search, mode: "insensitive" } },
+                  { phone: { contains: search, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          maxMembers: true,
+          businessOrdersEnabled: true,
+          businessInventoryEnabled: true,
+          businessAttendanceEnabled: true,
+          businessTasksEnabled: true,
+          members: {
+            where: { isActive: true, deletedAt: null },
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            select: {
+              id: true,
+              role: true,
+              isPrimary: true,
+              isActive: true,
+              createdAt: true,
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  isActive: true,
+                  passwordHash: true,
+                  lastLoginAt: true,
+                  profile: {
+                    select: { fullName: true, phoneNumber: true },
+                  },
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              members: {
+                where: { isActive: true, deletedAt: null },
+              },
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 80,
+      });
+
+      return res.json(organizations.map(toBusinessAppControlPayload));
+    } catch (error) {
+      console.error("get business app controls error", error);
+      return res
+        .status(500)
+        .json({ message: "Business app control татахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.patch(
+  "/admin/organizations/:id/app-controls",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const body = req.body as {
+        maxMembers?: number;
+        features?: {
+          orders?: boolean;
+          inventory?: boolean;
+          attendance?: boolean;
+          tasks?: boolean;
+        };
+      };
+
+      const data: Prisma.OrganizationUpdateInput = {};
+      if (body.maxMembers !== undefined) {
+        const nextMaxMembers = Number(body.maxMembers);
+        if (!Number.isInteger(nextMaxMembers) || nextMaxMembers < 1) {
+          return res
+            .status(400)
+            .json({ message: "Ажилчдын лимит 1-ээс их бүхэл тоо байна" });
+        }
+        const activeMembers = await prisma.organizationMember.count({
+          where: { organizationId: id, isActive: true, deletedAt: null },
+        });
+        if (nextMaxMembers < activeMembers) {
+          return res.status(400).json({
+            message: `Одоо ${activeMembers} идэвхтэй ажилтантай тул лимит түүнээс бага байж болохгүй`,
+          });
+        }
+        data.maxMembers = nextMaxMembers;
+      }
+
+      if (body.features) {
+        if (body.features.orders !== undefined) {
+          data.businessOrdersEnabled = Boolean(body.features.orders);
+        }
+        if (body.features.inventory !== undefined) {
+          data.businessInventoryEnabled = Boolean(body.features.inventory);
+        }
+        if (body.features.attendance !== undefined) {
+          data.businessAttendanceEnabled = Boolean(body.features.attendance);
+        }
+        if (body.features.tasks !== undefined) {
+          data.businessTasksEnabled = Boolean(body.features.tasks);
+        }
+      }
+
+      if (Object.keys(data).length === 0) {
+        return res.status(400).json({ message: "Өөрчлөх тохиргоо алга" });
+      }
+
+      const organization = await prisma.organization.update({
+        where: { id },
+        data,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          maxMembers: true,
+          businessOrdersEnabled: true,
+          businessInventoryEnabled: true,
+          businessAttendanceEnabled: true,
+          businessTasksEnabled: true,
+          members: {
+            where: { isActive: true, deletedAt: null },
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            select: {
+              id: true,
+              role: true,
+              isPrimary: true,
+              isActive: true,
+              createdAt: true,
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  isActive: true,
+                  passwordHash: true,
+                  lastLoginAt: true,
+                  profile: {
+                    select: { fullName: true, phoneNumber: true },
+                  },
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              members: {
+                where: { isActive: true, deletedAt: null },
+              },
+            },
+          },
+        },
+      });
+
+      return res.json(toBusinessAppControlPayload(organization));
+    } catch (error) {
+      console.error("update business app controls error", error);
+      return res
+        .status(500)
+        .json({ message: "Business app control хадгалахад алдаа гарлаа" });
+    }
+  },
+);
+
 // Grouped by businessCategory (must be before /partners to avoid Express matching issues)
 router.post(
   "/admin/organizations",
@@ -462,7 +694,9 @@ router.post(
           .status(400)
           .json({ message: "Owner email зөв форматтай байх ёстой" });
       }
-      const resolvedOwnerRole: StaffRole = VALID_STAFF_ROLES.includes(ownerRole as StaffRole)
+      const resolvedOwnerRole: StaffRole = VALID_STAFF_ROLES.includes(
+        ownerRole as StaffRole,
+      )
         ? (ownerRole as StaffRole)
         : "OWNER";
 
@@ -546,8 +780,14 @@ router.post(
               },
               create: {
                 userId: existingUser.id,
-                fullName: ownerName?.trim() || existingUser.profile?.fullName || name.trim(),
-                phoneNumber: ownerPhone?.trim() || existingUser.profile?.phoneNumber || null,
+                fullName:
+                  ownerName?.trim() ||
+                  existingUser.profile?.fullName ||
+                  name.trim(),
+                phoneNumber:
+                  ownerPhone?.trim() ||
+                  existingUser.profile?.phoneNumber ||
+                  null,
               },
             });
 
@@ -597,14 +837,12 @@ router.post(
           },
           select: { id: true, name: true, slug: true, taxId: true },
         });
-        return res
-          .status(201)
-          .json({
-            organization,
-            user: null,
-            inviteToken: null,
-            inviteLink: null,
-          });
+        return res.status(201).json({
+          organization,
+          user: null,
+          inviteToken: null,
+          inviteLink: null,
+        });
       }
 
       const existingUser = await prisma.user.findUnique({
@@ -615,7 +853,9 @@ router.post(
         },
       });
 
-      const inviteToken = existingUser?.passwordHash ? null : generateInviteToken();
+      const inviteToken = existingUser?.passwordHash
+        ? null
+        : generateInviteToken();
       const inviteTokenExpiresAt = inviteToken ? getInviteTokenExpiry() : null;
 
       const result = await prisma.$transaction(
@@ -720,7 +960,9 @@ router.post(
         user: result.user,
         inviteToken,
         inviteTokenExpiresAt,
-        inviteLink: inviteToken ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null,
+        inviteLink: inviteToken
+          ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}`
+          : null,
       });
     } catch (error) {
       console.error("create admin organization error", error);
@@ -1127,7 +1369,9 @@ router.get("/partners", async (req, res) => {
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
       investorLevel: partner.investorProfile?.investmentLevel || null,
-      investmentAmount: parseInvestmentAmount(partner.investorProfile?.investmentLevel),
+      investmentAmount: parseInvestmentAmount(
+        partner.investorProfile?.investmentLevel,
+      ),
       publicInfoScore: getPartnerPublicInfoScore(partner),
       subdomainEnabled: partner.subdomainEnabled,
       planActivatedAt: partner.planActivatedAt,
@@ -1250,7 +1494,11 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
       await Promise.all([
         getOrganizationLoginMembers(partner.id),
         prisma.organizationMember.count({
-          where: { organizationId: partner.id, isActive: true, deletedAt: null },
+          where: {
+            organizationId: partner.id,
+            isActive: true,
+            deletedAt: null,
+          },
         }),
         prisma.product.count({
           where: { organizationId: partner.id, deletedAt: null },
@@ -1290,7 +1538,9 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
       investorLevel: partner.investorProfile?.investmentLevel || null,
-      investmentAmount: parseInvestmentAmount(partner.investorProfile?.investmentLevel),
+      investmentAmount: parseInvestmentAmount(
+        partner.investorProfile?.investmentLevel,
+      ),
       subdomainEnabled: partner.subdomainEnabled,
       planType: (partner as any).planType,
       planActivatedAt: partner.planActivatedAt,
@@ -1510,12 +1760,10 @@ router.post(
           },
         });
         if (alreadyMember) {
-          return res
-            .status(409)
-            .json({
-              message:
-                "Энэ хэрэглэгч аль хэдийн тухайн байгууллагад бүртгэлтэй байна",
-            });
+          return res.status(409).json({
+            message:
+              "Энэ хэрэглэгч аль хэдийн тухайн байгууллагад бүртгэлтэй байна",
+          });
         }
       }
 
@@ -1543,7 +1791,9 @@ router.post(
             await tx.profile.upsert({
               where: { userId: user.id },
               update: {
-                ...(phone !== undefined ? { phoneNumber: phone?.trim() || null } : {}),
+                ...(phone !== undefined
+                  ? { phoneNumber: phone?.trim() || null }
+                  : {}),
               },
               create: {
                 userId: user.id,
@@ -1757,11 +2007,9 @@ router.post(
         return res.status(404).json({ message: "Байгууллага олдсонгүй" });
       }
       if (organization.status !== "ACTIVE") {
-        return res
-          .status(400)
-          .json({
-            message: "Зөвхөн active байгууллагад салбар нэмэх боломжтой",
-          });
+        return res.status(400).json({
+          message: "Зөвхөн active байгууллагад салбар нэмэх боломжтой",
+        });
       }
 
       const hasLatInput =
@@ -1813,11 +2061,9 @@ router.post(
       });
 
       if (duplicate) {
-        return res
-          .status(409)
-          .json({
-            message: "Энэ байгууллагад ижил нэр эсвэл хаягтай салбар байна",
-          });
+        return res.status(409).json({
+          message: "Энэ байгууллагад ижил нэр эсвэл хаягтай салбар байна",
+        });
       }
 
       const created = await prisma.branch.create({
@@ -1975,7 +2221,9 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
       investorLevel: partner.investorProfile?.investmentLevel || null,
-      investmentAmount: parseInvestmentAmount(partner.investorProfile?.investmentLevel),
+      investmentAmount: parseInvestmentAmount(
+        partner.investorProfile?.investmentLevel,
+      ),
       subdomainEnabled: partner.subdomainEnabled,
       planActivatedAt: partner.planActivatedAt,
       planExpiresAt: partner.planExpiresAt,
@@ -2085,10 +2333,14 @@ router.post(
 
       const normalizedEmail = normalizeEmail(email);
       if (!fullName?.trim()) {
-        return res.status(400).json({ message: "Login хэрэглэгчийн нэр шаардлагатай" });
+        return res
+          .status(400)
+          .json({ message: "Login хэрэглэгчийн нэр шаардлагатай" });
       }
       if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
-        return res.status(400).json({ message: "Login email зөв форматтай байх ёстой" });
+        return res
+          .status(400)
+          .json({ message: "Login email зөв форматтай байх ёстой" });
       }
 
       const organization = await prisma.organization.findUnique({
@@ -2102,12 +2354,15 @@ router.post(
       const activeMembersCount = await prisma.organizationMember.count({
         where: { organizationId, isActive: true },
       });
-      const resolvedRole: StaffRole = VALID_STAFF_ROLES.includes(role as StaffRole)
+      const resolvedRole: StaffRole = VALID_STAFF_ROLES.includes(
+        role as StaffRole,
+      )
         ? (role as StaffRole)
         : activeMembersCount === 0
           ? "OWNER"
           : "ADMIN";
-      const shouldBePrimary = resolvedRole === "OWNER" || activeMembersCount === 0;
+      const shouldBePrimary =
+        resolvedRole === "OWNER" || activeMembersCount === 0;
 
       const existingUser = await prisma.user.findUnique({
         where: { email: normalizedEmail },
@@ -2138,14 +2393,12 @@ router.post(
           !existingMembership.deletedAt
         ) {
           const members = await getOrganizationLoginMembers(organizationId);
-          return res
-            .status(409)
-            .json({
-              message:
-                "Энэ хэрэглэгч тухайн байгууллагад аль хэдийн login эрхтэй байна",
-              existingUserId: existingUser.id,
-              members,
-            });
+          return res.status(409).json({
+            message:
+              "Энэ хэрэглэгч тухайн байгууллагад аль хэдийн login эрхтэй байна",
+            existingUserId: existingUser.id,
+            members,
+          });
         }
 
         if (existingMembership?.organizationId === organizationId) {
@@ -2153,7 +2406,9 @@ router.post(
         }
       }
 
-      const inviteToken = existingUser?.passwordHash ? null : generateInviteToken();
+      const inviteToken = existingUser?.passwordHash
+        ? null
+        : generateInviteToken();
       const inviteTokenExpiresAt = inviteToken ? getInviteTokenExpiry() : null;
 
       const result = await prisma.$transaction(
@@ -2196,7 +2451,9 @@ router.post(
             await tx.profile.upsert({
               where: { userId: user.id },
               update: {
-                ...(phone !== undefined ? { phoneNumber: phone?.trim() || null } : {}),
+                ...(phone !== undefined
+                  ? { phoneNumber: phone?.trim() || null }
+                  : {}),
               },
               create: {
                 userId: user.id,
@@ -2263,12 +2520,17 @@ router.post(
         grantedUserId: result.grantedUserId,
         inviteToken,
         inviteTokenExpiresAt,
-        inviteLink: inviteToken ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null,
+        inviteLink: inviteToken
+          ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}`
+          : null,
         members: result.members,
       });
     } catch (error) {
       console.error("grant vendor login error", error);
-      const maybePrisma = error as { code?: string; meta?: { target?: unknown } };
+      const maybePrisma = error as {
+        code?: string;
+        meta?: { target?: unknown };
+      };
       if (maybePrisma?.code === "P2002") {
         return res.status(409).json({
           message:
@@ -2312,23 +2574,28 @@ router.patch(
       });
 
       if (!target) {
-        return res.status(404).json({ message: "Role солих хэрэглэгч олдсонгүй" });
+        return res
+          .status(404)
+          .json({ message: "Role солих хэрэглэгч олдсонгүй" });
       }
 
       if (target.role === "OWNER" || target.isPrimary) {
         return res.status(409).json({
-          message: "Owner эрхийг dropdown-оор солихгүй. Эхлээд өөр user-г Owner болгоно уу.",
+          message:
+            "Owner эрхийг dropdown-оор солихгүй. Эхлээд өөр user-г Owner болгоно уу.",
         });
       }
 
-      const members = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        await tx.organizationMember.update({
-          where: { id: target.id },
-          data: { role: role as StaffRole },
-        });
+      const members = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          await tx.organizationMember.update({
+            where: { id: target.id },
+            data: { role: role as StaffRole },
+          });
 
-        return getOrganizationLoginMembers(organizationId, tx);
-      });
+          return getOrganizationLoginMembers(organizationId, tx);
+        },
+      );
 
       return res.json({ members });
     } catch (error) {
@@ -2428,12 +2695,9 @@ router.patch(
       });
     } catch (error) {
       console.error("update vendor login member error", error);
-      return res
-        .status(500)
-        .json({
-          message:
-            "Login утас баталгаажуулах email илгээхэд алдаа гарлаа",
-        });
+      return res.status(500).json({
+        message: "Login утас баталгаажуулах email илгээхэд алдаа гарлаа",
+      });
     }
   },
 );
@@ -2548,7 +2812,11 @@ router.patch(
       const members = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
           await tx.organizationMember.updateMany({
-            where: { organizationId: id, userId: { not: userId }, role: "OWNER" },
+            where: {
+              organizationId: id,
+              userId: { not: userId },
+              role: "OWNER",
+            },
             data: { role: "ADMIN", isPrimary: false },
           });
 
@@ -2636,12 +2904,10 @@ router.post(
 
       if (error) {
         console.error("org image upload error", error);
-        return res
-          .status(500)
-          .json({
-            message: "Зураг upload хийхэд алдаа гарлаа",
-            error: error.message,
-          });
+        return res.status(500).json({
+          message: "Зураг upload хийхэд алдаа гарлаа",
+          error: error.message,
+        });
       }
 
       const { data: publicUrlData } = getSupabase()
@@ -2651,12 +2917,10 @@ router.post(
       return res.json({ url: publicUrlData.publicUrl });
     } catch (error) {
       console.error("org image upload error", error);
-      return res
-        .status(500)
-        .json({
-          message: "Зураг upload хийхэд алдаа гарлаа",
-          error: String(error),
-        });
+      return res.status(500).json({
+        message: "Зураг upload хийхэд алдаа гарлаа",
+        error: String(error),
+      });
     }
   },
 );
@@ -2702,7 +2966,9 @@ router.patch("/partners/:id/profile", requireAuth, async (req, res) => {
     if (name !== undefined) {
       const normalizedName = String(name).trim();
       if (!normalizedName) {
-        return res.status(400).json({ message: "Байгууллагын нэр шаардлагатай" });
+        return res
+          .status(400)
+          .json({ message: "Байгууллагын нэр шаардлагатай" });
       }
       updateData.name = normalizedName;
     }
@@ -3067,11 +3333,9 @@ router.post(
       }
 
       if (rows.length > 200) {
-        return res
-          .status(400)
-          .json({
-            message: "Нэг удаад 200-аас олон байгууллага оруулах боломжгүй",
-          });
+        return res.status(400).json({
+          message: "Нэг удаад 200-аас олон байгууллага оруулах боломжгүй",
+        });
       }
 
       // Column name mapping — exact match to the ODS template
@@ -3265,8 +3529,12 @@ router.post(
           const slug = await generateUniqueOrganizationSlug(orgName);
           const finalTaxId =
             resolvedTaxId || (await generateUniqueTaxId("TEMP"));
-          const inviteToken = existingUser?.passwordHash ? null : generateInviteToken();
-          const inviteTokenExpiresAt = inviteToken ? getInviteTokenExpiry() : null;
+          const inviteToken = existingUser?.passwordHash
+            ? null
+            : generateInviteToken();
+          const inviteTokenExpiresAt = inviteToken
+            ? getInviteTokenExpiry()
+            : null;
 
           const orgType =
             type &&
@@ -3373,7 +3641,9 @@ router.post(
             id: result.organization.id,
             name: result.organization.name,
             email: result.user.email,
-            inviteLink: inviteToken ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null,
+            inviteLink: inviteToken
+              ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}`
+              : null,
           });
           results.created++;
         } catch (err) {

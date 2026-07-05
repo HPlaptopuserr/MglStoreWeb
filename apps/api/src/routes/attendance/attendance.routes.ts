@@ -1,8 +1,60 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma } from "@mgl/database";
+import { prisma, type Prisma } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
+type AttendanceMethod = "FINGERPRINT" | "FACE" | "PIN" | "AUTO";
+type AttendanceContext = {
+  userId: string;
+  organizationId: string;
+  orgRole: string | null;
+};
+
+const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "CEO", "MANAGER", "HR"]);
+
+async function resolveAttendanceContext(user: AuthPayload): Promise<AttendanceContext | null> {
+  const baseWhere = {
+    userId: user.userId,
+    isActive: true,
+    deletedAt: null,
+  };
+
+  const tokenMembership = user.organizationId
+    ? await prisma.organizationMember.findFirst({
+        where: { ...baseWhere, organizationId: user.organizationId },
+        select: { organizationId: true, role: true },
+      })
+    : null;
+
+  const membership =
+    tokenMembership ??
+    (await prisma.organizationMember.findFirst({
+      where: baseWhere,
+      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+      select: { organizationId: true, role: true },
+    }));
+
+  if (!membership) return null;
+
+  return {
+    userId: user.userId,
+    organizationId: membership.organizationId,
+    orgRole: membership.role,
+  };
+}
+
+function parseAttendanceMethod(method: unknown): AttendanceMethod {
+  if (method === "AUTO") return "AUTO";
+  if (method === "FACE") return "FACE";
+  if (method === "PIN") return "PIN";
+  return "FINGERPRINT";
+}
+
+function parseClientDate(value: unknown): Date | null {
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 // ── Haversine distance (meters) ──────────────────────────────────────────────
 function haversineMeters(
@@ -29,11 +81,12 @@ function haversineMeters(
 router.get("/attendance/zones", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
       return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
     }
     const zones = await prisma.attendanceZone.findMany({
-      where: { organizationId: user.organizationId },
+      where: { organizationId: context.organizationId },
       include: { branch: { select: { id: true, name: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -48,7 +101,8 @@ router.get("/attendance/zones", requireAuth, async (req, res) => {
 router.post("/attendance/zones", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
       return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
     }
 
@@ -63,7 +117,7 @@ router.post("/attendance/zones", requireAuth, async (req, res) => {
 
     const zone = await prisma.attendanceZone.create({
       data: {
-        organizationId: user.organizationId,
+        organizationId: context.organizationId,
         branchId: branchId || null,
         name: name.trim(),
         lat,
@@ -83,8 +137,13 @@ router.post("/attendance/zones", requireAuth, async (req, res) => {
 router.patch("/attendance/zones/:id", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
+    }
+
     const zone = await prisma.attendanceZone.findFirst({
-      where: { id: req.params.id, organizationId: user.organizationId ?? "" },
+      where: { id: req.params.id, organizationId: context.organizationId },
     });
     if (!zone) return res.status(404).json({ message: "Бүс олдсонгүй" });
 
@@ -111,8 +170,13 @@ router.patch("/attendance/zones/:id", requireAuth, async (req, res) => {
 router.delete("/attendance/zones/:id", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
+    }
+
     const zone = await prisma.attendanceZone.findFirst({
-      where: { id: req.params.id, organizationId: user.organizationId ?? "" },
+      where: { id: req.params.id, organizationId: context.organizationId },
     });
     if (!zone) return res.status(404).json({ message: "Бүс олдсонгүй" });
 
@@ -132,11 +196,12 @@ router.delete("/attendance/zones/:id", requireAuth, async (req, res) => {
 router.post("/attendance/clock-in", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
       return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
     }
 
-    const { zoneId, lat, lng, method } = req.body;
+    const { zoneId, lat, lng, method, clockInAt } = req.body;
 
     if (!zoneId || typeof lat !== "number" || typeof lng !== "number") {
       return res.status(400).json({ message: "zoneId, lat, lng шаардлагатай" });
@@ -144,7 +209,7 @@ router.post("/attendance/clock-in", requireAuth, async (req, res) => {
 
     // Validate zone exists and is active
     const zone = await prisma.attendanceZone.findFirst({
-      where: { id: zoneId, organizationId: user.organizationId, isActive: true },
+      where: { id: zoneId, organizationId: context.organizationId, isActive: true },
     });
     if (!zone) return res.status(404).json({ message: "Бүс олдсонгүй" });
 
@@ -158,16 +223,18 @@ router.post("/attendance/clock-in", requireAuth, async (req, res) => {
       });
     }
 
-    // Check if already clocked in today (no clock-out yet)
-    const today = new Date();
+    const clockIn = parseClientDate(clockInAt) ?? new Date();
+
+    // Check if already clocked in for the submitted day (no clock-out yet)
+    const today = new Date(clockIn);
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const existing = await prisma.attendanceRecord.findFirst({
       where: {
-        userId: user.userId,
-        organizationId: user.organizationId,
+        userId: context.userId,
+        organizationId: context.organizationId,
         clockIn: { gte: today, lt: tomorrow },
         clockOut: null,
       },
@@ -178,13 +245,13 @@ router.post("/attendance/clock-in", requireAuth, async (req, res) => {
 
     const record = await prisma.attendanceRecord.create({
       data: {
-        userId: user.userId,
-        organizationId: user.organizationId,
+        userId: context.userId,
+        organizationId: context.organizationId,
         zoneId,
-        clockIn: new Date(),
+        clockIn,
         clockInLat: lat,
         clockInLng: lng,
-        clockInMethod: method || "FINGERPRINT",
+        clockInMethod: parseAttendanceMethod(method),
       },
       include: { zone: { select: { name: true } } },
     });
@@ -200,11 +267,12 @@ router.post("/attendance/clock-in", requireAuth, async (req, res) => {
 router.post("/attendance/clock-out", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
       return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
     }
 
-    const { lat, lng, method } = req.body;
+    const { lat, lng, method, clockOutAt } = req.body;
 
     if (typeof lat !== "number" || typeof lng !== "number") {
       return res.status(400).json({ message: "lat, lng шаардлагатай" });
@@ -218,8 +286,8 @@ router.post("/attendance/clock-out", requireAuth, async (req, res) => {
 
     const record = await prisma.attendanceRecord.findFirst({
       where: {
-        userId: user.userId,
-        organizationId: user.organizationId,
+        userId: context.userId,
+        organizationId: context.organizationId,
         clockIn: { gte: today, lt: tomorrow },
         clockOut: null,
       },
@@ -240,7 +308,7 @@ router.post("/attendance/clock-out", requireAuth, async (req, res) => {
       });
     }
 
-    const clockOut = new Date();
+    const clockOut = parseClientDate(clockOutAt) ?? new Date();
     const totalMinutes = Math.round(
       (clockOut.getTime() - record.clockIn.getTime()) / 60000,
     );
@@ -251,7 +319,7 @@ router.post("/attendance/clock-out", requireAuth, async (req, res) => {
         clockOut,
         clockOutLat: lat,
         clockOutLng: lng,
-        clockOutMethod: method || "FINGERPRINT",
+        clockOutMethod: parseAttendanceMethod(method),
         totalMinutes,
       },
       include: { zone: { select: { name: true } } },
@@ -268,7 +336,8 @@ router.post("/attendance/clock-out", requireAuth, async (req, res) => {
 router.get("/attendance/today", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
       return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
     }
 
@@ -279,8 +348,8 @@ router.get("/attendance/today", requireAuth, async (req, res) => {
 
     const record = await prisma.attendanceRecord.findFirst({
       where: {
-        userId: user.userId,
-        organizationId: user.organizationId,
+        userId: context.userId,
+        organizationId: context.organizationId,
         clockIn: { gte: today, lt: tomorrow },
       },
       include: { zone: { select: { id: true, name: true } } },
@@ -298,7 +367,8 @@ router.get("/attendance/today", requireAuth, async (req, res) => {
 router.get("/attendance/history", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
       return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
     }
 
@@ -306,13 +376,13 @@ router.get("/attendance/history", requireAuth, async (req, res) => {
 
     // Managers can view any user; staff can only view their own
     const targetUserId =
-      userId && (user.orgRole === "OWNER" || user.orgRole === "ADMIN")
+      userId && context.orgRole && MANAGER_ROLES.has(context.orgRole)
         ? String(userId)
-        : user.userId;
+        : context.userId;
 
-    const where: any = {
+    const where: Prisma.AttendanceRecordWhereInput = {
       userId: targetUserId,
-      organizationId: user.organizationId,
+      organizationId: context.organizationId,
     };
 
     if (from || to) {

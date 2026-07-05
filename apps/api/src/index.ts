@@ -9,9 +9,11 @@ import contractRoutes from "./routes/contract/contract.routes";
 import {
   authRoutes,
   associationRoutes,
+  businessDashboardRoutes,
   investorRoutes,
   orgJoinRoutes,
   orgMemberRoutes,
+  orgTaskRoutes,
   partnerRequestRoutes,
   partnerRoutes,
   vendorSetupRoutes,
@@ -126,9 +128,11 @@ app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 app.use("/api", partnerRequestRoutes);
 app.use("/api", associationRoutes);
+app.use("/api", businessDashboardRoutes);
 app.use("/api", partnerRoutes);
 app.use("/api", orgJoinRoutes);
 app.use("/api", orgMemberRoutes);
+app.use("/api", orgTaskRoutes);
 app.use("/api", businessCategoriesRoutes);
 app.use("/api", dashboardRoutes);
 app.use("/api", jobApplicationRoutes);
@@ -177,6 +181,7 @@ const authLimiter = rateLimit({
   message: { message: "Хэт олон нэвтрэх оролдлого. Түр хүлээнэ үү." },
 });
 app.use("/auth", authLimiter, authRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
 
 const port = process.env.PORT || 4000;
 
