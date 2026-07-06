@@ -89,7 +89,7 @@ export default function AssociationRegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!form.lastName || !form.firstName || !form.phone || !form.organizationName || !form.address || !form.membershipType) {
+    if (!form.lastName || !form.firstName || !form.phone || !form.organizationName || !form.membershipType) {
       setError("Одны тэмдэгтэй талбарыг заавал бөглөнө үү");
       return;
     }
@@ -190,8 +190,8 @@ export default function AssociationRegisterPage() {
             </Field>
           </div>
 
-          <Field label="Байгууллагын хаяг" required>
-            <input value={form.address} onChange={(e) => f("address", e.target.value)} placeholder="Улаанбаатар, дүүрэг..." className={inputCls} required />
+          <Field label="Байгууллагын хаяг">
+            <input value={form.address} onChange={(e) => f("address", e.target.value)} placeholder="Хүсвэл дараа нь бөглөж болно" className={inputCls} />
           </Field>
 
           <Field label="Бизнесийн туршлага">

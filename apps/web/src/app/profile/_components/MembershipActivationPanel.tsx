@@ -22,7 +22,6 @@ export type MembershipUpgradeCopy = {
   swipeHint?: string;
   missingPaymentConfigMessage?: string;
   phoneRequiredMessage?: string;
-  addressRequiredMessage?: string;
   successTitle?: string;
   successDescription?: string;
 };
@@ -119,13 +118,6 @@ export function MembershipActivationPanel({
       );
       return;
     }
-    if (!form.fullAddress.trim()) {
-      setError(
-        copy?.addressRequiredMessage ||
-          "Profile дээр хаягаа бөглөсний дараа идэвхжүүлнэ үү.",
-      );
-      return;
-    }
 
     setMembershipType(nextType);
     setDurationMonths(nextDuration);
@@ -138,7 +130,7 @@ export function MembershipActivationPanel({
         body: JSON.stringify({
           lastName,
           firstName,
-          address: form.fullAddress.trim(),
+          address: form.fullAddress.trim() || undefined,
           phone: form.phone.trim(),
           membershipType: nextType,
           durationMonths: Number(nextDuration),

@@ -205,6 +205,11 @@ function getAssociationConfigMessage(
   return String(config?.upgradeModal?.[key] || fallback).trim();
 }
 
+function optionalRegistrationAddress(value: unknown) {
+  const address = typeof value === "string" ? value.trim() : "";
+  return address || "Хаяг бүртгээгүй";
+}
+
 function publicAssociationConfig(config: any) {
   if (!config || typeof config !== "object") return config;
   const paymentAccount = config.paymentAccount || {};
@@ -430,7 +435,7 @@ router.post("/association/register", async (req, res) => {
       paymentReference,
     } = req.body;
 
-    if (!lastName || !firstName || !phone || !address || !membershipType) {
+    if (!lastName || !firstName || !phone || !membershipType) {
       return res
         .status(400)
         .json({ message: "Заавал бөглөх талбарууд дутуу байна" });
@@ -462,7 +467,7 @@ router.post("/association/register", async (req, res) => {
         organizationName: organizationName.trim(),
         businessActivity: businessActivity?.trim() || null,
         foundedYear: foundedYear?.trim() || null,
-        address: address.trim(),
+        address: optionalRegistrationAddress(address),
         experience: experience?.trim() || null,
         phone: phone.trim(),
         membershipType,
@@ -504,7 +509,7 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
 
     if (!userId)
       return res.status(401).json({ success: false, message: "Нэвтэрнэ үү" });
-    if (!lastName || !firstName || !phone || !address || !membershipType) {
+    if (!lastName || !firstName || !phone || !membershipType) {
       return res.status(400).json({
         success: false,
         message: "Заавал бөглөх талбарууд дутуу байна",
@@ -553,7 +558,7 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
           organizationName: resolvedOrganizationName,
           businessActivity: businessActivity?.trim() || null,
           foundedYear: foundedYear?.trim() || null,
-          address: address.trim(),
+          address: optionalRegistrationAddress(address),
           experience: experience?.trim() || null,
           phone: phone.trim(),
           membershipType,
