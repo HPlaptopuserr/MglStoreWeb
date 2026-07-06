@@ -36,6 +36,11 @@ type PosRegister = {
   qpayEnabled: boolean;
   qpayMerchantId: string | null;
   qpayTerminalId: string | null;
+  ebarimtEnabled: boolean;
+  ebarimtPosApiUrl: string | null;
+  ebarimtMerchantTin: string | null;
+  ebarimtPosNo: string | null;
+  ebarimtMerchantName: string | null;
   isActive: boolean;
   activationStatus: string;
   createdAt: string;
@@ -52,6 +57,11 @@ type FormState = {
   qpayEnabled: boolean;
   qpayMerchantId: string;
   qpayTerminalId: string;
+  ebarimtEnabled: boolean;
+  ebarimtPosApiUrl: string;
+  ebarimtMerchantTin: string;
+  ebarimtPosNo: string;
+  ebarimtMerchantName: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -65,6 +75,11 @@ const EMPTY_FORM: FormState = {
   qpayEnabled: false,
   qpayMerchantId: "",
   qpayTerminalId: "",
+  ebarimtEnabled: false,
+  ebarimtPosApiUrl: "http://localhost:7080",
+  ebarimtMerchantTin: "",
+  ebarimtPosNo: "",
+  ebarimtMerchantName: "",
 };
 
 const CLOUD_CARD_PROVIDERS = ["MINU_AGENT", "PUSH_ECR"];
@@ -178,6 +193,11 @@ export function PosRegistersSection() {
       qpayEnabled: r.qpayEnabled,
       qpayMerchantId: r.qpayMerchantId ?? "",
       qpayTerminalId: r.qpayTerminalId ?? "",
+      ebarimtEnabled: r.ebarimtEnabled,
+      ebarimtPosApiUrl: r.ebarimtPosApiUrl ?? "http://localhost:7080",
+      ebarimtMerchantTin: r.ebarimtMerchantTin ?? "",
+      ebarimtPosNo: r.ebarimtPosNo ?? "",
+      ebarimtMerchantName: r.ebarimtMerchantName ?? "",
     });
     setEditingId(r.id);
     setFormOpen(true);
@@ -252,6 +272,14 @@ export function PosRegistersSection() {
         qpayTerminalId: "",
       };
     });
+  };
+
+  const toggleEbarimtEnabled = () => {
+    setForm((prev) => ({
+      ...prev,
+      ebarimtEnabled: !prev.ebarimtEnabled,
+      ebarimtPosApiUrl: prev.ebarimtPosApiUrl || "http://localhost:7080",
+    }));
   };
 
   const checkBridgeHealth = async () => {
@@ -346,6 +374,23 @@ export function PosRegistersSection() {
       setError("QPay идэвхтэй үед Merchant ID болон Terminal ID заавал бөглөнө үү.");
       return;
     }
+    if (form.ebarimtEnabled && form.ebarimtPosApiUrl.trim()) {
+      try {
+        const p = new URL(form.ebarimtPosApiUrl.trim());
+        if (!["http:", "https:"].includes(p.protocol)) throw new Error();
+      } catch {
+        setError("eBarimt PosAPI URL зөвхөн http:// эсвэл https:// байх ёстой.");
+        return;
+      }
+    }
+    if (form.ebarimtMerchantTin.trim() && !/^\d+$/.test(form.ebarimtMerchantTin.trim())) {
+      setError("eBarimt merchant TIN зөвхөн тоо байна.");
+      return;
+    }
+    if (form.ebarimtPosNo.trim() && !/^\d+$/.test(form.ebarimtPosNo.trim())) {
+      setError("eBarimt POS дугаар зөвхөн тоо байна.");
+      return;
+    }
     if (form.terminalBridgeUrl) {
       try {
         const p = new URL(form.terminalBridgeUrl);
@@ -374,6 +419,11 @@ export function PosRegistersSection() {
         qpayEnabled: form.qpayEnabled,
         qpayMerchantId: form.qpayMerchantId.trim() || null,
         qpayTerminalId: form.qpayTerminalId.trim() || null,
+        ebarimtEnabled: form.ebarimtEnabled,
+        ebarimtPosApiUrl: form.ebarimtPosApiUrl.trim() || null,
+        ebarimtMerchantTin: form.ebarimtMerchantTin.trim() || null,
+        ebarimtPosNo: form.ebarimtPosNo.trim() || null,
+        ebarimtMerchantName: form.ebarimtMerchantName.trim() || null,
       };
       const url = editingId
         ? `${API}/admin/pos-registers/${editingId}`
@@ -576,6 +626,15 @@ export function PosRegistersSection() {
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-400">
                               <QrCode size={11} /> QPay идэвхгүй
+                            </span>
+                          )}
+                          {r.ebarimtEnabled ? (
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+                              <QrCode size={11} /> eBarimt{r.ebarimtMerchantTin ? ` · ${r.ebarimtMerchantTin}` : ""}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-400">
+                              <QrCode size={11} /> eBarimt идэвхгүй
                             </span>
                           )}
                           {r.terminalBridgeUrl && (
@@ -859,6 +918,60 @@ export function PosRegistersSection() {
                         value={form.qpayTerminalId}
                         onChange={(e) => set("qpayTerminalId", e.target.value)}
                         placeholder="TRM_001"
+                        className={INPUT}
+                      />
+                    </Field>
+                  </div>
+                )}
+              </div>
+
+              {/* eBarimt section */}
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 flex flex-col gap-3">
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <div
+                    onClick={toggleEbarimtEnabled}
+                    className={`relative h-5 w-9 rounded-full transition-colors ${form.ebarimtEnabled ? "bg-indigo-500" : "bg-slate-300"}`}
+                  >
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.ebarimtEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                  </div>
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+                    <QrCode size={14} /> eBarimt идэвхжүүлэх
+                  </span>
+                </label>
+                {form.ebarimtEnabled && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="PosAPI URL" className="col-span-2">
+                      <input
+                        value={form.ebarimtPosApiUrl}
+                        onChange={(e) => set("ebarimtPosApiUrl", e.target.value)}
+                        placeholder="http://localhost:7080"
+                        className={INPUT}
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        Касс дээр суусан PosAPI service. Ихэнх бодит орчинд http://localhost:7080 хэвээр байна.
+                      </p>
+                    </Field>
+                    <Field label="Merchant TIN">
+                      <input
+                        value={form.ebarimtMerchantTin}
+                        onChange={(e) => set("ebarimtMerchantTin", e.target.value)}
+                        placeholder="Merchant TIN"
+                        className={INPUT}
+                      />
+                    </Field>
+                    <Field label="POS дугаар">
+                      <input
+                        value={form.ebarimtPosNo}
+                        onChange={(e) => set("ebarimtPosNo", e.target.value)}
+                        placeholder="POS дугаар"
+                        className={INPUT}
+                      />
+                    </Field>
+                    <Field label="Merchant нэр" className="col-span-2">
+                      <input
+                        value={form.ebarimtMerchantName}
+                        onChange={(e) => set("ebarimtMerchantName", e.target.value)}
+                        placeholder="Merchant нэр"
                         className={INPUT}
                       />
                     </Field>

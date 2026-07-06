@@ -90,20 +90,28 @@ const EBARIMT_CONFIG = {
   CLASSIFICATION_CODE: process.env.NEXT_PUBLIC_EBARIMT_CLASSIFICATION_CODE,
 };
 
-function getPosApiUrl() {
+class PosApiHttpError extends Error {}
+
+function getPosApiUrl(baseUrlOverride?: string | null) {
   const configured =
+    baseUrlOverride ||
     process.env.NEXT_PUBLIC_EBARIMT_POS_API_URL ||
     (typeof window !== "undefined" ? localStorage.getItem("mgl_ebarimt_pos_api_url") : "") ||
     DEFAULT_POS_API_URL;
-  return configured.replace(/\/$/, "");
+  return configured.replace(/\/+$/, "");
 }
 
-function getPosApiFetchUrl(path: string) {
+function getPosApiFetchUrls(path: string, baseUrlOverride?: string | null) {
+  const baseUrl = getPosApiUrl(baseUrlOverride);
   if (typeof window !== "undefined") {
-    return `/api/ebarimt/posapi?path=${encodeURIComponent(path)}`;
+    const params = new URLSearchParams({ path });
+    if (baseUrl) params.set("baseUrl", baseUrl);
+    const proxyUrl = `/api/ebarimt/posapi?${params.toString()}`;
+    const directUrl = `${baseUrl}${path}`;
+    return directUrl === proxyUrl ? [proxyUrl] : [directUrl, proxyUrl];
   }
 
-  return `${getPosApiUrl()}${path}`;
+  return [`${baseUrl}${path}`];
 }
 
 function getEbarimtConfig(key: keyof typeof EBARIMT_CONFIG, fallback: string) {
@@ -119,7 +127,41 @@ function pickText(...values: unknown[]) {
   return null;
 }
 
-async function fetchLocalPosApi<T>(path: string, init?: RequestInit, timeoutMs = 10_000): Promise<T> {
+function getRegisterPosApiUrl(register?: RegisterConfig | null) {
+  return register?.ebarimtPosApiUrl || null;
+}
+
+function normalizeTin(value: unknown) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function selectMerchant(info: EbarimtInfo, register?: RegisterConfig | null) {
+  const configuredTin = normalizeTin(register?.ebarimtMerchantTin);
+  const merchants = Array.isArray(info.merchants) ? info.merchants : [];
+
+  if (configuredTin) {
+    const merchant = merchants.find((item) => normalizeTin(item.tin) === configuredTin);
+    if (merchants.length > 0 && !merchant) {
+      throw new Error("Configured eBarimt merchantTin was not found in PosAPI /rest/info");
+    }
+    return {
+      merchant,
+      merchantTin: configuredTin,
+    };
+  }
+
+  if (merchants.length > 1) {
+    throw new Error("Multiple eBarimt merchants found. Set ebarimtMerchantTin on this POS register.");
+  }
+
+  const merchant = merchants[0];
+  return {
+    merchant,
+    merchantTin: normalizeTin(merchant?.tin) || normalizeTin(info.operatorTIN),
+  };
+}
+
+async function fetchLocalPosApiUrl<T>(url: string, init?: RequestInit, timeoutMs = 10_000): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -128,7 +170,7 @@ async function fetchLocalPosApi<T>(path: string, init?: RequestInit, timeoutMs =
       headers.set("Content-Type", "application/json");
     }
 
-    const res = await fetch(getPosApiFetchUrl(path), {
+    const res = await fetch(url, {
       ...init,
       headers,
       signal: init?.signal || controller.signal,
@@ -137,7 +179,7 @@ async function fetchLocalPosApi<T>(path: string, init?: RequestInit, timeoutMs =
 
     const raw = await res.text();
     if (!res.ok) {
-      throw new Error(raw || `eBarimt PosAPI алдаа гарлаа (HTTP ${res.status})`);
+      throw new PosApiHttpError(raw || `eBarimt PosAPI алдаа гарлаа (HTTP ${res.status})`);
     }
 
     if (!raw) return {} as T;
@@ -155,6 +197,27 @@ async function fetchLocalPosApi<T>(path: string, init?: RequestInit, timeoutMs =
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchLocalPosApi<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = 10_000,
+  baseUrlOverride?: string | null,
+): Promise<T> {
+  const urls = getPosApiFetchUrls(path, baseUrlOverride);
+  let lastError: unknown;
+
+  for (const url of urls) {
+    try {
+      return await fetchLocalPosApiUrl<T>(url, init, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (error instanceof PosApiHttpError) break;
+    }
+  }
+
+  throw lastError;
 }
 
 function parseMaybeJson(value: unknown): unknown {
@@ -205,13 +268,14 @@ function normalizeInvalidReceipts(raw: unknown): LocalInvalidReceipt[] {
   return id ? [{ ...objectValue, id } as LocalInvalidReceipt] : [];
 }
 
-export async function getLocalEbarimtInfo(): Promise<EbarimtInfo> {
-  return fetchLocalPosApi<EbarimtInfo>("/rest/info");
+export async function getLocalEbarimtInfo(register?: RegisterConfig | null): Promise<EbarimtInfo> {
+  return fetchLocalPosApi<EbarimtInfo>("/rest/info", undefined, 10_000, getRegisterPosApiUrl(register));
 }
 
-export async function sendLocalEbarimtData(): Promise<EbarimtInfo> {
-  await fetchLocalPosApi<unknown>("/rest/sendData", undefined, 600_000);
-  return getLocalEbarimtInfo();
+export async function sendLocalEbarimtData(register?: RegisterConfig | null): Promise<EbarimtInfo> {
+  const baseUrl = getRegisterPosApiUrl(register);
+  await fetchLocalPosApi<unknown>("/rest/sendData", undefined, 600_000, baseUrl);
+  return getLocalEbarimtInfo(register);
 }
 
 export async function lookupEbarimtTin(regNo: string): Promise<EbarimtTinLookupResult> {
@@ -228,28 +292,38 @@ export async function lookupEbarimtTin(regNo: string): Promise<EbarimtTinLookupR
   return payload as EbarimtTinLookupResult;
 }
 
-export async function getLocalEbarimtInvalidReceipts(): Promise<LocalInvalidReceipt[]> {
-  const raw = await fetchLocalPosApi<unknown>("/rest/receipt/invalid/list");
+export async function getLocalEbarimtInvalidReceipts(register?: RegisterConfig | null): Promise<LocalInvalidReceipt[]> {
+  const raw = await fetchLocalPosApi<unknown>(
+    "/rest/receipt/invalid/list",
+    undefined,
+    10_000,
+    getRegisterPosApiUrl(register),
+  );
   return normalizeInvalidReceipts(raw);
 }
 
-export async function sendLocalEbarimtInvalidReceipt(id: string): Promise<unknown> {
-  return fetchLocalPosApi<unknown>(`/rest/receipt/invalid/send/${encodeURIComponent(id)}`);
+export async function sendLocalEbarimtInvalidReceipt(id: string, register?: RegisterConfig | null): Promise<unknown> {
+  return fetchLocalPosApi<unknown>(
+    `/rest/receipt/invalid/send/${encodeURIComponent(id)}`,
+    undefined,
+    10_000,
+    getRegisterPosApiUrl(register),
+  );
 }
 
-export async function sendAllLocalEbarimtInvalidReceipts(): Promise<{
+export async function sendAllLocalEbarimtInvalidReceipts(register?: RegisterConfig | null): Promise<{
   total: number;
   sent: number;
   failed: Array<{ id: string; error: string }>;
   receipts: LocalInvalidReceipt[];
 }> {
-  const receipts = await getLocalEbarimtInvalidReceipts();
+  const receipts = await getLocalEbarimtInvalidReceipts(register);
   const failed: Array<{ id: string; error: string }> = [];
   let sent = 0;
 
   for (const receipt of receipts) {
     try {
-      await sendLocalEbarimtInvalidReceipt(receipt.id);
+      await sendLocalEbarimtInvalidReceipt(receipt.id, register);
       sent += 1;
     } catch (error: any) {
       failed.push({
@@ -313,13 +387,13 @@ function lineVatAmount(line: PosReceipt["lines"][number], total: number, vatPaye
 export async function issueLocalEbarimtReceipt(
   receipt: PosReceipt,
   payments: SalePaymentLine[],
-  _register?: RegisterConfig | null,
+  register?: RegisterConfig | null,
   buyer: EbarimtBuyer = { type: "B2C" },
 ): Promise<AttachEbarimtPayload> {
-  const info = await fetchLocalPosApi<EbarimtInfo>("/rest/info");
-  const merchant = info.merchants?.[0];
-  const merchantTin = merchant?.tin || info.operatorTIN;
-  const posNo = info.posNo;
+  const baseUrl = getRegisterPosApiUrl(register);
+  const info = await fetchLocalPosApi<EbarimtInfo>("/rest/info", undefined, 10_000, baseUrl);
+  const { merchant, merchantTin } = selectMerchant(info, register);
+  const posNo = pickText(register?.ebarimtPosNo, info.posNo);
 
   if (!merchantTin || !posNo) {
     throw new Error("eBarimt PosAPI дээр merchant эсвэл posNo олдсонгүй");
@@ -378,7 +452,7 @@ export async function issueLocalEbarimtReceipt(
   const raw = await fetchLocalPosApi<EbarimtWrapperResponse | EbarimtReceiptContent>("/rest/receipt", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }, 10_000, baseUrl);
   const content = parseReceiptResponse(raw);
 
   if (String(content.status || "").toUpperCase() !== "SUCCESS") {

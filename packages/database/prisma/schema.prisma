@@ -754,34 +754,39 @@ model Branch {
 }
 
 model PosRegister {
-  id                String               @id @default(uuid())
-  organizationId    String
-  branchId          String
-  name              String
-  label             String?
-  cardEnabled       Boolean              @default(false)
-  cardProviderType  String?
-  cardTerminalId    String?
-  terminalBridgeUrl String?
-  qpayEnabled       Boolean              @default(false)
-  qpayMerchantId    String?
-  qpayTerminalId    String?
-  isActive          Boolean              @default(false)
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  deletedAt         DateTime?
-  activationStatus  PosActivationStatus  @default(PENDING)
-  rejectReason      String?
-  reviewedAt        DateTime?
-  reviewedById      String?
-  cardAttempts      CardPaymentAttempt[]
-  branch            Branch               @relation(fields: [branchId], references: [id])
-  organization      Organization         @relation(fields: [organizationId], references: [id])
-  reviewedBy        User?                @relation("PosRegisterReviewedBy", fields: [reviewedById], references: [id])
-  qpayInvoices      QPayInvoice[]
-  posShifts         PosShift[]
-  posSales          PosSale[]
-  posCreditSales    PosCreditSale[]
+  id                  String               @id @default(uuid())
+  organizationId      String
+  branchId            String
+  name                String
+  label               String?
+  cardEnabled         Boolean              @default(false)
+  cardProviderType    String?
+  cardTerminalId      String?
+  terminalBridgeUrl   String?
+  qpayEnabled         Boolean              @default(false)
+  qpayMerchantId      String?
+  qpayTerminalId      String?
+  ebarimtEnabled      Boolean              @default(false)
+  ebarimtPosApiUrl    String?
+  ebarimtMerchantTin  String?
+  ebarimtPosNo        String?
+  ebarimtMerchantName String?
+  isActive            Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  deletedAt           DateTime?
+  activationStatus    PosActivationStatus  @default(PENDING)
+  rejectReason        String?
+  reviewedAt          DateTime?
+  reviewedById        String?
+  cardAttempts        CardPaymentAttempt[]
+  branch              Branch               @relation(fields: [branchId], references: [id])
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  reviewedBy          User?                @relation("PosRegisterReviewedBy", fields: [reviewedById], references: [id])
+  qpayInvoices        QPayInvoice[]
+  posShifts           PosShift[]
+  posSales            PosSale[]
+  posCreditSales      PosCreditSale[]
 
   @@unique([organizationId, branchId, name])
   @@unique([cardProviderType, cardTerminalId])
