@@ -630,7 +630,7 @@ model PosRegister {
   ebarimtEnabled      Boolean              @default(false)
   ebarimtPosApiUrl    String?
   ebarimtMerchantTin  String?
-  ebarimtPosNo        String?              @unique @default(dbgenerated("nextval('\"PosRegister_ebarimtPosNo_seq\"'::regclass)::text"))
+  ebarimtPosNo        String?              @unique
   ebarimtMerchantName String?
   isActive            Boolean              @default(false)
   createdAt           DateTime             @default(now())

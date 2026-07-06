@@ -1015,7 +1015,7 @@ router.post("/admin/pos-registers", async (req, res) => {
         ebarimtEnabled: Boolean(ebarimtEnabled),
         ebarimtPosApiUrl: normalizedEbarimtPosApiUrl,
         ebarimtMerchantTin: normalizedEbarimtMerchantTin,
-        ...(normalizedEbarimtPosNo && { ebarimtPosNo: normalizedEbarimtPosNo }),
+        ebarimtPosNo: normalizedEbarimtPosNo,
         ebarimtMerchantName: normalizedEbarimtMerchantName,
         // Admin-created registers are immediately active and approved
         isActive: true,
@@ -1257,7 +1257,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
         ebarimtEnabled: nextEbarimtEnabled,
         ...(normalizedInputEbarimtPosApiUrl !== undefined && { ebarimtPosApiUrl: normalizedInputEbarimtPosApiUrl }),
         ...(normalizedInputEbarimtMerchantTin !== undefined && { ebarimtMerchantTin: normalizedInputEbarimtMerchantTin }),
-        ...(normalizedInputEbarimtPosNo && { ebarimtPosNo: normalizedInputEbarimtPosNo }),
+        ...(normalizedInputEbarimtPosNo !== undefined && { ebarimtPosNo: normalizedInputEbarimtPosNo }),
         ...(normalizedInputEbarimtMerchantName !== undefined && { ebarimtMerchantName: normalizedInputEbarimtMerchantName }),
         ...(isActive !== undefined && {
           isActive: Boolean(isActive),

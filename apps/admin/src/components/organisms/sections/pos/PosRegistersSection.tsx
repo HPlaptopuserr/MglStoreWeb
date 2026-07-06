@@ -423,7 +423,7 @@ export function PosRegistersSection() {
         ebarimtPosApiUrl: form.ebarimtPosApiUrl.trim() || null,
         ebarimtMerchantTin: form.ebarimtMerchantTin.trim() || null,
         ebarimtMerchantName: form.ebarimtMerchantName.trim() || null,
-        ...(editingId ? { ebarimtPosNo: form.ebarimtPosNo.trim() || null } : {}),
+        ebarimtPosNo: form.ebarimtPosNo.trim() || null,
       };
       const url = editingId
         ? `${API}/admin/pos-registers/${editingId}`
@@ -804,12 +804,12 @@ export function PosRegistersSection() {
               <Field label="POS дугаар">
                 <input
                   value={form.ebarimtPosNo}
-                  readOnly
-                  placeholder="Хадгалсны дараа автоматаар үүснэ"
-                  className={`${INPUT} bg-slate-100 font-mono text-slate-600`}
+                  onChange={(e) => set("ebarimtPosNo", e.target.value)}
+                  placeholder="operator PosAPI жагсаалтын POS No"
+                  className={`${INPUT} font-mono`}
                 />
                 <p className="mt-1 text-[11px] text-slate-400">
-                  Эхлээд POS register-г хадгалж энэ дугаарыг авна. Дараа нь operator.ebarimt.mn дээр merchant нэмэхдээ ашиглана.
+                  operator.ebarimt.mn → PosAPI жагсаалт дээр гарсан POS дугаарыг энд оруулна.
                 </p>
               </Field>
 
@@ -960,7 +960,7 @@ export function PosRegistersSection() {
                     <div className="col-span-2 rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs leading-5 text-slate-500">
                       {form.ebarimtPosNo
                         ? "Энэ POS дугаараар operator.ebarimt.mn дээр merchant-аа нэмээд, баталгаажсаны дараа Merchant TIN/нэрээ энд нөхөж хадгална."
-                        : "Merchant бүртгэхэд POS дугаар хэрэгтэй. Эхлээд eBarimt-ыг асаахгүйгээр POS register-ээ хадгалж POS дугаар авна."}
+                        : "Merchant бүртгэхэд operator-ийн PosAPI жагсаалт дээрх POS дугаар хэрэгтэй. POS дугаараа дээрх талбарт оруулна."}
                     </div>
                     <Field label="PosAPI URL" className="col-span-2">
                       <input
