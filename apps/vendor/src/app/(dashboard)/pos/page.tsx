@@ -4071,6 +4071,21 @@ export default function PosDemoPage() {
         </div>
       )}
 
+      {showPosSettings && scanMessage && (
+        <div
+          className={`shrink-0 rounded-xl border px-3 py-2 text-sm shadow-sm ${
+            scanStatus === "success"
+              ? "border-emerald-200 bg-emerald-50"
+              : scanStatus === "not-found"
+                ? "border-amber-200 bg-amber-50"
+                : "border-slate-200 bg-white"
+          }`}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">POS status</p>
+          <p className="mt-0.5 whitespace-pre-wrap break-words font-semibold text-slate-900">{scanMessage}</p>
+        </div>
+      )}
+
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(380px,0.58fr)_minmax(720px,1.42fr)] gap-3 2xl:grid-cols-[minmax(430px,0.54fr)_minmax(860px,1.46fr)]">
         {view === "history" ? (
           <section className="flex min-h-0 flex-col gap-3">
