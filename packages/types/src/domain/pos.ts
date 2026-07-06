@@ -58,6 +58,11 @@ export interface RegisterConfig {
   effectiveQpayEnabled: boolean;
   qpayMerchantId: string | null;
   qpayTerminalId: string | null;
+  ebarimtEnabled: boolean;
+  ebarimtPosApiUrl: string | null;
+  ebarimtMerchantTin: string | null;
+  ebarimtPosNo: string | null;
+  ebarimtMerchantName: string | null;
   minuAgentEnabled?: boolean;
   minuAgentUsername?: string | null;
   minuAgentBranchId?: string | null;

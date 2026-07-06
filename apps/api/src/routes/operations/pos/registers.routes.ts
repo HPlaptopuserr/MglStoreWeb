@@ -32,6 +32,29 @@ const normalizeCardTerminalId = (provider: string | null | undefined, value: unk
   isTerminalIdOptionalProvider(provider) ? null : normalizeNullableString(value);
 const DEFAULT_ANDROID_PGW_BRIDGE_URL = "http://127.0.0.1:7420";
 
+const normalizeUrlString = (value: unknown) => {
+  const normalized = normalizeNullableString(value);
+  return normalized ? normalized.replace(/\/+$/, "") : null;
+};
+
+const validateHttpUrl = (value: string | null, fieldName: string) => {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return `${fieldName} must use http/https`;
+    }
+    return null;
+  } catch {
+    return `${fieldName} format is invalid`;
+  }
+};
+
+const validateNumericId = (value: string | null, fieldName: string) => {
+  if (!value) return null;
+  return /^\d+$/.test(value) ? null : `${fieldName} must contain digits only`;
+};
+
 type EffectiveCardTerminalConfig = {
   cardEnabled: boolean;
   cardProviderType: string | null;
@@ -187,6 +210,11 @@ router.get("/pos/register-config", async (req, res) => {
         qpayEnabled: true,
         qpayMerchantId: true,
         qpayTerminalId: true,
+        ebarimtEnabled: true,
+        ebarimtPosApiUrl: true,
+        ebarimtMerchantTin: true,
+        ebarimtPosNo: true,
+        ebarimtMerchantName: true,
         isActive: true,
         activationStatus: true,
         branchId: true,
@@ -441,6 +469,11 @@ router.get("/pos/registers/mine", async (req, res) => {
         qpayEnabled: true,
         qpayMerchantId: true,
         qpayTerminalId: true,
+        ebarimtEnabled: true,
+        ebarimtPosApiUrl: true,
+        ebarimtMerchantTin: true,
+        ebarimtPosNo: true,
+        ebarimtMerchantName: true,
         isActive: true,
         activationStatus: true,
         branch: { select: { id: true, name: true } },
@@ -828,6 +861,11 @@ router.post("/admin/pos-registers", async (req, res) => {
     qpayEnabled,
     qpayMerchantId,
     qpayTerminalId,
+    ebarimtEnabled,
+    ebarimtPosApiUrl,
+    ebarimtMerchantTin,
+    ebarimtPosNo,
+    ebarimtMerchantName,
     minuAgentUsername,
     minuAgentPassword,
     minuAgentBranchId,
@@ -843,6 +881,11 @@ router.post("/admin/pos-registers", async (req, res) => {
     qpayEnabled?: boolean;
     qpayMerchantId?: string;
     qpayTerminalId?: string;
+    ebarimtEnabled?: boolean;
+    ebarimtPosApiUrl?: string;
+    ebarimtMerchantTin?: string;
+    ebarimtPosNo?: string;
+    ebarimtMerchantName?: string;
     minuAgentUsername?: string;
     minuAgentPassword?: string;
     minuAgentBranchId?: string;
@@ -854,6 +897,10 @@ router.post("/admin/pos-registers", async (req, res) => {
   const normalizedTerminalBridgeUrl = normalizeNullableString(terminalBridgeUrl);
   const normalizedQpayMerchantId = normalizeNullableString(qpayMerchantId);
   const normalizedQpayTerminalId = normalizeNullableString(qpayTerminalId);
+  const normalizedEbarimtPosApiUrl = normalizeUrlString(ebarimtPosApiUrl);
+  const normalizedEbarimtMerchantTin = normalizeNullableString(ebarimtMerchantTin);
+  const normalizedEbarimtPosNo = normalizeNullableString(ebarimtPosNo);
+  const normalizedEbarimtMerchantName = normalizeNullableString(ebarimtMerchantName);
 
   if (!organizationId || !branchId || !normalizedName) {
     return res.status(400).json({ message: "organizationId, branchId, name шаардлагатай" });
@@ -869,6 +916,21 @@ router.post("/admin/pos-registers", async (req, res) => {
     } catch {
       return res.status(400).json({ message: "terminalBridgeUrl формат буруу байна" });
     }
+  }
+
+  const ebarimtUrlError = validateHttpUrl(normalizedEbarimtPosApiUrl, "ebarimtPosApiUrl");
+  if (ebarimtUrlError) {
+    return res.status(400).json({ message: ebarimtUrlError });
+  }
+
+  const ebarimtTinError = validateNumericId(normalizedEbarimtMerchantTin, "ebarimtMerchantTin");
+  if (ebarimtTinError) {
+    return res.status(400).json({ message: ebarimtTinError });
+  }
+
+  const ebarimtPosNoError = validateNumericId(normalizedEbarimtPosNo, "ebarimtPosNo");
+  if (ebarimtPosNoError) {
+    return res.status(400).json({ message: ebarimtPosNoError });
   }
 
   if (cardEnabled === true && !normalizedCardProviderType) {
@@ -950,6 +1012,11 @@ router.post("/admin/pos-registers", async (req, res) => {
         qpayEnabled: Boolean(qpayEnabled),
         qpayMerchantId: normalizedQpayMerchantId,
         qpayTerminalId: normalizedQpayTerminalId,
+        ebarimtEnabled: Boolean(ebarimtEnabled),
+        ebarimtPosApiUrl: normalizedEbarimtPosApiUrl,
+        ebarimtMerchantTin: normalizedEbarimtMerchantTin,
+        ebarimtPosNo: normalizedEbarimtPosNo,
+        ebarimtMerchantName: normalizedEbarimtMerchantName,
         // Admin-created registers are immediately active and approved
         isActive: true,
         activationStatus: PosActivationStatus.APPROVED,
@@ -1015,6 +1082,11 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     qpayEnabled,
     qpayMerchantId,
     qpayTerminalId,
+    ebarimtEnabled,
+    ebarimtPosApiUrl,
+    ebarimtMerchantTin,
+    ebarimtPosNo,
+    ebarimtMerchantName,
     minuAgentUsername,
     minuAgentPassword,
     minuAgentBranchId,
@@ -1029,6 +1101,11 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     qpayEnabled?: boolean;
     qpayMerchantId?: string;
     qpayTerminalId?: string;
+    ebarimtEnabled?: boolean;
+    ebarimtPosApiUrl?: string;
+    ebarimtMerchantTin?: string;
+    ebarimtPosNo?: string;
+    ebarimtMerchantName?: string;
     minuAgentUsername?: string;
     minuAgentPassword?: string;
     minuAgentBranchId?: string;
@@ -1037,6 +1114,14 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
 
   const normalizedInputTerminalBridgeUrl =
     terminalBridgeUrl !== undefined ? normalizeNullableString(terminalBridgeUrl) : undefined;
+  const normalizedInputEbarimtPosApiUrl =
+    ebarimtPosApiUrl !== undefined ? normalizeUrlString(ebarimtPosApiUrl) : undefined;
+  const normalizedInputEbarimtMerchantTin =
+    ebarimtMerchantTin !== undefined ? normalizeNullableString(ebarimtMerchantTin) : undefined;
+  const normalizedInputEbarimtPosNo =
+    ebarimtPosNo !== undefined ? normalizeNullableString(ebarimtPosNo) : undefined;
+  const normalizedInputEbarimtMerchantName =
+    ebarimtMerchantName !== undefined ? normalizeNullableString(ebarimtMerchantName) : undefined;
 
   if (normalizedInputTerminalBridgeUrl) {
     try {
@@ -1046,6 +1131,27 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
       }
     } catch {
       return res.status(400).json({ message: "terminalBridgeUrl формат буруу байна" });
+    }
+  }
+
+  if (normalizedInputEbarimtPosApiUrl !== undefined) {
+    const ebarimtUrlError = validateHttpUrl(normalizedInputEbarimtPosApiUrl, "ebarimtPosApiUrl");
+    if (ebarimtUrlError) {
+      return res.status(400).json({ message: ebarimtUrlError });
+    }
+  }
+
+  if (normalizedInputEbarimtMerchantTin !== undefined) {
+    const ebarimtTinError = validateNumericId(normalizedInputEbarimtMerchantTin, "ebarimtMerchantTin");
+    if (ebarimtTinError) {
+      return res.status(400).json({ message: ebarimtTinError });
+    }
+  }
+
+  if (normalizedInputEbarimtPosNo !== undefined) {
+    const ebarimtPosNoError = validateNumericId(normalizedInputEbarimtPosNo, "ebarimtPosNo");
+    if (ebarimtPosNoError) {
+      return res.status(400).json({ message: ebarimtPosNoError });
     }
   }
 
@@ -1102,6 +1208,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
         : qpayTerminalId !== undefined
           ? qpayTerminalId || null
           : existing.qpayTerminalId;
+    const nextEbarimtEnabled = ebarimtEnabled !== undefined ? Boolean(ebarimtEnabled) : existing.ebarimtEnabled;
 
     if (nextQpayEnabled && (!nextQpayMerchantId || !nextQpayTerminalId)) {
       return res.status(400).json({ message: "QPay идэвхтэй үед merchant болон terminal заавал байна" });
@@ -1147,6 +1254,11 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
         qpayEnabled: nextQpayEnabled,
         qpayMerchantId: nextQpayMerchantId,
         qpayTerminalId: nextQpayTerminalId,
+        ebarimtEnabled: nextEbarimtEnabled,
+        ...(normalizedInputEbarimtPosApiUrl !== undefined && { ebarimtPosApiUrl: normalizedInputEbarimtPosApiUrl }),
+        ...(normalizedInputEbarimtMerchantTin !== undefined && { ebarimtMerchantTin: normalizedInputEbarimtMerchantTin }),
+        ...(normalizedInputEbarimtPosNo !== undefined && { ebarimtPosNo: normalizedInputEbarimtPosNo }),
+        ...(normalizedInputEbarimtMerchantName !== undefined && { ebarimtMerchantName: normalizedInputEbarimtMerchantName }),
         ...(isActive !== undefined && {
           isActive: Boolean(isActive),
           ...(Boolean(isActive) && existing.activationStatus === PosActivationStatus.PENDING && {

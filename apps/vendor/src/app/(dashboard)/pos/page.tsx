@@ -75,6 +75,7 @@ import {
   getCashDrawerSummary,
   getReceipts,
   getShiftHistory,
+  getLocalEbarimtInfo,
   issueLocalEbarimtReceipt,
   attachEbarimtReceipt,
   sendLocalEbarimtData,
@@ -460,22 +461,19 @@ const validateCardRegisterConfig = (register: RegisterConfig | null) => {
   if (!register) {
     throw new Error("POS register тохиргоо олдсонгүй");
   }
-  if (!register.cardEnabled) {
-    throw new Error("Энэ касс дээр картын төлбөр идэвхгүй байна");
-  }
 
   const provider = getEffectiveCardProvider(register);
   if (!provider) {
-    throw new Error("Картын terminal provider тохируулаагүй байна");
+    return null;
   }
   if (provider === "ANDROID_PGW" && !register.terminalBridgeUrl) {
-    throw new Error("ANDROID_PGW Bridge URL тохируулаагүй байна. POS Register дээр http://127.0.0.1:7420 оруулна уу.");
+    return null;
   }
   if ((provider === "PUSH_ECR" || provider === "MINU_AGENT") && !register.cardTerminalId) {
-    throw new Error(`${provider} terminalId тохируулаагүй байна`);
+    return null;
   }
   if (!LONG_RUNNING_CARD_PROVIDERS.has(provider) && !register.terminalBridgeUrl) {
-    throw new Error(`${provider} Bridge URL тохируулаагүй байна`);
+    return null;
   }
 
   return provider;
@@ -585,12 +583,19 @@ export default function PosDemoPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("Бүгд");
   const [autoCheckoutActive, setAutoCheckoutActive] = useState(false);
   const [autoFinalizing, setAutoFinalizing] = useState(false);
+  const [checkingEbarimt, setCheckingEbarimt] = useState(false);
   const [successOverlay, setSuccessOverlay] = useState<{ visible: boolean; text: string }>({
     visible: false,
     text: "",
   });
   const [customerDisplaySuccess, setCustomerDisplaySuccess] = useState<CustomerDisplaySuccess | null>(null);
   const [registerConfig, setRegisterConfig] = useState<RegisterConfig | null>(null);
+  const effectiveEbarimtEnabled = EBARIMT_ENABLED && Boolean(registerConfig?.ebarimtEnabled);
+  const ebarimtStatusText = !EBARIMT_ENABLED
+    ? "eBarimt систем идэвхгүй байна."
+    : registerConfig?.ebarimtEnabled
+      ? "eBarimt идэвхтэй. Төлбөрийн дараа QR гарна."
+      : "Энэ касс дээр eBarimt унтраалттай.";
   const [showPosSettings, setShowPosSettings] = useState(false);
   const [showSetupPanel, setShowSetupPanel] = useState(false);
   // self-registration form
@@ -862,7 +867,7 @@ export default function PosDemoPage() {
     ebarimtSendDataInFlightRef.current = true;
     console.info(`[POS] eBarimt sendData started: ${source}`);
 
-    void sendLocalEbarimtData()
+    void sendLocalEbarimtData(registerConfig)
       .then((info) => {
         const lastSentDate = info.lastSentDate || "-";
         console.info(`[POS] eBarimt sendData finished: ${source}; lastSentDate=${lastSentDate}`);
@@ -878,6 +883,45 @@ export default function PosDemoPage() {
       .finally(() => {
         ebarimtSendDataInFlightRef.current = false;
       });
+  };
+
+  const checkEbarimtConnection = async () => {
+    if (!registerConfig?.id) {
+      setScanStatus("not-found");
+      setScanMessage("Эхлээд POS кассаа register/салбартай холбоно уу.");
+      return;
+    }
+    if (!EBARIMT_ENABLED) {
+      setScanStatus("not-found");
+      setScanMessage("NEXT_PUBLIC_EBARIMT_ENABLED=false байна. Production дээр true болгоно уу.");
+      return;
+    }
+    if (!registerConfig.ebarimtEnabled) {
+      setScanStatus("not-found");
+      setScanMessage("Энэ POS register дээр eBarimt унтраалттай байна. Admin дээр асаана уу.");
+      return;
+    }
+
+    setCheckingEbarimt(true);
+    setScanStatus("idle");
+    setScanMessage("eBarimt PosAPI /rest/info шалгаж байна...");
+    try {
+      const info = await getLocalEbarimtInfo(registerConfig);
+      const merchants =
+        info.merchants
+          ?.map((merchant) => [merchant.name, merchant.tin].filter(Boolean).join(" / "))
+          .filter(Boolean)
+          .join(", ") || "-";
+      setScanStatus("success");
+      setScanMessage(
+        `eBarimt OK. POS: ${info.posNo || registerConfig.ebarimtPosNo || "-"}, operatorTIN: ${info.operatorTIN || "-"}, merchants: ${merchants}`,
+      );
+    } catch (error: any) {
+      setScanStatus("not-found");
+      setScanMessage(error?.message || "eBarimt PosAPI шалгахад алдаа гарлаа");
+    } finally {
+      setCheckingEbarimt(false);
+    }
   };
 
   useEffect(() => {
@@ -1715,7 +1759,7 @@ export default function PosDemoPage() {
       });
       let repaymentMessage = `${repaymentLabel} төлөлт амжилттай бүртгэгдлээ.`;
 
-      if (response.ok && EBARIMT_ENABLED) {
+      if (response.ok && effectiveEbarimtEnabled) {
         try {
           setScanStatus("idle");
           setScanMessage("Зээлийн төлөлтийн eBarimt баримт үүсгэж байна...");
@@ -1896,6 +1940,9 @@ export default function PosDemoPage() {
     setEbarimtBuyerSubmitting(false);
   };
 
+  const normalizeEbarimtTin = (value: string) => value.replace(/\D/g, "").slice(0, 14);
+  const isValidEbarimtTin = (value: string) => /^\d{11,14}$/.test(normalizeEbarimtTin(value));
+
   const lookupCompanyTinForEbarimt = async () => {
     const regNo = ebarimtCompanyRegNo.replace(/\D/g, "");
     if (!/^\d{7}$/.test(regNo)) {
@@ -1927,8 +1974,11 @@ export default function PosDemoPage() {
       let buyer: EbarimtBuyer = { type: "B2C" };
       if (mode === "B2B") {
         const normalizedRegNo = ebarimtCompanyRegNo.replace(/\D/g, "");
-        const tin = ebarimtCompanyTin || (await lookupCompanyTinForEbarimt()).tin;
-        buyer = { type: "B2B", tin, regNo: normalizedRegNo };
+        const tin = normalizeEbarimtTin(ebarimtCompanyTin);
+        if (!isValidEbarimtTin(tin)) {
+          throw new Error("B2B eBarimt үүсгэхийн тулд 11-14 оронтой TIN оруулна уу.");
+        }
+        buyer = { type: "B2B", tin, regNo: normalizedRegNo || undefined };
       }
 
       setScanStatus("idle");
@@ -2090,7 +2140,7 @@ export default function PosDemoPage() {
             : ` M Point +${receipt.loyalty.earnedPoints.toLocaleString("mn-MN")} орлоо.`
           : "";
 
-      if (EBARIMT_ENABLED && !isCreditSale) {
+      if (effectiveEbarimtEnabled && !isCreditSale) {
         setAutoCheckoutActive(false);
         setPendingEbarimtSale({
           receipt,
@@ -2109,7 +2159,7 @@ export default function PosDemoPage() {
         return;
       }
 
-      if (EBARIMT_ENABLED && !isCreditSale) {
+      if (effectiveEbarimtEnabled && !isCreditSale) {
         try {
           setScanStatus("idle");
           setScanMessage("eBarimt баримт үүсгэж байна...");
@@ -2233,12 +2283,6 @@ export default function PosDemoPage() {
           effectiveCardProvider !== "MINU_AGENT" &&
           effectiveCardProvider !== "PUSH_ECR";
 
-        if (effectiveCardProvider === "ANDROID_PGW" && !freshRegisterConfig.terminalBridgeUrl) {
-          throw new Error(
-            "ANDROID_PGW Bridge URL тохируулаагүй байна. POS Register дээр http://127.0.0.1:7420 оруулна уу."
-          );
-        }
-
         const attempt = await createCardAttempt({
           amount: safeAmount,
           terminalId,
@@ -2318,6 +2362,7 @@ export default function PosDemoPage() {
               : item,
           ),
         );
+        setAutoCheckoutActive(true);
         clearProgressTicker();
         setScanStatus("success");
         setScanMessage("Картын төлбөр амжилттай баталгаажлаа");
@@ -3247,7 +3292,7 @@ export default function PosDemoPage() {
                   }`}
                 >
                   <p className="text-sm font-black text-slate-950">Байгууллага</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">Регистрээр TIN шалгаад B2B_RECEIPT үүснэ.</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">TIN оруулаад B2B_RECEIPT үүснэ. Регистрээр шалгах нь нэмэлт.</p>
                 </button>
               </div>
 
@@ -3288,6 +3333,23 @@ export default function PosDemoPage() {
                       TIN баталгаажсан: {ebarimtCompanyTin}
                     </p>
                   )}
+                  <label className="mt-4 block text-xs font-black uppercase tracking-wide text-emerald-700">
+                    Худалдан авагчийн TIN
+                  </label>
+                  <input
+                    value={ebarimtCompanyTin}
+                    onChange={(event) => {
+                      setEbarimtCompanyTin(normalizeEbarimtTin(event.target.value));
+                      setEbarimtBuyerError("");
+                    }}
+                    inputMode="numeric"
+                    maxLength={14}
+                    placeholder="11-14 оронтой TIN"
+                    className="mt-2 h-11 w-full rounded-xl border border-emerald-200 bg-white px-3 text-sm font-black tracking-wide text-slate-950 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
+                  />
+                  <p className="mt-2 text-xs font-semibold text-emerald-800">
+                    TIN lookup эрх шаардлагагүй. Худалдан авагчийн TIN-г мэдэж байвал шууд оруулаад хэвлэнэ.
+                  </p>
                 </div>
               )}
 
@@ -3313,7 +3375,7 @@ export default function PosDemoPage() {
                 disabled={
                   ebarimtBuyerSubmitting ||
                   ebarimtCompanyLookupLoading ||
-                  (ebarimtBuyerMode === "B2B" && ebarimtCompanyRegNo.length !== 7)
+                  (ebarimtBuyerMode === "B2B" && !isValidEbarimtTin(ebarimtCompanyTin))
                 }
                 className="inline-flex min-w-44 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -3926,6 +3988,17 @@ export default function PosDemoPage() {
           >
             <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Хэрэглэгчийн дэлгэц</span>
             {displayOpened ? "Нээлттэй" : "Нээх"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void checkEbarimtConnection()}
+            disabled={checkingEbarimt || !registerConfig?.id}
+            className={`rounded-lg px-3 py-2 text-left font-black transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              effectiveEbarimtEnabled ? "bg-indigo-50 text-indigo-700 hover:bg-indigo-100" : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+            }`}
+          >
+            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">eBarimt</span>
+            {checkingEbarimt ? "Шалгаж байна..." : effectiveEbarimtEnabled ? "Холболт шалгах" : "Унтраалттай"}
           </button>
           <div className="rounded-lg bg-slate-50 px-3 py-2">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
@@ -4570,9 +4643,7 @@ export default function PosDemoPage() {
                   <div className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4">
                     <p className="text-sm font-black text-slate-700">eBarimt QR</p>
                     <p className="truncate text-right text-xs font-semibold text-slate-500">
-                      {EBARIMT_ENABLED
-                        ? "Гүйлгээ батлагдсаны дараа QR харагдана."
-                        : "eBarimt одоогоор идэвхгүй байна."}
+                      {ebarimtStatusText}
                     </p>
                   </div>
                 )}
