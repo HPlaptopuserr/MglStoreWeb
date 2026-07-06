@@ -11,6 +11,7 @@
     "categories:seed-marketplace": "tsx src/scripts/seed-marketplace-categories.ts",
     "seed:mgl-water-products": "tsx src/scripts/seed-mgl-water-products.ts",
     "products:classify": "tsx src/scripts/classify-products.ts",
+    "pos:sync-voided-restaurant-tickets": "tsx src/scripts/sync-voided-restaurant-tickets.ts",
     "test:pos-shift": "tsx --test src/routes/operations/pos/shift-accounting.test.ts",
     "type-check": "tsc --noEmit"
   },

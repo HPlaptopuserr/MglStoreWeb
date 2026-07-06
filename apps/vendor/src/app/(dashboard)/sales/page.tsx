@@ -33,6 +33,8 @@ type Sale = {
   cashierName: string;
   paymentMethod: string;
   status: string;
+  voidedAt?: string | null;
+  voidReason?: string | null;
   subtotal: number;
   taxTotal: number;
   discountTotal: number;
@@ -55,6 +57,11 @@ const PAY_LABELS: Record<string, string> = {
   CARD: "Карт",
   QPAY: "QPay",
   MIXED: "Холимог",
+};
+
+const SALE_STATUS_LABELS: Record<string, { label: string; className: string }> = {
+  COMPLETED: { label: "Амжилттай", className: "bg-emerald-50 text-emerald-700" },
+  VOIDED: { label: "Буцаагдсан", className: "bg-rose-50 text-rose-700" },
 };
 
 const fmt = (n: number) =>
@@ -144,8 +151,9 @@ export default function SalesHistoryPage() {
     : sales;
 
   /* ── Summary ─────────────────────────────────────────── */
-  const totalRevenue = filtered.reduce((sum, s) => sum + s.grandTotal, 0);
-  const totalItems = filtered.reduce((sum, s) => sum + s.lines.reduce((a, l) => a + l.qty, 0), 0);
+  const activeSales = filtered.filter((sale) => sale.status !== "VOIDED");
+  const totalRevenue = activeSales.reduce((sum, s) => sum + s.grandTotal, 0);
+  const totalItems = activeSales.reduce((sum, s) => sum + s.lines.reduce((a, l) => a + l.qty, 0), 0);
 
   return (
     <div className="space-y-6 pb-10">
@@ -277,31 +285,65 @@ export default function SalesHistoryPage() {
 
             {filtered.map((sale) => {
               const expanded = expandedId === sale.id;
+              const isVoided = sale.status === "VOIDED";
+              const statusConfig = SALE_STATUS_LABELS[sale.status] || {
+                label: sale.status,
+                className: "bg-slate-100 text-slate-600",
+              };
               return (
                 <div key={sale.id}>
                   {/* Main row */}
                   <button
                     onClick={() => setExpandedId(expanded ? null : sale.id)}
-                    className="w-full grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3 items-center text-left hover:bg-slate-50 transition-colors"
+                    className={`w-full grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3 items-center text-left transition-colors ${
+                      isVoided ? "bg-rose-50/40 hover:bg-rose-50" : "hover:bg-slate-50"
+                    }`}
                   >
                     <div>
-                      <p className="text-sm font-bold text-slate-900 font-mono">{sale.receiptNo}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className={`text-sm font-bold font-mono ${
+                          isVoided ? "text-rose-700 line-through" : "text-slate-900"
+                        }`}>
+                          {sale.receiptNo}
+                        </p>
+                        {isVoided ? (
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${statusConfig.className}`}>
+                            {statusConfig.label}
+                          </span>
+                        ) : null}
+                      </div>
                       <p className="text-xs text-slate-500">{fmtDate(sale.createdAt)}</p>
+                      {isVoided && sale.voidReason ? (
+                        <p className="mt-1 line-clamp-1 text-xs font-semibold text-rose-600">
+                          {sale.voidReason}
+                        </p>
+                      ) : null}
                     </div>
                     <div>
                       <p className="text-sm text-slate-700">{sale.branchName}</p>
                       {sale.registerName && <p className="text-xs text-slate-400">{sale.registerName}</p>}
                     </div>
                     <p className="text-sm text-slate-700">{sale.cashierName}</p>
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold w-fit ${
-                      sale.paymentMethod === "CASH" ? "bg-emerald-50 text-emerald-700" :
-                      sale.paymentMethod === "CARD" ? "bg-blue-50 text-blue-700" :
-                      sale.paymentMethod === "QPAY" ? "bg-violet-50 text-violet-700" :
-                      "bg-slate-100 text-slate-600"
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold w-fit ${
+                        sale.paymentMethod === "CASH" ? "bg-emerald-50 text-emerald-700" :
+                        sale.paymentMethod === "CARD" ? "bg-blue-50 text-blue-700" :
+                        sale.paymentMethod === "QPAY" ? "bg-violet-50 text-violet-700" :
+                        "bg-slate-100 text-slate-600"
+                      }`}>
+                        {PAY_LABELS[sale.paymentMethod] || sale.paymentMethod}
+                      </span>
+                      {isVoided ? (
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold w-fit ${statusConfig.className}`}>
+                          {statusConfig.label}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className={`text-sm font-bold text-right ${
+                      isVoided ? "text-rose-600 line-through" : "text-slate-900"
                     }`}>
-                      {PAY_LABELS[sale.paymentMethod] || sale.paymentMethod}
-                    </span>
-                    <p className="text-sm font-bold text-slate-900 text-right">₮{fmt(sale.grandTotal)}</p>
+                      ₮{fmt(sale.grandTotal)}
+                    </p>
                     {expanded
                       ? <ChevronDown className="h-4 w-4 text-slate-400" />
                       : <ChevronRight className="h-4 w-4 text-slate-400" />
@@ -311,6 +353,15 @@ export default function SalesHistoryPage() {
                   {/* Expanded lines */}
                   {expanded && (
                     <div className="border-t border-slate-100 bg-slate-50 px-5 py-4 space-y-3">
+                      {isVoided ? (
+                        <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                          <p className="font-bold">Энэ борлуулалт буцаагдсан.</p>
+                          <p className="mt-1">
+                            {sale.voidedAt ? `Буцаасан огноо: ${fmtDate(sale.voidedAt)}` : "Буцаасан огноо бүртгэгдээгүй"}
+                          </p>
+                          {sale.voidReason ? <p className="mt-1">Шалтгаан: {sale.voidReason}</p> : null}
+                        </div>
+                      ) : null}
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Барааны жагсаалт</p>
                       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                         <div className="grid grid-cols-[3fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2 bg-slate-50 text-xs font-bold text-slate-400 uppercase">
