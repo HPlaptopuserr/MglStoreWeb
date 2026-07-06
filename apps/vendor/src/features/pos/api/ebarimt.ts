@@ -79,6 +79,12 @@ export type AttachEbarimtPayload = {
   payload?: unknown;
 };
 
+export type EbarimtReturnReceiptResult = {
+  id: string;
+  date: string;
+  response: unknown;
+};
+
 const money = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 const DEFAULT_POS_API_URL = "http://localhost:7080";
 const DEFAULT_BRANCH_NO = "001";
@@ -403,6 +409,79 @@ function getLineTaxProductCode(line: PosReceipt["lines"][number], receiptTaxType
   if (code) return code;
   if (!requiresTaxProductCode(line, receiptTaxType)) return "";
   throw new Error(`${line.name} бараанд eBarimt taxProductCode тохируулаагүй байна.`);
+}
+
+function padDatePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatPosApiReceiptDate(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)) return text;
+
+  const parsed = text ? new Date(text.replace(" ", "T")) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return "";
+  const useUtcParts = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text);
+  const year = useUtcParts ? parsed.getUTCFullYear() : parsed.getFullYear();
+  const month = useUtcParts ? parsed.getUTCMonth() + 1 : parsed.getMonth() + 1;
+  const day = useUtcParts ? parsed.getUTCDate() : parsed.getDate();
+  const hours = useUtcParts ? parsed.getUTCHours() : parsed.getHours();
+  const minutes = useUtcParts ? parsed.getUTCMinutes() : parsed.getMinutes();
+  const seconds = useUtcParts ? parsed.getUTCSeconds() : parsed.getSeconds();
+
+  return [
+    year,
+    "-",
+    padDatePart(month),
+    "-",
+    padDatePart(day),
+    " ",
+    padDatePart(hours),
+    ":",
+    padDatePart(minutes),
+    ":",
+    padDatePart(seconds),
+  ].join("");
+}
+
+function assertReturnReceiptResponse(raw: unknown) {
+  const parsed = parseMaybeJson(raw);
+  if (typeof parsed !== "object" || parsed === null) return;
+
+  const value = parsed as Record<string, unknown>;
+  const statusCode = Number(value.StatusCode ?? value.statusCode ?? value.status);
+  if (Number.isFinite(statusCode) && statusCode >= 400) {
+    throw new Error(
+      pickText(value.message, value.Message, value.error) ||
+        `eBarimt return failed (status ${statusCode})`,
+    );
+  }
+}
+
+export async function returnLocalEbarimtReceipt(
+  receipt: PosReceipt,
+  register?: RegisterConfig | null,
+): Promise<EbarimtReturnReceiptResult | null> {
+  if (String(receipt.ebarimt?.status || "").toUpperCase() !== "SUCCESS") return null;
+
+  const id = pickText(receipt.ebarimt?.billId, receipt.ebarimt?.receiptId);
+  if (!id) {
+    throw new Error("eBarimt return requires original receipt billId.");
+  }
+
+  const date = formatPosApiReceiptDate(receipt.ebarimt?.date || receipt.createdAt);
+  if (!date) {
+    throw new Error("eBarimt return requires original receipt date.");
+  }
+
+  const response = await fetchLocalPosApi<unknown>(
+    "/rest/receipt",
+    { method: "DELETE", body: JSON.stringify({ id, date }) },
+    10_000,
+    getRegisterPosApiUrl(register),
+  );
+  assertReturnReceiptResponse(response);
+  return { id, date, response };
 }
 
 export async function issueLocalEbarimtReceipt(

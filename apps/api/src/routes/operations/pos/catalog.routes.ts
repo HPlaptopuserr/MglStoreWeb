@@ -61,6 +61,36 @@ const cleanOptionalText = (value: unknown) => {
   return text || null;
 };
 
+type PosSaleEbarimtFields = {
+  ebarimtStatus: string | null;
+  ebarimtBillId: string | null;
+  ebarimtReceiptId: string | null;
+  ebarimtQrData: string | null;
+  ebarimtLottery: string | null;
+  ebarimtDate: Date | null;
+  ebarimtError: string | null;
+  ebarimtSyncedAt: Date | null;
+};
+
+const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) =>
+  sale.ebarimtStatus ||
+  sale.ebarimtBillId ||
+  sale.ebarimtReceiptId ||
+  sale.ebarimtQrData ||
+  sale.ebarimtLottery ||
+  sale.ebarimtError
+    ? {
+        status: sale.ebarimtStatus,
+        billId: sale.ebarimtBillId,
+        receiptId: sale.ebarimtReceiptId,
+        qrData: sale.ebarimtQrData,
+        lottery: sale.ebarimtLottery,
+        date: sale.ebarimtDate?.toISOString() ?? null,
+        error: sale.ebarimtError,
+        syncedAt: sale.ebarimtSyncedAt?.toISOString() ?? null,
+      }
+    : null;
+
 const mapCreditSaleResponse = (creditSale: {
   id: string;
   customerId: string | null;
@@ -299,6 +329,14 @@ router.get("/pos/receipts", async (req, res) => {
         status: true,
         voidedAt: true,
         createdAt: true,
+        ebarimtStatus: true,
+        ebarimtBillId: true,
+        ebarimtReceiptId: true,
+        ebarimtQrData: true,
+        ebarimtLottery: true,
+        ebarimtDate: true,
+        ebarimtError: true,
+        ebarimtSyncedAt: true,
         subtotal: true,
         taxTotal: true,
         discountTotal: true,
@@ -431,7 +469,7 @@ router.get("/pos/receipts", async (req, res) => {
         paymentMethod: sale.paymentMethod,
         status: sale.status,
         voidedAt: sale.voidedAt?.toISOString() ?? null,
-        ebarimt: null,
+        ebarimt: mapEbarimtReceipt(sale),
         paymentBreakdown:
           storedPaymentBreakdown.length > 0
             ? storedPaymentBreakdown

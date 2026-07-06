@@ -4,18 +4,20 @@ import { useRef, useState } from "react";
 import { Loader2, Printer, RotateCcw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { PosReceipt } from "../types/receipt.types";
+import type { RegisterConfig } from "../types/pos.types";
 import { voidPushEcr } from "../api/payments";
-import { sendAllLocalEbarimtInvalidReceipts, sendLocalEbarimtData } from "../api/ebarimt";
+import { returnLocalEbarimtReceipt, sendLocalEbarimtData } from "../api/ebarimt";
 import { voidSale } from "../api/void-sale";
 import { formatReceipt } from "../utils/format-receipt";
 
 type Props = {
   receipt: PosReceipt | null;
+  register?: RegisterConfig | null;
   onVoided?: (message: string) => void;
   className?: string;
 };
 
-export function ReceiptPreview({ receipt, onVoided, className = "" }: Props) {
+export function ReceiptPreview({ receipt, register, onVoided, className = "" }: Props) {
   const [terminalVoiding, setTerminalVoiding] = useState(false);
   const [terminalVoidResult, setTerminalVoidResult] = useState<{ succeed: boolean; message?: string } | null>(null);
   const [saleVoiding, setSaleVoiding] = useState(false);
@@ -115,19 +117,18 @@ export function ReceiptPreview({ receipt, onVoided, className = "" }: Props) {
     setSaleVoiding(true);
     setSaleVoidResult(null);
     try {
+      const ebarimtReturn = await returnLocalEbarimtReceipt(receipt, register);
       const result = await voidSale(receipt.id, reason.trim());
       const message = result.message || "Буцаалт амжилттай хийгдлээ";
       let syncedMessage = message;
 
       try {
-        const invalidSummary = await sendAllLocalEbarimtInvalidReceipts();
-        const info = await sendLocalEbarimtData();
+        const info = await sendLocalEbarimtData(register);
         const lastSentDate = info.lastSentDate || "-";
 
-        syncedMessage =
-          invalidSummary.total > 0
-            ? `${message}. eBarimt invalid sent ${invalidSummary.sent}/${invalidSummary.total}, failed ${invalidSummary.failed.length}. lastSentDate: ${lastSentDate}`
-            : `${message}. eBarimt invalid list empty; sendData done. lastSentDate: ${lastSentDate}`;
+        syncedMessage = ebarimtReturn
+          ? `${message}. eBarimt return requested (${ebarimtReturn.id}); sendData done. lastSentDate: ${lastSentDate}`
+          : `${message}. eBarimt return skipped; sendData done. lastSentDate: ${lastSentDate}`;
       } catch (syncError: any) {
         syncedMessage = `${message}. eBarimt sync failed: ${syncError?.message || "unknown error"}`;
       }

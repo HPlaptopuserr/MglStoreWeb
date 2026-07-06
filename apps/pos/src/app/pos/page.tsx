@@ -4074,6 +4074,7 @@ export default function PosDemoPage() {
                     <div className="max-w-md mx-auto bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                       <ReceiptPreview
                         receipt={receiptForPreview}
+                        register={registerConfig}
                         className="w-full"
                         onVoided={handleReceiptVoided}
                       />
