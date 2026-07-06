@@ -384,6 +384,32 @@ function lineVatAmount(line: PosReceipt["lines"][number], total: number, vatPaye
   return vatAmount(total, line.taxAmount, vatPayer);
 }
 
+const TAX_TYPES_REQUIRING_PRODUCT_CODE = new Set(["VAT_FREE", "VAT_ZERO", "NOT_VAT"]);
+
+function taxProductCode(value: unknown) {
+  const code = String(value ?? "").replace(/\D/g, "");
+  return code.length >= 3 && code.length <= 10 ? code : "";
+}
+
+function lineTaxProductCode(line: PosReceipt["lines"][number], receiptTaxType?: string | null) {
+  const explicitCode = taxProductCode(line.taxProductCode);
+  if (explicitCode) return explicitCode;
+
+  const lineTaxType = String(line.taxType || "").toUpperCase();
+  const parentTaxType = String(receiptTaxType || "").toUpperCase();
+  if (
+    !TAX_TYPES_REQUIRING_PRODUCT_CODE.has(lineTaxType) &&
+    !TAX_TYPES_REQUIRING_PRODUCT_CODE.has(parentTaxType)
+  ) {
+    return "";
+  }
+
+  return (
+    taxProductCode(line.classificationCode) ||
+    taxProductCode(getEbarimtConfig("CLASSIFICATION_CODE", DEFAULT_CLASSIFICATION_CODE))
+  );
+}
+
 export async function issueLocalEbarimtReceipt(
   receipt: PosReceipt,
   payments: SalePaymentLine[],
@@ -400,14 +426,20 @@ export async function issueLocalEbarimtReceipt(
   }
 
   const vatPayer = merchant?.vatPayer !== false;
+  const receiptTaxType =
+    vatPayer
+      ? receipt.lines.find((line) => line.taxType)?.taxType || "VAT_ABLE"
+      : "VAT_FREE";
   const items = receipt.lines.map((line) => {
     const totalAmount = money(line.lineTotal);
     const qty = Math.max(1, Number(line.qty) || 1);
+    const productTaxCode = lineTaxProductCode(line, receiptTaxType);
     return {
       name: line.name,
       barCode: numericBarcode(line.productId),
       barCodeType: "UNDEFINED",
       classificationCode: line.classificationCode || getEbarimtConfig("CLASSIFICATION_CODE", DEFAULT_CLASSIFICATION_CODE),
+      ...(productTaxCode ? { taxProductCode: productTaxCode } : {}),
       measureUnit: line.measureUnit || "pcs",
       qty,
       unitPrice: money(totalAmount / qty),
@@ -418,10 +450,6 @@ export async function issueLocalEbarimtReceipt(
   });
   const totalVAT = money(items.reduce((sum, item) => sum + item.totalVAT, 0));
   const totalCityTax = money(items.reduce((sum, item) => sum + item.totalCityTax, 0));
-  const receiptTaxType =
-    vatPayer
-      ? receipt.lines.find((line) => line.taxType)?.taxType || "VAT_ABLE"
-      : "VAT_FREE";
   const isB2B = buyer.type === "B2B";
 
   const payload = {
