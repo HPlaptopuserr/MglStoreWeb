@@ -126,6 +126,7 @@ const toBusinessAppControlPayload = (organization: {
   businessOrdersEnabled: boolean;
   businessInventoryEnabled: boolean;
   businessAttendanceEnabled: boolean;
+  businessAttendanceManualEnabled: boolean;
   businessTasksEnabled: boolean;
   members?: Array<{
     id: string;
@@ -154,6 +155,9 @@ const toBusinessAppControlPayload = (organization: {
     inventory: organization.businessInventoryEnabled,
     attendance: organization.businessAttendanceEnabled,
     tasks: organization.businessTasksEnabled,
+  },
+  settings: {
+    attendanceManual: organization.businessAttendanceManualEnabled,
   },
   members: organization.members?.map(mapOrganizationLoginMember) ?? [],
 });
@@ -493,6 +497,7 @@ router.get(
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
+          businessAttendanceManualEnabled: true,
           businessTasksEnabled: true,
           members: {
             where: { isActive: true, deletedAt: null },
@@ -554,6 +559,9 @@ router.patch(
           attendance?: boolean;
           tasks?: boolean;
         };
+        settings?: {
+          attendanceManual?: boolean;
+        };
       };
 
       const data: Prisma.OrganizationUpdateInput = {};
@@ -589,6 +597,11 @@ router.patch(
           data.businessTasksEnabled = Boolean(body.features.tasks);
         }
       }
+      if (body.settings?.attendanceManual !== undefined) {
+        data.businessAttendanceManualEnabled = Boolean(
+          body.settings.attendanceManual,
+        );
+      }
 
       if (Object.keys(data).length === 0) {
         return res.status(400).json({ message: "Өөрчлөх тохиргоо алга" });
@@ -605,6 +618,7 @@ router.patch(
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
+          businessAttendanceManualEnabled: true,
           businessTasksEnabled: true,
           members: {
             where: { isActive: true, deletedAt: null },

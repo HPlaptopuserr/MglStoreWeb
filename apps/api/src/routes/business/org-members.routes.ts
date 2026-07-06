@@ -29,6 +29,10 @@ const ROLE_LEVEL: Record<OrgRole, number> = {
   VIEWER: 3,
 };
 
+function cleanOptionalText(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
 /**
  * Returns the role of the requesting user in the given org.
  * null if not a member.
@@ -57,6 +61,7 @@ router.get(
         select: {
           id: true,
           role: true,
+          department: true,
           capabilities: true,
           isActive: true,
           isPrimary: true,
@@ -81,6 +86,7 @@ router.get(
           avatarUrl: m.user.profile?.avatarUrl || null,
           role: m.role,
           roleLabel: ROLE_LABEL[m.role as OrgRole] ?? m.role,
+          department: m.department,
           capabilities: m.capabilities,
           isActive: m.isActive,
           isPrimary: m.isPrimary,
@@ -103,13 +109,14 @@ router.post(
   requireOrgPermission({ from: "body" }, Permission.MANAGE_ORG_MEMBERS),
   async (req, res) => {
     const user = (req as any).user as AuthPayload;
-    const { organizationId, fullName, email, phone, password, role } = req.body as {
+    const { organizationId, fullName, email, phone, password, role, department } = req.body as {
       organizationId: string;
       fullName?: string;
       email?: string;
       phone?: string;
       password?: string;
       role?: string;
+      department?: string;
     };
 
     if (!fullName?.trim()) {
@@ -198,6 +205,7 @@ router.post(
             userId: targetUser.id,
             organizationId,
             role: targetRole,
+            department: cleanOptionalText(department),
             isActive: true,
           },
         });
@@ -220,6 +228,7 @@ router.post(
         fullName: fullName.trim(),
         role: targetRole,
         roleLabel: ROLE_LABEL[targetRole],
+        department: cleanOptionalText(department),
       });
     } catch (error) {
       console.error("add org member error", error);
@@ -392,6 +401,130 @@ router.patch(
     } catch (error) {
       console.error("toggle org member error", error);
       return res.status(500).json({ message: "Төлөв өөрчлөхөд алдаа гарлаа" });
+    }
+  },
+);
+
+// ───────────────────────────────────────────────────────────────────────────
+// PATCH /org/members/:memberId — update member profile metadata
+// ───────────────────────────────────────────────────────────────────────────
+router.patch(
+  "/org/members/:memberId",
+  requireAuth,
+  async (req, res) => {
+    const user = (req as any).user as AuthPayload;
+    const { memberId } = req.params;
+    const { fullName, phone, department } = req.body as {
+      fullName?: string | null;
+      phone?: string | null;
+      department?: string | null;
+    };
+
+    try {
+      const targetMember = await prisma.organizationMember.findUnique({
+        where: { id: memberId },
+        select: {
+          id: true,
+          userId: true,
+          organizationId: true,
+          role: true,
+          department: true,
+          capabilities: true,
+          isActive: true,
+          isPrimary: true,
+          createdAt: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              profile: { select: { fullName: true, phoneNumber: true, avatarUrl: true } },
+            },
+          },
+        },
+      });
+
+      if (!targetMember) {
+        return res.status(404).json({ message: "Гишүүн олдсонгүй" });
+      }
+
+      const callerRole = await getCallerOrgRole(user.userId, targetMember.organizationId);
+      if (!callerRole) {
+        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй" });
+      }
+
+      const isSelf = targetMember.userId === user.userId;
+      const canManageTarget = ROLE_LEVEL[targetMember.role as OrgRole] > ROLE_LEVEL[callerRole];
+      if (!isSelf && !canManageTarget) {
+        return res.status(403).json({ message: "Ажилтны мэдээлэл засах эрх хүрэлцэхгүй" });
+      }
+
+      if (fullName !== undefined && !cleanOptionalText(fullName)) {
+        return res.status(400).json({ message: "Нэр хоосон байж болохгүй" });
+      }
+
+      const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        if (fullName !== undefined || phone !== undefined) {
+          await tx.profile.upsert({
+            where: { userId: targetMember.userId },
+            update: {
+              ...(fullName !== undefined && { fullName: cleanOptionalText(fullName) ?? "" }),
+              ...(phone !== undefined && { phoneNumber: cleanOptionalText(phone) }),
+            },
+            create: {
+              userId: targetMember.userId,
+              fullName: cleanOptionalText(fullName) ?? targetMember.user.profile?.fullName ?? "",
+              phoneNumber: cleanOptionalText(phone),
+            },
+          });
+        }
+
+        if (canManageTarget && department !== undefined) {
+          await tx.organizationMember.update({
+            where: { id: memberId },
+            data: { department: cleanOptionalText(department) },
+          });
+        }
+
+        return tx.organizationMember.findUniqueOrThrow({
+          where: { id: memberId },
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+            department: true,
+            capabilities: true,
+            isActive: true,
+            isPrimary: true,
+            createdAt: true,
+            user: {
+              select: {
+                id: true,
+                email: true,
+                profile: { select: { fullName: true, phoneNumber: true, avatarUrl: true } },
+              },
+            },
+          },
+        });
+      });
+
+      return res.json({
+        id: updated.id,
+        userId: updated.userId,
+        email: updated.user.email,
+        fullName: updated.user.profile?.fullName || "",
+        phone: updated.user.profile?.phoneNumber || null,
+        avatarUrl: updated.user.profile?.avatarUrl || null,
+        role: updated.role,
+        roleLabel: ROLE_LABEL[updated.role as OrgRole] ?? updated.role,
+        department: updated.department,
+        capabilities: updated.capabilities,
+        isActive: updated.isActive,
+        isPrimary: updated.isPrimary,
+        createdAt: updated.createdAt,
+      });
+    } catch (error) {
+      console.error("update org member error", error);
+      return res.status(500).json({ message: "Ажилтны мэдээлэл хадгалахад алдаа гарлаа" });
     }
   },
 );

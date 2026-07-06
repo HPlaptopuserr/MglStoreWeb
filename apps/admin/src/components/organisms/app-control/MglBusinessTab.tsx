@@ -26,6 +26,10 @@ type BusinessAppFeatures = {
   tasks: boolean;
 };
 
+type BusinessAppSettings = {
+  attendanceManual: boolean;
+};
+
 type BusinessAppControl = {
   id: string;
   name: string;
@@ -33,6 +37,7 @@ type BusinessAppControl = {
   maxMembers: number;
   activeMembers: number;
   features: BusinessAppFeatures;
+  settings: BusinessAppSettings;
   members: BusinessAppMember[];
 };
 
@@ -95,6 +100,10 @@ const DEFAULT_FEATURES: BusinessAppFeatures = {
   inventory: true,
   attendance: true,
   tasks: true,
+};
+
+const DEFAULT_SETTINGS: BusinessAppSettings = {
+  attendanceManual: false,
 };
 
 const ROLE_OPTIONS: Array<{
@@ -161,6 +170,11 @@ function normalizeBusinessAppControl(
       attendance: organization.features?.attendance ?? true,
       tasks: organization.features?.tasks ?? true,
     },
+    settings: {
+      attendanceManual:
+        organization.settings?.attendanceManual ??
+        DEFAULT_SETTINGS.attendanceManual,
+    },
   };
 }
 
@@ -170,6 +184,8 @@ export function MglBusinessTab() {
   const [organizationSearch, setOrganizationSearch] = useState("");
   const [draftFeatures, setDraftFeatures] =
     useState<BusinessAppFeatures>(DEFAULT_FEATURES);
+  const [draftSettings, setDraftSettings] =
+    useState<BusinessAppSettings>(DEFAULT_SETTINGS);
   const [draftMaxMembers, setDraftMaxMembers] = useState("5");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -189,7 +205,8 @@ export function MglBusinessTab() {
   const controlsDirty = Boolean(
     selectedOrg &&
     (draftMaxMembers !== String(selectedOrg.maxMembers) ||
-      hasFeatureDiff(draftFeatures, selectedOrg.features)),
+      hasFeatureDiff(draftFeatures, selectedOrg.features) ||
+      draftSettings.attendanceManual !== selectedOrg.settings.attendanceManual),
   );
 
   const loadControls = async (mode: "initial" | "refresh" = "initial") => {
@@ -216,10 +233,12 @@ export function MglBusinessTab() {
       if (nextSelected) {
         setSelectedOrgId(nextSelected.id);
         setDraftFeatures(nextSelected.features);
+        setDraftSettings(nextSelected.settings);
         setDraftMaxMembers(String(nextSelected.maxMembers));
       } else {
         setSelectedOrgId("");
         setDraftFeatures(DEFAULT_FEATURES);
+        setDraftSettings(DEFAULT_SETTINGS);
         setDraftMaxMembers("5");
       }
     } catch (err: unknown) {
@@ -244,11 +263,17 @@ export function MglBusinessTab() {
     setError("");
     if (!organization) return;
     setDraftFeatures(organization.features);
+    setDraftSettings(organization.settings);
     setDraftMaxMembers(String(organization.maxMembers));
   };
 
   const toggleFeature = (key: keyof BusinessAppFeatures) => {
     setDraftFeatures((current) => ({ ...current, [key]: !current[key] }));
+    setSaved(false);
+  };
+
+  const toggleSetting = (key: keyof BusinessAppSettings) => {
+    setDraftSettings((current) => ({ ...current, [key]: !current[key] }));
     setSaved(false);
   };
 
@@ -276,6 +301,7 @@ export function MglBusinessTab() {
           body: JSON.stringify({
             maxMembers: nextMaxMembers,
             features: draftFeatures,
+            settings: draftSettings,
           }),
         },
       );
@@ -294,6 +320,7 @@ export function MglBusinessTab() {
         current.map((item) => (item.id === updated.id ? updated : item)),
       );
       setDraftFeatures(updated.features);
+      setDraftSettings(updated.settings);
       setDraftMaxMembers(String(updated.maxMembers));
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2500);
@@ -384,6 +411,11 @@ export function MglBusinessTab() {
               <FeatureControlsGrid
                 features={draftFeatures}
                 onToggle={toggleFeature}
+              />
+
+              <AttendanceBehaviorControls
+                settings={draftSettings}
+                onToggle={toggleSetting}
               />
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -690,6 +722,68 @@ function FeatureToggleCard({
         {feature.description}
       </p>
     </button>
+  );
+}
+
+function AttendanceBehaviorControls({
+  settings,
+  onToggle,
+}: {
+  settings: BusinessAppSettings;
+  onToggle: (key: keyof BusinessAppSettings) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+      <div className="mb-3 flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm">
+          <Clock3 size={19} />
+        </div>
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            Цаг бүртгэлийн үйлдэл
+          </p>
+          <h3 className="mt-1 text-base font-black text-slate-950">
+            Manual button удирдлага
+          </h3>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+            Default үед app дээр “Ирлээ/Явлаа” товч харагдахгүй. Бүсэд ороход
+            автомат бүртгэл секунд тоолж ажиллана.
+          </p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onToggle("attendanceManual")}
+        aria-pressed={settings.attendanceManual}
+        className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${
+          settings.attendanceManual
+            ? "border-amber-200 bg-amber-50 shadow-sm ring-2 ring-amber-100"
+            : "border-slate-200 bg-white hover:border-slate-300"
+        }`}
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-black text-slate-950">
+            “Ирлээ / Явлаа” товч харуулах
+          </p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+            Асаавал ажилтны цаг бүртгэлийн дэлгэц дээр manual clock in/out
+            товч гарна.
+          </p>
+        </div>
+        <span
+          className={`h-7 w-12 shrink-0 rounded-full p-0.5 transition ${
+            settings.attendanceManual ? "bg-amber-500" : "bg-slate-200"
+          }`}
+        >
+          <span
+            className={`block h-6 w-6 rounded-full bg-white shadow-sm transition ${
+              settings.attendanceManual ? "translate-x-5" : "translate-x-0"
+            }`}
+          />
+        </span>
+      </button>
+    </div>
   );
 }
 

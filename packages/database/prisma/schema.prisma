@@ -371,6 +371,7 @@ model Organization {
   businessOrdersEnabled        Boolean                 @default(true)
   businessInventoryEnabled     Boolean                 @default(true)
   businessAttendanceEnabled    Boolean                 @default(true)
+  businessAttendanceManualEnabled Boolean              @default(false)
   businessTasksEnabled         Boolean                 @default(true)
   tasks                        OrganizationTask[]
   attendanceRecords            AttendanceRecord[]      @relation("OrgAttendanceRecords")
@@ -553,6 +554,7 @@ model OrganizationMember {
   userId         String
   organizationId String
   role           OrgRole      @default(STAFF)
+  department     String?
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -566,6 +568,7 @@ model OrganizationMember {
   @@index([userId])
   @@index([organizationId])
   @@index([role])
+  @@index([department])
   @@index([isActive])
   @@index([deletedAt])
 }

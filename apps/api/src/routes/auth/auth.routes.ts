@@ -100,6 +100,7 @@ type AuthOrgContext = {
   businessOrdersEnabled?: boolean;
   businessInventoryEnabled?: boolean;
   businessAttendanceEnabled?: boolean;
+  businessAttendanceManualEnabled?: boolean;
   businessTasksEnabled?: boolean;
 };
 
@@ -200,6 +201,8 @@ function toWebUserPayload(
     businessOrdersEnabled: orgInfo?.businessOrdersEnabled ?? true,
     businessInventoryEnabled: orgInfo?.businessInventoryEnabled ?? true,
     businessAttendanceEnabled: orgInfo?.businessAttendanceEnabled ?? true,
+    businessAttendanceManualEnabled:
+      orgInfo?.businessAttendanceManualEnabled ?? false,
     businessTasksEnabled: orgInfo?.businessTasksEnabled ?? true,
     organizations,
     termsAcceptedAt: user.termsAcceptedAt || null,
@@ -577,6 +580,7 @@ async function resolveVendorLoginMembership(userId: string) {
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
+          businessAttendanceManualEnabled: true,
           businessTasksEnabled: true,
         },
       },
@@ -597,6 +601,7 @@ async function resolveVendorLoginMembership(userId: string) {
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
+          businessAttendanceManualEnabled: true,
           businessTasksEnabled: true,
         },
       },
@@ -619,6 +624,8 @@ async function resolveLoginOrganization(
           membership.organization?.businessInventoryEnabled ?? true,
         businessAttendanceEnabled:
           membership.organization?.businessAttendanceEnabled ?? true,
+        businessAttendanceManualEnabled:
+          membership.organization?.businessAttendanceManualEnabled ?? false,
         businessTasksEnabled:
           membership.organization?.businessTasksEnabled ?? true,
       }
@@ -646,6 +653,7 @@ async function resolveTokenOrganization(
             businessOrdersEnabled: true,
             businessInventoryEnabled: true,
             businessAttendanceEnabled: true,
+            businessAttendanceManualEnabled: true,
             businessTasksEnabled: true,
           },
         },
@@ -663,6 +671,8 @@ async function resolveTokenOrganization(
           membership.organization?.businessInventoryEnabled ?? true,
         businessAttendanceEnabled:
           membership.organization?.businessAttendanceEnabled ?? true,
+        businessAttendanceManualEnabled:
+          membership.organization?.businessAttendanceManualEnabled ?? false,
         businessTasksEnabled:
           membership.organization?.businessTasksEnabled ?? true,
       };
@@ -697,6 +707,8 @@ function toWebAuthResponse(
       businessOrdersEnabled: orgInfo?.businessOrdersEnabled ?? true,
       businessInventoryEnabled: orgInfo?.businessInventoryEnabled ?? true,
       businessAttendanceEnabled: orgInfo?.businessAttendanceEnabled ?? true,
+      businessAttendanceManualEnabled:
+        orgInfo?.businessAttendanceManualEnabled ?? false,
       businessTasksEnabled: orgInfo?.businessTasksEnabled ?? true,
       organizations,
     },
@@ -1313,6 +1325,8 @@ router.post("/login", async (req, res) => {
         businessOrdersEnabled: orgInfo?.businessOrdersEnabled ?? true,
         businessInventoryEnabled: orgInfo?.businessInventoryEnabled ?? true,
         businessAttendanceEnabled: orgInfo?.businessAttendanceEnabled ?? true,
+        businessAttendanceManualEnabled:
+          orgInfo?.businessAttendanceManualEnabled ?? false,
         businessTasksEnabled: orgInfo?.businessTasksEnabled ?? true,
       },
     });

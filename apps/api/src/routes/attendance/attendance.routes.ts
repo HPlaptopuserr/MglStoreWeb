@@ -4,10 +4,26 @@ import { requireAuth, type AuthPayload } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 type AttendanceMethod = "FINGERPRINT" | "FACE" | "PIN" | "AUTO";
+type TeamAttendanceStatus = "PRESENT" | "CLOCKED_OUT" | "ABSENT";
 type AttendanceContext = {
   userId: string;
   organizationId: string;
   orgRole: string | null;
+};
+type AttendanceTeamMember = {
+  id: string;
+  userId: string;
+  role: string;
+  department?: string | null;
+  user: {
+    id: string;
+    email: string | null;
+    profile: {
+      fullName: string | null;
+      phoneNumber: string | null;
+      avatarUrl: string | null;
+    } | null;
+  };
 };
 
 const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "CEO", "MANAGER", "HR"]);
@@ -54,6 +70,72 @@ function parseClientDate(value: unknown): Date | null {
   if (typeof value !== "string" || value.trim().length === 0) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function startOfDay(date: Date): Date {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function nextDay(date: Date): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + 1);
+  return next;
+}
+
+async function listAttendanceTeamMembers(
+  organizationId: string,
+): Promise<AttendanceTeamMember[]> {
+  try {
+    return await prisma.organizationMember.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        deletedAt: null,
+      },
+      orderBy: [{ department: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        userId: true,
+        role: true,
+        department: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: { fullName: true, phoneNumber: true, avatarUrl: true },
+            },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    console.warn("team attendance member department fallback", error);
+    return prisma.organizationMember.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        deletedAt: null,
+      },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        userId: true,
+        role: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: { fullName: true, phoneNumber: true, avatarUrl: true },
+            },
+          },
+        },
+      },
+    });
+  }
 }
 
 // ── Haversine distance (meters) ──────────────────────────────────────────────
@@ -405,6 +487,96 @@ router.get("/attendance/history", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("get history error", error);
     res.status(500).json({ message: "Түүх авахад алдаа" });
+  }
+});
+
+// ── GET /attendance/team/today ──────────────────────────────────────────────
+router.get("/attendance/team/today", requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user as AuthPayload;
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
+    }
+    if (!context.orgRole || !MANAGER_ROLES.has(context.orgRole)) {
+      return res.status(403).json({ message: "Ирцийн самбар харах эрх хүрэлцэхгүй" });
+    }
+
+    const requestedDate = parseClientDate(req.query.date);
+    const today = startOfDay(requestedDate ?? new Date());
+    const tomorrow = nextDay(today);
+
+    const [members, records] = await Promise.all([
+      listAttendanceTeamMembers(context.organizationId),
+      prisma.attendanceRecord.findMany({
+        where: {
+          organizationId: context.organizationId,
+          clockIn: { gte: today, lt: tomorrow },
+        },
+        include: { zone: { select: { id: true, name: true } } },
+        orderBy: { clockIn: "desc" },
+      }),
+    ]);
+
+    const latestRecordByUser = new Map<string, (typeof records)[number]>();
+    for (const record of records) {
+      if (!latestRecordByUser.has(record.userId)) {
+        latestRecordByUser.set(record.userId, record);
+      }
+    }
+
+    const rows = members.map((member) => {
+      const record = latestRecordByUser.get(member.userId);
+      const status: TeamAttendanceStatus = record
+        ? record.clockOut
+          ? "CLOCKED_OUT"
+          : "PRESENT"
+        : "ABSENT";
+
+      return {
+        memberId: member.id,
+        userId: member.userId,
+        email: member.user.email || "",
+        fullName: member.user.profile?.fullName || member.user.email || "Ажилтан",
+        phone: member.user.profile?.phoneNumber || null,
+        avatarUrl: member.user.profile?.avatarUrl || null,
+        role: member.role,
+        department: member.department || "Хэлтэсгүй",
+        status,
+        record: record
+          ? {
+              id: record.id,
+              clockIn: record.clockIn,
+              clockOut: record.clockOut,
+              totalMinutes: record.totalMinutes,
+              zoneName: record.zone?.name ?? null,
+              method: record.clockInMethod,
+            }
+          : null,
+      };
+    });
+
+    const departments = Array.from(new Set(rows.map((row) => row.department))).sort((a, b) =>
+      a.localeCompare(b),
+    );
+    const presentCount = rows.filter((row) => row.status === "PRESENT").length;
+    const clockedOutCount = rows.filter((row) => row.status === "CLOCKED_OUT").length;
+    const absentCount = rows.filter((row) => row.status === "ABSENT").length;
+
+    return res.json({
+      date: today,
+      summary: {
+        total: rows.length,
+        present: presentCount,
+        clockedOut: clockedOutCount,
+        absent: absentCount,
+      },
+      departments,
+      members: rows,
+    });
+  } catch (error) {
+    console.error("team attendance today error", error);
+    return res.status(500).json({ message: "Нийт ирцийн мэдээлэл авахад алдаа гарлаа" });
   }
 });
 
