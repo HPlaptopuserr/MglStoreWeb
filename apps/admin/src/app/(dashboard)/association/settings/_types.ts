@@ -28,6 +28,7 @@ export interface AssociationConfig {
   pageTitle: string;
   pageSubtitle: string;
   pageLabel: string;
+  defaultAgentCommissionRate: number;
   upgradeModal: {
     eyebrow: string;
     title: string;
@@ -50,21 +51,27 @@ export interface AssociationConfig {
 
 export const DEFAULT_CONFIG: AssociationConfig = {
   pageLabel: "БҮРТГЭЛИЙН ХУУДАС",
-  pageTitle: "Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн\nнэгдсэн холбооны гишүүнчлэл",
+  pageTitle:
+    "Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн\nнэгдсэн холбооны гишүүнчлэл",
   pageSubtitle: "Төлөөлөн удирдах зөвлөл томилох хурлын бүртгэл",
+  defaultAgentCommissionRate: 10,
   upgradeModal: {
     eyebrow: "Membership",
     title: "Гишүүнчлэл upgrade хийх",
     introLabel: "Elevate your experience",
     introTitle: "MGL Premium Membership",
-    introDescription: "Tier болон хугацаагаа сонгоод card дээрх төлөх button-оор QR үүсгэнэ.",
+    introDescription:
+      "Tier болон хугацаагаа сонгоод card дээрх төлөх button-оор QR үүсгэнэ.",
     tierEyebrow: "Tier сонгох",
     tierTitle: "Танд тохирох membership",
     tierDescription: "Хугацаа сонгоод card дээрээс төлнө.",
     swipeHint: "Дараагийн tier-үүдийг хажуу тийш гүйлгэж харна",
-    missingPaymentConfigMessage: "Холбооны QuickQR данс тохируулагдаагүй байна. Admin дээр merchant code/password хадгална уу.",
-    phoneRequiredMessage: "Profile дээр утасны дугаараа бөглөсний дараа идэвхжүүлнэ үү.",
-    addressRequiredMessage: "Profile дээр хаягаа бөглөсний дараа идэвхжүүлнэ үү.",
+    missingPaymentConfigMessage:
+      "Холбооны QuickQR данс тохируулагдаагүй байна. Admin дээр merchant code/password хадгална уу.",
+    phoneRequiredMessage:
+      "Profile дээр утасны дугаараа бөглөсний дараа идэвхжүүлнэ үү.",
+    addressRequiredMessage:
+      "Profile дээр хаягаа бөглөсний дараа идэвхжүүлнэ үү.",
     successTitle: "Гишүүнчлэлийн хүсэлт илгээгдлээ",
     successDescription: "QuickQR төлбөр амжилттай баталгаажлаа.",
   },
@@ -73,7 +80,8 @@ export const DEFAULT_CONFIG: AssociationConfig = {
     bankName: "",
     accountNumber: "",
     accountName: "Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн холбоо",
-    description: "Гүйлгээний утга дээр овог нэр, утас, сонгосон гишүүнчлэлийн төрлөө бичнэ үү.",
+    description:
+      "Гүйлгээний утга дээр овог нэр, утас, сонгосон гишүүнчлэлийн төрлөө бичнэ үү.",
     merchantCode: "",
     username: "",
     password: "",

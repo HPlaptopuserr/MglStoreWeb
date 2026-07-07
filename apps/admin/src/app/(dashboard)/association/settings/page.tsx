@@ -2,12 +2,24 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  Save, Loader2, RotateCcw, Eye, EyeOff, Check,
-  Settings2, AlertCircle, ArrowLeft, Plus,
+  Save,
+  Loader2,
+  RotateCcw,
+  Eye,
+  EyeOff,
+  Check,
+  Settings2,
+  AlertCircle,
+  ArrowLeft,
+  Plus,
 } from "lucide-react";
 import Link from "next/link";
 import { API, adminFetch } from "@/lib/api";
-import { DEFAULT_CONFIG, type AssociationConfig, type MembershipType } from "./_types";
+import {
+  DEFAULT_CONFIG,
+  type AssociationConfig,
+  type MembershipType,
+} from "./_types";
 import { AssociationFormPreview } from "./AssociationFormPreview";
 import { MembershipTypeEditor } from "./MembershipTypeEditor";
 import { createMembershipType } from "./membershipTypeUtils";
@@ -18,7 +30,8 @@ import {
   parseContractPaymentAccounts,
 } from "@/components/organisms/sections/contract/PaymentAccountPanels";
 
-const inp = "w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 bg-white";
+const inp =
+  "w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 bg-white";
 
 function mergePaymentAccounts(...groups: ContractPaymentAccount[][]) {
   const map = new Map<string, ContractPaymentAccount>();
@@ -50,7 +63,9 @@ export default function AssociationSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(true);
-  const [paymentAccounts, setPaymentAccounts] = useState<ContractPaymentAccount[]>([]);
+  const [paymentAccounts, setPaymentAccounts] = useState<
+    ContractPaymentAccount[]
+  >([]);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -71,7 +86,9 @@ export default function AssociationSettingsPage() {
         const contractsData = await contractsRes.json().catch(() => null);
         const latestTemplateId = contractsData?.contracts?.[0]?.id;
         if (latestTemplateId) {
-          const detailRes = await adminFetch(`${API}/contracts/${latestTemplateId}`);
+          const detailRes = await adminFetch(
+            `${API}/contracts/${latestTemplateId}`,
+          );
           const detail = await detailRes.json().catch(() => null);
           const headerData = detail?.contract?.headerData;
           const templateAccounts = Array.isArray(headerData?.paymentAccounts)
@@ -98,19 +115,22 @@ export default function AssociationSettingsPage() {
               ...DEFAULT_CONFIG.paymentAccount,
               ...(data.paymentAccount ?? {}),
             },
-            membershipTypes:
-              Array.isArray(data.membershipTypes)
-                ? data.membershipTypes
-                : DEFAULT_CONFIG.membershipTypes,
+            membershipTypes: Array.isArray(data.membershipTypes)
+              ? data.membershipTypes
+              : DEFAULT_CONFIG.membershipTypes,
           });
         }
       }
-    } catch { /* use defaults */ } finally {
+    } catch {
+      /* use defaults */
+    } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadConfig(); }, [loadConfig]);
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -118,12 +138,16 @@ export default function AssociationSettingsPage() {
     if (config.paymentAccount.selectedAccountId) {
       if (!config.paymentAccount.merchantCode) {
         setSaving(false);
-        setError("Сонгосон дансны merchantCode дутуу байна. Minu дансаа дахин холбож хадгална уу.");
+        setError(
+          "Сонгосон дансны merchantCode дутуу байна. Minu дансаа дахин холбож хадгална уу.",
+        );
         return;
       }
       if (!config.paymentAccount.password) {
         setSaving(false);
-        setError("Сонгосон дансны password хадгалагдаагүй байна. Minu дансаа дахин холбож хадгална уу.");
+        setError(
+          "Сонгосон дансны password хадгалагдаагүй байна. Minu дансаа дахин холбож хадгална уу.",
+        );
         return;
       }
     }
@@ -134,7 +158,10 @@ export default function AssociationSettingsPage() {
         body: JSON.stringify(config),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.message || "Алдаа гарлаа"); return; }
+      if (!res.ok) {
+        setError(data.message || "Алдаа гарлаа");
+        return;
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
@@ -147,7 +174,9 @@ export default function AssociationSettingsPage() {
   const updateType = (idx: number, updated: MembershipType) =>
     setConfig((c) => ({
       ...c,
-      membershipTypes: c.membershipTypes.map((t, i) => (i === idx ? updated : t)),
+      membershipTypes: c.membershipTypes.map((t, i) =>
+        i === idx ? updated : t,
+      ),
     }));
 
   const addMembershipType = () =>
@@ -167,7 +196,8 @@ export default function AssociationSettingsPage() {
 
   const selectPaymentAccount = (accountId: string) => {
     const account = paymentAccounts.find(
-      (item) => getPaymentAccountKey(item) === accountId || item.id === accountId,
+      (item) =>
+        getPaymentAccountKey(item) === accountId || item.id === accountId,
     );
     setConfig((c) => ({
       ...c,
@@ -201,14 +231,15 @@ export default function AssociationSettingsPage() {
     return (
       <div className="flex items-center justify-center py-24 gap-3">
         <Loader2 size={28} className="animate-spin text-violet-400" />
-        <p className="text-sm text-slate-400 font-semibold">Тохиргоо ачааллаж байна...</p>
+        <p className="text-sm text-slate-400 font-semibold">
+          Тохиргоо ачааллаж байна...
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
-
       {/* ── Page header ─────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -222,8 +253,12 @@ export default function AssociationSettingsPage() {
             <Settings2 size={18} className="text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-black text-slate-900">Бүртгэлийн маягт тохиргоо</h1>
-            <p className="text-xs text-slate-400 mt-0.5">Гишүүнчлэлийн загвар, үнэ, тайлбарыг засах</p>
+            <h1 className="text-lg font-black text-slate-900">
+              Бүртгэлийн маягт тохиргоо
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Гишүүнчлэлийн загвар, үнэ, тайлбарыг засах
+            </p>
           </div>
         </div>
 
@@ -240,10 +275,14 @@ export default function AssociationSettingsPage() {
             Preview
           </button>
           <button
-            onClick={() => { if (confirm("Анхны утгуудаар сэргээх үү?")) setConfig(DEFAULT_CONFIG); }}
+            onClick={() => {
+              if (confirm("Анхны утгуудаар сэргээх үү?"))
+                setConfig(DEFAULT_CONFIG);
+            }}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
           >
-            <RotateCcw size={14} />Сэргээх
+            <RotateCcw size={14} />
+            Сэргээх
           </button>
           <button
             onClick={handleSave}
@@ -254,7 +293,13 @@ export default function AssociationSettingsPage() {
                 : "bg-violet-600 hover:bg-violet-700 text-white shadow-violet-100"
             }`}
           >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />}
+            {saving ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : saved ? (
+              <Check size={14} />
+            ) : (
+              <Save size={14} />
+            )}
             {saving ? "Хадгалж байна..." : saved ? "Хадгалагдлаа!" : "Хадгалах"}
           </button>
         </div>
@@ -269,16 +314,20 @@ export default function AssociationSettingsPage() {
       )}
 
       {/* ── Two-column ───────────────────────────────────────── */}
-      <div className={`grid gap-6 items-start ${showPreview ? "grid-cols-1 xl:grid-cols-[1fr_360px]" : "grid-cols-1 max-w-2xl"}`}>
-
+      <div
+        className={`grid gap-6 items-start ${showPreview ? "grid-cols-1 xl:grid-cols-[1fr_360px]" : "grid-cols-1 max-w-2xl"}`}
+      >
         {/* ── Editor panel ──────────────────────────────────── */}
         <div className="space-y-5 min-w-0">
-
           {/* Page header section */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-md bg-violet-100 text-violet-700 flex items-center justify-center text-[10px] font-black">T</span>
-              <h2 className="text-sm font-bold text-slate-700">Хуудасны толгой хэсэг</h2>
+              <span className="w-5 h-5 rounded-md bg-violet-100 text-violet-700 flex items-center justify-center text-[10px] font-black">
+                T
+              </span>
+              <h2 className="text-sm font-bold text-slate-700">
+                Хуудасны толгой хэсэг
+              </h2>
             </div>
             <div className="px-5 py-4 space-y-3">
               <div>
@@ -287,27 +336,39 @@ export default function AssociationSettingsPage() {
                 </label>
                 <input
                   value={config.pageLabel}
-                  onChange={(e) => setConfig((c) => ({ ...c, pageLabel: e.target.value }))}
+                  onChange={(e) =>
+                    setConfig((c) => ({ ...c, pageLabel: e.target.value }))
+                  }
                   className={inp}
                   placeholder="БҮРТГЭЛИЙН ХУУДАС"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Гарчиг</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">
+                  Гарчиг
+                </label>
                 <textarea
                   value={config.pageTitle}
-                  onChange={(e) => setConfig((c) => ({ ...c, pageTitle: e.target.value }))}
+                  onChange={(e) =>
+                    setConfig((c) => ({ ...c, pageTitle: e.target.value }))
+                  }
                   rows={3}
                   className={`${inp} resize-y min-h-[72px] max-h-[160px] overflow-y-auto`}
                   placeholder="Монгол эзэнтэй жижиг, дунд бизнес эрхлэгчдийн..."
                 />
-                <p className="text-[9px] text-slate-400 mt-1">Мөр шилжүүлэхийн тулд Enter дарна уу</p>
+                <p className="text-[9px] text-slate-400 mt-1">
+                  Мөр шилжүүлэхийн тулд Enter дарна уу
+                </p>
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Дэд гарчиг</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">
+                  Дэд гарчиг
+                </label>
                 <input
                   value={config.pageSubtitle}
-                  onChange={(e) => setConfig((c) => ({ ...c, pageSubtitle: e.target.value }))}
+                  onChange={(e) =>
+                    setConfig((c) => ({ ...c, pageSubtitle: e.target.value }))
+                  }
                   className={inp}
                   placeholder="Төлөөлөн удирдах зөвлөл томилох хурлын бүртгэл"
                 />
@@ -318,8 +379,12 @@ export default function AssociationSettingsPage() {
           {/* Payment account section */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">₮</span>
-              <h2 className="text-sm font-bold text-slate-700">Гишүүнчлэлийн төлбөр авах данс</h2>
+              <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">
+                ₮
+              </span>
+              <h2 className="text-sm font-bold text-slate-700">
+                Гишүүнчлэлийн төлбөр авах данс
+              </h2>
             </div>
             <div className="px-5 py-4">
               <label className="space-y-1.5">
@@ -333,8 +398,13 @@ export default function AssociationSettingsPage() {
                 >
                   <option value="">Данс сонгоно уу</option>
                   {paymentAccounts.map((account) => (
-                    <option key={getPaymentAccountKey(account)} value={getPaymentAccountKey(account)}>
-                      {account.label || account.merchantName} · {getBankLabel(account.bankCode)} {account.accountNumber} · {account.merchantCode}
+                    <option
+                      key={getPaymentAccountKey(account)}
+                      value={getPaymentAccountKey(account)}
+                    >
+                      {account.label || account.merchantName} ·{" "}
+                      {getBankLabel(account.bankCode)} {account.accountNumber} ·{" "}
+                      {account.merchantCode}
                       {!account.password ? " · password дутуу" : ""}
                     </option>
                   ))}
@@ -348,9 +418,55 @@ export default function AssociationSettingsPage() {
               </label>
               {!config.paymentAccount?.merchantCode && (
                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                  Гишүүнчлэлийн QuickQR ажиллуулахын тулд төлбөрийн данс сонгож хадгална уу.
+                  Гишүүнчлэлийн QuickQR ажиллуулахын тулд төлбөрийн данс сонгож
+                  хадгална уу.
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Agent commission section */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-black">
+                %
+              </span>
+              <h2 className="text-sm font-bold text-slate-700">
+                Agent урамшууллын үндсэн хувь
+              </h2>
+            </div>
+            <div className="px-5 py-4 space-y-2">
+              <label className="space-y-1.5 block">
+                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Шинээр public бүртгүүлэх agent-д оноох хувь
+                </span>
+                <div className="relative max-w-xs">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={config.defaultAgentCommissionRate}
+                    onChange={(event) =>
+                      setConfig((current) => ({
+                        ...current,
+                        defaultAgentCommissionRate: Math.min(
+                          100,
+                          Math.max(0, Number(event.target.value) || 0),
+                        ),
+                      }))
+                    }
+                    className={`${inp} pr-10`}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">
+                    %
+                  </span>
+                </div>
+              </label>
+              <p className="text-xs font-semibold leading-relaxed text-slate-500">
+                Agent бүр дээр дараа нь тусад нь хувь өөрчилж болно. Төлбөр
+                амжилттай төлөгдсөн үед энэ хувиар commission тооцогдоно.
+              </p>
             </div>
           </div>
 
@@ -361,7 +477,9 @@ export default function AssociationSettingsPage() {
                 <span className="w-5 h-5 rounded-md bg-violet-100 text-violet-700 flex items-center justify-center text-[10px] font-black">
                   G
                 </span>
-                <h2 className="text-sm font-bold text-slate-700">Гишүүнчлэлийн төрлүүд</h2>
+                <h2 className="text-sm font-bold text-slate-700">
+                  Гишүүнчлэлийн төрлүүд
+                </h2>
                 <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full font-semibold">
                   {config.membershipTypes.length} төрөл
                 </span>
@@ -378,7 +496,9 @@ export default function AssociationSettingsPage() {
             <div className="px-4 py-4 space-y-2">
               {config.membershipTypes.length === 0 ? (
                 <div className="text-center py-8 border border-dashed border-slate-200 rounded-xl">
-                  <p className="text-sm text-slate-400">Гишүүнчлэлийн төрөл байхгүй байна</p>
+                  <p className="text-sm text-slate-400">
+                    Гишүүнчлэлийн төрөл байхгүй байна
+                  </p>
                   <div className="mt-3 flex items-center justify-center gap-2">
                     <button
                       type="button"
@@ -391,7 +511,10 @@ export default function AssociationSettingsPage() {
                     <button
                       type="button"
                       onClick={() =>
-                        setConfig((c) => ({ ...c, membershipTypes: DEFAULT_CONFIG.membershipTypes }))
+                        setConfig((c) => ({
+                          ...c,
+                          membershipTypes: DEFAULT_CONFIG.membershipTypes,
+                        }))
                       }
                       className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50"
                     >
@@ -415,7 +538,9 @@ export default function AssociationSettingsPage() {
 
           {/* Save reminder at bottom */}
           <div className="flex items-center justify-end gap-3 pb-4">
-            <p className="text-xs text-slate-400">Өөрчлөлтүүдийг хадгалж дуусаарай</p>
+            <p className="text-xs text-slate-400">
+              Өөрчлөлтүүдийг хадгалж дуусаарай
+            </p>
             <button
               onClick={handleSave}
               disabled={saving}
@@ -425,8 +550,18 @@ export default function AssociationSettingsPage() {
                   : "bg-violet-600 hover:bg-violet-700 text-white"
               }`}
             >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />}
-              {saving ? "Хадгалж байна..." : saved ? "Хадгалагдлаа!" : "Хадгалах"}
+              {saving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : saved ? (
+                <Check size={14} />
+              ) : (
+                <Save size={14} />
+              )}
+              {saving
+                ? "Хадгалж байна..."
+                : saved
+                  ? "Хадгалагдлаа!"
+                  : "Хадгалах"}
             </button>
           </div>
         </div>
@@ -436,8 +571,12 @@ export default function AssociationSettingsPage() {
           <div className="sticky top-6 self-start">
             <div className="flex items-center gap-2 mb-3">
               <Eye size={13} className="text-slate-400" />
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Preview</p>
-              <span className="text-[9px] text-slate-300">хэрэглэгч ийнхүү харна</span>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                Live Preview
+              </p>
+              <span className="text-[9px] text-slate-300">
+                хэрэглэгч ийнхүү харна
+              </span>
             </div>
             <AssociationFormPreview config={config} />
           </div>

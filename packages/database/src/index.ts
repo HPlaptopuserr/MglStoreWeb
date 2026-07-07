@@ -12,6 +12,7 @@ export {
   ReturnStatus,
   PaymentStatus,
   PaymentMethod,
+  ReferralCommissionStatus,
   InventoryReason,
   Gender,
   ApprovalStatus,

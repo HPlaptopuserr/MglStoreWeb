@@ -17,6 +17,16 @@ import {
 
 const router: ExpressRouter = Router();
 
+const DEFAULT_AGENT_COMMISSION_RATE = 10;
+const REFERRAL_COMMISSION_STATUS = {
+  PENDING: "PENDING",
+  APPROVED: "APPROVED",
+  PAID: "PAID",
+  CANCELLED: "CANCELLED",
+} as const;
+type ReferralCommissionStatusValue =
+  (typeof REFERRAL_COMMISSION_STATUS)[keyof typeof REFERRAL_COMMISSION_STATUS];
+
 async function getAssociationConfig() {
   const setting = await prisma.siteSetting.findUnique({
     where: { key: "association_config" },
@@ -62,6 +72,83 @@ async function resolveMembershipPrice(
 ) {
   const duration = Number(durationMonths);
   return MEMBERSHIP_PRICE_MATRIX[membershipType]?.[duration] || 0;
+}
+
+function normalizeAgentCode(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, "");
+}
+
+function normalizeAgentPhone(value?: string | null) {
+  return normalizePhone(value);
+}
+
+function clampCommissionRate(value: unknown) {
+  const rate = Number(value);
+  if (!Number.isFinite(rate)) return DEFAULT_AGENT_COMMISSION_RATE;
+  return Math.min(100, Math.max(0, Math.round(rate * 100) / 100));
+}
+
+function getDefaultAgentCommissionRate(config: unknown) {
+  if (!config || typeof config !== "object")
+    return DEFAULT_AGENT_COMMISSION_RATE;
+  const raw = (config as Record<string, unknown>).defaultAgentCommissionRate;
+  return clampCommissionRate(raw);
+}
+
+function generateAgentCode(fullName: string, phone: string) {
+  const namePart =
+    fullName
+      .normalize("NFKD")
+      .replace(/[^\w\s-]/g, "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 4)
+      .toUpperCase() || "AG";
+  const phonePart =
+    normalizeAgentPhone(phone).slice(-4) ||
+    Math.floor(1000 + Math.random() * 9000).toString();
+  return normalizeAgentCode(`${namePart}${phonePart}`);
+}
+
+async function createUniqueAgentCode(fullName: string, phone: string) {
+  const base = generateAgentCode(fullName, phone);
+  for (let index = 0; index < 20; index += 1) {
+    const suffix = index === 0 ? "" : String(index + 1);
+    const code = normalizeAgentCode(`${base}${suffix}`);
+    const existing = await prisma.membershipAgent.findUnique({
+      where: { code },
+    });
+    if (!existing) return code;
+  }
+  return normalizeAgentCode(`${base}${Date.now().toString().slice(-5)}`);
+}
+
+async function resolveActiveAgent(agentCode?: string | null) {
+  const code = normalizeAgentCode(agentCode);
+  if (!code) return null;
+  return prisma.membershipAgent.findFirst({
+    where: { code, isActive: true },
+    select: {
+      id: true,
+      code: true,
+      commissionRate: true,
+      userId: true,
+      fullName: true,
+    },
+  });
+}
+
+function calculateCommissionAmount(
+  paymentAmount: number,
+  commissionRate: unknown,
+) {
+  const rate = clampCommissionRate(commissionRate);
+  return Math.round((Math.max(0, paymentAmount) * rate) / 100);
 }
 
 function getApiRouteBaseUrl(req: any) {
@@ -379,12 +466,18 @@ async function finalizeAssociationMembershipPayment(
   const paidAt = invoice.paidAt || new Date();
   const registration = await prisma.associationMemberRegistration.findUnique({
     where: { id: registrationId },
-    select: { id: true },
+    select: {
+      id: true,
+      agentId: true,
+      agentCode: true,
+      agentCommissionRate: true,
+      paymentAmount: true,
+    },
   });
   if (!registration) return null;
 
-  const updatedRegistration = await prisma.associationMemberRegistration.update(
-    {
+  const updatedRegistration = await prisma.$transaction(async (tx) => {
+    const updated = await tx.associationMemberRegistration.update({
       where: { id: registrationId },
       data: {
         paymentStatus: PaymentStatus.PAID,
@@ -396,12 +489,44 @@ async function finalizeAssociationMembershipPayment(
         status: ApprovalStatus.APPROVED,
         reviewedAt: new Date(),
       },
-    },
-  );
+    });
 
-  await prisma.$transaction((tx) =>
-    syncApprovedAssociationMembership(tx, updatedRegistration, { userId }),
-  );
+    await syncApprovedAssociationMembership(tx, updated, { userId });
+
+    if (registration.agentId && updated.paymentAmount > 0) {
+      const commissionRate = registration.agentCommissionRate ?? 0;
+      const commissionAmount = calculateCommissionAmount(
+        updated.paymentAmount,
+        commissionRate,
+      );
+      await tx.membershipReferralCommission.upsert({
+        where: { registrationId },
+        create: {
+          agentId: registration.agentId,
+          agentUserId: String(payload.agentUserId || "").trim() || null,
+          registrationId,
+          paymentAmount: updated.paymentAmount,
+          commissionRate,
+          commissionAmount,
+          status: REFERRAL_COMMISSION_STATUS.PENDING,
+        },
+        update: {
+          paymentAmount: updated.paymentAmount,
+          commissionRate,
+          commissionAmount,
+        },
+      });
+      await tx.associationMemberRegistration.update({
+        where: { id: registrationId },
+        data: {
+          agentCommissionAmount: commissionAmount,
+          agentCommissionStatus: REFERRAL_COMMISSION_STATUS.PENDING,
+        },
+      });
+    }
+
+    return updated;
+  });
 
   return { registration: updatedRegistration };
 }
@@ -461,73 +586,98 @@ async function reconcilePendingAssociationMembershipPayments(limit = 50) {
 
 /* ── Public: submit registration ───────────────────────────── */
 router.post("/association/register", async (req, res) => {
+  return res.status(410).json({
+    success: false,
+    message:
+      "Гишүүнчлэлийн хүсэлт зөвхөн төлбөр баталгаажсаны дараа бүртгэгдэнэ. QPay төлбөрөөр үргэлжлүүлнэ үү.",
+  });
+});
+
+router.post("/association/agents", async (req, res) => {
   try {
-    const {
-      lastName,
-      firstName,
-      education,
-      profession,
-      organizationName,
-      businessActivity,
-      foundedYear,
-      address,
-      experience,
-      phone,
-      membershipType,
-      durationMonths,
-      paymentReference,
-    } = req.body;
+    const fullName = String(req.body?.fullName || "").trim();
+    const phone = normalizeAgentPhone(req.body?.phone);
+    const email =
+      String(req.body?.email || "")
+        .trim()
+        .toLowerCase() || null;
+    const requestedCode = normalizeAgentCode(req.body?.code);
 
-    if (!lastName || !firstName || !phone || !membershipType) {
-      return res
-        .status(400)
-        .json({ message: "Заавал бөглөх талбарууд дутуу байна" });
+    if (!fullName || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Нэр болон утас шаардлагатай",
+      });
     }
 
-    if (!isPaidMembershipType(membershipType)) {
-      return res
-        .status(400)
-        .json({ message: "Гишүүнчлэлийн төрөл буруу байна" });
-    }
+    const config = await getAssociationConfig();
+    const commissionRate = getDefaultAgentCommissionRate(config);
+    const code =
+      requestedCode || (await createUniqueAgentCode(fullName, phone));
 
-    const duration = durationMonths ? Number(durationMonths) : null;
-    if (![1, 6].includes(Number(duration))) {
-      return res
-        .status(400)
-        .json({ message: "Гишүүнчлэлийн хугацаа 1 эсвэл 6 сар байна" });
-    }
-    const paymentAmount = await resolveMembershipPrice(
-      membershipType,
-      duration,
-    );
-
-    const registration = await prisma.associationMemberRegistration.create({
+    const agent = await prisma.membershipAgent.create({
       data: {
-        lastName: lastName.trim(),
-        firstName: firstName.trim(),
-        education: education?.trim() || null,
-        profession: profession?.trim() || null,
-        organizationName: organizationName.trim(),
-        businessActivity: businessActivity?.trim() || null,
-        foundedYear: foundedYear?.trim() || null,
-        address: optionalRegistrationAddress(address),
-        experience: experience?.trim() || null,
-        phone: phone.trim(),
-        membershipType,
-        durationMonths: duration,
-        paymentAmount,
-        paymentStatus: PaymentStatus.PENDING,
-        paymentMethod: PaymentMethod.BANK_TRANSFER,
-        paymentReference: paymentReference?.trim() || null,
-        paidAt: null,
-        status: ApprovalStatus.PENDING,
+        code,
+        fullName,
+        phone,
+        email,
+        commissionRate,
+      },
+      select: {
+        id: true,
+        code: true,
+        fullName: true,
+        phone: true,
+        email: true,
+        commissionRate: true,
       },
     });
 
-    return res.status(201).json({ success: true, id: registration.id });
-  } catch (e) {
-    console.error("Association register error:", e);
-    return res.status(500).json({ message: "Серверийн алдаа" });
+    return res.status(201).json({ success: true, agent });
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (code === "P2002") {
+      return res.status(409).json({
+        success: false,
+        message: "Энэ agent code аль хэдийн ашиглагдаж байна",
+      });
+    }
+    console.error("Association agent create error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Agent code үүсгэхэд алдаа гарлаа",
+    });
+  }
+});
+
+router.get("/association/agents/:code", async (req, res) => {
+  try {
+    const code = normalizeAgentCode(req.params.code);
+    if (!code) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Code шаардлагатай" });
+    }
+
+    const agent = await prisma.membershipAgent.findFirst({
+      where: { code, isActive: true },
+      select: {
+        code: true,
+        fullName: true,
+        commissionRate: true,
+      },
+    });
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        message: "Agent code олдсонгүй",
+      });
+    }
+
+    return res.json({ success: true, agent });
+  } catch (error) {
+    console.error("Association agent lookup error:", error);
+    return res.status(500).json({ success: false, message: "Серверийн алдаа" });
   }
 });
 
@@ -548,6 +698,7 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
       membershipType,
       durationMonths,
       paymentReference,
+      agentCode,
     } = req.body;
 
     if (!userId)
@@ -573,6 +724,13 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
     }
 
     const amount = await resolveMembershipPrice(membershipType, duration);
+    const agent = await resolveActiveAgent(agentCode);
+    if (agentCode && !agent) {
+      return res.status(400).json({
+        success: false,
+        message: "Agent code буруу эсвэл идэвхгүй байна",
+      });
+    }
     const resolvedOrganizationName =
       organizationName?.trim() ||
       [lastName, firstName].filter(Boolean).join(" ").trim() ||
@@ -612,6 +770,9 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
           paymentMethod: PaymentMethod.QPAY,
           paymentReference: paymentReference?.trim() || qpayReference || null,
           paidAt: null,
+          agentId: agent?.id || null,
+          agentCode: agent?.code || null,
+          agentCommissionRate: agent?.commissionRate || null,
           status: ApprovalStatus.PENDING,
         },
       });
@@ -630,6 +791,10 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
             registrationId: registration.id,
             membershipType,
             durationMonths: duration,
+            agentId: agent?.id || null,
+            agentCode: agent?.code || null,
+            agentUserId: agent?.userId || null,
+            agentCommissionRate: agent?.commissionRate || null,
             merchantCode: account.merchantCode,
             username: account.username,
             bankCode: account.bankCode,
@@ -668,6 +833,10 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
             registrationId: result.registration.id,
             membershipType,
             durationMonths: duration,
+            agentId: agent?.id || null,
+            agentCode: agent?.code || null,
+            agentUserId: agent?.userId || null,
+            agentCommissionRate: agent?.commissionRate || null,
             merchantCode: account.merchantCode,
             username: account.username,
             bankCode: account.bankCode,
@@ -797,13 +966,24 @@ router.get(
         dateTo,
         sort = "newest",
         search,
+        agentCode,
         limit = "50",
         offset = "0",
       } = req.query;
 
       await reconcilePendingAssociationMembershipPayments(80);
 
-      const where: any = {};
+      if (
+        paymentStatus &&
+        paymentStatus !== "ALL" &&
+        paymentStatus !== PaymentStatus.PAID
+      ) {
+        return res.json({ data: [], total: 0 });
+      }
+
+      const where: Prisma.AssociationMemberRegistrationWhereInput = {
+        paymentStatus: PaymentStatus.PAID,
+      };
       if (
         status &&
         status !== "ALL" &&
@@ -819,13 +999,6 @@ router.get(
         )
       ) {
         where.membershipType = membershipType as AssociationMembershipType;
-      }
-      if (
-        paymentStatus &&
-        paymentStatus !== "ALL" &&
-        Object.values(PaymentStatus).includes(paymentStatus as PaymentStatus)
-      ) {
-        where.paymentStatus = paymentStatus as PaymentStatus;
       }
       if (dateFrom || dateTo) {
         const createdAt: Prisma.DateTimeFilter = {};
@@ -850,7 +1023,19 @@ router.get(
           { organizationName: { contains: s, mode: "insensitive" } },
           { businessActivity: { contains: s, mode: "insensitive" } },
           { phone: { contains: s } },
+          {
+            agentCode: { contains: normalizeAgentCode(s), mode: "insensitive" },
+          },
         ];
+      }
+      const normalizedAgentCode = normalizeAgentCode(
+        typeof agentCode === "string" ? agentCode : "",
+      );
+      if (normalizedAgentCode) {
+        where.agentCode = {
+          contains: normalizedAgentCode,
+          mode: "insensitive",
+        };
       }
 
       const orderBy: Prisma.AssociationMemberRegistrationOrderByWithRelationInput[] =
@@ -868,6 +1053,25 @@ router.get(
           orderBy,
           take: Number(limit),
           skip: Number(offset),
+          include: {
+            agent: {
+              select: {
+                id: true,
+                code: true,
+                fullName: true,
+                commissionRate: true,
+              },
+            },
+            referralCommission: {
+              select: {
+                id: true,
+                commissionAmount: true,
+                commissionRate: true,
+                status: true,
+                paidAt: true,
+              },
+            },
+          },
         }),
         prisma.associationMemberRegistration.count({ where }),
       ]);
@@ -972,6 +1176,159 @@ router.patch(
   },
 );
 
+router.get(
+  "/admin/association/agents",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_REGISTRATIONS),
+  async (_req, res) => {
+    try {
+      const agents = await prisma.membershipAgent.findMany({
+        orderBy: { createdAt: "desc" },
+        include: {
+          _count: {
+            select: {
+              registrations: true,
+              commissions: true,
+            },
+          },
+          commissions: {
+            select: {
+              commissionAmount: true,
+              paymentAmount: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      return res.json({
+        data: agents.map((agent) => {
+          const paidCommission = agent.commissions
+            .filter(
+              (commission) =>
+                commission.status === REFERRAL_COMMISSION_STATUS.PAID,
+            )
+            .reduce((sum, commission) => sum + commission.commissionAmount, 0);
+          const pendingCommission = agent.commissions
+            .filter(
+              (commission) =>
+                commission.status !== REFERRAL_COMMISSION_STATUS.PAID,
+            )
+            .reduce((sum, commission) => sum + commission.commissionAmount, 0);
+          const revenue = agent.commissions.reduce(
+            (sum, commission) => sum + commission.paymentAmount,
+            0,
+          );
+
+          return {
+            id: agent.id,
+            code: agent.code,
+            fullName: agent.fullName,
+            phone: agent.phone,
+            email: agent.email,
+            commissionRate: Number(agent.commissionRate),
+            isActive: agent.isActive,
+            createdAt: agent.createdAt,
+            registrationCount: agent._count.registrations,
+            paidMemberCount: agent._count.commissions,
+            revenue,
+            pendingCommission,
+            paidCommission,
+          };
+        }),
+      });
+    } catch (error) {
+      console.error("Association agents list error:", error);
+      return res
+        .status(500)
+        .json({ message: "Agent жагсаалт авахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.patch(
+  "/admin/association/agents/:id",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_REGISTRATIONS),
+  async (req, res) => {
+    try {
+      const data: Prisma.MembershipAgentUpdateInput = {};
+      if (req.body?.commissionRate !== undefined) {
+        data.commissionRate = clampCommissionRate(req.body.commissionRate);
+      }
+      if (typeof req.body?.isActive === "boolean") {
+        data.isActive = req.body.isActive;
+      }
+      if (typeof req.body?.fullName === "string") {
+        data.fullName = req.body.fullName.trim();
+      }
+      if (typeof req.body?.phone === "string") {
+        data.phone = normalizeAgentPhone(req.body.phone);
+      }
+      if (typeof req.body?.email === "string") {
+        data.email = req.body.email.trim().toLowerCase() || null;
+      }
+
+      const agent = await prisma.membershipAgent.update({
+        where: { id: req.params.id },
+        data,
+      });
+
+      return res.json({ success: true, agent });
+    } catch (error) {
+      console.error("Association agent update error:", error);
+      return res.status(500).json({ message: "Agent шинэчлэхэд алдаа гарлаа" });
+    }
+  },
+);
+
+router.patch(
+  "/admin/association/commissions/:id",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_REGISTRATIONS),
+  async (req, res) => {
+    try {
+      const status = String(req.body?.status || "");
+      if (
+        !Object.values(REFERRAL_COMMISSION_STATUS).includes(
+          status as ReferralCommissionStatusValue,
+        )
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Commission төлөв буруу байна" });
+      }
+
+      const commission = await prisma.membershipReferralCommission.update({
+        where: { id: req.params.id },
+        data: {
+          status: status as ReferralCommissionStatusValue,
+          paidAt: status === REFERRAL_COMMISSION_STATUS.PAID ? new Date() : null,
+          note:
+            typeof req.body?.note === "string"
+              ? req.body.note.trim() || null
+              : undefined,
+        },
+      });
+
+      await prisma.associationMemberRegistration.update({
+        where: { id: commission.registrationId },
+        data: {
+          agentCommissionStatus: commission.status,
+          agentCommissionAmount: commission.commissionAmount,
+        },
+      });
+
+      return res.json({ success: true, commission });
+    } catch (error) {
+      console.error("Association commission update error:", error);
+      return res
+        .status(500)
+        .json({ message: "Commission шинэчлэхэд алдаа гарлаа" });
+    }
+  },
+);
+
 /* ── Admin: stats summary ──────────────────────────────────── */
 router.get(
   "/admin/association/stats",
@@ -981,16 +1338,20 @@ router.get(
     try {
       await reconcilePendingAssociationMembershipPayments(80);
 
+      const paidOnlyWhere = { paymentStatus: PaymentStatus.PAID } as const;
       const [total, pending, approved, byType] = await Promise.all([
-        prisma.associationMemberRegistration.count(),
         prisma.associationMemberRegistration.count({
-          where: { status: "PENDING" },
+          where: paidOnlyWhere,
         }),
         prisma.associationMemberRegistration.count({
-          where: { status: "APPROVED" },
+          where: { ...paidOnlyWhere, status: "PENDING" },
+        }),
+        prisma.associationMemberRegistration.count({
+          where: { ...paidOnlyWhere, status: "APPROVED" },
         }),
         prisma.associationMemberRegistration.groupBy({
           by: ["membershipType"],
+          where: paidOnlyWhere,
           _count: { id: true },
         }),
       ]);

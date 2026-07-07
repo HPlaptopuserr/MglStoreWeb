@@ -21,6 +21,7 @@ import {
   User,
   BadgeCheck,
   Banknote,
+  BadgePercent,
 } from "lucide-react";
 import { MembershipTypeBadge } from "./MembershipTypeBadge";
 import {
@@ -52,6 +53,22 @@ export interface AssociationRegistration {
   paymentReference: string | null;
   paymentNote: string | null;
   paidAt: string | null;
+  agentCode: string | null;
+  agentCommissionAmount: number;
+  agentCommissionStatus: "PENDING" | "APPROVED" | "PAID" | "CANCELLED" | null;
+  agent: {
+    id: string;
+    code: string;
+    fullName: string;
+    commissionRate: number | string;
+  } | null;
+  referralCommission: {
+    id: string;
+    commissionAmount: number;
+    commissionRate: number | string;
+    status: "PENDING" | "APPROVED" | "PAID" | "CANCELLED";
+    paidAt: string | null;
+  } | null;
   status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
   adminNote: string | null;
   reviewedAt: string | null;
@@ -251,6 +268,12 @@ export function MemberRegistrationCard({
                 >
                   <Banknote size={11} />
                   {paymentStatusLabel}
+                </span>
+              )}
+              {reg.agentCode && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                  <BadgePercent size={11} />
+                  {reg.agentCode}
                 </span>
               )}
             </div>
@@ -496,6 +519,51 @@ export function MemberRegistrationCard({
                           icon={<StickyNote size={12} />}
                         />
                       </div>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {reg.agentCode && (
+                <section>
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1.5">
+                    <BadgePercent size={11} />
+                    Agent attribution
+                  </h3>
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <DetailField
+                        label="Agent code"
+                        value={reg.agentCode}
+                        icon={<BadgePercent size={12} />}
+                      />
+                      <DetailField
+                        label="Agent"
+                        value={reg.agent?.fullName || null}
+                        icon={<User size={12} />}
+                      />
+                      <DetailField
+                        label="Commission хувь"
+                        value={
+                          reg.referralCommission
+                            ? `${Number(reg.referralCommission.commissionRate).toLocaleString()}%`
+                            : reg.agent?.commissionRate
+                              ? `${Number(reg.agent.commissionRate).toLocaleString()}%`
+                              : null
+                        }
+                        icon={<BadgePercent size={12} />}
+                      />
+                      <DetailField
+                        label="Commission дүн"
+                        value={
+                          reg.referralCommission
+                            ? `${reg.referralCommission.commissionAmount.toLocaleString()}₮`
+                            : reg.agentCommissionAmount
+                              ? `${reg.agentCommissionAmount.toLocaleString()}₮`
+                              : null
+                        }
+                        icon={<Banknote size={12} />}
+                      />
                     </div>
                   </div>
                 </section>

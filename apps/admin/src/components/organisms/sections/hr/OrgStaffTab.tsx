@@ -50,6 +50,7 @@ const ROLES = [
   { value: "ADMIN", label: "Менежер" },
   { value: "VIEWER", label: "Ажиглагч" },
 ];
+const DEFAULT_STAFF_ROLE = ROLES[0].value;
 
 const ROLE_COLORS: Record<string, string> = {
   STAFF: "bg-slate-100 text-slate-700",
@@ -69,7 +70,7 @@ export function OrgStaffTab() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
-  const [staffRole, setStaffRole] = useState("STAFF");
+  const [staffRole, setStaffRole] = useState(DEFAULT_STAFF_ROLE);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -90,7 +91,13 @@ export function OrgStaffTab() {
       const res = await adminFetch(`${API}/admin/users?${params.toString()}`);
       if (!res.ok) return;
       const data = await res.json();
-      setAllUsers(Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []);
+      setAllUsers(
+        Array.isArray(data)
+          ? data
+          : Array.isArray(data?.items)
+            ? data.items
+            : [],
+      );
     } catch {
       /* ignore */
     } finally {
@@ -127,7 +134,9 @@ export function OrgStaffTab() {
     adminFetch(`${API}/partners?minimal=true`)
       .then((r) => r.json())
       .then((raw) => {
-        const list = Array.isArray(raw) ? raw : raw?.partners || raw?.data || [];
+        const list = Array.isArray(raw)
+          ? raw
+          : raw?.partners || raw?.data || [];
         setOrgs(list);
       })
       .catch(() => setOrgs([]))
@@ -159,22 +168,25 @@ export function OrgStaffTab() {
     setSaving(true);
     setFormError("");
     try {
-      const res = await adminFetch(`${API}/admin/organizations/${selectedOrgId}/staff`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullName: selectedUser.fullName || selectedUser.email,
-          email: selectedUser.email,
-          phone: selectedUser.phone || undefined,
-          role: staffRole,
-        }),
-      });
+      const res = await adminFetch(
+        `${API}/admin/organizations/${selectedOrgId}/staff`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fullName: selectedUser.fullName || selectedUser.email,
+            email: selectedUser.email,
+            phone: selectedUser.phone || undefined,
+            role: staffRole,
+          }),
+        },
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Алдаа гарлаа");
       setFormOpen(false);
       setSelectedUser(null);
       setUserSearch("");
-      setStaffRole("CASHIER");
+      setStaffRole(DEFAULT_STAFF_ROLE);
       loadMembers(selectedOrgId);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Алдаа гарлаа");
@@ -193,7 +205,9 @@ export function OrgStaffTab() {
       if (!res.ok) return;
       const updated = await res.json();
       setMembers((prev) =>
-        prev.map((m) => (m.id === memberId ? { ...m, isActive: updated.isActive } : m)),
+        prev.map((m) =>
+          m.id === memberId ? { ...m, isActive: updated.isActive } : m,
+        ),
       );
     } catch {
       /* ignore */
@@ -231,7 +245,14 @@ export function OrgStaffTab() {
         {selectedOrgId && (
           <button
             type="button"
-            onClick={() => { setFormOpen(true); setFormError(""); setSelectedUser(null); setUserSearch(""); setStaffRole("CASHIER"); loadSystemUsers(); }}
+            onClick={() => {
+              setFormOpen(true);
+              setFormError("");
+              setSelectedUser(null);
+              setUserSearch("");
+              setStaffRole(DEFAULT_STAFF_ROLE);
+              loadSystemUsers();
+            }}
             className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700"
           >
             <Plus className="h-4 w-4" />
@@ -256,20 +277,34 @@ export function OrgStaffTab() {
             <table className="w-full text-sm">
               <thead className="border-b border-slate-100 bg-slate-50">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Нэр</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Имэйл</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Утас</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Эрх</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Төлөв</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                    Нэр
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                    Имэйл
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                    Утас
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                    Эрх
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                    Төлөв
+                  </th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {members.map((m) => (
                   <tr key={m.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-900">{m.fullName || "—"}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900">
+                      {m.fullName || "—"}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{m.email}</td>
-                    <td className="px-4 py-3 text-slate-600">{m.phone || "—"}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {m.phone || "—"}
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${ROLE_COLORS[m.role] ?? "bg-slate-100 text-slate-700"}`}
@@ -300,7 +335,9 @@ export function OrgStaffTab() {
                     <td className="px-4 py-3 text-right">
                       {confirmDeleteId === m.id ? (
                         <div className="flex items-center justify-end gap-2">
-                          <span className="text-xs text-slate-500">Устгах уу?</span>
+                          <span className="text-xs text-slate-500">
+                            Устгах уу?
+                          </span>
                           <button
                             type="button"
                             onClick={() => handleDelete(m.id)}
@@ -361,7 +398,9 @@ export function OrgStaffTab() {
 
             <div className="space-y-4 px-5 py-4">
               {formError && (
-                <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{formError}</p>
+                <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">
+                  {formError}
+                </p>
               )}
 
               {/* selected user preview */}
@@ -369,19 +408,29 @@ export function OrgStaffTab() {
                 <div className="flex items-center gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-100">
                     <span className="text-sm font-bold text-violet-700">
-                      {selectedUser.fullName?.charAt(0)?.toUpperCase() || selectedUser.email.charAt(0).toUpperCase()}
+                      {selectedUser.fullName?.charAt(0)?.toUpperCase() ||
+                        selectedUser.email.charAt(0).toUpperCase()}
                     </span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-slate-900">{selectedUser.fullName || "Нэргүй"}</p>
-                    <p className="truncate text-xs text-slate-500">{selectedUser.email}</p>
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {selectedUser.fullName || "Нэргүй"}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">
+                      {selectedUser.email}
+                    </p>
                     {selectedUser.phone && (
-                      <p className="text-xs text-slate-400">{selectedUser.phone}</p>
+                      <p className="text-xs text-slate-400">
+                        {selectedUser.phone}
+                      </p>
                     )}
                   </div>
                   <button
                     type="button"
-                    onClick={() => { setSelectedUser(null); setUserSearch(""); }}
+                    onClick={() => {
+                      setSelectedUser(null);
+                      setUserSearch("");
+                    }}
                     className="rounded p-1 text-slate-400 hover:text-rose-500"
                     title="Өөр хэрэглэгч сонгох"
                   >
@@ -416,23 +465,31 @@ export function OrgStaffTab() {
                       </div>
                     ) : filteredUsers.length === 0 ? (
                       <div className="py-6 text-center text-xs text-slate-400">
-                        {userSearch ? "Хайлтад тохирох хэрэглэгч олдсонгүй" : "Хэрэглэгч байхгүй"}
+                        {userSearch
+                          ? "Хайлтад тохирох хэрэглэгч олдсонгүй"
+                          : "Хэрэглэгч байхгүй"}
                       </div>
                     ) : (
                       filteredUsers.map((u) => (
                         <button
                           key={u.id}
                           type="button"
-                          onClick={() => { setSelectedUser(u); setUserSearch(""); }}
+                          onClick={() => {
+                            setSelectedUser(u);
+                            setUserSearch("");
+                          }}
                           className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-violet-50 transition-colors border-b border-slate-50 last:border-0"
                         >
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100">
                             <span className="text-xs font-bold text-slate-600">
-                              {u.fullName?.charAt(0)?.toUpperCase() || u.email.charAt(0).toUpperCase()}
+                              {u.fullName?.charAt(0)?.toUpperCase() ||
+                                u.email.charAt(0).toUpperCase()}
                             </span>
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-slate-900">{u.fullName || "Нэргүй"}</p>
+                            <p className="truncate text-sm font-medium text-slate-900">
+                              {u.fullName || "Нэргүй"}
+                            </p>
                             <div className="flex items-center gap-2 text-[11px] text-slate-400">
                               <span className="truncate">{u.email}</span>
                               {u.phone && (
@@ -455,7 +512,9 @@ export function OrgStaffTab() {
 
               {/* role selector */}
               <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">Албан тушаал</label>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  Албан тушаал
+                </label>
                 <div className="relative">
                   <select
                     value={staffRole}
@@ -487,7 +546,11 @@ export function OrgStaffTab() {
                 disabled={saving || !selectedUser}
                 className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
               >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
                 Нэмэх
               </button>
             </div>

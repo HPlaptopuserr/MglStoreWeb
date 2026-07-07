@@ -8,82 +8,85 @@ datasource db {
 }
 
 model User {
-  id                               String                        @id @default(uuid())
-  email                            String                        @unique
-  registerNumber                   String?                       @unique
-  role                             PlatformRole                  @default(USER)
-  isPrime                          Boolean                       @default(false)
+  id                               String                         @id @default(uuid())
+  email                            String                         @unique
+  registerNumber                   String?                        @unique
+  role                             PlatformRole                   @default(USER)
+  isPrime                          Boolean                        @default(false)
   membershipPaidAt                 DateTime?
   membershipStartedAt              DateTime?
   membershipExpiresAt              DateTime?
   membershipDiscountPhone          String?
-  isActive                         Boolean                       @default(true)
-  emailVerified                    Boolean                       @default(false)
+  isActive                         Boolean                        @default(true)
+  emailVerified                    Boolean                        @default(false)
   termsAcceptedAt                  DateTime?
-  marketingConsent                 Boolean                       @default(false)
+  marketingConsent                 Boolean                        @default(false)
   lastLoginAt                      DateTime?
-  onboardingSource                 OnboardingSource              @default(ADMIN)
-  createdAt                        DateTime                      @default(now())
-  updatedAt                        DateTime                      @updatedAt
+  onboardingSource                 OnboardingSource               @default(ADMIN)
+  createdAt                        DateTime                       @default(now())
+  updatedAt                        DateTime                       @updatedAt
   deletedAt                        DateTime?
   passwordHash                     String?
   addresses                        Address[]
-  attendanceRecords                AttendanceRecord[]            @relation("AttendanceRecordUser")
+  attendanceRecords                AttendanceRecord[]             @relation("AttendanceRecordUser")
   auditLogs                        AuditLog[]
-  initiatedCardAttempts            CardPaymentAttempt[]          @relation("CardPaymentAttemptInitiatedBy")
-  chatSessions                     ChatSession[]                 @relation("UserChatSessions")
-  courierLocationHistories         CourierLocationHistory[]      @relation("CourierLocationHistoryUser")
-  deliveries                       Delivery[]                    @relation("CourierDeliveries")
-  forms                            Form[]                        @relation("FormCreatedBy")
-  inventoryLedgers                 InventoryLedger[]             @relation("InventoryLedgerCreatedBy")
-  orders                           Order[]                       @relation("CustomerOrders")
-  orderDispatchResponses           OrderDispatchAttempt[]        @relation("OrderDispatchAttemptRespondedBy")
-  changedOrderHistories            OrderHistory[]                @relation("OrderHistoryChangedBy")
+  initiatedCardAttempts            CardPaymentAttempt[]           @relation("CardPaymentAttemptInitiatedBy")
+  chatSessions                     ChatSession[]                  @relation("UserChatSessions")
+  courierLocationHistories         CourierLocationHistory[]       @relation("CourierLocationHistoryUser")
+  deliveries                       Delivery[]                     @relation("CourierDeliveries")
+  forms                            Form[]                         @relation("FormCreatedBy")
+  inventoryLedgers                 InventoryLedger[]              @relation("InventoryLedgerCreatedBy")
+  orders                           Order[]                        @relation("CustomerOrders")
+  orderDispatchResponses           OrderDispatchAttempt[]         @relation("OrderDispatchAttemptRespondedBy")
+  changedOrderHistories            OrderHistory[]                 @relation("OrderHistoryChangedBy")
   organizationMemberships          OrganizationMember[]
-  createdOrganizationTasks         OrganizationTask[]            @relation("OrganizationTaskCreatedBy")
-  assignedOrganizationTasks        OrganizationTaskAssignee[]    @relation("OrganizationTaskAssignedUser")
-  approvedOrganizationTaskLogs     OrganizationTaskApprovalLog[] @relation("OrganizationTaskApprovedBy")
-  authoredOrganizationTaskComments OrganizationTaskComment[]     @relation("OrganizationTaskCommentAuthor")
-  passwordResetTokens              PasswordResetToken[]          @relation("UserPasswordResetTokens")
-  reviewedPosRegisters             PosRegister[]                 @relation("PosRegisterReviewedBy")
-  reviewedCardTerminalRequests     CardTerminalRequest[]         @relation("CardTerminalRequestReviewedBy")
-  posts                            Post[]                        @relation("PostAuthor")
-  reviewedProductRequests          ProductRequest[]              @relation("ReviewedProductRequests")
-  submittedProductRequests         ProductRequest[]              @relation("SubmittedProductRequests")
+  createdOrganizationTasks         OrganizationTask[]             @relation("OrganizationTaskCreatedBy")
+  assignedOrganizationTasks        OrganizationTaskAssignee[]     @relation("OrganizationTaskAssignedUser")
+  approvedOrganizationTaskLogs     OrganizationTaskApprovalLog[]  @relation("OrganizationTaskApprovedBy")
+  authoredOrganizationTaskComments OrganizationTaskComment[]      @relation("OrganizationTaskCommentAuthor")
+  passwordResetTokens              PasswordResetToken[]           @relation("UserPasswordResetTokens")
+  reviewedPosRegisters             PosRegister[]                  @relation("PosRegisterReviewedBy")
+  reviewedCardTerminalRequests     CardTerminalRequest[]          @relation("CardTerminalRequestReviewedBy")
+  posts                            Post[]                         @relation("PostAuthor")
+  reviewedProductRequests          ProductRequest[]               @relation("ReviewedProductRequests")
+  submittedProductRequests         ProductRequest[]               @relation("SubmittedProductRequests")
   profile                          Profile?
   paidAccessPurchases              PaidAccessPurchase[]
   mPointLedgers                    MPointLedger[]
-  initiatedQPayInvoices            QPayInvoice[]                 @relation("QPayInvoiceInitiatedBy")
-  approvedFromRequest              RegistrationRequest?          @relation("ApprovedUserRegistrationRequest")
-  reviewedRegistrationRequests     RegistrationRequest[]         @relation("ReviewedRegistrationRequests")
-  resolvedReturnRequests           ReturnRequest[]               @relation("ReturnRequestResolvedBy")
-  assignedServiceRequests          ServiceRequest[]              @relation("ServiceRequestAssignedTo")
-  requestedServiceRequests         ServiceRequest[]              @relation("ServiceRequestRequestedBy")
-  driverDispatches                 StockDispatch[]               @relation("DriverDispatches")
-  confirmedPayments                StockRequestPayment[]         @relation("PaymentConfirmations")
+  initiatedQPayInvoices            QPayInvoice[]                  @relation("QPayInvoiceInitiatedBy")
+  approvedFromRequest              RegistrationRequest?           @relation("ApprovedUserRegistrationRequest")
+  reviewedRegistrationRequests     RegistrationRequest[]          @relation("ReviewedRegistrationRequests")
+  resolvedReturnRequests           ReturnRequest[]                @relation("ReturnRequestResolvedBy")
+  assignedServiceRequests          ServiceRequest[]               @relation("ServiceRequestAssignedTo")
+  requestedServiceRequests         ServiceRequest[]               @relation("ServiceRequestRequestedBy")
+  driverDispatches                 StockDispatch[]                @relation("DriverDispatches")
+  confirmedPayments                StockRequestPayment[]          @relation("PaymentConfirmations")
   sessions                         UserSession[]
-  vendorSetupTokens                VendorSetupToken[]            @relation("UserVendorSetupTokens")
-  createdWarehouses                Warehouse[]                   @relation("WarehouseCreatedBy")
-  warehouseAssignments             WarehouseOrganization[]       @relation("WarehouseAssignedBy")
-  warehouseSetupTokens             WarehouseSetupToken[]         @relation("UserWarehouseSetupTokens")
-  requestedStockRequests           WarehouseStockRequest[]       @relation("StockRequestsRequested")
-  reviewedStockRequests            WarehouseStockRequest[]       @relation("StockRequestsReviewed")
-  returnApprovals                  DispatchReturn[]              @relation("ReturnApprovals")
-  orgJoinRequests                  OrgJoinRequest[]              @relation("UserOrgJoinRequests")
+  vendorSetupTokens                VendorSetupToken[]             @relation("UserVendorSetupTokens")
+  createdWarehouses                Warehouse[]                    @relation("WarehouseCreatedBy")
+  warehouseAssignments             WarehouseOrganization[]        @relation("WarehouseAssignedBy")
+  warehouseSetupTokens             WarehouseSetupToken[]          @relation("UserWarehouseSetupTokens")
+  requestedStockRequests           WarehouseStockRequest[]        @relation("StockRequestsRequested")
+  reviewedStockRequests            WarehouseStockRequest[]        @relation("StockRequestsReviewed")
+  returnApprovals                  DispatchReturn[]               @relation("ReturnApprovals")
+  orgJoinRequests                  OrgJoinRequest[]               @relation("UserOrgJoinRequests")
   conversationParticipants         ConversationParticipant[]
-  sentDirectMessages               DirectMessage[]               @relation("DirectMessageSender")
-  posShifts                        PosShift[]                    @relation("PosShiftCashier")
-  posSales                         PosSale[]                     @relation("PosSaleCashier")
-  posCreditSales                   PosCreditSale[]               @relation("PosCreditSaleCashier")
-  posLoyaltyTransactions           PosLoyaltyTransaction[]       @relation("PosLoyaltyCustomer")
-  openedRestaurantTickets          RestaurantTicket[]            @relation("RestaurantTicketOpenedBy")
-  sentKitchenTickets               KitchenTicket[]               @relation("KitchenTicketSentBy")
+  sentDirectMessages               DirectMessage[]                @relation("DirectMessageSender")
+  posShifts                        PosShift[]                     @relation("PosShiftCashier")
+  posSales                         PosSale[]                      @relation("PosSaleCashier")
+  posCreditSales                   PosCreditSale[]                @relation("PosCreditSaleCashier")
+  posLoyaltyTransactions           PosLoyaltyTransaction[]        @relation("PosLoyaltyCustomer")
+  openedRestaurantTickets          RestaurantTicket[]             @relation("RestaurantTicketOpenedBy")
+  sentKitchenTickets               KitchenTicket[]                @relation("KitchenTicketSentBy")
   contracts                        Contract[]
   productInteractions              ProductInteraction[]
   productInterestScores            ProductInterestScore[]
-  authoredReels                    Reel[]                        @relation("ReelAuthor")
-  reviewedReels                    Reel[]                        @relation("ReelReviewedBy")
+  authoredReels                    Reel[]                         @relation("ReelAuthor")
+  reviewedReels                    Reel[]                         @relation("ReelReviewedBy")
   reelInteractions                 ReelInteraction[]
+  membershipAgents                 MembershipAgent[]              @relation("MembershipAgentUser")
+  createdMembershipAgents          MembershipAgent[]              @relation("MembershipAgentCreatedBy")
+  membershipReferralCommissions    MembershipReferralCommission[] @relation("MembershipReferralAgentUser")
 
   @@index([role])
   @@index([isPrime])
@@ -317,97 +320,97 @@ model BusinessCategory {
 }
 
 model Organization {
-  id                           String                  @id @default(uuid())
-  name                         String
-  slug                         String                  @unique
-  taxId                        String                  @unique
-  type                         OrgType                 @default(SUPPLIER)
-  status                       OrgStatus               @default(ACTIVE)
-  isVerified                   Boolean                 @default(false)
-  email                        String?
-  phone                        String?
-  logoUrl                      String?
-  address                      String?
-  createdAt                    DateTime                @default(now())
-  updatedAt                    DateTime                @updatedAt
-  deletedAt                    DateTime?
-  businessCategory             String?
-  bannerUrl                    String?
-  customerCount                String?                 @default("0")
-  deliveryPrice                String?
-  deliveryText                 String?
-  description                  String?
-  openingHours                 String[]                @default([])
-  operatingYears               Int                     @default(1)
-  rating                       Float                   @default(5)
-  reviewCount                  Int                     @default(0)
-  shortDescription             String?
-  deletedBy                    String?
-  deletionReason               String?
-  scheduledPermanentDeletionAt DateTime?
-  maxMembers                   Int                     @default(5)
-  qpayMerchantId               String?                 @unique
-  qpayMerchantKey              String?
-  qpayInvoiceCode              String?
-  qpayBankAccounts             Json?
-  qpayEnabled                  Boolean                 @default(false)
-  qpayConnectedAt              DateTime?
-  webQpayMerchantId            String?                 @unique
-  webQpayMerchantKey           String?
-  webQpayInvoiceCode           String?
-  webQpayBankAccounts          Json?
-  webQpayEnabled               Boolean                 @default(false)
-  webQpayConnectedAt           DateTime?
-  minuAgentEnabled             Boolean                 @default(false)
-  minuAgentUsername            String?
-  minuAgentPassword            String?
-  minuAgentBranchId            String?
-  minuAgentConnectedAt         DateTime?
-  subdomainEnabled             Boolean                 @default(false)
-  planType                     String?
-  planActivatedAt              DateTime?
-  planExpiresAt                DateTime?
-  trialUsed                    Boolean                 @default(false)
-  businessOrdersEnabled        Boolean                 @default(true)
-  businessInventoryEnabled     Boolean                 @default(true)
-  businessAttendanceEnabled    Boolean                 @default(true)
-  businessAttendanceManualEnabled Boolean              @default(false)
-  businessTasksEnabled         Boolean                 @default(true)
-  tasks                        OrganizationTask[]
-  attendanceRecords            AttendanceRecord[]      @relation("OrgAttendanceRecords")
-  attendanceZones              AttendanceZone[]
-  branches                     Branch[]
-  investorProfile              InvestorProfile?
-  orders                       Order[]
-  invites                      OrganizationInvite[]
-  members                      OrganizationMember[]
-  posRegisters                 PosRegister[]
-  feedPosts                    Post[]                  @relation("OrganizationPosts")
-  products                     Product[]
-  productRequests              ProductRequest[]
-  servicePosts                 ServicePost[]
-  serviceRequests              ServiceRequest[]
-  stockDispatches              StockDispatch[]         @relation("OrganizationDispatches")
-  stockRequestPayments         StockRequestPayment[]   @relation("OrganizationStockPayments")
-  warehouseAssignments         WarehouseOrganization[]
-  stockRequests                WarehouseStockRequest[] @relation("OrganizationStockRequests")
-  dispatchReturns              DispatchReturn[]        @relation("OrganizationReturns")
-  joinRequests                 OrgJoinRequest[]        @relation("OrgJoinRequests")
-  posShifts                    PosShift[]
-  posSales                     PosSale[]
-  posCreditCustomers           PosCreditCustomer[]
-  posCreditSales               PosCreditSale[]
-  posLoyaltyTransactions       PosLoyaltyTransaction[]
-  restaurantTables             RestaurantTable[]
-  restaurantTickets            RestaurantTicket[]
-  kitchenTickets               KitchenTicket[]
-  contracts                    Contract[]
-  productInteractions          ProductInteraction[]
-  productInterestScores        ProductInterestScore[]
-  reels                        Reel[]
-  reelInteractions             ReelInteraction[]
-  upgradePlans                 OrgUpgradePlan[]
-  cardTerminalRequests         CardTerminalRequest[]
+  id                              String                  @id @default(uuid())
+  name                            String
+  slug                            String                  @unique
+  taxId                           String                  @unique
+  type                            OrgType                 @default(SUPPLIER)
+  status                          OrgStatus               @default(ACTIVE)
+  isVerified                      Boolean                 @default(false)
+  email                           String?
+  phone                           String?
+  logoUrl                         String?
+  address                         String?
+  createdAt                       DateTime                @default(now())
+  updatedAt                       DateTime                @updatedAt
+  deletedAt                       DateTime?
+  businessCategory                String?
+  bannerUrl                       String?
+  customerCount                   String?                 @default("0")
+  deliveryPrice                   String?
+  deliveryText                    String?
+  description                     String?
+  openingHours                    String[]                @default([])
+  operatingYears                  Int                     @default(1)
+  rating                          Float                   @default(5)
+  reviewCount                     Int                     @default(0)
+  shortDescription                String?
+  deletedBy                       String?
+  deletionReason                  String?
+  scheduledPermanentDeletionAt    DateTime?
+  maxMembers                      Int                     @default(5)
+  qpayMerchantId                  String?                 @unique
+  qpayMerchantKey                 String?
+  qpayInvoiceCode                 String?
+  qpayBankAccounts                Json?
+  qpayEnabled                     Boolean                 @default(false)
+  qpayConnectedAt                 DateTime?
+  webQpayMerchantId               String?                 @unique
+  webQpayMerchantKey              String?
+  webQpayInvoiceCode              String?
+  webQpayBankAccounts             Json?
+  webQpayEnabled                  Boolean                 @default(false)
+  webQpayConnectedAt              DateTime?
+  minuAgentEnabled                Boolean                 @default(false)
+  minuAgentUsername               String?
+  minuAgentPassword               String?
+  minuAgentBranchId               String?
+  minuAgentConnectedAt            DateTime?
+  subdomainEnabled                Boolean                 @default(false)
+  planType                        String?
+  planActivatedAt                 DateTime?
+  planExpiresAt                   DateTime?
+  trialUsed                       Boolean                 @default(false)
+  businessOrdersEnabled           Boolean                 @default(true)
+  businessInventoryEnabled        Boolean                 @default(true)
+  businessAttendanceEnabled       Boolean                 @default(true)
+  businessAttendanceManualEnabled Boolean                 @default(false)
+  businessTasksEnabled            Boolean                 @default(true)
+  tasks                           OrganizationTask[]
+  attendanceRecords               AttendanceRecord[]      @relation("OrgAttendanceRecords")
+  attendanceZones                 AttendanceZone[]
+  branches                        Branch[]
+  investorProfile                 InvestorProfile?
+  orders                          Order[]
+  invites                         OrganizationInvite[]
+  members                         OrganizationMember[]
+  posRegisters                    PosRegister[]
+  feedPosts                       Post[]                  @relation("OrganizationPosts")
+  products                        Product[]
+  productRequests                 ProductRequest[]
+  servicePosts                    ServicePost[]
+  serviceRequests                 ServiceRequest[]
+  stockDispatches                 StockDispatch[]         @relation("OrganizationDispatches")
+  stockRequestPayments            StockRequestPayment[]   @relation("OrganizationStockPayments")
+  warehouseAssignments            WarehouseOrganization[]
+  stockRequests                   WarehouseStockRequest[] @relation("OrganizationStockRequests")
+  dispatchReturns                 DispatchReturn[]        @relation("OrganizationReturns")
+  joinRequests                    OrgJoinRequest[]        @relation("OrgJoinRequests")
+  posShifts                       PosShift[]
+  posSales                        PosSale[]
+  posCreditCustomers              PosCreditCustomer[]
+  posCreditSales                  PosCreditSale[]
+  posLoyaltyTransactions          PosLoyaltyTransaction[]
+  restaurantTables                RestaurantTable[]
+  restaurantTickets               RestaurantTicket[]
+  kitchenTickets                  KitchenTicket[]
+  contracts                       Contract[]
+  productInteractions             ProductInteraction[]
+  productInterestScores           ProductInterestScore[]
+  reels                           Reel[]
+  reelInteractions                ReelInteraction[]
+  upgradePlans                    OrgUpgradePlan[]
+  cardTerminalRequests            CardTerminalRequest[]
 
   @@index([type])
   @@index([status])
@@ -2027,6 +2030,13 @@ enum PaymentStatus {
   CANCELLED
 }
 
+enum ReferralCommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+  CANCELLED
+}
+
 enum PaymentMethod {
   CASH
   CARD
@@ -2819,35 +2829,92 @@ model ContractAuditLog {
 }
 
 model AssociationMemberRegistration {
-  id               String                    @id @default(uuid())
-  lastName         String
-  firstName        String
-  education        String?
-  profession       String?
-  organizationName String
-  businessActivity String?
-  foundedYear      String?
-  address          String
-  experience       String?
-  phone            String
-  membershipType   AssociationMembershipType
-  durationMonths   Int?
-  paymentAmount    Int                       @default(0)
-  paymentStatus    PaymentStatus             @default(PENDING)
-  paymentMethod    PaymentMethod?            @default(BANK_TRANSFER)
-  paymentReference String?
-  paymentNote      String?
-  paidAt           DateTime?
-  status           ApprovalStatus            @default(PENDING)
-  adminNote        String?
-  reviewedAt       DateTime?
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
+  id                    String                        @id @default(uuid())
+  lastName              String
+  firstName             String
+  education             String?
+  profession            String?
+  organizationName      String
+  businessActivity      String?
+  foundedYear           String?
+  address               String
+  experience            String?
+  phone                 String
+  membershipType        AssociationMembershipType
+  durationMonths        Int?
+  paymentAmount         Int                           @default(0)
+  paymentStatus         PaymentStatus                 @default(PENDING)
+  paymentMethod         PaymentMethod?                @default(BANK_TRANSFER)
+  paymentReference      String?
+  paymentNote           String?
+  paidAt                DateTime?
+  agentCode             String?
+  agentId               String?
+  agentCommissionRate   Decimal?                      @db.Decimal(5, 2)
+  agentCommissionAmount Int                           @default(0)
+  agentCommissionStatus ReferralCommissionStatus?
+  status                ApprovalStatus                @default(PENDING)
+  adminNote             String?
+  reviewedAt            DateTime?
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+  agent                 MembershipAgent?              @relation(fields: [agentId], references: [id])
+  referralCommission    MembershipReferralCommission?
 
   @@index([status])
   @@index([membershipType])
   @@index([createdAt])
   @@index([phone])
+  @@index([agentCode])
+  @@index([agentId])
+}
+
+model MembershipAgent {
+  id             String                          @id @default(uuid())
+  code           String                          @unique
+  fullName       String
+  phone          String
+  email          String?
+  commissionRate Decimal                         @default(10) @db.Decimal(5, 2)
+  isActive       Boolean                         @default(true)
+  userId         String?
+  createdById    String?
+  createdAt      DateTime                        @default(now())
+  updatedAt      DateTime                        @updatedAt
+  user           User?                           @relation("MembershipAgentUser", fields: [userId], references: [id])
+  createdBy      User?                           @relation("MembershipAgentCreatedBy", fields: [createdById], references: [id])
+  registrations  AssociationMemberRegistration[]
+  commissions    MembershipReferralCommission[]
+
+  @@index([phone])
+  @@index([email])
+  @@index([isActive])
+  @@index([userId])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model MembershipReferralCommission {
+  id               String                        @id @default(uuid())
+  agentId          String
+  agentUserId      String?
+  registrationId   String                        @unique
+  paymentAmount    Int
+  commissionRate   Decimal                       @db.Decimal(5, 2)
+  commissionAmount Int
+  status           ReferralCommissionStatus      @default(PENDING)
+  paidAt           DateTime?
+  note             String?
+  createdAt        DateTime                      @default(now())
+  updatedAt        DateTime                      @updatedAt
+  agent            MembershipAgent               @relation(fields: [agentId], references: [id])
+  agentUser        User?                         @relation("MembershipReferralAgentUser", fields: [agentUserId], references: [id])
+  registration     AssociationMemberRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([agentUserId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model TeamMember {

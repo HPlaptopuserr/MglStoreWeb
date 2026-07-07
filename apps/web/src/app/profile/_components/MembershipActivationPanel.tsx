@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, BadgeCheck, CheckCircle2 } from "lucide-react";
 import { API } from "@/lib/api";
 import type { AuthUser } from "@/lib/auth-context";
@@ -80,6 +80,7 @@ export function MembershipActivationPanel({
       : DEFAULT_TYPES;
   const [membershipType, setMembershipType] = useState("");
   const [durationMonths, setDurationMonths] = useState("");
+  const [agentCode, setAgentCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submittingPlanKey, setSubmittingPlanKey] = useState("");
   const [success, setSuccess] = useState(false);
@@ -92,6 +93,11 @@ export function MembershipActivationPanel({
     () => splitName(form.fullName || user.fullName || ""),
     [form.fullName, user.fullName],
   );
+
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) setAgentCode(ref.toUpperCase());
+  }, []);
 
   const submit = async (
     nextType = membershipType,
@@ -134,6 +140,7 @@ export function MembershipActivationPanel({
           phone: form.phone.trim(),
           membershipType: nextType,
           durationMonths: Number(nextDuration),
+          agentCode: agentCode.trim() || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -208,6 +215,22 @@ export function MembershipActivationPanel({
             </div>
           )}
 
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 sm:px-4">
+            <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+              Agent code
+            </label>
+            <input
+              value={agentCode}
+              onChange={(event) =>
+                setAgentCode(event.target.value.toUpperCase())
+              }
+              placeholder="Жишээ: BOLD123"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-black uppercase tracking-wide text-slate-800 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+            />
+            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+              Танд agent code байгаа бол төлбөр төлөхөөс өмнө энд оруулна.
+            </p>
+          </div>
           <MembershipPlanPicker
             plans={membershipTypes}
             selectedType={membershipType}
