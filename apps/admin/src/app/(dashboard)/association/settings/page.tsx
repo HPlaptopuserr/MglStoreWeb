@@ -432,13 +432,13 @@ export default function AssociationSettingsPage() {
                 %
               </span>
               <h2 className="text-sm font-bold text-slate-700">
-                Agent урамшууллын үндсэн хувь
+                Зөвлөхийн урамшууллын үндсэн хувь
               </h2>
             </div>
             <div className="px-5 py-4 space-y-2">
               <label className="space-y-1.5 block">
                 <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Шинээр public бүртгүүлэх agent-д оноох хувь
+                  Шинээр public бүртгүүлэх зөвлөхөд оноох хувь
                 </span>
                 <div className="relative max-w-xs">
                   <input
@@ -464,8 +464,8 @@ export default function AssociationSettingsPage() {
                 </div>
               </label>
               <p className="text-xs font-semibold leading-relaxed text-slate-500">
-                Agent бүр дээр дараа нь тусад нь хувь өөрчилж болно. Төлбөр
-                амжилттай төлөгдсөн үед энэ хувиар commission тооцогдоно.
+                Зөвлөх бүр дээр дараа нь тусад нь хувь өөрчилж болно. Төлбөр
+                амжилттай төлөгдсөн үед энэ хувиар урамшуулал тооцогдоно.
               </p>
             </div>
           </div>

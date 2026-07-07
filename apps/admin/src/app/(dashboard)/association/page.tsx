@@ -198,8 +198,8 @@ export default function AssociationPage() {
       : "https://mglstore.mn/association";
   const agentSignupUrl =
     typeof window !== "undefined" && window.location.hostname === "localhost"
-      ? "http://localhost:3000/association/agent"
-      : "https://mglstore.mn/association/agent";
+      ? "http://localhost:3000/association/zuvluh"
+      : "https://mglstore.mn/association/zuvluh";
   const profileBaseUrl =
     typeof window !== "undefined" && window.location.hostname === "localhost"
       ? "http://localhost:3000/profile"
@@ -372,7 +372,7 @@ export default function AssociationPage() {
         SORT_OPTIONS.find((item) => item.value === sort)?.label ?? sort,
       );
     if (agentCodeFilter.trim())
-      filters.push(`Agent: ${agentCodeFilter.trim().toUpperCase()}`);
+      filters.push(`Зөвлөх: ${agentCodeFilter.trim().toUpperCase()}`);
     return filters;
   }, [
     debouncedSearch,
@@ -526,11 +526,11 @@ export default function AssociationPage() {
                 </span>
                 <div className="min-w-0">
                   <p className="text-sm font-black text-slate-900">
-                    Agent performance
+                    Зөвлөхийн үзүүлэлт
                   </p>
                   <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                    {filteredAgents.length} / {agents.length} agent · Referral
-                    link, орлого, commission, төлөв
+                    {filteredAgents.length} / {agents.length} зөвлөх · Link,
+                    орлого, урамшуулал, төлөв
                   </p>
                 </div>
               </div>
@@ -545,16 +545,16 @@ export default function AssociationPage() {
                     type="text"
                     value={agentSearch}
                     onChange={(event) => setAgentSearch(event.target.value)}
-                    placeholder="Agent code, нэр, утас, email..."
+                    placeholder="Зөвлөхийн code, нэр, утас, email..."
                     className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-sm font-semibold text-slate-700 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-                    aria-label="Agent хайх"
+                    aria-label="Зөвлөх хайх"
                   />
                   {agentSearch && (
                     <button
                       type="button"
                       onClick={() => setAgentSearch("")}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-700"
-                      aria-label="Agent хайлтыг цэвэрлэх"
+                      aria-label="Зөвлөх хайлтыг цэвэрлэх"
                     >
                       <X size={14} />
                     </button>
@@ -588,10 +588,10 @@ export default function AssociationPage() {
           </div>
 
           <div className="hidden grid-cols-[minmax(260px,1.3fr)_120px_150px_150px_220px_120px] gap-4 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-black uppercase tracking-wide text-slate-400 xl:grid">
-            <span>Agent</span>
+            <span>Зөвлөх</span>
             <span>Гишүүн</span>
             <span>Орлого</span>
-            <span>Commission</span>
+            <span>Урамшуулал</span>
             <span>Хувь</span>
             <span className="text-right">Төлөв</span>
           </div>
@@ -603,7 +603,7 @@ export default function AssociationPage() {
                   <BadgePercent size={17} />
                 </span>
                 <p className="mt-3 text-sm font-black text-slate-700">
-                  Agent олдсонгүй
+                  Зөвлөх олдсонгүй
                 </p>
                 <p className="mt-1 text-xs font-semibold text-slate-500">
                   Хайлт эсвэл төлөвийн filter-ээ өөрчилж үзнэ үү.
@@ -643,8 +643,8 @@ export default function AssociationPage() {
                             ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                             : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
                         }`}
-                        aria-label={`${agent.code} agent link хуулах`}
-                        title="Agent link хуулах"
+                        aria-label={`${agent.code} зөвлөхийн link хуулах`}
+                        title="Зөвлөхийн link хуулах"
                       >
                         {copiedAgentId === agent.id ? (
                           <Check size={13} />
@@ -674,7 +674,7 @@ export default function AssociationPage() {
                     </div>
                     <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 xl:border-0 xl:bg-transparent xl:p-0">
                       <p className="text-[10px] font-black uppercase tracking-wide text-slate-400 xl:hidden">
-                        Commission
+                        Урамшуулал
                       </p>
                       <p className="font-black text-slate-900">
                         {agent.pendingCommission.toLocaleString()}₮
@@ -704,7 +704,7 @@ export default function AssociationPage() {
                           )
                         }
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-8 text-sm font-black text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-                        aria-label={`${agent.code} commission хувь`}
+                        aria-label={`${agent.code} урамшууллын хувь`}
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
                         %
@@ -817,7 +817,7 @@ export default function AssociationPage() {
               type="text"
               value={agentCodeFilter}
               onChange={(e) => setAgentCodeFilter(e.target.value.toUpperCase())}
-              placeholder="Agent code"
+              placeholder="Зөвлөхийн code"
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm font-black uppercase tracking-wide text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
             />
           </div>

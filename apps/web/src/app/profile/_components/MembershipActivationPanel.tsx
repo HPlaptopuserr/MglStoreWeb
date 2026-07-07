@@ -217,7 +217,7 @@ export function MembershipActivationPanel({
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 sm:px-4">
             <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-              Agent code
+              Зөвлөхийн code
             </label>
             <input
               value={agentCode}
@@ -228,7 +228,7 @@ export function MembershipActivationPanel({
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-black uppercase tracking-wide text-slate-800 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
             />
             <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
-              Танд agent code байгаа бол төлбөр төлөхөөс өмнө энд оруулна.
+              Танд зөвлөхийн code байгаа бол төлбөр төлөхөөс өмнө энд оруулна.
             </p>
           </div>
           <MembershipPlanPicker

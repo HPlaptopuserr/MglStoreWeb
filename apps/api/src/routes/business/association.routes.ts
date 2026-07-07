@@ -684,13 +684,13 @@ router.post("/association/agents", async (req, res) => {
     if (code === "P2002") {
       return res.status(409).json({
         success: false,
-        message: "Энэ agent code аль хэдийн ашиглагдаж байна",
+        message: "Энэ зөвлөхийн code аль хэдийн ашиглагдаж байна",
       });
     }
     console.error("Association agent create error:", error);
     return res.status(500).json({
       success: false,
-      message: "Agent code үүсгэхэд алдаа гарлаа",
+      message: "Зөвлөхийн code үүсгэхэд алдаа гарлаа",
     });
   }
 });
@@ -705,7 +705,7 @@ router.get("/association/agents/lookup", async (req, res) => {
     if (!query || query.length < 4) {
       return res.status(400).json({
         success: false,
-        message: "Утас, имэйл эсвэл agent code оруулна уу",
+        message: "Утас, имэйл эсвэл зөвлөхийн code оруулна уу",
       });
     }
 
@@ -721,7 +721,7 @@ router.get("/association/agents/lookup", async (req, res) => {
     if (!where.OR || where.OR.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Зөв утас, имэйл эсвэл agent code оруулна уу",
+        message: "Зөв утас, имэйл эсвэл зөвлөхийн code оруулна уу",
       });
     }
 
@@ -738,7 +738,7 @@ router.get("/association/agents/lookup", async (req, res) => {
     if (!agent) {
       return res.status(404).json({
         success: false,
-        message: "Ийм мэдээлэлтэй идэвхтэй agent олдсонгүй",
+        message: "Ийм мэдээлэлтэй идэвхтэй зөвлөх олдсонгүй",
       });
     }
 
@@ -769,7 +769,7 @@ router.get("/association/agents/:code", async (req, res) => {
     if (!agent) {
       return res.status(404).json({
         success: false,
-        message: "Agent code олдсонгүй",
+        message: "Зөвлөхийн code олдсонгүй",
       });
     }
 
@@ -827,7 +827,7 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
     if (agentCode && !agent) {
       return res.status(400).json({
         success: false,
-        message: "Agent code буруу эсвэл идэвхгүй байна",
+        message: "Зөвлөхийн code буруу эсвэл идэвхгүй байна",
       });
     }
     const resolvedOrganizationName =
@@ -1379,7 +1379,7 @@ router.get(
       console.error("Association agents list error:", error);
       return res
         .status(500)
-        .json({ message: "Agent жагсаалт авахад алдаа гарлаа" });
+        .json({ message: "Зөвлөхийн жагсаалт авахад алдаа гарлаа" });
     }
   },
 );
@@ -1415,7 +1415,9 @@ router.patch(
       return res.json({ success: true, agent });
     } catch (error) {
       console.error("Association agent update error:", error);
-      return res.status(500).json({ message: "Agent шинэчлэхэд алдаа гарлаа" });
+      return res
+        .status(500)
+        .json({ message: "Зөвлөх шинэчлэхэд алдаа гарлаа" });
     }
   },
 );

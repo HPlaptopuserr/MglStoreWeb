@@ -528,22 +528,22 @@ export function MemberRegistrationCard({
                 <section>
                   <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-1.5">
                     <BadgePercent size={11} />
-                    Agent attribution
+                    Зөвлөхийн бүртгэл
                   </h3>
                   <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
                     <div className="grid grid-cols-2 gap-3">
                       <DetailField
-                        label="Agent code"
+                        label="Зөвлөхийн code"
                         value={reg.agentCode}
                         icon={<BadgePercent size={12} />}
                       />
                       <DetailField
-                        label="Agent"
+                        label="Зөвлөх"
                         value={reg.agent?.fullName || null}
                         icon={<User size={12} />}
                       />
                       <DetailField
-                        label="Commission хувь"
+                        label="Урамшууллын хувь"
                         value={
                           reg.referralCommission
                             ? `${Number(reg.referralCommission.commissionRate).toLocaleString()}%`
@@ -554,7 +554,7 @@ export function MemberRegistrationCard({
                         icon={<BadgePercent size={12} />}
                       />
                       <DetailField
-                        label="Commission дүн"
+                        label="Урамшууллын дүн"
                         value={
                           reg.referralCommission
                             ? `${reg.referralCommission.commissionAmount.toLocaleString()}₮`
