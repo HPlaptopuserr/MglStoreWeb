@@ -2714,7 +2714,7 @@ export default function PosDemoPage() {
           <div className="max-h-[280px] overflow-y-auto overscroll-contain rounded-lg bg-slate-50 p-2">
             {drawerSummary?.events.length ? (
               <div className="space-y-1.5">
-                {drawerSummary.events.map((event) => (
+                {drawerSummary.events.map((event: CashDrawerEvent) => (
                   <div
                     key={event.id}
                     className="flex items-start justify-between gap-2 rounded-md bg-white px-2 py-1.5 text-xs"
