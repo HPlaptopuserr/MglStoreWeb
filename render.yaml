@@ -87,7 +87,7 @@ services:
         - pnpm-workspace.yaml
         - turbo.json
         - render.yaml
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm turbo build --filter=@mgl/pos
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/pos
     startCommand: cd apps/pos && pnpm exec next start -H 0.0.0.0 -p $PORT
     envVars:
       - key: NODE_ENV
