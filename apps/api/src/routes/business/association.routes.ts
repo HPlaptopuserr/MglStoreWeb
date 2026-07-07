@@ -82,6 +82,10 @@ function associationSaleReference(registrationId: string) {
   return `ASSOCIATION-${registrationId}`;
 }
 
+function associationPaymentReference(phone: string) {
+  return normalizePhone(phone) || phone.trim();
+}
+
 function getPayloadUserId(payload: unknown) {
   if (!payload || typeof payload !== "object") return undefined;
   const userId = String(
@@ -587,6 +591,7 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
     }
 
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const qpayReference = associationPaymentReference(phone);
     const result = await prisma.$transaction(async (tx) => {
       const registration = await tx.associationMemberRegistration.create({
         data: {
@@ -605,7 +610,7 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
           paymentAmount: amount,
           paymentStatus: PaymentStatus.PENDING,
           paymentMethod: PaymentMethod.QPAY,
-          paymentReference: paymentReference?.trim() || null,
+          paymentReference: paymentReference?.trim() || qpayReference || null,
           paidAt: null,
           status: ApprovalStatus.PENDING,
         },
@@ -630,6 +635,7 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
             bankCode: account.bankCode,
             accountNumber: account.accountNumber,
             accountName: account.accountName,
+            paymentReference: qpayReference,
           } as unknown as Prisma.JsonObject,
         },
       });
@@ -642,7 +648,9 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
         {
           merchantCode: account.merchantCode,
           amount,
-          referenceNumber: `ASM-${result.invoice.id.slice(0, 8).toUpperCase()}`,
+          referenceNumber:
+            qpayReference ||
+            `ASM-${result.invoice.id.slice(0, 8).toUpperCase()}`,
           webhook: `${getApiRouteBaseUrl(req)}/association/systemqr/callback?invoiceId=${result.invoice.id}`,
         },
         account.username,
@@ -665,6 +673,7 @@ router.post("/association/systemqr", requireAuth, async (req, res) => {
             bankCode: account.bankCode,
             accountNumber: account.accountNumber,
             accountName: account.accountName,
+            paymentReference: qpayReference,
             providerInvoiceId: systemQr.invoiceId,
             systemQrInvoiceNumber: systemQr.invoiceId,
             deepLinks: systemQr.urls as unknown as Prisma.JsonArray,
