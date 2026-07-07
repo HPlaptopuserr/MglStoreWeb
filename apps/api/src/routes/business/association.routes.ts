@@ -82,6 +82,27 @@ function associationSaleReference(registrationId: string) {
   return `ASSOCIATION-${registrationId}`;
 }
 
+function getPayloadUserId(payload: unknown) {
+  if (!payload || typeof payload !== "object") return undefined;
+  const userId = String(
+    (payload as Record<string, unknown>).userId || "",
+  ).trim();
+  return userId || undefined;
+}
+
+async function findAssociationInvoiceUserId(
+  tx: PrismaLike,
+  registrationId: string,
+) {
+  const invoice = await tx.qPayInvoice.findFirst({
+    where: { saleReference: associationSaleReference(registrationId) },
+    orderBy: { createdAt: "desc" },
+    select: { webhookPayload: true },
+  });
+
+  return getPayloadUserId(invoice?.webhookPayload);
+}
+
 function addMonths(date: Date, months?: number | null) {
   const safeMonths = Math.max(1, Number(months || 1));
   const next = new Date(date);
@@ -101,6 +122,25 @@ function normalizePhone(value?: string | null) {
 }
 
 type PrismaLike = Prisma.TransactionClient | typeof prisma;
+
+async function findUserByAssociationUserId(tx: PrismaLike, userId?: string) {
+  const id = String(userId || "").trim();
+  if (!id) return null;
+
+  return tx.user.findFirst({
+    where: {
+      id,
+      deletedAt: null,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      membershipExpiresAt: true,
+      membershipDiscountPhone: true,
+      profile: { select: { phoneNumber: true } },
+    },
+  });
+}
 
 async function findUserByAssociationPhone(tx: PrismaLike, phone: string) {
   const normalized = normalizePhone(phone);
@@ -148,6 +188,7 @@ async function syncApprovedAssociationMembership(
     status: ApprovalStatus;
     paymentStatus: PaymentStatus;
   },
+  options: { userId?: string } = {},
 ) {
   if (
     registration.status !== ApprovalStatus.APPROVED ||
@@ -156,7 +197,9 @@ async function syncApprovedAssociationMembership(
     return null;
   }
 
-  const user = await findUserByAssociationPhone(tx, registration.phone);
+  const user =
+    (await findUserByAssociationUserId(tx, options.userId)) ||
+    (await findUserByAssociationPhone(tx, registration.phone));
   if (!user) return null;
 
   const paidAt = registration.paidAt || registration.reviewedAt || new Date();
@@ -322,7 +365,7 @@ async function finalizeAssociationMembershipPayment(
     invoice.webhookPayload && typeof invoice.webhookPayload === "object"
       ? invoice.webhookPayload
       : {}
-  ) as Record<string, any>;
+  ) as Record<string, unknown>;
   if (String(payload.kind || "") !== "ASSOCIATION_MEMBERSHIP") return null;
 
   const userId = String(payload.userId || "").trim();
@@ -332,34 +375,29 @@ async function finalizeAssociationMembershipPayment(
   const paidAt = invoice.paidAt || new Date();
   const registration = await prisma.associationMemberRegistration.findUnique({
     where: { id: registrationId },
-    select: {
-      id: true,
-      status: true,
-      paymentStatus: true,
-    },
+    select: { id: true },
   });
   if (!registration) return null;
 
-  const updatedRegistration = await prisma.associationMemberRegistration.update({
-    where: { id: registrationId },
-    data: {
-      paymentStatus: PaymentStatus.PAID,
-      paymentMethod: PaymentMethod.QPAY,
-      paidAt,
-      paymentReference: invoice.paymentId || invoice.id,
-      paymentNote: "QPay/SystemQR төлбөр баталгаажсан. Admin баталгаажуулалт хүлээгдэж байна.",
-      status:
-        registration.status === ApprovalStatus.APPROVED
-          ? ApprovalStatus.APPROVED
-          : ApprovalStatus.PENDING,
+  const updatedRegistration = await prisma.associationMemberRegistration.update(
+    {
+      where: { id: registrationId },
+      data: {
+        paymentStatus: PaymentStatus.PAID,
+        paymentMethod: PaymentMethod.QPAY,
+        paidAt,
+        paymentReference: invoice.paymentId || invoice.id,
+        paymentNote:
+          "QPay/SystemQR төлбөр баталгаажсан. Гишүүнчлэл автоматаар идэвхжив.",
+        status: ApprovalStatus.APPROVED,
+        reviewedAt: new Date(),
+      },
     },
-  });
+  );
 
-  if (updatedRegistration.status === ApprovalStatus.APPROVED) {
-    await prisma.$transaction((tx) =>
-      syncApprovedAssociationMembership(tx, updatedRegistration),
-    );
-  }
+  await prisma.$transaction((tx) =>
+    syncApprovedAssociationMembership(tx, updatedRegistration, { userId }),
+  );
 
   return { registration: updatedRegistration };
 }
@@ -376,8 +414,13 @@ async function finalizeApprovedAssociationRegistrations(limit = 50) {
 
   for (const registration of registrations) {
     try {
+      const userId = await findAssociationInvoiceUserId(
+        prisma,
+        registration.id,
+      );
+
       await prisma.$transaction((tx) =>
-        syncApprovedAssociationMembership(tx, registration),
+        syncApprovedAssociationMembership(tx, registration, { userId }),
       );
     } catch (error) {
       console.error("Association membership sync error:", error);
@@ -390,11 +433,7 @@ async function reconcilePendingAssociationMembershipPayments(limit = 50) {
     where: {
       saleReference: { startsWith: "ASSOCIATION-" },
       status: {
-        in: [
-          PosQPayStatus.PENDING,
-          PosQPayStatus.PAID,
-          PosQPayStatus.EXPIRED,
-        ],
+        in: [PosQPayStatus.PENDING, PosQPayStatus.PAID, PosQPayStatus.EXPIRED],
       },
     },
     orderBy: { createdAt: "desc" },
@@ -708,7 +747,7 @@ router.get("/association/systemqr/check", requireAuth, async (req, res) => {
     return res.json({
       success: true,
       isPaid,
-      requiresAdminApproval: isPaid,
+      requiresAdminApproval: false,
       status: invoice.status,
       expiresAt: invoice.expiresAt.toISOString(),
     });
@@ -910,7 +949,9 @@ router.patch(
           },
         });
 
-        await syncApprovedAssociationMembership(tx, updated);
+        const userId = await findAssociationInvoiceUserId(tx, updated.id);
+
+        await syncApprovedAssociationMembership(tx, updated, { userId });
         return updated;
       });
 
