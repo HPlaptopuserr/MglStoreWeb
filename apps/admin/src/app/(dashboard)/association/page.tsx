@@ -496,80 +496,95 @@ export default function AssociationPage() {
       />
 
       {agents.length > 0 && (
-        <div className="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-                <BadgePercent size={17} />
-              </span>
-              <div>
-                <p className="text-sm font-black text-slate-900">
-                  Agent performance
-                </p>
-                <p className="text-xs font-semibold text-slate-400">
-                  {filteredAgents.length} / {agents.length} agent · Code бүрээр
-                  орлого, commission, бүртгэлийн тоо
-                </p>
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-4">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
+                  <BadgePercent size={17} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-slate-900">
+                    Agent performance
+                  </p>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                    {filteredAgents.length} / {agents.length} agent · Referral
+                    link, орлого, commission, төлөв
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative min-w-0 sm:w-72">
-                <Search
-                  size={14}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <input
-                  type="text"
-                  value={agentSearch}
-                  onChange={(event) => setAgentSearch(event.target.value)}
-                  placeholder="Agent code, нэр, утас, email..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-9 text-sm font-semibold text-slate-700 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-                  aria-label="Agent хайх"
-                />
-                {agentSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setAgentSearch("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
-                    aria-label="Agent хайлтыг цэвэрлэх"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
+
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+                <div className="relative min-w-0 lg:w-80">
+                  <Search
+                    size={14}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    type="text"
+                    value={agentSearch}
+                    onChange={(event) => setAgentSearch(event.target.value)}
+                    placeholder="Agent code, нэр, утас, email..."
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-sm font-semibold text-slate-700 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                    aria-label="Agent хайх"
+                  />
+                  {agentSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setAgentSearch("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-700"
+                      aria-label="Agent хайлтыг цэвэрлэх"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                  {AGENT_STATUS_FILTERS.map((filter) => (
+                    <button
+                      key={filter.value}
+                      type="button"
+                      onClick={() => setAgentStatusFilter(filter.value)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-black transition ${
+                        agentStatusFilter === filter.value
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+                <Link
+                  href={agentSignupUrl}
+                  target="_blank"
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
+                >
+                  Public signup
+                </Link>
               </div>
-              <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-                {AGENT_STATUS_FILTERS.map((filter) => (
-                  <button
-                    key={filter.value}
-                    type="button"
-                    onClick={() => setAgentStatusFilter(filter.value)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-black transition ${
-                      agentStatusFilter === filter.value
-                        ? "bg-white text-indigo-700 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
-              <Link
-                href={agentSignupUrl}
-                target="_blank"
-                className="inline-flex items-center justify-center rounded-xl border border-indigo-100 px-3 py-2 text-xs font-black text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-800"
-              >
-                Public signup
-              </Link>
             </div>
           </div>
-          <div className="space-y-2">
+
+          <div className="hidden grid-cols-[minmax(260px,1.3fr)_120px_150px_150px_220px_120px] gap-4 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-black uppercase tracking-wide text-slate-400 xl:grid">
+            <span>Agent</span>
+            <span>Гишүүн</span>
+            <span>Орлого</span>
+            <span>Commission</span>
+            <span>Хувь</span>
+            <span className="text-right">Төлөв</span>
+          </div>
+
+          <div className="divide-y divide-slate-100">
             {filteredAgents.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
-                <BadgePercent size={28} className="mx-auto text-slate-300" />
-                <p className="mt-3 text-sm font-black text-slate-600">
+              <div className="px-4 py-12 text-center">
+                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-300">
+                  <BadgePercent size={17} />
+                </span>
+                <p className="mt-3 text-sm font-black text-slate-700">
                   Agent олдсонгүй
                 </p>
-                <p className="mt-1 text-xs font-semibold text-slate-400">
+                <p className="mt-1 text-xs font-semibold text-slate-500">
                   Хайлт эсвэл төлөвийн filter-ээ өөрчилж үзнэ үү.
                 </p>
               </div>
@@ -577,129 +592,132 @@ export default function AssociationPage() {
               filteredAgents.map((agent) => (
                 <div
                   key={agent.id}
-                  className="rounded-2xl border border-slate-100 bg-slate-50 p-3"
+                  className="grid gap-3 px-4 py-3 transition hover:bg-slate-50/80 xl:grid-cols-[minmax(260px,1.3fr)_120px_150px_150px_220px_120px] xl:items-center xl:gap-4"
                 >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[180px_1fr] lg:grid-cols-[180px_1fr_220px]">
-                      <div className="min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => setAgentCodeFilter(agent.code)}
-                          className="block truncate text-left text-sm font-black text-indigo-700 hover:text-indigo-900"
-                        >
-                          {agent.code}
-                        </button>
-                        <p className="truncate text-xs font-semibold text-slate-600">
-                          {agent.fullName} · {agent.phone}
-                        </p>
-                        <div className="mt-2 flex items-center gap-2">
-                          <code className="min-w-0 flex-1 truncate rounded-lg border border-indigo-100 bg-white px-2 py-1 text-[11px] font-bold text-indigo-600">
-                            {getAgentReferralUrl(agent.code)}
-                          </code>
-                          <button
-                            type="button"
-                            onClick={() => handleAgentLinkCopy(agent)}
-                            className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition ${
-                              copiedAgentId === agent.id
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-indigo-600 text-white hover:bg-indigo-700"
-                            }`}
-                            aria-label={`${agent.code} agent link хуулах`}
-                            title="Agent link хуулах"
-                          >
-                            {copiedAgentId === agent.id ? (
-                              <Check size={13} />
-                            ) : (
-                              <Copy size={13} />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div className="rounded-xl bg-white px-3 py-2">
-                          <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                            Гишүүн
-                          </p>
-                          <p className="mt-0.5 font-black text-slate-900">
-                            {agent.paidMemberCount}
-                          </p>
-                        </div>
-                        <div className="rounded-xl bg-white px-3 py-2">
-                          <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                            Орлого
-                          </p>
-                          <p className="mt-0.5 font-black text-slate-900">
-                            {agent.revenue.toLocaleString()}₮
-                          </p>
-                        </div>
-                        <div className="rounded-xl bg-white px-3 py-2">
-                          <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                            Commission
-                          </p>
-                          <p className="mt-0.5 font-black text-indigo-700">
-                            {agent.pendingCommission.toLocaleString()}₮
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-1">
-                        <label className="relative flex-1">
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={0.1}
-                            value={agent.commissionRate}
-                            onChange={(event) =>
-                              setAgents((current) =>
-                                current.map((item) =>
-                                  item.id === agent.id
-                                    ? {
-                                        ...item,
-                                        commissionRate:
-                                          Number(event.target.value) || 0,
-                                      }
-                                    : item,
-                                ),
-                              )
-                            }
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-8 text-sm font-black outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
-                            aria-label={`${agent.code} commission хувь`}
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
-                            %
-                          </span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateAgent(agent.id, {
-                              commissionRate: agent.commissionRate,
-                            })
-                          }
-                          disabled={savingAgentId === agent.id}
-                          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:opacity-60"
-                          title="Хувь хадгалах"
-                        >
-                          {savingAgentId === agent.id ? (
-                            <Loader2 size={15} className="animate-spin" />
-                          ) : (
-                            <Save size={15} />
-                          )}
-                        </button>
-                      </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAgentCodeFilter(agent.code)}
+                        className="truncate text-left text-sm font-black text-slate-950 hover:text-indigo-700"
+                      >
+                        {agent.code}
+                      </button>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-black uppercase text-slate-500">
+                        {agent.isActive ? "Active" : "Inactive"}
+                      </span>
                     </div>
+                    <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
+                      {agent.fullName} · {agent.phone}
+                    </p>
+                    <div className="mt-2 flex min-w-0 items-center gap-2">
+                      <code className="min-w-0 flex-1 truncate rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-bold text-slate-600">
+                        {getAgentReferralUrl(agent.code)}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => handleAgentLinkCopy(agent)}
+                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition ${
+                          copiedAgentId === agent.id
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
+                        }`}
+                        aria-label={`${agent.code} agent link хуулах`}
+                        title="Agent link хуулах"
+                      >
+                        {copiedAgentId === agent.id ? (
+                          <Check size={13} />
+                        ) : (
+                          <Copy size={13} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
 
+                  <div className="grid grid-cols-3 gap-2 text-xs xl:contents">
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 xl:border-0 xl:bg-transparent xl:p-0">
+                      <p className="text-[10px] font-black uppercase tracking-wide text-slate-400 xl:hidden">
+                        Гишүүн
+                      </p>
+                      <p className="font-black text-slate-900">
+                        {agent.paidMemberCount}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 xl:border-0 xl:bg-transparent xl:p-0">
+                      <p className="text-[10px] font-black uppercase tracking-wide text-slate-400 xl:hidden">
+                        Орлого
+                      </p>
+                      <p className="font-black text-slate-900">
+                        {agent.revenue.toLocaleString()}₮
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 xl:border-0 xl:bg-transparent xl:p-0">
+                      <p className="text-[10px] font-black uppercase tracking-wide text-slate-400 xl:hidden">
+                        Commission
+                      </p>
+                      <p className="font-black text-slate-900">
+                        {agent.pendingCommission.toLocaleString()}₮
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="relative flex-1">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        value={agent.commissionRate}
+                        onChange={(event) =>
+                          setAgents((current) =>
+                            current.map((item) =>
+                              item.id === agent.id
+                                ? {
+                                    ...item,
+                                    commissionRate:
+                                      Number(event.target.value) || 0,
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-8 text-sm font-black text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                        aria-label={`${agent.code} commission хувь`}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                        %
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateAgent(agent.id, {
+                          commissionRate: agent.commissionRate,
+                        })
+                      }
+                      disabled={savingAgentId === agent.id}
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white transition hover:bg-slate-700 disabled:opacity-60"
+                      title="Хувь хадгалах"
+                    >
+                      {savingAgentId === agent.id ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <Save size={15} />
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="flex justify-start xl:justify-end">
                     <button
                       type="button"
                       onClick={() =>
                         updateAgent(agent.id, { isActive: !agent.isActive })
                       }
-                      className={`w-fit rounded-full px-3 py-1.5 text-[11px] font-black lg:ml-3 ${
+                      className={`inline-flex min-w-24 items-center justify-center rounded-xl border px-3 py-2 text-xs font-black transition ${
                         agent.isActive
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-slate-200 text-slate-500"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
                       }`}
                     >
                       {agent.isActive ? "Active" : "Inactive"}
@@ -709,7 +727,7 @@ export default function AssociationPage() {
               ))
             )}
           </div>
-        </div>
+        </section>
       )}
 
       {/* ── Membership type chips ────────────────────────────── */}

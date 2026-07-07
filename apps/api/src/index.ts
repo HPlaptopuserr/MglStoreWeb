@@ -171,17 +171,8 @@ app.get("/", (_req, res) => {
   res.send("API is running...");
 });
 
-// Stricter rate limit for auth endpoints: 15 req / 15 min per IP
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 15,
-  skip: (req) => !isProduction && isLocalRequest(req.ip),
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: "Хэт олон нэвтрэх оролдлого. Түр хүлээнэ үү." },
-});
-app.use("/auth", authLimiter, authRoutes);
-app.use("/api/auth", authLimiter, authRoutes);
+app.use("/auth", authRoutes);
+app.use("/api/auth", authRoutes);
 
 const port = process.env.PORT || 4000;
 
