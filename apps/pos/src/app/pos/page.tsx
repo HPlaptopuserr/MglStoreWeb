@@ -949,10 +949,13 @@ export default function PosDemoPage() {
         setDrawerSummary(summary);
         if (summary.cashCount.length > 0) {
           setCashCounts(
-            summary.cashCount.reduce<Record<number, number>>((counts, item: CashDenominationCount) => {
-              counts[item.denomination] = item.count;
-              return counts;
-            }, {}),
+            summary.cashCount.reduce<Record<number, number>>(
+              (counts: Record<number, number>, item: CashDenominationCount) => {
+                counts[item.denomination] = item.count;
+                return counts;
+              },
+              {},
+            ),
           );
         }
       })
