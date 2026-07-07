@@ -990,7 +990,7 @@ export default function PosDemoPage() {
       controller.signal,
     )
       .then((data) => {
-        const shifts = Array.isArray(data.shifts) ? data.shifts : [];
+        const shifts: PosShiftHistoryItem[] = data.shifts ?? [];
         setShiftHistory(shifts);
         setSelectedShiftHistoryId((current) =>
           current && shifts.some((item) => item.id === current)
