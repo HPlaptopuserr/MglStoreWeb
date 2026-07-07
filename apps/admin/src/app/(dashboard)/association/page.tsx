@@ -211,7 +211,7 @@ export default function AssociationPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const fetchData = useCallback(
+  const fetchRegistrations = useCallback(
     async (silent = false) => {
       if (!silent) setLoading(true);
       else setRefreshing(true);
@@ -229,29 +229,14 @@ export default function AssociationPage() {
           params.set("agentCode", agentCodeFilter.trim());
         params.set("limit", "200");
 
-        const [listRes, statsRes, agentsRes] = await Promise.all([
-          adminFetch(`${API}/admin/association/registrations?${params}`),
-          adminFetch(`${API}/admin/association/stats`),
-          adminFetch(`${API}/admin/association/agents`),
-        ]);
+        const listRes = await adminFetch(
+          `${API}/admin/association/registrations?${params}`,
+        );
 
         if (listRes.ok) {
           const json = await listRes.json();
           const data = Array.isArray(json) ? json : (json.data ?? []);
           setRegistrations(dedupeLatestRegistrations(data));
-        }
-        if (statsRes.ok) {
-          const s = await statsRes.json();
-          setStats({
-            total: s.total ?? 0,
-            pending: s.pending ?? 0,
-            approved: s.approved ?? 0,
-            rejected: (s.total ?? 0) - (s.pending ?? 0) - (s.approved ?? 0),
-          });
-        }
-        if (agentsRes.ok) {
-          const json = await agentsRes.json();
-          setAgents(Array.isArray(json.data) ? json.data : []);
         }
       } catch (e) {
         console.error(e);
@@ -272,9 +257,45 @@ export default function AssociationPage() {
     ],
   );
 
+  const fetchDashboardSummary = useCallback(async () => {
+    try {
+      const [statsRes, agentsRes] = await Promise.all([
+        adminFetch(`${API}/admin/association/stats`),
+        adminFetch(`${API}/admin/association/agents`),
+      ]);
+
+      if (statsRes.ok) {
+        const s = await statsRes.json();
+        setStats({
+          total: s.total ?? 0,
+          pending: s.pending ?? 0,
+          approved: s.approved ?? 0,
+          rejected: (s.total ?? 0) - (s.pending ?? 0) - (s.approved ?? 0),
+        });
+      }
+      if (agentsRes.ok) {
+        const json = await agentsRes.json();
+        setAgents(Array.isArray(json.data) ? json.data : []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const refreshPageData = useCallback(
+    async (silent = true) => {
+      await Promise.all([fetchRegistrations(silent), fetchDashboardSummary()]);
+    },
+    [fetchDashboardSummary, fetchRegistrations],
+  );
+
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchDashboardSummary();
+  }, [fetchDashboardSummary]);
+
+  useEffect(() => {
+    fetchRegistrations();
+  }, [fetchRegistrations]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(registrationUrl);
@@ -321,7 +342,7 @@ export default function AssociationPage() {
           body: JSON.stringify(payload),
         },
       );
-      if (res.ok) fetchData(true);
+      if (res.ok) fetchDashboardSummary();
     } finally {
       setSavingAgentId("");
     }
@@ -429,7 +450,7 @@ export default function AssociationPage() {
             Тохиргоо
           </Link>
           <button
-            onClick={() => fetchData(true)}
+            onClick={() => refreshPageData(true)}
             disabled={refreshing}
             className="w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center text-slate-500 transition-colors disabled:opacity-50"
           >
@@ -912,7 +933,7 @@ export default function AssociationPage() {
                   <MemberRegistrationCard
                     key={reg.id}
                     registration={reg}
-                    onRefresh={() => fetchData(true)}
+                    onRefresh={() => refreshPageData(true)}
                   />
                 ))}
               </div>
@@ -937,7 +958,7 @@ export default function AssociationPage() {
                   <MemberRegistrationCard
                     key={reg.id}
                     registration={reg}
-                    onRefresh={() => fetchData(true)}
+                    onRefresh={() => refreshPageData(true)}
                   />
                 ))}
               </div>

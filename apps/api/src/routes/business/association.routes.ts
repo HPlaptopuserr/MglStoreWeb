@@ -584,6 +584,31 @@ async function reconcilePendingAssociationMembershipPayments(limit = 50) {
   await finalizeApprovedAssociationRegistrations(limit);
 }
 
+const ASSOCIATION_RECONCILE_COOLDOWN_MS = 30_000;
+let associationReconcileInFlight: Promise<void> | null = null;
+let associationReconcileLastStartedAt = 0;
+
+function triggerAssociationPaymentReconciliation(limit = 30) {
+  const now = Date.now();
+  if (
+    associationReconcileInFlight ||
+    now - associationReconcileLastStartedAt < ASSOCIATION_RECONCILE_COOLDOWN_MS
+  ) {
+    return;
+  }
+
+  associationReconcileLastStartedAt = now;
+  associationReconcileInFlight = reconcilePendingAssociationMembershipPayments(
+    limit,
+  )
+    .catch((error) => {
+      console.error("Association background payment reconcile error:", error);
+    })
+    .finally(() => {
+      associationReconcileInFlight = null;
+    });
+}
+
 /* ── Public: submit registration ───────────────────────────── */
 router.post("/association/register", async (req, res) => {
   return res.status(410).json({
@@ -614,6 +639,26 @@ router.post("/association/agents", async (req, res) => {
     const commissionRate = getDefaultAgentCommissionRate(config);
     const code =
       requestedCode || (await createUniqueAgentCode(fullName, phone));
+
+    const existingAgent = await prisma.membershipAgent.findFirst({
+      where: {
+        isActive: true,
+        OR: [{ phone }, ...(email ? [{ email }] : [])],
+      },
+      select: {
+        id: true,
+        code: true,
+        fullName: true,
+        phone: true,
+        email: true,
+        commissionRate: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existingAgent) {
+      return res.json({ success: true, agent: existingAgent });
+    }
 
     const agent = await prisma.membershipAgent.create({
       data: {
@@ -647,6 +692,60 @@ router.post("/association/agents", async (req, res) => {
       success: false,
       message: "Agent code үүсгэхэд алдаа гарлаа",
     });
+  }
+});
+
+router.get("/association/agents/lookup", async (req, res) => {
+  try {
+    const query = String(req.query.query || "").trim();
+    const phone = normalizeAgentPhone(query);
+    const email = query.toLowerCase();
+    const code = normalizeAgentCode(query);
+
+    if (!query || query.length < 4) {
+      return res.status(400).json({
+        success: false,
+        message: "Утас, имэйл эсвэл agent code оруулна уу",
+      });
+    }
+
+    const where: Prisma.MembershipAgentWhereInput = {
+      isActive: true,
+      OR: [
+        ...(phone ? [{ phone }] : []),
+        ...(email.includes("@") ? [{ email }] : []),
+        ...(code ? [{ code }] : []),
+      ],
+    };
+
+    if (!where.OR || where.OR.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Зөв утас, имэйл эсвэл agent code оруулна уу",
+      });
+    }
+
+    const agent = await prisma.membershipAgent.findFirst({
+      where,
+      orderBy: { createdAt: "desc" },
+      select: {
+        code: true,
+        fullName: true,
+        commissionRate: true,
+      },
+    });
+
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        message: "Ийм мэдээлэлтэй идэвхтэй agent олдсонгүй",
+      });
+    }
+
+    return res.json({ success: true, agent });
+  } catch (error) {
+    console.error("Association agent lookup error:", error);
+    return res.status(500).json({ success: false, message: "Серверийн алдаа" });
   }
 });
 
@@ -971,7 +1070,7 @@ router.get(
         offset = "0",
       } = req.query;
 
-      await reconcilePendingAssociationMembershipPayments(80);
+      triggerAssociationPaymentReconciliation();
 
       if (
         paymentStatus &&
@@ -1184,41 +1283,80 @@ router.get(
     try {
       const agents = await prisma.membershipAgent.findMany({
         orderBy: { createdAt: "desc" },
-        include: {
-          _count: {
-            select: {
-              registrations: true,
-              commissions: true,
-            },
-          },
-          commissions: {
-            select: {
-              commissionAmount: true,
-              paymentAmount: true,
-              status: true,
-            },
-          },
+        select: {
+          id: true,
+          code: true,
+          fullName: true,
+          phone: true,
+          email: true,
+          commissionRate: true,
+          isActive: true,
+          createdAt: true,
         },
       });
+      const agentIds = agents.map((agent) => agent.id);
+      const [registrationCounts, commissionTotals] =
+        agentIds.length === 0
+          ? [[], []]
+          : await Promise.all([
+              prisma.associationMemberRegistration.groupBy({
+                by: ["agentId"],
+                where: { agentId: { in: agentIds } },
+                _count: { id: true },
+              }),
+              prisma.membershipReferralCommission.groupBy({
+                by: ["agentId", "status"],
+                where: { agentId: { in: agentIds } },
+                _count: { id: true },
+                _sum: {
+                  commissionAmount: true,
+                  paymentAmount: true,
+                },
+              }),
+            ]);
+
+      const registrationsByAgent = new Map(
+        registrationCounts
+          .filter((item) => item.agentId)
+          .map((item) => [item.agentId as string, item._count.id]),
+      );
+      const totalsByAgent = new Map<
+        string,
+        {
+          paidMemberCount: number;
+          revenue: number;
+          pendingCommission: number;
+          paidCommission: number;
+        }
+      >();
+
+      for (const total of commissionTotals) {
+        const current = totalsByAgent.get(total.agentId) ?? {
+          paidMemberCount: 0,
+          revenue: 0,
+          pendingCommission: 0,
+          paidCommission: 0,
+        };
+        const commissionAmount = total._sum.commissionAmount ?? 0;
+
+        current.paidMemberCount += total._count.id;
+        current.revenue += total._sum.paymentAmount ?? 0;
+        if (total.status === REFERRAL_COMMISSION_STATUS.PAID) {
+          current.paidCommission += commissionAmount;
+        } else {
+          current.pendingCommission += commissionAmount;
+        }
+        totalsByAgent.set(total.agentId, current);
+      }
 
       return res.json({
         data: agents.map((agent) => {
-          const paidCommission = agent.commissions
-            .filter(
-              (commission) =>
-                commission.status === REFERRAL_COMMISSION_STATUS.PAID,
-            )
-            .reduce((sum, commission) => sum + commission.commissionAmount, 0);
-          const pendingCommission = agent.commissions
-            .filter(
-              (commission) =>
-                commission.status !== REFERRAL_COMMISSION_STATUS.PAID,
-            )
-            .reduce((sum, commission) => sum + commission.commissionAmount, 0);
-          const revenue = agent.commissions.reduce(
-            (sum, commission) => sum + commission.paymentAmount,
-            0,
-          );
+          const totals = totalsByAgent.get(agent.id) ?? {
+            paidMemberCount: 0,
+            revenue: 0,
+            pendingCommission: 0,
+            paidCommission: 0,
+          };
 
           return {
             id: agent.id,
@@ -1229,11 +1367,11 @@ router.get(
             commissionRate: Number(agent.commissionRate),
             isActive: agent.isActive,
             createdAt: agent.createdAt,
-            registrationCount: agent._count.registrations,
-            paidMemberCount: agent._count.commissions,
-            revenue,
-            pendingCommission,
-            paidCommission,
+            registrationCount: registrationsByAgent.get(agent.id) ?? 0,
+            paidMemberCount: totals.paidMemberCount,
+            revenue: totals.revenue,
+            pendingCommission: totals.pendingCommission,
+            paidCommission: totals.paidCommission,
           };
         }),
       });
@@ -1303,7 +1441,8 @@ router.patch(
         where: { id: req.params.id },
         data: {
           status: status as ReferralCommissionStatusValue,
-          paidAt: status === REFERRAL_COMMISSION_STATUS.PAID ? new Date() : null,
+          paidAt:
+            status === REFERRAL_COMMISSION_STATUS.PAID ? new Date() : null,
           note:
             typeof req.body?.note === "string"
               ? req.body.note.trim() || null
@@ -1336,7 +1475,7 @@ router.get(
   requirePlatformPermission(Permission.MANAGE_REGISTRATIONS),
   async (_req, res) => {
     try {
-      await reconcilePendingAssociationMembershipPayments(80);
+      triggerAssociationPaymentReconciliation();
 
       const paidOnlyWhere = { paymentStatus: PaymentStatus.PAID } as const;
       const [total, pending, approved, byType] = await Promise.all([

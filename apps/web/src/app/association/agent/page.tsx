@@ -6,15 +6,16 @@ import {
   BadgePercent,
   CheckCircle2,
   Copy,
+  Search,
   Loader2,
 } from "lucide-react";
 import { API } from "@/lib/api";
 
-type CreatedAgent = {
+type AgentCodeResult = {
   code: string;
   fullName: string;
-  phone: string;
-  email: string | null;
+  phone?: string;
+  email?: string | null;
   commissionRate: number | string;
 };
 
@@ -28,15 +29,20 @@ export default function AssociationAgentPage() {
     email: "",
     code: "",
   });
-  const [agent, setAgent] = useState<CreatedAgent | null>(null);
+  const [agent, setAgent] = useState<AgentCodeResult | null>(null);
+  const [lookupQuery, setLookupQuery] = useState("");
+  const [foundAgent, setFoundAgent] = useState<AgentCodeResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
   const [error, setError] = useState("");
+  const [lookupError, setLookupError] = useState("");
   const [copied, setCopied] = useState(false);
 
+  const visibleAgent = foundAgent || agent;
   const membershipUrl = useMemo(() => {
-    if (!agent?.code || typeof window === "undefined") return "";
-    return `${window.location.origin}/profile?ref=${encodeURIComponent(agent.code)}`;
-  }, [agent?.code]);
+    if (!visibleAgent?.code || typeof window === "undefined") return "";
+    return `${window.location.origin}/profile?ref=${encodeURIComponent(visibleAgent.code)}`;
+  }, [visibleAgent?.code]);
 
   const update = (key: keyof typeof form, value: string) => {
     setForm((current) => ({
@@ -48,6 +54,7 @@ export default function AssociationAgentPage() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
+    setAgent(null);
     setSubmitting(true);
     try {
       const res = await fetch(`${API}/association/agents`, {
@@ -66,10 +73,36 @@ export default function AssociationAgentPage() {
         return;
       }
       setAgent(data.agent);
+      setFoundAgent(null);
     } catch {
       setError("Сүлжээний алдаа гарлаа");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const lookupAgent = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = lookupQuery.trim();
+    setLookupError("");
+    setFoundAgent(null);
+    setLookingUp(true);
+
+    try {
+      const res = await fetch(
+        `${API}/association/agents/lookup?query=${encodeURIComponent(query)}`,
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setLookupError(data?.message || "Agent code олдсонгүй");
+        return;
+      }
+      setFoundAgent(data.agent);
+      setAgent(null);
+    } catch {
+      setLookupError("Сүлжээний алдаа гарлаа");
+    } finally {
+      setLookingUp(false);
     }
   };
 
@@ -82,7 +115,7 @@ export default function AssociationAgentPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8">
-      <div className="mx-auto max-w-lg space-y-5">
+      <div className="mx-auto max-w-3xl space-y-5">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-100">
             <BadgePercent size={20} />
@@ -97,58 +130,82 @@ export default function AssociationAgentPage() {
           </div>
         </div>
 
-        {agent ? (
-          <section className="rounded-3xl border border-emerald-200 bg-white p-6 shadow-sm">
-            <div className="mb-5 flex items-center gap-3">
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
-                <CheckCircle2 size={24} />
-              </span>
-              <div>
-                <h2 className="text-lg font-black text-slate-950">
-                  Code бэлэн боллоо
-                </h2>
-                <p className="text-sm font-semibold text-slate-500">
-                  Энэ code-оор төлбөр төлсөн гишүүд таны нэр дээр бүртгэгдэнэ.
-                </p>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4 text-center">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-500">
-                Таны agent code
-              </p>
-              <p className="mt-1 text-3xl font-black tracking-widest text-indigo-700">
-                {agent.code}
-              </p>
-              <p className="mt-2 text-xs font-semibold text-indigo-700">
-                Commission хувь: {Number(agent.commissionRate).toLocaleString()}
-                %
+        <section className="rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+              <Search size={19} />
+            </span>
+            <div>
+              <h2 className="text-base font-black text-slate-950">
+                Бүртгэлтэй agent code хайх
+              </h2>
+              <p className="text-sm font-semibold text-slate-500">
+                Утас, имэйл эсвэл мэдэж байгаа code-оороо хайгаад өөрийн
+                membership link-ээ авна.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={copyLink}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800"
-            >
-              <Copy size={16} />
-              {copied ? "Хуулагдлаа" : "Membership link хуулах"}
-            </button>
-            {membershipUrl && (
-              <p className="mt-2 break-all rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
-                {membershipUrl}
-              </p>
+          </div>
+
+          <form onSubmit={lookupAgent} className="space-y-3">
+            {lookupError && (
+              <Notice>
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                {lookupError}
+              </Notice>
             )}
-          </section>
-        ) : (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={lookupQuery}
+                onChange={(event) => setLookupQuery(event.target.value)}
+                className={inputClass}
+                placeholder="99001234, name@example.com эсвэл AG9900"
+                required
+              />
+              <button
+                type="submit"
+                disabled={lookingUp}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:opacity-60"
+              >
+                {lookingUp ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Search size={16} />
+                )}
+                Хайх
+              </button>
+            </div>
+          </form>
+        </section>
+
+        {visibleAgent && (
+          <AgentCodeCard
+            agent={visibleAgent}
+            copied={copied}
+            membershipUrl={membershipUrl}
+            onCopy={copyLink}
+          />
+        )}
+
+        {!foundAgent && (
           <form
             onSubmit={submit}
             className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
           >
             {error && (
-              <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              <Notice>
                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
                 {error}
-              </div>
+              </Notice>
             )}
+
+            <div>
+              <h2 className="text-base font-black text-slate-950">
+                Шинээр agent code авах
+              </h2>
+              <p className="mt-1 text-sm font-semibold text-slate-500">
+                Бүртгэлгүй бол мэдээллээ оруулаад code үүсгэнэ.
+              </p>
+            </div>
 
             <Field label="Нэр" required>
               <input
@@ -199,6 +256,68 @@ export default function AssociationAgentPage() {
         )}
       </div>
     </main>
+  );
+}
+
+function AgentCodeCard({
+  agent,
+  copied,
+  membershipUrl,
+  onCopy,
+}: {
+  agent: AgentCodeResult;
+  copied: boolean;
+  membershipUrl: string;
+  onCopy: () => void;
+}) {
+  return (
+    <section className="rounded-3xl border border-emerald-200 bg-white p-6 shadow-sm">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+          <CheckCircle2 size={24} />
+        </span>
+        <div>
+          <h2 className="text-lg font-black text-slate-950">
+            Agent code бэлэн
+          </h2>
+          <p className="text-sm font-semibold text-slate-500">
+            {agent.fullName} нэр дээр бүртгэлтэй code.
+          </p>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-4 text-center">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-500">
+          Таны agent code
+        </p>
+        <p className="mt-1 text-3xl font-black tracking-widest text-indigo-700">
+          {agent.code}
+        </p>
+        <p className="mt-2 text-xs font-semibold text-indigo-700">
+          Commission хувь: {Number(agent.commissionRate).toLocaleString()}%
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onCopy}
+        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+      >
+        <Copy size={16} />
+        {copied ? "Хуулагдлаа" : "Membership link хуулах"}
+      </button>
+      {membershipUrl && (
+        <p className="mt-2 break-all rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+          {membershipUrl}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function Notice({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+      {children}
+    </div>
   );
 }
 
