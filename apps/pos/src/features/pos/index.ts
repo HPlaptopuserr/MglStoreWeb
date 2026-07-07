@@ -20,12 +20,17 @@ export * from "./components/PosCheckoutView";
 export * from "./components/PosCustomerDisplay";
 export * from "./components/ShiftOpenDialog";
 export * from "./components/ReceiptPreview";
+export * from "./components/MobileBlock";
+export * from "./components/PosAccessGate";
+export * from "./components/PosRegisterSetup";
 
 export * from "./hooks/usePosCart";
 export * from "./hooks/useCurrentShift";
 export * from "./hooks/usePosProducts";
 export * from "./hooks/useOwnProducts";
 export * from "./hooks/useCreateSale";
+export * from "./hooks/usePosAccess";
+export * from "./hooks/usePosRegisterSetup";
 
 export * from "./store/pos.store";
 

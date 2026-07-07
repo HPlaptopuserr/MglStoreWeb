@@ -4,12 +4,22 @@ export type {
   PosCreditBorrower,
   SalePaymentLine,
   SalePayload,
-  RegisterConfig,
   CartLine,
   PosCart,
   CartTotals,
 } from "@mgl/types";
 
-import type { PosProduct as BasePosProduct } from "@mgl/types";
+import type {
+  PosProduct as BasePosProduct,
+  RegisterConfig as BaseRegisterConfig,
+} from "@mgl/types";
 
 export type PosProduct = BasePosProduct & { categoryName?: string | null };
+
+export type RegisterConfig = BaseRegisterConfig & {
+  ebarimtEnabled: boolean;
+  ebarimtPosApiUrl: string | null;
+  ebarimtMerchantTin: string | null;
+  ebarimtPosNo: string | null;
+  ebarimtMerchantName: string | null;
+};

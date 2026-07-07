@@ -73,6 +73,41 @@ services:
         sync: false
 
   - type: web
+    name: mgl-pos
+    rootDir: .
+    runtime: node
+    buildFilter:
+      paths:
+        - apps/pos/**
+        - packages/ui/**
+        - packages/types/**
+        - packages/config/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - render.yaml
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm turbo build --filter=@mgl/pos
+    startCommand: cd apps/pos && pnpm exec next start -H 0.0.0.0 -p $PORT
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      - key: API_PROXY_TARGET
+        value: https://mgl-api.onrender.com
+      - key: NEXT_PUBLIC_VENDOR_PORTAL_URL
+        value: https://vendor.mglstore.mn
+      - key: NEXT_PUBLIC_URL
+        sync: false
+      - key: NEXT_PUBLIC_EBARIMT_ENABLED
+        sync: false
+      - key: NEXT_PUBLIC_EBARIMT_POS_API_URL
+        sync: false
+      - key: EBARIMT_INFO_API_URL
+        sync: false
+
+  - type: web
     name: mgl-warehouse
     rootDir: .
     runtime: node
