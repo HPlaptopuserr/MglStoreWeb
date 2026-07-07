@@ -70,6 +70,7 @@ import {
   type EbarimtBuyer,
   type RegisterConfig,
   type CashDenominationCount,
+  type CashDrawerEvent,
   type CashDrawerEventType,
   type CashDrawerSummary,
   type PosShiftHistoryItem,
@@ -1085,7 +1086,7 @@ export default function PosDemoPage() {
     const eventLines =
       summary.events.length === 0
         ? ["Шургуулгын хөдөлгөөн алга"]
-        : summary.events.map((event) => {
+        : summary.events.map((event: CashDrawerEvent) => {
             const label =
               event.type === "PAID_IN"
                 ? "Орлого нэмсэн"
@@ -1098,8 +1099,8 @@ export default function PosDemoPage() {
       summary.cashCount.length === 0
         ? ["Тооллого: -"]
         : summary.cashCount
-            .filter((item) => item.count > 0)
-            .map((item) => `${formatMoney(item.denomination)} x ${item.count} = ${formatMoney(item.total)}`);
+            .filter((item: CashDenominationCount) => item.count > 0)
+            .map((item: CashDenominationCount) => `${formatMoney(item.denomination)} x ${item.count} = ${formatMoney(item.total)}`);
 
     printPlainReport("Кассын шургуулгын тайлан", [
       "КАССЫН ШУРГУУЛГЫН ТАЙЛАН",
