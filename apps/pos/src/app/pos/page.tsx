@@ -1691,7 +1691,7 @@ export default function PosDemoPage() {
     setEbarimtCompanyLookupLoading(true);
     setEbarimtBuyerError("");
     try {
-      const result = await lookupEbarimtTin(regNo);
+      const result = await lookupEbarimtTin(regNo, registerConfig);
       setEbarimtCompanyRegNo(result.regNo);
       setEbarimtCompanyTin(result.tin);
       return result;

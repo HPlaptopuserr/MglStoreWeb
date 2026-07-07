@@ -15,6 +15,8 @@
 import express, { type Request, type Response } from "express";
 import crypto from "crypto";
 import fs from "fs";
+import nodeHttp from "http";
+import nodeHttps from "https";
 import path from "path";
 import type { CardTerminalProvider, ChargeResult } from "./providers/provider.interface";
 import { AndroidPgwProvider } from "./providers/android-pgw.provider";
@@ -64,6 +66,19 @@ loadBridgeEnv();
 const PORT = parseInt(process.env.BRIDGE_PORT ?? "7420", 10);
 const PROVIDER = (process.env.BRIDGE_PROVIDER ?? "mock").toLowerCase();
 const BRIDGE_SHARED_SECRET = String(process.env.BRIDGE_SHARED_SECRET ?? "").trim();
+const EBARIMT_INFO_API_URL = String(process.env.EBARIMT_INFO_API_URL || "https://api.ebarimt.mn").trim();
+const EBARIMT_TIN_LOOKUP_TIMEOUT_MS = positiveIntEnv("EBARIMT_TIN_LOOKUP_TIMEOUT_MS", 10_000);
+
+type HttpTextResult = {
+  statusCode: number;
+  body: string;
+};
+
+type TinLookupResponse = {
+  status?: number;
+  msg?: string;
+  data?: string | number | null;
+};
 
 const signPayload = (payload: string) =>
   crypto.createHmac("sha256", BRIDGE_SHARED_SECRET).update(payload).digest("hex");
@@ -76,6 +91,59 @@ const timingSafeEqualHex = (provided: string, expected: string): boolean => {
   if (providedBuf.length !== expectedBuf.length) return false;
   return crypto.timingSafeEqual(providedBuf, expectedBuf);
 };
+
+function positiveIntEnv(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function buildTinLookupUrl(rawBaseUrl: string, regNo: string) {
+  const trimmed = rawBaseUrl.trim().replace(/\/+$/, "");
+  const configured = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  const endpoint = configured.includes("/api/info/check/getTinInfo")
+    ? configured
+    : `${configured}/api/info/check/getTinInfo`;
+  const url = new URL(endpoint);
+  url.searchParams.set("regNo", regNo);
+  return url;
+}
+
+function requestText(url: URL, timeoutMs: number): Promise<HttpTextResult> {
+  return new Promise((resolve, reject) => {
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      reject(new Error(`Unsupported protocol: ${url.protocol}`));
+      return;
+    }
+
+    const transport = url.protocol === "http:" ? nodeHttp : nodeHttps;
+    const req = transport.request(
+      url,
+      {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      },
+      (response) => {
+        response.setEncoding("utf8");
+        let body = "";
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          resolve({
+            statusCode: response.statusCode || 0,
+            body,
+          });
+        });
+      },
+    );
+
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`request timeout after ${timeoutMs}ms`));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
 
 function buildProvider(): CardTerminalProvider {
   switch (PROVIDER) {
@@ -121,6 +189,52 @@ app.get("/health", async (_req: Request, res: Response) => {
 });
 
 /* ─── Charge ────────────────────────────────────────────────────── */
+/* eBarimt TIN lookup */
+app.get("/ebarimt/tin", async (req: Request, res: Response) => {
+  const regNo = String(req.query.regNo || "").replace(/\D/g, "");
+  if (!/^\d{7}$/.test(regNo)) {
+    res.status(400).json({ message: "regNo must be 7 digits" });
+    return;
+  }
+
+  try {
+    const upstream = await requestText(
+      buildTinLookupUrl(EBARIMT_INFO_API_URL, regNo),
+      EBARIMT_TIN_LOOKUP_TIMEOUT_MS,
+    );
+
+    let payload: TinLookupResponse;
+    try {
+      payload = JSON.parse(upstream.body) as TinLookupResponse;
+    } catch {
+      res.status(502).json({
+        message: `eBarimt TIN lookup returned non-JSON (HTTP ${upstream.statusCode})`,
+      });
+      return;
+    }
+
+    const tin = String(payload.data ?? "").replace(/\D/g, "");
+    if (
+      upstream.statusCode < 200 ||
+      upstream.statusCode >= 300 ||
+      payload.status !== 200 ||
+      !/^\d{11,14}$/.test(tin)
+    ) {
+      res.status(404).json({
+        message: payload.msg || `TIN not found for regNo ${regNo}`,
+      });
+      return;
+    }
+
+    res.json({ regNo, tin });
+  } catch (error) {
+    res.status(502).json({
+      message: "eBarimt TIN lookup failed",
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 app.post("/charge", async (req: Request, res: Response) => {
   const { attemptId, amount, terminalId } = req.body as {
     attemptId?: string;

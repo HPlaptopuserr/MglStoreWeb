@@ -87,6 +87,8 @@ export type EbarimtReturnReceiptResult = {
 
 const money = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 const DEFAULT_POS_API_URL = "http://localhost:7080";
+const DEFAULT_LOCAL_BRIDGE_URL = "http://127.0.0.1:7420";
+const BRIDGE_TIN_LOOKUP_TIMEOUT_MS = 3_500;
 const DEFAULT_BRANCH_NO = "001";
 const DEFAULT_DISTRICT_CODE = "0101";
 const DEFAULT_CLASSIFICATION_CODE = "4711000";
@@ -97,6 +99,11 @@ const EBARIMT_CONFIG = {
 };
 
 class PosApiHttpError extends Error {}
+class BridgeTinLookupError extends Error {
+  constructor(message: string, readonly final = false) {
+    super(message);
+  }
+}
 
 function getPosApiUrl(baseUrlOverride?: string | null) {
   const configured =
@@ -139,6 +146,85 @@ function getRegisterPosApiUrl(register?: RegisterConfig | null) {
 
 function normalizeTin(value: unknown) {
   return String(value ?? "").replace(/\D/g, "");
+}
+
+function getStoredBridgeUrl() {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem("mgl_ebarimt_tin_bridge_url") || localStorage.getItem("mgl_pos_bridge_url") || "";
+  } catch {
+    return "";
+  }
+}
+
+function getTinLookupBridgeUrls(register?: RegisterConfig | null) {
+  const candidates = [
+    register?.terminalBridgeUrl || "",
+    getStoredBridgeUrl(),
+    DEFAULT_LOCAL_BRIDGE_URL,
+  ];
+  return Array.from(
+    new Set(
+      candidates
+        .map((url) => String(url || "").trim().replace(/\/+$/, ""))
+        .filter(Boolean),
+    ),
+  );
+}
+
+function isValidTin(value: unknown) {
+  return /^\d{11,14}$/.test(normalizeTin(value));
+}
+
+async function lookupEbarimtTinFromBridge(
+  regNo: string,
+  register?: RegisterConfig | null,
+): Promise<EbarimtTinLookupResult | null> {
+  if (typeof window === "undefined") return null;
+
+  for (const bridgeUrl of getTinLookupBridgeUrls(register)) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), BRIDGE_TIN_LOOKUP_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(`${bridgeUrl}/ebarimt/tin?regNo=${encodeURIComponent(regNo)}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const text = await res.text();
+
+      let payload: Partial<EbarimtTinLookupResult> & { message?: string } = {};
+      try {
+        payload = text ? JSON.parse(text) : {};
+      } catch {
+        if (res.status === 404) continue;
+        throw new BridgeTinLookupError(`Local bridge TIN lookup returned non-JSON (HTTP ${res.status})`);
+      }
+
+      if (!res.ok) {
+        throw new BridgeTinLookupError(
+          payload.message || `Local bridge TIN lookup failed (HTTP ${res.status})`,
+          true,
+        );
+      }
+
+      const tin = normalizeTin(payload.tin);
+      if (!isValidTin(tin)) {
+        throw new BridgeTinLookupError("Local bridge returned invalid TIN", true);
+      }
+
+      return {
+        regNo: String(payload.regNo || regNo).replace(/\D/g, "") || regNo,
+        tin,
+      };
+    } catch (error) {
+      if (error instanceof BridgeTinLookupError && error.final) throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return null;
 }
 
 function selectMerchant(info: EbarimtInfo, register?: RegisterConfig | null) {
@@ -284,8 +370,14 @@ export async function sendLocalEbarimtData(register?: RegisterConfig | null): Pr
   return getLocalEbarimtInfo(register);
 }
 
-export async function lookupEbarimtTin(regNo: string): Promise<EbarimtTinLookupResult> {
+export async function lookupEbarimtTin(
+  regNo: string,
+  register?: RegisterConfig | null,
+): Promise<EbarimtTinLookupResult> {
   const normalized = regNo.replace(/\D/g, "");
+  const bridgeResult = await lookupEbarimtTinFromBridge(normalized, register);
+  if (bridgeResult) return bridgeResult;
+
   const res = await fetch(`/api/ebarimt/tin?regNo=${encodeURIComponent(normalized)}`, {
     cache: "no-store",
   });
