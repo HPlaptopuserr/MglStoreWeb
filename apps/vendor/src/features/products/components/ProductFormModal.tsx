@@ -11,6 +11,7 @@ import {
   EBARIMT_TAX_PRODUCT_CODES,
   type EbarimtTaxProductCode,
 } from "../data/ebarimt-tax-product-codes";
+import { getCategoryTaxSearchText } from "../data/ebarimt-category-tax-defaults";
 
 interface Props {
   form: FormState;
@@ -27,7 +28,7 @@ interface Props {
 const TAX_TYPE_OPTIONS = [
   { value: "VAT_ABLE", label: "VAT_ABLE - НӨАТ-тэй" },
   { value: "VAT_FREE", label: "VAT_FREE - НӨАТ-аас чөлөөлөгдсөн" },
-  { value: "VAT_ZERO", label: "VAT_ZERO - НӨАТ 0%" },  
+  { value: "VAT_ZERO", label: "VAT_ZERO - НӨАТ 0%" },
   { value: "NOT_VAT", label: "NOT_VAT - НӨАТ ногдохгүй" },
 ] as const;
 
@@ -90,13 +91,13 @@ function getTaxSearchTokens(value: string) {
   return Array.from(expanded);
 }
 
-function findBusinessCategoryName(categories: BusinessCategory[], id: string): string {
+function findBusinessCategory(categories: BusinessCategory[], id: string): BusinessCategory | null {
   for (const category of categories) {
-    if (category.id === id) return category.name;
-    const childName = category.children ? findBusinessCategoryName(category.children, id) : "";
-    if (childName) return childName;
+    if (category.id === id) return category;
+    const child = category.children ? findBusinessCategory(category.children, id) : null;
+    if (child) return child;
   }
-  return "";
+  return null;
 }
 
 function scoreTaxProductCode(entry: EbarimtTaxProductCode, tokens: string[]) {
@@ -108,7 +109,14 @@ function scoreTaxProductCode(entry: EbarimtTaxProductCode, tokens: string[]) {
     { value: entry.subClassName, weight: 8 },
     { value: entry.className, weight: 6 },
     { value: entry.groupName, weight: 4 },
-  ].map((field) => ({ ...field, normalized: normalizeTaxSearchText(field.value) }));
+  ].map((field) => {
+    const normalized = normalizeTaxSearchText(field.value);
+    return {
+      ...field,
+      normalized,
+      words: normalized.split(" ").filter(Boolean),
+    };
+  });
 
   return tokens.reduce((score, token) => {
     let tokenScore = 0;
@@ -119,11 +127,19 @@ function scoreTaxProductCode(entry: EbarimtTaxProductCode, tokens: string[]) {
         tokenScore = Math.max(tokenScore, field.weight * 2);
         return;
       }
+      if (field.words.includes(token)) {
+        tokenScore = Math.max(tokenScore, field.weight + 8);
+        return;
+      }
       if (field.normalized.startsWith(token)) {
         tokenScore = Math.max(tokenScore, field.weight + 5);
         return;
       }
-      if (field.normalized.includes(token)) {
+      if (field.words.some((word) => word.startsWith(token))) {
+        tokenScore = Math.max(tokenScore, field.weight + 4);
+        return;
+      }
+      if (token.length >= 4 && field.normalized.includes(token)) {
         tokenScore = Math.max(tokenScore, field.weight);
       }
     });
@@ -158,11 +174,19 @@ export function ProductFormModal({
   onSave,
 }: Props) {
   const isPreorder = form.supplyType === "CHINA_PREORDER";
-  const selectedCategoryName = useMemo(
-    () => findBusinessCategoryName(categories, form.businessCategoryId),
+  const selectedCategory = useMemo(
+    () => findBusinessCategory(categories, form.businessCategoryId),
     [categories, form.businessCategoryId],
   );
-  const taxProductCodeQuery = [form.taxProductCode, form.name, selectedCategoryName]
+  const selectedCategoryTaxSearchText = useMemo(
+    () => getCategoryTaxSearchText(selectedCategory),
+    [selectedCategory],
+  );
+  const categoryDefaultTaxProductCode = useMemo(
+    () => getTaxProductCodeSuggestions(selectedCategoryTaxSearchText)[0] ?? null,
+    [selectedCategoryTaxSearchText],
+  );
+  const taxProductCodeQuery = [form.taxProductCode, form.name, selectedCategoryTaxSearchText]
     .filter(Boolean)
     .join(" ");
   const taxProductCodeSuggestions = useMemo(
@@ -174,6 +198,18 @@ export function ProductFormModal({
     [form.taxProductCode],
   );
   const isTaxProductCodeRequired = TAX_PRODUCT_CODE_REQUIRED_TYPES.has(form.taxType);
+  const applyBusinessCategory = (id: string) => {
+    const category = findBusinessCategory(categories, id);
+    const defaultTaxProductCode = getTaxProductCodeSuggestions(getCategoryTaxSearchText(category))[0]?.code || "";
+
+    setForm((current) => ({
+      ...current,
+      businessCategoryId: id,
+      taxProductCode: current.taxProductCode.trim()
+        ? current.taxProductCode
+        : defaultTaxProductCode,
+    }));
+  };
   const duplicateProduct = (form.sku || form.barcode)
     ? products.find((p) => {
         const skuMatch = form.sku && p.sku?.toLowerCase() === form.sku.toLowerCase();
@@ -561,7 +597,7 @@ export function ProductFormModal({
                   products={products}
                   editingId={editingId}
                   onApplyCategory={(id) =>
-                    setForm((current) => ({ ...current, businessCategoryId: id }))
+                    applyBusinessCategory(id)
                   }
                   onApplyDescription={(description) =>
                     setForm((current) => ({ ...current, description }))
@@ -575,8 +611,15 @@ export function ProductFormModal({
                     <CategorySelector
                       categories={categories}
                       value={form.businessCategoryId}
-                      onChange={(id) => setForm((f) => ({ ...f, businessCategoryId: id }))}
+                      onChange={applyBusinessCategory}
                     />
+                    {categoryDefaultTaxProductCode && (
+                      <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold leading-5 text-emerald-700">
+                        Ангиллын eBarimt default:{" "}
+                        <span className="font-black">{categoryDefaultTaxProductCode.code}</span>{" "}
+                        {categoryDefaultTaxProductCode.name}
+                      </p>
+                    )}
                   </div>
                 </div>
 
