@@ -13,13 +13,9 @@ import {
 import { API, adminFetch } from "@/lib/api";
 import {
   MemberRegistrationCard,
+  PAYMENT_STATUS_FILTERS,
   type AssociationRegistration,
 } from "@/components/organisms/association";
-
-const PAYMENT_FILTERS = [
-  { value: "", label: "Төлсөн хүсэлтүүд" },
-  { value: "PAID", label: "Төлсөн" },
-];
 
 export default function AssociationPaymentsPage() {
   const [registrations, setRegistrations] = useState<AssociationRegistration[]>(
@@ -141,7 +137,7 @@ export default function AssociationPaymentsPage() {
           onChange={(e) => setPaymentFilter(e.target.value)}
           className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-emerald-400"
         >
-          {PAYMENT_FILTERS.map((item) => (
+          {PAYMENT_STATUS_FILTERS.map((item) => (
             <option key={item.value} value={item.value}>
               {item.label}
             </option>

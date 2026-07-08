@@ -20,6 +20,7 @@ import {
   BarChart3,
   GraduationCap,
   ShieldCheck,
+  MapPinned,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
 import { MobileDashboard } from "@/components/organisms/MobileDashboard";
@@ -117,6 +118,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     label: "Холбооны гишүүнчлэл",
     icon: Users2,
     href: "/association",
+    requires: ["MANAGE_REGISTRATIONS"],
+  },
+  {
+    id: "association-local-members",
+    label: "Орон нутгийн гишүүд",
+    icon: MapPinned,
+    href: "/association/local-members",
     requires: ["MANAGE_REGISTRATIONS"],
   },
   {

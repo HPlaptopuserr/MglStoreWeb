@@ -14,7 +14,11 @@ export function OrganizationLocationFilter({
   onChange,
 }: OrganizationLocationFilterProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
-  const locations = ["all", ...LOCAL_AREA_OPTIONS.map((area) => area.slug)];
+  const locations = [
+    "all",
+    "local",
+    ...LOCAL_AREA_OPTIONS.map((area) => area.slug),
+  ];
 
   const scroll = (dir: "left" | "right") => {
     listRef.current?.scrollBy({ left: dir === "left" ? -280 : 280, behavior: "smooth" });
@@ -56,7 +60,11 @@ export function OrganizationLocationFilter({
                 }`}
               >
                 {location !== "all" && <MapPin size={12} />}
-                {location === "all" ? "Бүх байршил" : getLocalAreaLabel(location)}
+                {location === "all"
+                  ? "Бүх байршил"
+                  : location === "local"
+                    ? "Орон нутгийн гишүүд"
+                    : getLocalAreaLabel(location)}
               </button>
             );
           })}

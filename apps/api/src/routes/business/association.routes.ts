@@ -18,6 +18,35 @@ import {
 const router: ExpressRouter = Router();
 
 const DEFAULT_AGENT_COMMISSION_RATE = 10;
+const LOCAL_RESIDENCY_KEYWORDS = [
+  "архангай",
+  "баян-өлгий",
+  "баян өлгий",
+  "баянхонгор",
+  "булган",
+  "говь-алтай",
+  "говь алтай",
+  "говьсүмбэр",
+  "дархан-уул",
+  "дархан уул",
+  "дорноговь",
+  "дорнод",
+  "дундговь",
+  "завхан",
+  "орхон",
+  "өвөрхангай",
+  "өмнөговь",
+  "сүхбаатар аймаг",
+  "сэлэнгэ",
+  "төв",
+  "увс",
+  "ховд",
+  "хөвсгөл",
+  "хэнтий",
+  "эрдэнэт",
+  "аймаг",
+  "сум",
+];
 const REFERRAL_COMMISSION_STATUS = {
   PENDING: "PENDING",
   APPROVED: "APPROVED",
@@ -1066,23 +1095,29 @@ router.get(
         sort = "newest",
         search,
         agentCode,
+        residency,
         limit = "50",
         offset = "0",
       } = req.query;
 
       triggerAssociationPaymentReconciliation();
 
+      const normalizedPaymentStatus =
+        typeof paymentStatus === "string" ? paymentStatus : "";
       if (
-        paymentStatus &&
-        paymentStatus !== "ALL" &&
-        paymentStatus !== PaymentStatus.PAID
+        normalizedPaymentStatus &&
+        normalizedPaymentStatus !== "ALL" &&
+        !Object.values(PaymentStatus).includes(
+          normalizedPaymentStatus as PaymentStatus,
+        )
       ) {
         return res.json({ data: [], total: 0 });
       }
 
-      const where: Prisma.AssociationMemberRegistrationWhereInput = {
-        paymentStatus: PaymentStatus.PAID,
-      };
+      const where: Prisma.AssociationMemberRegistrationWhereInput = {};
+      if (normalizedPaymentStatus && normalizedPaymentStatus !== "ALL") {
+        where.paymentStatus = normalizedPaymentStatus as PaymentStatus;
+      }
       if (
         status &&
         status !== "ALL" &&
@@ -1114,19 +1149,34 @@ router.get(
         }
         if (Object.keys(createdAt).length > 0) where.createdAt = createdAt;
       }
+      const andFilters: Prisma.AssociationMemberRegistrationWhereInput[] = [];
       if (search) {
         const s = String(search);
-        where.OR = [
-          { firstName: { contains: s, mode: "insensitive" } },
-          { lastName: { contains: s, mode: "insensitive" } },
-          { organizationName: { contains: s, mode: "insensitive" } },
-          { businessActivity: { contains: s, mode: "insensitive" } },
-          { phone: { contains: s } },
-          {
-            agentCode: { contains: normalizeAgentCode(s), mode: "insensitive" },
-          },
-        ];
+        andFilters.push({
+          OR: [
+            { firstName: { contains: s, mode: "insensitive" } },
+            { lastName: { contains: s, mode: "insensitive" } },
+            { organizationName: { contains: s, mode: "insensitive" } },
+            { businessActivity: { contains: s, mode: "insensitive" } },
+            { address: { contains: s, mode: "insensitive" } },
+            { phone: { contains: s } },
+            {
+              agentCode: {
+                contains: normalizeAgentCode(s),
+                mode: "insensitive",
+              },
+            },
+          ],
+        });
       }
+      if (String(residency || "").toUpperCase() === "LOCAL") {
+        andFilters.push({
+          OR: LOCAL_RESIDENCY_KEYWORDS.map((keyword) => ({
+            address: { contains: keyword, mode: "insensitive" as const },
+          })),
+        });
+      }
+      if (andFilters.length > 0) where.AND = andFilters;
       const normalizedAgentCode = normalizeAgentCode(
         typeof agentCode === "string" ? agentCode : "",
       );
@@ -1391,8 +1441,12 @@ router.patch(
   async (req, res) => {
     try {
       const data: Prisma.MembershipAgentUpdateInput = {};
-      if (req.body?.commissionRate !== undefined) {
-        data.commissionRate = clampCommissionRate(req.body.commissionRate);
+      const commissionRate =
+        req.body?.commissionRate !== undefined
+          ? clampCommissionRate(req.body.commissionRate)
+          : null;
+      if (commissionRate !== null) {
+        data.commissionRate = commissionRate;
       }
       if (typeof req.body?.isActive === "boolean") {
         data.isActive = req.body.isActive;
@@ -1407,9 +1461,55 @@ router.patch(
         data.email = req.body.email.trim().toLowerCase() || null;
       }
 
-      const agent = await prisma.membershipAgent.update({
-        where: { id: req.params.id },
-        data,
+      const agent = await prisma.$transaction(async (tx) => {
+        const updatedAgent = await tx.membershipAgent.update({
+          where: { id: req.params.id },
+          data,
+        });
+
+        if (commissionRate !== null) {
+          const commissions = await tx.membershipReferralCommission.findMany({
+            where: {
+              agentId: req.params.id,
+              status: {
+                in: [
+                  REFERRAL_COMMISSION_STATUS.PENDING,
+                  REFERRAL_COMMISSION_STATUS.APPROVED,
+                ],
+              },
+            },
+            select: {
+              id: true,
+              registrationId: true,
+              paymentAmount: true,
+            },
+          });
+
+          for (const commission of commissions) {
+            const commissionAmount = calculateCommissionAmount(
+              commission.paymentAmount,
+              commissionRate,
+            );
+
+            await tx.membershipReferralCommission.update({
+              where: { id: commission.id },
+              data: {
+                commissionRate,
+                commissionAmount,
+              },
+            });
+
+            await tx.associationMemberRegistration.update({
+              where: { id: commission.registrationId },
+              data: {
+                agentCommissionRate: commissionRate,
+                agentCommissionAmount: commissionAmount,
+              },
+            });
+          }
+        }
+
+        return updatedAgent;
       });
 
       return res.json({ success: true, agent });

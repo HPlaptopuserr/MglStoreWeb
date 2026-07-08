@@ -25,6 +25,7 @@ import {
   ArrowUpDown,
   BadgePercent,
   Save,
+  MapPinned,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 import {
@@ -32,6 +33,7 @@ import {
   MembershipStatsBar,
   MembershipTypeBadge,
   MEMBERSHIP_TYPES,
+  PAYMENT_STATUS_FILTERS,
   type AssociationRegistration,
   type MembershipTypeKey,
 } from "@/components/organisms/association";
@@ -41,11 +43,6 @@ const STATUS_FILTERS = [
   { value: "PENDING", label: "Хүлээгдэж буй" },
   { value: "APPROVED", label: "Зөвшөөрөгдсөн" },
   { value: "REJECTED", label: "Татгалзсан" },
-];
-
-const PAYMENT_STATUS_FILTERS = [
-  { value: "", label: "Төлсөн хүсэлтүүд" },
-  { value: "PAID", label: "Төлсөн" },
 ];
 
 const SORT_OPTIONS = [
@@ -119,6 +116,17 @@ function dedupeLatestRegistrations(registrations: AssociationRegistration[]) {
       latestByIdentity.get(registrationIdentityKey(registration))?.id ===
       registration.id,
   );
+}
+
+function clampAgentCommissionRate(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, value));
+}
+
+function calculateAgentCommission(revenue: number, commissionRate: number) {
+  const safeRevenue = Math.max(0, Number(revenue) || 0);
+  const safeRate = clampAgentCommissionRate(Number(commissionRate) || 0);
+  return Math.round((safeRevenue * safeRate) / 100);
 }
 
 function FilterSelect({
@@ -436,6 +444,13 @@ export default function AssociationPage() {
 
         <div className="flex items-center gap-2 shrink-0">
           <Link
+            href="/association/local-members"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition-colors"
+          >
+            <MapPinned size={15} />
+            Орон нутаг
+          </Link>
+          <Link
             href="/association/payments"
             className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
           >
@@ -677,7 +692,11 @@ export default function AssociationPage() {
                         Урамшуулал
                       </p>
                       <p className="font-black text-slate-900">
-                        {agent.pendingCommission.toLocaleString()}₮
+                        {calculateAgentCommission(
+                          agent.revenue,
+                          agent.commissionRate,
+                        ).toLocaleString()}
+                        ₮
                       </p>
                     </div>
                   </div>
@@ -696,8 +715,9 @@ export default function AssociationPage() {
                               item.id === agent.id
                                 ? {
                                     ...item,
-                                    commissionRate:
-                                      Number(event.target.value) || 0,
+                                    commissionRate: clampAgentCommissionRate(
+                                      Number(event.target.value),
+                                    ),
                                   }
                                 : item,
                             ),

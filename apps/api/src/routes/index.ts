@@ -9,6 +9,7 @@ export {
   orgTaskRoutes,
   partnerRequestRoutes,
   partnerRoutes,
+  personalOrganizationRoutes,
   vendorSetupRoutes,
   warehouseSetupRoutes,
 } from "./business";

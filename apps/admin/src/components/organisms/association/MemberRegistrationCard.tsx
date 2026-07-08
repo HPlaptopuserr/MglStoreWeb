@@ -29,6 +29,11 @@ import {
   STATUS_CONFIG,
   type MembershipTypeKey,
 } from "./membership-constants";
+import {
+  PAYMENT_STATUS_BADGE_LABELS,
+  PAYMENT_STATUS_COLORS,
+  type AssociationPaymentStatus,
+} from "./payment-status";
 import { API, adminFetch } from "@/lib/api";
 
 type ReviewAction = "APPROVED" | "REJECTED";
@@ -48,7 +53,7 @@ export interface AssociationRegistration {
   membershipType: MembershipTypeKey;
   durationMonths: number | null;
   paymentAmount: number;
-  paymentStatus: "PENDING" | "PAID" | "FAILED" | "REFUNDED" | "CANCELLED";
+  paymentStatus: AssociationPaymentStatus;
   paymentMethod: "CASH" | "CARD" | "QPAY" | "BANK_TRANSFER" | null;
   paymentReference: string | null;
   paymentNote: string | null;
@@ -139,20 +144,9 @@ export function MemberRegistrationCard({
   const price = reg.paymentAmount || duration?.price || 0;
   const canReview = reg.status === "PENDING";
   const showActionFooter = canReview;
-  const paymentStatusLabel = {
-    PENDING: "Төлбөр хүлээгдэж буй",
-    PAID: "Төлсөн",
-    FAILED: "Амжилтгүй",
-    REFUNDED: "Буцаагдсан",
-    CANCELLED: "Цуцлагдсан",
-  }[reg.paymentStatus ?? "PENDING"];
-  const paymentStatusColor = {
-    PENDING: "text-amber-700 bg-amber-50 border-amber-200",
-    PAID: "text-emerald-700 bg-emerald-50 border-emerald-200",
-    FAILED: "text-red-700 bg-red-50 border-red-200",
-    REFUNDED: "text-blue-700 bg-blue-50 border-blue-200",
-    CANCELLED: "text-slate-600 bg-slate-50 border-slate-200",
-  }[reg.paymentStatus ?? "PENDING"];
+  const paymentStatus = reg.paymentStatus ?? "PENDING";
+  const paymentStatusLabel = PAYMENT_STATUS_BADGE_LABELS[paymentStatus];
+  const paymentStatusColor = PAYMENT_STATUS_COLORS[paymentStatus];
 
   const fullName = `${reg.lastName} ${reg.firstName}`;
   const initials = `${reg.lastName[0] ?? ""}${reg.firstName[0] ?? ""}`;

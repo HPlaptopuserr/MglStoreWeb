@@ -636,7 +636,13 @@ function createWebAccessToken(
 
 async function resolveVendorLoginMembership(userId: string) {
   const primary = await prisma.organizationMember.findFirst({
-    where: { userId, isActive: true, deletedAt: null, isPrimary: true },
+    where: {
+      userId,
+      isActive: true,
+      deletedAt: null,
+      isPrimary: true,
+      organization: { status: "ACTIVE", deletedAt: null },
+    },
     select: {
       organizationId: true,
       role: true,
@@ -656,7 +662,12 @@ async function resolveVendorLoginMembership(userId: string) {
   if (primary) return primary;
 
   return prisma.organizationMember.findFirst({
-    where: { userId, isActive: true, deletedAt: null },
+    where: {
+      userId,
+      isActive: true,
+      deletedAt: null,
+      organization: { status: "ACTIVE", deletedAt: null },
+    },
     orderBy: { createdAt: "asc" },
     select: {
       organizationId: true,
@@ -709,6 +720,7 @@ async function resolveTokenOrganization(
         organizationId: tokenOrganizationId,
         isActive: true,
         deletedAt: null,
+        organization: { status: "ACTIVE", deletedAt: null },
       },
       select: {
         organizationId: true,

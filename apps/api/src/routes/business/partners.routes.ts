@@ -225,12 +225,27 @@ const partnerLocationAliases: Record<string, string[]> = {
   khentii: ["Хэнтий", "Khentii", "Hentii"],
 };
 
+const localPartnerLocationKeys = Object.keys(partnerLocationAliases).filter(
+  (key) => key !== "ulaanbaatar",
+);
+
 // Temporary public catalog hold: keep records intact while showing this location as empty.
 const temporarilyEmptyPartnerLocations = new Set(["erdenet"]);
 
 function getPartnerLocationAliases(value: string) {
   const key = value.trim().toLowerCase();
   if (!key) return [];
+  if (key === "local") {
+    return Array.from(
+      new Set(
+        localPartnerLocationKeys.flatMap((locationKey) => [
+          locationKey,
+          locationKey.replace(/[-_]/g, " "),
+          ...(partnerLocationAliases[locationKey] ?? []),
+        ]),
+      ),
+    );
+  }
   const aliases = partnerLocationAliases[key] ?? [];
   return Array.from(
     new Set(

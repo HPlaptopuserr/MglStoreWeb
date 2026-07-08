@@ -15,6 +15,7 @@ import {
 } from "./_components/ProfileDashboardShell";
 import { ProfileHero } from "./_components/ProfileHero";
 import { OrganizationAffiliationCard } from "./_components/OrganizationAffiliationCard";
+import { PersonalOrganizationOnboarding } from "./_components/personal-organization/PersonalOrganizationOnboarding";
 import {
   createProfileFormState,
   type ProfileFormState,
@@ -114,6 +115,10 @@ export default function ProfilePage() {
         openOrdersCount={openOrdersCount}
         ordersCount={ordersData.orders.length}
         points={accountData.points}
+      />
+      <PersonalOrganizationOnboarding
+        authFetch={authFetch}
+        onActivated={refreshUser}
       />
       <ProfileContentGrid
         contracts={accountData.contracts}

@@ -16,6 +16,7 @@ import {
   orgTaskRoutes,
   partnerRequestRoutes,
   partnerRoutes,
+  personalOrganizationRoutes,
   vendorSetupRoutes,
   warehouseSetupRoutes,
   businessCategoriesRoutes,
@@ -133,6 +134,7 @@ app.use("/api", partnerRoutes);
 app.use("/api", orgJoinRoutes);
 app.use("/api", orgMemberRoutes);
 app.use("/api", orgTaskRoutes);
+app.use("/api", personalOrganizationRoutes);
 app.use("/api", businessCategoriesRoutes);
 app.use("/api", dashboardRoutes);
 app.use("/api", jobApplicationRoutes);

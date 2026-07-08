@@ -322,6 +322,7 @@ model BusinessCategory {
 model Organization {
   id                              String                  @id @default(uuid())
   name                            String
+  nameNormalized                  String?
   slug                            String                  @unique
   taxId                           String                  @unique
   type                            OrgType                 @default(SUPPLIER)
@@ -414,6 +415,7 @@ model Organization {
 
   @@index([type])
   @@index([status])
+  @@index([nameNormalized])
   @@index([deletedAt])
   @@index([scheduledPermanentDeletionAt])
   @@index([subdomainEnabled])
@@ -1979,6 +1981,7 @@ enum OrgType {
 }
 
 enum OrgStatus {
+  PENDING
   ACTIVE
   SUSPENDED
   BLOCKED

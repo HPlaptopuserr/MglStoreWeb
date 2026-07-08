@@ -15,6 +15,7 @@ import { OrganizationsLoadingGrid } from "@/components/organisms/organizations/O
 import { OrganizationsEmptyState } from "@/components/organisms/organizations/OrganizationsEmptyState";
 
 const PAGE_SIZE = 24;
+const LOCAL_MEMBERS_LOCATION = "local";
 
 interface ApiPartner {
   id: string;
@@ -126,7 +127,12 @@ export default function OrganizationsPage() {
     const category = params.get("category");
     const search = params.get("search") ?? params.get("q");
 
-    if (location && isLocalAreaSlug(location)) setActiveLocation(location);
+    if (
+      location &&
+      (location === LOCAL_MEMBERS_LOCATION || isLocalAreaSlug(location))
+    ) {
+      setActiveLocation(location);
+    }
     if (category) setActiveFilter(category);
     if (search) {
       setSearchQuery(search);
