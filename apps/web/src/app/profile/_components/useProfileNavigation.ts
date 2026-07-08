@@ -45,13 +45,23 @@ export function useProfileNavigation({
   }, [onMembershipOpen, router]);
 
   useEffect(() => {
-    if (!loading && !user) router.replace(ACCOUNT_ROUTES.login);
+    if (!loading && !user) {
+      const next =
+        typeof window === "undefined"
+          ? ACCOUNT_ROUTES.profile
+          : `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      router.replace(
+        `${ACCOUNT_ROUTES.login}?next=${encodeURIComponent(next)}`,
+      );
+    }
   }, [loading, router, user]);
 
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
 
-    const organizationId = new URLSearchParams(window.location.search).get("org");
+    const organizationId = new URLSearchParams(window.location.search).get(
+      "org",
+    );
     if (!organizationId) return;
 
     const canManageOrganization = getManagedOrganizations(user).some(
@@ -59,7 +69,9 @@ export function useProfileNavigation({
     );
 
     if (canManageOrganization) {
-      router.replace(`/profile/organizations/${encodeURIComponent(organizationId)}`);
+      router.replace(
+        `/profile/organizations/${encodeURIComponent(organizationId)}`,
+      );
     }
   }, [router, user]);
 }
