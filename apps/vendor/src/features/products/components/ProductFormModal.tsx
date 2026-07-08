@@ -1,11 +1,16 @@
 "use client";
 
+import { useMemo } from "react";
 import { X, Banknote, BarChart2, Loader2, PackageSearch, Type, AlignLeft, AlertTriangle, ArrowRight, CalendarClock } from "lucide-react";
 import { BusinessCategory, FormState, Product } from "../types";
 import { CategorySelector } from "./CategorySelector";
 import { ImageUploadGrid } from "./ImageUploadGrid";
 import { ProductDataAssistantPanel } from "./ProductDataAssistantPanel";
 import { VendorSkuGenerator } from "./VendorSkuGenerator";
+import {
+  EBARIMT_TAX_PRODUCT_CODES,
+  type EbarimtTaxProductCode,
+} from "../data/ebarimt-tax-product-codes";
 
 interface Props {
   form: FormState;
@@ -22,9 +27,124 @@ interface Props {
 const TAX_TYPE_OPTIONS = [
   { value: "VAT_ABLE", label: "VAT_ABLE - НӨАТ-тэй" },
   { value: "VAT_FREE", label: "VAT_FREE - НӨАТ-аас чөлөөлөгдсөн" },
-  { value: "VAT_ZERO", label: "VAT_ZERO - НӨАТ 0%" },
+  { value: "VAT_ZERO", label: "VAT_ZERO - НӨАТ 0%" },  
   { value: "NOT_VAT", label: "NOT_VAT - НӨАТ ногдохгүй" },
 ] as const;
+
+const TAX_PRODUCT_CODE_REQUIRED_TYPES = new Set(["VAT_FREE", "VAT_ZERO", "NOT_VAT"]);
+
+const TAX_CODE_SYNONYMS: Record<string, string[]> = {
+  beef: ["үхрийн", "мах"],
+  beer: ["шар", "айраг"],
+  bread: ["талх"],
+  burger: ["сэндвич"],
+  cake: ["бялуу", "нарийн", "боов"],
+  candy: ["чихэр"],
+  chicken: ["тахиа"],
+  chocolate: ["шоколад"],
+  coffee: ["кофе"],
+  cola: ["ундаа"],
+  cookie: ["жигнэмэг"],
+  egg: ["өндөг"],
+  eggs: ["өндөг"],
+  fish: ["загас"],
+  hamburger: ["сэндвич"],
+  ice: ["зайрмаг"],
+  juice: ["жүүс", "шүүс"],
+  meat: ["мах"],
+  milk: ["сүү"],
+  noodle: ["гоймон"],
+  noodles: ["гоймон"],
+  pizza: ["пицца"],
+  pork: ["гахайн", "мах"],
+  pudding: ["амттан", "бялуу"],
+  rice: ["будаа"],
+  snack: ["амттан", "зууш"],
+  soda: ["ундаа"],
+  soup: ["шөл"],
+  tea: ["цай"],
+  vodka: ["архи"],
+  water: ["ус"],
+  wine: ["дарс"],
+};
+
+function normalizeTaxSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^0-9a-zа-яёөү]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getTaxSearchTokens(value: string) {
+  const tokens = normalizeTaxSearchText(value)
+    .split(" ")
+    .filter((token) => token.length >= 2);
+  const expanded = new Set<string>();
+
+  tokens.forEach((token) => {
+    expanded.add(token);
+    TAX_CODE_SYNONYMS[token]?.forEach((synonym) => expanded.add(synonym));
+  });
+
+  return Array.from(expanded);
+}
+
+function findBusinessCategoryName(categories: BusinessCategory[], id: string): string {
+  for (const category of categories) {
+    if (category.id === id) return category.name;
+    const childName = category.children ? findBusinessCategoryName(category.children, id) : "";
+    if (childName) return childName;
+  }
+  return "";
+}
+
+function scoreTaxProductCode(entry: EbarimtTaxProductCode, tokens: string[]) {
+  if (!tokens.length) return 0;
+
+  const fields = [
+    { value: entry.code, weight: 22 },
+    { value: entry.name, weight: 12 },
+    { value: entry.subClassName, weight: 8 },
+    { value: entry.className, weight: 6 },
+    { value: entry.groupName, weight: 4 },
+  ].map((field) => ({ ...field, normalized: normalizeTaxSearchText(field.value) }));
+
+  return tokens.reduce((score, token) => {
+    let tokenScore = 0;
+
+    fields.forEach((field) => {
+      if (!field.normalized) return;
+      if (field.normalized === token) {
+        tokenScore = Math.max(tokenScore, field.weight * 2);
+        return;
+      }
+      if (field.normalized.startsWith(token)) {
+        tokenScore = Math.max(tokenScore, field.weight + 5);
+        return;
+      }
+      if (field.normalized.includes(token)) {
+        tokenScore = Math.max(tokenScore, field.weight);
+      }
+    });
+
+    return score + tokenScore;
+  }, 0);
+}
+
+function getTaxProductCodeSuggestions(query: string) {
+  const tokens = getTaxSearchTokens(query);
+  if (!tokens.length) return [];
+
+  return EBARIMT_TAX_PRODUCT_CODES.map((entry) => ({
+    entry,
+    score: scoreTaxProductCode(entry, tokens),
+  }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.entry.code.localeCompare(b.entry.code))
+    .slice(0, 5)
+    .map((item) => item.entry);
+}
 
 export function ProductFormModal({
   form,
@@ -38,6 +158,22 @@ export function ProductFormModal({
   onSave,
 }: Props) {
   const isPreorder = form.supplyType === "CHINA_PREORDER";
+  const selectedCategoryName = useMemo(
+    () => findBusinessCategoryName(categories, form.businessCategoryId),
+    [categories, form.businessCategoryId],
+  );
+  const taxProductCodeQuery = [form.taxProductCode, form.name, selectedCategoryName]
+    .filter(Boolean)
+    .join(" ");
+  const taxProductCodeSuggestions = useMemo(
+    () => getTaxProductCodeSuggestions(taxProductCodeQuery),
+    [taxProductCodeQuery],
+  );
+  const selectedTaxProductCode = useMemo(
+    () => EBARIMT_TAX_PRODUCT_CODES.find((entry) => entry.code === form.taxProductCode.trim()),
+    [form.taxProductCode],
+  );
+  const isTaxProductCodeRequired = TAX_PRODUCT_CODE_REQUIRED_TYPES.has(form.taxType);
   const duplicateProduct = (form.sku || form.barcode)
     ? products.find((p) => {
         const skuMatch = form.sku && p.sku?.toLowerCase() === form.sku.toLowerCase();
@@ -268,14 +404,50 @@ export function ProductFormModal({
                         />
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Tax product code</label>
+                      <div className="space-y-2 sm:col-span-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <label className="text-sm font-semibold text-slate-700">Tax product code</label>
+                          {selectedTaxProductCode && (
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                              {selectedTaxProductCode.name}
+                            </span>
+                          )}
+                        </div>
                         <input
                           className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
-                          placeholder="Шаардлагатай бол"
+                          placeholder="Код эсвэл нэрээр хайх"
                           value={form.taxProductCode}
                           onChange={(e) => setForm((f) => ({ ...f, taxProductCode: e.target.value }))}
                         />
+                        {isTaxProductCodeRequired && !form.taxProductCode.trim() && (
+                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
+                            Энэ татварын төрөлд taxProductCode шаардлагатай. Доорх саналуудаас хамгийн ойрыг нь сонгоно уу.
+                          </p>
+                        )}
+                        {taxProductCodeSuggestions.length > 0 && (
+                          <div className="overflow-hidden rounded-xl border border-emerald-100 bg-white">
+                            {taxProductCodeSuggestions.map((entry) => (
+                              <button
+                                key={entry.code}
+                                type="button"
+                                onClick={() => setForm((f) => ({ ...f, taxProductCode: entry.code }))}
+                                className={`flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-emerald-50 ${
+                                  form.taxProductCode.trim() === entry.code ? "bg-emerald-50" : ""
+                                }`}
+                              >
+                                <span className="mt-0.5 rounded-lg bg-emerald-100 px-2 py-1 text-xs font-black text-emerald-700">
+                                  {entry.code}
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-bold text-slate-800">{entry.name}</span>
+                                  <span className="mt-0.5 block truncate text-xs font-medium text-slate-500">
+                                    {entry.className || entry.groupName || entry.subClassName}
+                                  </span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
