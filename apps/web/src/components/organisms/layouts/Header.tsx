@@ -348,13 +348,13 @@ export const Header = () => {
                     type="button"
                     onClick={() => setMglMenuOpen((open) => !open)}
                     aria-expanded={mglMenuOpen}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                    className={`flex h-full items-center gap-1.5 text-sm font-semibold transition-colors ${
                       pathname.startsWith("/franchise") ||
                       pathname.startsWith("/projects") ||
                       pathname.startsWith("/hr") ||
                       mglMenuOpen
-                        ? "bg-orange-50 text-orange-700"
-                        : "text-gray-600 hover:bg-orange-50 hover:text-orange-700"
+                        ? "text-orange-600"
+                        : "text-gray-600 hover:text-gray-900"
                     }`}
                   >
                     <FolderKanban size={14} />
@@ -402,20 +402,33 @@ export const Header = () => {
                         <FolderKanban size={15} />
                         Төсөл
                       </Link>
-                      <Link
-                        href="/organizations?location=local"
-                        className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
-                          pathname.startsWith("/organizations")
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
-                        }`}
-                      >
-                        <MapPinned size={15} />
-                        Орон нутгийн гишүүд
-                      </Link>
                     </div>
                   )}
                 </div>
+                <Link
+                  href="/mgl-store"
+                  className={`flex h-full items-center gap-1.5 text-sm font-semibold transition-colors ${
+                    pathname.startsWith("/mgl-store")
+                      ? "text-amber-600"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <Package size={14} />
+                  MGL Store
+                </Link>
+                <Link
+                  href="/organizations?location=local"
+                  title="Орон нутгийн гишүүд"
+                  aria-label="Орон нутгийн гишүүд"
+                  className={`flex h-full items-center gap-1.5 text-sm font-semibold transition-colors ${
+                    pathname.startsWith("/organizations")
+                      ? "text-emerald-700"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <MapPinned size={14} />
+                  Орон нутаг
+                </Link>
               </div>
             </div>
           </div>
