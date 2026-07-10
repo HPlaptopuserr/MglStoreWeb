@@ -39,6 +39,7 @@ export {
   teamRoutes,
   upgradePlansRoutes,
   adminGrantPlanRoutes,
+  appVersionRoutes,
 } from "./system";
 
 export { formRoutes } from "./forms";

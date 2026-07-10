@@ -3,3 +3,4 @@ export { default as siteSettingsRoutes } from "./site-settings.routes";
 export { default as teamRoutes } from "./team.routes";
 export { default as upgradePlansRoutes } from "./upgrade-plans.routes";
 export { default as adminGrantPlanRoutes } from "./admin-grant-plan.routes";
+export { default as appVersionRoutes } from "./app-version.routes";
