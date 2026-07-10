@@ -629,6 +629,9 @@ model OrganizationTaskAssignee {
   submittedAt    DateTime?
   approvedAt     DateTime?
   approvedById   String?
+  performanceStars   Int?
+  productivityPercent Int?
+  evaluationNote     String?
   createdAt      DateTime                        @default(now())
   updatedAt      DateTime                        @updatedAt
   task           OrganizationTask                @relation(fields: [taskId], references: [id], onDelete: Cascade)

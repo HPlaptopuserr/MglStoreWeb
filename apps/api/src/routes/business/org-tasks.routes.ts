@@ -205,6 +205,9 @@ function toTaskPayload(task: TaskWithRelations) {
       submittedAt: assignee.submittedAt,
       approvedAt: assignee.approvedAt,
       approvedById: assignee.approvedById,
+      performanceStars: assignee.performanceStars,
+      productivityPercent: assignee.productivityPercent,
+      evaluationNote: assignee.evaluationNote,
       assignedAt: assignee.createdAt,
       updatedAt: assignee.updatedAt,
       fullName: assignee.user.profile?.fullName || assignee.user.email,
@@ -632,11 +635,36 @@ router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
   try {
     const user = getAuthUser(req);
     const { taskId } = req.params;
-    const body = req.body as { assigneeId?: string; note?: string };
+    const body = req.body as {
+      assigneeId?: string;
+      note?: string;
+      performanceStars?: number;
+      productivityPercent?: number;
+    };
     const assigneeId = String(body.assigneeId || "").trim();
+    const performanceStars = Number(body.performanceStars);
+    const productivityPercent = Number(body.productivityPercent);
 
     if (!assigneeId) {
       return res.status(400).json({ message: "Батлах ажилтан шаардлагатай" });
+    }
+    if (
+      !Number.isInteger(performanceStars) ||
+      performanceStars < 1 ||
+      performanceStars > 10
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Гүйцэтгэлийг 1-10 одоор үнэлнэ үү" });
+    }
+    if (
+      !Number.isInteger(productivityPercent) ||
+      productivityPercent < 0 ||
+      productivityPercent > 100
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Бүтээмжийн хувь 0-100 хооронд байна" });
     }
 
     const assignment = await prisma.organizationTaskAssignee.findFirst({
@@ -686,6 +714,9 @@ router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
           completedAt: new Date(),
           approvedAt: new Date(),
           approvedById: user.userId,
+          performanceStars,
+          productivityPercent,
+          evaluationNote: body.note?.trim() || null,
         },
       }),
       prisma.organizationTaskApprovalLog.create({
