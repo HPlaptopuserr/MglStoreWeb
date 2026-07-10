@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import { prisma, type Prisma } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
+import { sendChatPush } from "../../services/push-notification.service";
 
 const router: ExpressRouter = Router();
 const CALL_SIGNAL_PREFIX = "__MGL_CALL_SIGNAL__";
@@ -20,6 +21,68 @@ function callSignalType(content: string): string | null {
     return null;
   }
 }
+
+async function queueMessagePush(input: {
+  conversationId: string;
+  senderId: string;
+  messageId: string;
+  messageType: string;
+  content: string;
+}) {
+  try {
+    const [sender, conversation] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: input.senderId },
+        select: { email: true, profile: { select: { fullName: true } } },
+      }),
+      prisma.conversation.findUnique({
+        where: { id: input.conversationId },
+        select: { name: true, type: true },
+      }),
+    ]);
+    const senderName = sender?.profile?.fullName || sender?.email || "MGL Business";
+    await sendChatPush({
+      ...input,
+      senderName,
+      conversationName:
+        conversation?.type === "GROUP" && conversation.name
+          ? conversation.name
+          : senderName,
+      isCall: callSignalType(input.content) === "offer",
+    });
+  } catch (error) {
+    console.error("dm push notification error", error);
+  }
+}
+
+router.post("/dm/push-token", requireAuth, async (req, res) => {
+  const user = (req as any).user as AuthPayload;
+  const { token, platform } = req.body as { token?: string; platform?: string };
+  if (!token?.trim()) {
+    return res.status(400).json({ message: "Push token шаардлагатай" });
+  }
+  await prisma.pushToken.upsert({
+    where: { token: token.trim() },
+    create: {
+      userId: user.userId,
+      token: token.trim(),
+      platform: platform || "android",
+    },
+    update: { userId: user.userId, platform: platform || "android" },
+  });
+  return res.status(204).send();
+});
+
+router.delete("/dm/push-token", requireAuth, async (req, res) => {
+  const user = (req as any).user as AuthPayload;
+  const { token } = req.body as { token?: string };
+  if (token?.trim()) {
+    await prisma.pushToken.deleteMany({
+      where: { token: token.trim(), userId: user.userId },
+    });
+  }
+  return res.status(204).send();
+});
 
 // ── File upload config ───────────────────────────────────────────────────
 const uploadsDir = path.resolve(__dirname, "../../../uploads/dm");
@@ -769,6 +832,14 @@ router.post("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
       }),
     ]);
 
+    void queueMessagePush({
+      conversationId: id,
+      senderId: user.userId,
+      messageId: message.id,
+      messageType: message.type,
+      content: message.content,
+    });
+
     return res.status(201).json({
       id: message.id,
       type: message.type,
@@ -846,6 +917,14 @@ router.post(
           data: { lastReadAt: message.createdAt },
         }),
       ]);
+
+      void queueMessagePush({
+        conversationId: id,
+        senderId: user.userId,
+        messageId: message.id,
+        messageType: message.type,
+        content: message.content,
+      });
 
       return res.status(201).json({
         id: message.id,
@@ -930,6 +1009,14 @@ router.post(
           data: { lastReadAt: message.createdAt },
         }),
       ]);
+
+      void queueMessagePush({
+        conversationId: id,
+        senderId: user.userId,
+        messageId: message.id,
+        messageType: message.type,
+        content: message.content,
+      });
 
       return res.status(201).json({
         id: message.id,

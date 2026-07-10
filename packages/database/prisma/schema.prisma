@@ -72,6 +72,7 @@ model User {
   orgJoinRequests                  OrgJoinRequest[]               @relation("UserOrgJoinRequests")
   conversationParticipants         ConversationParticipant[]
   sentDirectMessages               DirectMessage[]                @relation("DirectMessageSender")
+  pushTokens                       PushToken[]
   posShifts                        PosShift[]                     @relation("PosShiftCashier")
   posSales                         PosSale[]                      @relation("PosSaleCashier")
   posCreditSales                   PosCreditSale[]                @relation("PosCreditSaleCashier")
@@ -2280,6 +2281,18 @@ model DirectMessage {
 
   @@index([conversationId, createdAt])
   @@index([senderId])
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum ConversationType {
