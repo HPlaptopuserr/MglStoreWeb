@@ -4,14 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { X, CheckCircle2, Loader2, QrCode, Smartphone } from "lucide-react";
 import { API } from "@/lib/api";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
-import { MobileBankAppLinks } from "@/components/molecules/payments/MobileBankAppLinks";
-
-interface DeepLink {
-  name: string;
-  description: string;
-  logo: string;
-  link: string;
-}
+import { MobileBankAppLinks, type PaymentDeepLink } from "@/components/molecules/payments/MobileBankAppLinks";
 
 interface ServiceQPayModalProps {
   orderId: string;
@@ -19,7 +12,7 @@ interface ServiceQPayModalProps {
   total: number;
   qrImage: string;
   invoiceId: string;
-  deepLinks: DeepLink[];
+  deepLinks: PaymentDeepLink[];
   request?: (url: string, init?: RequestInit) => Promise<Response>;
   onSuccess: () => void;
   onClose: () => void;

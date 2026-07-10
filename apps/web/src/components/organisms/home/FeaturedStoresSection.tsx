@@ -5,6 +5,7 @@ import { ArrowRight, Loader2, Store } from "lucide-react";
 import Link from "next/link";
 import { FeaturedStoreCard } from "./FeaturedStoreCard";
 import { API } from "@/lib/api";
+import type { CompanyCard } from "@mgl/types";
 
 interface ApiPartner {
   id: string;
@@ -20,8 +21,10 @@ interface ApiPartner {
   publicInfoScore?: number;
 }
 
+type FeaturedStore = CompanyCard & { publicInfoScore: number };
+
 export const FeaturedStoresSection = () => {
-  const [stores, setStores] = useState<any[]>([]);
+  const [stores, setStores] = useState<FeaturedStore[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -33,8 +36,8 @@ export const FeaturedStoresSection = () => {
           setStores([]);
           return;
         }
-        const raw = await res.json();
-        const data = Array.isArray(raw) ? raw : raw?.data || [];
+        const raw = (await res.json()) as ApiPartner[] | { data?: ApiPartner[] };
+        const data = Array.isArray(raw) ? raw : raw.data ?? [];
 
         const activeStores = data
           .filter((p: ApiPartner) => p.status === "ACTIVE")
@@ -55,7 +58,7 @@ export const FeaturedStoresSection = () => {
             publicInfoScore: p.publicInfoScore || 0,
           }));
 
-        activeStores.sort((a: any, b: any) => {
+        activeStores.sort((a, b) => {
           const infoDiff = (b.publicInfoScore || 0) - (a.publicInfoScore || 0);
           if (infoDiff !== 0) return infoDiff;
           if (a.isInvestor && !b.isInvestor) return -1;

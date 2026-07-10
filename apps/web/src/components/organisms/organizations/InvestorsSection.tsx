@@ -2,7 +2,7 @@
 
 import { Crown } from "lucide-react";
 import { InvestorCard } from "@/components/molecules/InvestorCard";
-import type { Investor } from "@/app/organizations/page";
+import type { Investor } from "@/features/organizations/types";
 
 interface InvestorsSectionProps {
   investors: Investor[];

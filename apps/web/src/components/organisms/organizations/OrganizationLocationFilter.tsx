@@ -25,7 +25,7 @@ export function OrganizationLocationFilter({
   };
 
   return (
-    <div className="border-b border-gray-200/70 bg-white">
+    <div className="border-b border-slate-200 bg-white shadow-[0_8px_30px_-26px_rgba(15,23,42,0.4)]">
       <div className="relative mx-auto max-w-7xl px-3 sm:px-6">
         <div className="pointer-events-none absolute bottom-0 left-3 top-0 z-10 w-12 bg-gradient-to-r from-white to-transparent sm:left-6" />
         <button
@@ -39,12 +39,11 @@ export function OrganizationLocationFilter({
 
         <div
           ref={listRef}
-          className="flex items-center gap-1.5 overflow-x-auto py-3 pl-1 scrollbar-hide sm:gap-2 sm:py-3.5"
+          className="flex snap-x items-center gap-2 overflow-x-auto py-3 pl-1 pr-10 scrollbar-hide sm:gap-2.5 sm:py-4 sm:pr-12"
           style={{ scrollbarWidth: "none" }}
         >
           <span className="mr-1 hidden shrink-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400 sm:flex">
-            <MapPin size={13} />
-            Байршил
+            <MapPin size={13} /> Байршил сонгох
           </span>
           {locations.map((location) => {
             const isActive = activeLocation === location;
@@ -53,10 +52,11 @@ export function OrganizationLocationFilter({
                 key={location}
                 type="button"
                 onClick={() => onChange(location)}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-all sm:px-4 sm:py-2 ${
+                aria-pressed={isActive}
+                className={`inline-flex min-h-10 shrink-0 snap-start items-center gap-1.5 rounded-xl px-3.5 text-[10px] font-black uppercase tracking-wide transition-all sm:px-4 sm:text-[11px] ${
                   isActive
-                    ? "bg-gray-900 text-white shadow-sm"
-                    : "border border-gray-200 bg-white text-gray-500 hover:border-[#FFAD02]/40 hover:text-gray-800"
+                    ? "bg-slate-950 text-white shadow-lg shadow-slate-950/15 ring-2 ring-amber-300 ring-offset-2"
+                    : "border border-slate-200 bg-slate-50 text-slate-500 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                 }`}
               >
                 {location !== "all" && <MapPin size={12} />}

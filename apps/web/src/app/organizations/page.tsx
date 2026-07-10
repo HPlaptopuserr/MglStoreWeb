@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { API } from "@/lib/api";
 import { useBusinessCategories } from "@/hooks/useBusinessCategories";
-import { getLocalAreaFromText, isLocalAreaSlug } from "@mgl/ui";
+import { isLocalAreaSlug } from "@mgl/ui";
+import { getInvestors, getPartnersPage } from "@/features/organizations/api";
+import { mapPartnerToStore } from "@/features/organizations/mappers";
+import { getUserFacingHttpError } from "@/shared/api/http-client";
 
 import { OrganizationsHero } from "@/components/organisms/organizations/OrganizationsHero";
 import { InvestorsSection } from "@/components/organisms/organizations/InvestorsSection";
@@ -13,98 +15,19 @@ import { OrganizationsSectionHeader } from "@/components/organisms/organizations
 import { OrganizationsGrid } from "@/components/organisms/organizations/OrganizationsGrid";
 import { OrganizationsLoadingGrid } from "@/components/organisms/organizations/OrganizationsLoadingGrid";
 import { OrganizationsEmptyState } from "@/components/organisms/organizations/OrganizationsEmptyState";
+import { OrganizationsErrorState } from "@/components/organisms/organizations/OrganizationsErrorState";
+import type { Investor, OrganizationStore } from "@/features/organizations/types";
 
 const PAGE_SIZE = 24;
 const LOCAL_MEMBERS_LOCATION = "local";
 
-interface ApiPartner {
-  id: string;
-  name: string;
-  slug: string;
-  logoUrl?: string;
-  bannerUrl?: string;
-  status: string;
-  businessCategory?: string;
-  address?: string | null;
-  type?: string;
-  isInvestor?: boolean;
-  investorTier?: "TOP" | "STRATEGIC" | "INVESTOR" | null;
-  investorLevel?: string | null;
-  investmentAmount?: number | null;
-}
-
-export interface Investor {
-  id: string;
-  organizationId: string;
-  name: string;
-  slug: string;
-  logoUrl: string | null;
-  tier: "TOP" | "STRATEGIC" | "INVESTOR";
-  tierLabel: string;
-  featured: boolean;
-  investmentLevel: string | null;
-  investmentAmount?: number | null;
-  description: string | null;
-}
-
-export interface StoreItem {
-  id: string;
-  name: string;
-  slug: string;
-  logo: string;
-  banner: string;
-  isOpen: boolean;
-  category: string;
-  rating: number;
-  deliveryTime: string;
-  products: string[];
-  categorySlugs: string[];
-  address?: string | null;
-  localAreaSlug?: string;
-  localAreaLabel?: string;
-  isInvestor?: boolean;
-  investmentAmount?: number;
-}
 
 function normalizeCategoryKey(value: string) {
   return value.trim().toLowerCase();
 }
 
-function parseCategorySlugs(raw?: string) {
-  if (!raw) return [] as string[];
-  return raw
-    .split(",")
-    .map((v) => normalizeCategoryKey(v))
-    .filter(Boolean);
-}
-
-function mapPartner(p: ApiPartner): StoreItem {
-  const parsedSlugs = parseCategorySlugs(p.businessCategory);
-  const fallbackType = p.type ? normalizeCategoryKey(p.type) : "business";
-  const categorySlugs = parsedSlugs.length > 0 ? parsedSlugs : [fallbackType];
-  const localArea = getLocalAreaFromText(p.address);
-  return {
-    id: p.id,
-    name: p.name,
-    slug: p.slug,
-    logo: p.logoUrl || `https://picsum.photos/100/100?random=${p.id}`,
-    banner: p.bannerUrl || `https://picsum.photos/1200/400?random=${p.id}`,
-    isOpen: true,
-    category: categorySlugs[0],
-    categorySlugs,
-    rating: 5.0,
-    deliveryTime: "N/A",
-    products: [],
-    address: p.address,
-    localAreaSlug: localArea?.slug,
-    localAreaLabel: localArea?.label,
-    isInvestor: p.isInvestor || false,
-    investmentAmount: p.investmentAmount || 0,
-  };
-}
-
 export default function OrganizationsPage() {
-  const [stores, setStores] = useState<StoreItem[]>([]);
+  const [stores, setStores] = useState<OrganizationStore[]>([]);
   const [investors, setInvestors] = useState<Investor[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
@@ -115,6 +38,8 @@ export default function OrganizationsPage() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [filtersReady, setFiltersReady] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const { categories: businessCategories } = useBusinessCategories();
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -158,7 +83,7 @@ export default function OrganizationsPage() {
     setPage(1);
   }, [activeFilter, activeLocation]);
 
-  const buildUrl = useCallback(
+  const buildQuery = useCallback(
     (p: number) => {
       const params = new URLSearchParams({
         status: "ACTIVE",
@@ -168,7 +93,7 @@ export default function OrganizationsPage() {
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (activeFilter !== "all") params.set("category", activeFilter);
       if (activeLocation !== "all") params.set("location", activeLocation);
-      return `${API}/partners?${params.toString()}`;
+      return params.toString();
     },
     [debouncedSearch, activeFilter, activeLocation],
   );
@@ -190,33 +115,31 @@ export default function OrganizationsPage() {
     const requestId = fetchSequenceRef.current + 1;
     fetchSequenceRef.current = requestId;
     setIsLoading(true);
+    setErrorMessage(null);
     setStores([]);
 
     const fetchPartners = async () => {
       try {
         const [partnersRes, investorsRes] = await Promise.all([
-          fetch(buildUrl(1)),
-          investors.length === 0 ? fetch(`${API}/investors`) : Promise.resolve(null),
+          getPartnersPage(buildQuery(1)),
+          investors.length === 0 ? getInvestors() : Promise.resolve(null),
         ]);
 
-        if (partnersRes.ok) {
-          const raw = await partnersRes.json();
-          if (fetchSequenceRef.current !== requestId) return;
-          const data: ApiPartner[] = Array.isArray(raw) ? raw : raw?.data || [];
-          const pagination = raw?.pagination;
-          setStores(data.map(mapPartner));
-          setTotal(pagination?.total ?? data.length);
-          setTotalPages(pagination?.totalPages ?? 1);
-          setPage(1);
-        }
+        if (fetchSequenceRef.current !== requestId) return;
+        setStores(partnersRes.data.map(mapPartnerToStore));
+        setTotal(partnersRes.pagination.total);
+        setTotalPages(partnersRes.pagination.totalPages);
+        setPage(1);
 
-        if (investorsRes?.ok) {
-          const invData = await investorsRes.json();
+        if (investorsRes) {
           if (fetchSequenceRef.current !== requestId) return;
-          if (Array.isArray(invData)) setInvestors(invData);
+          setInvestors(investorsRes);
         }
       } catch (error) {
         console.error("Error fetching data:", error);
+        if (fetchSequenceRef.current === requestId) {
+          setErrorMessage(getUserFacingHttpError(error));
+        }
       } finally {
         if (fetchSequenceRef.current === requestId) {
           setIsLoading(false);
@@ -226,19 +149,15 @@ export default function OrganizationsPage() {
 
     fetchPartners();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtersReady, buildUrl]);
+  }, [filtersReady, buildQuery, retryKey]);
 
   const handleLoadMore = async () => {
     const nextPage = page + 1;
     setIsLoadingMore(true);
     try {
-      const res = await fetch(buildUrl(nextPage));
-      if (res.ok) {
-        const raw = await res.json();
-        const data: ApiPartner[] = Array.isArray(raw) ? raw : raw?.data || [];
-        setStores((prev) => [...prev, ...data.map(mapPartner)]);
-        setPage(nextPage);
-      }
+      const result = await getPartnersPage(buildQuery(nextPage));
+      setStores((current) => [...current, ...result.data.map(mapPartnerToStore)]);
+      setPage(nextPage);
     } catch (error) {
       console.error("Error loading more:", error);
     } finally {
@@ -254,6 +173,8 @@ export default function OrganizationsPage() {
   }, [businessCategories]);
 
   const hasMore = page < totalPages;
+  const isLocalMode =
+    activeLocation === LOCAL_MEMBERS_LOCATION || isLocalAreaSlug(activeLocation);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -263,6 +184,7 @@ export default function OrganizationsPage() {
         categoriesCount={categories.length - 1}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        isLocalMode={isLocalMode}
       />
 
       {investors.length > 0 && <InvestorsSection investors={investors} />}
@@ -280,10 +202,15 @@ export default function OrganizationsPage() {
       />
 
       <div className="mx-auto max-w-7xl px-3 pt-6 sm:px-6 sm:pt-8">
-        <OrganizationsSectionHeader resultCount={total} />
+        <OrganizationsSectionHeader resultCount={total} isLocalMode={isLocalMode} />
 
         {isLoading ? (
           <OrganizationsLoadingGrid />
+        ) : errorMessage ? (
+          <OrganizationsErrorState
+            message={errorMessage}
+            onRetry={() => setRetryKey((current) => current + 1)}
+          />
         ) : stores.length > 0 ? (
           <>
             <OrganizationsGrid stores={stores} />
@@ -313,7 +240,7 @@ export default function OrganizationsPage() {
             )}
           </>
         ) : (
-          <OrganizationsEmptyState searchQuery={searchQuery} />
+          <OrganizationsEmptyState searchQuery={searchQuery} isLocalMode={isLocalMode} />
         )}
       </div>
     </div>

@@ -1,13 +1,13 @@
 ﻿import React from "react";
 import { CheckCircle2, Loader2, QrCode, Smartphone } from "lucide-react";
 import { QrGenerator } from "@mgl/ui";
-import { MobileBankAppLinks } from "@/components/molecules/payments/MobileBankAppLinks";
+import { MobileBankAppLinks, type PaymentDeepLink } from "@/components/molecules/payments/MobileBankAppLinks";
 
 interface QPayData {
   invoiceId: string;
   qrImage: string;
   qrText: string;
-  urls: any[];
+  urls: PaymentDeepLink[];
   amount: number;
 }
 
