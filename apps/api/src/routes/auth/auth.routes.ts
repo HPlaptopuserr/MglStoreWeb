@@ -67,6 +67,28 @@ const authRateLimitMessage = {
     "Нэвтрэх оролдлого түр хугацаанд хязгаарлагдлаа. Хэсэг хүлээгээд дахин оролдоно уу.",
 };
 
+const MOBILE_REFRESH_TOKEN_DAYS = 30;
+
+function hashRefreshToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+async function issueMobileRefreshToken(userId: string, req: Request) {
+  const refreshToken = crypto.randomBytes(48).toString("base64url");
+  await prisma.userSession.create({
+    data: {
+      userId,
+      refreshHash: hashRefreshToken(refreshToken),
+      userAgent: req.get("user-agent") || null,
+      ip: req.ip || null,
+      expiresAt: new Date(
+        Date.now() + MOBILE_REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000,
+      ),
+    },
+  });
+  return refreshToken;
+}
+
 const rateLimitIdentifier = (req: Request): string | null => {
   if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
     return null;
@@ -1414,9 +1436,11 @@ router.post("/login", loginAttemptLimiter, async (req, res) => {
     );
 
     const safeEmail = user.email?.endsWith("@temp.local") ? null : user.email;
+    const refreshToken = await issueMobileRefreshToken(user.id, req);
 
     return res.json({
       accessToken,
+      refreshToken,
       user: {
         id: user.id,
         email: safeEmail,
@@ -1438,6 +1462,58 @@ router.post("/login", loginAttemptLimiter, async (req, res) => {
   } catch (error) {
     console.error("[login error]", error);
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+  }
+});
+
+router.post("/refresh", async (req, res) => {
+  const refreshToken =
+    typeof req.body?.refreshToken === "string" ? req.body.refreshToken : "";
+  if (!refreshToken) {
+    return res.status(401).json({ message: "Refresh token шаардлагатай" });
+  }
+
+  try {
+    const session = await prisma.userSession.findUnique({
+      where: { refreshHash: hashRefreshToken(refreshToken) },
+      include: { user: { include: { profile: true } } },
+    });
+    if (
+      !session ||
+      session.revokedAt ||
+      session.expiresAt <= new Date() ||
+      !session.user.isActive ||
+      session.user.deletedAt
+    ) {
+      return res.status(401).json({ message: "Session хугацаа дууссан" });
+    }
+
+    const orgInfo = await resolveLoginOrganization(session.userId);
+    const accessToken = jwt.sign(
+      {
+        userId: session.user.id,
+        email: session.user.email,
+        role: session.user.role,
+        organizationId: orgInfo?.organizationId || null,
+        orgRole: orgInfo?.orgRole || null,
+      },
+      JWT_SECRET,
+      { expiresIn: "1d" },
+    );
+    const nextRefreshToken = crypto.randomBytes(48).toString("base64url");
+    await prisma.userSession.update({
+      where: { id: session.id },
+      data: {
+        refreshHash: hashRefreshToken(nextRefreshToken),
+        expiresAt: new Date(
+          Date.now() + MOBILE_REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000,
+        ),
+      },
+    });
+
+    return res.json({ accessToken, refreshToken: nextRefreshToken });
+  } catch (error) {
+    console.error("[refresh session error]", error);
+    return res.status(500).json({ message: "Session шинэчлэхэд алдаа гарлаа" });
   }
 });
 
