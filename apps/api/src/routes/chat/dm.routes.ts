@@ -6,6 +6,20 @@ import { prisma, type Prisma } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
+const CALL_SIGNAL_PREFIX = "__MGL_CALL_SIGNAL__";
+
+function callSignalType(content: string): string | null {
+  if (!content.startsWith(CALL_SIGNAL_PREFIX)) return null;
+  try {
+    const encoded = content.slice(CALL_SIGNAL_PREFIX.length);
+    const payload = JSON.parse(
+      Buffer.from(encoded, "base64url").toString("utf8"),
+    ) as { type?: unknown };
+    return typeof payload.type === "string" ? payload.type : null;
+  } catch {
+    return null;
+  }
+}
 
 // ── File upload config ───────────────────────────────────────────────────
 const uploadsDir = path.resolve(__dirname, "../../../uploads/dm");
@@ -55,6 +69,111 @@ router.use("/dm/uploads", requireAuth, (req, res, next) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// GET /dm/calls/incoming — latest incoming WebRTC offer for foreground poll
+// ─────────────────────────────────────────────────────────────────────────
+router.get("/dm/calls/incoming", requireAuth, async (req, res) => {
+  const user = (req as any).user as AuthPayload;
+  const requestedAfter = req.query.after
+    ? new Date(String(req.query.after))
+    : null;
+  const after =
+    requestedAfter && !Number.isNaN(requestedAfter.getTime())
+      ? requestedAfter
+      : new Date(Date.now() - 2 * 60 * 1000);
+
+  try {
+    const messages = await prisma.directMessage.findMany({
+      where: {
+        type: "TEXT",
+        senderId: { not: user.userId },
+        content: { startsWith: CALL_SIGNAL_PREFIX },
+        createdAt: { gt: after },
+        conversation: {
+          type: "DIRECT",
+          participants: {
+            some: { userId: user.userId, status: "ACCEPTED" },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        sender: {
+          select: {
+            id: true,
+            email: true,
+            profile: { select: { fullName: true, avatarUrl: true } },
+          },
+        },
+        conversation: {
+          include: {
+            participants: {
+              where: { status: { not: "DECLINED" } },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    profile: { select: { fullName: true, avatarUrl: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const message = messages.find(
+      (candidate) => callSignalType(candidate.content) === "offer",
+    );
+
+    if (!message) return res.json(null);
+    const conversation = message.conversation;
+    const otherParticipants = conversation.participants.filter(
+      (participant) => participant.userId !== user.userId,
+    );
+    const peer = otherParticipants[0]?.user;
+
+    return res.json({
+      conversation: {
+        id: conversation.id,
+        type: conversation.type,
+        name: peer?.profile?.fullName || peer?.email || "Хэрэглэгч",
+        avatarUrl: peer?.profile?.avatarUrl || null,
+        participants: otherParticipants.map((participant) => ({
+          id: participant.user.id,
+          fullName: participant.user.profile?.fullName || "",
+          avatarUrl: participant.user.profile?.avatarUrl || null,
+          email: participant.user.email,
+          role: participant.role,
+          status: participant.status,
+        })),
+        lastMessage: null,
+        lastReadAt: null,
+        updatedAt: conversation.updatedAt,
+        requestStatus: "ACCEPTED",
+        isRequest: false,
+      },
+      message: {
+        id: message.id,
+        type: message.type,
+        content: message.content,
+        senderId: message.senderId,
+        senderName: message.sender.profile?.fullName || message.sender.email,
+        senderAvatar: message.sender.profile?.avatarUrl || null,
+        createdAt: message.createdAt,
+        isOwn: false,
+      },
+    });
+  } catch (error) {
+    console.error("dm incoming call poll error", error);
+    return res
+      .status(500)
+      .json({ message: "Incoming дуудлага шалгахад алдаа гарлаа" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // GET /dm/conversations — list conversations for current user
 // ─────────────────────────────────────────────────────────────────────────
 router.get("/dm/conversations", requireAuth, async (req, res) => {
@@ -66,9 +185,9 @@ router.get("/dm/conversations", requireAuth, async (req, res) => {
       include: {
         conversation: {
           include: {
-        participants: {
-          where: { status: { not: "DECLINED" } },
-          include: {
+            participants: {
+              where: { status: { not: "DECLINED" } },
+              include: {
                 user: {
                   select: {
                     id: true,
@@ -216,7 +335,7 @@ router.post("/dm/conversations", requireAuth, async (req, res) => {
           type: "GROUP",
           name: groupName,
           participants: {
-          create: [
+            create: [
               { userId: user.userId, role: "ADMIN", status: "ACCEPTED" },
               ...activeIds.map((id) => ({
                 userId: id,
@@ -272,24 +391,26 @@ router.post("/dm/conversations", requireAuth, async (req, res) => {
     });
 
     if (existing) {
-      const currentParticipant = await prisma.conversationParticipant.findUnique({
-        where: {
-          conversationId_userId: {
-            conversationId: existing.id,
-            userId: user.userId,
+      const currentParticipant =
+        await prisma.conversationParticipant.findUnique({
+          where: {
+            conversationId_userId: {
+              conversationId: existing.id,
+              userId: user.userId,
+            },
           },
-        },
-        select: { status: true },
-      });
-      const recipientParticipant = await prisma.conversationParticipant.findUnique({
-        where: {
-          conversationId_userId: {
-            conversationId: existing.id,
-            userId: recipientId,
+          select: { status: true },
+        });
+      const recipientParticipant =
+        await prisma.conversationParticipant.findUnique({
+          where: {
+            conversationId_userId: {
+              conversationId: existing.id,
+              userId: recipientId,
+            },
           },
-        },
-        select: { status: true },
-      });
+          select: { status: true },
+        });
       if (recipientParticipant?.status === "DECLINED") {
         await prisma.conversationParticipant.update({
           where: {
@@ -413,82 +534,100 @@ router.get("/dm/conversations/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/dm/conversations/:id/request/accept", requireAuth, async (req, res) => {
-  const user = (req as any).user as AuthPayload;
-  const { id } = req.params;
+router.patch(
+  "/dm/conversations/:id/request/accept",
+  requireAuth,
+  async (req, res) => {
+    const user = (req as any).user as AuthPayload;
+    const { id } = req.params;
 
-  try {
-    const participant = await prisma.conversationParticipant.findUnique({
-      where: {
-        conversationId_userId: { conversationId: id, userId: user.userId },
-      },
-      include: { conversation: { select: { type: true } } },
-    });
+    try {
+      const participant = await prisma.conversationParticipant.findUnique({
+        where: {
+          conversationId_userId: { conversationId: id, userId: user.userId },
+        },
+        include: { conversation: { select: { type: true } } },
+      });
 
-    if (!participant) {
-      return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
+      if (!participant) {
+        return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
+      }
+      if (participant.conversation.type !== "DIRECT") {
+        return res
+          .status(400)
+          .json({ message: "Group chat request биш байна" });
+      }
+      if (participant.status === "DECLINED") {
+        return res
+          .status(400)
+          .json({ message: "Энэ request татгалзсан байна" });
+      }
+
+      await prisma.conversationParticipant.update({
+        where: {
+          conversationId_userId: { conversationId: id, userId: user.userId },
+        },
+        data: { status: "ACCEPTED", joinedAt: new Date() },
+      });
+      await prisma.conversation.update({
+        where: { id },
+        data: { updatedAt: new Date() },
+      });
+
+      return res.json({ ok: true });
+    } catch (error) {
+      console.error("dm accept request error", error);
+      return res
+        .status(500)
+        .json({ message: "Chat request зөвшөөрөхөд алдаа гарлаа" });
     }
-    if (participant.conversation.type !== "DIRECT") {
-      return res.status(400).json({ message: "Group chat request биш байна" });
+  },
+);
+
+router.patch(
+  "/dm/conversations/:id/request/decline",
+  requireAuth,
+  async (req, res) => {
+    const user = (req as any).user as AuthPayload;
+    const { id } = req.params;
+
+    try {
+      const participant = await prisma.conversationParticipant.findUnique({
+        where: {
+          conversationId_userId: { conversationId: id, userId: user.userId },
+        },
+        include: { conversation: { select: { type: true } } },
+      });
+
+      if (!participant) {
+        return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
+      }
+      if (participant.conversation.type !== "DIRECT") {
+        return res
+          .status(400)
+          .json({ message: "Group chat request биш байна" });
+      }
+
+      await prisma.conversationParticipant.update({
+        where: {
+          conversationId_userId: { conversationId: id, userId: user.userId },
+        },
+        data: { status: "DECLINED" },
+      });
+      await prisma.conversation.update({
+        where: { id },
+        data: { updatedAt: new Date() },
+      });
+
+      return res.json({ ok: true });
+    } catch (error) {
+      console.error("dm decline request error", error);
+      return res
+        .status(500)
+        .json({ message: "Chat request татгалзахад алдаа гарлаа" });
     }
-    if (participant.status === "DECLINED") {
-      return res.status(400).json({ message: "Энэ request татгалзсан байна" });
-    }
-
-    await prisma.conversationParticipant.update({
-      where: {
-        conversationId_userId: { conversationId: id, userId: user.userId },
-      },
-      data: { status: "ACCEPTED", joinedAt: new Date() },
-    });
-    await prisma.conversation.update({
-      where: { id },
-      data: { updatedAt: new Date() },
-    });
-
-    return res.json({ ok: true });
-  } catch (error) {
-    console.error("dm accept request error", error);
-    return res.status(500).json({ message: "Chat request зөвшөөрөхөд алдаа гарлаа" });
-  }
-});
-
-router.patch("/dm/conversations/:id/request/decline", requireAuth, async (req, res) => {
-  const user = (req as any).user as AuthPayload;
-  const { id } = req.params;
-
-  try {
-    const participant = await prisma.conversationParticipant.findUnique({
-      where: {
-        conversationId_userId: { conversationId: id, userId: user.userId },
-      },
-      include: { conversation: { select: { type: true } } },
-    });
-
-    if (!participant) {
-      return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
-    }
-    if (participant.conversation.type !== "DIRECT") {
-      return res.status(400).json({ message: "Group chat request биш байна" });
-    }
-
-    await prisma.conversationParticipant.update({
-      where: {
-        conversationId_userId: { conversationId: id, userId: user.userId },
-      },
-      data: { status: "DECLINED" },
-    });
-    await prisma.conversation.update({
-      where: { id },
-      data: { updatedAt: new Date() },
-    });
-
-    return res.json({ ok: true });
-  } catch (error) {
-    console.error("dm decline request error", error);
-    return res.status(500).json({ message: "Chat request татгалзахад алдаа гарлаа" });
-  }
-});
+  },
+);
 
 async function isConversationReadyForMessages(conversationId: string) {
   const conversation = await prisma.conversation.findUnique({
@@ -523,7 +662,9 @@ router.get("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
       return res.status(403).json({ message: "Энэ чатын гишүүн биш байна" });
     }
     if (participant.status === "DECLINED") {
-      return res.status(403).json({ message: "Энэ chat request татгалзсан байна" });
+      return res
+        .status(403)
+        .json({ message: "Энэ chat request татгалзсан байна" });
     }
 
     const messages = await prisma.directMessage.findMany({
@@ -600,7 +741,9 @@ router.post("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
     if (!(await isConversationReadyForMessages(id))) {
       return res
         .status(403)
-        .json({ message: "Нөгөө тал chat request зөвшөөрсний дараа мессеж бичнэ." });
+        .json({
+          message: "Нөгөө тал chat request зөвшөөрсний дараа мессеж бичнэ.",
+        });
     }
 
     const message = await prisma.directMessage.create({
@@ -673,7 +816,10 @@ router.post(
       if (!(await isConversationReadyForMessages(id))) {
         return res
           .status(403)
-          .json({ message: "Нөгөө тал chat request зөвшөөрсний дараа дуут мессеж илгээнэ." });
+          .json({
+            message:
+              "Нөгөө тал chat request зөвшөөрсний дараа дуут мессеж илгээнэ.",
+          });
       }
 
       const message = await prisma.directMessage.create({
@@ -753,7 +899,9 @@ router.post(
       if (!(await isConversationReadyForMessages(id))) {
         return res
           .status(403)
-          .json({ message: "Нөгөө тал chat request зөвшөөрсний дараа файл илгээнэ." });
+          .json({
+            message: "Нөгөө тал chat request зөвшөөрсний дараа файл илгээнэ.",
+          });
       }
 
       const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(req.file.originalname);
