@@ -112,11 +112,14 @@ app.use(
   }),
 );
 
-// Global rate limiter: 200 req / 15 min per IP
+// The mobile apps keep chat/call state fresh while they are in the foreground.
+// A small IP-only limit also groups every employee behind the same office/NAT IP,
+// so 200 requests was exhausted by a single active chat in a few minutes.
+const globalRateLimitMax = Number(process.env.GLOBAL_RATE_LIMIT_MAX || 3000);
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 200,
+    max: globalRateLimitMax,
     skip: (req) =>
       req.method === "OPTIONS" || (!isProduction && isLocalRequest(req.ip)),
     standardHeaders: true,
