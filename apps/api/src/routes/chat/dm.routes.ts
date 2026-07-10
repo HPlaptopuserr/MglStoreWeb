@@ -8,17 +8,33 @@ import { sendChatPush } from "../../services/push-notification.service";
 
 const router: ExpressRouter = Router();
 const CALL_SIGNAL_PREFIX = "__MGL_CALL_SIGNAL__";
+const LEGACY_CALL_SIGNAL_PREFIX = "_MGL_CALL_SIGNAL_";
 
-function callSignalType(content: string): string | null {
-  if (!content.startsWith(CALL_SIGNAL_PREFIX)) return null;
+function readCallSignal(content: string): {
+  isSignal: boolean;
+  type: string | null;
+} {
+  const trimmed = content.trim();
+  const prefixes = [CALL_SIGNAL_PREFIX, LEGACY_CALL_SIGNAL_PREFIX];
+  const match = prefixes
+    .map((prefix) => ({ prefix, index: trimmed.indexOf(prefix) }))
+    .filter(({ index }) => index >= 0)
+    .sort((a, b) => a.index - b.index)[0];
+  if (!match) return { isSignal: false, type: null };
+
   try {
-    const encoded = content.slice(CALL_SIGNAL_PREFIX.length);
+    const encoded = trimmed
+      .slice(match.index + match.prefix.length)
+      .replace(/\s/g, "");
     const payload = JSON.parse(
       Buffer.from(encoded, "base64url").toString("utf8"),
     ) as { type?: unknown };
-    return typeof payload.type === "string" ? payload.type : null;
+    return {
+      isSignal: true,
+      type: typeof payload.type === "string" ? payload.type : null,
+    };
   } catch {
-    return null;
+    return { isSignal: true, type: null };
   }
 }
 
@@ -30,6 +46,11 @@ async function queueMessagePush(input: {
   content: string;
 }) {
   try {
+    const callSignal = readCallSignal(input.content);
+    // WebRTC answer/ICE/hangup packets are internal transport messages. Only
+    // the initial offer should produce a user-visible incoming call alert.
+    if (callSignal.isSignal && callSignal.type !== "offer") return;
+
     const [sender, conversation] = await Promise.all([
       prisma.user.findUnique({
         where: { id: input.senderId },
@@ -48,7 +69,7 @@ async function queueMessagePush(input: {
         conversation?.type === "GROUP" && conversation.name
           ? conversation.name
           : senderName,
-      isCall: callSignalType(input.content) === "offer",
+      isCall: callSignal.type === "offer",
     });
   } catch (error) {
     console.error("dm push notification error", error);
@@ -187,7 +208,7 @@ router.get("/dm/calls/incoming", requireAuth, async (req, res) => {
       },
     });
     const message = messages.find(
-      (candidate) => callSignalType(candidate.content) === "offer",
+      (candidate) => readCallSignal(candidate.content).type === "offer",
     );
 
     if (!message) return res.json(null);
