@@ -70,7 +70,9 @@ export async function sendChatPush(input: ChatPush): Promise<void> {
     android: {
       priority: "high",
       notification: {
-        channelId: input.isCall ? "incoming_calls" : "chat_messages",
+        channelId: input.isCall
+          ? "incoming_calls"
+          : "chat_messages_high_v2",
         sound: "default",
         priority: "high",
         visibility: "public",
