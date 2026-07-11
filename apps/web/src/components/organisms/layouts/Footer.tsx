@@ -10,7 +10,6 @@ import {
   Mail,
   Phone,
   MapPin,
-  ArrowRight,
   Store,
   ShieldCheck,
   Truck,
@@ -292,7 +291,7 @@ export const Footer = () => {
               хамгаалагдсан.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-gray-500 sm:gap-6">
-              <Link href="#" className="transition-colors hover:text-gray-300">
+              <Link href="/privacy-policy" className="transition-colors hover:text-gray-300">
                 Нууцлалын бодлого
               </Link>
               <Link href="#" className="transition-colors hover:text-gray-300">
