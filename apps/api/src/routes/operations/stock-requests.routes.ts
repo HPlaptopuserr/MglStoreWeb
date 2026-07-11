@@ -118,7 +118,11 @@ const transferStockToVendor = async (
 };
 
 // Get all stock requests (Admin sees all, Vendor sees their own)
-router.get("/stock-requests", requireAuth, async (req, res) => {
+router.get(
+  "/stock-requests",
+  requireAuth,
+  requireOrgPermission({ from: "query" }, Permission.VIEW_ORG_DASHBOARD),
+  async (req, res) => {
   try {
     const { organizationId, status, warehouseId } = req.query;
 
@@ -208,7 +212,8 @@ router.get("/stock-requests", requireAuth, async (req, res) => {
       message: "Хүсэлтүүдийг авахад алдаа гарлаа",
     });
   }
-});
+  },
+);
 
 // Get single stock request
 router.get("/stock-requests/:id", requireAuth, async (req, res) => {
@@ -308,18 +313,43 @@ router.post("/stock-requests", requireAuth, requireOrgPermission({ from: "body" 
     const {
       organizationId,
       warehouseId,
-      requestedById,
       note,
       deliveryAddress,
       deliveryPhone,
       items, // Array of { productId, quantity, note? }
     } = req.body;
 
-    if (!organizationId || !warehouseId || !requestedById || !items?.length) {
+    if (!organizationId || !warehouseId || !items?.length) {
       return res.status(400).json({
-        message:
-          "organizationId, warehouseId, requestedById, items шаардлагатай",
+        message: "organizationId, warehouseId, items шаардлагатай",
       });
+    }
+
+    const requestedById = (req as any).user.userId as string;
+    const normalizedItems = items.map(
+      (item: { productId?: unknown; quantity?: unknown; note?: unknown }) => ({
+        productId: typeof item.productId === "string" ? item.productId : "",
+        quantity: Number(item.quantity),
+        note: typeof item.note === "string" ? item.note.trim() : undefined,
+      }),
+    );
+    if (
+      normalizedItems.some(
+        (item: { productId: string; quantity: number }) =>
+          !item.productId ||
+          !Number.isSafeInteger(item.quantity) ||
+          item.quantity <= 0,
+      )
+    ) {
+      return res.status(400).json({
+        message: "Барааны код болон тоо хэмжээ буруу байна",
+      });
+    }
+    if (
+      new Set(normalizedItems.map((item: { productId: string }) => item.productId))
+        .size !== normalizedItems.length
+    ) {
+      return res.status(400).json({ message: "Нэг бараа давхар орсон байна" });
     }
 
     // Verify warehouse is assigned to this organization
@@ -357,19 +387,37 @@ router.post("/stock-requests", requireAuth, requireOrgPermission({ from: "body" 
     const invoiceNumber = await generateInvoiceNumber();
 
     // Calculate total amount from items
-    const productIds = items.map(
+    const productIds = normalizedItems.map(
       (item: { productId: string }) => item.productId,
     );
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, price: true },
+    const inventory = await prisma.warehouseInventory.findMany({
+      where: { warehouseId, productId: { in: productIds } },
+      select: {
+        productId: true,
+        quantity: true,
+        product: { select: { price: true, name: true } },
+      },
     });
-
-    const productPriceMap = new Map(products.map((p: (typeof products)[number]) => [p.id, p.price]));
+    const inventoryMap = new Map(
+      inventory.map((entry: (typeof inventory)[number]) => [
+        entry.productId,
+        entry,
+      ]),
+    );
     let totalAmount = 0;
-    for (const item of items) {
-      const price = productPriceMap.get(item.productId) || 0;
-      totalAmount += Number(price) * item.quantity;
+    for (const item of normalizedItems) {
+      const available = inventoryMap.get(item.productId);
+      if (!available) {
+        return res.status(400).json({
+          message: "Сонгосон бараа энэ агуулахад байхгүй байна",
+        });
+      }
+      if (available.quantity < item.quantity) {
+        return res.status(400).json({
+          message: `${available.product.name}-ийн үлдэгдэл хүрэлцэхгүй байна (${available.quantity} үлдсэн)`,
+        });
+      }
+      totalAmount += Number(available.product.price) * item.quantity;
     }
 
     // Create stock request with payment record in transaction
@@ -385,7 +433,7 @@ router.post("/stock-requests", requireAuth, requireOrgPermission({ from: "body" 
           deliveryPhone: deliveryPhone || null,
           status: StockRequestStatus.PENDING,
           items: {
-            create: items.map(
+            create: normalizedItems.map(
               (item: {
                 productId: string;
                 quantity: number;
@@ -795,9 +843,23 @@ router.patch("/stock-requests/:id/cancel", requireAuth, async (req, res) => {
 // Get available products from warehouse for stock request
 router.get(
   "/stock-requests/warehouse/:warehouseId/products",
+  requireAuth,
+  requireOrgPermission({ from: "query" }, Permission.REQUEST_STOCK),
   async (req, res) => {
     try {
       const { warehouseId } = req.params;
+      const organizationId = req.query.organizationId as string;
+      const assignment = await prisma.warehouseOrganization.findUnique({
+        where: {
+          warehouseId_organizationId: { warehouseId, organizationId },
+        },
+        select: { warehouseId: true },
+      });
+      if (!assignment) {
+        return res.status(403).json({
+          message: "Энэ агуулахаас бараа татах эрхгүй байна",
+        });
+      }
 
       const inventory = await prisma.warehouseInventory.findMany({
         where: {
