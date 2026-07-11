@@ -39,7 +39,7 @@ export function PrivacyPolicyNav({ items }: PrivacyPolicyNavProps) {
   }, [items]);
 
   return (
-    <aside className="sticky top-20 z-20 h-fit rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur sm:p-5 lg:top-28 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
+    <aside className="sticky top-20 z-20 h-fit rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur sm:p-5 lg:fixed lg:top-36 lg:left-[max(2rem,calc((100vw-72rem)/2+2rem))] lg:w-[260px] lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
       <h2 className="text-sm font-bold text-slate-950">Агуулга</h2>
       <nav aria-label="Нууцлалын бодлогын агуулга" className="mt-3 lg:mt-4">
         <ol className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
