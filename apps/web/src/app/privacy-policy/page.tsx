@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
   ExternalLink,
   Fingerprint,
@@ -11,6 +10,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { PolicySection } from "./_components/PolicySection";
+import { PrivacyPolicyNav } from "./_components/PrivacyPolicyNav";
 
 const POLICY_URL = "https://mglstore.mn/privacy-policy";
 const CONTACT_EMAIL = "bigservice1316@gmail.com";
@@ -30,16 +30,16 @@ export const metadata: Metadata = {
 };
 
 const tableOfContents = [
-  ["01", "Хамрах хүрээ", "scope"],
-  ["02", "Цуглуулах мэдээлэл", "collected-information"],
-  ["03", "Мэдээлэл ашиглах зорилго", "use-of-information"],
-  ["04", "Төхөөрөмжийн зөвшөөрөл", "device-permissions"],
-  ["05", "Мэдээлэл дамжуулах", "information-sharing"],
-  ["06", "Хадгалалт ба хамгаалалт", "retention-and-security"],
-  ["07", "Таны эрх", "your-rights"],
-  ["08", "Бүртгэл, мэдээлэл устгах", "account-deletion"],
-  ["09", "Хүүхдийн нууцлал", "children"],
-  ["10", "Өөрчлөлт ба холбоо барих", "changes-and-contact"],
+  { number: "01", label: "Хамрах хүрээ", id: "scope" },
+  { number: "02", label: "Цуглуулах мэдээлэл", id: "collected-information" },
+  { number: "03", label: "Мэдээлэл ашиглах зорилго", id: "use-of-information" },
+  { number: "04", label: "Төхөөрөмжийн зөвшөөрөл", id: "device-permissions" },
+  { number: "05", label: "Мэдээлэл дамжуулах", id: "information-sharing" },
+  { number: "06", label: "Хадгалалт ба хамгаалалт", id: "retention-and-security" },
+  { number: "07", label: "Таны эрх", id: "your-rights" },
+  { number: "08", label: "Бүртгэл, мэдээлэл устгах", id: "account-deletion" },
+  { number: "09", label: "Хүүхдийн нууцлал", id: "children" },
+  { number: "10", label: "Өөрчлөлт ба холбоо барих", id: "changes-and-contact" },
 ] as const;
 
 const dataGroups = [
@@ -103,32 +103,7 @@ export default function PrivacyPolicyPage() {
       </header>
 
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:px-8 lg:py-14">
-        <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 lg:sticky lg:top-36">
-          <h2 className="text-sm font-bold text-slate-950">Агуулга</h2>
-          <nav aria-label="Нууцлалын бодлогын агуулга" className="mt-4">
-            <ol className="space-y-1">
-              {tableOfContents.map(([number, label, id]) => (
-                <li key={id}>
-                  <Link
-                    href={`#${id}`}
-                    className="group flex items-start gap-3 rounded-lg px-2 py-2 text-sm leading-5 text-slate-600 transition-colors hover:bg-amber-50 hover:text-amber-800"
-                  >
-                    <span className="font-semibold text-slate-400 group-hover:text-amber-600">
-                      {number}
-                    </span>
-                    {label}
-                  </Link>
-                </li>
-              ))}
-            </ol>
-          </nav>
-          <a
-            href="#account-deletion"
-            className="mt-5 block rounded-xl bg-slate-950 px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-slate-800"
-          >
-            Бүртгэл устгах
-          </a>
-        </aside>
+        <PrivacyPolicyNav items={tableOfContents} />
 
         <article className="rounded-2xl border border-slate-200 bg-white px-5 sm:px-8">
           <PolicySection id="scope" number="01" title="Хамрах хүрээ ба мэдээлэл хариуцагч">
