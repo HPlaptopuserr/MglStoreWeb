@@ -79,12 +79,12 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 html {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body::-webkit-scrollbar {
