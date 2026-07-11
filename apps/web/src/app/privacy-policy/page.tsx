@@ -8,6 +8,10 @@ import {
   ShieldCheck,
   Smartphone,
   WalletCards,
+  CheckCircle2,
+  Clock3,
+  Database,
+  UserRoundCheck,
 } from "lucide-react";
 import { PolicySection } from "./_components/PolicySection";
 import { PrivacyPolicyNav } from "./_components/PrivacyPolicyNav";
@@ -78,24 +82,25 @@ const dataGroups = [
 export default function PrivacyPolicyPage() {
   return (
     <div className="bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
+      <header className="relative overflow-hidden border-b border-slate-200 bg-white">
+        <div className="pointer-events-none absolute -right-32 -top-40 h-96 w-96 rounded-full bg-amber-100/70 blur-3xl" />
         <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+          <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 ring-8 ring-amber-50">
             <ShieldCheck className="h-6 w-6" aria-hidden="true" />
           </div>
           <p className="mt-6 text-sm font-semibold uppercase tracking-[0.18em] text-amber-700">
             MGL Business · MGL Store
           </p>
-          <h1 className="mt-3 max-w-3xl text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
+          <h1 className="relative mt-3 max-w-3xl text-4xl font-black tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
             Нууцлалын бодлого
           </h1>
-          <p className="mt-5 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">
+          <p className="relative mt-5 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">
             MGL Business нь байгууллага, ажилтан, агуулах, борлуулалт,
             хүргэлт, ирц, даалгавар болон харилцаа холбоог нэг дор удирдах
             бизнесийн апп юм. Энэхүү бодлого нь бид таны мэдээлэлтэй хэрхэн
             харьцдагийг ил тод тайлбарлана.
           </p>
-          <div className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
+          <div className="relative mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
             <span>Хүчин төгөлдөр болсон: 2026 оны 7 дугаар сарын 11</span>
             <span>Сүүлд шинэчилсэн: 2026 оны 7 дугаар сарын 11</span>
           </div>
@@ -105,7 +110,34 @@ export default function PrivacyPolicyPage() {
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:px-8 lg:py-14">
         <PrivacyPolicyNav items={tableOfContents} />
 
-        <article className="rounded-2xl border border-slate-200 bg-white px-5 sm:px-8">
+        <article className="rounded-3xl border border-slate-200 bg-white px-5 shadow-sm sm:px-8">
+          <section aria-labelledby="privacy-summary" className="border-b border-slate-200 py-8 sm:py-10">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Товч бөгөөд ойлгомжтой</p>
+                <h2 id="privacy-summary" className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Нууцлалын товч тойм</h2>
+              </div>
+              <p className="max-w-md text-sm leading-6 text-slate-500">Доорх нь хурдан ойлгоход зориулсан хураангуй. Дэлгэрэнгүй нөхцөл нь дараах бүх бүлэгт бий.</p>
+            </div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {[
+                { icon: Database, title: "Зөвхөн хэрэгцээт мэдээлэл", text: "Үйлчилгээ ажиллуулах, хамгаалах болон хууль ёсны үүрэгт шаардлагатай мэдээллийг боловсруулна." },
+                { icon: ShieldCheck, title: "Худалдахгүй", text: "Хувийн мэдээллийг гуравдагч этгээдийн сурталчилгааны зорилгоор худалдахгүй." },
+                { icon: UserRoundCheck, title: "Таны хяналт", text: "Мэдээллээ засуулах, зөвшөөрлөө өөрчлөх, хуульд нийцүүлэн устгуулах хүсэлт гаргаж болно." },
+                { icon: Clock3, title: "Хязгаартай хадгалалт", text: "Зорилго болон хууль ёсны хадгалалтын шаардлага дуусмагц устгах эсвэл таних боломжгүй болгоно." },
+              ].map(({ icon: Icon, title, text }) => (
+                <div key={title} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 transition-colors hover:border-amber-200 hover:bg-amber-50/50">
+                  <Icon className="h-5 w-5 text-amber-700" aria-hidden="true" />
+                  <h3 className="mt-3 font-bold text-slate-950">{title}</h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{text}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" aria-hidden="true" />
+              <p>Энэхүү бодлого нь аппын бүх хувилбар, хэрэглэгчийн үүрэг болон идэвхжүүлсэн боломжуудын нийлбэр хүрээг тайлбарлана. Тухайн хэрэглэгч бүх төрлийн мэдээллийг заавал өгөхгүй.</p>
+            </div>
+          </section>
           <PolicySection id="scope" number="01" title="Хамрах хүрээ ба мэдээлэл хариуцагч">
             <p>
               Энэхүү бодлого нь Google Play болон бусад сувгаар түгээх
@@ -113,6 +145,14 @@ export default function PrivacyPolicyPage() {
               <strong className="font-semibold text-slate-900"> MGL Store</strong> веб платформ,
               тэдгээрийн API болон холбогдох үйлчилгээний хэрэглэгчийн мэдээлэлд хамаарна.
               Мэдээллийг MGL Business / MGL Store үйлчилгээ хариуцан боловсруулна.
+            </p>
+            <p>
+              Бид мэдээллийг таны зөвшөөрөл, тантай байгуулсан гэрээ/үйлчилгээний
+              нөхцөлийг биелүүлэх хэрэгцээ, байгууллага болон системийн хууль ёсны
+              ашиг сонирхол, мөн Монгол Улсын хууль тогтоомжид хүлээсэн үүрэгт
+              үндэслэн боловсруулна. Зөвшөөрөл шаардсан тохиолдолд зорилго,
+              мэдээллийн төрөл, ашиглах хугацааг боломжит хэмжээнд урьдчилан
+              тайлбарлаж, зөвшөөрлөө буцаах боломж олгоно.
             </p>
             <p>
               Аппын зарим боломжийг байгууллагын админ идэвхжүүлж, ажилтны
@@ -207,6 +247,12 @@ export default function PrivacyPolicyPage() {
               байгууллагын хүчин төгөлдөр хүсэлт, эсвэл хэрэглэгч ба системийн
               аюулгүй байдлыг хамгаалах үндэслэлээр мэдээлэл дамжуулж болно.
             </p>
+            <p>
+              Зарим үйлчилгээ үзүүлэгчийн сервер Монгол Улсаас гадна байрлаж
+              болох тул мэдээлэл хил дамнан боловсруулагдаж болно. Ийм үед
+              гэрээ, хандалтын хязгаарлалт болон зохистой техникийн хамгаалалтаар
+              мэдээллийг зөвхөн тодорхой зорилгоор боловсруулах нөхцөлийг тавина.
+            </p>
           </PolicySection>
 
           <PolicySection id="retention-and-security" number="06" title="Хадгалалт ба хамгаалалт">
@@ -227,6 +273,12 @@ export default function PrivacyPolicyPage() {
               цахим систем эрсдэлгүй биш тул зөрчил илэрвэл эрсдэлийн хэмжээнд
               тохирсон арга хэмжээ авч, шаардлагатай талуудад мэдэгдэнэ.
             </p>
+            <p>
+              Хувийн мэдээлэлд нөлөөлөх аюулгүй байдлын зөрчил илэрвэл хүрээ,
+              эрсдэлийг тогтоох, тархалтыг зогсоох, сэргээх, баримтжуулах арга
+              хэмжээ авч, хуульд шаардсан тохиолдолд эрх бүхий байгууллага болон
+              нөлөөлсөн хэрэглэгчид боломжит хугацаанд мэдэгдэнэ.
+            </p>
           </PolicySection>
 
           <PolicySection id="your-rights" number="07" title="Таны эрх ба сонголт">
@@ -238,6 +290,12 @@ export default function PrivacyPolicyPage() {
               <li>боломжтой тохиолдолд боловсруулалтыг хязгаарлуулах, мэдээлэл болон бүртгэлээ устгуулах хүсэлт гаргах эрхтэй.</li>
             </ul>
             <p>Хүсэлт гаргагчийн мэдээллийг хамгаалахын тулд бид бүртгэл эзэмшигч мөн эсэхийг OTP, бүртгэлтэй холбоо барих суваг эсвэл нэмэлт нотолгоогоор баталгаажуулж болно.</p>
+            <p>
+              Та хүсэлтийн шийдвэртэй санал нийлэхгүй бол эхлээд манай нууцлалын
+              холбоо барих сувгаар дахин хянуулах, цаашлаад Монгол Улсын эрх бүхий
+              байгууллага эсвэл шүүхэд хуульд заасан журмаар гомдол гаргах эрхтэй.
+              Бид эрхээ хэрэгжүүлсний төлөө хэрэглэгчийг ялгаварлан гадуурхахгүй.
+            </p>
           </PolicySection>
 
           <PolicySection id="account-deletion" number="08" title="Бүртгэл болон мэдээлэл устгах">

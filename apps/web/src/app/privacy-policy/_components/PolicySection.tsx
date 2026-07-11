@@ -14,11 +14,11 @@ export function PolicySection({
   children,
 }: PolicySectionProps) {
   return (
-    <section id={id} className="scroll-mt-36 border-b border-slate-200 py-8 last:border-0">
+    <section id={id} className="group scroll-mt-36 border-b border-slate-200 py-10 last:border-0">
       <div className="flex gap-4 sm:gap-6">
         <span
           aria-hidden="true"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-sm font-bold text-amber-700"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-sm font-bold text-amber-700 transition-colors group-target:bg-amber-500 group-target:text-white"
         >
           {number}
         </span>
