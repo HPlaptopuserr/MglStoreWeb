@@ -4,7 +4,10 @@ import type { Prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import { adjustStock, syncProductStock } from "../../services/inventory.service";
 import { requireAuth } from "../../middleware/auth";
-import { requireOrgPermission } from "../../services/permission.service";
+import {
+  assertOrgPermission,
+  requireOrgPermission,
+} from "../../services/permission.service";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 
 const router: ExpressRouter = Router();
@@ -844,11 +847,22 @@ router.patch("/stock-requests/:id/cancel", requireAuth, async (req, res) => {
 router.get(
   "/stock-requests/warehouse/:warehouseId/products",
   requireAuth,
-  requireOrgPermission({ from: "query" }, Permission.REQUEST_STOCK),
   async (req, res) => {
     try {
       const { warehouseId } = req.params;
-      const organizationId = req.query.organizationId as string;
+      const organizationId =
+        (req.query.organizationId as string | undefined) ||
+        ((req as any).user.organizationId as string | undefined);
+      if (!organizationId) {
+        return res.status(400).json({ message: "organizationId шаардлагатай" });
+      }
+      const permissions = await assertOrgPermission(
+        req,
+        res,
+        organizationId,
+        Permission.REQUEST_STOCK,
+      );
+      if (!permissions) return;
       const assignment = await prisma.warehouseOrganization.findUnique({
         where: {
           warehouseId_organizationId: { warehouseId, organizationId },
