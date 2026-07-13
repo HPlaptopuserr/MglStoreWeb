@@ -279,6 +279,98 @@ function orgPublicHref(org: AuthOrganization | ManagedOrgDetails) {
     : `/organizations/${encodeURIComponent(org.id)}`;
 }
 
+async function copyToClipboard(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const input = document.createElement("textarea");
+  input.value = value;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  const copied = document.execCommand("copy");
+  input.remove();
+  if (!copied) throw new Error("Profile link хуулах боломжгүй байна");
+}
+
+function PublicProfileActions({
+  href,
+  organizationName,
+  compact = false,
+}: {
+  href: string;
+  organizationName: string;
+  compact?: boolean;
+}) {
+  const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
+
+  const shareProfile = async () => {
+    const url = new URL(href, window.location.origin).toString();
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: organizationName,
+          text: `${organizationName} байгууллагын мэдээллийг үзээрэй.`,
+          url,
+        });
+        return;
+      }
+      await copyToClipboard(url);
+      setShareStatus("copied");
+      window.setTimeout(() => setShareStatus("idle"), 2400);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      try {
+        await copyToClipboard(url);
+        setShareStatus("copied");
+        window.setTimeout(() => setShareStatus("idle"), 2400);
+      } catch {
+        setShareStatus("idle");
+      }
+    }
+  };
+
+  const actionClass = compact
+    ? "inline-flex h-9 items-center gap-1.5 rounded-full bg-white/92 px-3 text-xs font-black text-slate-900 shadow-lg backdrop-blur transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50"
+    : "inline-flex h-10 items-center gap-2 rounded-full bg-white/90 px-4 text-sm font-black text-slate-800 shadow-lg backdrop-blur transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50";
+
+  return (
+    <div className="flex items-center gap-2">
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className={actionClass}
+        aria-label={`${organizationName} байгууллагыг хэрэглэгчийн нүдээр харах`}
+      >
+        <Eye size={compact ? 14 : 16} />
+        {compact ? "Харах" : "Хэрэглэгчийн нүдээр"}
+        {!compact && <ArrowUpRight size={15} />}
+      </a>
+      <button
+        type="button"
+        onClick={shareProfile}
+        className={actionClass}
+        aria-label={`${organizationName} байгууллагын profile хуваалцах`}
+      >
+        {shareStatus === "copied" ? (
+          <CheckCircle2 size={compact ? 14 : 16} />
+        ) : (
+          <Share2 size={compact ? 14 : 16} />
+        )}
+        <span>{shareStatus === "copied" ? "Хуулагдлаа" : "Share"}</span>
+      </button>
+      <span className="sr-only" aria-live="polite">
+        {shareStatus === "copied" ? "Profile link хуулагдлаа" : ""}
+      </span>
+    </div>
+  );
+}
+
 function fallbackCover(id: string) {
   return `https://picsum.photos/seed/org-cover-${id}/1600/700`;
 }
@@ -914,14 +1006,12 @@ export function ManagedOrganizationProfile({
             uploading={imageUploading === "bannerUrl"}
             variant="cover"
           />
-          <a
-            href={orgPublicHref(org || selectedOrg)}
-            className="absolute right-3 top-3 inline-flex h-9 items-center gap-2 rounded-full bg-white/90 px-3 text-xs font-black text-slate-800 shadow-lg backdrop-blur transition hover:bg-white sm:right-4 sm:top-4 sm:h-10 sm:px-4 sm:text-sm"
-          >
-            <span className="hidden min-[380px]:inline">Нийтийн хуудас</span>
-            <span className="min-[380px]:hidden">Нийтэд</span>
-            <ArrowUpRight size={15} />
-          </a>
+          <div className="absolute right-4 top-4">
+            <PublicProfileActions
+              href={orgPublicHref(org || selectedOrg)}
+              organizationName={name}
+            />
+          </div>
         </div>
 
         <div className="relative -mt-10 mx-3 rounded-[24px] border border-slate-100 bg-white p-4 shadow-xl shadow-slate-200/80 sm:-mt-16 sm:mx-8 sm:rounded-[28px] sm:p-7">
@@ -4979,13 +5069,13 @@ function MobileOrganizationHero({
           uploading={imageUploading === "bannerUrl"}
           variant="cover"
         />
-        <a
-          href={publicHref}
-          className="absolute right-3 top-3 inline-flex h-9 items-center gap-1.5 rounded-full bg-white/92 px-3 text-xs font-black text-slate-900 shadow-lg backdrop-blur"
-        >
-          Нийтийн хуудас
-          <ArrowUpRight size={14} />
-        </a>
+        <div className="absolute right-3 top-3">
+          <PublicProfileActions
+            compact
+            href={publicHref}
+            organizationName={name}
+          />
+        </div>
       </div>
 
       <div className="px-4 pb-4">

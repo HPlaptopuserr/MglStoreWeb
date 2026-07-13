@@ -2954,17 +2954,25 @@ router.post(
   },
 );
 
-// Update partner profile (vendor can update own org, admin can update any)
+// Update partner profile (organization managers can update their own org,
+// platform admins can update any organization).
 router.patch("/partners/:id/profile", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const user = (req as any).user as AuthPayload;
 
-    // Allow if admin OR if user belongs to this organization
+    // A membership alone is not enough: STAFF and VIEWER accounts must never
+    // be able to mutate their employer's public company profile.
     const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
     if (!isAdmin) {
       const membership = await prisma.organizationMember.findFirst({
-        where: { userId: user.userId, organizationId: id },
+        where: {
+          userId: user.userId,
+          organizationId: id,
+          isActive: true,
+          deletedAt: null,
+          role: { in: ["OWNER", "ADMIN"] },
+        },
         select: { id: true },
       });
       if (!membership) {
