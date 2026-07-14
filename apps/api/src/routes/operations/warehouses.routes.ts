@@ -2,8 +2,8 @@ import { Router, type Router as ExpressRouter } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
-import { prisma } from "@mgl/database";
-import { Permission } from "@mgl/types";
+import { prisma, WarehouseType } from "@mgl/database";
+import { Permission, hasPlatformPermission, isFullAdmin } from "@mgl/types";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 import {
   extractExcelImages,
@@ -20,8 +20,47 @@ import {
   resolveOrgWarehouse,
   syncProductStock,
 } from "../../services/inventory.service";
+import {
+  addMasterProductAlias,
+  resolveMasterProduct,
+} from "../../services/master-product.service";
 
 const router: ExpressRouter = Router();
+
+async function assertWarehouseMutationPermission(
+  req: Parameters<typeof requireAuth>[0],
+  res: Parameters<typeof requireAuth>[1],
+  warehouseId: string,
+) {
+  const user = (
+    req as typeof req & {
+      user?: { userId?: string; role?: string };
+    }
+  ).user;
+  const platformAllowed =
+    Boolean(user?.role) &&
+    (isFullAdmin(user!.role!) ||
+      hasPlatformPermission(user!.role!, Permission.MANAGE_WAREHOUSES));
+  const operatorAllowed = user?.userId
+    ? Boolean(
+        await prisma.warehouseSetupToken.findFirst({
+          where: {
+            userId: user.userId,
+            warehouseId,
+            usedAt: { not: null },
+          },
+          select: { id: true },
+        }),
+      )
+    : false;
+  if (!platformAllowed && !operatorAllowed) {
+    res.status(403).json({
+      message: "Энэ агуулахын барааг өөрчлөх эрхгүй байна",
+    });
+    return false;
+  }
+  return true;
+}
 
 async function getImportBusinessCategoryChoices() {
   const categories = await prisma.businessCategory.findMany({
@@ -32,13 +71,14 @@ async function getImportBusinessCategoryChoices() {
   return buildBusinessCategoryChoices(categories);
 }
 
-// Get all warehouses (Admin - can see all)
+// Get independently operated central warehouses for administration.
 router.get("/warehouses", requireAuth, async (req, res) => {
   try {
     const { organizationId, isActive } = req.query;
 
     const where: any = {
       deletedAt: null,
+      type: WarehouseType.CENTRAL,
     };
 
     if (organizationId) {
@@ -115,6 +155,7 @@ router.get("/warehouses/organization/:orgId", requireAuth, async (req, res) => {
 
     const warehouses = await prisma.warehouse.findMany({
       where: {
+        type: WarehouseType.CENTRAL,
         organizations: {
           some: {
             organizationId: orgId,
@@ -188,6 +229,7 @@ router.post(
           lng: lng || null,
           createdById: createdById || null,
           isActive: true,
+          type: WarehouseType.CENTRAL,
           organizations: organizationIds?.length
             ? {
                 create: organizationIds.map((orgId: string) => ({
@@ -657,6 +699,9 @@ router.patch(
   async (req, res) => {
     try {
       const { warehouseId, productId } = req.params;
+      if (!(await assertWarehouseMutationPermission(req, res, warehouseId))) {
+        return;
+      }
       const {
         quantity,
         minQuantity,
@@ -858,6 +903,9 @@ router.delete(
   async (req, res) => {
     try {
       const { warehouseId, productId } = req.params;
+      if (!(await assertWarehouseMutationPermission(req, res, warehouseId))) {
+        return;
+      }
 
       const targetInventory = await prisma.warehouseInventory.findUnique({
         where: { warehouseId_productId: { warehouseId, productId } },
@@ -1061,10 +1109,14 @@ const excelUpload = multer({
  * ──────────────────────────────────────────────────────────────────── */
 router.post(
   "/warehouses/:id/products/import",
+  requireAuth,
   excelUpload.single("file"),
   async (req, res) => {
     try {
       const warehouseId = req.params.id;
+      if (!(await assertWarehouseMutationPermission(req, res, warehouseId))) {
+        return;
+      }
 
       // Verify warehouse exists and get its organization
       const warehouse = await prisma.warehouse.findUnique({
@@ -1298,9 +1350,22 @@ router.post(
                 where: {
                   organizationId_sku: { organizationId, sku: normalizedSku },
                 },
-                select: { id: true },
+                select: { id: true, masterProductId: true },
               });
               wasUpdate = !!existing;
+
+              const masterProduct = await resolveMasterProduct(tx, {
+                masterProductId: existing?.masterProductId,
+                name: productData.name,
+                description: productData.description,
+                imageUrl: imageUrls[0] || null,
+              });
+              if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
+              await addMasterProductAlias(
+                tx,
+                masterProduct.id,
+                productData.name,
+              );
 
               product = await tx.product.upsert({
                 where: {
@@ -1308,6 +1373,8 @@ router.post(
                 },
                 update: {
                   ...productData,
+                  masterProductId: masterProduct.id,
+                  managedByWarehouseId: warehouseId,
                   deletedAt: null,
                   ...(imageUrls.length > 0 && {
                     images: {
@@ -1320,6 +1387,8 @@ router.post(
                   organizationId,
                   sku: normalizedSku,
                   ...productData,
+                  masterProductId: masterProduct.id,
+                  managedByWarehouseId: warehouseId,
                   ...(imageUrls.length > 0 && {
                     images: { create: imageUrls.map((url) => ({ url })) },
                   }),
@@ -1333,11 +1402,24 @@ router.post(
                 },
               });
             } else {
+              const masterProduct = await resolveMasterProduct(tx, {
+                name: productData.name,
+                description: productData.description,
+                imageUrl: imageUrls[0] || null,
+              });
+              if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
+              await addMasterProductAlias(
+                tx,
+                masterProduct.id,
+                productData.name,
+              );
               product = await tx.product.create({
                 data: {
                   organizationId,
                   sku: null,
                   ...productData,
+                  masterProductId: masterProduct.id,
+                  managedByWarehouseId: warehouseId,
                   ...(imageUrls.length > 0 && {
                     images: { create: imageUrls.map((url) => ({ url })) },
                   }),
@@ -1448,9 +1530,12 @@ router.post(
  * No organization permission required — product is created under the
  * warehouse's first assigned organization.
  * ──────────────────────────────────────────────────────────────────── */
-router.post("/warehouses/:id/products", async (req, res) => {
+router.post("/warehouses/:id/products", requireAuth, async (req, res) => {
   try {
     const warehouseId = req.params.id;
+    if (!(await assertWarehouseMutationPermission(req, res, warehouseId))) {
+      return;
+    }
     const {
       name,
       description,
@@ -1535,14 +1620,25 @@ router.post("/warehouses/:id/products", async (req, res) => {
 
     // Create product + inventory + ledger in one transaction
     const product = await prisma.$transaction(async (tx) => {
+      const masterProduct = await resolveMasterProduct(tx, {
+        name: String(name),
+        barcode: barcode ? String(barcode) : null,
+        unit: unit ? String(unit) : null,
+        description: description ? String(description) : null,
+        imageUrl: imageUrls[0] || null,
+      });
+      if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
       const newProduct = await tx.product.create({
         data: {
           organizationId,
-          name: String(name).trim(),
+          masterProductId: masterProduct.id,
+          managedByWarehouseId: warehouseId,
+          name: masterProduct.canonicalName,
           description: description ? String(description).trim() : null,
           sku: normalizedSku,
-          barcode: barcode ? String(barcode).trim() : null,
-          unit: unit ? String(unit).trim() : null,
+          barcode:
+            masterProduct.barcode || (barcode ? String(barcode).trim() : null),
+          unit: masterProduct.unit || (unit ? String(unit).trim() : null),
           price: priceNum,
           costPrice: costPriceNum,
           stock: qty,
@@ -1557,6 +1653,7 @@ router.post("/warehouses/:id/products", async (req, res) => {
           businessCategory: { select: { id: true, name: true } },
         },
       });
+      await addMasterProductAlias(tx, masterProduct.id, String(name));
 
       // Also add to warehouse inventory if quantity > 0
       if (qty > 0) {

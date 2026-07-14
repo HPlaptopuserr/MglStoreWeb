@@ -69,3 +69,27 @@ export function adminFetch(
 
   return fetch(input, { ...init, headers, cache: "no-store" });
 }
+
+/**
+ * Reads API failures without assuming every upstream response is JSON.
+ * This keeps proxy/404 HTML responses from surfacing as JSON syntax errors.
+ */
+export async function getApiErrorMessage(
+  response: Response,
+  fallback: string,
+): Promise<string> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (contentType.includes("application/json")) {
+    const payload: unknown = await response.json().catch(() => null);
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "message" in payload &&
+      typeof payload.message === "string"
+    ) {
+      return payload.message;
+    }
+  }
+
+  return `${fallback} (HTTP ${response.status})`;
+}

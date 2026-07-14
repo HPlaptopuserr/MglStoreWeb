@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node --max-old-space-size=400 dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "dev": "MGL_LOCAL_DEV=true tsx watch src/index.ts",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "categories:cleanup": "tsx src/scripts/cleanup-business-categories.ts",
     "categories:seed-marketplace": "tsx src/scripts/seed-marketplace-categories.ts",

@@ -10,13 +10,13 @@ const parseVersionCode = (value: string | undefined, fallback: number) => {
 router.get("/app-versions/mgl-business/android", (_req, res) => {
   const latestVersionCode = parseVersionCode(
     process.env.MGL_BUSINESS_ANDROID_LATEST_VERSION_CODE,
-    16,
+    21,
   );
   const minimumVersionCode = Math.min(
     latestVersionCode,
     parseVersionCode(
       process.env.MGL_BUSINESS_ANDROID_MINIMUM_VERSION_CODE,
-      15,
+      16,
     ),
   );
 
@@ -25,7 +25,7 @@ router.get("/app-versions/mgl-business/android", (_req, res) => {
     latestVersionCode,
     minimumVersionCode,
     latestVersionName:
-      process.env.MGL_BUSINESS_ANDROID_LATEST_VERSION_NAME || "1.0.10",
+      process.env.MGL_BUSINESS_ANDROID_LATEST_VERSION_NAME || "1.0.15",
     storeUrl:
       process.env.MGL_BUSINESS_ANDROID_STORE_URL ||
       "https://play.google.com/store/apps/details?id=mn.mglstore.business",

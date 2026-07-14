@@ -26,6 +26,7 @@ import { getSupabase, ORG_IMAGES_BUCKET } from "../../lib/supabase";
 import { sendSmtpMail } from "../../lib/smtp";
 import { shouldExposeOrgProductsOnWeb } from "../../services/product-visibility.service";
 import { syncOwnerPersonalMembershipFromActiveOrgPlan } from "../../services/owner-membership-sync.service";
+import { sendPushToUsers } from "../../services/push-notification.service";
 
 const router: ExpressRouter = Router();
 const orgImagesDir = path.resolve(__dirname, "../../../uploads/organizations");
@@ -128,6 +129,13 @@ const toBusinessAppControlPayload = (organization: {
   businessAttendanceEnabled: boolean;
   businessAttendanceManualEnabled: boolean;
   businessTasksEnabled: boolean;
+  ceoServiceEnabled: boolean;
+  ceoAdviceNotificationsEnabled: boolean;
+  ceoCalendarRemindersEnabled: boolean;
+  ceoWeeklyDigestEnabled: boolean;
+  ceoRiskAlertsEnabled: boolean;
+  ceoKpiInsightsEnabled: boolean;
+  ceoDecisionBriefEnabled: boolean;
   members?: Array<{
     id: string;
     role: string;
@@ -155,6 +163,15 @@ const toBusinessAppControlPayload = (organization: {
     inventory: organization.businessInventoryEnabled,
     attendance: organization.businessAttendanceEnabled,
     tasks: organization.businessTasksEnabled,
+  },
+  ceoService: {
+    enabled: organization.ceoServiceEnabled,
+    adviceNotifications: organization.ceoAdviceNotificationsEnabled,
+    calendarReminders: organization.ceoCalendarRemindersEnabled,
+    weeklyDigest: organization.ceoWeeklyDigestEnabled,
+    riskAlerts: organization.ceoRiskAlertsEnabled,
+    kpiInsights: organization.ceoKpiInsightsEnabled,
+    decisionBrief: organization.ceoDecisionBriefEnabled,
   },
   settings: {
     attendanceManual: organization.businessAttendanceManualEnabled,
@@ -514,6 +531,13 @@ router.get(
           businessAttendanceEnabled: true,
           businessAttendanceManualEnabled: true,
           businessTasksEnabled: true,
+          ceoServiceEnabled: true,
+          ceoAdviceNotificationsEnabled: true,
+          ceoCalendarRemindersEnabled: true,
+          ceoWeeklyDigestEnabled: true,
+          ceoRiskAlertsEnabled: true,
+          ceoKpiInsightsEnabled: true,
+          ceoDecisionBriefEnabled: true,
           members: {
             where: { isActive: true, deletedAt: null },
             orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
@@ -577,6 +601,15 @@ router.patch(
         settings?: {
           attendanceManual?: boolean;
         };
+        ceoService?: {
+          enabled?: boolean;
+          adviceNotifications?: boolean;
+          calendarReminders?: boolean;
+          weeklyDigest?: boolean;
+          riskAlerts?: boolean;
+          kpiInsights?: boolean;
+          decisionBrief?: boolean;
+        };
       };
 
       const data: Prisma.OrganizationUpdateInput = {};
@@ -617,6 +650,33 @@ router.patch(
           body.settings.attendanceManual,
         );
       }
+      if (body.ceoService) {
+        if (body.ceoService.enabled !== undefined) {
+          data.ceoServiceEnabled = Boolean(body.ceoService.enabled);
+        }
+        if (body.ceoService.adviceNotifications !== undefined) {
+          data.ceoAdviceNotificationsEnabled = Boolean(
+            body.ceoService.adviceNotifications,
+          );
+        }
+        if (body.ceoService.calendarReminders !== undefined) {
+          data.ceoCalendarRemindersEnabled = Boolean(
+            body.ceoService.calendarReminders,
+          );
+        }
+        if (body.ceoService.weeklyDigest !== undefined) {
+          data.ceoWeeklyDigestEnabled = Boolean(body.ceoService.weeklyDigest);
+        }
+        if (body.ceoService.riskAlerts !== undefined) {
+          data.ceoRiskAlertsEnabled = Boolean(body.ceoService.riskAlerts);
+        }
+        if (body.ceoService.kpiInsights !== undefined) {
+          data.ceoKpiInsightsEnabled = Boolean(body.ceoService.kpiInsights);
+        }
+        if (body.ceoService.decisionBrief !== undefined) {
+          data.ceoDecisionBriefEnabled = Boolean(body.ceoService.decisionBrief);
+        }
+      }
 
       if (Object.keys(data).length === 0) {
         return res.status(400).json({ message: "Өөрчлөх тохиргоо алга" });
@@ -635,6 +695,13 @@ router.patch(
           businessAttendanceEnabled: true,
           businessAttendanceManualEnabled: true,
           businessTasksEnabled: true,
+          ceoServiceEnabled: true,
+          ceoAdviceNotificationsEnabled: true,
+          ceoCalendarRemindersEnabled: true,
+          ceoWeeklyDigestEnabled: true,
+          ceoRiskAlertsEnabled: true,
+          ceoKpiInsightsEnabled: true,
+          ceoDecisionBriefEnabled: true,
           members: {
             where: { isActive: true, deletedAt: null },
             orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
@@ -674,6 +741,292 @@ router.patch(
       return res
         .status(500)
         .json({ message: "Business app control хадгалахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.post(
+  "/admin/organizations/:id/ceo-service/advice",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const title = String(req.body?.title || "CEO зөвлөгөө")
+        .trim()
+        .slice(0, 80);
+      const body = String(req.body?.body || "")
+        .trim()
+        .slice(0, 500);
+      if (!body) {
+        return res
+          .status(400)
+          .json({ message: "Зөвлөгөөний агуулга шаардлагатай" });
+      }
+
+      const organization = await prisma.organization.findFirst({
+        where: { id: req.params.id, deletedAt: null },
+        select: {
+          id: true,
+          ceoServiceEnabled: true,
+          ceoAdviceNotificationsEnabled: true,
+          members: {
+            where: {
+              isActive: true,
+              deletedAt: null,
+              OR: [{ isPrimary: true }, { role: "OWNER" }],
+            },
+            select: { userId: true },
+          },
+        },
+      });
+      if (!organization) {
+        return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+      }
+      if (
+        !organization.ceoServiceEnabled ||
+        !organization.ceoAdviceNotificationsEnabled
+      ) {
+        return res
+          .status(409)
+          .json({ message: "CEO зөвлөгөөний үйлчилгээ идэвхгүй байна" });
+      }
+
+      const userIds = organization.members.map((member) => member.userId);
+      const sentCount = await sendPushToUsers({
+        userIds,
+        title,
+        body,
+        data: { type: "ceo_advice", organizationId: organization.id },
+      });
+      return res.json({ recipientCount: userIds.length, sentCount });
+    } catch (error) {
+      console.error("send CEO advice error", error);
+      return res
+        .status(500)
+        .json({ message: "CEO зөвлөгөө илгээхэд алдаа гарлаа" });
+    }
+  },
+);
+
+router.get("/org/ceo-service/brief", requireAuth, async (req, res) => {
+  try {
+    const user = (req as unknown as { user: AuthPayload }).user;
+    const organizationId = String(req.query.organizationId || "").trim();
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+
+    const membership = await prisma.organizationMember.findFirst({
+      where: {
+        organizationId,
+        userId: user.userId,
+        isActive: true,
+        deletedAt: null,
+        OR: [{ isPrimary: true }, { role: "OWNER" }],
+      },
+      select: {
+        organization: {
+          select: {
+            ceoServiceEnabled: true,
+            ceoWeeklyDigestEnabled: true,
+            ceoRiskAlertsEnabled: true,
+            ceoKpiInsightsEnabled: true,
+            ceoDecisionBriefEnabled: true,
+          },
+        },
+      },
+    });
+    if (!membership) {
+      return res.status(403).json({ message: "CEO / Owner эрх шаардлагатай" });
+    }
+    if (!membership.organization.ceoServiceEnabled) {
+      return res
+        .status(403)
+        .json({ message: "CEO тусгай үйлчилгээ идэвхгүй байна" });
+    }
+
+    const now = new Date();
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const nextDay = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const [weeklyAssignees, riskTasks] = await Promise.all([
+      prisma.organizationTaskAssignee.findMany({
+        where: {
+          task: { organizationId, deletedAt: null },
+          updatedAt: { gte: weekStart },
+        },
+        select: { status: true },
+      }),
+      prisma.organizationTask.findMany({
+        where: {
+          organizationId,
+          deletedAt: null,
+          dueAt: { not: null, lte: nextDay },
+          assignees: { some: { status: { notIn: ["DONE", "CANCELLED"] } } },
+        },
+        select: { id: true, title: true, dueAt: true, priority: true },
+        orderBy: { dueAt: "asc" },
+        take: 10,
+      }),
+    ]);
+
+    const completed = weeklyAssignees.filter(
+      (item) => item.status === "DONE",
+    ).length;
+    const total = weeklyAssignees.length;
+    const completionRate =
+      total === 0 ? 0 : Math.round((completed / total) * 100);
+    const overdueCount = riskTasks.filter(
+      (task) => task.dueAt && task.dueAt.getTime() < now.getTime(),
+    ).length;
+    const decisions = [
+      ...(overdueCount > 0
+        ? [
+            `Хугацаа хэтэрсэн ${overdueCount} ажлын эзэн, дараагийн алхмыг баталгаажуулах`,
+          ]
+        : []),
+      ...(completionRate < 70 && total > 0
+        ? ["7 хоногийн гүйцэтгэл 70%-аас доош байгаа шалтгааныг багтай ярилцах"]
+        : []),
+      ...(riskTasks.length > overdueCount
+        ? [
+            `24 цагийн дотор дуусах ${riskTasks.length - overdueCount} ажлыг эрэмбэлэх`,
+          ]
+        : []),
+    ];
+
+    return res.json({
+      generatedAt: now,
+      weeklyDigest: membership.organization.ceoWeeklyDigestEnabled
+        ? { total, completed, open: total - completed, completionRate }
+        : null,
+      riskAlerts: membership.organization.ceoRiskAlertsEnabled
+        ? riskTasks.map((task) => ({
+            ...task,
+            isOverdue: Boolean(
+              task.dueAt && task.dueAt.getTime() < now.getTime(),
+            ),
+          }))
+        : null,
+      kpiInsights: membership.organization.ceoKpiInsightsEnabled
+        ? {
+            taskCompletionRate: completionRate,
+            completedTasks: completed,
+            activeTasks: total - completed,
+            health:
+              total === 0
+                ? "NO_DATA"
+                : completionRate >= 80
+                  ? "GOOD"
+                  : completionRate >= 60
+                    ? "WATCH"
+                    : "AT_RISK",
+          }
+        : null,
+      decisionBrief: membership.organization.ceoDecisionBriefEnabled
+        ? decisions.slice(0, 3)
+        : null,
+    });
+  } catch (error) {
+    console.error("get CEO service brief error", error);
+    return res
+      .status(500)
+      .json({ message: "CEO товч мэдээлэл татахад алдаа гарлаа" });
+  }
+});
+
+router.post(
+  "/admin/ceo-service/calendar-reminders/run",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (_req, res) => {
+    try {
+      const now = new Date();
+      const reminderWindowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const tasks = await prisma.organizationTask.findMany({
+        where: {
+          deletedAt: null,
+          dueAt: { gt: now, lte: reminderWindowEnd },
+          organization: {
+            deletedAt: null,
+            ceoServiceEnabled: true,
+            ceoCalendarRemindersEnabled: true,
+          },
+          assignees: {
+            some: { status: { notIn: ["DONE", "CANCELLED"] } },
+          },
+        },
+        select: {
+          id: true,
+          title: true,
+          dueAt: true,
+          organizationId: true,
+          organization: {
+            select: {
+              members: {
+                where: {
+                  isActive: true,
+                  deletedAt: null,
+                  OR: [{ isPrimary: true }, { role: "OWNER" }],
+                },
+                select: { userId: true },
+              },
+            },
+          },
+        },
+        take: 200,
+      });
+
+      let sentCount = 0;
+      for (const task of tasks) {
+        const referenceKey = `${task.id}:${task.dueAt?.toISOString().slice(0, 10)}`;
+        const recipientIds = task.organization.members
+          .map((member) => member.userId)
+          .filter(Boolean);
+        const delivered = await prisma.ceoNotificationDelivery.findMany({
+          where: {
+            organizationId: task.organizationId,
+            userId: { in: recipientIds },
+            type: "CALENDAR_DUE",
+            referenceKey,
+          },
+          select: { userId: true },
+        });
+        const deliveredIds = new Set(delivered.map((item) => item.userId));
+        const pendingIds = recipientIds.filter(
+          (userId) => !deliveredIds.has(userId),
+        );
+        if (pendingIds.length === 0) continue;
+
+        const successful = await sendPushToUsers({
+          userIds: pendingIds,
+          title: "Ажлын хугацаа ойртлоо",
+          body: `“${task.title}” ажил 24 цагийн дотор дуусна.`,
+          data: {
+            type: "ceo_calendar_reminder",
+            organizationId: task.organizationId,
+            taskId: task.id,
+          },
+        });
+        if (successful > 0) {
+          await prisma.ceoNotificationDelivery.createMany({
+            data: pendingIds.map((userId) => ({
+              organizationId: task.organizationId,
+              userId,
+              type: "CALENDAR_DUE",
+              referenceKey,
+            })),
+            skipDuplicates: true,
+          });
+          sentCount += successful;
+        }
+      }
+
+      return res.json({ taskCount: tasks.length, sentCount });
+    } catch (error) {
+      console.error("run CEO calendar reminders error", error);
+      return res
+        .status(500)
+        .json({ message: "Calendar сануулга ажиллуулахад алдаа гарлаа" });
     }
   },
 );

@@ -13,6 +13,13 @@ type ChatPush = {
   isCall: boolean;
 };
 
+type UserPush = {
+  userIds: string[];
+  title: string;
+  body: string;
+  data: Record<string, string>;
+};
+
 function initializeFirebase(): boolean {
   if (getApps().length > 0) return true;
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -70,9 +77,7 @@ export async function sendChatPush(input: ChatPush): Promise<void> {
     android: {
       priority: "high",
       notification: {
-        channelId: input.isCall
-          ? "incoming_calls"
-          : "chat_messages_high_v2",
+        channelId: input.isCall ? "incoming_calls" : "chat_messages_high_v2",
         sound: "default",
         priority: "high",
         visibility: "public",
@@ -88,6 +93,47 @@ export async function sendChatPush(input: ChatPush): Promise<void> {
       : [];
   });
   if (invalidTokens.length > 0) {
-    await prisma.pushToken.deleteMany({ where: { token: { in: invalidTokens } } });
+    await prisma.pushToken.deleteMany({
+      where: { token: { in: invalidTokens } },
+    });
   }
+}
+
+export async function sendPushToUsers(input: UserPush): Promise<number> {
+  if (!initializeFirebase() || input.userIds.length === 0) return 0;
+
+  const registrations = await prisma.pushToken.findMany({
+    where: { userId: { in: Array.from(new Set(input.userIds)) } },
+    select: { token: true },
+  });
+  if (registrations.length === 0) return 0;
+
+  const response = await getMessaging().sendEachForMulticast({
+    tokens: registrations.map((item) => item.token),
+    notification: { title: input.title, body: input.body },
+    data: input.data,
+    android: {
+      priority: "high",
+      notification: {
+        channelId: "ceo_service",
+        sound: "default",
+        priority: "high",
+        visibility: "public",
+      },
+    },
+  });
+
+  const invalidTokens = response.responses.flatMap((result, index) => {
+    const code = result.error?.code;
+    return code === "messaging/registration-token-not-registered" ||
+      code === "messaging/invalid-registration-token"
+      ? [registrations[index].token]
+      : [];
+  });
+  if (invalidTokens.length > 0) {
+    await prisma.pushToken.deleteMany({
+      where: { token: { in: invalidTokens } },
+    });
+  }
+  return response.successCount;
 }

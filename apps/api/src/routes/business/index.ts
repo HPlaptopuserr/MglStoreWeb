@@ -4,6 +4,7 @@ export { default as investorRoutes } from "./investors.routes";
 export { default as orgJoinRoutes } from "./org-join.routes";
 export { default as orgMemberRoutes } from "./org-members.routes";
 export { default as orgTaskRoutes } from "./org-tasks.routes";
+export { default as orgGamesRoutes } from "./org-games.routes";
 export { default as partnerRequestRoutes } from "./partner-request.routes";
 export { default as partnerRoutes } from "./partners.routes";
 export { default as personalOrganizationRoutes } from "./personal-organization.routes";

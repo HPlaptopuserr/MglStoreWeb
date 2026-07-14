@@ -7,6 +7,7 @@ export {
   orgJoinRoutes,
   orgMemberRoutes,
   orgTaskRoutes,
+  orgGamesRoutes,
   partnerRequestRoutes,
   partnerRoutes,
   personalOrganizationRoutes,
@@ -57,3 +58,4 @@ export {
 export { default as vendorMerchantRoutes } from "./vendor/vendor-merchant.routes";
 export { default as vendorUpgradeRoutes } from "./vendor/vendor-upgrade.routes";
 export { default as vendorCardTerminalRoutes } from "./vendor/vendor-card-terminal.routes";
+export { metaMarketingRoutes } from "./marketing";

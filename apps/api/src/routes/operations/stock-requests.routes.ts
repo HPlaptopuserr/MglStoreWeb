@@ -1,16 +1,130 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, StockRequestStatus, PaymentStatus, InventoryReason, PaymentMethod, ReturnStatus } from "@mgl/database";
+import {
+  prisma,
+  StockRequestStatus,
+  PaymentStatus,
+  InventoryReason,
+  PaymentMethod,
+  ReturnStatus,
+  WarehouseType,
+} from "@mgl/database";
 import type { Prisma } from "@mgl/database";
-import { Permission } from "@mgl/types";
-import { adjustStock, syncProductStock } from "../../services/inventory.service";
+import { Permission, hasPlatformPermission, isFullAdmin } from "@mgl/types";
+import {
+  adjustStock,
+  syncProductStock,
+} from "../../services/inventory.service";
 import { requireAuth } from "../../middleware/auth";
 import {
   assertOrgPermission,
   requireOrgPermission,
 } from "../../services/permission.service";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
+import { buildProcurementAdvice } from "../../services/procurement-ai.service";
 
 const router: ExpressRouter = Router();
+
+router.post(
+  "/stock-requests/procurement/ai-recommendations",
+  requireAuth,
+  async (req, res) => {
+    const organizationId = req.body?.organizationId as string | undefined;
+    const candidates = req.body?.candidates as unknown;
+    if (!organizationId || !Array.isArray(candidates)) {
+      return res.status(400).json({ message: "Барааны мэдээлэл дутуу байна" });
+    }
+    const permissions = await assertOrgPermission(
+      req,
+      res,
+      organizationId,
+      Permission.REQUEST_STOCK,
+    );
+    if (!permissions) return;
+
+    const normalized = candidates
+      .filter(
+        (item): item is Record<string, unknown> =>
+          item !== null && typeof item === "object",
+      )
+      .slice(0, 30)
+      .map((item) => ({
+        productId: String(item.productId || "").slice(0, 64),
+        name: String(item.name || "Бараа").slice(0, 160),
+        availableStock: Math.max(0, Number(item.availableStock) || 0),
+        organizationStock: Math.max(0, Number(item.organizationStock) || 0),
+        reorderPoint: Math.max(0, Number(item.reorderPoint) || 0),
+        soldQuantity90d: Math.max(0, Number(item.soldQuantity90d) || 0),
+        systemRequestedQuantity90d: Math.max(
+          0,
+          Number(item.systemRequestedQuantity90d) || 0,
+        ),
+        previouslyRequestedQuantity: Math.max(
+          0,
+          Number(item.previouslyRequestedQuantity) || 0,
+        ),
+      }))
+      .filter(
+        (item) =>
+          item.productId &&
+          item.availableStock > 0 &&
+          ((item.reorderPoint > 0 &&
+            item.organizationStock < item.reorderPoint) ||
+            item.soldQuantity90d > 0 ||
+            item.previouslyRequestedQuantity > 0),
+      );
+
+    return res.json(await buildProcurementAdvice(normalized));
+  },
+);
+
+const canPayApprovedStockRequest = (status: StockRequestStatus) =>
+  status === StockRequestStatus.APPROVED ||
+  status === StockRequestStatus.PROCESSING;
+
+const getOutstandingStockPayments = async (
+  organizationId: string,
+  excludePaymentId?: string,
+) => {
+  const payments = await prisma.stockRequestPayment.findMany({
+    where: {
+      organizationId,
+      status: { not: PaymentStatus.CANCELLED },
+      request: {
+        status: {
+          notIn: [StockRequestStatus.CANCELLED, StockRequestStatus.REJECTED],
+        },
+      },
+      ...(excludePaymentId ? { id: { not: excludePaymentId } } : {}),
+    },
+    include: {
+      request: { select: { requestNumber: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return payments
+    .map((payment) => ({
+      ...payment,
+      outstandingAmount: Math.max(
+        0,
+        Number(payment.totalAmount) - Number(payment.paidAmount),
+      ),
+    }))
+    .filter((payment) => payment.outstandingAmount > 0);
+};
+
+const serializeOutstandingPayment = (
+  payment: Awaited<ReturnType<typeof getOutstandingStockPayments>>[number],
+) => ({
+  id: payment.id,
+  invoiceNumber: payment.invoiceNumber,
+  requestNumber: payment.request.requestNumber,
+  outstandingAmount: payment.outstandingAmount,
+  totalAmount: Number(payment.totalAmount),
+  paidAmount: Number(payment.paidAmount),
+  status: payment.status,
+  dueDate: payment.dueDate,
+});
 
 // Generate dispatch number  DSP-YYMMDDSSSSS
 const generateDispatchNumber = async (): Promise<string> => {
@@ -62,7 +176,11 @@ const generateInvoiceNumber = async (): Promise<string> => {
 const transferStockToVendor = async (
   tx: Prisma.TransactionClient,
   request: { organizationId: string; requestNumber: string },
-  items: { productId: string; approvedQuantity: number | null; quantity: number }[]
+  items: {
+    productId: string;
+    approvedQuantity: number | null;
+    quantity: number;
+  }[],
 ) => {
   for (const item of items) {
     const quantity = item.approvedQuantity || item.quantity;
@@ -70,7 +188,7 @@ const transferStockToVendor = async (
 
     const sourceProduct = await tx.product.findUnique({
       where: { id: item.productId },
-      include: { images: true }
+      include: { images: true },
     });
 
     if (!sourceProduct) continue;
@@ -78,7 +196,11 @@ const transferStockToVendor = async (
     let targetProduct;
     if (sourceProduct.sku) {
       targetProduct = await tx.product.findFirst({
-        where: { organizationId: request.organizationId, sku: sourceProduct.sku, deletedAt: null }
+        where: {
+          organizationId: request.organizationId,
+          sku: sourceProduct.sku,
+          deletedAt: null,
+        },
       });
     }
 
@@ -86,6 +208,7 @@ const transferStockToVendor = async (
       targetProduct = await tx.product.create({
         data: {
           organizationId: request.organizationId,
+          masterProductId: sourceProduct.masterProductId,
           name: sourceProduct.name,
           description: sourceProduct.description,
           sku: sourceProduct.sku,
@@ -98,14 +221,14 @@ const transferStockToVendor = async (
           isActive: true,
           stock: quantity,
           images: {
-            create: sourceProduct.images.map(img => ({ url: img.url }))
-          }
-        }
+            create: sourceProduct.images.map((img) => ({ url: img.url })),
+          },
+        },
       });
     } else {
       targetProduct = await tx.product.update({
         where: { id: targetProduct.id },
-        data: { stock: { increment: quantity } }
+        data: { stock: { increment: quantity } },
       });
     }
 
@@ -114,25 +237,44 @@ const transferStockToVendor = async (
         productId: targetProduct.id,
         change: quantity,
         reason: InventoryReason.TRANSFER_IN,
-        note: `Бараа таталт батлагдсан (${request.requestNumber})`
-      }
+        note: `Бараа таталт батлагдсан (${request.requestNumber})`,
+      },
     });
   }
 };
 
 // Get all stock requests (Admin sees all, Vendor sees their own)
-router.get(
-  "/stock-requests",
-  requireAuth,
-  requireOrgPermission({ from: "query" }, Permission.VIEW_ORG_DASHBOARD),
-  async (req, res) => {
+router.get("/stock-requests", requireAuth, async (req, res) => {
   try {
     const { organizationId, status, warehouseId } = req.query;
+    const actor = (req as any).user as {
+      userId: string;
+      role: string;
+    };
+    const targetOrganizationId =
+      typeof organizationId === "string" ? organizationId : undefined;
 
-    const where: any = {};
+    const canManagePlatformStock =
+      isFullAdmin(actor.role) ||
+      hasPlatformPermission(actor.role, Permission.MANAGE_STOCK);
 
-    if (organizationId) {
-      where.organizationId = organizationId as string;
+    if (!canManagePlatformStock) {
+      if (!targetOrganizationId) {
+        return res.status(400).json({ message: "organizationId шаардлагатай" });
+      }
+      const permissions = await assertOrgPermission(
+        req,
+        res,
+        targetOrganizationId,
+        Permission.VIEW_ORG_DASHBOARD,
+      );
+      if (!permissions) return;
+    }
+
+    const where: Prisma.WarehouseStockRequestWhereInput = {};
+
+    if (targetOrganizationId) {
+      where.organizationId = targetOrganizationId;
     }
 
     if (status) {
@@ -215,8 +357,7 @@ router.get(
       message: "Хүсэлтүүдийг авахад алдаа гарлаа",
     });
   }
-  },
-);
+});
 
 // Get single stock request
 router.get("/stock-requests/:id", requireAuth, async (req, res) => {
@@ -311,201 +452,216 @@ router.get("/stock-requests/:id", requireAuth, async (req, res) => {
 });
 
 // Create stock request (Vendor creates)
-router.post("/stock-requests", requireAuth, requireOrgPermission({ from: "body" }, Permission.REQUEST_STOCK), async (req, res) => {
-  try {
-    const {
-      organizationId,
-      warehouseId,
-      note,
-      deliveryAddress,
-      deliveryPhone,
-      items, // Array of { productId, quantity, note? }
-    } = req.body;
-
-    if (!organizationId || !warehouseId || !items?.length) {
-      return res.status(400).json({
-        message: "organizationId, warehouseId, items шаардлагатай",
-      });
-    }
-
-    const requestedById = (req as any).user.userId as string;
-    const normalizedItems = items.map(
-      (item: { productId?: unknown; quantity?: unknown; note?: unknown }) => ({
-        productId: typeof item.productId === "string" ? item.productId : "",
-        quantity: Number(item.quantity),
-        note: typeof item.note === "string" ? item.note.trim() : undefined,
-      }),
-    );
-    if (
-      normalizedItems.some(
-        (item: { productId: string; quantity: number }) =>
-          !item.productId ||
-          !Number.isSafeInteger(item.quantity) ||
-          item.quantity <= 0,
-      )
-    ) {
-      return res.status(400).json({
-        message: "Барааны код болон тоо хэмжээ буруу байна",
-      });
-    }
-    if (
-      new Set(normalizedItems.map((item: { productId: string }) => item.productId))
-        .size !== normalizedItems.length
-    ) {
-      return res.status(400).json({ message: "Нэг бараа давхар орсон байна" });
-    }
-
-    // Verify warehouse is assigned to this organization
-    const warehouseOrg = await prisma.warehouseOrganization.findUnique({
-      where: {
-        warehouseId_organizationId: {
-          warehouseId,
-          organizationId,
-        },
-      },
-    });
-
-    if (!warehouseOrg) {
-      return res.status(403).json({
-        message: "Энэ агуулахаас бараа татах эрхгүй байна",
-      });
-    }
-
-    // Check for unpaid payments before allowing new order
-    const unpaidCount = await prisma.stockRequestPayment.count({
-      where: {
+router.post(
+  "/stock-requests",
+  requireAuth,
+  requireOrgPermission({ from: "body" }, Permission.REQUEST_STOCK),
+  async (req, res) => {
+    try {
+      const {
         organizationId,
-        status: PaymentStatus.PENDING,
-      },
-    });
+        warehouseId,
+        note,
+        deliveryAddress,
+        deliveryPhone,
+        items, // Array of { productId, quantity, note? }
+      } = req.body;
 
-    if (unpaidCount > 0) {
-      return res.status(400).json({
-        message: "Өмнөх төлбөрөө төлсний дараа шинэ захиалга өгөх боломжтой",
-        unpaidCount,
-      });
-    }
-
-    const requestNumber = await generateRequestNumber();
-    const invoiceNumber = await generateInvoiceNumber();
-
-    // Calculate total amount from items
-    const productIds = normalizedItems.map(
-      (item: { productId: string }) => item.productId,
-    );
-    const inventory = await prisma.warehouseInventory.findMany({
-      where: { warehouseId, productId: { in: productIds } },
-      select: {
-        productId: true,
-        quantity: true,
-        product: { select: { price: true, name: true } },
-      },
-    });
-    const inventoryMap = new Map(
-      inventory.map((entry: (typeof inventory)[number]) => [
-        entry.productId,
-        entry,
-      ]),
-    );
-    let totalAmount = 0;
-    for (const item of normalizedItems) {
-      const available = inventoryMap.get(item.productId);
-      if (!available) {
+      if (!organizationId || !warehouseId || !items?.length) {
         return res.status(400).json({
-          message: "Сонгосон бараа энэ агуулахад байхгүй байна",
+          message: "organizationId, warehouseId, items шаардлагатай",
         });
       }
-      if (available.quantity < item.quantity) {
+
+      const requestedById = (req as any).user.userId as string;
+      const normalizedItems = items.map(
+        (item: {
+          productId?: unknown;
+          quantity?: unknown;
+          note?: unknown;
+        }) => ({
+          productId: typeof item.productId === "string" ? item.productId : "",
+          quantity: Number(item.quantity),
+          note: typeof item.note === "string" ? item.note.trim() : undefined,
+        }),
+      );
+      if (
+        normalizedItems.some(
+          (item: { productId: string; quantity: number }) =>
+            !item.productId ||
+            !Number.isSafeInteger(item.quantity) ||
+            item.quantity <= 0,
+        )
+      ) {
         return res.status(400).json({
-          message: `${available.product.name}-ийн үлдэгдэл хүрэлцэхгүй байна (${available.quantity} үлдсэн)`,
+          message: "Барааны код болон тоо хэмжээ буруу байна",
         });
       }
-      totalAmount += Number(available.product.price) * item.quantity;
-    }
+      if (
+        new Set(
+          normalizedItems.map((item: { productId: string }) => item.productId),
+        ).size !== normalizedItems.length
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Нэг бараа давхар орсон байна" });
+      }
 
-    // Create stock request with payment record in transaction
-    const request = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const stockRequest = await tx.warehouseStockRequest.create({
-        data: {
-          requestNumber,
-          organizationId,
-          warehouseId,
-          requestedById,
-          note: note || null,
-          deliveryAddress: deliveryAddress || null,
-          deliveryPhone: deliveryPhone || null,
-          status: StockRequestStatus.PENDING,
-          items: {
-            create: normalizedItems.map(
-              (item: {
-                productId: string;
-                quantity: number;
-                note?: string;
-              }) => ({
-                productId: item.productId,
-                quantity: item.quantity,
-                note: item.note || null,
-              }),
-            ),
+      // Verify warehouse is assigned to this organization
+      const warehouseOrg = await prisma.warehouseOrganization.findUnique({
+        where: {
+          warehouseId_organizationId: {
+            warehouseId,
+            organizationId,
           },
         },
       });
 
-      // Create payment record (invoice)
-      await tx.stockRequestPayment.create({
-        data: {
-          invoiceNumber,
-          requestId: stockRequest.id,
-          organizationId,
-          totalAmount,
-          paidAmount: 0,
-          status: PaymentStatus.PENDING,
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days due
+      if (!warehouseOrg) {
+        return res.status(403).json({
+          message: "Энэ агуулахаас бараа татах эрхгүй байна",
+        });
+      }
+
+      const outstandingPayments =
+        await getOutstandingStockPayments(organizationId);
+
+      if (outstandingPayments.length > 0) {
+        return res.status(409).json({
+          code: "OUTSTANDING_STOCK_PAYMENT",
+          message: "Өмнөх төлбөрөө төлсний дараа шинэ захиалга өгөх боломжтой",
+          outstandingCount: outstandingPayments.length,
+          totalOutstanding: outstandingPayments.reduce(
+            (total, payment) => total + payment.outstandingAmount,
+            0,
+          ),
+          payments: outstandingPayments.map(serializeOutstandingPayment),
+        });
+      }
+
+      const requestNumber = await generateRequestNumber();
+      const invoiceNumber = await generateInvoiceNumber();
+
+      // Calculate total amount from items
+      const productIds = normalizedItems.map(
+        (item: { productId: string }) => item.productId,
+      );
+      const inventory = await prisma.warehouseInventory.findMany({
+        where: { warehouseId, productId: { in: productIds } },
+        select: {
+          productId: true,
+          quantity: true,
+          product: { select: { price: true, name: true } },
         },
       });
+      const inventoryMap = new Map(
+        inventory.map((entry: (typeof inventory)[number]) => [
+          entry.productId,
+          entry,
+        ]),
+      );
+      let totalAmount = 0;
+      for (const item of normalizedItems) {
+        const available = inventoryMap.get(item.productId);
+        if (!available) {
+          return res.status(400).json({
+            message: "Сонгосон бараа энэ агуулахад байхгүй байна",
+          });
+        }
+        if (available.quantity < item.quantity) {
+          return res.status(400).json({
+            message: `${available.product.name}-ийн үлдэгдэл хүрэлцэхгүй байна (${available.quantity} үлдсэн)`,
+          });
+        }
+        totalAmount += Number(available.product.price) * item.quantity;
+      }
 
-      // Return with includes
-      return tx.warehouseStockRequest.findUnique({
-        where: { id: stockRequest.id },
-        include: {
-          organization: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
+      // Create stock request with payment record in transaction
+      const request = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          const stockRequest = await tx.warehouseStockRequest.create({
+            data: {
+              requestNumber,
+              organizationId,
+              warehouseId,
+              requestedById,
+              note: note || null,
+              deliveryAddress: deliveryAddress || null,
+              deliveryPhone: deliveryPhone || null,
+              status: StockRequestStatus.PENDING,
+              items: {
+                create: normalizedItems.map(
+                  (item: {
+                    productId: string;
+                    quantity: number;
+                    note?: string;
+                  }) => ({
+                    productId: item.productId,
+                    quantity: item.quantity,
+                    note: item.note || null,
+                  }),
+                ),
+              },
             },
-          },
-          warehouse: {
-            select: {
-              id: true,
-              name: true,
-              address: true,
+          });
+
+          // Create payment record (invoice)
+          await tx.stockRequestPayment.create({
+            data: {
+              invoiceNumber,
+              requestId: stockRequest.id,
+              organizationId,
+              totalAmount,
+              paidAmount: 0,
+              status: PaymentStatus.PENDING,
+              dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days due
             },
-          },
-          items: {
+          });
+
+          // Return with includes
+          return tx.warehouseStockRequest.findUnique({
+            where: { id: stockRequest.id },
             include: {
-              product: {
+              organization: {
                 select: {
                   id: true,
                   name: true,
-                  sku: true,
+                  slug: true,
                 },
               },
+              warehouse: {
+                select: {
+                  id: true,
+                  name: true,
+                  address: true,
+                },
+              },
+              items: {
+                include: {
+                  product: {
+                    select: {
+                      id: true,
+                      name: true,
+                      sku: true,
+                    },
+                  },
+                },
+              },
+              payment: true,
             },
-          },
-          payment: true,
+          });
         },
-      });
-    });
+      );
 
-    res.status(201).json(request);
-  } catch (error) {
-    console.error("create stock request error", error);
-    res.status(500).json({
-      message: "Хүсэлт үүсгэхэд алдаа гарлаа",
-    });
-  }
-});
+      res.status(201).json(request);
+    } catch (error) {
+      console.error("create stock request error", error);
+      res.status(500).json({
+        message: "Хүсэлт үүсгэхэд алдаа гарлаа",
+      });
+    }
+  },
+);
 
 // Approve stock request (Admin)
 router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
@@ -528,116 +684,104 @@ router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
       });
     }
 
-    const unpaidWhere: any = {
-      organizationId: request.organizationId,
-      status: { in: [PaymentStatus.PENDING, PaymentStatus.FAILED] },
-    };
-
-    if (request.payment?.id) {
-      unpaidWhere.id = { not: request.payment.id };
-    }
-
-    const unpaidPayments = await prisma.stockRequestPayment.findMany({
-      where: unpaidWhere,
-      include: {
-        request: {
-          select: { requestNumber: true },
-        },
-      },
-    });
+    const unpaidPayments = await getOutstandingStockPayments(
+      request.organizationId,
+      request.payment?.id,
+    );
 
     if (unpaidPayments.length > 0) {
       const unpaidInvoices = unpaidPayments
         .map((p: (typeof unpaidPayments)[number]) => p.invoiceNumber)
         .join(", ");
-      return res.status(400).json({
+      return res.status(409).json({
+        code: "OUTSTANDING_STOCK_PAYMENT",
         message: `Өмнөх төлбөр төлөгдөөгүй байна. Төлөгдөөгүй нэхэмжлэхүүд: ${unpaidInvoices}`,
-        unpaidPayments: unpaidPayments.map((p: (typeof unpaidPayments)[number]) => ({
-          invoiceNumber: p.invoiceNumber,
-          requestNumber: p.request?.requestNumber,
-          totalAmount: p.totalAmount,
-          paidAmount: p.paidAmount,
-          status: p.status,
-        })),
+        totalOutstanding: unpaidPayments.reduce(
+          (total, payment) => total + payment.outstandingAmount,
+          0,
+        ),
+        payments: unpaidPayments.map(serializeOutstandingPayment),
       });
     }
 
     // Update request and items with approved quantities
-    const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // Update item approved quantities if provided
-      if (items && items.length > 0) {
-        for (const item of items) {
-          await tx.warehouseStockRequestItem.update({
-            where: {
-              requestId_productId: {
-                requestId: id,
-                productId: item.productId,
+    const updated = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        // Update item approved quantities if provided
+        if (items && items.length > 0) {
+          for (const item of items) {
+            await tx.warehouseStockRequestItem.update({
+              where: {
+                requestId_productId: {
+                  requestId: id,
+                  productId: item.productId,
+                },
               },
-            },
+              data: {
+                approvedQuantity: item.approvedQuantity,
+              },
+            });
+          }
+        } else {
+          // Approve all with requested quantities
+          await tx.warehouseStockRequestItem.updateMany({
+            where: { requestId: id },
             data: {
-              approvedQuantity: item.approvedQuantity,
+              approvedQuantity: undefined, // Will be set individually
             },
           });
+
+          // Set approved = requested for each item
+          for (const item of request.items) {
+            await tx.warehouseStockRequestItem.update({
+              where: { id: item.id },
+              data: { approvedQuantity: item.quantity },
+            });
+          }
         }
-      } else {
-        // Approve all with requested quantities
-        await tx.warehouseStockRequestItem.updateMany({
-          where: { requestId: id },
+
+        // Update request status
+        const updatedRequest = await tx.warehouseStockRequest.update({
+          where: { id },
           data: {
-            approvedQuantity: undefined, // Will be set individually
+            status: StockRequestStatus.APPROVED,
+            reviewedById: reviewedById || null,
+            reviewNote: reviewNote || null,
+            reviewedAt: new Date(),
+            approvedAt: new Date(),
+          },
+          include: {
+            organization: {
+              select: { id: true, name: true },
+            },
+            warehouse: {
+              select: { id: true, name: true },
+            },
+            items: {
+              include: {
+                product: {
+                  select: { id: true, name: true, sku: true },
+                },
+              },
+            },
           },
         });
 
-        // Set approved = requested for each item
-        for (const item of request.items) {
-          await tx.warehouseStockRequestItem.update({
-            where: { id: item.id },
-            data: { approvedQuantity: item.quantity },
-          });
-        }
-      }
-
-      // Update request status
-      const updatedRequest = await tx.warehouseStockRequest.update({
-        where: { id },
-        data: {
-          status: StockRequestStatus.APPROVED,
-          reviewedById: reviewedById || null,
-          reviewNote: reviewNote || null,
-          reviewedAt: new Date(),
-          approvedAt: new Date(),
-        },
-        include: {
-          organization: {
-            select: { id: true, name: true },
+        // Auto-create dispatch order for warehouse
+        const dispatchNumber = await generateDispatchNumber();
+        await tx.stockDispatch.create({
+          data: {
+            dispatchNumber,
+            requestId: id,
+            warehouseId: request.warehouseId,
+            organizationId: request.organizationId,
+            status: "PENDING",
           },
-          warehouse: {
-            select: { id: true, name: true },
-          },
-          items: {
-            include: {
-              product: {
-                select: { id: true, name: true, sku: true },
-              },
-            },
-          },
-        },
-      });
+        });
 
-      // Auto-create dispatch order for warehouse
-      const dispatchNumber = await generateDispatchNumber();
-      await tx.stockDispatch.create({
-        data: {
-          dispatchNumber,
-          requestId: id,
-          warehouseId: request.warehouseId,
-          organizationId: request.organizationId,
-          status: "PENDING",
-        },
-      });
-
-      return updatedRequest;
-    });
+        return updatedRequest;
+      },
+    );
 
     res.json(updated);
   } catch (error) {
@@ -656,6 +800,7 @@ router.patch("/stock-requests/:id/reject", requireAuth, async (req, res) => {
 
     const request = await prisma.warehouseStockRequest.findUnique({
       where: { id },
+      include: { payment: true },
     });
 
     if (!request) {
@@ -668,23 +813,30 @@ router.patch("/stock-requests/:id/reject", requireAuth, async (req, res) => {
       });
     }
 
-    const updated = await prisma.warehouseStockRequest.update({
-      where: { id },
-      data: {
-        status: StockRequestStatus.REJECTED,
-        reviewedById: reviewedById || null,
-        reviewNote: reviewNote || null,
-        reviewedAt: new Date(),
-        rejectedAt: new Date(),
-      },
-      include: {
-        organization: {
-          select: { id: true, name: true },
+    const updated = await prisma.$transaction(async (tx) => {
+      const rejectedRequest = await tx.warehouseStockRequest.update({
+        where: { id },
+        data: {
+          status: StockRequestStatus.REJECTED,
+          reviewedById: reviewedById || null,
+          reviewNote: reviewNote || null,
+          reviewedAt: new Date(),
+          rejectedAt: new Date(),
         },
-        warehouse: {
-          select: { id: true, name: true },
+        include: {
+          organization: { select: { id: true, name: true } },
+          warehouse: { select: { id: true, name: true } },
         },
-      },
+      });
+
+      if (request.payment && request.payment.status !== PaymentStatus.PAID) {
+        await tx.stockRequestPayment.update({
+          where: { id: request.payment.id },
+          data: { status: PaymentStatus.CANCELLED },
+        });
+      }
+
+      return rejectedRequest;
     });
 
     res.json(updated);
@@ -755,49 +907,58 @@ router.patch("/stock-requests/:id/complete", requireAuth, async (req, res) => {
     }
 
     // Update warehouse inventory (reduce stock) and sync Product.stock
-    const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // Reduce inventory for each item via inventory service
-      for (const item of request.items) {
-        const quantity = item.approvedQuantity || item.quantity;
+    const updated = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        // Reduce inventory for each item via inventory service
+        for (const item of request.items) {
+          const quantity = item.approvedQuantity || item.quantity;
 
-        await adjustStock(tx, {
-          productId: item.productId,
-          warehouseId: request.warehouseId,
-          change: -quantity,
-          reason: InventoryReason.TRANSFER_OUT,
-          note: `Stock request ${request.requestNumber} completed`,
-          referenceId: request.id,
-          referenceType: "STOCK_REQUEST",
-        });
-      }
+          await adjustStock(tx, {
+            productId: item.productId,
+            warehouseId: request.warehouseId,
+            change: -quantity,
+            reason: InventoryReason.TRANSFER_OUT,
+            note: `Stock request ${request.requestNumber} completed`,
+            referenceId: request.id,
+            referenceType: "STOCK_REQUEST",
+          });
+        }
 
-      // Transfer stock to Vendor
-      await transferStockToVendor(tx, { organizationId: request.organizationId, requestNumber: request.requestNumber }, request.items);
-
-      // Update request status
-      return tx.warehouseStockRequest.update({
-        where: { id },
-        data: {
-          status: StockRequestStatus.COMPLETED,
-          completedAt: new Date(),
-        },
-        include: {
-          organization: {
-            select: { id: true, name: true },
+        // Transfer stock to Vendor
+        await transferStockToVendor(
+          tx,
+          {
+            organizationId: request.organizationId,
+            requestNumber: request.requestNumber,
           },
-          warehouse: {
-            select: { id: true, name: true },
+          request.items,
+        );
+
+        // Update request status
+        return tx.warehouseStockRequest.update({
+          where: { id },
+          data: {
+            status: StockRequestStatus.COMPLETED,
+            completedAt: new Date(),
           },
-          items: {
-            include: {
-              product: {
-                select: { id: true, name: true, sku: true },
+          include: {
+            organization: {
+              select: { id: true, name: true },
+            },
+            warehouse: {
+              select: { id: true, name: true },
+            },
+            items: {
+              include: {
+                product: {
+                  select: { id: true, name: true, sku: true },
+                },
               },
             },
           },
-        },
-      });
-    });
+        });
+      },
+    );
 
     res.json(updated);
   } catch (error) {
@@ -815,6 +976,7 @@ router.patch("/stock-requests/:id/cancel", requireAuth, async (req, res) => {
 
     const request = await prisma.warehouseStockRequest.findUnique({
       where: { id },
+      include: { payment: true },
     });
 
     if (!request) {
@@ -827,11 +989,20 @@ router.patch("/stock-requests/:id/cancel", requireAuth, async (req, res) => {
       });
     }
 
-    const updated = await prisma.warehouseStockRequest.update({
-      where: { id },
-      data: {
-        status: StockRequestStatus.CANCELLED,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const cancelledRequest = await tx.warehouseStockRequest.update({
+        where: { id },
+        data: { status: StockRequestStatus.CANCELLED },
+      });
+
+      if (request.payment && request.payment.status !== PaymentStatus.PAID) {
+        await tx.stockRequestPayment.update({
+          where: { id: request.payment.id },
+          data: { status: PaymentStatus.CANCELLED },
+        });
+      }
+
+      return cancelledRequest;
     });
 
     res.json(updated);
@@ -875,17 +1046,47 @@ router.get(
         });
       }
 
+      const search = (req.query.search as string | undefined)?.trim();
+      const category = (req.query.category as string | undefined)?.trim();
+      const sort = (req.query.sort as string | undefined) || "recommended";
+      const lowStockOnly = req.query.lowStock === "true";
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 40));
+
       const inventory = await prisma.warehouseInventory.findMany({
         where: {
           warehouseId,
           quantity: { gt: 0 },
+          product: {
+            deletedAt: null,
+            isActive: true,
+            ...(search
+              ? {
+                  OR: [
+                    { name: { contains: search, mode: "insensitive" } },
+                    { sku: { contains: search, mode: "insensitive" } },
+                    { barcode: { contains: search, mode: "insensitive" } },
+                  ],
+                }
+              : {}),
+            ...(category
+              ? {
+                  OR: [
+                    { category: { name: category } },
+                    { businessCategory: { name: category } },
+                  ],
+                }
+              : {}),
+          },
         },
         include: {
           product: {
             select: {
               id: true,
+              masterProductId: true,
               name: true,
               sku: true,
+              barcode: true,
               price: true,
               images: {
                 take: 1,
@@ -906,14 +1107,364 @@ router.get(
             },
           },
         },
-        orderBy: {
-          product: {
-            name: "asc",
-          },
-        },
       });
 
-      res.json(inventory);
+      const productIds = inventory.map((item) => item.productId);
+      if (productIds.length === 0) {
+        return res.json({ items: [], total: 0, hasMore: false });
+      }
+
+      const since = new Date();
+      since.setDate(since.getDate() - 90);
+      const masterProductIds = [
+        ...new Set(
+          inventory
+            .map((item) => item.product.masterProductId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      const barcodes = [
+        ...new Set(
+          inventory
+            .map((item) => item.product.barcode?.trim())
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ];
+      const skus = [
+        ...new Set(
+          inventory
+            .map((item) => item.product.sku?.trim())
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ];
+      const names = [
+        ...new Set(
+          inventory.map((item) => item.product.name.trim()).filter(Boolean),
+        ),
+      ];
+      const systemProducts = await prisma.product.findMany({
+        where: {
+          deletedAt: null,
+          OR: [
+            ...(masterProductIds.length
+              ? [{ masterProductId: { in: masterProductIds } }]
+              : []),
+            ...(barcodes.length
+              ? [{ barcode: { in: barcodes, mode: "insensitive" as const } }]
+              : []),
+            ...(skus.length
+              ? [{ sku: { in: skus, mode: "insensitive" as const } }]
+              : []),
+            ...(names.length
+              ? [{ name: { in: names, mode: "insensitive" as const } }]
+              : []),
+          ],
+        },
+        select: {
+          id: true,
+          masterProductId: true,
+          barcode: true,
+          sku: true,
+          name: true,
+        },
+      });
+      const systemProductIds = systemProducts.map((product) => product.id);
+
+      const [
+        onlineSales,
+        posSales,
+        systemOnlineSales,
+        systemPosSales,
+        systemStockRequests,
+        requestHistory,
+        organizationInventory,
+      ] = await Promise.all([
+        prisma.orderItem.groupBy({
+          by: ["productSku", "productName"],
+          where: {
+            order: {
+              organizationId,
+              status: { not: "CANCELLED" },
+              deletedAt: null,
+              createdAt: { gte: since },
+            },
+          },
+          _sum: { quantity: true },
+        }),
+        prisma.posSaleLine.groupBy({
+          by: ["productSku", "productName"],
+          where: {
+            sale: {
+              organizationId,
+              status: "COMPLETED",
+              createdAt: { gte: since },
+            },
+          },
+          _sum: { qty: true },
+        }),
+        systemProductIds.length
+          ? prisma.orderItem.groupBy({
+              by: ["productId"],
+              where: {
+                productId: { in: systemProductIds },
+                order: {
+                  status: { not: "CANCELLED" },
+                  deletedAt: null,
+                  createdAt: { gte: since },
+                },
+              },
+              _sum: { quantity: true },
+            })
+          : Promise.resolve([]),
+        systemProductIds.length
+          ? prisma.posSaleLine.groupBy({
+              by: ["productId"],
+              where: {
+                productId: { in: systemProductIds },
+                sale: {
+                  status: "COMPLETED",
+                  createdAt: { gte: since },
+                },
+              },
+              _sum: { qty: true },
+            })
+          : Promise.resolve([]),
+        systemProductIds.length
+          ? prisma.warehouseStockRequestItem.groupBy({
+              by: ["productId"],
+              where: {
+                productId: { in: systemProductIds },
+                request: {
+                  status: { notIn: ["CANCELLED", "REJECTED"] },
+                  createdAt: { gte: since },
+                },
+              },
+              _sum: { quantity: true },
+            })
+          : Promise.resolve([]),
+        prisma.warehouseStockRequestItem.groupBy({
+          by: ["productId"],
+          where: {
+            productId: { in: productIds },
+            request: {
+              organizationId,
+              status: { notIn: ["CANCELLED", "REJECTED"] },
+              createdAt: { gte: since },
+            },
+          },
+          _sum: { quantity: true },
+        }),
+        prisma.warehouseInventory.groupBy({
+          by: ["productId"],
+          where: {
+            productId: { in: productIds },
+            warehouse: {
+              type: WarehouseType.VENDOR_INTERNAL,
+              organizations: { some: { organizationId } },
+            },
+          },
+          _sum: { quantity: true },
+        }),
+      ]);
+
+      const salesByKey = new Map<string, number>();
+      const addSales = (sku: string | null, name: string, quantity: number) => {
+        const key = sku?.trim()
+          ? `sku:${sku.trim().toUpperCase()}`
+          : `name:${name.trim().toLowerCase()}`;
+        salesByKey.set(key, (salesByKey.get(key) || 0) + quantity);
+      };
+      onlineSales.forEach((row) =>
+        addSales(row.productSku, row.productName, row._sum.quantity || 0),
+      );
+      posSales.forEach((row) =>
+        addSales(row.productSku, row.productName, row._sum.qty || 0),
+      );
+
+      const normalizeIdentity = (value: string) =>
+        value.trim().toLocaleLowerCase("mn-MN");
+      const productIdentity = (product: {
+        masterProductId: string | null;
+        barcode: string | null;
+        sku: string | null;
+        name: string;
+      }) =>
+        product.masterProductId
+          ? `master:${product.masterProductId}`
+          : product.barcode?.trim()
+            ? `barcode:${normalizeIdentity(product.barcode)}`
+            : product.sku?.trim()
+              ? `sku:${normalizeIdentity(product.sku)}`
+              : `name:${normalizeIdentity(product.name)}`;
+      const inventoryIdentitySet = new Set(
+        inventory.map((item) => productIdentity(item.product)),
+      );
+      const inventoryIdentityByBarcode = new Map(
+        inventory
+          .filter((item) => item.product.barcode?.trim())
+          .map((item) => [
+            normalizeIdentity(item.product.barcode!),
+            productIdentity(item.product),
+          ]),
+      );
+      const inventoryIdentityBySku = new Map(
+        inventory
+          .filter((item) => item.product.sku?.trim())
+          .map((item) => [
+            normalizeIdentity(item.product.sku!),
+            productIdentity(item.product),
+          ]),
+      );
+      const inventoryIdentityByName = new Map(
+        inventory.map((item) => [
+          normalizeIdentity(item.product.name),
+          productIdentity(item.product),
+        ]),
+      );
+      const identityByProductId = new Map<string, string>();
+      systemProducts.forEach((product) => {
+        const canonicalIdentity = productIdentity(product);
+        const targetIdentity = inventoryIdentitySet.has(canonicalIdentity)
+          ? canonicalIdentity
+          : product.barcode?.trim()
+            ? inventoryIdentityByBarcode.get(normalizeIdentity(product.barcode))
+            : product.sku?.trim()
+              ? inventoryIdentityBySku.get(normalizeIdentity(product.sku))
+              : inventoryIdentityByName.get(normalizeIdentity(product.name));
+        if (targetIdentity) identityByProductId.set(product.id, targetIdentity);
+      });
+
+      const systemSalesByIdentity = new Map<string, number>();
+      const addSystemSales = (productId: string, quantity: number) => {
+        const identity = identityByProductId.get(productId);
+        if (!identity) return;
+        systemSalesByIdentity.set(
+          identity,
+          (systemSalesByIdentity.get(identity) || 0) + quantity,
+        );
+      };
+      systemOnlineSales.forEach((row) =>
+        addSystemSales(row.productId, row._sum.quantity || 0),
+      );
+      systemPosSales.forEach((row) =>
+        addSystemSales(row.productId, row._sum.qty || 0),
+      );
+      const systemRequestsByIdentity = new Map<string, number>();
+      systemStockRequests.forEach((row) => {
+        const identity = identityByProductId.get(row.productId);
+        if (!identity) return;
+        systemRequestsByIdentity.set(
+          identity,
+          (systemRequestsByIdentity.get(identity) || 0) +
+            (row._sum.quantity || 0),
+        );
+      });
+
+      const requestedByProduct = new Map(
+        requestHistory.map((row) => [row.productId, row._sum.quantity || 0]),
+      );
+      const stockByProduct = new Map(
+        organizationInventory.map((row) => [
+          row.productId,
+          row._sum.quantity || 0,
+        ]),
+      );
+
+      const enriched = inventory.map((item) => {
+        const identity = productIdentity(item.product);
+        const salesKey = item.product.sku?.trim()
+          ? `sku:${item.product.sku.trim().toUpperCase()}`
+          : `name:${item.product.name.trim().toLowerCase()}`;
+        const soldQuantity90d = salesByKey.get(salesKey) || 0;
+        const systemSoldQuantity90d =
+          systemSalesByIdentity.get(identity) || soldQuantity90d;
+        const systemRequestedQuantity90d =
+          systemRequestsByIdentity.get(identity) ||
+          requestedByProduct.get(item.productId) ||
+          0;
+        const previouslyRequestedQuantity =
+          requestedByProduct.get(item.productId) || 0;
+        const organizationStock = stockByProduct.get(item.productId) || 0;
+        const reorderPoint = Math.ceil(soldQuantity90d / 3);
+        const stockShortfall = Math.max(0, reorderPoint - organizationStock);
+        const recommendationScore =
+          soldQuantity90d * 10 +
+          previouslyRequestedQuantity * 2 +
+          stockShortfall * 5;
+        const recommendationReason =
+          stockShortfall > 0 && soldQuantity90d > 0
+            ? "SALES_REPLENISHMENT"
+            : soldQuantity90d > 0
+              ? "TOP_SELLING"
+              : previouslyRequestedQuantity > 0
+                ? "PREVIOUSLY_ORDERED"
+                : null;
+
+        return {
+          ...item,
+          organizationStock,
+          reorderPoint,
+          soldQuantity90d,
+          systemSoldQuantity90d,
+          systemRequestedQuantity90d,
+          previouslyRequestedQuantity,
+          recommendationScore,
+          recommendationReason,
+        };
+      });
+
+      let filtered = lowStockOnly
+        ? enriched.filter(
+            (item) =>
+              item.reorderPoint > 0 &&
+              item.organizationStock < item.reorderPoint,
+          )
+        : enriched;
+
+      // These options are user-facing filters, not only sort modes.
+      // `name` is the explicit "all products" option.
+      if (sort === "recommended") {
+        filtered = filtered.filter(
+          (item) => item.recommendationReason !== null,
+        );
+      } else if (sort === "topSelling") {
+        filtered = filtered.filter((item) => item.systemSoldQuantity90d > 0);
+      } else if (sort === "mostRequested") {
+        filtered = filtered.filter(
+          (item) => item.systemRequestedQuantity90d > 0,
+        );
+      } else if (sort === "previouslyOrdered") {
+        filtered = filtered.filter(
+          (item) => item.previouslyRequestedQuantity > 0,
+        );
+      }
+
+      filtered.sort((a, b) => {
+        if (sort === "topSelling") {
+          return b.systemSoldQuantity90d - a.systemSoldQuantity90d;
+        }
+        if (sort === "mostRequested") {
+          return b.systemRequestedQuantity90d - a.systemRequestedQuantity90d;
+        }
+        if (sort === "previouslyOrdered") {
+          return b.previouslyRequestedQuantity - a.previouslyRequestedQuantity;
+        }
+        if (sort === "name") {
+          return a.product.name.localeCompare(b.product.name, "mn");
+        }
+        return (
+          b.recommendationScore - a.recommendationScore ||
+          a.product.name.localeCompare(b.product.name, "mn")
+        );
+      });
+
+      const offset = (page - 1) * limit;
+      const items = filtered.slice(offset, offset + limit);
+      return res.json({
+        items,
+        total: filtered.length,
+        hasMore: offset + items.length < filtered.length,
+      });
     } catch (error) {
       console.error("get warehouse products error", error);
       res.status(500).json({
@@ -973,44 +1524,47 @@ router.get(
             },
           },
         },
-        orderBy: [
-          { completedAt: "desc" },
-          { warehouse: { name: "asc" } },
-        ],
+        orderBy: [{ completedAt: "desc" }, { warehouse: { name: "asc" } }],
       });
 
-      const catalogItems = completedRequests.flatMap((request: (typeof completedRequests)[number]) =>
-        request.items.map((item: (typeof request.items)[number]) => {
-          const quantity = item.approvedQuantity ?? item.quantity;
-          const alertThreshold = 5;
+      const catalogItems = completedRequests.flatMap(
+        (request: (typeof completedRequests)[number]) =>
+          request.items.map((item: (typeof request.items)[number]) => {
+            const quantity = item.approvedQuantity ?? item.quantity;
+            const alertThreshold = 5;
 
-          return {
-            id: item.id,
-            quantity,
-            minQuantity: 0,
-            maxQuantity: null,
-            alertThreshold,
-            isLowStock: quantity <= alertThreshold,
-            location: null,
-            source: "warehouse" as const,
-            warehouse: request.warehouse,
-            product: {
-              ...item.product,
-              categoryName:
-                item.product.businessCategory?.name ||
-                item.product.category?.name ||
-                "Ангилагдаагүй",
-            },
-          };
-        }),
+            return {
+              id: item.id,
+              quantity,
+              minQuantity: 0,
+              maxQuantity: null,
+              alertThreshold,
+              isLowStock: quantity <= alertThreshold,
+              location: null,
+              source: "warehouse" as const,
+              warehouse: request.warehouse,
+              product: {
+                ...item.product,
+                categoryName:
+                  item.product.businessCategory?.name ||
+                  item.product.category?.name ||
+                  "Ангилагдаагүй",
+              },
+            };
+          }),
       );
 
       const categoriesMap = new Map<
         string,
         { name: string; itemCount: number; totalQuantity: number }
       >();
-      const warehousesMap = new Map<string, { id: string; name: string; city: string; district: string }>();
-      const lowStockCount = catalogItems.filter((item: (typeof catalogItems)[number]) => item.isLowStock).length;
+      const warehousesMap = new Map<
+        string,
+        { id: string; name: string; city: string; district: string }
+      >();
+      const lowStockCount = catalogItems.filter(
+        (item: (typeof catalogItems)[number]) => item.isLowStock,
+      ).length;
 
       for (const item of catalogItems) {
         const categoryName = item.product.categoryName;
@@ -1033,7 +1587,8 @@ router.get(
         summary: {
           totalItems: catalogItems.length,
           totalQuantity: catalogItems.reduce(
-            (sum: number, item: (typeof catalogItems)[number]) => sum + Number(item.quantity || 0),
+            (sum: number, item: (typeof catalogItems)[number]) =>
+              sum + Number(item.quantity || 0),
             0,
           ),
           totalCategories: categoriesMap.size,
@@ -1306,56 +1861,82 @@ router.patch("/stock-requests/payments/:id/confirm", async (req, res) => {
 });
 
 // Vendor submits payment (self-service — records method & marks as submitted)
-router.patch("/stock-requests/payments/:id/pay", requireAuth, async (req, res) => {
-  try {
-    const id = req.params.id as string;
-    const { paymentMethod, transactionId, note } = req.body;
-    const userId = (req as any).user?.id || (req as any).userId;
+router.patch(
+  "/stock-requests/payments/:id/pay",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const id = req.params.id as string;
+      const { paymentMethod, transactionId, note } = req.body;
+      const userId = (req as any).user?.id || (req as any).userId;
 
-    const payment = await prisma.stockRequestPayment.findUnique({
-      where: { id },
-      include: { organization: { select: { id: true } } },
-    });
+      const payment = await prisma.stockRequestPayment.findUnique({
+        where: { id },
+        include: {
+          organization: { select: { id: true } },
+          request: { select: { status: true } },
+        },
+      });
 
-    if (!payment) {
-      return res.status(404).json({ message: "Төлбөр олдсонгүй" });
+      if (!payment) {
+        return res.status(404).json({ message: "Төлбөр олдсонгүй" });
+      }
+
+      const permissions = await assertOrgPermission(
+        req,
+        res,
+        payment.organizationId,
+        Permission.REQUEST_STOCK,
+      );
+      if (!permissions) return;
+
+      if (!canPayApprovedStockRequest(payment.request.status)) {
+        return res.status(409).json({
+          code: "STOCK_REQUEST_NOT_APPROVED",
+          message: "Админ зөвшөөрсний дараа төлбөр төлөх боломжтой",
+        });
+      }
+
+      if (payment.status === PaymentStatus.PAID) {
+        return res
+          .status(400)
+          .json({ message: "Энэ төлбөр аль хэдийн төлөгдсөн байна" });
+      }
+
+      if (payment.status === PaymentStatus.CANCELLED) {
+        return res
+          .status(400)
+          .json({ message: "Цуцлагдсан төлбөр төлөх боломжгүй" });
+      }
+
+      if (!paymentMethod) {
+        return res.status(400).json({ message: "Төлбөрийн хэлбэр сонгоно уу" });
+      }
+
+      const updated = await prisma.stockRequestPayment.update({
+        where: { id },
+        data: {
+          status: PaymentStatus.PAID,
+          paidAmount: payment.totalAmount,
+          paidAt: new Date(),
+          paymentMethod: paymentMethod as PaymentMethod,
+          transactionId: (transactionId as string) || null,
+          paidBy: (note as string) || null,
+          confirmedById: userId || null,
+        },
+        include: {
+          organization: { select: { id: true, name: true } },
+          request: { select: { id: true, requestNumber: true } },
+        },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("vendor pay error", error);
+      res.status(500).json({ message: "Төлбөр хийхэд алдаа гарлаа" });
     }
-
-    if (payment.status === PaymentStatus.PAID) {
-      return res.status(400).json({ message: "Энэ төлбөр аль хэдийн төлөгдсөн байна" });
-    }
-
-    if (payment.status === PaymentStatus.CANCELLED) {
-      return res.status(400).json({ message: "Цуцлагдсан төлбөр төлөх боломжгүй" });
-    }
-
-    if (!paymentMethod) {
-      return res.status(400).json({ message: "Төлбөрийн хэлбэр сонгоно уу" });
-    }
-
-    const updated = await prisma.stockRequestPayment.update({
-      where: { id },
-      data: {
-        status: PaymentStatus.PAID,
-        paidAmount: payment.totalAmount,
-        paidAt: new Date(),
-        paymentMethod: paymentMethod as PaymentMethod,
-        transactionId: (transactionId as string) || null,
-        paidBy: (note as string) || null,
-        confirmedById: userId || null,
-      },
-      include: {
-        organization: { select: { id: true, name: true } },
-        request: { select: { id: true, requestNumber: true } },
-      },
-    });
-
-    res.json(updated);
-  } catch (error) {
-    console.error("vendor pay error", error);
-    res.status(500).json({ message: "Төлбөр хийхэд алдаа гарлаа" });
-  }
-});
+  },
+);
 
 // Cancel payment (Admin)
 router.patch("/stock-requests/payments/:id/cancel", async (req, res) => {
@@ -1401,34 +1982,17 @@ router.get(
     try {
       const organizationId = req.params.organizationId as string;
 
-      const unpaidPayments = await prisma.stockRequestPayment.findMany({
-        where: {
-          organizationId,
-          status: { in: [PaymentStatus.PENDING, PaymentStatus.FAILED] },
-        },
-        include: {
-          request: {
-            select: { requestNumber: true },
-          },
-        },
-      });
+      const unpaidPayments = await getOutstandingStockPayments(organizationId);
 
       const totalUnpaid = unpaidPayments.reduce(
-        (sum: number, p: (typeof unpaidPayments)[number]) => sum + (Number(p.totalAmount) - Number(p.paidAmount)),
+        (sum, payment) => sum + payment.outstandingAmount,
         0,
       );
 
       res.json({
         count: unpaidPayments.length,
         totalUnpaid,
-        payments: unpaidPayments.map((p: (typeof unpaidPayments)[number]) => ({
-          id: p.id,
-          invoiceNumber: p.invoiceNumber,
-          requestNumber: p.request?.requestNumber,
-          amount: Number(p.totalAmount) - Number(p.paidAmount),
-          status: p.status,
-          dueDate: p.dueDate,
-        })),
+        payments: unpaidPayments.map(serializeOutstandingPayment),
       });
     } catch (error) {
       console.error("get unpaid payments error", error);
@@ -1444,60 +2008,67 @@ router.get(
 // ==========================================
 
 // Get dispatches for a warehouse
-router.get("/stock-requests/warehouse/:warehouseId/dispatches", async (req, res) => {
-  try {
-    const { warehouseId } = req.params;
-    const { status } = req.query;
+router.get(
+  "/stock-requests/warehouse/:warehouseId/dispatches",
+  async (req, res) => {
+    try {
+      const { warehouseId } = req.params;
+      const { status } = req.query;
 
-    const where: any = { warehouseId };
-    if (status) {
-      where.status = status;
-    }
+      const where: any = { warehouseId };
+      if (status) {
+        where.status = status;
+      }
 
-    const dispatches = await prisma.stockDispatch.findMany({
-      where,
-      include: {
-        request: {
-          include: {
-            items: {
-              include: {
-                product: {
-                  select: {
-                    id: true,
-                    name: true,
-                    sku: true,
-                    price: true,
-                    images: { take: 1, select: { url: true } },
+      const dispatches = await prisma.stockDispatch.findMany({
+        where,
+        include: {
+          request: {
+            include: {
+              items: {
+                include: {
+                  product: {
+                    select: {
+                      id: true,
+                      name: true,
+                      sku: true,
+                      price: true,
+                      images: { take: 1, select: { url: true } },
+                    },
                   },
                 },
               },
-            },
-            organization: {
-              select: { id: true, name: true, slug: true },
-            },
-            requestedBy: {
-              select: { id: true, email: true, profile: { select: { fullName: true, phoneNumber: true } } },
+              organization: {
+                select: { id: true, name: true, slug: true },
+              },
+              requestedBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  profile: { select: { fullName: true, phoneNumber: true } },
+                },
+              },
             },
           },
+          warehouse: {
+            select: { id: true, name: true, address: true },
+          },
+          organization: {
+            select: { id: true, name: true },
+          },
         },
-        warehouse: {
-          select: { id: true, name: true, address: true },
-        },
-        organization: {
-          select: { id: true, name: true },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+        orderBy: { createdAt: "desc" },
+      });
 
-    res.json(dispatches);
-  } catch (error) {
-    console.error("get warehouse dispatches error", error);
-    res.status(500).json({
-      message: "Агуулахын илгээмжүүдийг авахад алдаа гарлаа",
-    });
-  }
-});
+      res.json(dispatches);
+    } catch (error) {
+      console.error("get warehouse dispatches error", error);
+      res.status(500).json({
+        message: "Агуулахын илгээмжүүдийг авахад алдаа гарлаа",
+      });
+    }
+  },
+);
 
 // Get single dispatch detail
 router.get("/stock-requests/dispatches/:id", async (req, res) => {
@@ -1526,7 +2097,11 @@ router.get("/stock-requests/dispatches/:id", async (req, res) => {
               select: { id: true, name: true, slug: true, phone: true },
             },
             requestedBy: {
-              select: { id: true, email: true, profile: { select: { fullName: true, phoneNumber: true } } },
+              select: {
+                id: true,
+                email: true,
+                profile: { select: { fullName: true, phoneNumber: true } },
+              },
             },
             payment: true,
           },
@@ -1538,7 +2113,11 @@ router.get("/stock-requests/dispatches/:id", async (req, res) => {
           select: { id: true, name: true, phone: true },
         },
         driver: {
-          select: { id: true, email: true, profile: { select: { fullName: true, phoneNumber: true } } },
+          select: {
+            id: true,
+            email: true,
+            profile: { select: { fullName: true, phoneNumber: true } },
+          },
         },
       },
     });
@@ -1580,49 +2159,51 @@ router.patch("/stock-requests/dispatches/:id/confirm", async (req, res) => {
       });
     }
 
-    const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // Deduct inventory for each item
-      for (const item of dispatch.request.items) {
-        const quantity = item.approvedQuantity || item.quantity;
+    const updated = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        // Deduct inventory for each item
+        for (const item of dispatch.request.items) {
+          const quantity = item.approvedQuantity || item.quantity;
 
-        await adjustStock(tx, {
-          productId: item.productId,
-          warehouseId: dispatch.warehouseId,
-          change: -quantity,
-          reason: InventoryReason.TRANSFER_OUT,
-          note: `Dispatch ${dispatch.dispatchNumber} confirmed`,
-          referenceId: dispatch.requestId,
-          referenceType: "STOCK_DISPATCH",
+          await adjustStock(tx, {
+            productId: item.productId,
+            warehouseId: dispatch.warehouseId,
+            change: -quantity,
+            reason: InventoryReason.TRANSFER_OUT,
+            note: `Dispatch ${dispatch.dispatchNumber} confirmed`,
+            referenceId: dispatch.requestId,
+            referenceType: "STOCK_DISPATCH",
+          });
+        }
+
+        // Update stock request status → PROCESSING
+        await tx.warehouseStockRequest.update({
+          where: { id: dispatch.requestId },
+          data: { status: StockRequestStatus.PROCESSING },
         });
-      }
 
-      // Update stock request status → PROCESSING
-      await tx.warehouseStockRequest.update({
-        where: { id: dispatch.requestId },
-        data: { status: StockRequestStatus.PROCESSING },
-      });
-
-      // Update dispatch status → CONFIRMED
-      return tx.stockDispatch.update({
-        where: { id },
-        data: { status: "CONFIRMED" },
-        include: {
-          request: {
-            include: {
-              items: {
-                include: {
-                  product: {
-                    select: { id: true, name: true, sku: true },
+        // Update dispatch status → CONFIRMED
+        return tx.stockDispatch.update({
+          where: { id },
+          data: { status: "CONFIRMED" },
+          include: {
+            request: {
+              include: {
+                items: {
+                  include: {
+                    product: {
+                      select: { id: true, name: true, sku: true },
+                    },
                   },
                 },
+                organization: { select: { id: true, name: true } },
               },
-              organization: { select: { id: true, name: true } },
             },
+            warehouse: { select: { id: true, name: true } },
           },
-          warehouse: { select: { id: true, name: true } },
-        },
-      });
-    });
+        });
+      },
+    );
 
     res.json(updated);
   } catch (error) {
@@ -1710,49 +2291,59 @@ router.patch("/stock-requests/dispatches/:id/deliver", async (req, res) => {
 
     if (dispatch.status !== "DISPATCHED") {
       return res.status(400).json({
-        message: "Зөвхөн илгээгдсэн илгээмжийг хүргэгдсэн гэж тэмдэглэх боломжтой",
+        message:
+          "Зөвхөн илгээгдсэн илгээмжийг хүргэгдсэн гэж тэмдэглэх боломжтой",
       });
     }
 
-    const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const request = await tx.warehouseStockRequest.findUnique({
-        where: { id: dispatch.requestId },
-        include: { items: true }
-      });
-      if (request) {
-        await transferStockToVendor(tx, { organizationId: request.organizationId, requestNumber: request.requestNumber }, request.items);
-      }
-
-      await tx.warehouseStockRequest.update({
-        where: { id: dispatch.requestId },
-        data: {
-          status: StockRequestStatus.COMPLETED,
-          completedAt: new Date(),
-        },
-      });
-
-      return tx.stockDispatch.update({
-        where: { id },
-        data: {
-          status: "DELIVERED",
-          deliveredAt: new Date(),
-          note: note || dispatch.note,
-        },
-        include: {
-          request: {
-            include: {
-              items: {
-                include: {
-                  product: { select: { id: true, name: true, sku: true } },
-                },
-              },
-              organization: { select: { id: true, name: true } },
+    const updated = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const request = await tx.warehouseStockRequest.findUnique({
+          where: { id: dispatch.requestId },
+          include: { items: true },
+        });
+        if (request) {
+          await transferStockToVendor(
+            tx,
+            {
+              organizationId: request.organizationId,
+              requestNumber: request.requestNumber,
             },
+            request.items,
+          );
+        }
+
+        await tx.warehouseStockRequest.update({
+          where: { id: dispatch.requestId },
+          data: {
+            status: StockRequestStatus.COMPLETED,
+            completedAt: new Date(),
           },
-          warehouse: { select: { id: true, name: true } },
-        },
-      });
-    });
+        });
+
+        return tx.stockDispatch.update({
+          where: { id },
+          data: {
+            status: "DELIVERED",
+            deliveredAt: new Date(),
+            note: note || dispatch.note,
+          },
+          include: {
+            request: {
+              include: {
+                items: {
+                  include: {
+                    product: { select: { id: true, name: true, sku: true } },
+                  },
+                },
+                organization: { select: { id: true, name: true } },
+              },
+            },
+            warehouse: { select: { id: true, name: true } },
+          },
+        });
+      },
+    );
 
     res.json(updated);
   } catch (error) {
@@ -1780,41 +2371,44 @@ router.patch("/stock-requests/dispatches/:id/cancel", async (req, res) => {
 
     if (dispatch.status !== "PENDING" && dispatch.status !== "CONFIRMED") {
       return res.status(400).json({
-        message: "Зөвхөн хүлээгдэж буй эсвэл баталгаажсан илгээмжийг цуцлах боломжтой",
+        message:
+          "Зөвхөн хүлээгдэж буй эсвэл баталгаажсан илгээмжийг цуцлах боломжтой",
       });
     }
 
-    const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      // If was CONFIRMED, reverse the inventory deduction
-      if (dispatch.status === "CONFIRMED") {
-        for (const item of dispatch.request.items) {
-          const quantity = item.approvedQuantity || item.quantity;
-          await adjustStock(tx, {
-            productId: item.productId,
-            warehouseId: dispatch.warehouseId,
-            change: quantity,
-            reason: InventoryReason.TRANSFER_IN,
-            note: `Dispatch ${dispatch.dispatchNumber} cancelled - inventory restored`,
-            referenceId: dispatch.requestId,
-            referenceType: "STOCK_DISPATCH",
-          });
+    const updated = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        // If was CONFIRMED, reverse the inventory deduction
+        if (dispatch.status === "CONFIRMED") {
+          for (const item of dispatch.request.items) {
+            const quantity = item.approvedQuantity || item.quantity;
+            await adjustStock(tx, {
+              productId: item.productId,
+              warehouseId: dispatch.warehouseId,
+              change: quantity,
+              reason: InventoryReason.TRANSFER_IN,
+              note: `Dispatch ${dispatch.dispatchNumber} cancelled - inventory restored`,
+              referenceId: dispatch.requestId,
+              referenceType: "STOCK_DISPATCH",
+            });
+          }
         }
-      }
 
-      // Revert request status to APPROVED
-      await tx.warehouseStockRequest.update({
-        where: { id: dispatch.requestId },
-        data: { status: StockRequestStatus.APPROVED },
-      });
+        // Revert request status to APPROVED
+        await tx.warehouseStockRequest.update({
+          where: { id: dispatch.requestId },
+          data: { status: StockRequestStatus.APPROVED },
+        });
 
-      return tx.stockDispatch.update({
-        where: { id },
-        data: {
-          status: "CANCELLED",
-          note: note || dispatch.note,
-        },
-      });
-    });
+        return tx.stockDispatch.update({
+          where: { id },
+          data: {
+            status: "CANCELLED",
+            note: note || dispatch.note,
+          },
+        });
+      },
+    );
 
     res.json(updated);
   } catch (error) {
@@ -1830,113 +2424,230 @@ router.patch("/stock-requests/dispatches/:id/cancel", async (req, res) => {
 // ==========================================
 
 // POST /stock-requests/payments/:id/qpay — Create QPay invoice for a stock payment
-router.post("/stock-requests/payments/:id/qpay", requireAuth, async (req, res) => {
-  try {
-    const id = req.params.id as string;
+router.post(
+  "/stock-requests/payments/:id/qpay",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const id = req.params.id as string;
 
+      const payment = await prisma.stockRequestPayment.findUnique({
+        where: { id },
+        include: {
+          request: {
+            select: { id: true, requestNumber: true, status: true },
+          },
+        },
+      });
+
+      if (!payment) {
+        return res.status(404).json({ message: "Төлбөр олдсонгүй" });
+      }
+
+      const permissions = await assertOrgPermission(
+        req,
+        res,
+        payment.organizationId,
+        Permission.REQUEST_STOCK,
+      );
+      if (!permissions) return;
+
+      if (!canPayApprovedStockRequest(payment.request.status)) {
+        return res.status(409).json({
+          code: "STOCK_REQUEST_NOT_APPROVED",
+          message: "Админ зөвшөөрсний дараа QPay нэхэмжлэх нээгдэнэ",
+        });
+      }
+
+      if (payment.status === PaymentStatus.PAID) {
+        return res
+          .status(400)
+          .json({ message: "Энэ төлбөр аль хэдийн төлөгдсөн байна" });
+      }
+
+      if (payment.status === PaymentStatus.CANCELLED) {
+        return res
+          .status(400)
+          .json({ message: "Цуцлагдсан төлбөр төлөх боломжгүй" });
+      }
+
+      const amount = Number(payment.totalAmount) - Number(payment.paidAmount);
+      if (amount <= 0) {
+        return res.status(400).json({ message: "Төлөх дүн 0 байна" });
+      }
+
+      if (process.env.MGL_LOCAL_DEV === "true") {
+        const transactionId = `DEV-QPAY-${payment.id}`;
+        await prisma.stockRequestPayment.update({
+          where: { id: payment.id },
+          data: { transactionId, paymentMethod: PaymentMethod.QPAY },
+        });
+        return res.json({
+          paymentId: payment.id,
+          invoiceNumber: payment.invoiceNumber,
+          amount,
+          qrText: `mgl-business://dev-qpay/${payment.id}?amount=${amount}`,
+          qrImage: "",
+          qpayInvoiceId: transactionId,
+          deepLinks: [],
+          expiresIn: 3600,
+          devMode: true,
+        });
+      }
+
+      const qpayData = await createQPayInvoice({
+        orderId: payment.id,
+        orderNumber: payment.invoiceNumber,
+        amount,
+        description: `Агуулхын захиалга - ${payment.request?.requestNumber || payment.invoiceNumber}`,
+      });
+
+      // Store QPay invoice reference
+      await prisma.stockRequestPayment.update({
+        where: { id },
+        data: {
+          transactionId: qpayData.invoice_id,
+          paymentMethod: PaymentMethod.QPAY,
+        },
+      });
+
+      return res.json({
+        paymentId: payment.id,
+        invoiceNumber: payment.invoiceNumber,
+        amount,
+        qrText: qpayData.qr_text,
+        qrImage: qpayData.qr_image,
+        qpayInvoiceId: qpayData.invoice_id,
+        deepLinks: qpayData.urls,
+        expiresIn: 300,
+      });
+    } catch (error) {
+      console.error("qpay create invoice error", error);
+      return res
+        .status(502)
+        .json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
+    }
+  },
+);
+
+// POST /stock-requests/payments/:id/qpay/dev-confirm — local development only
+router.post(
+  "/stock-requests/payments/:id/qpay/dev-confirm",
+  requireAuth,
+  async (req, res) => {
+    if (process.env.MGL_LOCAL_DEV !== "true") {
+      return res.status(404).json({ message: "Endpoint олдсонгүй" });
+    }
+
+    const id = req.params.id as string;
     const payment = await prisma.stockRequestPayment.findUnique({
       where: { id },
       include: {
-        request: { select: { id: true, requestNumber: true } },
+        request: { select: { status: true } },
       },
     });
-
     if (!payment) {
       return res.status(404).json({ message: "Төлбөр олдсонгүй" });
     }
 
-    if (payment.status === PaymentStatus.PAID) {
-      return res.status(400).json({ message: "Энэ төлбөр аль хэдийн төлөгдсөн байна" });
+    const permissions = await assertOrgPermission(
+      req,
+      res,
+      payment.organizationId,
+      Permission.REQUEST_STOCK,
+    );
+    if (!permissions) return;
+
+    if (!canPayApprovedStockRequest(payment.request.status)) {
+      return res.status(409).json({
+        code: "STOCK_REQUEST_NOT_APPROVED",
+        message: "Админ зөвшөөрсний дараа төлбөр баталгаажуулах боломжтой",
+      });
     }
 
+    if (!payment.transactionId?.startsWith("DEV-QPAY-")) {
+      return res.status(400).json({ message: "Fake QPay нэхэмжлэх биш байна" });
+    }
     if (payment.status === PaymentStatus.CANCELLED) {
-      return res.status(400).json({ message: "Цуцлагдсан төлбөр төлөх боломжгүй" });
+      return res.status(400).json({ message: "Цуцлагдсан төлбөр байна" });
     }
 
-    const amount = Number(payment.totalAmount) - Number(payment.paidAmount);
-    if (amount <= 0) {
-      return res.status(400).json({ message: "Төлөх дүн 0 байна" });
-    }
-
-    const qpayData = await createQPayInvoice({
-      orderId: payment.id,
-      orderNumber: payment.invoiceNumber,
-      amount,
-      description: `Агуулхын захиалга - ${payment.request?.requestNumber || payment.invoiceNumber}`,
-    });
-
-    // Store QPay invoice reference
-    await prisma.stockRequestPayment.update({
-      where: { id },
-      data: {
-        transactionId: qpayData.invoice_id,
-        paymentMethod: PaymentMethod.QPAY,
-      },
-    });
-
-    return res.json({
-      paymentId: payment.id,
-      invoiceNumber: payment.invoiceNumber,
-      amount,
-      qrText: qpayData.qr_text,
-      qrImage: qpayData.qr_image,
-      qpayInvoiceId: qpayData.invoice_id,
-      deepLinks: qpayData.urls,
-      expiresIn: 300,
-    });
-  } catch (error) {
-    console.error("qpay create invoice error", error);
-    return res.status(502).json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
-  }
-});
-
-// GET /stock-requests/payments/:id/qpay/status — Poll QPay payment status
-router.get("/stock-requests/payments/:id/qpay/status", requireAuth, async (req, res) => {
-  try {
-    const id = req.params.id as string;
-
-    const payment = await prisma.stockRequestPayment.findUnique({
-      where: { id },
-    });
-
-    if (!payment) {
-      return res.status(404).json({ message: "Төлбөр олдсонгүй" });
-    }
-
-    if (payment.status === PaymentStatus.PAID) {
-      return res.json({ status: "PAID" });
-    }
-
-    if (!payment.transactionId) {
-      return res.json({ status: "PENDING" });
-    }
-
-    const qpayCheck = await checkQPayPayment(payment.transactionId);
-
-    if (qpayCheck.count === 0) {
-      return res.json({ status: "PENDING" });
-    }
-
-    // Payment confirmed — update
-    const userId = (req as any).user?.userId;
-    await prisma.stockRequestPayment.update({
+    const updated = await prisma.stockRequestPayment.update({
       where: { id },
       data: {
         status: PaymentStatus.PAID,
         paidAmount: payment.totalAmount,
         paidAt: new Date(),
         paymentMethod: PaymentMethod.QPAY,
-        confirmedById: userId || null,
-        note: "QPay автомат баталгаажуулалт",
+        note: "Local fake QPay баталгаажуулалт",
       },
     });
 
-    return res.json({ status: "PAID" });
-  } catch (error) {
-    console.error("qpay status check error", error);
-    return res.status(500).json({ message: "QPay төлбөр шалгахад алдаа гарлаа" });
-  }
-});
+    return res.json({ status: updated.status, paymentId: updated.id });
+  },
+);
+
+// GET /stock-requests/payments/:id/qpay/status — Poll QPay payment status
+router.get(
+  "/stock-requests/payments/:id/qpay/status",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const id = req.params.id as string;
+
+      const payment = await prisma.stockRequestPayment.findUnique({
+        where: { id },
+      });
+
+      if (!payment) {
+        return res.status(404).json({ message: "Төлбөр олдсонгүй" });
+      }
+
+      const permissions = await assertOrgPermission(
+        req,
+        res,
+        payment.organizationId,
+        Permission.REQUEST_STOCK,
+      );
+      if (!permissions) return;
+
+      if (payment.status === PaymentStatus.PAID) {
+        return res.json({ status: "PAID" });
+      }
+
+      if (!payment.transactionId) {
+        return res.json({ status: "PENDING" });
+      }
+
+      const qpayCheck = await checkQPayPayment(payment.transactionId);
+
+      if (qpayCheck.count === 0) {
+        return res.json({ status: "PENDING" });
+      }
+
+      // Payment confirmed — update
+      const userId = (req as any).user?.userId;
+      await prisma.stockRequestPayment.update({
+        where: { id },
+        data: {
+          status: PaymentStatus.PAID,
+          paidAmount: payment.totalAmount,
+          paidAt: new Date(),
+          paymentMethod: PaymentMethod.QPAY,
+          confirmedById: userId || null,
+          note: "QPay автомат баталгаажуулалт",
+        },
+      });
+
+      return res.json({ status: "PAID" });
+    } catch (error) {
+      console.error("qpay status check error", error);
+      return res
+        .status(500)
+        .json({ message: "QPay төлбөр шалгахад алдаа гарлаа" });
+    }
+  },
+);
 
 // POST /stock-requests/qpay/callback — QPay webhook callback
 router.post("/stock-requests/qpay/callback", async (req, res) => {
@@ -2028,19 +2739,28 @@ router.post("/dispatches/:id/returns", async (req, res) => {
       return res.status(404).json({ message: "Илгээмж олдсонгүй" });
     }
     if (dispatch.status !== "DELIVERED") {
-      return res.status(400).json({ message: "Зөвхөн хүргэгдсэн илгээмжээс буцаалт хийх боломжтой" });
+      return res.status(400).json({
+        message: "Зөвхөн хүргэгдсэн илгээмжээс буцаалт хийх боломжтой",
+      });
     }
 
     // Validate quantities — cannot exceed delivered minus already-returned
     for (const item of items) {
       if (!item.productId || !item.quantity || item.quantity < 1) {
-        return res.status(400).json({ message: "Буцаах барааны мэдээлэл буруу" });
+        return res
+          .status(400)
+          .json({ message: "Буцаах барааны мэдээлэл буруу" });
       }
-      const dispatchItem = dispatch.request.items.find((i) => i.productId === item.productId);
+      const dispatchItem = dispatch.request.items.find(
+        (i) => i.productId === item.productId,
+      );
       if (!dispatchItem) {
-        return res.status(400).json({ message: `Бүтээгдэхүүн ${item.productId} илгээмжид байхгүй` });
+        return res.status(400).json({
+          message: `Бүтээгдэхүүн ${item.productId} илгээмжид байхгүй`,
+        });
       }
-      const deliveredQty = dispatchItem.approvedQuantity || dispatchItem.quantity;
+      const deliveredQty =
+        dispatchItem.approvedQuantity || dispatchItem.quantity;
       // Sum previously approved/pending returns for this product
       const alreadyReturned = dispatch.returns
         .filter((r) => r.status !== "REJECTED")
@@ -2066,15 +2786,27 @@ router.post("/dispatches/:id/returns", async (req, res) => {
         reason: reason || null,
         note: note || null,
         items: {
-          create: items.map((item: { productId: string; quantity: number; reason?: string }) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            reason: item.reason || null,
-          })),
+          create: items.map(
+            (item: {
+              productId: string;
+              quantity: number;
+              reason?: string;
+            }) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              reason: item.reason || null,
+            }),
+          ),
         },
       },
       include: {
-        items: { include: { product: { select: { id: true, name: true, sku: true, price: true } } } },
+        items: {
+          include: {
+            product: {
+              select: { id: true, name: true, sku: true, price: true },
+            },
+          },
+        },
         dispatch: { select: { dispatchNumber: true } },
         organization: { select: { id: true, name: true } },
         warehouse: { select: { id: true, name: true } },
@@ -2103,7 +2835,11 @@ router.get("/warehouse/:warehouseId/returns", async (req, res) => {
       where,
       include: {
         items: {
-          include: { product: { select: { id: true, name: true, sku: true, price: true } } },
+          include: {
+            product: {
+              select: { id: true, name: true, sku: true, price: true },
+            },
+          },
         },
         dispatch: {
           select: {
@@ -2130,7 +2866,11 @@ router.get("/warehouse/:warehouseId/returns", async (req, res) => {
         organization: { select: { id: true, name: true, phone: true } },
         warehouse: { select: { id: true, name: true } },
         approvedBy: {
-          select: { id: true, email: true, profile: { select: { fullName: true } } },
+          select: {
+            id: true,
+            email: true,
+            profile: { select: { fullName: true } },
+          },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -2151,10 +2891,18 @@ router.get("/dispatches/:id/returns", async (req, res) => {
       where: { dispatchId: id },
       include: {
         items: {
-          include: { product: { select: { id: true, name: true, sku: true, price: true } } },
+          include: {
+            product: {
+              select: { id: true, name: true, sku: true, price: true },
+            },
+          },
         },
         approvedBy: {
-          select: { id: true, email: true, profile: { select: { fullName: true } } },
+          select: {
+            id: true,
+            email: true,
+            profile: { select: { fullName: true } },
+          },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -2184,7 +2932,9 @@ router.patch("/returns/:id/approve", async (req, res) => {
       return res.status(404).json({ message: "Буцаалт олдсонгүй" });
     }
     if (dispatchReturn.status !== "PENDING") {
-      return res.status(400).json({ message: "Зөвхөн хүлээгдэж буй буцаалтыг батлах боломжтой" });
+      return res
+        .status(400)
+        .json({ message: "Зөвхөн хүлээгдэж буй буцаалтыг батлах боломжтой" });
     }
 
     // Restore inventory inside a transaction
@@ -2210,7 +2960,13 @@ router.patch("/returns/:id/approve", async (req, res) => {
           approvedById: actor?.id || null,
         },
         include: {
-          items: { include: { product: { select: { id: true, name: true, sku: true, price: true } } } },
+          items: {
+            include: {
+              product: {
+                select: { id: true, name: true, sku: true, price: true },
+              },
+            },
+          },
           organization: { select: { id: true, name: true } },
           warehouse: { select: { id: true, name: true } },
         },
@@ -2239,7 +2995,9 @@ router.patch("/returns/:id/reject", async (req, res) => {
       return res.status(404).json({ message: "Буцаалт олдсонгүй" });
     }
     if (dispatchReturn.status !== "PENDING") {
-      return res.status(400).json({ message: "Зөвхөн хүлээгдэж буй буцаалтыг татгалзах боломжтой" });
+      return res.status(400).json({
+        message: "Зөвхөн хүлээгдэж буй буцаалтыг татгалзах боломжтой",
+      });
     }
 
     const updated = await prisma.dispatchReturn.update({
@@ -2251,7 +3009,13 @@ router.patch("/returns/:id/reject", async (req, res) => {
         approvedById: actor?.id || null,
       },
       include: {
-        items: { include: { product: { select: { id: true, name: true, sku: true, price: true } } } },
+        items: {
+          include: {
+            product: {
+              select: { id: true, name: true, sku: true, price: true },
+            },
+          },
+        },
         organization: { select: { id: true, name: true } },
       },
     });

@@ -24,6 +24,7 @@ export {
   ServiceRequestType,
   ServiceRequestStatus,
   StockRequestStatus,
+  WarehouseType,
   PosActivationStatus,
   PosPaymentStatus,
   PosQPayStatus,

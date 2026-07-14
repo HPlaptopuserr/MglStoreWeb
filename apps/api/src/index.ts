@@ -14,6 +14,7 @@ import {
   orgJoinRoutes,
   orgMemberRoutes,
   orgTaskRoutes,
+  orgGamesRoutes,
   partnerRequestRoutes,
   partnerRoutes,
   personalOrganizationRoutes,
@@ -49,6 +50,7 @@ import {
   upgradePlansRoutes,
   adminGrantPlanRoutes,
   appVersionRoutes,
+  metaMarketingRoutes,
 } from "./routes";
 
 const app = express();
@@ -138,6 +140,7 @@ app.use("/api", partnerRoutes);
 app.use("/api", orgJoinRoutes);
 app.use("/api", orgMemberRoutes);
 app.use("/api", orgTaskRoutes);
+app.use("/api", orgGamesRoutes);
 app.use("/api", personalOrganizationRoutes);
 app.use("/api", businessCategoriesRoutes);
 app.use("/api", dashboardRoutes);
@@ -172,6 +175,7 @@ app.use("/api", vendorCardTerminalRoutes);
 app.use("/api", upgradePlansRoutes);
 app.use("/api", adminGrantPlanRoutes);
 app.use("/api", appVersionRoutes);
+app.use("/api", metaMarketingRoutes);
 app.use("/api", contractRoutes);
 
 app.get("/", (_req, res) => {

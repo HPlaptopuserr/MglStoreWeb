@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShoppingCart, ArrowLeft, Loader2, AlertCircle, MapPin, Check } from "lucide-react";
+import {
+  ShoppingCart,
+  ArrowLeft,
+  Loader2,
+  AlertCircle,
+  MapPin,
+  Check,
+} from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 import { useAuth, type AuthAddress, type AuthUser } from "@/lib/auth-context";
 import { API } from "@/lib/api";
@@ -17,6 +24,7 @@ import {
 } from "@/components/organisms/checkout/DeliveryDispatchRadar";
 import { LoginModal } from "@/components/organisms/auth/LoginModal";
 import { QPayModal } from "@/components/organisms/checkout/QPayModal";
+import { trackMetaCommerceEvent } from "@/lib/meta-events";
 
 interface DeepLink {
   name: string;
@@ -38,7 +46,12 @@ interface CheckoutResult {
   expiresIn: number;
 }
 
-type CheckoutStep = "idle" | "confirm-location" | "radar" | "pickup" | "ready-to-pay";
+type CheckoutStep =
+  | "idle"
+  | "confirm-location"
+  | "radar"
+  | "pickup"
+  | "ready-to-pay";
 
 const DELIVERY_AREA_POINTS: Record<string, { lat: number; lng: number }> = {
   Багануур: { lat: 47.7789, lng: 108.3766 },
@@ -83,9 +96,12 @@ function AddressConfirmPanel({
             <MapPin size={20} />
           </div>
           <div>
-            <p className="font-bold text-amber-950">Хүргэлтийн байршил бүртгэлгүй байна</p>
+            <p className="font-bold text-amber-950">
+              Хүргэлтийн байршил бүртгэлгүй байна
+            </p>
             <p className="mt-1 leading-5 text-amber-800">
-              Profile хэсэгт үндсэн байршлаа нэмсний дараа хамгийн ойр салбараас хүргэлт хайна.
+              Profile хэсэгт үндсэн байршлаа нэмсний дараа хамгийн ойр салбараас
+              хүргэлт хайна.
             </p>
             <button
               type="button"
@@ -158,17 +174,21 @@ export default function CheckoutPage() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
-  const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null);
+  const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(
+    null,
+  );
   const [phone, setPhone] = useState("");
   const [secondaryPhone, setSecondaryPhone] = useState("");
   const [orderNote, setOrderNote] = useState("");
   const [deliveryUnavailable, setDeliveryUnavailable] = useState(false);
-  const [deliverySession, setDeliverySession] = useState<DeliverySession | null>(() => getActiveCheckoutDispatch());
+  const [deliverySession, setDeliverySession] =
+    useState<DeliverySession | null>(() => getActiveCheckoutDispatch());
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("idle");
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [cancellingOrder, setCancellingOrder] = useState(false);
   const [now, setNow] = useState(Date.now());
   const didPrefillPhone = useRef(false);
+  const didTrackCheckout = useRef(false);
   const addresses = user?.addresses?.length
     ? user.addresses
     : user?.defaultAddress
@@ -182,7 +202,8 @@ export default function CheckoutPage() {
   const displaySubtotal = deliverySession?.subtotal ?? total;
   const displayTotal = deliverySession?.total ?? total;
   const isPreorderCart =
-    items.length > 0 && items.every((item) => item.supplyType === "CHINA_PREORDER");
+    items.length > 0 &&
+    items.every((item) => item.supplyType === "CHINA_PREORDER");
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -211,11 +232,30 @@ export default function CheckoutPage() {
   }, [user?.phone]);
 
   useEffect(() => {
-    if (!deliverySession || deliverySession.canPay || deliverySession.status === "NO_BRANCH_AVAILABLE") return;
+    if (didTrackCheckout.current || items.length === 0) return;
+    didTrackCheckout.current = true;
+    trackMetaCommerceEvent("InitiateCheckout", {
+      content_ids: items.map((item) => item.id),
+      content_type: "product",
+      currency: "MNT",
+      value: total,
+      num_items: items.reduce((sum, item) => sum + item.quantity, 0),
+    });
+  }, [items, total]);
+
+  useEffect(() => {
+    if (
+      !deliverySession ||
+      deliverySession.canPay ||
+      deliverySession.status === "NO_BRANCH_AVAILABLE"
+    )
+      return;
 
     const syncDispatch = async () => {
       try {
-        const res = await authFetch(`${API}/store/checkout/${deliverySession.orderId}/dispatch-status`);
+        const res = await authFetch(
+          `${API}/store/checkout/${deliverySession.orderId}/dispatch-status`,
+        );
         if (!res.ok) return;
         const data = await res.json();
         setActiveCheckoutDispatch(data);
@@ -240,9 +280,12 @@ export default function CheckoutPage() {
     setError("");
 
     try {
-      const res = await authFetch(`${API}/store/checkout/${session.orderId}/payment`, {
-        method: "POST",
-      });
+      const res = await authFetch(
+        `${API}/store/checkout/${session.orderId}/payment`,
+        {
+          method: "POST",
+        },
+      );
       const data = await res.json();
 
       if (!res.ok) {
@@ -433,9 +476,12 @@ export default function CheckoutPage() {
     setCancellingOrder(true);
     setError("");
     try {
-      const res = await authFetch(`${API}/store/checkout/${deliverySession.orderId}/cancel`, {
-        method: "POST",
-      });
+      const res = await authFetch(
+        `${API}/store/checkout/${deliverySession.orderId}/cancel`,
+        {
+          method: "POST",
+        },
+      );
       const data = await res.json().catch(() => ({}));
       if (res.status === 404) {
         setDeliverySession(null);
@@ -460,6 +506,21 @@ export default function CheckoutPage() {
   };
 
   const handlePaymentSuccess = () => {
+    if (checkoutResult) {
+      trackMetaCommerceEvent("Purchase", {
+        content_ids:
+          items.length > 0
+            ? items.map((item) => item.id)
+            : [checkoutResult.orderId],
+        content_type: "product",
+        currency: "MNT",
+        value: checkoutResult.total,
+        num_items:
+          items.length > 0
+            ? items.reduce((sum, item) => sum + item.quantity, 0)
+            : undefined,
+      });
+    }
     setActiveCheckoutDispatch(null);
     if (!deliverySession) clearCart();
     router.push(ACCOUNT_ROUTES.orders);
@@ -493,20 +554,28 @@ export default function CheckoutPage() {
         Буцах
       </button>
 
-      <h1 className="mb-8 text-2xl font-black text-gray-900">Захиалга баталгаажуулах</h1>
+      <h1 className="mb-8 text-2xl font-black text-gray-900">
+        Захиалга баталгаажуулах
+      </h1>
 
       <div className="grid gap-8 lg:grid-cols-3">
         {/* Order summary */}
         <div className="lg:col-span-2 space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-lg font-bold text-gray-900">Сагсны бараа</h2>
+            <h2 className="mb-4 text-lg font-bold text-gray-900">
+              Сагсны бараа
+            </h2>
             <div className="divide-y divide-gray-100">
               {items.map((item) => (
                 <div key={item.id} className="flex items-center gap-4 py-4">
                   <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
                     {item.image ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center">
                         <ShoppingCart size={20} className="text-gray-300" />
@@ -514,8 +583,12 @@ export default function CheckoutPage() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 line-clamp-1">{item.name}</p>
-                    <p className="text-sm text-gray-500">{item.quantity} ширхэг × ₮{item.price.toLocaleString()}</p>
+                    <p className="text-sm font-semibold text-gray-900 line-clamp-1">
+                      {item.name}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {item.quantity} ширхэг × ₮{item.price.toLocaleString()}
+                    </p>
                   </div>
                   <p className="text-sm font-bold text-gray-900 tabular-nums">
                     ₮{(item.price * item.quantity).toLocaleString()}
@@ -527,7 +600,9 @@ export default function CheckoutPage() {
 
           {/* Order information */}
           <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-lg font-bold text-gray-900">Захиалгын мэдээлэл</h2>
+            <h2 className="mb-4 text-lg font-bold text-gray-900">
+              Захиалгын мэдээлэл
+            </h2>
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
@@ -593,22 +668,29 @@ export default function CheckoutPage() {
         {/* Payment sidebar */}
         <div className="min-w-0">
           <div className="sticky top-36 min-w-0 space-y-4 rounded-2xl border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-bold text-gray-900">Төлбөрийн мэдээлэл</h2>
+            <h2 className="text-lg font-bold text-gray-900">
+              Төлбөрийн мэдээлэл
+            </h2>
 
             {deliverySession && (
               <div className="space-y-3">
                 <DeliveryDispatchRadar session={deliverySession} now={now} />
-                {!deliverySession.canPay && deliverySession.status !== "NO_BRANCH_AVAILABLE" && (
-                  <button
-                    type="button"
-                    onClick={cancelDeliverySearch}
-                    disabled={cancellingOrder}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
-                  >
-                    {cancellingOrder ? <Loader2 size={17} className="animate-spin" /> : <ArrowLeft size={17} />}
-                    {cancellingOrder ? "Цуцалж байна..." : "Захиалга цуцлах"}
-                  </button>
-                )}
+                {!deliverySession.canPay &&
+                  deliverySession.status !== "NO_BRANCH_AVAILABLE" && (
+                    <button
+                      type="button"
+                      onClick={cancelDeliverySearch}
+                      disabled={cancellingOrder}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+                    >
+                      {cancellingOrder ? (
+                        <Loader2 size={17} className="animate-spin" />
+                      ) : (
+                        <ArrowLeft size={17} />
+                      )}
+                      {cancellingOrder ? "Цуцалж байна..." : "Захиалга цуцлах"}
+                    </button>
+                  )}
               </div>
             )}
 
@@ -619,42 +701,52 @@ export default function CheckoutPage() {
                     <MapPin size={20} />
                   </div>
                   <div>
-                    <p className="font-bold text-amber-950">Хүргэлтийн байршил бэлэн биш байна</p>
+                    <p className="font-bold text-amber-950">
+                      Хүргэлтийн байршил бэлэн биш байна
+                    </p>
                     <p className="mt-1 leading-5 text-amber-800">
-                      Одоогоор шалгах салбарын байршил бүртгэлгүй байна. Салбарын байршил нэмэгдмэгц
-                      хүргэлтийн хүсэлт илгээх хэсэг автоматаар ажиллах боломжтой.
+                      Одоогоор шалгах салбарын байршил бүртгэлгүй байна.
+                      Салбарын байршил нэмэгдмэгц хүргэлтийн хүсэлт илгээх хэсэг
+                      автоматаар ажиллах боломжтой.
                     </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {checkoutStep === "confirm-location" && !deliveryUnavailable && !deliverySession && (
-              <AddressConfirmPanel
-                address={selectedAddress}
-                addresses={addresses}
-                onSelectAddress={(addressId) => {
-                  setSelectedAddressId(addressId);
-                  setDeliverySession(null);
-                  setDeliveryUnavailable(false);
-                  setError("");
-                }}
-                onConfirm={startDeliveryRadar}
-                onEdit={() => router.push(ACCOUNT_ROUTES.profileAddress)}
-              />
-            )}
+            {checkoutStep === "confirm-location" &&
+              !deliveryUnavailable &&
+              !deliverySession && (
+                <AddressConfirmPanel
+                  address={selectedAddress}
+                  addresses={addresses}
+                  onSelectAddress={(addressId) => {
+                    setSelectedAddressId(addressId);
+                    setDeliverySession(null);
+                    setDeliveryUnavailable(false);
+                    setError("");
+                  }}
+                  onConfirm={startDeliveryRadar}
+                  onEdit={() => router.push(ACCOUNT_ROUTES.profileAddress)}
+                />
+              )}
 
             {deliveryUnavailable && deliverySession && (
               <div className="flex gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-800">
                 <MapPin size={16} className="mt-0.5 shrink-0" />
-                Хүргэлт баталгаажаагүй тул энэ захиалга салбар дээрээс авах горимд шилжлээ.
+                Хүргэлт баталгаажаагүй тул энэ захиалга салбар дээрээс авах
+                горимд шилжлээ.
               </div>
             )}
 
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-gray-500">
-                <span>Бүтээгдэхүүн ({items.reduce((s, i) => s + i.quantity, 0)})</span>
-                <span className="tabular-nums">₮{displaySubtotal.toLocaleString()}</span>
+                <span>
+                  Бүтээгдэхүүн ({items.reduce((s, i) => s + i.quantity, 0)})
+                </span>
+                <span className="tabular-nums">
+                  ₮{displaySubtotal.toLocaleString()}
+                </span>
               </div>
               <div className="flex justify-between text-gray-500">
                 <span>Хүргэлт</span>
@@ -663,11 +755,11 @@ export default function CheckoutPage() {
                     ? "Байршил шалгана"
                     : isPreorderCart
                       ? "Байршил шаардахгүй"
-                    : deliveryUnavailable
-                      ? "Салбараас авна"
-                    : deliverySession && !deliverySession.canPay
-                      ? "Шалгагдаж байна"
-                      : "Үнэгүй"}
+                      : deliveryUnavailable
+                        ? "Салбараас авна"
+                        : deliverySession && !deliverySession.canPay
+                          ? "Шалгагдаж байна"
+                          : "Үнэгүй"}
                 </span>
               </div>
               <div className="border-t border-gray-100 pt-2 flex justify-between">
@@ -738,7 +830,10 @@ export default function CheckoutPage() {
       {authOpen && (
         <LoginModal
           open={authOpen}
-          onClose={() => { setAuthOpen(false); setAuthError(""); }}
+          onClose={() => {
+            setAuthOpen(false);
+            setAuthError("");
+          }}
           onLogin={async (identifier, password, options) => {
             setAuthError("");
             setAuthLoading(true);
@@ -747,7 +842,9 @@ export default function CheckoutPage() {
               if (result?.requiresEmailOtp) return result;
               setAuthOpen(false);
             } catch (err: unknown) {
-              setAuthError(err instanceof Error ? err.message : "Нэвтрэхэд алдаа гарлаа.");
+              setAuthError(
+                err instanceof Error ? err.message : "Нэвтрэхэд алдаа гарлаа.",
+              );
             } finally {
               setAuthLoading(false);
             }
@@ -759,7 +856,11 @@ export default function CheckoutPage() {
               await register(fullName, identifier, password, options);
               setAuthOpen(false);
             } catch (err: unknown) {
-              setAuthError(err instanceof Error ? err.message : "Бүртгүүлэхэд алдаа гарлаа.");
+              setAuthError(
+                err instanceof Error
+                  ? err.message
+                  : "Бүртгүүлэхэд алдаа гарлаа.",
+              );
             } finally {
               setAuthLoading(false);
             }

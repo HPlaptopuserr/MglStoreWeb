@@ -3,15 +3,43 @@ import { API, adminFetch } from "./api";
 export interface StatisticsInsights {
   generatedAt: string;
   windowDays: number | "all";
+  dataQuality: {
+    basis: "DATABASE_AGGREGATES";
+    generatedAt: string;
+    rules: string[];
+  };
+  financialOverview: {
+    privacyLevel: "ANONYMIZED_AGGREGATE";
+    generatedAt: string;
+    windowDays: number | "all";
+    confirmedAmount: number;
+    confirmedTransactions: number;
+    amountTrend: number | null;
+    transactionTrend: number | null;
+    sources: {
+      onlineOrders: { amount: number; transactions: number };
+      posSales: { amount: number; transactions: number };
+      paidInvoices: { amount: number; transactions: number };
+    };
+    verifiedQPay: { amount: number; transactions: number };
+    excluded: {
+      bankAccountBalances: boolean;
+      organizationBreakdown: boolean;
+      customerIdentity: boolean;
+      pendingAndFailedPayments: boolean;
+      localFakePayments: boolean;
+    };
+    note: string;
+  };
   hero: {
     activeUsers: number;
-    activeUsersTrend: number;
+    activeUsersTrend: number | null;
     loginSessions: number;
-    loginSessionsTrend: number;
+    loginSessionsTrend: number | null;
     totalRevenue: number;
-    revenueTrend: number;
+    revenueTrend: number | null;
     totalOrders: number;
-    ordersTrend: number;
+    ordersTrend: number | null;
     unitsSold: number;
     avgTicket: number;
   };
@@ -26,7 +54,6 @@ export interface StatisticsInsights {
     units: number;
     revenue: number;
     transactions: number;
-    velocityScore: number;
   }[];
   topBranches: {
     branchId: string;
@@ -46,9 +73,11 @@ export interface StatisticsInsights {
     value: number;
     previousValue: number | null;
     unit: string;
-    trend: number;
+    trend: number | null;
     category: string;
     description: string;
+    scope: "SELECTED_PERIOD" | "CURRENT_SNAPSHOT" | "LIFETIME";
+    source: string;
   }[];
   marketingSegments: {
     paymentMethods: { method: string; count: number; amount: number }[];
@@ -90,7 +119,9 @@ export interface StatisticsInsights {
   };
 }
 
-export async function fetchStatisticsInsights(days: number | "all"): Promise<StatisticsInsights> {
+export async function fetchStatisticsInsights(
+  days: number | "all",
+): Promise<StatisticsInsights> {
   const res = await adminFetch(`${API}/admin/statistics/insights?days=${days}`);
   if (!res.ok) throw new Error(`Statistics insights failed: ${res.status}`);
   return res.json();

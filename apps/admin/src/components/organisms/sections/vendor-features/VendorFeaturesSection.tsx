@@ -11,11 +11,15 @@ import {
   ScanLine,
   Store,
   Globe2,
+  Info,
+  AlertTriangle,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
 
 type Org = { id: string; name: string; slug: string };
+
+type PartnerPayload = Partial<Org>;
 
 type FeatureToggle = {
   key: string;
@@ -26,14 +30,85 @@ type FeatureToggle = {
 };
 
 const FEATURES = [
-  { suffix: "pos-enabled", label: "POS касс", icon: ScanLine, defaultEnabled: false },
-  { suffix: "web-products-enabled", label: "Web дээр өөрийн бараа", icon: Store, defaultEnabled: false },
-  { suffix: "supply-products-enabled", label: "Нэгдсэн бараа", icon: Boxes, defaultEnabled: false },
-  { suffix: "preorder-products-enabled", label: "Захиалгын бараа", icon: PackageSearch, defaultEnabled: false },
-  { suffix: "service-posts-enabled", label: "Үйлчилгээний постууд", icon: Megaphone, defaultEnabled: true },
-];
+  {
+    suffix: "pos-enabled",
+    label: "POS касс",
+    description: "POS дэлгэц болон кассын өдөр тутмын ажиллагааг нээнэ.",
+    group: "channels",
+    icon: ScanLine,
+    defaultEnabled: false,
+  },
+  {
+    suffix: "web-products-enabled",
+    label: "Web дэлгүүрт бараа нийтлэх",
+    description: "Өөрийн барааг public web болон store каталогт харуулна.",
+    group: "channels",
+    icon: Store,
+    defaultEnabled: false,
+  },
+  {
+    suffix: "supply-products-enabled",
+    label: "Нийлүүлэгчийн нэгдсэн каталог",
+    description: "Нийлүүлэгч болон төвлөрсөн каталогоос бараа ашиглана.",
+    group: "catalog",
+    icon: Boxes,
+    defaultEnabled: false,
+  },
+  {
+    suffix: "preorder-products-enabled",
+    label: "Урьдчилсан захиалгын бараа",
+    description: "Нийлүүлэх хугацаатай, урьдчилж захиалдаг барааны урсгал.",
+    group: "catalog",
+    icon: PackageSearch,
+    defaultEnabled: false,
+  },
+  {
+    suffix: "service-posts-enabled",
+    label: "Үйлчилгээ нийтлэх",
+    description: "Бараанаас тусдаа үйлчилгээний зар болон пост нийтэлнэ.",
+    group: "catalog",
+    icon: Megaphone,
+    defaultEnabled: true,
+  },
+] as const;
+
+const FEATURE_GROUPS = [
+  {
+    key: "channels",
+    eyebrow: "Борлуулалтын сувгууд",
+    title: "Хэрэглэгчид хүрэх сувгууд",
+  },
+  {
+    key: "catalog",
+    eyebrow: "Каталогийн боломж",
+    title: "Ямар төрлийн контент ашиглах вэ",
+  },
+] as const;
 
 const GLOBAL_WEB_PRODUCTS_SETTING_KEY = "web-products-enabled";
+
+function parseOrganizations(payload: unknown): Org[] {
+  const source = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === "object"
+      ? ((payload as { data?: unknown; partners?: unknown }).data ??
+        (payload as { partners?: unknown }).partners)
+      : [];
+
+  if (!Array.isArray(source)) return [];
+
+  return source.flatMap((partner: PartnerPayload) =>
+    typeof partner.id === "string" && typeof partner.name === "string"
+      ? [
+          {
+            id: partner.id,
+            name: partner.name,
+            slug: typeof partner.slug === "string" ? partner.slug : "",
+          },
+        ]
+      : [],
+  );
+}
 
 export function VendorFeaturesSection() {
   const [orgs, setOrgs] = useState<Org[]>([]);
@@ -56,14 +131,14 @@ export function VendorFeaturesSection() {
   );
 
   const selectedOrg = orgs.find((org) => org.id === selectedOrgId) || null;
+  const organizationWebProductsEnabled =
+    toggles.find((toggle) => toggle.key === "web-products-enabled")?.enabled ??
+    false;
 
   useEffect(() => {
     adminFetch(`${API}/partners?minimal=true`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => {
-        const list = Array.isArray(data) ? data : data?.data || data?.partners || [];
-        setOrgs(list.map((p: any) => ({ id: p.id, name: p.name, slug: p.slug ?? "" })));
-      })
+      .then((data: unknown) => setOrgs(parseOrganizations(data)))
       .catch(() => setError("Байгууллагын жагсаалт авахад алдаа гарлаа."))
       .finally(() => setLoadingOrgs(false));
   }, []);
@@ -88,7 +163,9 @@ export function VendorFeaturesSection() {
     setLoadingFeatures(true);
     setError("");
     try {
-      const res = await adminFetch(`${API}/site-settings/vendor-features/${orgId}`);
+      const res = await adminFetch(
+        `${API}/site-settings/vendor-features/${orgId}`,
+      );
       if (!res.ok) {
         throw new Error(res.status === 401 ? "unauthorized" : "failed");
       }
@@ -119,7 +196,15 @@ export function VendorFeaturesSection() {
   useEffect(() => {
     if (selectedOrgId) loadFeatures(selectedOrgId);
     else
-      setToggles(FEATURES.map((f) => ({ key: f.suffix, label: f.label, icon: f.icon, enabled: f.defaultEnabled, saving: false })));
+      setToggles(
+        FEATURES.map((f) => ({
+          key: f.suffix,
+          label: f.label,
+          icon: f.icon,
+          enabled: f.defaultEnabled,
+          saving: false,
+        })),
+      );
   }, [selectedOrgId, loadFeatures]);
 
   const handleToggle = async (key: string) => {
@@ -219,29 +304,30 @@ export function VendorFeaturesSection() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-3">
-          <div
-            className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-              globalProductsEnabled
-                ? "bg-emerald-50 text-emerald-600"
-                : "bg-slate-100 text-slate-400"
-            }`}
-          >
-            <Globe2 size={18} />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-slate-800">
-              Web дээр бүх бүтээгдэхүүн
-            </p>
-            <p className="text-xs text-slate-400">
-              {GLOBAL_WEB_PRODUCTS_SETTING_KEY}
-            </p>
-          </div>
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                globalProductsEnabled
+                  ? "bg-emerald-50 text-emerald-600"
+                  : "bg-slate-100 text-slate-400"
+              }`}
+            >
+              <Globe2 size={18} />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800">
+                Public web бүтээгдэхүүний ерөнхий эрх
+              </p>
+              <p className="text-xs text-slate-400">
+                Бүх байгууллагын public каталогийн master switch
+              </p>
+            </div>
           </div>
 
           <button
             type="button"
+            aria-pressed={globalProductsEnabled}
             onClick={handleGlobalProductsToggle}
             disabled={loadingGlobalProducts || savingGlobalProducts}
             className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors disabled:opacity-60 ${
@@ -281,7 +367,9 @@ export function VendorFeaturesSection() {
               {selectedOrg ? selectedOrg.name : "Эхлээд байгууллага сонгоно уу"}
             </p>
             <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">
-              {selectedOrg?.slug ? `@${selectedOrg.slug}` : `${orgs.length} байгууллагаас хайж сонгоно`}
+              {selectedOrg?.slug
+                ? `@${selectedOrg.slug}`
+                : `${orgs.length} байгууллагаас хайж сонгоно`}
             </p>
           </div>
         </div>
@@ -293,6 +381,44 @@ export function VendorFeaturesSection() {
         </div>
       )}
 
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+        <div className="flex items-start gap-3">
+          <Info size={18} className="mt-0.5 shrink-0 text-blue-600" />
+          <div>
+            <p className="text-sm font-bold text-blue-950">
+              Public суваг болон Vendor боломж
+            </p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-blue-700">
+              Энэ хэсэг MGL Business mobile app-ийн дотоод “Бараа, агуулах”
+              эрхээс тусдаа. System admin visibility хязгаарлалтыг тойрч харах
+              боломжтой тул public үр дүнг guest горимоор шалгана уу.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {selectedOrgId &&
+        organizationWebProductsEnabled &&
+        !globalProductsEnabled && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle
+                size={18}
+                className="mt-0.5 shrink-0 text-amber-600"
+              />
+              <div>
+                <p className="text-sm font-bold text-amber-950">
+                  Байгууллагын web эрх нээлттэй боловч global эрх хаалттай
+                </p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-amber-700">
+                  Энэ байгууллагын бараа public хэрэглэгчдэд харагдахгүй.
+                  Ерөнхий эрхийг нээсний дараа байгууллагын тохиргоо үйлчилнэ.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
       {/* feature toggles */}
       {selectedOrgId && (
         <>
@@ -301,56 +427,122 @@ export function VendorFeaturesSection() {
               <Loader2 size={15} className="animate-spin" /> Ачаалж байна...
             </div>
           ) : (
-            <div className="grid gap-3 lg:grid-cols-2">
-              {toggles.map((t) => (
-                <div
-                  key={t.key}
-                  className="flex items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+            <div className="space-y-5">
+              {FEATURE_GROUPS.map((group) => (
+                <section
+                  key={group.key}
+                  aria-labelledby={`vendor-feature-group-${group.key}`}
+                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
                 >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                        t.enabled
-                          ? "bg-emerald-50 text-emerald-600"
-                          : "bg-slate-100 text-slate-400"
-                      }`}
-                    >
-                      <t.icon size={18} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">
-                        {t.label}
-                      </p>
-                      <p className="text-xs font-semibold text-slate-400">
-                        {t.key}-{selectedOrgId.slice(0, 8)}…
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleToggle(t.key)}
-                    disabled={t.saving}
-                    className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors disabled:opacity-60 ${
-                      t.enabled
-                        ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-500">
+                    {group.eyebrow}
+                  </p>
+                  <h3
+                    id={`vendor-feature-group-${group.key}`}
+                    className="mt-1 text-lg font-black text-slate-950"
                   >
-                    {t.saving ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : t.enabled ? (
-                      <CheckCircle2 size={14} />
-                    ) : (
-                      <XCircle size={14} />
-                    )}
-                    {t.enabled ? "НЭЭЛТТЭЙ" : "ХААЛТТАЙ"}
-                  </button>
-                </div>
+                    {group.title}
+                  </h3>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    {toggles
+                      .filter((toggle) =>
+                        FEATURES.some(
+                          (feature) =>
+                            feature.suffix === toggle.key &&
+                            feature.group === group.key,
+                        ),
+                      )
+                      .map((toggle) => {
+                        const feature = FEATURES.find(
+                          (item) => item.suffix === toggle.key,
+                        );
+
+                        return (
+                          <VendorFeatureCard
+                            key={toggle.key}
+                            toggle={toggle}
+                            description={feature?.description ?? ""}
+                            organizationId={selectedOrgId}
+                            onToggle={handleToggle}
+                          />
+                        );
+                      })}
+                  </div>
+                </section>
               ))}
             </div>
           )}
         </>
       )}
     </div>
+  );
+}
+
+interface VendorFeatureCardProps {
+  toggle: FeatureToggle;
+  description: string;
+  organizationId: string;
+  onToggle: (key: string) => void;
+}
+
+function VendorFeatureCard({
+  toggle,
+  description,
+  organizationId,
+  onToggle,
+}: VendorFeatureCardProps) {
+  const Icon = toggle.icon;
+
+  return (
+    <article
+      className={`flex flex-col justify-between gap-4 rounded-2xl border p-4 transition-colors sm:flex-row sm:items-center ${
+        toggle.enabled
+          ? "border-emerald-200 bg-emerald-50/40"
+          : "border-slate-200 bg-slate-50/70"
+      }`}
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+            toggle.enabled
+              ? "bg-white text-emerald-600 shadow-sm"
+              : "bg-white text-slate-400"
+          }`}
+        >
+          <Icon size={18} aria-hidden="true" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-slate-800">{toggle.label}</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+            {description}
+          </p>
+          <p className="mt-1 truncate text-[11px] font-semibold text-slate-400">
+            {toggle.key}-{organizationId.slice(0, 8)}…
+          </p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        aria-pressed={toggle.enabled}
+        onClick={() => onToggle(toggle.key)}
+        disabled={toggle.saving}
+        className={`inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 ${
+          toggle.enabled
+            ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+            : "bg-white text-slate-600 shadow-sm hover:bg-slate-100"
+        }`}
+      >
+        {toggle.saving ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : toggle.enabled ? (
+          <CheckCircle2 size={14} />
+        ) : (
+          <XCircle size={14} />
+        )}
+        {toggle.enabled ? "НЭЭЛТТЭЙ" : "ХААЛТТАЙ"}
+      </button>
+    </article>
   );
 }

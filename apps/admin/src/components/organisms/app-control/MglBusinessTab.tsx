@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
+  BellRing,
+  BrainCircuit,
+  CalendarClock,
   Check,
   ClipboardList,
   Clock3,
@@ -16,6 +19,9 @@ import {
   SlidersHorizontal,
   UserCog,
   Users,
+  ChartNoAxesCombined,
+  FileChartColumnIncreasing,
+  ShieldAlert,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 
@@ -30,6 +36,16 @@ type BusinessAppSettings = {
   attendanceManual: boolean;
 };
 
+type CeoServiceControls = {
+  enabled: boolean;
+  adviceNotifications: boolean;
+  calendarReminders: boolean;
+  weeklyDigest: boolean;
+  riskAlerts: boolean;
+  kpiInsights: boolean;
+  decisionBrief: boolean;
+};
+
 type BusinessAppControl = {
   id: string;
   name: string;
@@ -38,6 +54,7 @@ type BusinessAppControl = {
   activeMembers: number;
   features: BusinessAppFeatures;
   settings: BusinessAppSettings;
+  ceoService: CeoServiceControls;
   members: BusinessAppMember[];
 };
 
@@ -81,9 +98,10 @@ const FEATURE_OPTIONS: AppFeatureOption[] = [
   },
   {
     key: "inventory",
-    label: "Бараа",
-    shortLabel: "Inventory",
-    description: "Бараа бүртгэх, нөөц харах, агуулахын захиалга үүсгэх хэсэг.",
+    label: "Дотоод бараа, агуулах",
+    shortLabel: "Internal inventory",
+    description:
+      "MGL Business app-д өөрийн бараа бүртгэх, үлдэгдэл харах, агуулахаас татан авах хэсэг.",
     icon: Package,
   },
   {
@@ -105,6 +123,65 @@ const DEFAULT_FEATURES: BusinessAppFeatures = {
 const DEFAULT_SETTINGS: BusinessAppSettings = {
   attendanceManual: false,
 };
+
+const DEFAULT_CEO_SERVICE: CeoServiceControls = {
+  enabled: false,
+  adviceNotifications: true,
+  calendarReminders: true,
+  weeklyDigest: true,
+  riskAlerts: true,
+  kpiInsights: true,
+  decisionBrief: true,
+};
+
+const CEO_SERVICE_OPTIONS: Array<{
+  key: Exclude<keyof CeoServiceControls, "enabled">;
+  label: string;
+  description: string;
+  icon: typeof BellRing;
+}> = [
+  {
+    key: "adviceNotifications",
+    label: "CEO зөвлөгөө",
+    description:
+      "Удирдлагад зориулсан зөвлөгөө, чухал мэдээллийг notification-оор хүргэнэ.",
+    icon: BrainCircuit,
+  },
+  {
+    key: "calendarReminders",
+    label: "Calendar сануулга",
+    description: "Төлөвлөсөн ажлын хугацаа ойртох болон дуусах үед сануулна.",
+    icon: CalendarClock,
+  },
+  {
+    key: "weeklyDigest",
+    label: "7 хоногийн тойм",
+    description:
+      "Ажил, ирц, гүйцэтгэлийн гол үзүүлэлтийг нэг товч тайлан болгоно.",
+    icon: FileChartColumnIncreasing,
+  },
+  {
+    key: "riskAlerts",
+    label: "Эрсдэлийн дохио",
+    description:
+      "Хугацаа хэтэрсэн болон саатах эрсдэлтэй ажлыг эрт анхааруулна.",
+    icon: ShieldAlert,
+  },
+  {
+    key: "kpiInsights",
+    label: "KPI insight",
+    description:
+      "Багийн бүтээмжийн өөрчлөлт, анхаарах үзүүлэлтийг ойлгомжтой харуулна.",
+    icon: ChartNoAxesCombined,
+  },
+  {
+    key: "decisionBrief",
+    label: "Шийдвэрийн товч",
+    description:
+      "Өдрийн чухал асуудал, дараагийн боломжит алхмыг эрэмбэлж өгнө.",
+    icon: ClipboardList,
+  },
+];
 
 const ROLE_OPTIONS: Array<{
   value: Exclude<BusinessAppRole, "OWNER">;
@@ -175,6 +252,10 @@ function normalizeBusinessAppControl(
         organization.settings?.attendanceManual ??
         DEFAULT_SETTINGS.attendanceManual,
     },
+    ceoService: {
+      ...DEFAULT_CEO_SERVICE,
+      ...organization.ceoService,
+    },
   };
 }
 
@@ -186,6 +267,8 @@ export function MglBusinessTab() {
     useState<BusinessAppFeatures>(DEFAULT_FEATURES);
   const [draftSettings, setDraftSettings] =
     useState<BusinessAppSettings>(DEFAULT_SETTINGS);
+  const [draftCeoService, setDraftCeoService] =
+    useState<CeoServiceControls>(DEFAULT_CEO_SERVICE);
   const [draftMaxMembers, setDraftMaxMembers] = useState("5");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -206,7 +289,10 @@ export function MglBusinessTab() {
     selectedOrg &&
     (draftMaxMembers !== String(selectedOrg.maxMembers) ||
       hasFeatureDiff(draftFeatures, selectedOrg.features) ||
-      draftSettings.attendanceManual !== selectedOrg.settings.attendanceManual),
+      draftSettings.attendanceManual !==
+        selectedOrg.settings.attendanceManual ||
+      JSON.stringify(draftCeoService) !==
+        JSON.stringify(selectedOrg.ceoService)),
   );
 
   const loadControls = async (mode: "initial" | "refresh" = "initial") => {
@@ -234,11 +320,13 @@ export function MglBusinessTab() {
         setSelectedOrgId(nextSelected.id);
         setDraftFeatures(nextSelected.features);
         setDraftSettings(nextSelected.settings);
+        setDraftCeoService(nextSelected.ceoService);
         setDraftMaxMembers(String(nextSelected.maxMembers));
       } else {
         setSelectedOrgId("");
         setDraftFeatures(DEFAULT_FEATURES);
         setDraftSettings(DEFAULT_SETTINGS);
+        setDraftCeoService(DEFAULT_CEO_SERVICE);
         setDraftMaxMembers("5");
       }
     } catch (err: unknown) {
@@ -264,6 +352,7 @@ export function MglBusinessTab() {
     if (!organization) return;
     setDraftFeatures(organization.features);
     setDraftSettings(organization.settings);
+    setDraftCeoService(organization.ceoService);
     setDraftMaxMembers(String(organization.maxMembers));
   };
 
@@ -274,6 +363,11 @@ export function MglBusinessTab() {
 
   const toggleSetting = (key: keyof BusinessAppSettings) => {
     setDraftSettings((current) => ({ ...current, [key]: !current[key] }));
+    setSaved(false);
+  };
+
+  const toggleCeoService = (key: keyof CeoServiceControls) => {
+    setDraftCeoService((current) => ({ ...current, [key]: !current[key] }));
     setSaved(false);
   };
 
@@ -302,6 +396,7 @@ export function MglBusinessTab() {
             maxMembers: nextMaxMembers,
             features: draftFeatures,
             settings: draftSettings,
+            ceoService: draftCeoService,
           }),
         },
       );
@@ -321,6 +416,7 @@ export function MglBusinessTab() {
       );
       setDraftFeatures(updated.features);
       setDraftSettings(updated.settings);
+      setDraftCeoService(updated.ceoService);
       setDraftMaxMembers(String(updated.maxMembers));
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2500);
@@ -416,6 +512,11 @@ export function MglBusinessTab() {
               <AttendanceBehaviorControls
                 settings={draftSettings}
                 onToggle={toggleSetting}
+              />
+
+              <CeoServiceControlPanel
+                controls={draftCeoService}
+                onToggle={toggleCeoService}
               />
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -650,11 +751,15 @@ function FeatureControlsGrid({
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-            App modules
+            Дотоод ажиллагаа
           </p>
           <h3 className="mt-1 text-lg font-black text-slate-950">
-            Ажилчдын account дээр харагдах хэсгүүд
+            MGL Business app-д харагдах хэсгүүд
           </h3>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            Эдгээр нь ажилтны mobile app-д нөлөөлнө. Web дэлгүүрт бараа нийтлэх
+            эрхийг Vendor тохиргооноос удирдана.
+          </p>
         </div>
       </div>
 
@@ -725,6 +830,118 @@ function FeatureToggleCard({
   );
 }
 
+function CeoServiceControlPanel({
+  controls,
+  onToggle,
+}: {
+  controls: CeoServiceControls;
+  onToggle: (key: keyof CeoServiceControls) => void;
+}) {
+  return (
+    <section
+      className={`overflow-hidden rounded-3xl border transition ${
+        controls.enabled
+          ? "border-violet-200 bg-gradient-to-br from-violet-50 via-white to-indigo-50 shadow-lg shadow-violet-100/60"
+          : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
+              controls.enabled
+                ? "bg-violet-600 text-white shadow-lg shadow-violet-200"
+                : "bg-white text-slate-400"
+            }`}
+          >
+            <BrainCircuit size={22} />
+          </div>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-600">
+              Premium entitlement
+            </p>
+            <h3 className="mt-1 text-lg font-black text-slate-950">
+              CEO тусгай үйлчилгээ
+            </h3>
+            <p className="mt-1 max-w-2xl text-xs font-semibold leading-5 text-slate-500">
+              Байгууллагын CEO / Owner эрхтэй хэрэглэгчдэд удирдлагын
+              notification, сануулга, тайлан болон insight нээнэ.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onToggle("enabled")}
+          aria-pressed={controls.enabled}
+          aria-label="CEO тусгай үйлчилгээг идэвхжүүлэх"
+          className={`inline-flex min-h-12 shrink-0 items-center gap-3 rounded-2xl px-4 text-sm font-black transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-violet-200 ${
+            controls.enabled
+              ? "bg-violet-600 text-white hover:bg-violet-700"
+              : "border border-slate-200 bg-white text-slate-600 hover:border-violet-300"
+          }`}
+        >
+          <span>{controls.enabled ? "Идэвхтэй" : "Идэвхгүй"}</span>
+          <span
+            className={`h-7 w-12 rounded-full p-0.5 transition ${
+              controls.enabled ? "bg-white/30" : "bg-slate-200"
+            }`}
+          >
+            <span
+              className={`block h-6 w-6 rounded-full bg-white shadow-sm transition ${
+                controls.enabled ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </span>
+        </button>
+      </div>
+
+      <div className="grid gap-3 border-t border-violet-100/80 p-5 md:grid-cols-2 xl:grid-cols-3">
+        {CEO_SERVICE_OPTIONS.map((option) => {
+          const Icon = option.icon;
+          const enabled = controls[option.key];
+          return (
+            <button
+              key={option.key}
+              type="button"
+              disabled={!controls.enabled}
+              onClick={() => onToggle(option.key)}
+              aria-pressed={enabled}
+              className={`rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-violet-200 disabled:cursor-not-allowed disabled:opacity-45 ${
+                enabled && controls.enabled
+                  ? "border-violet-200 bg-white shadow-sm hover:-translate-y-0.5"
+                  : "border-slate-200 bg-white/70"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                  <Icon size={18} />
+                </span>
+                <span
+                  className={`h-6 w-11 rounded-full p-0.5 transition ${
+                    enabled ? "bg-violet-500" : "bg-slate-200"
+                  }`}
+                >
+                  <span
+                    className={`block h-5 w-5 rounded-full bg-white shadow-sm transition ${
+                      enabled ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </span>
+              </div>
+              <p className="mt-3 text-sm font-black text-slate-950">
+                {option.label}
+              </p>
+              <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                {option.description}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function AttendanceBehaviorControls({
   settings,
   onToggle,
@@ -767,8 +984,8 @@ function AttendanceBehaviorControls({
             “Ирлээ / Явлаа” товч харуулах
           </p>
           <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-            Асаавал ажилтны цаг бүртгэлийн дэлгэц дээр manual clock in/out
-            товч гарна.
+            Асаавал ажилтны цаг бүртгэлийн дэлгэц дээр manual clock in/out товч
+            гарна.
           </p>
         </div>
         <span
@@ -796,12 +1013,12 @@ function AppScopeNote() {
         </div>
         <div>
           <p className="text-sm font-black text-slate-950">
-            Зөвхөн app-д нөлөөлнө
+            Дотоод app-ийн эрх
           </p>
           <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">
             Энэ тохиргоо тухайн байгууллагад хамааралтай ажилчдын MGL Business
             mobile account дээр menu, bottom tab, route access хэлбэрээр
-            хэрэгжинэ.
+            хэрэгжинэ. Public web каталог болон POS сувгийг өөрчлөхгүй.
           </p>
         </div>
       </div>

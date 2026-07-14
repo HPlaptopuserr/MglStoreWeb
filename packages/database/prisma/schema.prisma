@@ -88,6 +88,7 @@ model User {
   membershipAgents                 MembershipAgent[]              @relation("MembershipAgentUser")
   createdMembershipAgents          MembershipAgent[]              @relation("MembershipAgentCreatedBy")
   membershipReferralCommissions    MembershipReferralCommission[] @relation("MembershipReferralAgentUser")
+  organizationGameScores           OrganizationGameScore[]
 
   @@index([role])
   @@index([isPrime])
@@ -378,6 +379,13 @@ model Organization {
   businessAttendanceEnabled       Boolean                 @default(true)
   businessAttendanceManualEnabled Boolean                 @default(false)
   businessTasksEnabled            Boolean                 @default(true)
+  ceoServiceEnabled               Boolean                 @default(false)
+  ceoAdviceNotificationsEnabled   Boolean                 @default(true)
+  ceoCalendarRemindersEnabled     Boolean                 @default(true)
+  ceoWeeklyDigestEnabled          Boolean                 @default(true)
+  ceoRiskAlertsEnabled            Boolean                 @default(true)
+  ceoKpiInsightsEnabled           Boolean                 @default(true)
+  ceoDecisionBriefEnabled         Boolean                 @default(true)
   tasks                           OrganizationTask[]
   attendanceRecords               AttendanceRecord[]      @relation("OrgAttendanceRecords")
   attendanceZones                 AttendanceZone[]
@@ -413,6 +421,7 @@ model Organization {
   reelInteractions                ReelInteraction[]
   upgradePlans                    OrgUpgradePlan[]
   cardTerminalRequests            CardTerminalRequest[]
+  gameScores                      OrganizationGameScore[]
 
   @@index([type])
   @@index([status])
@@ -420,6 +429,38 @@ model Organization {
   @@index([deletedAt])
   @@index([scheduledPermanentDeletionAt])
   @@index([subdomainEnabled])
+}
+
+model OrganizationGameScore {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String
+  game           String
+  score          Int
+  maxTile        Int          @default(0)
+  moves          Int          @default(0)
+  durationMs     Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, game])
+  @@index([organizationId, game, score])
+  @@index([userId, game])
+}
+
+model CeoNotificationDelivery {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  type           String
+  referenceKey   String
+  sentAt         DateTime @default(now())
+
+  @@unique([organizationId, userId, type, referenceKey])
+  @@index([organizationId, sentAt])
+  @@index([userId, sentAt])
 }
 
 model CardTerminalRequest {
@@ -621,23 +662,23 @@ model OrganizationTaskComment {
 }
 
 model OrganizationTaskAssignee {
-  id             String                          @id @default(uuid())
-  taskId         String
-  userId         String
-  status         OrganizationTaskStatus          @default(PENDING)
-  completedAt    DateTime?
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  approvedById   String?
-  performanceStars   Int?
+  id                  String                          @id @default(uuid())
+  taskId              String
+  userId              String
+  status              OrganizationTaskStatus          @default(PENDING)
+  completedAt         DateTime?
+  submittedAt         DateTime?
+  approvedAt          DateTime?
+  approvedById        String?
+  performanceStars    Int?
   productivityPercent Int?
-  evaluationNote     String?
-  createdAt      DateTime                        @default(now())
-  updatedAt      DateTime                        @updatedAt
-  task           OrganizationTask                @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user           User                            @relation("OrganizationTaskAssignedUser", fields: [userId], references: [id], onDelete: Cascade)
-  evidenceImages OrganizationTaskEvidenceImage[]
-  approvalLogs   OrganizationTaskApprovalLog[]
+  evaluationNote      String?
+  createdAt           DateTime                        @default(now())
+  updatedAt           DateTime                        @updatedAt
+  task                OrganizationTask                @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user                User                            @relation("OrganizationTaskAssignedUser", fields: [userId], references: [id], onDelete: Cascade)
+  evidenceImages      OrganizationTaskEvidenceImage[]
+  approvalLogs        OrganizationTaskApprovalLog[]
 
   @@unique([taskId, userId])
   @@index([taskId])
@@ -849,6 +890,8 @@ model Category {
 model Product {
   id                    String                      @id @default(uuid())
   organizationId        String
+  masterProductId       String?
+  managedByWarehouseId  String?
   submittedById         String?
   reviewedById          String?
   name                  String
@@ -888,6 +931,8 @@ model Product {
   businessCategory      BusinessCategory?           @relation(fields: [businessCategoryId], references: [id])
   category              Category?                   @relation(fields: [categoryId], references: [id])
   organization          Organization                @relation(fields: [organizationId], references: [id])
+  masterProduct         MasterProduct?              @relation(fields: [masterProductId], references: [id], onDelete: SetNull)
+  managedByWarehouse    Warehouse?                  @relation("WarehouseManagedProducts", fields: [managedByWarehouseId], references: [id], onDelete: SetNull)
   images                ProductImage[]
   productRequests       ProductRequest[]
   warehouseInventories  WarehouseInventory[]
@@ -902,6 +947,8 @@ model Product {
 
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
+  @@index([masterProductId])
+  @@index([managedByWarehouseId])
   @@index([reviewStatus])
   @@index([submittedById])
   @@index([categoryId])
@@ -912,6 +959,39 @@ model Product {
   @@index([barcode])
   @@index([supplyType])
   @@index([organizationId, isRestaurantMenuItem, isActive])
+}
+
+model MasterProduct {
+  id              String               @id @default(uuid())
+  canonicalName   String
+  normalizedName  String
+  barcode         String?              @unique
+  brand           String?
+  unit            String?
+  description     String?
+  imageUrl        String?
+  categoryName    String?
+  sourceProductId String?
+  status          String               @default("ACTIVE")
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  products        Product[]
+  aliases         MasterProductAlias[]
+
+  @@index([normalizedName])
+  @@index([status])
+}
+
+model MasterProductAlias {
+  id              String        @id @default(uuid())
+  masterProductId String
+  value           String
+  normalizedValue String
+  createdAt       DateTime      @default(now())
+  masterProduct   MasterProduct @relation(fields: [masterProductId], references: [id], onDelete: Cascade)
+
+  @@unique([masterProductId, normalizedValue])
+  @@index([normalizedValue])
 }
 
 enum ProductInteractionType {
@@ -1437,6 +1517,11 @@ model ServiceRequest {
   @@index([createdAt])
 }
 
+enum WarehouseType {
+  CENTRAL
+  VENDOR_INTERNAL
+}
+
 model Warehouse {
   id              String                  @id @default(uuid())
   name            String
@@ -1446,6 +1531,7 @@ model Warehouse {
   lng             Float?
   createdById     String?
   isActive        Boolean                 @default(true)
+  type            WarehouseType           @default(CENTRAL)
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
   deletedAt       DateTime?
@@ -1455,6 +1541,7 @@ model Warehouse {
   dispatches      StockDispatch[]         @relation("WarehouseDispatches")
   createdBy       User?                   @relation("WarehouseCreatedBy", fields: [createdById], references: [id])
   inventories     WarehouseInventory[]
+  managedProducts Product[]               @relation("WarehouseManagedProducts")
   organizations   WarehouseOrganization[]
   setupTokens     WarehouseSetupToken[]   @relation("WarehouseSetupTokens")
   stockRequests   WarehouseStockRequest[] @relation("WarehouseStockRequests")
@@ -1462,6 +1549,7 @@ model Warehouse {
 
   @@index([createdById])
   @@index([isActive])
+  @@index([type])
   @@index([deletedAt])
 }
 

@@ -156,6 +156,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     requires: ["MANAGE_SITE_SETTINGS"],
   },
   {
+    id: "master-products",
+    label: "Нэгдсэн барааны сан",
+    icon: PackageSearch,
+    href: "/master-products",
+    requires: ["MANAGE_SITE_SETTINGS", "MANAGE_WAREHOUSES"],
+  },
+  {
     id: "categories",
     label: "Бизнесийн ангилал",
     icon: Tag,

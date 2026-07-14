@@ -6,11 +6,15 @@ import { API } from "@/lib/api";
 import { addToCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth-context";
 import { resolveMemberPricing } from "@/lib/member-pricing";
+import { trackMetaCommerceEvent } from "@/lib/meta-events";
 import {
   appendProductVisitorId,
   trackProductInteraction,
 } from "@/lib/product-interest";
-import { ProductDetailShell, type ProductDetailProduct } from "./_components/ProductDetailShell";
+import {
+  ProductDetailShell,
+  type ProductDetailProduct,
+} from "./_components/ProductDetailShell";
 
 function useCountdown(target?: string | null) {
   const [time, setTime] = useState({ d: 0, h: 0, m: 0, s: 0 });
@@ -39,7 +43,11 @@ function useCountdown(target?: string | null) {
   return time;
 }
 
-export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function ProductDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
   const { user, authFetch } = useAuth();
   const [product, setProduct] = useState<ProductDetailProduct | null>(null);
@@ -47,8 +55,12 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const [activeImg, setActiveImg] = useState(0);
   const [wishlisted, setWishlisted] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
-  const [relatedProducts, setRelatedProducts] = useState<ProductDetailProduct[]>([]);
-  const [vendorProducts, setVendorProducts] = useState<ProductDetailProduct[]>([]);
+  const [relatedProducts, setRelatedProducts] = useState<
+    ProductDetailProduct[]
+  >([]);
+  const [vendorProducts, setVendorProducts] = useState<ProductDetailProduct[]>(
+    [],
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -73,7 +85,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     if (!product) return;
 
     const loadRecommendations = async () => {
-      const params = appendProductVisitorId(new URLSearchParams({ limit: "8" }));
+      const params = appendProductVisitorId(
+        new URLSearchParams({ limit: "8" }),
+      );
       const response = await authFetch(
         `${API}/products/${encodeURIComponent(product.id)}/recommendations?${params.toString()}`,
       );
@@ -93,6 +107,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       businessCategoryId: product.businessCategory?.id,
       organizationId: product.organization?.id,
       source: "product-detail",
+    });
+    trackMetaCommerceEvent("ViewContent", {
+      content_ids: [product.id],
+      content_name: product.name,
+      content_type: "product",
+      currency: "MNT",
+      value: Number(product.price),
     });
 
     loadRecommendations().catch(() => {
@@ -144,7 +165,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     const url = `${window.location.origin}/products/${product.id}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: product.name, text: product.description ?? product.name, url });
+        await navigator.share({
+          title: product.name,
+          text: product.description ?? product.name,
+          url,
+        });
       } else {
         await navigator.clipboard.writeText(url);
         setShareCopied(true);
@@ -174,7 +199,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-white">
         <p className="text-lg font-semibold text-slate-400">Бараа олдсонгүй</p>
-        <Link href="/products" className="text-sm font-bold text-orange-600 hover:text-orange-700">
+        <Link
+          href="/products"
+          className="text-sm font-bold text-orange-600 hover:text-orange-700"
+        >
           Бүх бараа харах
         </Link>
       </div>
@@ -208,6 +236,14 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           supplyType: product.supplyType,
           image: images[0]?.url,
           quantity: 1,
+        });
+        trackMetaCommerceEvent("AddToCart", {
+          content_ids: [product.id],
+          content_name: product.name,
+          content_type: "product",
+          currency: "MNT",
+          value: discountedPrice,
+          num_items: 1,
         });
       }}
       onToggleWishlist={toggleWishlist}
