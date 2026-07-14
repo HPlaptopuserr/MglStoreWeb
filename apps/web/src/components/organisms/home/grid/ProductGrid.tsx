@@ -8,6 +8,7 @@ import { HomeCommerceDock } from "./HomeCommerceDock";
 import { ProductShelfRow } from "./ProductShelfRow";
 import {
   buildFallbackShelves,
+  curateHomepageProducts,
   MARKETPLACE_SERVICES_PROMO_KEY,
   MARKETPLACE_SIDE_BANNER_KEY,
   parseMarketplaceSideBanner,
@@ -64,9 +65,9 @@ export const ProductGrid = () => {
       ),
     ])
       .then(([productData, reelData, settings, projectData]) => {
-        const nextProducts = Array.isArray(productData)
-          ? productData.slice(0, 100)
-          : [];
+        const nextProducts = curateHomepageProducts(
+          Array.isArray(productData) ? productData.slice(0, 100) : [],
+        );
         setReels(
           Array.isArray(reelData?.items) ? reelData.items.slice(0, 6) : [],
         );

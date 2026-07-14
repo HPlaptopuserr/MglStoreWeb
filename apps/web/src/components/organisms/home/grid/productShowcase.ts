@@ -34,6 +34,40 @@ export type ResolvedShelf = ProductShelf & {
   products: ApiProduct[];
 };
 
+const HOMEPAGE_WATER_PRODUCT_LIMIT = 3;
+
+function isWaterProduct(product: ApiProduct): boolean {
+  const searchableText = [product.name, product.businessCategory?.name]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase("mn-MN");
+
+  return /(^|[\s,./_-])(ус|water)(?=$|[\s,./_-])/iu.test(searchableText);
+}
+
+/**
+ * Keeps the marketplace homepage diverse while preserving the full product
+ * catalog on `/products`. Water variants are intentionally represented by
+ * only three leading products; every non-water product keeps its API order.
+ */
+export function curateHomepageProducts(products: ApiProduct[]): ApiProduct[] {
+  const waterProducts: ApiProduct[] = [];
+  const otherProducts: ApiProduct[] = [];
+
+  for (const product of products) {
+    if (isWaterProduct(product)) {
+      if (waterProducts.length < HOMEPAGE_WATER_PRODUCT_LIMIT) {
+        waterProducts.push(product);
+      }
+      continue;
+    }
+
+    otherProducts.push(product);
+  }
+
+  return [...waterProducts, ...otherProducts];
+}
+
 export type MarketplaceSideBannerConfig = {
   isActive: boolean;
   imageUrl: string;
@@ -68,7 +102,9 @@ type ProjectLike = {
   isActive?: unknown;
 };
 
-export function resolveProjectBanners(projects: ProjectLike[]): MarketplaceProjectBannerConfig[] {
+export function resolveProjectBanners(
+  projects: ProjectLike[],
+): MarketplaceProjectBannerConfig[] {
   const banners: MarketplaceProjectBannerConfig[] = [];
 
   for (const project of projects) {
@@ -83,7 +119,8 @@ export function resolveProjectBanners(projects: ProjectLike[]): MarketplaceProje
     banners.push({
       id: String(project.id || image),
       title: String(project.title || "MGL Store төсөл"),
-      summary: typeof project.summary === "string" ? project.summary : undefined,
+      summary:
+        typeof project.summary === "string" ? project.summary : undefined,
       imageUrl: image,
     });
 
@@ -93,7 +130,9 @@ export function resolveProjectBanners(projects: ProjectLike[]): MarketplaceProje
   return banners;
 }
 
-export function parseMarketplaceSideBanner(raw?: string): MarketplaceSideBannerConfig | null {
+export function parseMarketplaceSideBanner(
+  raw?: string,
+): MarketplaceSideBannerConfig | null {
   if (!raw) return null;
 
   try {
@@ -114,7 +153,9 @@ export function parseMarketplaceSideBanner(raw?: string): MarketplaceSideBannerC
   }
 }
 
-export function parseMarketplaceServicesPromo(raw?: string): MarketplaceServicesPromoConfig | null {
+export function parseMarketplaceServicesPromo(
+  raw?: string,
+): MarketplaceServicesPromoConfig | null {
   if (!raw) return null;
 
   try {
@@ -174,8 +215,12 @@ export function resolveConfiguredShelves(
 }
 
 export function buildFallbackShelves(products: ApiProduct[]): ResolvedShelf[] {
-  const discounted = products.filter((product) => product.discounts?.[0]?.percent);
-  const preorder = products.filter((product) => product.supplyType === "CHINA_PREORDER");
+  const discounted = products.filter(
+    (product) => product.discounts?.[0]?.percent,
+  );
+  const preorder = products.filter(
+    (product) => product.supplyType === "CHINA_PREORDER",
+  );
   const fresh = [...products].slice(0, 12);
 
   const shelves: ResolvedShelf[] = [
