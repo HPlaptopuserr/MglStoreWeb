@@ -1,4 +1,5 @@
 export const SHOWCASE_KEY = "product-showcase-shelves";
+export const HOMEPAGE_FEATURED_PRODUCTS_KEY = "homepage-featured-products";
 export const MARKETPLACE_SIDE_BANNER_KEY = "marketplace-side-banner";
 export const MARKETPLACE_SERVICES_PROMO_KEY = "marketplace-services-promo";
 
@@ -34,38 +35,34 @@ export type ResolvedShelf = ProductShelf & {
   products: ApiProduct[];
 };
 
-const HOMEPAGE_WATER_PRODUCT_LIMIT = 3;
+export function resolveHomepageFeaturedProducts(
+  raw: string | undefined,
+  products: ApiProduct[],
+): ApiProduct[] {
+  if (!raw) return [];
 
-function isWaterProduct(product: ApiProduct): boolean {
-  const searchableText = [product.name, product.businessCategory?.name]
-    .filter(Boolean)
-    .join(" ")
-    .toLocaleLowerCase("mn-MN");
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
 
-  return /(^|[\s,./_-])(ус|water)(?=$|[\s,./_-])/iu.test(searchableText);
-}
+    const productById = new Map(
+      products.map((product) => [product.id, product]),
+    );
+    const uniqueIds = [
+      ...new Set(
+        parsed
+          .map((id) => (typeof id === "string" ? id.trim() : ""))
+          .filter(Boolean),
+      ),
+    ];
 
-/**
- * Keeps the marketplace homepage diverse while preserving the full product
- * catalog on `/products`. Water variants are intentionally represented by
- * only three leading products; every non-water product keeps its API order.
- */
-export function curateHomepageProducts(products: ApiProduct[]): ApiProduct[] {
-  const waterProducts: ApiProduct[] = [];
-  const otherProducts: ApiProduct[] = [];
-
-  for (const product of products) {
-    if (isWaterProduct(product)) {
-      if (waterProducts.length < HOMEPAGE_WATER_PRODUCT_LIMIT) {
-        waterProducts.push(product);
-      }
-      continue;
-    }
-
-    otherProducts.push(product);
+    return uniqueIds
+      .map((id) => productById.get(id))
+      .filter((product): product is ApiProduct => Boolean(product))
+      .slice(0, 10);
+  } catch {
+    return [];
   }
-
-  return [...waterProducts, ...otherProducts];
 }
 
 export type MarketplaceSideBannerConfig = {
