@@ -13,6 +13,11 @@ import {
   buildSystemFinancialOverview,
   type FinancialOverviewWindow,
 } from "../../services/system-financial-overview.service";
+import {
+  countConsistentlyActiveOrganizations,
+  shiftActivityDate,
+  toActivityDate,
+} from "../../services/organization-activity.service";
 
 const router: RouterType = Router();
 
@@ -531,6 +536,26 @@ router.get(
         ? "Бүх хугацааны"
         : `Сүүлийн ${days} хоногийн`;
 
+      const activityWindowDays = allTime ? 30 : days;
+      const activityEnd = shiftActivityDate(toActivityDate(new Date()), 1);
+      const activityStart = shiftActivityDate(activityEnd, -activityWindowDays);
+      const previousActivityStart = shiftActivityDate(
+        activityStart,
+        -activityWindowDays,
+      );
+      const consistentActivityPromise = Promise.all([
+        countConsistentlyActiveOrganizations(
+          activityStart,
+          activityEnd,
+          activityWindowDays,
+        ),
+        countConsistentlyActiveOrganizations(
+          previousActivityStart,
+          activityStart,
+          activityWindowDays,
+        ),
+      ]);
+
       const financialOverviewPromise =
         buildSystemFinancialOverview(windowLabel);
 
@@ -1041,11 +1066,19 @@ router.get(
         (sum, item) => sum + item._count.id,
         0,
       );
+      const [
+        consistentlyActiveOrganizations,
+        previousConsistentlyActiveOrganizations,
+      ] = await consistentActivityPromise;
       const previousMetricValues = new Map<string, number | null>([
         ["active-users", allTime ? null : previousActiveUsers],
         ["new-users", allTime ? null : previousNewUsers],
         ["login-sessions", allTime ? null : previousLoginSessions],
         ["new-organizations", allTime ? null : previousNewOrganizations],
+        [
+          "active-organizations",
+          allTime ? null : previousConsistentlyActiveOrganizations,
+        ],
         ["total-revenue", allTime ? null : previousRevenue],
         [
           "online-revenue",
@@ -1138,12 +1171,15 @@ router.get(
         },
         {
           id: "active-organizations",
-          label: "Идэвхтэй байгууллага",
-          value: activeOrganizations,
+          label: "Тогтмол идэвхтэй байгууллага",
+          value: consistentlyActiveOrganizations,
           unit: "org",
-          trend: null,
+          trend: windowTrend(
+            consistentlyActiveOrganizations,
+            previousConsistentlyActiveOrganizations,
+          ),
           category: "Acquisition",
-          description: "Одоогоор идэвхтэй байгаа байгууллагын нийт тоо.",
+          description: `Сүүлийн ${activityWindowDays} хоногийн өдөр бүр дор хаяж нэг удаа систем ашигласан байгууллага.`,
         },
         {
           id: "verified-organization-rate",
@@ -1352,7 +1388,6 @@ router.get(
         },
       ];
       const snapshotMetricIds = new Set([
-        "active-organizations",
         "verified-organization-rate",
         "pending-registrations",
         "active-products",
@@ -1367,7 +1402,8 @@ router.get(
         "new-users": "User.createdAt",
         "login-sessions": "UserSession.createdAt",
         "new-organizations": "Organization.createdAt",
-        "active-organizations": "Organization.status = ACTIVE",
+        "active-organizations":
+          "OrganizationDailyActivity: өдөр бүр ≥ 1 authenticated activity",
         "verified-organization-rate":
           "Active Organization.isVerified / active organizations",
         "registration-approval-rate":
@@ -1404,12 +1440,12 @@ router.get(
         source: metricSources[item.id] ?? "System database aggregate",
       }));
 
-    const financialOverview = await financialOverviewPromise;
+      const financialOverview = await financialOverviewPromise;
 
-    return res.json({
+      return res.json({
         generatedAt: new Date().toISOString(),
-      windowDays: windowLabel,
-      financialOverview,
+        windowDays: windowLabel,
+        financialOverview,
         dataQuality: {
           basis: "DATABASE_AGGREGATES",
           generatedAt: new Date().toISOString(),
@@ -2113,11 +2149,9 @@ router.post(
       const { email, fullName, password, role } = req.body;
 
       if (!email || !fullName || !password || !role) {
-        return res
-          .status(400)
-          .json({
-            message: "email, fullName, password, role бүгд шаардлагатай",
-          });
+        return res.status(400).json({
+          message: "email, fullName, password, role бүгд шаардлагатай",
+        });
       }
 
       if (!ASSIGNABLE_ROLES.includes(role)) {

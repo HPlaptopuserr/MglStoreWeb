@@ -1,7 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
-import { Permission, isAdminRole, isFullAdmin, hasPlatformPermission } from "@mgl/types";
+import {
+  Permission,
+  isAdminRole,
+  isFullAdmin,
+  hasPlatformPermission,
+} from "@mgl/types";
+import { recordOrganizationActivity } from "../services/organization-activity.service";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -39,9 +45,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   try {
     const decoded = jwt.verify(token, jwtSecret) as AuthPayload;
     (req as any).user = decoded;
+    void recordOrganizationActivity(decoded.organizationId);
     next();
   } catch {
-    return res.status(401).json({ message: "Token буруу эсвэл хугацаа дууссан" });
+    return res
+      .status(401)
+      .json({ message: "Token буруу эсвэл хугацаа дууссан" });
   }
 }
 
@@ -87,7 +96,11 @@ export function requireRole(...roles: string[]) {
  * Check that the user is any admin role (SUPER_ADMIN, ADMIN, HR_ADMIN, etc.)
  * Must be used after requireAuth.
  */
-export function requireAnyAdmin(req: Request, res: Response, next: NextFunction) {
+export function requireAnyAdmin(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   const user = (req as any).user as AuthPayload | undefined;
   if (!user) {
     return res.status(401).json({ message: "Нэвтрээгүй байна" });
@@ -136,7 +149,9 @@ export function requireAnyPlatformPermission(...permissions: Permission[]) {
     if (isFullAdmin(user.role)) {
       return next();
     }
-    const hasAny = permissions.some((perm) => hasPlatformPermission(user.role, perm));
+    const hasAny = permissions.some((perm) =>
+      hasPlatformPermission(user.role, perm),
+    );
     if (!hasAny) {
       return res.status(403).json({ message: "Эрх хүрэлцэхгүй байна" });
     }
@@ -148,13 +163,19 @@ export function requireAnyPlatformPermission(...permissions: Permission[]) {
  * Resolve the caller's primary organization from OrganizationMember.
  * Attaches organizationId to auth payload. Use after requireAuth.
  */
-export async function resolveOrganization(userId: string): Promise<{ organizationId: string; orgRole: string } | null> {
+export async function resolveOrganization(
+  userId: string,
+): Promise<{ organizationId: string; orgRole: string } | null> {
   try {
     const membership = await prisma.organizationMember.findFirst({
       where: { userId, isActive: true, isPrimary: true },
       select: { organizationId: true, role: true },
     });
-    if (membership) return { organizationId: membership.organizationId, orgRole: membership.role };
+    if (membership)
+      return {
+        organizationId: membership.organizationId,
+        orgRole: membership.role,
+      };
   } catch (error) {
     console.error("[resolveOrganization primary lookup error]", error);
   }
@@ -165,5 +186,7 @@ export async function resolveOrganization(userId: string): Promise<{ organizatio
     orderBy: { createdAt: "asc" },
     select: { organizationId: true, role: true },
   });
-  return fallback ? { organizationId: fallback.organizationId, orgRole: fallback.role } : null;
+  return fallback
+    ? { organizationId: fallback.organizationId, orgRole: fallback.role }
+    : null;
 }

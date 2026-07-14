@@ -22,6 +22,7 @@ import {
   type AuthPayload,
 } from "../../middleware/auth";
 import { isSmtpConfigured, sendSmtpMail } from "../../lib/smtp";
+import { recordOrganizationActivity } from "../../services/organization-activity.service";
 
 const router: ExpressRouter = Router();
 const isProduction = process.env.NODE_ENV === "production";
@@ -819,6 +820,7 @@ async function toWebAuthResponseWithOrganizations(
   user: any,
   orgInfo?: Partial<AuthOrgContext> | null,
 ) {
+  await recordOrganizationActivity(orgInfo?.organizationId);
   return toWebAuthResponse(
     user,
     createWebAccessToken(user, orgInfo),

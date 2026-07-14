@@ -322,72 +322,72 @@ model BusinessCategory {
 }
 
 model Organization {
-  id                              String                  @id @default(uuid())
+  id                              String                      @id @default(uuid())
   name                            String
   nameNormalized                  String?
-  slug                            String                  @unique
-  taxId                           String                  @unique
-  type                            OrgType                 @default(SUPPLIER)
-  status                          OrgStatus               @default(ACTIVE)
-  isVerified                      Boolean                 @default(false)
+  slug                            String                      @unique
+  taxId                           String                      @unique
+  type                            OrgType                     @default(SUPPLIER)
+  status                          OrgStatus                   @default(ACTIVE)
+  isVerified                      Boolean                     @default(false)
   email                           String?
   phone                           String?
   logoUrl                         String?
   address                         String?
-  createdAt                       DateTime                @default(now())
-  updatedAt                       DateTime                @updatedAt
+  createdAt                       DateTime                    @default(now())
+  updatedAt                       DateTime                    @updatedAt
   deletedAt                       DateTime?
   businessCategory                String?
   bannerUrl                       String?
-  customerCount                   String?                 @default("0")
+  customerCount                   String?                     @default("0")
   deliveryPrice                   String?
   deliveryText                    String?
   description                     String?
-  openingHours                    String[]                @default([])
-  operatingYears                  Int                     @default(1)
-  rating                          Float                   @default(5)
-  reviewCount                     Int                     @default(0)
+  openingHours                    String[]                    @default([])
+  operatingYears                  Int                         @default(1)
+  rating                          Float                       @default(5)
+  reviewCount                     Int                         @default(0)
   shortDescription                String?
   deletedBy                       String?
   deletionReason                  String?
   scheduledPermanentDeletionAt    DateTime?
-  maxMembers                      Int                     @default(5)
-  qpayMerchantId                  String?                 @unique
+  maxMembers                      Int                         @default(5)
+  qpayMerchantId                  String?                     @unique
   qpayMerchantKey                 String?
   qpayInvoiceCode                 String?
   qpayBankAccounts                Json?
-  qpayEnabled                     Boolean                 @default(false)
+  qpayEnabled                     Boolean                     @default(false)
   qpayConnectedAt                 DateTime?
-  webQpayMerchantId               String?                 @unique
+  webQpayMerchantId               String?                     @unique
   webQpayMerchantKey              String?
   webQpayInvoiceCode              String?
   webQpayBankAccounts             Json?
-  webQpayEnabled                  Boolean                 @default(false)
+  webQpayEnabled                  Boolean                     @default(false)
   webQpayConnectedAt              DateTime?
-  minuAgentEnabled                Boolean                 @default(false)
+  minuAgentEnabled                Boolean                     @default(false)
   minuAgentUsername               String?
   minuAgentPassword               String?
   minuAgentBranchId               String?
   minuAgentConnectedAt            DateTime?
-  subdomainEnabled                Boolean                 @default(false)
+  subdomainEnabled                Boolean                     @default(false)
   planType                        String?
   planActivatedAt                 DateTime?
   planExpiresAt                   DateTime?
-  trialUsed                       Boolean                 @default(false)
-  businessOrdersEnabled           Boolean                 @default(true)
-  businessInventoryEnabled        Boolean                 @default(true)
-  businessAttendanceEnabled       Boolean                 @default(true)
-  businessAttendanceManualEnabled Boolean                 @default(false)
-  businessTasksEnabled            Boolean                 @default(true)
-  ceoServiceEnabled               Boolean                 @default(false)
-  ceoAdviceNotificationsEnabled   Boolean                 @default(true)
-  ceoCalendarRemindersEnabled     Boolean                 @default(true)
-  ceoWeeklyDigestEnabled          Boolean                 @default(true)
-  ceoRiskAlertsEnabled            Boolean                 @default(true)
-  ceoKpiInsightsEnabled           Boolean                 @default(true)
-  ceoDecisionBriefEnabled         Boolean                 @default(true)
+  trialUsed                       Boolean                     @default(false)
+  businessOrdersEnabled           Boolean                     @default(true)
+  businessInventoryEnabled        Boolean                     @default(true)
+  businessAttendanceEnabled       Boolean                     @default(true)
+  businessAttendanceManualEnabled Boolean                     @default(false)
+  businessTasksEnabled            Boolean                     @default(true)
+  ceoServiceEnabled               Boolean                     @default(false)
+  ceoAdviceNotificationsEnabled   Boolean                     @default(true)
+  ceoCalendarRemindersEnabled     Boolean                     @default(true)
+  ceoWeeklyDigestEnabled          Boolean                     @default(true)
+  ceoRiskAlertsEnabled            Boolean                     @default(true)
+  ceoKpiInsightsEnabled           Boolean                     @default(true)
+  ceoDecisionBriefEnabled         Boolean                     @default(true)
   tasks                           OrganizationTask[]
-  attendanceRecords               AttendanceRecord[]      @relation("OrgAttendanceRecords")
+  attendanceRecords               AttendanceRecord[]          @relation("OrgAttendanceRecords")
   attendanceZones                 AttendanceZone[]
   branches                        Branch[]
   investorProfile                 InvestorProfile?
@@ -395,17 +395,17 @@ model Organization {
   invites                         OrganizationInvite[]
   members                         OrganizationMember[]
   posRegisters                    PosRegister[]
-  feedPosts                       Post[]                  @relation("OrganizationPosts")
+  feedPosts                       Post[]                      @relation("OrganizationPosts")
   products                        Product[]
   productRequests                 ProductRequest[]
   servicePosts                    ServicePost[]
   serviceRequests                 ServiceRequest[]
-  stockDispatches                 StockDispatch[]         @relation("OrganizationDispatches")
-  stockRequestPayments            StockRequestPayment[]   @relation("OrganizationStockPayments")
+  stockDispatches                 StockDispatch[]             @relation("OrganizationDispatches")
+  stockRequestPayments            StockRequestPayment[]       @relation("OrganizationStockPayments")
   warehouseAssignments            WarehouseOrganization[]
-  stockRequests                   WarehouseStockRequest[] @relation("OrganizationStockRequests")
-  dispatchReturns                 DispatchReturn[]        @relation("OrganizationReturns")
-  joinRequests                    OrgJoinRequest[]        @relation("OrgJoinRequests")
+  stockRequests                   WarehouseStockRequest[]     @relation("OrganizationStockRequests")
+  dispatchReturns                 DispatchReturn[]            @relation("OrganizationReturns")
+  joinRequests                    OrgJoinRequest[]            @relation("OrgJoinRequests")
   posShifts                       PosShift[]
   posSales                        PosSale[]
   posCreditCustomers              PosCreditCustomer[]
@@ -422,6 +422,7 @@ model Organization {
   upgradePlans                    OrgUpgradePlan[]
   cardTerminalRequests            CardTerminalRequest[]
   gameScores                      OrganizationGameScore[]
+  dailyActivities                 OrganizationDailyActivity[]
 
   @@index([type])
   @@index([status])
@@ -429,6 +430,20 @@ model Organization {
   @@index([deletedAt])
   @@index([scheduledPermanentDeletionAt])
   @@index([subdomainEnabled])
+}
+
+model OrganizationDailyActivity {
+  id             String       @id @default(uuid())
+  organizationId String
+  activityDate   DateTime     @db.Date
+  activityCount  Int          @default(1)
+  firstSeenAt    DateTime     @default(now())
+  lastSeenAt     DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, activityDate])
+  @@index([activityDate])
+  @@index([organizationId, activityDate])
 }
 
 model OrganizationGameScore {
