@@ -300,12 +300,13 @@ export default function PrivacyPolicyPage() {
 
           <PolicySection id="account-deletion" number="08" title="Бүртгэл болон мэдээлэл устгах">
             <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
-              <h3 className="font-bold text-slate-950">MGL Business бүртгэл устгуулах хүсэлт</h3>
+              <h3 className="font-bold text-slate-950">MGL Store болон MGL Business мэдээлэл устгуулах хүсэлт</h3>
               <p className="mt-2 text-slate-700">
                 Апп ашиглах боломжгүй эсвэл устгасан байсан ч доорх товчоор
-                хүсэлт илгээнэ үү. Бүртгэлтэй и-мэйл/утас, байгууллагын нэр,
-                “бүртгэл устгах” хүсэлтээ бичнэ. Нууц үг, OTP болон картын
-                мэдээллээ и-мэйлээр бүү илгээгээрэй.
+                хүсэлт илгээнэ үү. MGL Store эсвэл MGL Business аппын алинд
+                хамаарах, бүртгэлтэй и-мэйл/утас, устгуулах мэдээллийн төрлөө
+                тодорхой бичнэ. Нууц үг, OTP болон картын мэдээллээ и-мэйлээр
+                бүү илгээгээрэй.
               </p>
               <a
                 href={DELETE_REQUEST_URL}
