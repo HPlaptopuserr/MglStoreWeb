@@ -51,7 +51,10 @@ type Dispatch = {
     id: string;
     items: DispatchItem[];
     organization: { id: string; name: string } | null;
-    requestedBy?: { email: string; profile?: { fullName: string | null } | null } | null;
+    requestedBy?: {
+      email: string;
+      profile?: { fullName: string | null } | null;
+    } | null;
   } | null;
   warehouse: { id: string; name: string; address?: string | null } | null;
   organization?: { id: string; name: string } | null;
@@ -64,28 +67,41 @@ type LedgerEntry = {
   change: number;
   note: string | null;
   product: { id: string; name: string; sku: string | null };
-  createdBy: { email: string; profile?: { fullName: string | null } | null } | null;
+  createdBy: {
+    email: string;
+    profile?: { fullName: string | null } | null;
+  } | null;
 };
 
 /* ─── Period helpers ──────────────────────────────────────────────────── */
 type PeriodKey = "today" | "week" | "month" | "quarter" | "year" | "custom";
 
-function getPeriodRange(key: PeriodKey, customFrom: string, customTo: string): { from: Date; to: Date } {
+function getPeriodRange(
+  key: PeriodKey,
+  customFrom: string,
+  customTo: string,
+): { from: Date; to: Date } {
   const now = new Date();
-  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
-  const endOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
+  const startOf = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+  const endOf = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
 
   switch (key) {
     case "today":
       return { from: startOf(now), to: endOf(now) };
     case "week": {
       const day = now.getDay();
-      const diff = (day === 0 ? -6 : 1 - day);
-      const mon = new Date(now); mon.setDate(now.getDate() + diff);
+      const diff = day === 0 ? -6 : 1 - day;
+      const mon = new Date(now);
+      mon.setDate(now.getDate() + diff);
       return { from: startOf(mon), to: endOf(now) };
     }
     case "month":
-      return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: endOf(now) };
+      return {
+        from: new Date(now.getFullYear(), now.getMonth(), 1),
+        to: endOf(now),
+      };
     case "quarter": {
       const q = Math.floor(now.getMonth() / 3);
       return { from: new Date(now.getFullYear(), q * 3, 1), to: endOf(now) };
@@ -111,7 +127,9 @@ const PERIOD_LABELS: Record<PeriodKey, string> = {
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("mn-MN", {
-    year: "numeric", month: "2-digit", day: "2-digit",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   });
 }
 
@@ -121,7 +139,9 @@ function fmtMoney(n: number) {
 
 /* ─── Component ───────────────────────────────────────────────────────── */
 export default function ReportsPage() {
-  const [tab, setTab] = useState<"inventory" | "dispatch" | "ledger">("inventory");
+  const [tab, setTab] = useState<"inventory" | "dispatch" | "ledger">(
+    "inventory",
+  );
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [warehouseId, setWarehouseId] = useState("");
   const [detail, setDetail] = useState<WarehouseDetail | null>(null);
@@ -136,17 +156,20 @@ export default function ReportsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
-        let url = `${API}/warehouses`;
-        if (user.organizationId) url = `${API}/warehouses/organization/${user.organizationId}`;
-        const res = await wmsFetch(url);
+        const res = await wmsFetch(`${API}/warehouses`);
         if (res.ok) {
           const data = await res.json();
-          const list: WarehouseOption[] = Array.isArray(data) ? data : data.warehouses || [];
+          const list: WarehouseOption[] = Array.isArray(data)
+            ? data
+            : data.warehouses || [];
           setWarehouses(list);
           if (list.length > 0) setWarehouseId(list[0].id);
         }
-      } catch { /* ignore */ } finally { setLoading(false); }
+      } catch {
+        /* ignore */
+      } finally {
+        setLoading(false);
+      }
     };
     load();
   }, []);
@@ -158,7 +181,11 @@ export default function ReportsPage() {
     try {
       const res = await wmsFetch(`${API}/warehouses/${warehouseId}/detail`);
       if (res.ok) setDetail(await res.json());
-    } catch { /* ignore */ } finally { setLoading(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
   }, [warehouseId]);
 
   /* Load dispatches */
@@ -166,9 +193,15 @@ export default function ReportsPage() {
     if (!warehouseId) return;
     setLoading(true);
     try {
-      const res = await wmsFetch(`${API}/stock-requests/warehouse/${warehouseId}/dispatches`);
+      const res = await wmsFetch(
+        `${API}/stock-requests/warehouse/${warehouseId}/dispatches`,
+      );
       if (res.ok) setDispatches(await res.json());
-    } catch { /* ignore */ } finally { setLoading(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
   }, [warehouseId]);
 
   /* Load ledger */
@@ -188,12 +221,22 @@ export default function ReportsPage() {
         const data = await res.json();
         setLedger(Array.isArray(data) ? data : data.entries || []);
       }
-    } catch { /* ignore */ } finally { setLoading(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
   }, [warehouseId, period, customFrom, customTo]);
 
-  useEffect(() => { fetchDetail(); }, [fetchDetail]);
-  useEffect(() => { if (tab === "dispatch") fetchDispatches(); }, [tab, fetchDispatches]);
-  useEffect(() => { if (tab === "ledger") fetchLedger(); }, [tab, fetchLedger]);
+  useEffect(() => {
+    fetchDetail();
+  }, [fetchDetail]);
+  useEffect(() => {
+    if (tab === "dispatch") fetchDispatches();
+  }, [tab, fetchDispatches]);
+  useEffect(() => {
+    if (tab === "ledger") fetchLedger();
+  }, [tab, fetchLedger]);
 
   /* Period filter applied to dispatches */
   const { from: pFrom, to: pTo } = useMemo(
@@ -201,11 +244,14 @@ export default function ReportsPage() {
     [period, customFrom, customTo],
   );
 
-  const filteredDispatches = useMemo(() =>
-    dispatches.filter((d) => {
-      const t = new Date(d.createdAt).getTime();
-      return t >= pFrom.getTime() && t <= pTo.getTime();
-    }), [dispatches, pFrom, pTo]);
+  const filteredDispatches = useMemo(
+    () =>
+      dispatches.filter((d) => {
+        const t = new Date(d.createdAt).getTime();
+        return t >= pFrom.getTime() && t <= pTo.getTime();
+      }),
+    [dispatches, pFrom, pTo],
+  );
 
   /* Flatten dispatch rows for table */
   type DispatchRow = {
@@ -231,7 +277,9 @@ export default function ReportsPage() {
         rows.push({
           dispatchId: d.id,
           date: d.createdAt,
-          orderId: d.request?.id?.slice(-8).toUpperCase() || d.id.slice(-8).toUpperCase(),
+          orderId:
+            d.request?.id?.slice(-8).toUpperCase() ||
+            d.id.slice(-8).toUpperCase(),
           destination: dest,
           productName: item.product?.name || "—",
           sku: item.product?.sku || "—",
@@ -244,34 +292,54 @@ export default function ReportsPage() {
     return rows;
   }, [filteredDispatches]);
 
-  const dispatchSummary = useMemo(() => ({
-    count: filteredDispatches.length,
-    totalQty: dispatchRows.reduce((s, r) => s + r.qty, 0),
-    totalValue: dispatchRows.reduce((s, r) => s + r.total, 0),
-  }), [filteredDispatches, dispatchRows]);
+  const dispatchSummary = useMemo(
+    () => ({
+      count: filteredDispatches.length,
+      totalQty: dispatchRows.reduce((s, r) => s + r.qty, 0),
+      totalValue: dispatchRows.reduce((s, r) => s + r.total, 0),
+    }),
+    [filteredDispatches, dispatchRows],
+  );
 
   /* Inventory stats */
   const inventories = detail?.inventories || [];
   const totalProducts = inventories.length;
   const totalStock = inventories.reduce((s, i) => s + i.quantity, 0);
-  const totalValue = inventories.reduce((s, i) => s + i.quantity * (i.product.price || 0), 0);
-  const lowStockItems = inventories.filter((i) => i.minQuantity && i.quantity > 0 && i.quantity <= i.minQuantity);
+  const totalValue = inventories.reduce(
+    (s, i) => s + i.quantity * (i.product.price || 0),
+    0,
+  );
+  const lowStockItems = inventories.filter(
+    (i) => i.minQuantity && i.quantity > 0 && i.quantity <= i.minQuantity,
+  );
   const outOfStockItems = inventories.filter((i) => i.quantity <= 0);
-  const healthyItems = inventories.filter((i) => i.quantity > 0 && (!i.minQuantity || i.quantity > i.minQuantity));
-  const topByQty = [...inventories].sort((a, b) => b.quantity - a.quantity).slice(0, 10);
+  const healthyItems = inventories.filter(
+    (i) => i.quantity > 0 && (!i.minQuantity || i.quantity > i.minQuantity),
+  );
+  const topByQty = [...inventories]
+    .sort((a, b) => b.quantity - a.quantity)
+    .slice(0, 10);
   const topByValue = [...inventories]
-    .sort((a, b) => b.quantity * (b.product.price || 0) - a.quantity * (a.product.price || 0))
+    .sort(
+      (a, b) =>
+        b.quantity * (b.product.price || 0) -
+        a.quantity * (a.product.price || 0),
+    )
     .slice(0, 10);
   const maxQty = topByQty[0]?.quantity || 1;
-  const maxVal = topByValue[0] ? topByValue[0].quantity * (topByValue[0].product.price || 0) : 1;
+  const maxVal = topByValue[0]
+    ? topByValue[0].quantity * (topByValue[0].product.price || 0)
+    : 1;
 
   /* Excel export for dispatches */
   const handleExcelDispatch = () => {
     if (!dispatchRows.length) return;
-    const whName = warehouses.find((w) => w.id === warehouseId)?.name || "Агуулах";
-    const periodLabel = period === "custom"
-      ? `${customFrom} ~ ${customTo}`
-      : PERIOD_LABELS[period];
+    const whName =
+      warehouses.find((w) => w.id === warehouseId)?.name || "Агуулах";
+    const periodLabel =
+      period === "custom"
+        ? `${customFrom} ~ ${customTo}`
+        : PERIOD_LABELS[period];
 
     const header = `
       <tr style="background:#1e40af;color:#fff;font-weight:bold">
@@ -279,7 +347,8 @@ export default function ReportsPage() {
         <td>Бараа</td><td>SKU</td><td>Тоо ширхэг</td><td>Нэгж үнэ (₮)</td><td>Нийт үнэ (₮)</td>
       </tr>`;
     const bodyRows = dispatchRows
-      .map((r, i) => `
+      .map(
+        (r, i) => `
         <tr style="background:${i % 2 === 0 ? "#f8fafc" : "#fff"}">
           <td>${i + 1}</td>
           <td>${fmtDate(r.date)}</td>
@@ -290,7 +359,8 @@ export default function ReportsPage() {
           <td style="text-align:right">${r.qty.toLocaleString()}</td>
           <td style="text-align:right">${r.unitPrice.toLocaleString()}</td>
           <td style="text-align:right">${r.total.toLocaleString()}</td>
-        </tr>`)
+        </tr>`,
+      )
       .join("");
     const footRow = `
       <tr style="background:#1e40af;color:#fff;font-weight:bold">
@@ -314,7 +384,9 @@ export default function ReportsPage() {
         </table>
       </body></html>`;
 
-    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const blob = new Blob([html], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -326,14 +398,21 @@ export default function ReportsPage() {
   /* Excel export for inventory */
   const handleExcelInventory = () => {
     if (!inventories.length) return;
-    const whName = warehouses.find((w) => w.id === warehouseId)?.name || "Агуулах";
+    const whName =
+      warehouses.find((w) => w.id === warehouseId)?.name || "Агуулах";
     const header = `<tr style="background:#1e40af;color:#fff;font-weight:bold">
       <td>№</td><td>Бараа</td><td>SKU</td><td>Тоо ширхэг</td>
       <td>Хамгийн бага</td><td>Нэгж үнэ (₮)</td><td>Нийт үнэ (₮)</td><td>Төлөв</td>
     </tr>`;
-    const bodyRows = inventories.map((item, i) => {
-      const st = item.quantity <= 0 ? "Дууссан" : (item.minQuantity && item.quantity <= item.minQuantity ? "Дутагдал" : "Хэвийн");
-      return `<tr style="background:${i % 2 === 0 ? "#f8fafc" : "#fff"}">
+    const bodyRows = inventories
+      .map((item, i) => {
+        const st =
+          item.quantity <= 0
+            ? "Дууссан"
+            : item.minQuantity && item.quantity <= item.minQuantity
+              ? "Дутагдал"
+              : "Хэвийн";
+        return `<tr style="background:${i % 2 === 0 ? "#f8fafc" : "#fff"}">
         <td>${i + 1}</td>
         <td>${item.product.name}</td>
         <td>${item.product.sku || ""}</td>
@@ -343,7 +422,8 @@ export default function ReportsPage() {
         <td style="text-align:right">${(item.quantity * (item.product.price || 0)).toLocaleString()}</td>
         <td>${st}</td>
       </tr>`;
-    }).join("");
+      })
+      .join("");
     const footRow = `<tr style="background:#1e40af;color:#fff;font-weight:bold">
       <td colspan="3">Нийт</td>
       <td style="text-align:right">${totalStock.toLocaleString()}</td>
@@ -363,7 +443,9 @@ export default function ReportsPage() {
           ${header}${bodyRows}${footRow}
         </table>
       </body></html>`;
-    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const blob = new Blob([html], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -374,18 +456,25 @@ export default function ReportsPage() {
 
   /* Print — open new window with formatted content */
   const handlePrint = () => {
-    const periodLabel = period === "custom"
-      ? `${customFrom} ~ ${customTo}`
-      : PERIOD_LABELS[period];
+    const periodLabel =
+      period === "custom"
+        ? `${customFrom} ~ ${customTo}`
+        : PERIOD_LABELS[period];
     const today = new Date().toLocaleDateString("mn-MN");
 
     let bodyHtml = "";
 
     if (tab === "inventory") {
-      const rows = inventories.map((item, i) => {
-        const st = item.quantity <= 0 ? "Дууссан" : (item.minQuantity && item.quantity <= item.minQuantity ? "Дутагдал" : "Хэвийн");
-        const rowBg = i % 2 === 0 ? "#f8fafc" : "#fff";
-        return `<tr style="background:${rowBg}">
+      const rows = inventories
+        .map((item, i) => {
+          const st =
+            item.quantity <= 0
+              ? "Дууссан"
+              : item.minQuantity && item.quantity <= item.minQuantity
+                ? "Дутагдал"
+                : "Хэвийн";
+          const rowBg = i % 2 === 0 ? "#f8fafc" : "#fff";
+          return `<tr style="background:${rowBg}">
           <td style="text-align:center">${i + 1}</td>
           <td>${item.product.name}</td>
           <td style="font-family:monospace">${item.product.sku || ""}</td>
@@ -395,7 +484,8 @@ export default function ReportsPage() {
           <td style="text-align:right;font-weight:bold">${fmtMoney(item.quantity * (item.product.price || 0))}</td>
           <td style="color:${st === "Дууссан" ? "#dc2626" : st === "Дутагдал" ? "#d97706" : "#16a34a"}">${st}</td>
         </tr>`;
-      }).join("");
+        })
+        .join("");
       bodyHtml = `
         <h2 style="margin:0 0 4px">Нөөцийн тайлан</h2>
         <p style="margin:0 0 16px;color:#64748b">Агуулах: <b>${whName}</b> | Огноо: ${today}</p>
@@ -429,9 +519,10 @@ export default function ReportsPage() {
           </tr></tfoot>
         </table>`;
     } else if (tab === "dispatch") {
-      const rows = dispatchRows.map((row, i) => {
-        const rowBg = i % 2 === 0 ? "#f8fafc" : "#fff";
-        return `<tr style="background:${rowBg}">
+      const rows = dispatchRows
+        .map((row, i) => {
+          const rowBg = i % 2 === 0 ? "#f8fafc" : "#fff";
+          return `<tr style="background:${rowBg}">
           <td style="text-align:center">${i + 1}</td>
           <td style="white-space:nowrap">${fmtDate(row.date)}</td>
           <td style="font-family:monospace">#${row.orderId}</td>
@@ -442,7 +533,8 @@ export default function ReportsPage() {
           <td style="text-align:right">${fmtMoney(row.unitPrice)}</td>
           <td style="text-align:right;font-weight:bold;color:#15803d">${fmtMoney(row.total)}</td>
         </tr>`;
-      }).join("");
+        })
+        .join("");
       bodyHtml = `
         <h2 style="margin:0 0 4px">Гаргалтын тайлан</h2>
         <p style="margin:0 0 16px;color:#64748b">Агуулах: <b>${whName}</b> | Хугацаа: ${periodLabel} | Огноо: ${today}</p>
@@ -475,10 +567,11 @@ export default function ReportsPage() {
           </tr></tfoot>
         </table>`;
     } else {
-      const rows = ledger.map((entry, i) => {
-        const rowBg = i % 2 === 0 ? "#f8fafc" : "#fff";
-        const chg = entry.change;
-        return `<tr style="background:${rowBg}">
+      const rows = ledger
+        .map((entry, i) => {
+          const rowBg = i % 2 === 0 ? "#f8fafc" : "#fff";
+          const chg = entry.change;
+          return `<tr style="background:${rowBg}">
           <td style="white-space:nowrap">${fmtDate(entry.createdAt)}</td>
           <td>${entry.product.name}</td>
           <td style="font-family:monospace">${entry.product.sku || ""}</td>
@@ -487,9 +580,14 @@ export default function ReportsPage() {
           <td>${entry.note || ""}</td>
           <td>${entry.createdBy?.profile?.fullName || entry.createdBy?.email || ""}</td>
         </tr>`;
-      }).join("");
-      const totalIn = ledger.filter((e) => e.change > 0).reduce((s, e) => s + e.change, 0);
-      const totalOut = Math.abs(ledger.filter((e) => e.change < 0).reduce((s, e) => s + e.change, 0));
+        })
+        .join("");
+      const totalIn = ledger
+        .filter((e) => e.change > 0)
+        .reduce((s, e) => s + e.change, 0);
+      const totalOut = Math.abs(
+        ledger.filter((e) => e.change < 0).reduce((s, e) => s + e.change, 0),
+      );
       bodyHtml = `
         <h2 style="margin:0 0 4px">Хөдөлгөөний тайлан</h2>
         <p style="margin:0 0 16px;color:#64748b">Агуулах: <b>${whName}</b> | Хугацаа: ${periodLabel} | Огноо: ${today}</p>
@@ -555,7 +653,8 @@ export default function ReportsPage() {
     );
   }
 
-  const whName = warehouses.find((w) => w.id === warehouseId)?.name || "Агуулах";
+  const whName =
+    warehouses.find((w) => w.id === warehouseId)?.name || "Агуулах";
 
   return (
     <>
@@ -571,7 +670,9 @@ export default function ReportsPage() {
                 className="h-9 appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium outline-none focus:border-blue-400"
               >
                 {warehouses.map((wh) => (
-                  <option key={wh.id} value={wh.id}>{wh.name}</option>
+                  <option key={wh.id} value={wh.id}>
+                    {wh.name}
+                  </option>
                 ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -583,7 +684,11 @@ export default function ReportsPage() {
                 {(Object.keys(PERIOD_LABELS) as PeriodKey[]).map((k) => (
                   <button
                     key={k}
-                    onClick={() => { setPeriod(k); if (k === "custom") setShowCustom(true); else setShowCustom(false); }}
+                    onClick={() => {
+                      setPeriod(k);
+                      if (k === "custom") setShowCustom(true);
+                      else setShowCustom(false);
+                    }}
                     className={`rounded-lg border px-3 py-1 text-xs font-medium transition-colors ${
                       period === k
                         ? "border-blue-500 bg-blue-600 text-white"
@@ -596,12 +701,25 @@ export default function ReportsPage() {
                 {showCustom && (
                   <div className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1">
                     <Calendar className="h-3.5 w-3.5 text-blue-500" />
-                    <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
-                      className="w-32 bg-transparent text-xs outline-none" />
+                    <input
+                      type="date"
+                      value={customFrom}
+                      onChange={(e) => setCustomFrom(e.target.value)}
+                      className="w-32 bg-transparent text-xs outline-none"
+                    />
                     <span className="text-xs text-slate-400">~</span>
-                    <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
-                      className="w-32 bg-transparent text-xs outline-none" />
-                    <button onClick={() => { setShowCustom(false); setPeriod("month"); }}>
+                    <input
+                      type="date"
+                      value={customTo}
+                      onChange={(e) => setCustomTo(e.target.value)}
+                      className="w-32 bg-transparent text-xs outline-none"
+                    />
+                    <button
+                      onClick={() => {
+                        setShowCustom(false);
+                        setPeriod("month");
+                      }}
+                    >
                       <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-600" />
                     </button>
                   </div>
@@ -613,21 +731,27 @@ export default function ReportsPage() {
           {/* Actions */}
           <div className="flex items-center gap-2">
             {tab === "inventory" && (
-              <button onClick={handleExcelInventory}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
+              <button
+                onClick={handleExcelInventory}
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
                 <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
                 Excel татах
               </button>
             )}
             {tab === "dispatch" && (
-              <button onClick={handleExcelDispatch}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
+              <button
+                onClick={handleExcelDispatch}
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
                 <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
                 Excel татах
               </button>
             )}
-            <button onClick={handlePrint}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
+            <button
+              onClick={handlePrint}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
               <Printer className="h-4 w-4 text-slate-500" />
               Хэвлэх
             </button>
@@ -636,15 +760,26 @@ export default function ReportsPage() {
 
         {/* ── Tabs ── */}
         <div className="flex gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 w-fit">
-          {([
-            { key: "inventory", label: "Нөөцийн тайлан", icon: Package },
-            { key: "dispatch",  label: "Гаргалтын тайлан", icon: Truck },
-            { key: "ledger",    label: "Хөдөлгөөний тайлан", icon: ClipboardList },
-          ] as const).map(({ key, label, icon: Icon }) => (
-            <button key={key} onClick={() => setTab(key)}
+          {(
+            [
+              { key: "inventory", label: "Нөөцийн тайлан", icon: Package },
+              { key: "dispatch", label: "Гаргалтын тайлан", icon: Truck },
+              {
+                key: "ledger",
+                label: "Хөдөлгөөний тайлан",
+                icon: ClipboardList,
+              },
+            ] as const
+          ).map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
               className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                tab === key ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              }`}>
+                tab === key
+                  ? "bg-white text-blue-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
               <Icon className="h-4 w-4" />
               {label}
             </button>
@@ -657,15 +792,51 @@ export default function ReportsPage() {
             {/* KPI cards */}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
               {[
-                { icon: Package, label: "Нийт бараа", value: totalProducts, cls: "text-slate-900", dot: "" },
-                { icon: BarChart3, label: "Нийт нөөц", value: totalStock.toLocaleString(), cls: "text-slate-900", dot: "" },
-                { icon: TrendingUp, label: "Нийт үнэ цэнэ", value: fmtMoney(totalValue), cls: "text-emerald-600", dot: "text-emerald-500" },
-                { icon: AlertTriangle, label: "Дутагдалтай", value: lowStockItems.length, cls: "text-amber-600", dot: "text-amber-500" },
-                { icon: TrendingDown, label: "Дууссан", value: outOfStockItems.length, cls: "text-red-600", dot: "text-red-500" },
+                {
+                  icon: Package,
+                  label: "Нийт бараа",
+                  value: totalProducts,
+                  cls: "text-slate-900",
+                  dot: "",
+                },
+                {
+                  icon: BarChart3,
+                  label: "Нийт нөөц",
+                  value: totalStock.toLocaleString(),
+                  cls: "text-slate-900",
+                  dot: "",
+                },
+                {
+                  icon: TrendingUp,
+                  label: "Нийт үнэ цэнэ",
+                  value: fmtMoney(totalValue),
+                  cls: "text-emerald-600",
+                  dot: "text-emerald-500",
+                },
+                {
+                  icon: AlertTriangle,
+                  label: "Дутагдалтай",
+                  value: lowStockItems.length,
+                  cls: "text-amber-600",
+                  dot: "text-amber-500",
+                },
+                {
+                  icon: TrendingDown,
+                  label: "Дууссан",
+                  value: outOfStockItems.length,
+                  cls: "text-red-600",
+                  dot: "text-red-500",
+                },
               ].map(({ icon: Icon, label, value, cls, dot }) => (
-                <div key={label} className="rounded-xl border border-slate-200 bg-white p-4">
-                  <div className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider ${dot || "text-slate-400"}`}>
-                    <Icon className="h-3.5 w-3.5" />{label}
+                <div
+                  key={label}
+                  className="rounded-xl border border-slate-200 bg-white p-4"
+                >
+                  <div
+                    className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider ${dot || "text-slate-400"}`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
                   </div>
                   <p className={`mt-2 text-2xl font-bold ${cls}`}>{value}</p>
                 </div>
@@ -674,19 +845,47 @@ export default function ReportsPage() {
 
             {/* Stock health bar */}
             <div className="rounded-xl border border-slate-200 bg-white p-5">
-              <h3 className="mb-4 text-sm font-bold text-slate-900">Нөөцийн төлөв</h3>
+              <h3 className="mb-4 text-sm font-bold text-slate-900">
+                Нөөцийн төлөв
+              </h3>
               <div className="flex h-4 overflow-hidden rounded-full bg-slate-100">
-                {totalProducts > 0 && (<>
-                  <div className="bg-emerald-500 transition-all" style={{ width: `${(healthyItems.length / totalProducts) * 100}%` }} />
-                  <div className="bg-amber-400 transition-all" style={{ width: `${(lowStockItems.length / totalProducts) * 100}%` }} />
-                  <div className="bg-red-500 transition-all" style={{ width: `${(outOfStockItems.length / totalProducts) * 100}%` }} />
-                </>)}
+                {totalProducts > 0 && (
+                  <>
+                    <div
+                      className="bg-emerald-500 transition-all"
+                      style={{
+                        width: `${(healthyItems.length / totalProducts) * 100}%`,
+                      }}
+                    />
+                    <div
+                      className="bg-amber-400 transition-all"
+                      style={{
+                        width: `${(lowStockItems.length / totalProducts) * 100}%`,
+                      }}
+                    />
+                    <div
+                      className="bg-red-500 transition-all"
+                      style={{
+                        width: `${(outOfStockItems.length / totalProducts) * 100}%`,
+                      }}
+                    />
+                  </>
+                )}
               </div>
               <div className="mt-3 flex gap-6 text-xs">
                 {[
-                  { label: `Хэвийн (${healthyItems.length})`, bg: "bg-emerald-500" },
-                  { label: `Дутагдал (${lowStockItems.length})`, bg: "bg-amber-400" },
-                  { label: `Дууссан (${outOfStockItems.length})`, bg: "bg-red-500" },
+                  {
+                    label: `Хэвийн (${healthyItems.length})`,
+                    bg: "bg-emerald-500",
+                  },
+                  {
+                    label: `Дутагдал (${lowStockItems.length})`,
+                    bg: "bg-amber-400",
+                  },
+                  {
+                    label: `Дууссан (${outOfStockItems.length})`,
+                    bg: "bg-red-500",
+                  },
                 ].map(({ label, bg }) => (
                   <div key={label} className="flex items-center gap-1.5">
                     <div className={`h-2.5 w-2.5 rounded-full ${bg}`} />
@@ -699,18 +898,31 @@ export default function ReportsPage() {
             {/* Two-col charts */}
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-white p-5">
-                <h3 className="mb-4 text-sm font-bold text-slate-900">Тоо ширхэгээр Топ 10</h3>
+                <h3 className="mb-4 text-sm font-bold text-slate-900">
+                  Тоо ширхэгээр Топ 10
+                </h3>
                 <div className="space-y-2.5">
                   {topByQty.map((item, idx) => (
                     <div key={item.id} className="flex items-center gap-3">
-                      <span className="w-5 text-right text-xs font-bold text-slate-300">{idx + 1}</span>
+                      <span className="w-5 text-right text-xs font-bold text-slate-300">
+                        {idx + 1}
+                      </span>
                       <div className="flex-1">
                         <div className="mb-1 flex justify-between">
-                          <p className="max-w-[180px] truncate text-xs font-medium text-slate-700">{item.product.name}</p>
-                          <span className="text-xs font-bold text-slate-900">{item.quantity.toLocaleString()}</span>
+                          <p className="max-w-[180px] truncate text-xs font-medium text-slate-700">
+                            {item.product.name}
+                          </p>
+                          <span className="text-xs font-bold text-slate-900">
+                            {item.quantity.toLocaleString()}
+                          </span>
                         </div>
                         <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                          <div className="h-full rounded-full bg-blue-500" style={{ width: `${(item.quantity / maxQty) * 100}%` }} />
+                          <div
+                            className="h-full rounded-full bg-blue-500"
+                            style={{
+                              width: `${(item.quantity / maxQty) * 100}%`,
+                            }}
+                          />
                         </div>
                       </div>
                     </div>
@@ -718,20 +930,31 @@ export default function ReportsPage() {
                 </div>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-5">
-                <h3 className="mb-4 text-sm font-bold text-slate-900">Үнэ цэнээрээ Топ 10</h3>
+                <h3 className="mb-4 text-sm font-bold text-slate-900">
+                  Үнэ цэнээрээ Топ 10
+                </h3>
                 <div className="space-y-2.5">
                   {topByValue.map((item, idx) => {
                     const val = item.quantity * (item.product.price || 0);
                     return (
                       <div key={item.id} className="flex items-center gap-3">
-                        <span className="w-5 text-right text-xs font-bold text-slate-300">{idx + 1}</span>
+                        <span className="w-5 text-right text-xs font-bold text-slate-300">
+                          {idx + 1}
+                        </span>
                         <div className="flex-1">
                           <div className="mb-1 flex justify-between">
-                            <p className="max-w-[180px] truncate text-xs font-medium text-slate-700">{item.product.name}</p>
-                            <span className="text-xs font-bold text-slate-900">{fmtMoney(val)}</span>
+                            <p className="max-w-[180px] truncate text-xs font-medium text-slate-700">
+                              {item.product.name}
+                            </p>
+                            <span className="text-xs font-bold text-slate-900">
+                              {fmtMoney(val)}
+                            </span>
                           </div>
                           <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${(val / maxVal) * 100}%` }} />
+                            <div
+                              className="h-full rounded-full bg-emerald-500"
+                              style={{ width: `${(val / maxVal) * 100}%` }}
+                            />
                           </div>
                         </div>
                       </div>
@@ -745,18 +968,30 @@ export default function ReportsPage() {
             {lowStockItems.length > 0 && (
               <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-5">
                 <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-amber-800">
-                  <AlertTriangle className="h-4 w-4" />Дутагдалтай бараа ({lowStockItems.length})
+                  <AlertTriangle className="h-4 w-4" />
+                  Дутагдалтай бараа ({lowStockItems.length})
                 </h3>
                 <div className="space-y-1.5">
                   {lowStockItems.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between rounded-lg bg-white px-3 py-2"
+                    >
                       <div>
-                        <p className="text-sm font-medium text-slate-900">{item.product.name}</p>
-                        <p className="text-xs text-slate-400">{item.product.sku || "—"}</p>
+                        <p className="text-sm font-medium text-slate-900">
+                          {item.product.name}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {item.product.sku || "—"}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-amber-600">{item.quantity} / {item.minQuantity}</p>
-                        <p className="text-[10px] text-slate-400">одоо / шаардлага</p>
+                        <p className="text-sm font-bold text-amber-600">
+                          {item.quantity} / {item.minQuantity}
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          одоо / шаардлага
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -768,11 +1003,17 @@ export default function ReportsPage() {
             {outOfStockItems.length > 0 && (
               <div className="rounded-xl border border-red-200 bg-red-50/30 p-5">
                 <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-red-800">
-                  <TrendingDown className="h-4 w-4" />Дууссан бараа ({outOfStockItems.length})
+                  <TrendingDown className="h-4 w-4" />
+                  Дууссан бараа ({outOfStockItems.length})
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {outOfStockItems.map((item) => (
-                    <span key={item.id} className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-red-700">{item.product.name}</span>
+                    <span
+                      key={item.id}
+                      className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-red-700"
+                    >
+                      {item.product.name}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -786,16 +1027,28 @@ export default function ReportsPage() {
             {/* Summary cards */}
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Нийт гаргалт</p>
-                <p className="mt-1.5 text-2xl font-bold text-slate-900">{dispatchSummary.count}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Нийт гаргалт
+                </p>
+                <p className="mt-1.5 text-2xl font-bold text-slate-900">
+                  {dispatchSummary.count}
+                </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Нийт тоо ширхэг</p>
-                <p className="mt-1.5 text-2xl font-bold text-slate-900">{dispatchSummary.totalQty.toLocaleString()}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Нийт тоо ширхэг
+                </p>
+                <p className="mt-1.5 text-2xl font-bold text-slate-900">
+                  {dispatchSummary.totalQty.toLocaleString()}
+                </p>
               </div>
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">Нийт мөнгөн дүн</p>
-                <p className="mt-1.5 text-2xl font-bold text-emerald-700">{fmtMoney(dispatchSummary.totalValue)}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">
+                  Нийт мөнгөн дүн
+                </p>
+                <p className="mt-1.5 text-2xl font-bold text-emerald-700">
+                  {fmtMoney(dispatchSummary.totalValue)}
+                </p>
               </div>
             </div>
 
@@ -805,7 +1058,9 @@ export default function ReportsPage() {
                 <h3 className="text-sm font-bold text-slate-900">
                   {whName} — Гаргалтын тайлан
                   <span className="ml-2 text-xs font-normal text-slate-400">
-                    ({PERIOD_LABELS[period]}{period === "custom" ? `: ${customFrom} ~ ${customTo}` : ""})
+                    ({PERIOD_LABELS[period]}
+                    {period === "custom" ? `: ${customFrom} ~ ${customTo}` : ""}
+                    )
                   </span>
                 </h3>
                 <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
@@ -840,23 +1095,48 @@ export default function ReportsPage() {
                     </thead>
                     <tbody>
                       {dispatchRows.map((row, i) => (
-                        <tr key={`${row.dispatchId}-${i}`}
-                          className="border-b border-slate-50 last:border-0 hover:bg-blue-50/50 transition-colors">
-                          <td className="px-3 py-2.5 text-xs text-slate-400">{i + 1}</td>
-                          <td className="px-3 py-2.5 text-xs text-slate-600 whitespace-nowrap">{fmtDate(row.date)}</td>
-                          <td className="px-3 py-2.5 font-mono text-xs text-blue-700">#{row.orderId}</td>
-                          <td className="px-3 py-2.5 text-sm font-medium text-slate-800">{row.destination}</td>
-                          <td className="px-3 py-2.5 text-sm text-slate-700">{row.productName}</td>
-                          <td className="px-3 py-2.5 font-mono text-xs text-slate-400">{row.sku}</td>
-                          <td className="px-3 py-2.5 text-right text-sm font-semibold text-slate-900">{row.qty.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right text-xs text-slate-600">{fmtMoney(row.unitPrice)}</td>
-                          <td className="px-3 py-2.5 text-right text-sm font-bold text-emerald-700">{fmtMoney(row.total)}</td>
+                        <tr
+                          key={`${row.dispatchId}-${i}`}
+                          className="border-b border-slate-50 last:border-0 hover:bg-blue-50/50 transition-colors"
+                        >
+                          <td className="px-3 py-2.5 text-xs text-slate-400">
+                            {i + 1}
+                          </td>
+                          <td className="px-3 py-2.5 text-xs text-slate-600 whitespace-nowrap">
+                            {fmtDate(row.date)}
+                          </td>
+                          <td className="px-3 py-2.5 font-mono text-xs text-blue-700">
+                            #{row.orderId}
+                          </td>
+                          <td className="px-3 py-2.5 text-sm font-medium text-slate-800">
+                            {row.destination}
+                          </td>
+                          <td className="px-3 py-2.5 text-sm text-slate-700">
+                            {row.productName}
+                          </td>
+                          <td className="px-3 py-2.5 font-mono text-xs text-slate-400">
+                            {row.sku}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-sm font-semibold text-slate-900">
+                            {row.qty.toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-xs text-slate-600">
+                            {fmtMoney(row.unitPrice)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-sm font-bold text-emerald-700">
+                            {fmtMoney(row.total)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-slate-200 bg-slate-50">
-                        <td colSpan={6} className="px-3 py-3 text-xs font-bold text-slate-600">НИЙТ ДҮН</td>
+                        <td
+                          colSpan={6}
+                          className="px-3 py-3 text-xs font-bold text-slate-600"
+                        >
+                          НИЙТ ДҮН
+                        </td>
                         <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">
                           {dispatchSummary.totalQty.toLocaleString()}
                         </td>
@@ -879,19 +1159,34 @@ export default function ReportsPage() {
             {/* Summary */}
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Нийт хөдөлгөөн</p>
-                <p className="mt-1.5 text-2xl font-bold text-slate-900">{ledger.length}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Нийт хөдөлгөөн
+                </p>
+                <p className="mt-1.5 text-2xl font-bold text-slate-900">
+                  {ledger.length}
+                </p>
               </div>
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">Нийт орлого (+)</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">
+                  Нийт орлого (+)
+                </p>
                 <p className="mt-1.5 text-2xl font-bold text-emerald-700">
-                  {ledger.filter((e) => e.change > 0).reduce((s, e) => s + e.change, 0).toLocaleString()}
+                  {ledger
+                    .filter((e) => e.change > 0)
+                    .reduce((s, e) => s + e.change, 0)
+                    .toLocaleString()}
                 </p>
               </div>
               <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-red-600">Нийт зарлага (−)</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-red-600">
+                  Нийт зарлага (−)
+                </p>
                 <p className="mt-1.5 text-2xl font-bold text-red-700">
-                  {Math.abs(ledger.filter((e) => e.change < 0).reduce((s, e) => s + e.change, 0)).toLocaleString()}
+                  {Math.abs(
+                    ledger
+                      .filter((e) => e.change < 0)
+                      .reduce((s, e) => s + e.change, 0),
+                  ).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -900,7 +1195,9 @@ export default function ReportsPage() {
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                 <h3 className="text-sm font-bold text-slate-900">
                   Хөдөлгөөний дэлгэрэнгүй
-                  <span className="ml-2 text-xs font-normal text-slate-400">({PERIOD_LABELS[period]})</span>
+                  <span className="ml-2 text-xs font-normal text-slate-400">
+                    ({PERIOD_LABELS[period]})
+                  </span>
                 </h3>
               </div>
               {loading ? (
@@ -928,21 +1225,39 @@ export default function ReportsPage() {
                     </thead>
                     <tbody>
                       {ledger.map((entry) => (
-                        <tr key={entry.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
-                          <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{fmtDate(entry.createdAt)}</td>
-                          <td className="px-3 py-2.5 text-sm font-medium text-slate-800">{entry.product.name}</td>
-                          <td className="px-3 py-2.5 font-mono text-xs text-slate-400">{entry.product.sku || "—"}</td>
-                          <td className="px-3 py-2.5">
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{entry.reason}</span>
+                        <tr
+                          key={entry.id}
+                          className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors"
+                        >
+                          <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                            {fmtDate(entry.createdAt)}
                           </td>
-                          <td className="px-3 py-2.5 text-right">
-                            <span className={`text-sm font-bold ${entry.change > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                              {entry.change > 0 ? "+" : ""}{entry.change.toLocaleString()}
+                          <td className="px-3 py-2.5 text-sm font-medium text-slate-800">
+                            {entry.product.name}
+                          </td>
+                          <td className="px-3 py-2.5 font-mono text-xs text-slate-400">
+                            {entry.product.sku || "—"}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                              {entry.reason}
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 text-xs text-slate-400">{entry.note || "—"}</td>
+                          <td className="px-3 py-2.5 text-right">
+                            <span
+                              className={`text-sm font-bold ${entry.change > 0 ? "text-emerald-600" : "text-red-600"}`}
+                            >
+                              {entry.change > 0 ? "+" : ""}
+                              {entry.change.toLocaleString()}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-xs text-slate-400">
+                            {entry.note || "—"}
+                          </td>
                           <td className="px-3 py-2.5 text-xs text-slate-500">
-                            {entry.createdBy?.profile?.fullName || entry.createdBy?.email || "—"}
+                            {entry.createdBy?.profile?.fullName ||
+                              entry.createdBy?.email ||
+                              "—"}
                           </td>
                         </tr>
                       ))}
@@ -954,7 +1269,6 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
-
     </>
   );
 }

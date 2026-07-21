@@ -17,16 +17,47 @@ import {
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 
-const REASON_MAP: Record<string, { label: string; color: string; icon: string }> = {
+const REASON_MAP: Record<
+  string,
+  { label: string; color: string; icon: string }
+> = {
   ORDER: { label: "Захиалга", color: "bg-blue-100 text-blue-700", icon: "📦" },
-  RETURN: { label: "Буцаалт", color: "bg-amber-100 text-amber-700", icon: "↩️" },
-  RESTOCK: { label: "Нөхөн дүүргэлт", color: "bg-emerald-100 text-emerald-700", icon: "📥" },
-  MANUAL_ADJUST: { label: "Гар тохиргоо", color: "bg-slate-100 text-slate-700", icon: "✏️" },
-  ORDER_CANCEL: { label: "Захиалга цуцлалт", color: "bg-red-100 text-red-700", icon: "❌" },
+  RETURN: {
+    label: "Буцаалт",
+    color: "bg-amber-100 text-amber-700",
+    icon: "↩️",
+  },
+  RESTOCK: {
+    label: "Нөхөн дүүргэлт",
+    color: "bg-emerald-100 text-emerald-700",
+    icon: "📥",
+  },
+  MANUAL_ADJUST: {
+    label: "Гар тохиргоо",
+    color: "bg-slate-100 text-slate-700",
+    icon: "✏️",
+  },
+  ORDER_CANCEL: {
+    label: "Захиалга цуцлалт",
+    color: "bg-red-100 text-red-700",
+    icon: "❌",
+  },
   DAMAGE: { label: "Гэмтэл", color: "bg-red-100 text-red-700", icon: "💥" },
-  TRANSFER_IN: { label: "Шилжүүлэг орлого", color: "bg-teal-100 text-teal-700", icon: "📥" },
-  TRANSFER_OUT: { label: "Шилжүүлэг зарлага", color: "bg-orange-100 text-orange-700", icon: "📤" },
-  INITIAL_STOCK: { label: "Анхны нөөц", color: "bg-indigo-100 text-indigo-700", icon: "🏁" },
+  TRANSFER_IN: {
+    label: "Шилжүүлэг орлого",
+    color: "bg-teal-100 text-teal-700",
+    icon: "📥",
+  },
+  TRANSFER_OUT: {
+    label: "Шилжүүлэг зарлага",
+    color: "bg-orange-100 text-orange-700",
+    icon: "📤",
+  },
+  INITIAL_STOCK: {
+    label: "Анхны нөөц",
+    color: "bg-indigo-100 text-indigo-700",
+    icon: "🏁",
+  },
 };
 
 const ALL_REASONS = Object.keys(REASON_MAP);
@@ -74,12 +105,7 @@ export default function MovementsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
-        let url = `${API}/warehouses`;
-        if (user.organizationId) {
-          url = `${API}/warehouses/organization/${user.organizationId}`;
-        }
-        const res = await wmsFetch(url);
+        const res = await wmsFetch(`${API}/warehouses`);
         if (res.ok) {
           const data = await res.json();
           const list = Array.isArray(data) ? data : data.warehouses || [];
@@ -172,9 +198,7 @@ export default function MovementsPage() {
               Орлого
             </p>
           </div>
-          <p className="mt-1 text-2xl font-bold text-emerald-600">
-            +{totalIn}
-          </p>
+          <p className="mt-1 text-2xl font-bold text-emerald-600">+{totalIn}</p>
           <p className="text-xs text-slate-400">{inCount} бичилт</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">

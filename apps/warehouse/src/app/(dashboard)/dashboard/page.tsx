@@ -21,7 +21,11 @@ import {
   PendingRequests,
   CategoryModal,
 } from "@/components/dashboard";
-import type { WarehouseDetail, Movement, CategoryWithCount } from "@/components/dashboard";
+import type {
+  WarehouseDetail,
+  Movement,
+  CategoryWithCount,
+} from "@/components/dashboard";
 
 export default function WmsDashboardPage() {
   const [warehouses, setWarehouses] = useState<WarehouseDetail[]>([]);
@@ -31,22 +35,15 @@ export default function WmsDashboardPage() {
     useState<WarehouseDetail | null>(null);
   const [categories, setCategories] = useState<CategoryWithCount[]>([]);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null);
+  const [selectedMovement, setSelectedMovement] = useState<Movement | null>(
+    null,
+  );
 
   useEffect(() => {
     const load = async () => {
       try {
-        const user = JSON.parse(
-          localStorage.getItem("wms_user") || "{}",
-        );
-
         // Fetch warehouses
-        let url = `${API}/warehouses`;
-        if (user.organizationId) {
-          url = `${API}/warehouses/organization/${user.organizationId}`;
-        }
-
-        const whRes = await wmsFetch(url);
+        const whRes = await wmsFetch(`${API}/warehouses`);
         if (whRes.ok) {
           const whData = await whRes.json();
           const whList = Array.isArray(whData)
@@ -368,4 +365,3 @@ export default function WmsDashboardPage() {
     </div>
   );
 }
-

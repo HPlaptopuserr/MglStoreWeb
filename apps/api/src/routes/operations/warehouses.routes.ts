@@ -20,12 +20,18 @@ import {
   resolveOrgWarehouse,
   syncProductStock,
 } from "../../services/inventory.service";
+import { hasPlatformWarehouseAccess } from "../../services/warehouse-access.service";
 import {
   addMasterProductAlias,
   resolveMasterProduct,
 } from "../../services/master-product.service";
 
 const router: ExpressRouter = Router();
+
+// The database enum keeps its historical names, while these aliases express
+// the actual ownership boundary used by the applications.
+const ADMIN_MANAGED_WAREHOUSE = WarehouseType.CENTRAL;
+const PARTNER_MANAGED_WAREHOUSE = WarehouseType.VENDOR_INTERNAL;
 
 async function assertWarehouseMutationPermission(
   req: Parameters<typeof requireAuth>[0],
@@ -71,15 +77,29 @@ async function getImportBusinessCategoryChoices() {
   return buildBusinessCategoryChoices(categories);
 }
 
-// Get independently operated central warehouses for administration.
+// Warehouses created and operated by admins through the standalone WMS.
 router.get("/warehouses", requireAuth, async (req, res) => {
   try {
     const { organizationId, isActive } = req.query;
+    const actor = (
+      req as typeof req & { user?: { userId?: string; role?: string } }
+    ).user;
 
     const where: any = {
       deletedAt: null,
-      type: WarehouseType.CENTRAL,
+      type: ADMIN_MANAGED_WAREHOUSE,
     };
+
+    // Operators may only access the admin-managed warehouse explicitly assigned
+    // during setup. Platform warehouse admins can see every admin-managed one.
+    if (!hasPlatformWarehouseAccess(actor?.role)) {
+      if (!actor?.userId) {
+        return res.status(403).json({ message: "Агуулахын эрх олдсонгүй" });
+      }
+      where.setupTokens = {
+        some: { userId: actor.userId, usedAt: { not: null } },
+      };
+    }
 
     if (organizationId) {
       where.organizations = {
@@ -148,14 +168,35 @@ router.get("/warehouses", requireAuth, async (req, res) => {
   }
 });
 
-// Get warehouses for a specific organization (Vendor)
+// Get partner-managed warehouses for that organization's own portal.
 router.get("/warehouses/organization/:orgId", requireAuth, async (req, res) => {
   try {
     const { orgId } = req.params;
+    const actor = (
+      req as typeof req & { user?: { userId?: string; role?: string } }
+    ).user;
+
+    if (!hasPlatformWarehouseAccess(actor?.role)) {
+      const hasOrganizationAccess = actor?.userId
+        ? await prisma.organizationMember.findFirst({
+            where: {
+              userId: actor.userId,
+              organizationId: orgId,
+              isActive: true,
+            },
+            select: { id: true },
+          })
+        : null;
+      if (!hasOrganizationAccess) {
+        return res.status(403).json({
+          message: "Энэ байгууллагын агуулахыг харах эрхгүй байна",
+        });
+      }
+    }
 
     const warehouses = await prisma.warehouse.findMany({
       where: {
-        type: WarehouseType.CENTRAL,
+        type: PARTNER_MANAGED_WAREHOUSE,
         organizations: {
           some: {
             organizationId: orgId,
@@ -229,7 +270,7 @@ router.post(
           lng: lng || null,
           createdById: createdById || null,
           isActive: true,
-          type: WarehouseType.CENTRAL,
+          type: ADMIN_MANAGED_WAREHOUSE,
           organizations: organizationIds?.length
             ? {
                 create: organizationIds.map((orgId: string) => ({

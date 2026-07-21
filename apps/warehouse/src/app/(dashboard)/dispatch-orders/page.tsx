@@ -57,7 +57,11 @@ type Dispatch = {
     note: string | null;
     items: DispatchItem[];
     organization: { id: string; name: string; slug?: string };
-    requestedBy: { id: string; email: string; profile?: { fullName: string; phoneNumber?: string } } | null;
+    requestedBy: {
+      id: string;
+      email: string;
+      profile?: { fullName: string; phoneNumber?: string };
+    } | null;
     payment?: {
       invoiceNumber: string;
       totalAmount: string | number;
@@ -67,7 +71,11 @@ type Dispatch = {
   };
   warehouse: { id: string; name: string; address?: string; phone?: string };
   organization: { id: string; name: string; phone?: string };
-  driver?: { id: string; email: string; profile?: { fullName: string; phoneNumber?: string } } | null;
+  driver?: {
+    id: string;
+    email: string;
+    profile?: { fullName: string; phoneNumber?: string };
+  } | null;
 };
 
 type ReturnItem = {
@@ -99,12 +107,20 @@ type DispatchReturnType = {
       requestNumber: string;
       deliveryAddress: string | null;
       organization: { id: string; name: string; phone: string | null };
-      requestedBy: { id: string; email: string; profile?: { fullName: string; phoneNumber?: string } } | null;
+      requestedBy: {
+        id: string;
+        email: string;
+        profile?: { fullName: string; phoneNumber?: string };
+      } | null;
     };
   };
   organization: { id: string; name: string; phone: string | null };
   warehouse: { id: string; name: string };
-  approvedBy: { id: string; email: string; profile?: { fullName: string } } | null;
+  approvedBy: {
+    id: string;
+    email: string;
+    profile?: { fullName: string };
+  } | null;
 };
 
 type WarehouseOption = { id: string; name: string };
@@ -147,7 +163,12 @@ const STATUS_MAP: Record<
 
 const STEPS = [
   { key: "PENDING", label: "Хүлээгдэж буй", color: "amber", icon: Clock },
-  { key: "CONFIRMED", label: "Баталгаажсан", color: "blue", icon: CheckCircle2 },
+  {
+    key: "CONFIRMED",
+    label: "Баталгаажсан",
+    color: "blue",
+    icon: CheckCircle2,
+  },
   { key: "DISPATCHED", label: "Илгээгдсэн", color: "purple", icon: Truck },
   { key: "DELIVERED", label: "Хүргэгдсэн", color: "green", icon: CheckCircle2 },
 ] as const;
@@ -164,7 +185,9 @@ export default function DispatchOrdersPage() {
   const [loading, setLoading] = useState(false);
 
   // Detail / action modals
-  const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null);
+  const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(
+    null,
+  );
   const [showDetail, setShowDetail] = useState(false);
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [showPadaan, setShowPadaan] = useState(false);
@@ -177,32 +200,37 @@ export default function DispatchOrdersPage() {
   const [vehicleNumber, setVehicleNumber] = useState("");
 
   // Returns
-  const [activeTab, setActiveTab] = useState<"dispatches" | "returns">("dispatches");
+  const [activeTab, setActiveTab] = useState<"dispatches" | "returns">(
+    "dispatches",
+  );
   const [returns, setReturns] = useState<DispatchReturnType[]>([]);
   const [returnsLoading, setReturnsLoading] = useState(false);
   const [showReturnForm, setShowReturnForm] = useState(false);
-  const [returnItems, setReturnItems] = useState<{ productId: string; quantity: number; reason: string; maxQty: number; name: string }[]>([]);
+  const [returnItems, setReturnItems] = useState<
+    {
+      productId: string;
+      quantity: number;
+      reason: string;
+      maxQty: number;
+      name: string;
+    }[]
+  >([]);
   const [returnReason, setReturnReason] = useState("");
   const [returnNote, setReturnNote] = useState("");
-  const [selectedReturn, setSelectedReturn] = useState<DispatchReturnType | null>(null);
+  const [selectedReturn, setSelectedReturn] =
+    useState<DispatchReturnType | null>(null);
   const [showReturnDetail, setShowReturnDetail] = useState(false);
 
   // ───── Load warehouses ─────
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
-    if (user.warehouseId) {
-      setWarehouses([{ id: user.warehouseId, name: user.warehouseName || "Агуулах" }]);
-      setSelectedWarehouseId(user.warehouseId);
-    } else {
-      wmsFetch(`${API}/warehouses`)
-        .then((r) => r.json())
-        .then((data) => {
-          const list = Array.isArray(data) ? data : data.warehouses || [];
-          setWarehouses(list);
-          if (list.length > 0) setSelectedWarehouseId(list[0].id);
-        })
-        .catch(() => {});
-    }
+    wmsFetch(`${API}/warehouses`)
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data.warehouses || [];
+        setWarehouses(list);
+        if (list.length > 0) setSelectedWarehouseId(list[0].id);
+      })
+      .catch(() => {});
   }, []);
 
   // ───── Fetch dispatches when warehouse changes ─────
@@ -232,10 +260,13 @@ export default function DispatchOrdersPage() {
   const confirmDispatch = async (id: string) => {
     setActionLoading(true);
     try {
-      const res = await wmsFetch(`${API}/stock-requests/dispatches/${id}/confirm`, {
-        method: "PATCH",
-        body: JSON.stringify({}),
-      });
+      const res = await wmsFetch(
+        `${API}/stock-requests/dispatches/${id}/confirm`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({}),
+        },
+      );
       if (res.ok) {
         await fetchDispatches();
         setShowDetail(false);
@@ -257,14 +288,17 @@ export default function DispatchOrdersPage() {
     }
     setActionLoading(true);
     try {
-      const res = await wmsFetch(`${API}/stock-requests/dispatches/${id}/dispatch`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          driverName: driverName.trim(),
-          driverPhone: driverPhone.trim(),
-          vehicleNumber: vehicleNumber.trim() || undefined,
-        }),
-      });
+      const res = await wmsFetch(
+        `${API}/stock-requests/dispatches/${id}/dispatch`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            driverName: driverName.trim(),
+            driverPhone: driverPhone.trim(),
+            vehicleNumber: vehicleNumber.trim() || undefined,
+          }),
+        },
+      );
       if (res.ok) {
         setShowDriverForm(false);
         setDriverName("");
@@ -286,10 +320,13 @@ export default function DispatchOrdersPage() {
   const deliverDispatch = async (id: string) => {
     setActionLoading(true);
     try {
-      const res = await wmsFetch(`${API}/stock-requests/dispatches/${id}/deliver`, {
-        method: "PATCH",
-        body: JSON.stringify({}),
-      });
+      const res = await wmsFetch(
+        `${API}/stock-requests/dispatches/${id}/deliver`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({}),
+        },
+      );
       if (res.ok) {
         await fetchDispatches();
         setShowDetail(false);
@@ -308,10 +345,13 @@ export default function DispatchOrdersPage() {
     if (!confirm("Илгээмжийг цуцлах уу?")) return;
     setActionLoading(true);
     try {
-      const res = await wmsFetch(`${API}/stock-requests/dispatches/${id}/cancel`, {
-        method: "PATCH",
-        body: JSON.stringify({}),
-      });
+      const res = await wmsFetch(
+        `${API}/stock-requests/dispatches/${id}/cancel`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({}),
+        },
+      );
       if (res.ok) {
         await fetchDispatches();
         setShowDetail(false);
@@ -342,8 +382,11 @@ export default function DispatchOrdersPage() {
         `${API}/stock-requests/warehouse/${selectedWarehouseId}/returns`,
       );
       if (res.ok) setReturns(await res.json());
-    } catch { /* ignore */ }
-    finally { setReturnsLoading(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      setReturnsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -410,10 +453,13 @@ export default function DispatchOrdersPage() {
     if (!confirm("Буцаалтыг батлах уу? Бараа агуулахын нөөцөд буцна.")) return;
     setActionLoading(true);
     try {
-      const res = await wmsFetch(`${API}/stock-requests/returns/${id}/approve`, {
-        method: "PATCH",
-        body: JSON.stringify({}),
-      });
+      const res = await wmsFetch(
+        `${API}/stock-requests/returns/${id}/approve`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({}),
+        },
+      );
       if (res.ok) {
         await fetchReturns();
         setShowReturnDetail(false);
@@ -421,8 +467,11 @@ export default function DispatchOrdersPage() {
         const err = await res.json();
         alert(err.message || "Алдаа гарлаа");
       }
-    } catch { alert("Сүлжээний алдаа"); }
-    finally { setActionLoading(false); }
+    } catch {
+      alert("Сүлжээний алдаа");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const rejectReturn = async (id: string) => {
@@ -441,8 +490,11 @@ export default function DispatchOrdersPage() {
         const err = await res.json();
         alert(err.message || "Алдаа гарлаа");
       }
-    } catch { alert("Сүлжээний алдаа"); }
-    finally { setActionLoading(false); }
+    } catch {
+      alert("Сүлжээний алдаа");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const totalItems = (d: Dispatch) =>
@@ -450,7 +502,8 @@ export default function DispatchOrdersPage() {
 
   const totalAmount = (d: Dispatch) =>
     d.request.items.reduce(
-      (s, i) => s + (i.approvedQuantity || i.quantity) * Number(i.product.price),
+      (s, i) =>
+        s + (i.approvedQuantity || i.quantity) * Number(i.product.price),
       0,
     );
 
@@ -460,7 +513,9 @@ export default function DispatchOrdersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Илгээмжийн захиалгууд</h1>
+          <h1 className="text-2xl font-bold text-slate-800">
+            Илгээмжийн захиалгууд
+          </h1>
           <p className="mt-1 text-sm text-slate-500">
             Бараа татах хүсэлтээр ирсэн илгээмжийн захиалгуудыг удирдах
           </p>
@@ -473,7 +528,9 @@ export default function DispatchOrdersPage() {
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:outline-none"
             >
               {warehouses.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
               ))}
             </select>
           )}
@@ -512,176 +569,202 @@ export default function DispatchOrdersPage() {
       </div>
 
       {/* 4-Level Status Board */}
-      {activeTab === "dispatches" && (loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-        </div>
-      ) : (
-        <>
-          {/* Summary stat bar */}
-          <div className="grid grid-cols-4 gap-3">
-            {STEPS.map((step) => {
-              const count = dispatches.filter((d) => d.status === step.key).length;
-              const StIcon = step.icon;
-              const colorMap: Record<string, string> = {
-                amber: "bg-amber-50 border-amber-200 text-amber-700",
-                blue: "bg-blue-50 border-blue-200 text-blue-700",
-                purple: "bg-purple-50 border-purple-200 text-purple-700",
-                green: "bg-green-50 border-green-200 text-green-700",
-              };
-              const isDelivered = step.key === "DELIVERED";
-              return (
-                <div
-                  key={step.key}
-                  onClick={isDelivered && count > 0 ? () => setShowDeliveredList(true) : undefined}
-                  className={`flex items-center gap-3 rounded-xl border p-4 ${colorMap[step.color]}${
-                    isDelivered && count > 0 ? " cursor-pointer hover:shadow-md transition-shadow" : ""
-                  }`}
-                >
-                  <StIcon className="h-5 w-5" />
-                  <div>
-                    <p className="text-2xl font-black">{count}</p>
-                    <p className="text-xs font-bold opacity-80">{step.label}</p>
-                  </div>
-                  {isDelivered && count > 0 && (
-                    <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
-                  )}
-                </div>
-              );
-            })}
+      {activeTab === "dispatches" &&
+        (loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
           </div>
-
-          {/* Cancelled count if any */}
-          {dispatches.filter((d) => d.status === "CANCELLED").length > 0 && (
-            <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">
-              <XCircle className="h-4 w-4" />
-              <span className="font-medium">
-                {dispatches.filter((d) => d.status === "CANCELLED").length} цуцлагдсан илгээмж
-              </span>
-            </div>
-          )}
-
-          {/* 4-column pipeline board */}
-          <div className="grid grid-cols-4 gap-4 items-start">
-            {STEPS.map((step, colIdx) => {
-              const colDispatches = dispatches.filter((d) => d.status === step.key);
-              const StIcon = step.icon;
-              const headerColors: Record<string, string> = {
-                amber: "bg-amber-500",
-                blue: "bg-blue-500",
-                purple: "bg-purple-500",
-                green: "bg-green-500",
-              };
-              return (
-                <div key={step.key} className="space-y-3">
-                  {/* Column header */}
-                  <div className="flex items-center gap-2">
-                    <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${headerColors[step.color]} text-white`}>
-                      <StIcon className="h-4 w-4" />
+        ) : (
+          <>
+            {/* Summary stat bar */}
+            <div className="grid grid-cols-4 gap-3">
+              {STEPS.map((step) => {
+                const count = dispatches.filter(
+                  (d) => d.status === step.key,
+                ).length;
+                const StIcon = step.icon;
+                const colorMap: Record<string, string> = {
+                  amber: "bg-amber-50 border-amber-200 text-amber-700",
+                  blue: "bg-blue-50 border-blue-200 text-blue-700",
+                  purple: "bg-purple-50 border-purple-200 text-purple-700",
+                  green: "bg-green-50 border-green-200 text-green-700",
+                };
+                const isDelivered = step.key === "DELIVERED";
+                return (
+                  <div
+                    key={step.key}
+                    onClick={
+                      isDelivered && count > 0
+                        ? () => setShowDeliveredList(true)
+                        : undefined
+                    }
+                    className={`flex items-center gap-3 rounded-xl border p-4 ${colorMap[step.color]}${
+                      isDelivered && count > 0
+                        ? " cursor-pointer hover:shadow-md transition-shadow"
+                        : ""
+                    }`}
+                  >
+                    <StIcon className="h-5 w-5" />
+                    <div>
+                      <p className="text-2xl font-black">{count}</p>
+                      <p className="text-xs font-bold opacity-80">
+                        {step.label}
+                      </p>
                     </div>
-                    <h3 className="text-sm font-bold text-slate-700">{step.label}</h3>
-                    <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">
-                      {colDispatches.length}
-                    </span>
-                  </div>
-
-                  {/* Cards */}
-                  <div className="space-y-2.5 min-h-[120px]">
-                    {colDispatches.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 py-8">
-                        <Package className="mb-2 h-8 w-8 text-slate-200" />
-                        <p className="text-xs text-slate-400">Хоосон</p>
-                      </div>
-                    ) : (
-                      colDispatches.map((d) => (
-                        <div
-                          key={d.id}
-                          onClick={() => openDetail(d)}
-                          className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
-                        >
-                          {/* Stepper mini */}
-                          <div className="flex items-center gap-0.5 mb-2.5">
-                            {STEPS.map((s, i) => {
-                              const current = colIdx;
-                              const done = i < current;
-                              const active = i === current;
-                              return (
-                                <div key={s.key} className="flex items-center flex-1 last:flex-none">
-                                  <div
-                                    className={`h-2 w-2 rounded-full ${
-                                      done
-                                        ? "bg-emerald-400"
-                                        : active
-                                          ? "bg-blue-500 ring-2 ring-blue-200"
-                                          : "bg-slate-200"
-                                    }`}
-                                  />
-                                  {i < STEPS.length - 1 && (
-                                    <div
-                                      className={`mx-0.5 h-0.5 flex-1 rounded-full ${
-                                        done ? "bg-emerald-300" : "bg-slate-200"
-                                      }`}
-                                    />
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          <p className="text-sm font-bold text-slate-800 mb-1">
-                            {d.dispatchNumber}
-                          </p>
-                          <p className="text-xs text-slate-500 mb-1">
-                            {d.request.organization.name}
-                          </p>
-                          <div className="flex items-center justify-between text-xs text-slate-400">
-                            <span>{totalItems(d)} ш</span>
-                            <span>₮{totalAmount(d).toLocaleString()}</span>
-                          </div>
-
-                          {/* Quick items */}
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {d.request.items.slice(0, 2).map((item) => (
-                              <span
-                                key={item.id}
-                                className="rounded bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500"
-                              >
-                                {item.product.name.slice(0, 15)}
-                                {item.product.name.length > 15 ? "…" : ""} ×{item.approvedQuantity || item.quantity}
-                              </span>
-                            ))}
-                            {d.request.items.length > 2 && (
-                              <span className="text-[10px] text-slate-400">
-                                +{d.request.items.length - 2}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Driver info */}
-                          {d.driverName && (
-                            <div className="mt-2 flex items-center gap-1.5 text-[10px] text-purple-600">
-                              <Truck className="h-3 w-3" />
-                              {d.driverName}
-                            </div>
-                          )}
-
-                          <p className="mt-1.5 text-[10px] text-slate-300">
-                            {new Date(d.createdAt).toLocaleDateString("mn-MN")}
-                          </p>
-                        </div>
-                      ))
+                    {isDelivered && count > 0 && (
+                      <ChevronRight className="ml-auto h-4 w-4 opacity-50" />
                     )}
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      ))}
+                );
+              })}
+            </div>
+
+            {/* Cancelled count if any */}
+            {dispatches.filter((d) => d.status === "CANCELLED").length > 0 && (
+              <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">
+                <XCircle className="h-4 w-4" />
+                <span className="font-medium">
+                  {dispatches.filter((d) => d.status === "CANCELLED").length}{" "}
+                  цуцлагдсан илгээмж
+                </span>
+              </div>
+            )}
+
+            {/* 4-column pipeline board */}
+            <div className="grid grid-cols-4 gap-4 items-start">
+              {STEPS.map((step, colIdx) => {
+                const colDispatches = dispatches.filter(
+                  (d) => d.status === step.key,
+                );
+                const StIcon = step.icon;
+                const headerColors: Record<string, string> = {
+                  amber: "bg-amber-500",
+                  blue: "bg-blue-500",
+                  purple: "bg-purple-500",
+                  green: "bg-green-500",
+                };
+                return (
+                  <div key={step.key} className="space-y-3">
+                    {/* Column header */}
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg ${headerColors[step.color]} text-white`}
+                      >
+                        <StIcon className="h-4 w-4" />
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-700">
+                        {step.label}
+                      </h3>
+                      <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">
+                        {colDispatches.length}
+                      </span>
+                    </div>
+
+                    {/* Cards */}
+                    <div className="space-y-2.5 min-h-[120px]">
+                      {colDispatches.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 py-8">
+                          <Package className="mb-2 h-8 w-8 text-slate-200" />
+                          <p className="text-xs text-slate-400">Хоосон</p>
+                        </div>
+                      ) : (
+                        colDispatches.map((d) => (
+                          <div
+                            key={d.id}
+                            onClick={() => openDetail(d)}
+                            className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
+                          >
+                            {/* Stepper mini */}
+                            <div className="flex items-center gap-0.5 mb-2.5">
+                              {STEPS.map((s, i) => {
+                                const current = colIdx;
+                                const done = i < current;
+                                const active = i === current;
+                                return (
+                                  <div
+                                    key={s.key}
+                                    className="flex items-center flex-1 last:flex-none"
+                                  >
+                                    <div
+                                      className={`h-2 w-2 rounded-full ${
+                                        done
+                                          ? "bg-emerald-400"
+                                          : active
+                                            ? "bg-blue-500 ring-2 ring-blue-200"
+                                            : "bg-slate-200"
+                                      }`}
+                                    />
+                                    {i < STEPS.length - 1 && (
+                                      <div
+                                        className={`mx-0.5 h-0.5 flex-1 rounded-full ${
+                                          done
+                                            ? "bg-emerald-300"
+                                            : "bg-slate-200"
+                                        }`}
+                                      />
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <p className="text-sm font-bold text-slate-800 mb-1">
+                              {d.dispatchNumber}
+                            </p>
+                            <p className="text-xs text-slate-500 mb-1">
+                              {d.request.organization.name}
+                            </p>
+                            <div className="flex items-center justify-between text-xs text-slate-400">
+                              <span>{totalItems(d)} ш</span>
+                              <span>₮{totalAmount(d).toLocaleString()}</span>
+                            </div>
+
+                            {/* Quick items */}
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {d.request.items.slice(0, 2).map((item) => (
+                                <span
+                                  key={item.id}
+                                  className="rounded bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500"
+                                >
+                                  {item.product.name.slice(0, 15)}
+                                  {item.product.name.length > 15 ? "…" : ""} ×
+                                  {item.approvedQuantity || item.quantity}
+                                </span>
+                              ))}
+                              {d.request.items.length > 2 && (
+                                <span className="text-[10px] text-slate-400">
+                                  +{d.request.items.length - 2}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Driver info */}
+                            {d.driverName && (
+                              <div className="mt-2 flex items-center gap-1.5 text-[10px] text-purple-600">
+                                <Truck className="h-3 w-3" />
+                                {d.driverName}
+                              </div>
+                            )}
+
+                            <p className="mt-1.5 text-[10px] text-slate-300">
+                              {new Date(d.createdAt).toLocaleDateString(
+                                "mn-MN",
+                              )}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ))}
 
       {/* ═══════ Returns Tab ═══════ */}
-      {activeTab === "returns" && (
-        returnsLoading ? (
+      {activeTab === "returns" &&
+        (returnsLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
           </div>
@@ -690,14 +773,34 @@ export default function DispatchOrdersPage() {
             {/* Returns summary */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: "Хүлээгдэж буй", status: "PENDING", color: "bg-amber-50 border-amber-200 text-amber-700", Icon: Clock },
-                { label: "Батлагдсан", status: "APPROVED", color: "bg-green-50 border-green-200 text-green-700", Icon: CheckCircle2 },
-                { label: "Татгалзсан", status: "REJECTED", color: "bg-red-50 border-red-200 text-red-700", Icon: XCircle },
+                {
+                  label: "Хүлээгдэж буй",
+                  status: "PENDING",
+                  color: "bg-amber-50 border-amber-200 text-amber-700",
+                  Icon: Clock,
+                },
+                {
+                  label: "Батлагдсан",
+                  status: "APPROVED",
+                  color: "bg-green-50 border-green-200 text-green-700",
+                  Icon: CheckCircle2,
+                },
+                {
+                  label: "Татгалзсан",
+                  status: "REJECTED",
+                  color: "bg-red-50 border-red-200 text-red-700",
+                  Icon: XCircle,
+                },
               ].map(({ label, status, color, Icon }) => (
-                <div key={status} className={`flex items-center gap-3 rounded-xl border p-4 ${color}`}>
+                <div
+                  key={status}
+                  className={`flex items-center gap-3 rounded-xl border p-4 ${color}`}
+                >
                   <Icon className="h-5 w-5" />
                   <div>
-                    <p className="text-2xl font-black">{returns.filter((r) => r.status === status).length}</p>
+                    <p className="text-2xl font-black">
+                      {returns.filter((r) => r.status === status).length}
+                    </p>
                     <p className="text-xs font-bold opacity-80">{label}</p>
                   </div>
                 </div>
@@ -708,54 +811,89 @@ export default function DispatchOrdersPage() {
             {returns.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 py-16">
                 <RotateCcw className="mb-3 h-12 w-12 text-slate-200" />
-                <p className="text-sm font-medium text-slate-400">Буцаалт байхгүй</p>
+                <p className="text-sm font-medium text-slate-400">
+                  Буцаалт байхгүй
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
                 {returns.map((r) => {
                   const totalQty = r.items.reduce((s, i) => s + i.quantity, 0);
                   const totalAmt = r.items.reduce(
-                    (s, i) => s + i.quantity * Number(i.product.price), 0,
+                    (s, i) => s + i.quantity * Number(i.product.price),
+                    0,
                   );
-                  const statusStyle = r.status === "PENDING"
-                    ? "bg-amber-50 border-amber-200 text-amber-700"
-                    : r.status === "APPROVED"
-                      ? "bg-green-50 border-green-200 text-green-700"
-                      : "bg-red-50 border-red-200 text-red-700";
-                  const statusLabel = r.status === "PENDING" ? "Хүлээгдэж буй" : r.status === "APPROVED" ? "Батлагдсан" : "Татгалзсан";
+                  const statusStyle =
+                    r.status === "PENDING"
+                      ? "bg-amber-50 border-amber-200 text-amber-700"
+                      : r.status === "APPROVED"
+                        ? "bg-green-50 border-green-200 text-green-700"
+                        : "bg-red-50 border-red-200 text-red-700";
+                  const statusLabel =
+                    r.status === "PENDING"
+                      ? "Хүлээгдэж буй"
+                      : r.status === "APPROVED"
+                        ? "Батлагдсан"
+                        : "Татгалзсан";
                   return (
                     <div
                       key={r.id}
-                      onClick={() => { setSelectedReturn(r); setShowReturnDetail(true); }}
+                      onClick={() => {
+                        setSelectedReturn(r);
+                        setShowReturnDetail(true);
+                      }}
                       className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-bold text-slate-800">{r.returnNumber}</p>
-                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusStyle}`}>
+                            <p className="text-sm font-bold text-slate-800">
+                              {r.returnNumber}
+                            </p>
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusStyle}`}
+                            >
                               {statusLabel}
                             </span>
                           </div>
-                          <p className="mt-1 text-sm text-slate-600">{r.organization.name}</p>
-                          <p className="text-xs text-slate-400">Илгээмж: {r.dispatch.dispatchNumber}</p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {r.organization.name}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            Илгээмж: {r.dispatch.dispatchNumber}
+                          </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-bold text-slate-800">₮{totalAmt.toLocaleString()}</p>
-                          <p className="text-xs text-slate-500">{totalQty} ширхэг</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            ₮{totalAmt.toLocaleString()}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {totalQty} ширхэг
+                          </p>
                         </div>
                       </div>
                       {/* Items preview */}
                       <div className="mt-2 flex flex-wrap gap-1">
                         {r.items.slice(0, 3).map((item) => (
-                          <span key={item.id} className="rounded bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
-                            {item.product.name.slice(0, 20)}{item.product.name.length > 20 ? "…" : ""} ×{item.quantity}
+                          <span
+                            key={item.id}
+                            className="rounded bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500"
+                          >
+                            {item.product.name.slice(0, 20)}
+                            {item.product.name.length > 20 ? "…" : ""} ×
+                            {item.quantity}
                           </span>
                         ))}
-                        {r.items.length > 3 && <span className="text-[11px] text-slate-400">+{r.items.length - 3}</span>}
+                        {r.items.length > 3 && (
+                          <span className="text-[11px] text-slate-400">
+                            +{r.items.length - 3}
+                          </span>
+                        )}
                       </div>
                       {r.reason && (
-                        <p className="mt-2 text-xs text-slate-400">Шалтгаан: {r.reason}</p>
+                        <p className="mt-2 text-xs text-slate-400">
+                          Шалтгаан: {r.reason}
+                        </p>
                       )}
                       <p className="mt-1.5 text-[10px] text-slate-300">
                         {new Date(r.createdAt).toLocaleString("mn-MN")}
@@ -766,8 +904,7 @@ export default function DispatchOrdersPage() {
               </div>
             )}
           </div>
-        )
-      )}
+        ))}
 
       {/* ───── Delivered List Modal ───── */}
       {showDeliveredList && (
@@ -786,9 +923,13 @@ export default function DispatchOrdersPage() {
                   <CheckCircle2 className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800">Хүргэгдсэн илгээмжүүд</h2>
+                  <h2 className="text-lg font-bold text-slate-800">
+                    Хүргэгдсэн илгээмжүүд
+                  </h2>
                   <p className="text-sm text-slate-500">
-                    Нийт {dispatches.filter((d) => d.status === "DELIVERED").length} илгээмж
+                    Нийт{" "}
+                    {dispatches.filter((d) => d.status === "DELIVERED").length}{" "}
+                    илгээмж
                   </p>
                 </div>
               </div>
@@ -805,11 +946,21 @@ export default function DispatchOrdersPage() {
               <div className="space-y-3">
                 {dispatches
                   .filter((d) => d.status === "DELIVERED")
-                  .sort((a, b) => new Date(b.deliveredAt || b.createdAt).getTime() - new Date(a.deliveredAt || a.createdAt).getTime())
+                  .sort(
+                    (a, b) =>
+                      new Date(b.deliveredAt || b.createdAt).getTime() -
+                      new Date(a.deliveredAt || a.createdAt).getTime(),
+                  )
                   .map((d) => {
-                    const qty = d.request.items.reduce((s, i) => s + (i.approvedQuantity || i.quantity), 0);
+                    const qty = d.request.items.reduce(
+                      (s, i) => s + (i.approvedQuantity || i.quantity),
+                      0,
+                    );
                     const amt = d.request.items.reduce(
-                      (s, i) => s + (i.approvedQuantity || i.quantity) * Number(i.product.price),
+                      (s, i) =>
+                        s +
+                        (i.approvedQuantity || i.quantity) *
+                          Number(i.product.price),
                       0,
                     );
                     return (
@@ -824,20 +975,28 @@ export default function DispatchOrdersPage() {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <p className="text-sm font-bold text-slate-800">{d.dispatchNumber}</p>
+                              <p className="text-sm font-bold text-slate-800">
+                                {d.dispatchNumber}
+                              </p>
                               <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-[11px] font-medium text-green-700">
                                 <CheckCircle2 className="h-3 w-3" />
                                 Хүргэгдсэн
                               </span>
                             </div>
-                            <p className="mt-1 text-sm text-slate-600">{d.request.organization.name}</p>
+                            <p className="mt-1 text-sm text-slate-600">
+                              {d.request.organization.name}
+                            </p>
                             <p className="text-xs text-slate-400">
                               Хүсэлт: {d.request.requestNumber}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-bold text-slate-800">₮{amt.toLocaleString()}</p>
-                            <p className="text-xs text-slate-500">{qty} ширхэг</p>
+                            <p className="text-sm font-bold text-slate-800">
+                              ₮{amt.toLocaleString()}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {qty} ширхэг
+                            </p>
                           </div>
                         </div>
 
@@ -849,11 +1008,14 @@ export default function DispatchOrdersPage() {
                               className="rounded bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500"
                             >
                               {item.product.name.slice(0, 20)}
-                              {item.product.name.length > 20 ? "…" : ""} ×{item.approvedQuantity || item.quantity}
+                              {item.product.name.length > 20 ? "…" : ""} ×
+                              {item.approvedQuantity || item.quantity}
                             </span>
                           ))}
                           {d.request.items.length > 3 && (
-                            <span className="text-[11px] text-slate-400">+{d.request.items.length - 3}</span>
+                            <span className="text-[11px] text-slate-400">
+                              +{d.request.items.length - 3}
+                            </span>
                           )}
                         </div>
 
@@ -867,7 +1029,8 @@ export default function DispatchOrdersPage() {
                           )}
                           {d.deliveredAt && (
                             <span>
-                              Хүргэгдсэн: {new Date(d.deliveredAt).toLocaleString("mn-MN")}
+                              Хүргэгдсэн:{" "}
+                              {new Date(d.deliveredAt).toLocaleString("mn-MN")}
                             </span>
                           )}
                         </div>
@@ -914,7 +1077,9 @@ export default function DispatchOrdersPage() {
             className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-4 text-lg font-bold text-slate-800">Жолооч томилох</h3>
+            <h3 className="mb-4 text-lg font-bold text-slate-800">
+              Жолооч томилох
+            </h3>
             <div className="space-y-3">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -987,7 +1152,10 @@ export default function DispatchOrdersPage() {
             className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <PadaanView dispatch={selectedDispatch} onClose={() => setShowPadaan(false)} />
+            <PadaanView
+              dispatch={selectedDispatch}
+              onClose={() => setShowPadaan(false)}
+            />
           </div>
         </div>
       )}
@@ -1008,9 +1176,12 @@ export default function DispatchOrdersPage() {
                   <RotateCcw className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800">Буцаалт бүртгэх</h2>
+                  <h2 className="text-lg font-bold text-slate-800">
+                    Буцаалт бүртгэх
+                  </h2>
                   <p className="text-sm text-slate-500">
-                    {selectedDispatch.dispatchNumber} • {selectedDispatch.request.organization.name}
+                    {selectedDispatch.dispatchNumber} •{" "}
+                    {selectedDispatch.request.organization.name}
                   </p>
                 </div>
               </div>
@@ -1018,24 +1189,34 @@ export default function DispatchOrdersPage() {
               {/* Info grid */}
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase text-slate-400">Түгээгч</p>
+                  <p className="text-[11px] font-semibold uppercase text-slate-400">
+                    Түгээгч
+                  </p>
                   <p className="mt-1 text-sm font-medium text-slate-800">
                     {selectedDispatch.driverName || "—"}
                   </p>
-                  <p className="text-xs text-slate-500">{selectedDispatch.driverPhone || ""}</p>
+                  <p className="text-xs text-slate-500">
+                    {selectedDispatch.driverPhone || ""}
+                  </p>
                 </div>
                 <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase text-slate-400">Дэлгүүр / Байгууллага</p>
+                  <p className="text-[11px] font-semibold uppercase text-slate-400">
+                    Дэлгүүр / Байгууллага
+                  </p>
                   <p className="mt-1 text-sm font-medium text-slate-800">
                     {selectedDispatch.request.organization.name}
                   </p>
-                  <p className="text-xs text-slate-500">{selectedDispatch.request.deliveryAddress || ""}</p>
+                  <p className="text-xs text-slate-500">
+                    {selectedDispatch.request.deliveryAddress || ""}
+                  </p>
                 </div>
               </div>
 
               {/* Return reason */}
               <div className="mt-4">
-                <label className="mb-1 block text-xs font-semibold text-slate-600">Буцаалтын ерөнхий шалтгаан</label>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  Буцаалтын ерөнхий шалтгаан
+                </label>
                 <input
                   value={returnReason}
                   onChange={(e) => setReturnReason(e.target.value)}
@@ -1046,25 +1227,43 @@ export default function DispatchOrdersPage() {
 
               {/* Items to return */}
               <div className="mt-4">
-                <h3 className="mb-2 text-sm font-bold text-slate-700">Буцаах бараа сонгох</h3>
+                <h3 className="mb-2 text-sm font-bold text-slate-700">
+                  Буцаах бараа сонгох
+                </h3>
                 <div className="space-y-2">
                   {returnItems.map((item, idx) => (
-                    <div key={item.productId} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div
+                      key={item.productId}
+                      className="rounded-lg border border-slate-200 bg-white p-3"
+                    >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-slate-800">{item.name}</p>
-                          <p className="text-xs text-slate-400">Хүргэгдсэн: {item.maxQty} ш</p>
+                          <p className="text-sm font-medium text-slate-800">
+                            {item.name}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            Хүргэгдсэн: {item.maxQty} ш
+                          </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <label className="text-xs font-semibold text-slate-500">Буцаах:</label>
+                          <label className="text-xs font-semibold text-slate-500">
+                            Буцаах:
+                          </label>
                           <input
                             type="number"
                             min={0}
                             max={item.maxQty}
                             value={item.quantity || ""}
                             onChange={(e) => {
-                              const val = Math.min(Math.max(0, parseInt(e.target.value) || 0), item.maxQty);
-                              setReturnItems((prev) => prev.map((p, i) => i === idx ? { ...p, quantity: val } : p));
+                              const val = Math.min(
+                                Math.max(0, parseInt(e.target.value) || 0),
+                                item.maxQty,
+                              );
+                              setReturnItems((prev) =>
+                                prev.map((p, i) =>
+                                  i === idx ? { ...p, quantity: val } : p,
+                                ),
+                              );
                             }}
                             className="h-9 w-20 rounded-lg border border-slate-300 px-2 text-center text-sm outline-none focus:border-blue-500"
                           />
@@ -1075,7 +1274,13 @@ export default function DispatchOrdersPage() {
                           <input
                             value={item.reason}
                             onChange={(e) =>
-                              setReturnItems((prev) => prev.map((p, i) => i === idx ? { ...p, reason: e.target.value } : p))
+                              setReturnItems((prev) =>
+                                prev.map((p, i) =>
+                                  i === idx
+                                    ? { ...p, reason: e.target.value }
+                                    : p,
+                                ),
+                              )
                             }
                             placeholder="Шалтгаан (гэмтэл, буруу бараа ...)"
                             className="h-8 w-full rounded border border-slate-200 px-2 text-xs outline-none focus:border-blue-400"
@@ -1091,7 +1296,8 @@ export default function DispatchOrdersPage() {
               {returnItems.filter((i) => i.quantity > 0).length > 0 && (
                 <div className="mt-3 rounded-lg bg-orange-50 border border-orange-200 p-3">
                   <p className="text-xs font-semibold text-orange-700">
-                    Нийт буцаах: {returnItems.filter((i) => i.quantity > 0).length} бараа,{" "}
+                    Нийт буцаах:{" "}
+                    {returnItems.filter((i) => i.quantity > 0).length} бараа,{" "}
                     {returnItems.reduce((s, i) => s + i.quantity, 0)} ширхэг
                   </p>
                 </div>
@@ -1099,7 +1305,9 @@ export default function DispatchOrdersPage() {
 
               {/* Note */}
               <div className="mt-3">
-                <label className="mb-1 block text-xs font-semibold text-slate-600">Тэмдэглэл</label>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  Тэмдэглэл
+                </label>
                 <input
                   value={returnNote}
                   onChange={(e) => setReturnNote(e.target.value)}
@@ -1118,10 +1326,17 @@ export default function DispatchOrdersPage() {
                 </button>
                 <button
                   onClick={submitReturn}
-                  disabled={actionLoading || returnItems.filter((i) => i.quantity > 0).length === 0}
+                  disabled={
+                    actionLoading ||
+                    returnItems.filter((i) => i.quantity > 0).length === 0
+                  }
                   className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50"
                 >
-                  {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  {actionLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4" />
+                  )}
                   Буцаалт үүсгэх
                 </button>
               </div>
@@ -1145,15 +1360,23 @@ export default function DispatchOrdersPage() {
               <div className="flex items-start justify-between border-b border-slate-100 pb-4">
                 <div>
                   <div className="flex items-center gap-3">
-                    <h2 className="text-xl font-bold text-slate-800">{selectedReturn.returnNumber}</h2>
-                    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${
-                      selectedReturn.status === "PENDING"
-                        ? "bg-amber-50 border-amber-200 text-amber-700"
+                    <h2 className="text-xl font-bold text-slate-800">
+                      {selectedReturn.returnNumber}
+                    </h2>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${
+                        selectedReturn.status === "PENDING"
+                          ? "bg-amber-50 border-amber-200 text-amber-700"
+                          : selectedReturn.status === "APPROVED"
+                            ? "bg-green-50 border-green-200 text-green-700"
+                            : "bg-red-50 border-red-200 text-red-700"
+                      }`}
+                    >
+                      {selectedReturn.status === "PENDING"
+                        ? "Хүлээгдэж буй"
                         : selectedReturn.status === "APPROVED"
-                          ? "bg-green-50 border-green-200 text-green-700"
-                          : "bg-red-50 border-red-200 text-red-700"
-                    }`}>
-                      {selectedReturn.status === "PENDING" ? "Хүлээгдэж буй" : selectedReturn.status === "APPROVED" ? "Батлагдсан" : "Татгалзсан"}
+                          ? "Батлагдсан"
+                          : "Татгалзсан"}
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-slate-500">
@@ -1166,34 +1389,59 @@ export default function DispatchOrdersPage() {
               {/* Info grid */}
               <div className="mt-4 grid grid-cols-2 gap-4">
                 <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase text-slate-400">Буцаасан дэлгүүр</p>
-                  <p className="mt-1 font-medium text-slate-800">{selectedReturn.organization.name}</p>
-                  {selectedReturn.organization.phone && <p className="text-xs text-slate-500">{selectedReturn.organization.phone}</p>}
+                  <p className="text-[11px] font-semibold uppercase text-slate-400">
+                    Буцаасан дэлгүүр
+                  </p>
+                  <p className="mt-1 font-medium text-slate-800">
+                    {selectedReturn.organization.name}
+                  </p>
+                  {selectedReturn.organization.phone && (
+                    <p className="text-xs text-slate-500">
+                      {selectedReturn.organization.phone}
+                    </p>
+                  )}
                   {selectedReturn.dispatch.request.requestedBy && (
                     <p className="text-xs text-slate-500">
-                      {selectedReturn.dispatch.request.requestedBy.profile?.fullName || selectedReturn.dispatch.request.requestedBy.email}
+                      {selectedReturn.dispatch.request.requestedBy.profile
+                        ?.fullName ||
+                        selectedReturn.dispatch.request.requestedBy.email}
                     </p>
                   )}
                 </div>
                 <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase text-slate-400">Агуулах (хүлээн авагч)</p>
-                  <p className="mt-1 font-medium text-slate-800">{selectedReturn.warehouse.name}</p>
+                  <p className="text-[11px] font-semibold uppercase text-slate-400">
+                    Агуулах (хүлээн авагч)
+                  </p>
+                  <p className="mt-1 font-medium text-slate-800">
+                    {selectedReturn.warehouse.name}
+                  </p>
                 </div>
                 {selectedReturn.dispatch.driverName && (
                   <div className="rounded-lg bg-purple-50 p-3">
-                    <p className="text-[11px] font-semibold uppercase text-purple-400">Түгээгч / Жолооч</p>
-                    <p className="mt-1 font-medium text-purple-800">{selectedReturn.dispatch.driverName}</p>
+                    <p className="text-[11px] font-semibold uppercase text-purple-400">
+                      Түгээгч / Жолооч
+                    </p>
+                    <p className="mt-1 font-medium text-purple-800">
+                      {selectedReturn.dispatch.driverName}
+                    </p>
                     <p className="text-xs text-purple-600">
                       {selectedReturn.dispatch.driverPhone}
-                      {selectedReturn.dispatch.vehicleNumber && ` • ${selectedReturn.dispatch.vehicleNumber}`}
+                      {selectedReturn.dispatch.vehicleNumber &&
+                        ` • ${selectedReturn.dispatch.vehicleNumber}`}
                     </p>
                   </div>
                 )}
                 <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase text-slate-400">Нийлүүлэгч компани</p>
-                  <p className="mt-1 font-medium text-slate-800">{selectedReturn.dispatch.request.organization.name}</p>
+                  <p className="text-[11px] font-semibold uppercase text-slate-400">
+                    Нийлүүлэгч компани
+                  </p>
+                  <p className="mt-1 font-medium text-slate-800">
+                    {selectedReturn.dispatch.request.organization.name}
+                  </p>
                   {selectedReturn.dispatch.request.organization.phone && (
-                    <p className="text-xs text-slate-500">{selectedReturn.dispatch.request.organization.phone}</p>
+                    <p className="text-xs text-slate-500">
+                      {selectedReturn.dispatch.request.organization.phone}
+                    </p>
                   )}
                 </div>
               </div>
@@ -1206,52 +1454,97 @@ export default function DispatchOrdersPage() {
 
               {selectedReturn.rejectReason && (
                 <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">
-                  <strong>Татгалзсан шалтгаан:</strong> {selectedReturn.rejectReason}
+                  <strong>Татгалзсан шалтгаан:</strong>{" "}
+                  {selectedReturn.rejectReason}
                 </div>
               )}
 
               {/* Items table */}
               <div className="mt-5">
-                <h3 className="mb-3 text-sm font-bold uppercase text-slate-400">Буцаагдсан барааны жагсаалт</h3>
+                <h3 className="mb-3 text-sm font-bold uppercase text-slate-400">
+                  Буцаагдсан барааны жагсаалт
+                </h3>
                 <div className="overflow-hidden rounded-lg border border-slate-200">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50">
                       <tr>
-                        <th className="px-4 py-2.5 text-left font-medium text-slate-600">№</th>
-                        <th className="px-4 py-2.5 text-left font-medium text-slate-600">Бүтээгдэхүүн</th>
-                        <th className="px-4 py-2.5 text-left font-medium text-slate-600">SKU</th>
-                        <th className="px-4 py-2.5 text-right font-medium text-slate-600">Тоо</th>
-                        <th className="px-4 py-2.5 text-right font-medium text-slate-600">Үнэ</th>
-                        <th className="px-4 py-2.5 text-right font-medium text-slate-600">Нийт</th>
-                        <th className="px-4 py-2.5 text-left font-medium text-slate-600">Шалтгаан</th>
+                        <th className="px-4 py-2.5 text-left font-medium text-slate-600">
+                          №
+                        </th>
+                        <th className="px-4 py-2.5 text-left font-medium text-slate-600">
+                          Бүтээгдэхүүн
+                        </th>
+                        <th className="px-4 py-2.5 text-left font-medium text-slate-600">
+                          SKU
+                        </th>
+                        <th className="px-4 py-2.5 text-right font-medium text-slate-600">
+                          Тоо
+                        </th>
+                        <th className="px-4 py-2.5 text-right font-medium text-slate-600">
+                          Үнэ
+                        </th>
+                        <th className="px-4 py-2.5 text-right font-medium text-slate-600">
+                          Нийт
+                        </th>
+                        <th className="px-4 py-2.5 text-left font-medium text-slate-600">
+                          Шалтгаан
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {selectedReturn.items.map((item, idx) => (
                         <tr key={item.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-2.5 text-slate-500">{idx + 1}</td>
-                          <td className="px-4 py-2.5 font-medium text-slate-800">{item.product.name}</td>
-                          <td className="px-4 py-2.5 text-slate-500">{item.product.sku || "—"}</td>
-                          <td className="px-4 py-2.5 text-right font-bold text-orange-600">{item.quantity}</td>
+                          <td className="px-4 py-2.5 text-slate-500">
+                            {idx + 1}
+                          </td>
+                          <td className="px-4 py-2.5 font-medium text-slate-800">
+                            {item.product.name}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-500">
+                            {item.product.sku || "—"}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-bold text-orange-600">
+                            {item.quantity}
+                          </td>
                           <td className="px-4 py-2.5 text-right text-slate-600">
                             ₮{Number(item.product.price).toLocaleString()}
                           </td>
                           <td className="px-4 py-2.5 text-right font-medium text-slate-800">
-                            ₮{(item.quantity * Number(item.product.price)).toLocaleString()}
+                            ₮
+                            {(
+                              item.quantity * Number(item.product.price)
+                            ).toLocaleString()}
                           </td>
-                          <td className="px-4 py-2.5 text-xs text-slate-500">{item.reason || "—"}</td>
+                          <td className="px-4 py-2.5 text-xs text-slate-500">
+                            {item.reason || "—"}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot className="border-t-2 border-slate-200 bg-slate-50">
                       <tr>
-                        <td colSpan={3} className="px-4 py-3 text-right font-bold text-slate-700">Нийт:</td>
+                        <td
+                          colSpan={3}
+                          className="px-4 py-3 text-right font-bold text-slate-700"
+                        >
+                          Нийт:
+                        </td>
                         <td className="px-4 py-3 text-right font-bold text-orange-600">
-                          {selectedReturn.items.reduce((s, i) => s + i.quantity, 0)}
+                          {selectedReturn.items.reduce(
+                            (s, i) => s + i.quantity,
+                            0,
+                          )}
                         </td>
                         <td></td>
                         <td className="px-4 py-3 text-right font-bold text-orange-600">
-                          ₮{selectedReturn.items.reduce((s, i) => s + i.quantity * Number(i.product.price), 0).toLocaleString()}
+                          ₮
+                          {selectedReturn.items
+                            .reduce(
+                              (s, i) =>
+                                s + i.quantity * Number(i.product.price),
+                              0,
+                            )
+                            .toLocaleString()}
                         </td>
                         <td></td>
                       </tr>
@@ -1268,9 +1561,14 @@ export default function DispatchOrdersPage() {
 
               {selectedReturn.approvedBy && (
                 <div className="mt-3 text-xs text-slate-400">
-                  {selectedReturn.status === "APPROVED" ? "Баталсан" : "Шийдвэрлэсэн"}:{" "}
-                  {selectedReturn.approvedBy.profile?.fullName || selectedReturn.approvedBy.email}
-                  {selectedReturn.approvedAt && ` • ${new Date(selectedReturn.approvedAt).toLocaleString("mn-MN")}`}
+                  {selectedReturn.status === "APPROVED"
+                    ? "Баталсан"
+                    : "Шийдвэрлэсэн"}
+                  :{" "}
+                  {selectedReturn.approvedBy.profile?.fullName ||
+                    selectedReturn.approvedBy.email}
+                  {selectedReturn.approvedAt &&
+                    ` • ${new Date(selectedReturn.approvedAt).toLocaleString("mn-MN")}`}
                 </div>
               )}
 
@@ -1282,7 +1580,11 @@ export default function DispatchOrdersPage() {
                     disabled={actionLoading}
                     className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                   >
-                    {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}
+                    {actionLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ThumbsUp className="h-4 w-4" />
+                    )}
                     Батлах (нөөцөд буцаах)
                   </button>
                   <button
@@ -1342,7 +1644,9 @@ function DispatchDetail({
       <div className="flex items-start justify-between border-b border-slate-100 pb-4">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-slate-800">{d.dispatchNumber}</h2>
+            <h2 className="text-xl font-bold text-slate-800">
+              {d.dispatchNumber}
+            </h2>
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${st?.bg} ${st?.color}`}
             >
@@ -1373,7 +1677,10 @@ function DispatchDetail({
             const active = i === current;
             const SIcon = step.icon;
             return (
-              <div key={step.key} className="flex items-center flex-1 last:flex-none">
+              <div
+                key={step.key}
+                className="flex items-center flex-1 last:flex-none"
+              >
                 <div className="flex flex-col items-center">
                   <div
                     className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all ${
@@ -1414,14 +1721,23 @@ function DispatchDetail({
       {/* Info Grid */}
       <div className="mt-4 grid grid-cols-2 gap-4">
         <div className="rounded-lg bg-slate-50 p-3">
-          <p className="text-xs font-medium uppercase text-slate-400">Байгууллага</p>
-          <p className="mt-1 font-medium text-slate-800">{d.request.organization.name}</p>
+          <p className="text-xs font-medium uppercase text-slate-400">
+            Байгууллага
+          </p>
+          <p className="mt-1 font-medium text-slate-800">
+            {d.request.organization.name}
+          </p>
           {d.request.requestedBy && (
-            <p className="text-sm text-slate-500">{d.request.requestedBy.profile?.fullName || d.request.requestedBy.email}</p>
+            <p className="text-sm text-slate-500">
+              {d.request.requestedBy.profile?.fullName ||
+                d.request.requestedBy.email}
+            </p>
           )}
         </div>
         <div className="rounded-lg bg-slate-50 p-3">
-          <p className="text-xs font-medium uppercase text-slate-400">Хүргэлтийн хаяг</p>
+          <p className="text-xs font-medium uppercase text-slate-400">
+            Хүргэлтийн хаяг
+          </p>
           <p className="mt-1 font-medium text-slate-800">
             {d.request.deliveryAddress || "Тодорхойгүй"}
           </p>
@@ -1431,7 +1747,9 @@ function DispatchDetail({
         </div>
         {d.driverName && (
           <div className="rounded-lg bg-purple-50 p-3">
-            <p className="text-xs font-medium uppercase text-purple-400">Жолооч</p>
+            <p className="text-xs font-medium uppercase text-purple-400">
+              Жолооч
+            </p>
             <p className="mt-1 font-medium text-purple-800">{d.driverName}</p>
             <p className="text-sm text-purple-600">
               {d.driverPhone}
@@ -1441,7 +1759,9 @@ function DispatchDetail({
         )}
         {d.request.payment && (
           <div className="rounded-lg bg-green-50 p-3">
-            <p className="text-xs font-medium uppercase text-green-400">Төлбөр</p>
+            <p className="text-xs font-medium uppercase text-green-400">
+              Төлбөр
+            </p>
             <p className="mt-1 font-medium text-green-800">
               {d.request.payment.invoiceNumber}
             </p>
@@ -1462,12 +1782,24 @@ function DispatchDetail({
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-2.5 text-left font-medium text-slate-600">№</th>
-                <th className="px-4 py-2.5 text-left font-medium text-slate-600">Бүтээгдэхүүн</th>
-                <th className="px-4 py-2.5 text-left font-medium text-slate-600">SKU</th>
-                <th className="px-4 py-2.5 text-right font-medium text-slate-600">Тоо</th>
-                <th className="px-4 py-2.5 text-right font-medium text-slate-600">Үнэ</th>
-                <th className="px-4 py-2.5 text-right font-medium text-slate-600">Нийт</th>
+                <th className="px-4 py-2.5 text-left font-medium text-slate-600">
+                  №
+                </th>
+                <th className="px-4 py-2.5 text-left font-medium text-slate-600">
+                  Бүтээгдэхүүн
+                </th>
+                <th className="px-4 py-2.5 text-left font-medium text-slate-600">
+                  SKU
+                </th>
+                <th className="px-4 py-2.5 text-right font-medium text-slate-600">
+                  Тоо
+                </th>
+                <th className="px-4 py-2.5 text-right font-medium text-slate-600">
+                  Үнэ
+                </th>
+                <th className="px-4 py-2.5 text-right font-medium text-slate-600">
+                  Нийт
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1482,7 +1814,9 @@ function DispatchDetail({
                     <td className="px-4 py-2.5 text-slate-500">
                       {item.product.sku || "—"}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-bold text-slate-800">{qty}</td>
+                    <td className="px-4 py-2.5 text-right font-bold text-slate-800">
+                      {qty}
+                    </td>
                     <td className="px-4 py-2.5 text-right text-slate-600">
                       ₮{Number(item.product.price).toLocaleString()}
                     </td>
@@ -1495,10 +1829,15 @@ function DispatchDetail({
             </tbody>
             <tfoot className="border-t-2 border-slate-200 bg-slate-50">
               <tr>
-                <td colSpan={3} className="px-4 py-3 text-right font-bold text-slate-700">
+                <td
+                  colSpan={3}
+                  className="px-4 py-3 text-right font-bold text-slate-700"
+                >
                   Нийт:
                 </td>
-                <td className="px-4 py-3 text-right font-bold text-slate-800">{totalQty}</td>
+                <td className="px-4 py-3 text-right font-bold text-slate-800">
+                  {totalQty}
+                </td>
                 <td></td>
                 <td className="px-4 py-3 text-right font-bold text-blue-600">
                   ₮{totalAmt.toLocaleString()}
@@ -1609,7 +1948,10 @@ function PadaanView({
     wmsFetch(`/api/operations/stock-requests/dispatches/${d.id}/returns`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setPadaanReturns(data.filter((r: DispatchReturnType) => r.status === "APPROVED"));
+        if (Array.isArray(data))
+          setPadaanReturns(
+            data.filter((r: DispatchReturnType) => r.status === "APPROVED"),
+          );
       })
       .catch(() => {});
   }, [d.id]);
@@ -1671,7 +2013,9 @@ function PadaanView({
     <div className="p-6">
       {/* Toolbar */}
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-800">Падаан / Зарлагын баримт</h2>
+        <h2 className="text-lg font-bold text-slate-800">
+          Падаан / Зарлагын баримт
+        </h2>
         <div className="flex gap-2">
           <button
             onClick={handlePrint}
@@ -1717,10 +2061,14 @@ function PadaanView({
               {d.warehouse.name}
             </p>
             {d.warehouse.address && (
-              <p className="sub text-xs text-slate-500">{d.warehouse.address}</p>
+              <p className="sub text-xs text-slate-500">
+                {d.warehouse.address}
+              </p>
             )}
             {d.warehouse.phone && (
-              <p className="sub text-xs text-slate-500">Утас: {d.warehouse.phone}</p>
+              <p className="sub text-xs text-slate-500">
+                Утас: {d.warehouse.phone}
+              </p>
             )}
           </div>
           <div className="info-box rounded-lg border border-slate-200 p-3">
@@ -1731,7 +2079,9 @@ function PadaanView({
               {d.request.organization.name}
             </p>
             {d.request.deliveryAddress && (
-              <p className="sub text-xs text-slate-500">{d.request.deliveryAddress}</p>
+              <p className="sub text-xs text-slate-500">
+                {d.request.deliveryAddress}
+              </p>
             )}
             {d.request.deliveryPhone && (
               <p className="sub text-xs text-slate-500">
@@ -1747,7 +2097,9 @@ function PadaanView({
               <p className="value mt-1 text-sm font-semibold text-slate-800">
                 {d.driverName}
               </p>
-              <p className="sub text-xs text-slate-500">Утас: {d.driverPhone}</p>
+              <p className="sub text-xs text-slate-500">
+                Утас: {d.driverPhone}
+              </p>
               {d.vehicleNumber && (
                 <p className="sub text-xs text-slate-500">
                   Тээврийн хэрэгсэл: {d.vehicleNumber}
@@ -1778,10 +2130,18 @@ function PadaanView({
               <th className="border border-slate-300 px-3 py-2 text-left">
                 Бүтээгдэхүүний нэр
               </th>
-              <th className="border border-slate-300 px-3 py-2 text-left">SKU</th>
-              <th className="border border-slate-300 px-3 py-2 text-right">Тоо ширхэг</th>
-              <th className="border border-slate-300 px-3 py-2 text-right">Нэгж үнэ</th>
-              <th className="border border-slate-300 px-3 py-2 text-right">Нийт дүн</th>
+              <th className="border border-slate-300 px-3 py-2 text-left">
+                SKU
+              </th>
+              <th className="border border-slate-300 px-3 py-2 text-right">
+                Тоо ширхэг
+              </th>
+              <th className="border border-slate-300 px-3 py-2 text-right">
+                Нэгж үнэ
+              </th>
+              <th className="border border-slate-300 px-3 py-2 text-right">
+                Нийт дүн
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -1789,7 +2149,9 @@ function PadaanView({
               const qty = item.approvedQuantity || item.quantity;
               return (
                 <tr key={item.id}>
-                  <td className="border border-slate-300 px-3 py-2">{idx + 1}</td>
+                  <td className="border border-slate-300 px-3 py-2">
+                    {idx + 1}
+                  </td>
                   <td className="border border-slate-300 px-3 py-2 font-medium">
                     {item.product.name}
                   </td>
@@ -1811,10 +2173,15 @@ function PadaanView({
           </tbody>
           <tfoot>
             <tr className="total-row bg-slate-50 font-bold">
-              <td colSpan={3} className="border border-slate-300 px-3 py-2 text-right">
+              <td
+                colSpan={3}
+                className="border border-slate-300 px-3 py-2 text-right"
+              >
                 Нийт:
               </td>
-              <td className="border border-slate-300 px-3 py-2 text-right">{totalQty}</td>
+              <td className="border border-slate-300 px-3 py-2 text-right">
+                {totalQty}
+              </td>
               <td className="border border-slate-300 px-3 py-2"></td>
               <td className="border border-slate-300 px-3 py-2 text-right">
                 ₮{totalAmt.toLocaleString()}
@@ -1832,27 +2199,44 @@ function PadaanView({
         {/* Returns */}
         {padaanReturns.length > 0 && (
           <div className="mt-6">
-            <h3 className="mb-2 text-sm font-bold text-orange-700">БУЦААГДСАН БАРАА</h3>
+            <h3 className="mb-2 text-sm font-bold text-orange-700">
+              БУЦААГДСАН БАРАА
+            </h3>
             {padaanReturns.map((ret) => (
               <div key={ret.id} className="mb-3">
                 <p className="text-xs text-slate-500">
-                  {ret.returnNumber} • {new Date(ret.approvedAt || ret.createdAt).toLocaleDateString("mn-MN")}
+                  {ret.returnNumber} •{" "}
+                  {new Date(ret.approvedAt || ret.createdAt).toLocaleDateString(
+                    "mn-MN",
+                  )}
                   {ret.reason && ` • Шалтгаан: ${ret.reason}`}
                 </p>
                 <table className="mt-1 w-full border-collapse text-sm">
                   <thead>
                     <tr className="bg-orange-50">
-                      <th className="border border-slate-300 px-3 py-1 text-left">Бүтээгдэхүүн</th>
-                      <th className="border border-slate-300 px-3 py-1 text-right">Тоо</th>
-                      <th className="border border-slate-300 px-3 py-1 text-left">Шалтгаан</th>
+                      <th className="border border-slate-300 px-3 py-1 text-left">
+                        Бүтээгдэхүүн
+                      </th>
+                      <th className="border border-slate-300 px-3 py-1 text-right">
+                        Тоо
+                      </th>
+                      <th className="border border-slate-300 px-3 py-1 text-left">
+                        Шалтгаан
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {ret.items.map((item) => (
                       <tr key={item.id}>
-                        <td className="border border-slate-300 px-3 py-1">{item.product.name}</td>
-                        <td className="border border-slate-300 px-3 py-1 text-right font-bold">{item.quantity}</td>
-                        <td className="border border-slate-300 px-3 py-1 text-slate-500">{item.reason || "—"}</td>
+                        <td className="border border-slate-300 px-3 py-1">
+                          {item.product.name}
+                        </td>
+                        <td className="border border-slate-300 px-3 py-1 text-right font-bold">
+                          {item.quantity}
+                        </td>
+                        <td className="border border-slate-300 px-3 py-1 text-slate-500">
+                          {item.reason || "—"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

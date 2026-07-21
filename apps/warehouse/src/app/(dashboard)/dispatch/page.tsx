@@ -53,12 +53,7 @@ export default function DispatchPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
-        let url = `${API}/warehouses`;
-        if (user.organizationId) {
-          url = `${API}/warehouses/organization/${user.organizationId}`;
-        }
-        const res = await wmsFetch(url);
+        const res = await wmsFetch(`${API}/warehouses`);
         if (res.ok) {
           const data = await res.json();
           const list = Array.isArray(data) ? data : data.warehouses || [];
@@ -129,7 +124,9 @@ export default function DispatchPage() {
   const updateQuantity = (productId: string, qty: number) => {
     if (qty < 1) return;
     setItems(
-      items.map((i) => (i.productId === productId ? { ...i, quantity: qty } : i)),
+      items.map((i) =>
+        i.productId === productId ? { ...i, quantity: qty } : i,
+      ),
     );
   };
 

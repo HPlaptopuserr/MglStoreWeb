@@ -104,7 +104,8 @@ export default function ReceivePage() {
 
   // New product modal
   const [showNewProduct, setShowNewProduct] = useState(false);
-  const [productForm, setProductForm] = useState<NewProductForm>(emptyProductForm);
+  const [productForm, setProductForm] =
+    useState<NewProductForm>(emptyProductForm);
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [productError, setProductError] = useState("");
 
@@ -129,19 +130,9 @@ export default function ReceivePage() {
       try {
         const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
         if (user.organizationName) setOrganizationName(user.organizationName);
-        let url = `${API}/warehouses`;
-        if (user.organizationId) {
-          url = `${API}/warehouses/organization/${user.organizationId}`;
-        }
-        let res = await wmsFetch(url);
-        let data = res.ok ? await res.json() : null;
-        let list = Array.isArray(data) ? data : data?.warehouses || [];
-
-        if (user.organizationId && list.length === 0) {
-          res = await wmsFetch(`${API}/warehouses`);
-          data = res.ok ? await res.json() : null;
-          list = Array.isArray(data) ? data : data?.warehouses || [];
-        }
+        const res = await wmsFetch(`${API}/warehouses`);
+        const data = res.ok ? await res.json() : null;
+        const list = Array.isArray(data) ? data : data?.warehouses || [];
 
         if (res.ok) {
           setWarehouses(list);
@@ -149,7 +140,10 @@ export default function ReceivePage() {
           // Try to get org name from warehouse data if not in user
           if (!user.organizationName && list.length > 0) {
             const wh = list[0];
-            const orgName = wh.organizations?.[0]?.organization?.name || wh.organizationName || "";
+            const orgName =
+              wh.organizations?.[0]?.organization?.name ||
+              wh.organizationName ||
+              "";
             if (orgName) setOrganizationName(orgName);
           }
         }
@@ -169,7 +163,9 @@ export default function ReceivePage() {
           const data = await res.json();
           setCategories(Array.isArray(data) ? data : []);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     };
     loadCategories();
   }, []);
@@ -221,7 +217,9 @@ export default function ReceivePage() {
   const updateQuantity = (productId: string, qty: number) => {
     if (qty < 1) return;
     setItems(
-      items.map((i) => (i.productId === productId ? { ...i, quantity: qty } : i)),
+      items.map((i) =>
+        i.productId === productId ? { ...i, quantity: qty } : i,
+      ),
     );
   };
 
@@ -337,7 +335,9 @@ export default function ReceivePage() {
             barcode: productForm.barcode.trim() || null,
             unit: productForm.unit.trim() || null,
             price: parseFloat(productForm.price),
-            costPrice: productForm.costPrice ? parseFloat(productForm.costPrice) : null,
+            costPrice: productForm.costPrice
+              ? parseFloat(productForm.costPrice)
+              : null,
             businessCategoryId: productForm.businessCategoryId || null,
             images: productForm.images,
             quantity: parseInt(productForm.quantity) || 0,
@@ -394,19 +394,16 @@ export default function ReceivePage() {
       const existingItems = items.filter((i) => !i.isNew);
 
       for (const item of existingItems) {
-        await wmsFetch(
-          `${API}/warehouses/${selectedWarehouseId}/inventory`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              productId: item.productId,
-              quantity: item.quantity,
-              note: supplier
-                ? `Нийлүүлэгч: ${supplier}. ${note}`
-                : note || "Бараа хүлээн авалт",
-            }),
-          },
-        );
+        await wmsFetch(`${API}/warehouses/${selectedWarehouseId}/inventory`, {
+          method: "POST",
+          body: JSON.stringify({
+            productId: item.productId,
+            quantity: item.quantity,
+            note: supplier
+              ? `Нийлүүлэгч: ${supplier}. ${note}`
+              : note || "Бараа хүлээн авалт",
+          }),
+        });
       }
 
       setSaved(true);
@@ -535,8 +532,13 @@ export default function ReceivePage() {
                       <div>
                         <p className="font-medium text-slate-900">{p.name}</p>
                         <p className="text-xs text-slate-500">
-                          {p.sku || p.barcode || "SKU байхгүй"} · {Number(p.price).toLocaleString()}₮
-                          {typeof p.stock === "number" && <span className="ml-1 text-slate-400">· Үлдэгдэл: {p.stock}</span>}
+                          {p.sku || p.barcode || "SKU байхгүй"} ·{" "}
+                          {Number(p.price).toLocaleString()}₮
+                          {typeof p.stock === "number" && (
+                            <span className="ml-1 text-slate-400">
+                              · Үлдэгдэл: {p.stock}
+                            </span>
+                          )}
                         </p>
                       </div>
                       {items.some((i) => i.productId === p.id) ? (
@@ -555,7 +557,8 @@ export default function ReceivePage() {
               <div className="rounded-lg border border-dashed border-slate-200 px-4 py-10 text-center">
                 <PackageCheck className="mx-auto h-8 w-8 text-slate-300" />
                 <p className="mt-2 text-sm text-slate-400">
-                  Дээрх хайлтаар бараа нэмэх эсвэл &quot;Шинэ бараа үүсгэх&quot; товч дарна уу
+                  Дээрх хайлтаар бараа нэмэх эсвэл &quot;Шинэ бараа үүсгэх&quot;
+                  товч дарна уу
                 </p>
               </div>
             ) : (
@@ -724,9 +727,15 @@ export default function ReceivePage() {
           <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h2 className="text-lg font-bold text-slate-900">Шинэ бараа бүртгэх</h2>
+              <h2 className="text-lg font-bold text-slate-900">
+                Шинэ бараа бүртгэх
+              </h2>
               <button
-                onClick={() => { setShowNewProduct(false); setProductForm(emptyProductForm); setProductError(""); }}
+                onClick={() => {
+                  setShowNewProduct(false);
+                  setProductForm(emptyProductForm);
+                  setProductError("");
+                }}
                 className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
                 <X className="h-5 w-5" />
@@ -736,7 +745,9 @@ export default function ReceivePage() {
             {/* Body - scrollable */}
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
               {productError && (
-                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{productError}</div>
+                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+                  {productError}
+                </div>
               )}
 
               {/* Name */}
@@ -746,7 +757,9 @@ export default function ReceivePage() {
                 </label>
                 <input
                   value={productForm.name}
-                  onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                  onChange={(e) =>
+                    setProductForm({ ...productForm, name: e.target.value })
+                  }
                   placeholder="Жишээ: Цагаан будаа 25кг"
                   className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
@@ -798,7 +811,9 @@ export default function ReceivePage() {
                 </label>
                 <input
                   value={productForm.barcode}
-                  onChange={(e) => setProductForm({ ...productForm, barcode: e.target.value })}
+                  onChange={(e) =>
+                    setProductForm({ ...productForm, barcode: e.target.value })
+                  }
                   placeholder="Баркод уншуулах эсвэл гараар оруулна уу"
                   className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm font-mono outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
@@ -815,7 +830,9 @@ export default function ReceivePage() {
                 <div className="relative">
                   <select
                     value={productForm.unit}
-                    onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })}
+                    onChange={(e) =>
+                      setProductForm({ ...productForm, unit: e.target.value })
+                    }
                     className="h-11 w-full appearance-none rounded-lg border border-slate-300 bg-white px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   >
                     <option value="">— Сонгох —</option>
@@ -840,10 +857,17 @@ export default function ReceivePage() {
 
               {/* Description */}
               <div>
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700">Тайлбар</label>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Тайлбар
+                </label>
                 <textarea
                   value={productForm.description}
-                  onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                  onChange={(e) =>
+                    setProductForm({
+                      ...productForm,
+                      description: e.target.value,
+                    })
+                  }
                   placeholder="Барааны дэлгэрэнгүй тайлбар (заавал биш)"
                   rows={2}
                   className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -859,7 +883,12 @@ export default function ReceivePage() {
                   <input
                     type="number"
                     value={productForm.costPrice}
-                    onChange={(e) => setProductForm({ ...productForm, costPrice: e.target.value })}
+                    onChange={(e) =>
+                      setProductForm({
+                        ...productForm,
+                        costPrice: e.target.value,
+                      })
+                    }
                     placeholder="0"
                     className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
@@ -871,7 +900,9 @@ export default function ReceivePage() {
                   <input
                     type="number"
                     value={productForm.price}
-                    onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+                    onChange={(e) =>
+                      setProductForm({ ...productForm, price: e.target.value })
+                    }
                     placeholder="0"
                     className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
@@ -905,15 +936,20 @@ export default function ReceivePage() {
                       className="h-9 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
                     >
                       <option value="">Эцэг ангилал (заавал биш)</option>
-                      {categories.filter((c) => c.level < 2).map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {"—".repeat(c.level)} {c.name}
-                        </option>
-                      ))}
+                      {categories
+                        .filter((c) => c.level < 2)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {"—".repeat(c.level)} {c.name}
+                          </option>
+                        ))}
                     </select>
                     <div className="flex justify-end gap-2">
                       <button
-                        onClick={() => { setShowNewCategory(false); setNewCategoryName(""); }}
+                        onClick={() => {
+                          setShowNewCategory(false);
+                          setNewCategoryName("");
+                        }}
                         className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
                       >
                         Болих
@@ -923,7 +959,9 @@ export default function ReceivePage() {
                         disabled={creatingCategory || !newCategoryName.trim()}
                         className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                       >
-                        {creatingCategory && <Loader2 className="h-3 w-3 animate-spin" />}
+                        {creatingCategory && (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        )}
                         Үүсгэх
                       </button>
                     </div>
@@ -944,13 +982,22 @@ export default function ReceivePage() {
                 {/* Category list */}
                 <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-50">
                   {categories
-                    .filter((c) => !categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                    .filter(
+                      (c) =>
+                        !categorySearch ||
+                        c.name
+                          .toLowerCase()
+                          .includes(categorySearch.toLowerCase()),
+                    )
                     .map((c) => (
                       <button
                         key={c.id}
                         type="button"
                         onClick={() => {
-                          setProductForm({ ...productForm, businessCategoryId: c.id });
+                          setProductForm({
+                            ...productForm,
+                            businessCategoryId: c.id,
+                          });
                           setCategorySearch("");
                         }}
                         className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-blue-50 ${
@@ -959,20 +1006,32 @@ export default function ReceivePage() {
                             : "text-slate-700"
                         }`}
                       >
-                        <span>{"—".repeat(c.level)} {c.name}</span>
+                        <span>
+                          {"—".repeat(c.level)} {c.name}
+                        </span>
                         {productForm.businessCategoryId === c.id && (
                           <Check className="h-3.5 w-3.5 text-blue-600" />
                         )}
                       </button>
                     ))}
-                  {categories.filter((c) => !categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase())).length === 0 && (
-                    <div className="px-3 py-3 text-center text-xs text-slate-400">Ангилал олдсонгүй</div>
+                  {categories.filter(
+                    (c) =>
+                      !categorySearch ||
+                      c.name
+                        .toLowerCase()
+                        .includes(categorySearch.toLowerCase()),
+                  ).length === 0 && (
+                    <div className="px-3 py-3 text-center text-xs text-slate-400">
+                      Ангилал олдсонгүй
+                    </div>
                   )}
                 </div>
                 {productForm.businessCategoryId && (
                   <button
                     type="button"
-                    onClick={() => setProductForm({ ...productForm, businessCategoryId: "" })}
+                    onClick={() =>
+                      setProductForm({ ...productForm, businessCategoryId: "" })
+                    }
                     className="mt-1 text-xs text-red-500 hover:text-red-600"
                   >
                     Ангилал цуцлах
@@ -989,8 +1048,15 @@ export default function ReceivePage() {
 
                 <div className="flex flex-wrap gap-3">
                   {productForm.images.map((img, idx) => (
-                    <div key={idx} className="group relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200">
-                      <img src={img} alt="" className="h-full w-full object-cover" />
+                    <div
+                      key={idx}
+                      className="group relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200"
+                    >
+                      <img
+                        src={img}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
                       <button
                         onClick={() => removeImage(idx)}
                         className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white opacity-0 transition-opacity group-hover:opacity-100"
@@ -1030,38 +1096,63 @@ export default function ReceivePage() {
 
               {/* Inventory info */}
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-4">
-                <h3 className="text-sm font-bold text-slate-700">Агуулахын мэдээлэл</h3>
+                <h3 className="text-sm font-bold text-slate-700">
+                  Агуулахын мэдээлэл
+                </h3>
 
                 {/* Previous stock display (informational) */}
                 <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-amber-700">Өмнөх үлдэгдэл</span>
+                  <span className="text-xs font-semibold text-amber-700">
+                    Өмнөх үлдэгдэл
+                  </span>
                   <span className="text-sm font-bold text-amber-800">0 ш</span>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-600">Тоо ширхэг</label>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">
+                      Тоо ширхэг
+                    </label>
                     <input
                       type="number"
                       value={productForm.quantity}
-                      onChange={(e) => setProductForm({ ...productForm, quantity: e.target.value })}
+                      onChange={(e) =>
+                        setProductForm({
+                          ...productForm,
+                          quantity: e.target.value,
+                        })
+                      }
                       className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-600">Хамгийн бага</label>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">
+                      Хамгийн бага
+                    </label>
                     <input
                       type="number"
                       value={productForm.minQuantity}
-                      onChange={(e) => setProductForm({ ...productForm, minQuantity: e.target.value })}
+                      onChange={(e) =>
+                        setProductForm({
+                          ...productForm,
+                          minQuantity: e.target.value,
+                        })
+                      }
                       className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-600">Байрлал</label>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">
+                      Байрлал
+                    </label>
                     <input
                       value={productForm.location}
-                      onChange={(e) => setProductForm({ ...productForm, location: e.target.value })}
+                      onChange={(e) =>
+                        setProductForm({
+                          ...productForm,
+                          location: e.target.value,
+                        })
+                      }
                       placeholder="A-1-3"
                       className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
                     />
@@ -1069,29 +1160,47 @@ export default function ReceivePage() {
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-600">Нэхэмжлэлийн дугаар</label>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">
+                      Нэхэмжлэлийн дугаар
+                    </label>
                     <input
                       value={productForm.batchNumber}
-                      onChange={(e) => setProductForm({ ...productForm, batchNumber: e.target.value })}
+                      onChange={(e) =>
+                        setProductForm({
+                          ...productForm,
+                          batchNumber: e.target.value,
+                        })
+                      }
                       placeholder="INV-001"
                       className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-600">Дуусах хугацаа</label>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">
+                      Дуусах хугацаа
+                    </label>
                     <input
                       type="date"
                       value={productForm.expiryDate}
-                      onChange={(e) => setProductForm({ ...productForm, expiryDate: e.target.value })}
+                      onChange={(e) =>
+                        setProductForm({
+                          ...productForm,
+                          expiryDate: e.target.value,
+                        })
+                      }
                       className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-600">Тэмдэглэл</label>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">
+                    Тэмдэглэл
+                  </label>
                   <input
                     value={productForm.note}
-                    onChange={(e) => setProductForm({ ...productForm, note: e.target.value })}
+                    onChange={(e) =>
+                      setProductForm({ ...productForm, note: e.target.value })
+                    }
                     placeholder="Нэмэлт тайлбар"
                     className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
                   />
@@ -1102,17 +1211,27 @@ export default function ReceivePage() {
             {/* Footer */}
             <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
               <button
-                onClick={() => { setShowNewProduct(false); setProductForm(emptyProductForm); setProductError(""); }}
+                onClick={() => {
+                  setShowNewProduct(false);
+                  setProductForm(emptyProductForm);
+                  setProductError("");
+                }}
                 className="rounded-xl px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
               >
                 Болих
               </button>
               <button
                 onClick={handleCreateProduct}
-                disabled={creatingProduct || !productForm.name.trim() || !productForm.price}
+                disabled={
+                  creatingProduct ||
+                  !productForm.name.trim() ||
+                  !productForm.price
+                }
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {creatingProduct && <Loader2 className="h-4 w-4 animate-spin" />}
+                {creatingProduct && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
                 <PackageCheck className="h-4 w-4" />
                 Бараа үүсгэх
               </button>
