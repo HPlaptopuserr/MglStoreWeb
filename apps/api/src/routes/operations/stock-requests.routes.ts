@@ -1,4 +1,4 @@
-import { Router, type Router as ExpressRouter } from "express";
+import { Router, type Request, type Router as ExpressRouter } from "express";
 import {
   prisma,
   StockRequestStatus,
@@ -14,15 +14,57 @@ import {
   adjustStock,
   syncProductStock,
 } from "../../services/inventory.service";
-import { requireAuth } from "../../middleware/auth";
+import {
+  requireAuth,
+  requirePlatformPermission,
+  type AuthPayload,
+} from "../../middleware/auth";
 import {
   assertOrgPermission,
   requireOrgPermission,
 } from "../../services/permission.service";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import { buildProcurementAdvice } from "../../services/procurement-ai.service";
+import {
+  canPayApprovedStockRequest,
+  isPaymentMethod,
+  validatePaymentConfirmation,
+} from "../../services/stock-payment.policy";
+import {
+  hasWarehouseAccess,
+  type WarehouseActor,
+} from "../../services/warehouse-access.service";
+import stockReturnRoutes from "./stock-returns.routes";
 
 const router: ExpressRouter = Router();
+const DISPATCH_STATUSES = [
+  "PENDING",
+  "CONFIRMED",
+  "DISPATCHED",
+  "DELIVERED",
+  "CANCELLED",
+] as const;
+
+function getActor(req: Request) {
+  return (req as Request & { user?: AuthPayload }).user;
+}
+
+async function assertWarehouseAccess(
+  req: Parameters<typeof requireAuth>[0],
+  res: Parameters<typeof requireAuth>[1],
+  warehouseId: string,
+) {
+  const actor = (
+    req as typeof req & {
+      user?: WarehouseActor;
+    }
+  ).user;
+  if (!(await hasWarehouseAccess(actor, warehouseId))) {
+    res.status(403).json({ message: "Энэ агуулахад хандах эрхгүй байна" });
+    return false;
+  }
+  return true;
+}
 
 router.post(
   "/stock-requests/procurement/ai-recommendations",
@@ -76,10 +118,6 @@ router.post(
     return res.json(await buildProcurementAdvice(normalized));
   },
 );
-
-const canPayApprovedStockRequest = (status: StockRequestStatus) =>
-  status === StockRequestStatus.APPROVED ||
-  status === StockRequestStatus.PROCESSING;
 
 const getOutstandingStockPayments = async (
   organizationId: string,
@@ -247,10 +285,10 @@ const transferStockToVendor = async (
 router.get("/stock-requests", requireAuth, async (req, res) => {
   try {
     const { organizationId, status, warehouseId } = req.query;
-    const actor = (req as any).user as {
-      userId: string;
-      role: string;
-    };
+    const actor = getActor(req);
+    if (!actor) {
+      return res.status(401).json({ message: "Нэвтрээгүй байна" });
+    }
     const targetOrganizationId =
       typeof organizationId === "string" ? organizationId : undefined;
 
@@ -473,7 +511,10 @@ router.post(
         });
       }
 
-      const requestedById = (req as any).user.userId as string;
+      const requestedById = getActor(req)?.userId;
+      if (!requestedById) {
+        return res.status(401).json({ message: "Нэвтрээгүй байна" });
+      }
       const normalizedItems = items.map(
         (item: {
           productId?: unknown;
@@ -1023,7 +1064,7 @@ router.get(
       const { warehouseId } = req.params;
       const organizationId =
         (req.query.organizationId as string | undefined) ||
-        ((req as any).user.organizationId as string | undefined);
+        getActor(req)?.organizationId;
       if (!organizationId) {
         return res.status(400).json({ message: "organizationId шаардлагатай" });
       }
@@ -1664,79 +1705,84 @@ router.get(
 );
 
 // Get all payments (Admin)
-router.get("/stock-requests/payments", async (req, res) => {
-  try {
-    const { status, organizationId } = req.query;
+router.get(
+  "/stock-requests/payments",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_STOCK),
+  async (req, res) => {
+    try {
+      const { status, organizationId } = req.query;
 
-    const where: any = {};
-    if (status) {
-      where.status = status as PaymentStatus;
-    }
-    if (organizationId) {
-      where.organizationId = organizationId as string;
-    }
+      const where: Prisma.StockRequestPaymentWhereInput = {};
+      if (status) {
+        where.status = status as PaymentStatus;
+      }
+      if (organizationId) {
+        where.organizationId = organizationId as string;
+      }
 
-    const payments = await prisma.stockRequestPayment.findMany({
-      where,
-      include: {
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            logoUrl: true,
-          },
-        },
-        request: {
-          select: {
-            id: true,
-            requestNumber: true,
-            status: true,
-            requestedAt: true,
-            warehouse: {
-              select: {
-                id: true,
-                name: true,
-              },
+      const payments = await prisma.stockRequestPayment.findMany({
+        where,
+        include: {
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              logoUrl: true,
             },
-            items: {
-              include: {
-                product: {
-                  select: {
-                    id: true,
-                    name: true,
-                    sku: true,
-                    price: true,
+          },
+          request: {
+            select: {
+              id: true,
+              requestNumber: true,
+              status: true,
+              requestedAt: true,
+              warehouse: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              items: {
+                include: {
+                  product: {
+                    select: {
+                      id: true,
+                      name: true,
+                      sku: true,
+                      price: true,
+                    },
                   },
                 },
               },
             },
           },
-        },
-        confirmedBy: {
-          select: {
-            id: true,
-            email: true,
-            profile: {
-              select: { fullName: true },
+          confirmedBy: {
+            select: {
+              id: true,
+              email: true,
+              profile: {
+                select: { fullName: true },
+              },
             },
           },
         },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+        orderBy: { createdAt: "desc" },
+      });
 
-    res.json(payments);
-  } catch (error) {
-    console.error("get all payments error", error);
-    res.status(500).json({
-      message: "Төлбөрүүд авахад алдаа гарлаа",
-    });
-  }
-});
+      res.json(payments);
+    } catch (error) {
+      console.error("get all payments error", error);
+      res.status(500).json({
+        message: "Төлбөрүүд авахад алдаа гарлаа",
+      });
+    }
+  },
+);
 
 // Get single payment
-router.get("/stock-requests/payments/:id", async (req, res) => {
+router.get("/stock-requests/payments/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1800,6 +1846,14 @@ router.get("/stock-requests/payments/:id", async (req, res) => {
       return res.status(404).json({ message: "Төлбөр олдсонгүй" });
     }
 
+    const permissions = await assertOrgPermission(
+      req,
+      res,
+      payment.organizationId,
+      Permission.VIEW_ORG_DASHBOARD,
+    );
+    if (!permissions) return;
+
     res.json(payment);
   } catch (error) {
     console.error("get payment error", error);
@@ -1810,55 +1864,76 @@ router.get("/stock-requests/payments/:id", async (req, res) => {
 });
 
 // Confirm payment (Admin marks as paid)
-router.patch("/stock-requests/payments/:id/confirm", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { confirmedById, transactionId, paymentMethod, paidAmount, note } =
-      req.body;
+router.patch(
+  "/stock-requests/payments/:id/confirm",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_STOCK),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { transactionId, paymentMethod, paidAmount, note } = req.body;
+      const actor = (req as typeof req & { user?: { userId?: string } }).user;
 
-    const payment = await prisma.stockRequestPayment.findUnique({
-      where: { id },
-    });
+      const payment = await prisma.stockRequestPayment.findUnique({
+        where: { id },
+      });
 
-    if (!payment) {
-      return res.status(404).json({ message: "Төлбөр олдсонгүй" });
-    }
+      if (!payment) {
+        return res.status(404).json({ message: "Төлбөр олдсонгүй" });
+      }
 
-    if (payment.status === PaymentStatus.PAID) {
-      return res.status(400).json({
-        message: "Энэ төлбөр аль хэдийн төлөгдсөн байна",
+      if (payment.status === PaymentStatus.PAID) {
+        return res.status(400).json({
+          message: "Энэ төлбөр аль хэдийн төлөгдсөн байна",
+        });
+      }
+
+      if (paymentMethod && !isPaymentMethod(paymentMethod)) {
+        return res
+          .status(400)
+          .json({ message: "Төлбөрийн хэлбэр буруу байна" });
+      }
+      const confirmation = validatePaymentConfirmation({
+        paidAmount,
+        currentPaidAmount: payment.paidAmount,
+        totalAmount: payment.totalAmount,
+      });
+      if (!confirmation.ok) {
+        return res.status(400).json({ message: confirmation.message });
+      }
+
+      const updated = await prisma.stockRequestPayment.update({
+        where: { id },
+        data: {
+          status: confirmation.fullyPaid
+            ? PaymentStatus.PAID
+            : PaymentStatus.PENDING,
+          paidAmount: confirmation.paidAmount,
+          paidAt: confirmation.fullyPaid ? new Date() : null,
+          paidBy: note || null,
+          transactionId: transactionId || null,
+          paymentMethod: paymentMethod || null,
+          confirmedById: actor?.userId || null,
+        },
+        include: {
+          organization: {
+            select: { id: true, name: true },
+          },
+          request: {
+            select: { id: true, requestNumber: true },
+          },
+        },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("confirm payment error", error);
+      res.status(500).json({
+        message: "Төлбөр баталгаажуулахад алдаа гарлаа",
       });
     }
-
-    const updated = await prisma.stockRequestPayment.update({
-      where: { id },
-      data: {
-        status: PaymentStatus.PAID,
-        paidAmount: paidAmount || payment.totalAmount,
-        paidAt: new Date(),
-        paidBy: note || null,
-        transactionId: transactionId || null,
-        paymentMethod: paymentMethod || null,
-        confirmedById: confirmedById || null,
-      },
-      include: {
-        organization: {
-          select: { id: true, name: true },
-        },
-        request: {
-          select: { id: true, requestNumber: true },
-        },
-      },
-    });
-
-    res.json(updated);
-  } catch (error) {
-    console.error("confirm payment error", error);
-    res.status(500).json({
-      message: "Төлбөр баталгаажуулахад алдаа гарлаа",
-    });
-  }
-});
+  },
+);
 
 // Vendor submits payment (self-service — records method & marks as submitted)
 router.patch(
@@ -1868,7 +1943,6 @@ router.patch(
     try {
       const id = req.params.id as string;
       const { paymentMethod, transactionId, note } = req.body;
-      const userId = (req as any).user?.id || (req as any).userId;
 
       const payment = await prisma.stockRequestPayment.findUnique({
         where: { id },
@@ -1912,17 +1986,19 @@ router.patch(
       if (!paymentMethod) {
         return res.status(400).json({ message: "Төлбөрийн хэлбэр сонгоно уу" });
       }
+      if (!isPaymentMethod(paymentMethod)) {
+        return res
+          .status(400)
+          .json({ message: "Төлбөрийн хэлбэр буруу байна" });
+      }
 
       const updated = await prisma.stockRequestPayment.update({
         where: { id },
         data: {
-          status: PaymentStatus.PAID,
-          paidAmount: payment.totalAmount,
-          paidAt: new Date(),
-          paymentMethod: paymentMethod as PaymentMethod,
+          status: PaymentStatus.PENDING,
+          paymentMethod,
           transactionId: (transactionId as string) || null,
           paidBy: (note as string) || null,
-          confirmedById: userId || null,
         },
         include: {
           organization: { select: { id: true, name: true } },
@@ -1939,39 +2015,44 @@ router.patch(
 );
 
 // Cancel payment (Admin)
-router.patch("/stock-requests/payments/:id/cancel", async (req, res) => {
-  try {
-    const id = req.params.id as string;
+router.patch(
+  "/stock-requests/payments/:id/cancel",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_STOCK),
+  async (req, res) => {
+    try {
+      const id = req.params.id as string;
 
-    const payment = await prisma.stockRequestPayment.findUnique({
-      where: { id },
-    });
+      const payment = await prisma.stockRequestPayment.findUnique({
+        where: { id },
+      });
 
-    if (!payment) {
-      return res.status(404).json({ message: "Төлбөр олдсонгүй" });
-    }
+      if (!payment) {
+        return res.status(404).json({ message: "Төлбөр олдсонгүй" });
+      }
 
-    if (payment.status === PaymentStatus.PAID) {
-      return res.status(400).json({
-        message: "Төлөгдсөн төлбөрийг цуцлах боломжгүй",
+      if (payment.status === PaymentStatus.PAID) {
+        return res.status(400).json({
+          message: "Төлөгдсөн төлбөрийг цуцлах боломжгүй",
+        });
+      }
+
+      const updated = await prisma.stockRequestPayment.update({
+        where: { id },
+        data: {
+          status: PaymentStatus.CANCELLED,
+        },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("cancel payment error", error);
+      res.status(500).json({
+        message: "Төлбөр цуцлахад алдаа гарлаа",
       });
     }
-
-    const updated = await prisma.stockRequestPayment.update({
-      where: { id },
-      data: {
-        status: PaymentStatus.CANCELLED,
-      },
-    });
-
-    res.json(updated);
-  } catch (error) {
-    console.error("cancel payment error", error);
-    res.status(500).json({
-      message: "Төлбөр цуцлахад алдаа гарлаа",
-    });
-  }
-});
+  },
+);
 
 // Get unpaid payments count for organization (for UI indicators)
 router.get(
@@ -2010,14 +2091,19 @@ router.get(
 // Get dispatches for a warehouse
 router.get(
   "/stock-requests/warehouse/:warehouseId/dispatches",
+  requireAuth,
   async (req, res) => {
     try {
       const { warehouseId } = req.params;
       const { status } = req.query;
+      if (!(await assertWarehouseAccess(req, res, warehouseId))) return;
 
-      const where: any = { warehouseId };
-      if (status) {
-        where.status = status;
+      const where: Prisma.StockDispatchWhereInput = { warehouseId };
+      if (
+        typeof status === "string" &&
+        DISPATCH_STATUSES.includes(status as (typeof DISPATCH_STATUSES)[number])
+      ) {
+        where.status = status as (typeof DISPATCH_STATUSES)[number];
       }
 
       const dispatches = await prisma.stockDispatch.findMany({
@@ -2071,7 +2157,7 @@ router.get(
 );
 
 // Get single dispatch detail
-router.get("/stock-requests/dispatches/:id", async (req, res) => {
+router.get("/stock-requests/dispatches/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -2125,6 +2211,7 @@ router.get("/stock-requests/dispatches/:id", async (req, res) => {
     if (!dispatch) {
       return res.status(404).json({ message: "Илгээмж олдсонгүй" });
     }
+    if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId))) return;
 
     res.json(dispatch);
   } catch (error) {
@@ -2136,288 +2223,313 @@ router.get("/stock-requests/dispatches/:id", async (req, res) => {
 });
 
 // Confirm dispatch (Warehouse confirms → deducts inventory → CONFIRMED)
-router.patch("/stock-requests/dispatches/:id/confirm", async (req, res) => {
-  try {
-    const { id } = req.params;
+router.patch(
+  "/stock-requests/dispatches/:id/confirm",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
 
-    const dispatch = await prisma.stockDispatch.findUnique({
-      where: { id },
-      include: {
-        request: {
-          include: { items: true },
-        },
-      },
-    });
-
-    if (!dispatch) {
-      return res.status(404).json({ message: "Илгээмж олдсонгүй" });
-    }
-
-    if (dispatch.status !== "PENDING") {
-      return res.status(400).json({
-        message: "Зөвхөн хүлээгдэж буй илгээмжийг баталгаажуулах боломжтой",
-      });
-    }
-
-    const updated = await prisma.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-        // Deduct inventory for each item
-        for (const item of dispatch.request.items) {
-          const quantity = item.approvedQuantity || item.quantity;
-
-          await adjustStock(tx, {
-            productId: item.productId,
-            warehouseId: dispatch.warehouseId,
-            change: -quantity,
-            reason: InventoryReason.TRANSFER_OUT,
-            note: `Dispatch ${dispatch.dispatchNumber} confirmed`,
-            referenceId: dispatch.requestId,
-            referenceType: "STOCK_DISPATCH",
-          });
-        }
-
-        // Update stock request status → PROCESSING
-        await tx.warehouseStockRequest.update({
-          where: { id: dispatch.requestId },
-          data: { status: StockRequestStatus.PROCESSING },
-        });
-
-        // Update dispatch status → CONFIRMED
-        return tx.stockDispatch.update({
-          where: { id },
-          data: { status: "CONFIRMED" },
-          include: {
-            request: {
-              include: {
-                items: {
-                  include: {
-                    product: {
-                      select: { id: true, name: true, sku: true },
-                    },
-                  },
-                },
-                organization: { select: { id: true, name: true } },
-              },
-            },
-            warehouse: { select: { id: true, name: true } },
-          },
-        });
-      },
-    );
-
-    res.json(updated);
-  } catch (error) {
-    console.error("confirm dispatch error", error);
-    res.status(500).json({
-      message: "Илгээмж баталгаажуулахад алдаа гарлаа",
-    });
-  }
-});
-
-// Assign driver & dispatch (CONFIRMED → DISPATCHED)
-router.patch("/stock-requests/dispatches/:id/dispatch", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { driverId, driverName, driverPhone, vehicleNumber, note } = req.body;
-
-    if (!driverName || !driverPhone) {
-      return res.status(400).json({
-        message: "Жолоочийн нэр, утасны дугаар шаардлагатай",
-      });
-    }
-
-    const dispatch = await prisma.stockDispatch.findUnique({
-      where: { id },
-    });
-
-    if (!dispatch) {
-      return res.status(404).json({ message: "Илгээмж олдсонгүй" });
-    }
-
-    if (dispatch.status !== "CONFIRMED") {
-      return res.status(400).json({
-        message: "Зөвхөн баталгаажсан илгээмжийг илгээх боломжтой",
-      });
-    }
-
-    const updated = await prisma.stockDispatch.update({
-      where: { id },
-      data: {
-        status: "DISPATCHED",
-        driverId: driverId || null,
-        driverName,
-        driverPhone,
-        vehicleNumber: vehicleNumber || null,
-        note: note || dispatch.note,
-        dispatchedAt: new Date(),
-      },
-      include: {
-        request: {
-          include: {
-            items: {
-              include: {
-                product: { select: { id: true, name: true, sku: true } },
-              },
-            },
-            organization: { select: { id: true, name: true } },
+      const dispatch = await prisma.stockDispatch.findUnique({
+        where: { id },
+        include: {
+          request: {
+            include: { items: true },
           },
         },
-        warehouse: { select: { id: true, name: true } },
-      },
-    });
-
-    res.json(updated);
-  } catch (error) {
-    console.error("dispatch error", error);
-    res.status(500).json({
-      message: "Илгээмж илгээхэд алдаа гарлаа",
-    });
-  }
-});
-
-// Mark delivered (DISPATCHED → DELIVERED, request → COMPLETED)
-router.patch("/stock-requests/dispatches/:id/deliver", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { note } = req.body;
-
-    const dispatch = await prisma.stockDispatch.findUnique({
-      where: { id },
-    });
-
-    if (!dispatch) {
-      return res.status(404).json({ message: "Илгээмж олдсонгүй" });
-    }
-
-    if (dispatch.status !== "DISPATCHED") {
-      return res.status(400).json({
-        message:
-          "Зөвхөн илгээгдсэн илгээмжийг хүргэгдсэн гэж тэмдэглэх боломжтой",
       });
-    }
 
-    const updated = await prisma.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-        const request = await tx.warehouseStockRequest.findUnique({
-          where: { id: dispatch.requestId },
-          include: { items: true },
+      if (!dispatch) {
+        return res.status(404).json({ message: "Илгээмж олдсонгүй" });
+      }
+      if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId)))
+        return;
+
+      if (dispatch.status !== "PENDING") {
+        return res.status(400).json({
+          message: "Зөвхөн хүлээгдэж буй илгээмжийг баталгаажуулах боломжтой",
         });
-        if (request) {
-          await transferStockToVendor(
-            tx,
-            {
-              organizationId: request.organizationId,
-              requestNumber: request.requestNumber,
-            },
-            request.items,
-          );
-        }
+      }
 
-        await tx.warehouseStockRequest.update({
-          where: { id: dispatch.requestId },
-          data: {
-            status: StockRequestStatus.COMPLETED,
-            completedAt: new Date(),
-          },
-        });
-
-        return tx.stockDispatch.update({
-          where: { id },
-          data: {
-            status: "DELIVERED",
-            deliveredAt: new Date(),
-            note: note || dispatch.note,
-          },
-          include: {
-            request: {
-              include: {
-                items: {
-                  include: {
-                    product: { select: { id: true, name: true, sku: true } },
-                  },
-                },
-                organization: { select: { id: true, name: true } },
-              },
-            },
-            warehouse: { select: { id: true, name: true } },
-          },
-        });
-      },
-    );
-
-    res.json(updated);
-  } catch (error) {
-    console.error("deliver dispatch error", error);
-    res.status(500).json({
-      message: "Хүргэлт тэмдэглэхэд алдаа гарлаа",
-    });
-  }
-});
-
-// Cancel dispatch (PENDING/CONFIRMED → CANCELLED)
-router.patch("/stock-requests/dispatches/:id/cancel", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { note } = req.body;
-
-    const dispatch = await prisma.stockDispatch.findUnique({
-      where: { id },
-      include: { request: { include: { items: true } } },
-    });
-
-    if (!dispatch) {
-      return res.status(404).json({ message: "Илгээмж олдсонгүй" });
-    }
-
-    if (dispatch.status !== "PENDING" && dispatch.status !== "CONFIRMED") {
-      return res.status(400).json({
-        message:
-          "Зөвхөн хүлээгдэж буй эсвэл баталгаажсан илгээмжийг цуцлах боломжтой",
-      });
-    }
-
-    const updated = await prisma.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-        // If was CONFIRMED, reverse the inventory deduction
-        if (dispatch.status === "CONFIRMED") {
+      const updated = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          // Deduct inventory for each item
           for (const item of dispatch.request.items) {
             const quantity = item.approvedQuantity || item.quantity;
+
             await adjustStock(tx, {
               productId: item.productId,
               warehouseId: dispatch.warehouseId,
-              change: quantity,
-              reason: InventoryReason.TRANSFER_IN,
-              note: `Dispatch ${dispatch.dispatchNumber} cancelled - inventory restored`,
+              change: -quantity,
+              reason: InventoryReason.TRANSFER_OUT,
+              note: `Dispatch ${dispatch.dispatchNumber} confirmed`,
               referenceId: dispatch.requestId,
               referenceType: "STOCK_DISPATCH",
             });
           }
-        }
 
-        // Revert request status to APPROVED
-        await tx.warehouseStockRequest.update({
-          where: { id: dispatch.requestId },
-          data: { status: StockRequestStatus.APPROVED },
+          // Update stock request status → PROCESSING
+          await tx.warehouseStockRequest.update({
+            where: { id: dispatch.requestId },
+            data: { status: StockRequestStatus.PROCESSING },
+          });
+
+          // Update dispatch status → CONFIRMED
+          return tx.stockDispatch.update({
+            where: { id },
+            data: { status: "CONFIRMED" },
+            include: {
+              request: {
+                include: {
+                  items: {
+                    include: {
+                      product: {
+                        select: { id: true, name: true, sku: true },
+                      },
+                    },
+                  },
+                  organization: { select: { id: true, name: true } },
+                },
+              },
+              warehouse: { select: { id: true, name: true } },
+            },
+          });
+        },
+      );
+
+      res.json(updated);
+    } catch (error) {
+      console.error("confirm dispatch error", error);
+      res.status(500).json({
+        message: "Илгээмж баталгаажуулахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
+// Assign driver & dispatch (CONFIRMED → DISPATCHED)
+router.patch(
+  "/stock-requests/dispatches/:id/dispatch",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { driverId, driverName, driverPhone, vehicleNumber, note } =
+        req.body;
+
+      if (!driverName || !driverPhone) {
+        return res.status(400).json({
+          message: "Жолоочийн нэр, утасны дугаар шаардлагатай",
         });
+      }
 
-        return tx.stockDispatch.update({
-          where: { id },
-          data: {
-            status: "CANCELLED",
-            note: note || dispatch.note,
+      const dispatch = await prisma.stockDispatch.findUnique({
+        where: { id },
+      });
+
+      if (!dispatch) {
+        return res.status(404).json({ message: "Илгээмж олдсонгүй" });
+      }
+      if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId)))
+        return;
+
+      if (dispatch.status !== "CONFIRMED") {
+        return res.status(400).json({
+          message: "Зөвхөн баталгаажсан илгээмжийг илгээх боломжтой",
+        });
+      }
+
+      const updated = await prisma.stockDispatch.update({
+        where: { id },
+        data: {
+          status: "DISPATCHED",
+          driverId: driverId || null,
+          driverName,
+          driverPhone,
+          vehicleNumber: vehicleNumber || null,
+          note: note || dispatch.note,
+          dispatchedAt: new Date(),
+        },
+        include: {
+          request: {
+            include: {
+              items: {
+                include: {
+                  product: { select: { id: true, name: true, sku: true } },
+                },
+              },
+              organization: { select: { id: true, name: true } },
+            },
           },
-        });
-      },
-    );
+          warehouse: { select: { id: true, name: true } },
+        },
+      });
 
-    res.json(updated);
-  } catch (error) {
-    console.error("cancel dispatch error", error);
-    res.status(500).json({
-      message: "Илгээмж цуцлахад алдаа гарлаа",
-    });
-  }
-});
+      res.json(updated);
+    } catch (error) {
+      console.error("dispatch error", error);
+      res.status(500).json({
+        message: "Илгээмж илгээхэд алдаа гарлаа",
+      });
+    }
+  },
+);
+
+// Mark delivered (DISPATCHED → DELIVERED, request → COMPLETED)
+router.patch(
+  "/stock-requests/dispatches/:id/deliver",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { note } = req.body;
+
+      const dispatch = await prisma.stockDispatch.findUnique({
+        where: { id },
+      });
+
+      if (!dispatch) {
+        return res.status(404).json({ message: "Илгээмж олдсонгүй" });
+      }
+      if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId)))
+        return;
+
+      if (dispatch.status !== "DISPATCHED") {
+        return res.status(400).json({
+          message:
+            "Зөвхөн илгээгдсэн илгээмжийг хүргэгдсэн гэж тэмдэглэх боломжтой",
+        });
+      }
+
+      const updated = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          const request = await tx.warehouseStockRequest.findUnique({
+            where: { id: dispatch.requestId },
+            include: { items: true },
+          });
+          if (request) {
+            await transferStockToVendor(
+              tx,
+              {
+                organizationId: request.organizationId,
+                requestNumber: request.requestNumber,
+              },
+              request.items,
+            );
+          }
+
+          await tx.warehouseStockRequest.update({
+            where: { id: dispatch.requestId },
+            data: {
+              status: StockRequestStatus.COMPLETED,
+              completedAt: new Date(),
+            },
+          });
+
+          return tx.stockDispatch.update({
+            where: { id },
+            data: {
+              status: "DELIVERED",
+              deliveredAt: new Date(),
+              note: note || dispatch.note,
+            },
+            include: {
+              request: {
+                include: {
+                  items: {
+                    include: {
+                      product: { select: { id: true, name: true, sku: true } },
+                    },
+                  },
+                  organization: { select: { id: true, name: true } },
+                },
+              },
+              warehouse: { select: { id: true, name: true } },
+            },
+          });
+        },
+      );
+
+      res.json(updated);
+    } catch (error) {
+      console.error("deliver dispatch error", error);
+      res.status(500).json({
+        message: "Хүргэлт тэмдэглэхэд алдаа гарлаа",
+      });
+    }
+  },
+);
+
+// Cancel dispatch (PENDING/CONFIRMED → CANCELLED)
+router.patch(
+  "/stock-requests/dispatches/:id/cancel",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { note } = req.body;
+
+      const dispatch = await prisma.stockDispatch.findUnique({
+        where: { id },
+        include: { request: { include: { items: true } } },
+      });
+
+      if (!dispatch) {
+        return res.status(404).json({ message: "Илгээмж олдсонгүй" });
+      }
+      if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId)))
+        return;
+
+      if (dispatch.status !== "PENDING" && dispatch.status !== "CONFIRMED") {
+        return res.status(400).json({
+          message:
+            "Зөвхөн хүлээгдэж буй эсвэл баталгаажсан илгээмжийг цуцлах боломжтой",
+        });
+      }
+
+      const updated = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          // If was CONFIRMED, reverse the inventory deduction
+          if (dispatch.status === "CONFIRMED") {
+            for (const item of dispatch.request.items) {
+              const quantity = item.approvedQuantity || item.quantity;
+              await adjustStock(tx, {
+                productId: item.productId,
+                warehouseId: dispatch.warehouseId,
+                change: quantity,
+                reason: InventoryReason.TRANSFER_IN,
+                note: `Dispatch ${dispatch.dispatchNumber} cancelled - inventory restored`,
+                referenceId: dispatch.requestId,
+                referenceType: "STOCK_DISPATCH",
+              });
+            }
+          }
+
+          // Revert request status to APPROVED
+          await tx.warehouseStockRequest.update({
+            where: { id: dispatch.requestId },
+            data: { status: StockRequestStatus.APPROVED },
+          });
+
+          return tx.stockDispatch.update({
+            where: { id },
+            data: {
+              status: "CANCELLED",
+              note: note || dispatch.note,
+            },
+          });
+        },
+      );
+
+      res.json(updated);
+    } catch (error) {
+      console.error("cancel dispatch error", error);
+      res.status(500).json({
+        message: "Илгээмж цуцлахад алдаа гарлаа",
+      });
+    }
+  },
+);
 
 // ==========================================
 // QPAY PAYMENT ENDPOINTS
@@ -2626,7 +2738,7 @@ router.get(
       }
 
       // Payment confirmed — update
-      const userId = (req as any).user?.userId;
+      const userId = getActor(req)?.userId;
       await prisma.stockRequestPayment.update({
         where: { id },
         data: {
@@ -2697,334 +2809,6 @@ router.post("/stock-requests/qpay/callback", async (req, res) => {
   }
 });
 
-// Generate return number  RTN-YYMMDDSSSSS
-const generateReturnNumber = async (): Promise<string> => {
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const prefix = `RTN-${yy}${mm}${dd}`;
-  const count = await prisma.dispatchReturn.count({
-    where: { returnNumber: { startsWith: prefix } },
-  });
-  return `${prefix}${String(count + 1).padStart(4, "0")}`;
-};
-
-// ═══════════════════════════════════════════════════════════════
-// DISPATCH RETURNS — Post-delivery return management
-// ═══════════════════════════════════════════════════════════════
-
-// CREATE return for a delivered dispatch
-router.post("/dispatches/:id/returns", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { items, reason, note } = req.body;
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: "Буцаах бараа сонгоно уу" });
-    }
-
-    // Load dispatch with items
-    const dispatch = await prisma.stockDispatch.findUnique({
-      where: { id },
-      include: {
-        request: {
-          include: { items: { include: { product: true } } },
-        },
-        returns: { include: { items: true } },
-      },
-    });
-
-    if (!dispatch) {
-      return res.status(404).json({ message: "Илгээмж олдсонгүй" });
-    }
-    if (dispatch.status !== "DELIVERED") {
-      return res.status(400).json({
-        message: "Зөвхөн хүргэгдсэн илгээмжээс буцаалт хийх боломжтой",
-      });
-    }
-
-    // Validate quantities — cannot exceed delivered minus already-returned
-    for (const item of items) {
-      if (!item.productId || !item.quantity || item.quantity < 1) {
-        return res
-          .status(400)
-          .json({ message: "Буцаах барааны мэдээлэл буруу" });
-      }
-      const dispatchItem = dispatch.request.items.find(
-        (i) => i.productId === item.productId,
-      );
-      if (!dispatchItem) {
-        return res.status(400).json({
-          message: `Бүтээгдэхүүн ${item.productId} илгээмжид байхгүй`,
-        });
-      }
-      const deliveredQty =
-        dispatchItem.approvedQuantity || dispatchItem.quantity;
-      // Sum previously approved/pending returns for this product
-      const alreadyReturned = dispatch.returns
-        .filter((r) => r.status !== "REJECTED")
-        .reduce((sum, r) => {
-          const ri = r.items.find((ri) => ri.productId === item.productId);
-          return sum + (ri?.quantity || 0);
-        }, 0);
-      if (item.quantity > deliveredQty - alreadyReturned) {
-        return res.status(400).json({
-          message: `${dispatchItem.product.name}: хүргэгдсэн ${deliveredQty}, аль хэдийн буцаасан ${alreadyReturned}, буцаах боломжтой ${deliveredQty - alreadyReturned}`,
-        });
-      }
-    }
-
-    const returnNumber = await generateReturnNumber();
-
-    const dispatchReturn = await prisma.dispatchReturn.create({
-      data: {
-        returnNumber,
-        dispatchId: dispatch.id,
-        warehouseId: dispatch.warehouseId,
-        organizationId: dispatch.organizationId,
-        reason: reason || null,
-        note: note || null,
-        items: {
-          create: items.map(
-            (item: {
-              productId: string;
-              quantity: number;
-              reason?: string;
-            }) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              reason: item.reason || null,
-            }),
-          ),
-        },
-      },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: { id: true, name: true, sku: true, price: true },
-            },
-          },
-        },
-        dispatch: { select: { dispatchNumber: true } },
-        organization: { select: { id: true, name: true } },
-        warehouse: { select: { id: true, name: true } },
-      },
-    });
-
-    res.status(201).json(dispatchReturn);
-  } catch (error) {
-    console.error("create dispatch return error", error);
-    res.status(500).json({ message: "Буцаалт үүсгэхэд алдаа гарлаа" });
-  }
-});
-
-// LIST returns for a warehouse
-router.get("/warehouse/:warehouseId/returns", async (req, res) => {
-  try {
-    const { warehouseId } = req.params;
-    const { status } = req.query;
-
-    const where: Prisma.DispatchReturnWhereInput = { warehouseId };
-    if (status && typeof status === "string") {
-      where.status = status as ReturnStatus;
-    }
-
-    const returns = await prisma.dispatchReturn.findMany({
-      where,
-      include: {
-        items: {
-          include: {
-            product: {
-              select: { id: true, name: true, sku: true, price: true },
-            },
-          },
-        },
-        dispatch: {
-          select: {
-            dispatchNumber: true,
-            driverName: true,
-            driverPhone: true,
-            vehicleNumber: true,
-            request: {
-              select: {
-                requestNumber: true,
-                deliveryAddress: true,
-                organization: { select: { id: true, name: true, phone: true } },
-                requestedBy: {
-                  select: {
-                    id: true,
-                    email: true,
-                    profile: { select: { fullName: true, phoneNumber: true } },
-                  },
-                },
-              },
-            },
-          },
-        },
-        organization: { select: { id: true, name: true, phone: true } },
-        warehouse: { select: { id: true, name: true } },
-        approvedBy: {
-          select: {
-            id: true,
-            email: true,
-            profile: { select: { fullName: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    res.json(returns);
-  } catch (error) {
-    console.error("list warehouse returns error", error);
-    res.status(500).json({ message: "Буцаалтын жагсаалт авахад алдаа гарлаа" });
-  }
-});
-
-// GET returns for a specific dispatch
-router.get("/dispatches/:id/returns", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const returns = await prisma.dispatchReturn.findMany({
-      where: { dispatchId: id },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: { id: true, name: true, sku: true, price: true },
-            },
-          },
-        },
-        approvedBy: {
-          select: {
-            id: true,
-            email: true,
-            profile: { select: { fullName: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    res.json(returns);
-  } catch (error) {
-    console.error("list dispatch returns error", error);
-    res.status(500).json({ message: "Буцаалтын жагсаалт авахад алдаа гарлаа" });
-  }
-});
-
-// APPROVE return — restores inventory to warehouse
-router.patch("/returns/:id/approve", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const actor = (req as any).user;
-
-    const dispatchReturn = await prisma.dispatchReturn.findUnique({
-      where: { id },
-      include: {
-        items: { include: { product: true } },
-        dispatch: true,
-      },
-    });
-
-    if (!dispatchReturn) {
-      return res.status(404).json({ message: "Буцаалт олдсонгүй" });
-    }
-    if (dispatchReturn.status !== "PENDING") {
-      return res
-        .status(400)
-        .json({ message: "Зөвхөн хүлээгдэж буй буцаалтыг батлах боломжтой" });
-    }
-
-    // Restore inventory inside a transaction
-    const updated = await prisma.$transaction(async (tx) => {
-      for (const item of dispatchReturn.items) {
-        await adjustStock(tx, {
-          productId: item.productId,
-          warehouseId: dispatchReturn.warehouseId,
-          change: item.quantity, // positive = return to stock
-          reason: InventoryReason.RETURN,
-          note: `Буцаалт ${dispatchReturn.returnNumber}`,
-          createdById: actor?.id || null,
-          referenceId: dispatchReturn.returnNumber,
-          referenceType: "DISPATCH_RETURN",
-        });
-      }
-
-      return tx.dispatchReturn.update({
-        where: { id },
-        data: {
-          status: "APPROVED",
-          approvedAt: new Date(),
-          approvedById: actor?.id || null,
-        },
-        include: {
-          items: {
-            include: {
-              product: {
-                select: { id: true, name: true, sku: true, price: true },
-              },
-            },
-          },
-          organization: { select: { id: true, name: true } },
-          warehouse: { select: { id: true, name: true } },
-        },
-      });
-    });
-
-    res.json(updated);
-  } catch (error) {
-    console.error("approve dispatch return error", error);
-    res.status(500).json({ message: "Буцаалт батлахад алдаа гарлаа" });
-  }
-});
-
-// REJECT return
-router.patch("/returns/:id/reject", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { rejectReason } = req.body;
-    const actor = (req as any).user;
-
-    const dispatchReturn = await prisma.dispatchReturn.findUnique({
-      where: { id },
-    });
-
-    if (!dispatchReturn) {
-      return res.status(404).json({ message: "Буцаалт олдсонгүй" });
-    }
-    if (dispatchReturn.status !== "PENDING") {
-      return res.status(400).json({
-        message: "Зөвхөн хүлээгдэж буй буцаалтыг татгалзах боломжтой",
-      });
-    }
-
-    const updated = await prisma.dispatchReturn.update({
-      where: { id },
-      data: {
-        status: "REJECTED",
-        rejectedAt: new Date(),
-        rejectReason: rejectReason || null,
-        approvedById: actor?.id || null,
-      },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: { id: true, name: true, sku: true, price: true },
-            },
-          },
-        },
-        organization: { select: { id: true, name: true } },
-      },
-    });
-
-    res.json(updated);
-  } catch (error) {
-    console.error("reject dispatch return error", error);
-    res.status(500).json({ message: "Буцаалт татгалзахад алдаа гарлаа" });
-  }
-});
+router.use(stockReturnRoutes);
 
 export default router;

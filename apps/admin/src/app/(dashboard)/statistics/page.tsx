@@ -13,6 +13,7 @@ import {
   fetchStatisticsInsights,
   type StatisticsInsights,
 } from "@/lib/statistics-api";
+import { useAdminAuth } from "@/lib/admin-auth";
 import { BranchLeaderboard } from "./_components/BranchLeaderboard";
 import { StatisticsHeroCards } from "./_components/StatisticsHeroCards";
 import { StatisticsMetricPanel } from "./_components/StatisticsMetricPanel";
@@ -149,6 +150,7 @@ function buildReportHtml(data: StatisticsInsights) {
 }
 
 export default function StatisticsPage() {
+  const { authFetch } = useAdminAuth();
   const [days, setDays] = useState<StatisticsWindow>(30);
   const [data, setData] = useState<StatisticsInsights | null>(null);
   const [loading, setLoading] = useState(true);
@@ -164,7 +166,7 @@ export default function StatisticsPage() {
     setLoading(true);
     setError(null);
     try {
-      setData(await fetchStatisticsInsights(nextDays));
+      setData(await fetchStatisticsInsights(nextDays, authFetch));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Статистик дата ачаалагдсангүй",
@@ -177,7 +179,7 @@ export default function StatisticsPage() {
   useEffect(() => {
     load(days);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days]);
+  }, [days, authFetch]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredProducts = useMemo(() => {

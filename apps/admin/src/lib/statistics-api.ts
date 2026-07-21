@@ -1,4 +1,9 @@
-import { API, adminFetch } from "./api";
+import { API, getApiErrorMessage } from "./api";
+
+export type AuthenticatedFetch = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
 
 export interface StatisticsInsights {
   generatedAt: string;
@@ -121,8 +126,15 @@ export interface StatisticsInsights {
 
 export async function fetchStatisticsInsights(
   days: number | "all",
+  authFetch: AuthenticatedFetch,
 ): Promise<StatisticsInsights> {
-  const res = await adminFetch(`${API}/admin/statistics/insights?days=${days}`);
-  if (!res.ok) throw new Error(`Statistics insights failed: ${res.status}`);
+  const res = await authFetch(
+    `${API}/admin/statistics/insights?days=${encodeURIComponent(days)}`,
+  );
+  if (!res.ok) {
+    throw new Error(
+      await getApiErrorMessage(res, "Статистик дата ачаалахад алдаа гарлаа"),
+    );
+  }
   return res.json();
 }
